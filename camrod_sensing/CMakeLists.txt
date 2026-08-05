@@ -151,20 +151,32 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       RUNTIME DESTINATION bin
     )
 
-    # HH_260528: Rear camera publisher - econ_camera_node (OpenCV + GStreamer, no GPU).
-    # HH_260601: removed yaml-cpp dependency; calibration now loaded from ROS parameters.
-    add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
+    # HH_260805 - Rear camera keeps its generated standalone executable while
+    # supporting the rear-camera/rectification/AprilTag intra-process path.
+    add_library(camera_rear_publisher_component SHARED src/camera_rear_publisher_node.cpp)
     ament_target_dependencies(
-      camera_rear_publisher_node
+      camera_rear_publisher_component
       builtin_interfaces
       rclcpp
+      rclcpp_components
       sensor_msgs
       cv_bridge
     )
-    target_include_directories(camera_rear_publisher_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_include_directories(camera_rear_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(
-      camera_rear_publisher_node
+      camera_rear_publisher_component
       ${OpenCV_LIBRARIES}
+    )
+    rclcpp_components_register_node(
+      camera_rear_publisher_component
+      PLUGIN "camrod::sensing::CameraRearPublisherNode"
+      EXECUTABLE camera_rear_publisher_node
+    )
+    install(
+      TARGETS camera_rear_publisher_component
+      ARCHIVE DESTINATION lib
+      LIBRARY DESTINATION lib
+      RUNTIME DESTINATION bin
     )
 
     list(APPEND SENSING_NODE_TARGETS camera_rear_publisher_node)

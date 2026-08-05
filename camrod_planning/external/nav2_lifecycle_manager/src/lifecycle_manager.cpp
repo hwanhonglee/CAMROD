@@ -102,7 +102,11 @@ LifecycleManager::LifecycleManager(const rclcpp::NodeOptions & options)
           },
           callback_group_);
       }
-      auto executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+      // HH_260805 - Keep this callback group on the component's scoped context.
+      rclcpp::ExecutorOptions executor_options;
+      executor_options.context = get_node_base_interface()->get_context();
+      auto executor =
+        std::make_shared<rclcpp::executors::SingleThreadedExecutor>(executor_options);
       executor->add_callback_group(callback_group_, get_node_base_interface());
       service_thread_ = std::make_unique<nav2_util::NodeThread>(executor);
     });

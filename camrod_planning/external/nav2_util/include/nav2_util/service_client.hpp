@@ -21,6 +21,16 @@
 
 namespace nav2_util
 {
+namespace detail
+{
+inline rclcpp::ExecutorOptions executorOptionsForNode(
+  const rclcpp::Node::SharedPtr & node)
+{
+  rclcpp::ExecutorOptions options;
+  options.context = node->get_node_base_interface()->get_context();
+  return options;
+}
+}  // namespace detail
 
 /**
  * @class nav2_util::ServiceClient
@@ -38,7 +48,9 @@ public:
   explicit ServiceClient(
     const std::string & service_name,
     const rclcpp::Node::SharedPtr & provided_node)
-  : service_name_(service_name), node_(provided_node)
+  : service_name_(service_name),
+    node_(provided_node),
+    callback_group_executor_(detail::executorOptionsForNode(node_))
   {
     callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive,
@@ -64,7 +76,8 @@ public:
     const std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1))
   {
     while (!client_->wait_for_service(std::chrono::seconds(1))) {
-      if (!rclcpp::ok()) {
+      // HH_260805 - Service clients inherit the owning node's ROS context.
+      if (!rclcpp::ok(node_->get_node_base_interface()->get_context())) {
         throw std::runtime_error(
                 service_name_ + " service client: interrupted while waiting for service");
       }
@@ -100,7 +113,7 @@ public:
     typename ResponseType::SharedPtr & response)
   {
     while (!client_->wait_for_service(std::chrono::seconds(1))) {
-      if (!rclcpp::ok()) {
+      if (!rclcpp::ok(node_->get_node_base_interface()->get_context())) {
         throw std::runtime_error(
                 service_name_ + " service client: interrupted while waiting for service");
       }

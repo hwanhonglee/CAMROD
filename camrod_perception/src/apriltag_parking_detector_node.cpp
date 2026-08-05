@@ -11,6 +11,7 @@
 #include <cmath>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_april_tag_pose.hpp>
 #include <avg_msgs/msg/avg_bool.hpp>
@@ -34,11 +35,15 @@ extern "C" {
 #include <apriltag/tagStandard41h12.h>
 }
 
+namespace camrod::perception
+{
+
 class AprilTagParkingDetectorNode : public rclcpp::Node
 {
 public:
-  AprilTagParkingDetectorNode()
-  : Node("apriltag_parking_detector")
+  explicit AprilTagParkingDetectorNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("apriltag_parking_detector", options)
   {
     // HH_260720 - Declare descriptive rear-camera parking detector parameters.
     image_topic_ = declare_parameter<std::string>(
@@ -490,10 +495,8 @@ private:
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<AprilTagParkingDetectorNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace camrod::perception
+
+// HH_260805 - CMake generates the same standalone executable while bringup can
+// load this detector beside the rear camera and image_proc components.
+RCLCPP_COMPONENTS_REGISTER_NODE(camrod::perception::AprilTagParkingDetectorNode)

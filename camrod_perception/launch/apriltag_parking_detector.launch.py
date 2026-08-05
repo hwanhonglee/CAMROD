@@ -31,6 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'rear_image_rect_topic', default_value='/sensing/camera/econ_rear/image_rect',
         ),
+        DeclareLaunchArgument('parameter_file', default_value=params),
 
         # HH_260720 - Keep rectification as a standard image_proc perception component.
         ComposableNodeContainer(
@@ -56,7 +57,7 @@ def generate_launch_description():
             executable='apriltag_parking_detector_node',
             namespace='perception',
             name='apriltag_parking_detector',
-            parameters=[params, {
+            parameters=[LaunchConfiguration('parameter_file'), {
                 # HH_260720 - The detector consumes the image_proc rectified stream.
                 'image_topic': LaunchConfiguration('rear_image_rect_topic'),
                 'camera_info_topic': LaunchConfiguration('rear_camera_info_topic'),

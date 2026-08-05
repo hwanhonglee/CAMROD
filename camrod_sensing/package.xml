@@ -15,6 +15,8 @@
   <!-- HH_260729 - SEN0592 startup-only parameter descriptors use this message API directly. -->
   <depend>rcl_interfaces</depend>
   <depend>rclcpp_components</depend>
+  <!-- HH_260805 - LiDAR components use deterministic DDS-context teardown. -->
+  <exec_depend>camrod_runtime</exec_depend>
   <!-- HH_260801 - Rear JPEG worker preserves the source timestamp explicitly. -->
   <depend>builtin_interfaces</depend>
   <depend>sensor_msgs</depend>

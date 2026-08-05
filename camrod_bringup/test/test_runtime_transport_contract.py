@@ -1,4 +1,4 @@
-"""Lock v2.1.4 runtime composition and optional LiDAR-grid contracts."""
+"""Lock v2.1.5 runtime composition and optional LiDAR-grid contracts."""
 
 import importlib.util
 from pathlib import Path
@@ -16,6 +16,14 @@ BRINGUP_DEFAULTS = (
 BRINGUP_IMPL = SRC_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
 CYCLONEDDS_SHM = (
     SRC_ROOT / "camrod_bringup" / "config" / "middleware" / "cyclonedds_shm.xml"
+)
+SENSING_CYCLONEDDS_SHM = (
+    SRC_ROOT / "camrod_sensing" / "config" / "middleware"
+    / "cyclonedds_lidar_shm.xml"
+)
+BRINGUP_SENSING_CYCLONEDDS_SHM = (
+    SRC_ROOT / "camrod_bringup" / "config" / "sensing" / "middleware"
+    / "cyclonedds_lidar_shm.xml"
 )
 ROUDI_CONFIG = (
     SRC_ROOT / "camrod_bringup" / "config" / "middleware" / "iceoryx_roudi.toml"
@@ -58,28 +66,43 @@ def _component_plugins(module, monkeypatch, *, cost_grid: bool) -> list[str]:
     return [item["plugin"] for item in captured]
 
 
-def test_production_defaults_use_chromium_and_guard_global_shared_memory() -> None:
+def test_production_defaults_use_chromium_and_scope_shared_memory() -> None:
     """The central deployment profile must select one explicit runtime policy."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))["bringup"]
 
-    # HH_260805 - Humble iceoryx aborts once the full graph exhausts its static
-    # endpoint/history capacity, so SHM remains an explicit bench-only opt-in.
+    # HH_260805 - SHM remains opt-in pending Jetson measurement and must never
+    # be exported to the complete graph on Humble.
     assert defaults["runtime"]["enable_dds_shared_memory"] is False
     assert defaults["sensing"]["use_lidar_processing_container"] is True
     assert defaults["sensing"]["enable_lidar_cost_grid"] is False
     assert defaults["system"]["operator_ui_window_engine"] == "chromium"
 
-    source = BRINGUP_IMPL.read_text(encoding="utf-8")
-    assert "SetEnvironmentVariable(" in source
-    assert "'RMW_IMPLEMENTATION'" in source
-    assert "'CYCLONEDDS_URI'" in source
-    assert "iox-roudi" in source
+    bringup_source = BRINGUP_IMPL.read_text(encoding="utf-8")
+    lidar_source = LIDAR_LAUNCH.read_text(encoding="utf-8")
+    assert "SetEnvironmentVariable(" not in bringup_source
+    assert "lidar_dds_shared_memory_active" in bringup_source
+    assert "lc['sim']" in bringup_source
+    assert "SetEnvironmentVariable(" in lidar_source
+    assert '"RMW_IMPLEMENTATION"' in lidar_source
+    assert '"CYCLONEDDS_URI"' in lidar_source
+    assert "GroupAction([" in lidar_source
+    assert "iox-roudi" in bringup_source
 
 
 def test_shared_memory_profiles_enable_iceoryx_with_large_message_pools() -> None:
     """CycloneDDS and RouDi must agree on SHM and image/cloud-sized chunks."""
     root = ET.parse(CYCLONEDDS_SHM).getroot()
+    sensing_root = ET.parse(SENSING_CYCLONEDDS_SHM).getroot()
+    bringup_sensing_root = ET.parse(BRINGUP_SENSING_CYCLONEDDS_SHM).getroot()
     assert root.findtext("./Domain/SharedMemory/Enable") == "true"
+    assert sensing_root.findtext("./Domain/SharedMemory/Enable") == "true"
+    assert ET.tostring(root) == ET.tostring(sensing_root)
+    # HH_260805 - The field config audit compares package and deployment trees
+    # byte-for-byte, including the opt-in physical LiDAR transport profile.
+    assert SENSING_CYCLONEDDS_SHM.read_bytes() == (
+        BRINGUP_SENSING_CYCLONEDDS_SHM.read_bytes()
+    )
+    assert ET.tostring(sensing_root) == ET.tostring(bringup_sensing_root)
     # HH_260805 - A forced socket-buffer minimum can make DDS fail before SHM
     # starts on hosts whose kernel wmem_max is lower than that requested value.
     assert root.find("./Domain/Internal/SocketSendBufferSize") is None
@@ -146,6 +169,8 @@ def test_sensor_hot_paths_use_components_and_move_ownership() -> None:
     assert "lidar_cost_grid_component SHARED" in sensing_cmake
     assert lidar_source.count('"use_intra_process_comms": True') == 2
     assert lidar_source.count('"use_intra_process_comms": False') == 1
+    assert 'package="camrod_runtime"' in lidar_source
+    assert 'executable="scoped_component_container_mt"' in lidar_source
     # HH_260805 - Three components and their containing process share the namespace.
     assert lidar_source.count('namespace=LaunchConfiguration("module_namespace")') == 4
     assert "transient-local durability" in lidar_source

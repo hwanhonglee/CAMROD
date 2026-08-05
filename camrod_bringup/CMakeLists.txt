@@ -172,6 +172,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260805 - Lock the production planner/controller scoped container and
+  # standalone fallback while keeping the final command gate in camrod_control.
+  ament_add_pytest_test(
+    test_nav2_component_launch
+    test/test_nav2_component_launch.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260805 - Keep Chromium, ROS intra-process composition, managed DDS SHM,
   # and the default-off LiDAR cost-grid diagnostic contract synchronized.
   ament_add_pytest_test(

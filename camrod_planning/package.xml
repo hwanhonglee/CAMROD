@@ -36,9 +36,17 @@
   <depend>visualization_msgs</depend>
 
   <!-- HH_260105: Nav2 runtime components used by nav2_lanelet.launch.py -->
-  <!-- Nav2 runtime components used by nav2_lanelet.launch.py -->
+  <!-- HH_260805 - Declare the component launch stack directly so standalone
+       camrod_planning installs do not rely on nav2_bringup transitive dependencies. -->
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <!-- HH_260805 - Scoped container waits for lifecycle pre-shutdown cleanup. -->
+  <exec_depend>camrod_runtime</exec_depend>
+  <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_planner</exec_depend>
   <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_smoother</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
   <exec_depend>nav2_bt_navigator</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav2_costmap_2d</exec_depend>

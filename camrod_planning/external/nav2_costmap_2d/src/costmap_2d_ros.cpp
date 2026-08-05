@@ -58,6 +58,27 @@ using rcl_interfaces::msg::ParameterType;
 
 namespace nav2_costmap_2d
 {
+namespace
+{
+rclcpp::NodeOptions makeEmbeddedCostmapOptions(
+  const rclcpp::NodeOptions & parent_options,
+  const std::string & name,
+  const std::string & parent_namespace,
+  const std::string & local_namespace)
+{
+  // HH_260805 - Preserve process-level parameter files while sharing the
+  // explicit component context. Copying the parent's options would disable
+  // global arguments for dynamically loaded components.
+  return rclcpp::NodeOptions()
+         .context(parent_options.context())
+         .arguments({
+           "--ros-args", "-r", std::string("__ns:=") +
+           nav2_util::add_namespaces(parent_namespace, local_namespace),
+           "--ros-args", "-r", name + std::string(":__node:=") + name
+         });
+}
+}  // namespace
+
 Costmap2DROS::Costmap2DROS(const std::string & name)
 : Costmap2DROS(name, "/", name) {}
 
@@ -106,16 +127,18 @@ Costmap2DROS::Costmap2DROS(
   const std::string & name,
   const std::string & parent_namespace,
   const std::string & local_namespace)
-: nav2_util::LifecycleNode(name, "",
-    // NodeOption arguments take precedence over the ones provided on the command line
-    // use this to make sure the node is placed on the provided namespace
-    // TODO(orduno) Pass a sub-node instead of creating a new node for better handling
-    //              of the namespaces
-    rclcpp::NodeOptions().arguments({
-    "--ros-args", "-r", std::string("__ns:=") +
-    nav2_util::add_namespaces(parent_namespace, local_namespace),
-    "--ros-args", "-r", name + ":" + std::string("__node:=") + name
-  })),
+: Costmap2DROS(name, parent_namespace, local_namespace, rclcpp::NodeOptions())
+{
+}
+
+Costmap2DROS::Costmap2DROS(
+  const std::string & name,
+  const std::string & parent_namespace,
+  const std::string & local_namespace,
+  const rclcpp::NodeOptions & parent_options)
+: nav2_util::LifecycleNode(
+    name, "", makeEmbeddedCostmapOptions(
+      parent_options, name, parent_namespace, local_namespace)),
   name_(name),
   parent_namespace_(parent_namespace),
   default_plugins_{"static_layer", "obstacle_layer", "inflation_layer"},
@@ -184,7 +207,21 @@ Costmap2DROS::on_configure(const rclcpp_lifecycle::State & /*state*/)
     get_node_timers_interface(),
     callback_group_);
   tf_buffer_->setCreateTimerInterface(timer_interface);
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  // HH_260805 - Reuse this node's executor/context. The convenience
+  // constructor creates a hidden node and executor on the global context.
+  // Bind both TF subscriptions to the callback group spun below; the embedded
+  // costmap node itself is intentionally not added to the parent executor.
+  rclcpp::SubscriptionOptions tf_options;
+  tf_options.callback_group = callback_group_;
+  rclcpp::SubscriptionOptions tf_static_options;
+  tf_static_options.callback_group = callback_group_;
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(
+    *tf_buffer_, shared_from_this(), false,
+    tf2_ros::DynamicListenerQoS(), tf2_ros::StaticListenerQoS(),
+    tf_options, tf_static_options);
+  // The subscriptions are serviced by executor_thread_, so timeout-based TF
+  // queries are safe even though TransformListener does not own that thread.
+  tf_buffer_->setUsingDedicatedThread(true);
 
   // Then load and add the plug-ins to the costmap
   for (unsigned int i = 0; i < plugin_names_.size(); ++i) {
@@ -252,7 +289,11 @@ Costmap2DROS::on_configure(const rclcpp_lifecycle::State & /*state*/)
   // Add cleaning service
   clear_costmap_service_ = std::make_unique<ClearCostmapService>(shared_from_this(), *this);
 
-  executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  // HH_260805 - Keep costmap callbacks on the embedded node's scoped context.
+  rclcpp::ExecutorOptions executor_options;
+  executor_options.context = get_node_base_interface()->get_context();
+  executor_ =
+    std::make_shared<rclcpp::executors::SingleThreadedExecutor>(executor_options);
   executor_->add_callback_group(callback_group_, get_node_base_interface());
   executor_thread_ = std::make_unique<nav2_util::NodeThread>(executor_);
   return nav2_util::CallbackReturn::SUCCESS;
@@ -273,7 +314,7 @@ Costmap2DROS::on_activate(const rclcpp_lifecycle::State & /*state*/)
 
   RCLCPP_INFO(get_logger(), "Checking transform");
   rclcpp::Rate r(2);
-  while (rclcpp::ok() &&
+  while (rclcpp::ok(get_node_base_interface()->get_context()) &&
     !tf_buffer_->canTransform(
       global_frame_, robot_base_frame_, tf2::TimePointZero, &tf_error))
   {
@@ -466,7 +507,9 @@ Costmap2DROS::mapUpdateLoop(double frequency)
 
   rclcpp::WallRate r(frequency);    // 200ms by default
 
-  while (rclcpp::ok() && !map_update_thread_shutdown_) {
+  while (rclcpp::ok(get_node_base_interface()->get_context()) &&
+    !map_update_thread_shutdown_)
+  {
     nav2_util::ExecutionTimer timer;
 
     // Execute after start() will complete plugins activation
@@ -564,7 +607,7 @@ Costmap2DROS::start()
 
   // block until the costmap is re-initialized.. meaning one update cycle has run
   rclcpp::Rate r(20.0);
-  while (rclcpp::ok() && !initialized_) {
+  while (rclcpp::ok(get_node_base_interface()->get_context()) && !initialized_) {
     RCLCPP_DEBUG(get_logger(), "Sleeping, waiting for initialized_");
     r.sleep();
   }

@@ -67,9 +67,29 @@ CHECKER_COMPONENT_PLUGINS = {
 }
 
 CHECKER_COMPONENT_GROUPS = {
-    "hardware_sensing": {"hw", "sensing"},
-    "autonomy": {"map", "perception", "planning"},
+    # HH_260805 - Keep independently recoverable checker groups. In particular,
+    # the lifecycle service client does not share a process with topic checkers.
+    "hardware_sensing": frozenset(
+        spec[2] for spec in CHECKER_NODE_SPECS if spec[0] in {"hw", "sensing"}
+    ),
+    "localization": frozenset(
+        spec[2] for spec in CHECKER_NODE_SPECS if spec[0] == "localization"
+    ),
+    "autonomy_topics": frozenset(
+        spec[2]
+        for spec in CHECKER_NODE_SPECS
+        if spec[0] in {"map", "perception", "planning"}
+        and spec[2] != "planning_lifecycle_checker"
+    ),
+    "planning_lifecycle": frozenset({"planning_lifecycle_checker"}),
 }
+
+DEFAULT_CHECKER_COMPONENT_GROUPS = (
+    "hardware_sensing",
+    "localization",
+    "autonomy_topics",
+    "planning_lifecycle",
+)
 
 
 def pkg_share(pkg: str, rel: str) -> str:
@@ -78,6 +98,19 @@ def pkg_share(pkg: str, rel: str) -> str:
 
 def _as_bool(value: str) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _parse_checker_component_groups(value: str) -> tuple[str, ...]:
+    requested = tuple(
+        item.strip() for item in str(value).split(",") if item.strip()
+    )
+    invalid = sorted(set(requested) - set(CHECKER_COMPONENT_GROUPS))
+    if invalid:
+        raise ValueError(
+            "unknown checker component group(s): " + ", ".join(invalid)
+        )
+    # Preserve the declared order and remove accidental duplicates.
+    return tuple(dict.fromkeys(requested))
 
 
 def _profile_param_file(config_dir: str, default_dir: str, category: str, param_file: str) -> str:
@@ -196,25 +229,26 @@ def _checker_containers(
     module_namespace: str,
     _thread_count: int,
     enable_lidar_cost_grid: bool,
+    selected_groups: tuple[str, ...],
 ) -> list:
     containers = []
-    for group_name, categories in CHECKER_COMPONENT_GROUPS.items():
+    for group_name in selected_groups:
+        checker_names = CHECKER_COMPONENT_GROUPS[group_name]
         components = [
             _checker_component(
                 config_dir, default_dir, module_namespace, *spec,
                 enable_lidar_cost_grid
             )
             for spec in CHECKER_NODE_SPECS
-            if spec[0] in categories
+            if spec[2] in checker_names
         ]
         containers.append(
             ComposableNodeContainer(
-                package="rclcpp_components",
-                # HH_260805 - Hardware/sensing and autonomy checkers are
-                # verified with the stock serialized container. Localization
-                # remains standalone because its Humble component library can
-                # segfault after all nodes have cleanly unloaded at shutdown.
-                executable="component_container",
+                # HH_260805 - Checker callbacks are low-rate and non-blocking.
+                # Serialize them so shutdown cannot race an executor worker
+                # against component destruction; Nav2 retains the MT variant.
+                package="camrod_runtime",
+                executable="scoped_component_container",
                 name=f"{group_name}_checker_container",
                 namespace="",
                 output="log",
@@ -231,10 +265,13 @@ def _build_checker_nodes(
     use_components: bool,
     component_threads: int,
     enable_lidar_cost_grid: bool,
+    selected_groups: tuple[str, ...],
+    include_aggregator: bool,
 ) -> list:
-    nodes = [
+    nodes = []
+    if include_aggregator:
         # Main diagnostics aggregator used by the system health state machine.
-        Node(
+        nodes.append(Node(
             package="camrod_system",
             executable="aggregator_node",
             name="diagnostics_agg",
@@ -244,26 +281,27 @@ def _build_checker_nodes(
                     config_dir, default_dir, "aggregator", "diagnostics_config.yaml"
                 )
             }],
-        ),
-    ]
-    if use_components:
-        # HH_260805 - Two verified containers plus six standalone localization
-        # checkers reduce 24 processes to eight without accepting the reproduced
-        # Humble localization plugin-unload crash.
+        ))
+    if use_components and selected_groups:
+        # HH_260805 - Compose only explicitly selected fault domains. Every
+        # omitted checker keeps its normal standalone field-debug executable.
         nodes.extend(_checker_containers(
             config_dir,
             default_dir,
             module_namespace,
             component_threads,
             enable_lidar_cost_grid,
+            selected_groups,
         ))
-        composed_categories = set().union(*CHECKER_COMPONENT_GROUPS.values())
+        composed_names = set().union(
+            *(CHECKER_COMPONENT_GROUPS[group] for group in selected_groups)
+        )
         nodes.extend(
             _checker_node(
                 config_dir, default_dir, *spec, enable_lidar_cost_grid
             )
             for spec in CHECKER_NODE_SPECS
-            if spec[0] not in composed_categories
+            if spec[2] not in composed_names
         )
     else:
         nodes.extend(
@@ -275,6 +313,96 @@ def _build_checker_nodes(
     return nodes
 
 
+def _system_core_container(
+    config_dir: str,
+    default_dir: str,
+    module_namespace: str,
+) -> ComposableNodeContainer:
+    namespace = f"/{module_namespace.strip('/')}" if module_namespace.strip('/') else "/"
+    intra_process = [{"use_intra_process_comms": True}]
+
+    # HH_260805 - Keep the aggregate/status chain in one low-rate process while
+    # checker fault domains remain in their own containers or executables.
+    components = [
+        ComposableNode(
+            package="camrod_system",
+            plugin="DiagnosticsAggregator",
+            name="diagnostics_agg",
+            namespace=namespace,
+            parameters=[{
+                "config_file": _profile_param_file(
+                    config_dir, default_dir, "aggregator", "diagnostics_config.yaml"
+                )
+            }],
+            extra_arguments=intra_process,
+        ),
+        ComposableNode(
+            package="camrod_system",
+            plugin="camrod_system::SystemCheckerNode",
+            name="system_checker",
+            namespace=namespace,
+            parameters=[
+                LaunchConfiguration("system_checker_param_file"),
+                {
+                    "diagnostic_topic": "diagnostics",
+                    "disabled_modules_csv": LaunchConfiguration(
+                        "system_checker_disabled_modules"
+                    ),
+                    "disabled_nodes_csv": LaunchConfiguration(
+                        "system_checker_disabled_nodes"
+                    ),
+                    "disabled_topics_csv": LaunchConfiguration(
+                        "system_checker_disabled_topics"
+                    ),
+                },
+            ],
+            extra_arguments=intra_process,
+        ),
+        ComposableNode(
+            package="camrod_system",
+            plugin="camrod_system::SystemDiagnosticNode",
+            name="system_diagnostic",
+            namespace=namespace,
+            parameters=[{
+                "diagnostic_topic": "diagnostics",
+                "source_diagnostic_topic": "diagnostics_agg",
+                "system_status_topic": "status",
+                "avg_system_msgs_topic": "msgs",
+                "publish_period_s": 0.5,
+                "stale_timeout_s": 2.0,
+                "startup_grace_s": 10.0,
+                "log_status_summary": True,
+                "log_status_summary_period_s": 5.0,
+                "max_status_detail_lines": 24,
+            }],
+            extra_arguments=intra_process,
+        ),
+        ComposableNode(
+            package="camrod_system",
+            plugin="camrod_system::DiagnosticsAggregatorNode",
+            name="diagnostics_aggregator",
+            namespace=namespace,
+            parameters=[{
+                "source_topic": "diagnostics",
+                "output_topic": "diagnostics_agg_tools",
+                "publish_period_s": 1.0,
+                "stale_timeout_s": 3.0,
+            }],
+            extra_arguments=intra_process,
+        ),
+    ]
+    return ComposableNodeContainer(
+        package="camrod_runtime",
+        executable="scoped_component_container",
+        name="system_core_container",
+        namespace="",
+        output="screen",
+        respawn=True,
+        respawn_delay=2.0,
+        composable_node_descriptions=components,
+    )
+
+
 def _build_diagnostics_inline(context, *_args, **_kwargs):
     pkg_share_dir = get_package_share_directory("camrod_system")
     pkg_prefix = get_package_prefix("camrod_system")
@@ -283,6 +411,15 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     enable_checkers = _as_bool(LaunchConfiguration("enable_checkers").perform(context))
     use_checker_components = _as_bool(
         LaunchConfiguration("use_checker_components").perform(context)
+    )
+    enable_system_tools = _as_bool(
+        LaunchConfiguration("enable_system_tools").perform(context)
+    )
+    use_system_tools_container = _as_bool(
+        LaunchConfiguration("use_system_tools_container").perform(context)
+    )
+    checker_component_groups = _parse_checker_component_groups(
+        LaunchConfiguration("checker_component_groups").perform(context)
     )
     try:
         checker_component_threads = max(
@@ -307,10 +444,42 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     default_dir = os.path.join(config_root, "default")
     config_dir = profile_dir if os.path.isdir(profile_dir) else default_dir
 
+    compose_system_core = enable_system_tools and use_system_tools_container
     if not enable_checkers:
-        return [
+        actions = [
             LogInfo(
                 msg="[camrod_system] diagnostics checkers disabled (enable_checkers:=false)"
+            )
+        ]
+        if compose_system_core:
+            actions.append(
+                _system_core_container(config_dir, default_dir, module_namespace)
+            )
+        elif enable_system_tools:
+            # HH_260805 - The standalone tools still require the filtered
+            # diagnostics_agg producer when checker generation is disabled.
+            actions.append(Node(
+                package="camrod_system",
+                executable="aggregator_node",
+                name="diagnostics_agg",
+                output="log",
+                parameters=[{
+                    "config_file": _profile_param_file(
+                        config_dir,
+                        default_dir,
+                        "aggregator",
+                        "diagnostics_config.yaml",
+                    )
+                }],
+            ))
+        return [
+            GroupAction(
+                actions=[
+                    PushRosNamespace(module_namespace),
+                    SetRemap(src="/diagnostics", dst="diagnostics"),
+                    SetRemap(src="/diagnostics_agg", dst="diagnostics_agg"),
+                    *actions,
+                ]
             )
         ]
 
@@ -321,7 +490,13 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
         use_checker_components,
         checker_component_threads,
         enable_lidar_cost_grid,
+        checker_component_groups,
+        not compose_system_core,
     )
+    if compose_system_core:
+        diagnostics_nodes.append(
+            _system_core_container(config_dir, default_dir, module_namespace)
+        )
 
     ranger_checker_exec = os.path.join(
         pkg_prefix, "lib", "camrod_system", "ranger_platform_checker_node"
@@ -380,17 +555,25 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_checkers', default_value='true'),
         DeclareLaunchArgument(
             'use_checker_components',
-            default_value='false',
+            default_value='true',
             description=(
-                'Bench-only checker composition; standalone is the stable '
-                'Humble production default'
+                'Compose checker fault domains in independent serialized '
+                'scoped containers; false keeps standalone processes'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'checker_component_groups',
+            default_value=','.join(DEFAULT_CHECKER_COMPONENT_GROUPS),
+            description=(
+                'Comma-separated checker containers: hardware_sensing, '
+                'localization, autonomy_topics, planning_lifecycle'
             ),
         ),
         DeclareLaunchArgument(
             'checker_component_threads',
             default_value='1',
             description=(
-                'Compatibility setting for bench-only serialized checker containers'
+                'Deprecated compatibility input; checker groups are serialized'
             ),
         ),
         DeclareLaunchArgument('enable_platform', default_value='false'),
@@ -401,6 +584,14 @@ def generate_launch_description():
         ),
         # system_checker + system_diagnostic + diagnostics_aggregator (tools channel)
         DeclareLaunchArgument('enable_system_tools', default_value='true'),
+        DeclareLaunchArgument(
+            'use_system_tools_container',
+            default_value='true',
+            description=(
+                'Compose diagnostics aggregator and system status tools; false '
+                'retains four standalone field-debug processes'
+            ),
+        ),
         DeclareLaunchArgument(
             'system_checker_param_file',
             default_value=pkg_share('camrod_system', os.path.join('config', 'system_checker.yaml')),
@@ -435,7 +626,12 @@ def generate_launch_description():
 
         # ── System tools: node/topic liveness check + lightweight aggregator ────
         GroupAction(
-            condition=IfCondition(LaunchConfiguration('enable_system_tools')),
+            condition=IfCondition(PythonExpression([
+                "'", LaunchConfiguration('enable_system_tools'),
+                "'.lower() in ('1','true','yes','on') and '",
+                LaunchConfiguration('use_system_tools_container'),
+                "'.lower() not in ('1','true','yes','on')",
+            ])),
             actions=[
                 PushRosNamespace(LaunchConfiguration('module_namespace')),
                 Node(

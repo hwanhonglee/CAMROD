@@ -31,14 +31,20 @@
 
 #include "cv_bridge/cv_bridge.h"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 
+namespace camrod::sensing
+{
+
 class CameraRearPublisherNode : public rclcpp::Node
 {
 public:
-  CameraRearPublisherNode() : Node("camera_rear_publisher")
+  explicit CameraRearPublisherNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("camera_rear_publisher", options)
   {
     declare_parameter("device",          std::string("/dev/video1"));
     declare_parameter("width",           1920);
@@ -218,7 +224,11 @@ private:
           std_msgs::msg::Header(), "bgr8", frame).toImageMsg();
         img_msg->header.stamp    = stamp;
         img_msg->header.frame_id = frame_id_;
-        image_pub_->publish(std::move(*img_msg));
+        // HH_260805 - Move the raw payload into a unique message so an
+        // intra-process rectifier receives the frame without another vector copy.
+        auto unique_msg = std::make_unique<sensor_msgs::msg::Image>(
+          std::move(*img_msg));
+        image_pub_->publish(std::move(unique_msg));
       }
 
       // CameraInfo
@@ -370,10 +380,8 @@ private:
   std::vector<double>    d_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CameraRearPublisherNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace camrod::sensing
+
+// HH_260805 - The registration macro also generates the legacy standalone
+// camera_rear_publisher_node executable through CMake.
+RCLCPP_COMPONENTS_REGISTER_NODE(camrod::sensing::CameraRearPublisherNode)

@@ -17,6 +17,7 @@ from launch.utilities import perform_substitutions
 
 
 BRINGUP_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = BRINGUP_ROOT.parent
 BRINGUP_IMPL_PATH = BRINGUP_ROOT / "launch/_bringup_impl.py"
 DEFAULTS_PATH = BRINGUP_ROOT / "config/bringup/launch_defaults.yaml"
 
@@ -95,14 +96,36 @@ def _module_include(filename):
     return matches[0]
 
 
-def _camera_owner_resolution_action():
+def _camera_owner_resolution_action(
+    name="camera_yolo_container_active_resolved",
+):
+    context = LaunchContext()
     matches = [
         entity
         for entity in BRINGUP_DESCRIPTION.entities
         if isinstance(entity, SetLaunchConfiguration)
+        and perform_substitutions(
+            context,
+            entity._SetLaunchConfiguration__name,
+        ) == name
     ]
     assert len(matches) == 1
     return matches[0]
+
+
+def _base_rear_owner_context(**overrides):
+    context = LaunchContext()
+    context.launch_configurations.update({
+        "sim": "false",
+        "use_rear_camera_apriltag_container": "true",
+        "enable_sensing_module": "true",
+        "enable_camera": "true",
+        "enable_rear_camera": "true",
+        "enable_parking": "true",
+        "parking_method": "apriltag",
+        **overrides,
+    })
+    return context
 
 
 @pytest.mark.parametrize(
@@ -292,6 +315,69 @@ def test_component_camera_owner_survives_scoped_child_front_override():
     assert context.perform_substitution(
         arguments["front_camera_source_external"]
     ) == "true"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_active"),
+    (
+        ({}, "true"),
+        ({"sim": "true"}, "false"),
+        ({"parking_method": "reverse"}, "false"),
+        ({"enable_rear_camera": "false"}, "false"),
+        ({"use_rear_camera_apriltag_container": "false"}, "false"),
+    ),
+)
+def test_rear_apriltag_container_has_one_physical_owner(
+    overrides, expected_active
+):
+    context = _base_rear_owner_context(**overrides)
+    _camera_owner_resolution_action(
+        "rear_camera_apriltag_container_active_resolved"
+    ).execute(context)
+    sensing_arguments = dict(
+        _module_include("sensing.launch.py").launch_arguments
+    )
+    parking_arguments = dict(
+        _module_include("parking.launch.py").launch_arguments
+    )
+
+    assert context.perform_substitution(
+        sensing_arguments["rear_camera_source_external"]
+    ) == expected_active
+    expected_regular = "false" if expected_active == "true" else (
+        "false" if overrides.get("sim") == "true" else
+        overrides.get("enable_rear_camera", "true")
+    )
+    assert context.perform_substitution(
+        sensing_arguments["enable_rear_camera"]
+    ) == expected_regular
+    assert context.perform_substitution(
+        parking_arguments["launch_apriltag_detector"]
+    ) == ("false" if expected_active == "true" else "true")
+
+
+def test_rear_apriltag_container_keeps_the_complete_intra_process_chain():
+    """Capture, rectification, and detection must share one owner/process."""
+    source = (
+        SRC_ROOT / "camrod_bringup" / "launch" /
+        "rear_camera_apriltag_container.launch.py"
+    ).read_text(encoding="utf-8")
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    # HH_260805 - Lock all three high-bandwidth stages and prevent a future
+    # fallback edit from silently reintroducing a duplicate rear publisher.
+    for plugin in (
+        "camrod::sensing::CameraRearPublisherNode",
+        "image_proc::RectifyNode",
+        "camrod::perception::AprilTagParkingDetectorNode",
+    ):
+        assert f'plugin="{plugin}"' in source
+    assert source.count('"use_intra_process_comms": True') == 3
+    assert 'package="camrod_runtime"' in source
+    assert 'executable="scoped_component_container_mt"' in source
+    assert defaults["bringup"]["perception"][
+        "use_rear_camera_apriltag_container"
+    ] is True
 
 
 def test_master_dummy_policy_default_is_enabled_only_for_non_sim_runs():

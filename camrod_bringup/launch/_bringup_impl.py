@@ -22,7 +22,6 @@ from launch.actions import (
     LogInfo,
     OpaqueFunction,
     RegisterEventHandler,
-    SetEnvironmentVariable,
     SetLaunchConfiguration,
     TimerAction,
 )
@@ -609,6 +608,16 @@ def generate_launch_description():
             parking_cfg_entry,
             'control/parking.yaml',
         )
+    apriltag_cfg_entry = cfg_get(
+        launch_cfg,
+        'perception/apriltag_param_file',
+        'perception/apriltag_parking_detector.yaml',
+    )
+    apriltag_param_default = resolve_cfg_file(
+        config_root_default,
+        apriltag_cfg_entry,
+        'perception/apriltag_parking_detector.yaml',
+    )
     # HH_260720 - Resolve motion-maneuver parameters independently from parking parameters.
     control_cfg_entry = cfg_get(launch_cfg, 'control/param_file', '__module_default__')
     if str(control_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default'):
@@ -646,12 +655,13 @@ def generate_launch_description():
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
         # Stagger module includes to reduce startup CPU/memory spikes.
         ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
-        # HH_260805 - Keep global CycloneDDS/iceoryx explicitly opt-in. Humble's
-        # static iceoryx endpoint limits are too small for the complete graph.
+        # HH_260805 - Keep CycloneDDS/iceoryx explicitly opt-in and scope it to
+        # the physical LiDAR driver/processing boundary. The complete Humble
+        # graph exceeds iceoryx's static endpoint capacity.
         (
             'enable_dds_shared_memory',
             cfg_get(launch_cfg, 'runtime/enable_dds_shared_memory', False),
-            'Enable experimental managed CycloneDDS inter-process shared memory',
+            'Enable managed CycloneDDS shared memory for the physical LiDAR path',
         ),
         (
             'dds_shared_memory_cyclonedds_config',
@@ -725,6 +735,13 @@ def generate_launch_description():
 
         # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
+        (
+            'use_nav2_container',
+            # HH_260805 - Scoped context ownership makes the planner/controller
+            # hybrid component topology the validated production default.
+            cfg_get(launch_cfg, 'planning/use_nav2_container', True),
+            'Compose Nav2 planner/controller in the scoped runtime container',
+        ),
         ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', False), 'Enable path cost-grid helpers'),
         # HH_260618: Default off unless explicitly enabled; Nav2 planner_server
         # already owns /planning/global_path in the normal bringup path.
@@ -1427,14 +1444,28 @@ def generate_launch_description():
             'Enable module validators',
         ),
         (
+            'use_system_tools_container',
+            cfg_get(launch_cfg, 'system/use_system_tools_container', True),
+            'Compose the system aggregate/status tool chain',
+        ),
+        (
             'use_checker_components',
-            cfg_get(launch_cfg, 'system/use_checker_components', False),
-            'Compose verified system checkers; keep localization standalone',
+            cfg_get(launch_cfg, 'system/use_checker_components', True),
+            'Compose selected system checker fault domains',
+        ),
+        (
+            'checker_component_groups',
+            cfg_get(
+                launch_cfg,
+                'system/checker_component_groups',
+                'hardware_sensing,localization,autonomy_topics,planning_lifecycle',
+            ),
+            'Comma-separated system checker component groups',
         ),
         (
             'checker_component_threads',
             cfg_get(launch_cfg, 'system/checker_component_threads', 1),
-            'Compatibility value; system checker containers use serialized executors',
+            'Compatibility value for system checker executor experiments',
         ),
         (
             'diagnostics_profile',
@@ -1598,6 +1629,20 @@ def generate_launch_description():
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
+        (
+            'use_rear_camera_apriltag_container',
+            cfg_get(
+                launch_cfg,
+                'perception/use_rear_camera_apriltag_container',
+                True,
+            ),
+            'Compose physical rear camera, rectification, and AprilTag detection',
+        ),
+        (
+            'apriltag_param_file',
+            apriltag_param_default,
+            'AprilTag parking detector parameter YAML',
+        ),
         ('perception_mode', cfg_get(launch_cfg, 'perception/mode', 'auto'), 'Perception mode: auto|lidar_only|camera_lidar'),
         ('camera_device_path', cfg_get(launch_cfg, 'sensing/camera_device_path', '/dev/video0'), 'Camera device path'),
 
@@ -1906,6 +1951,58 @@ def generate_launch_description():
         lc['perception_enable_yolo'], "'",
     ])
     camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
+
+    # HH_260805 - Resolve rear-camera ownership independently from the front
+    # camera. The container is hardware-only and exists only for AprilTag parking.
+    rear_camera_apriltag_container_active_expression = PythonExpression([
+        "'true' if str('", lc['sim'],
+        "').lower() not in ['1', 'true', 'yes', 'on'] and str('",
+        lc['use_rear_camera_apriltag_container'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_sensing_module'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_camera'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_rear_camera'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_parking'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['parking_method'],
+        "').strip().lower() == 'apriltag' else 'false'",
+    ])
+    resolve_rear_camera_apriltag_container_active = SetLaunchConfiguration(
+        'rear_camera_apriltag_container_active_resolved',
+        rear_camera_apriltag_container_active_expression,
+    )
+    rear_camera_apriltag_container_active = LaunchConfiguration(
+        'rear_camera_apriltag_container_active_resolved'
+    )
+    regular_rear_camera_enable = PythonExpression([
+        "'false' if str('", lc['sim'],
+        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
+        rear_camera_apriltag_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] else '",
+        lc['enable_rear_camera'], "'",
+    ])
+    regular_apriltag_detector_enable = PythonExpression([
+        "'false' if str('", rear_camera_apriltag_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] else 'true'",
+    ])
+    rear_camera_apriltag_container_condition = IfCondition(
+        rear_camera_apriltag_container_active
+    )
+    # HH_260805 - Resolve SHM before entering the sensing child scope. It is
+    # inactive in simulation and never changes the RMW environment of the full
+    # CAMROD graph; only the physical LiDAR launch receives this true value.
+    lidar_dds_shared_memory_active = PythonExpression([
+        "'true' if str('", lc['enable_dds_shared_memory'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['sim'], "').lower() not in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_sensing_module'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_lidar_driver'],
+        "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
+    ])
     sensing_args = {
         # sensing.launch.py declares `sensing_namespace` (not `module_namespace`).
         'sensing_namespace': lc['sensing_namespace'],
@@ -1915,11 +2012,12 @@ def generate_launch_description():
         # GNSS/IMU/wheel data and obstacle cloud, so keep hardware drivers off.
         'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
         'enable_front_camera': regular_front_camera_enable,
-        'enable_rear_camera':  sim_switch(lc['sim'], 'false', lc['enable_rear_camera']),
+        'enable_rear_camera': regular_rear_camera_enable,
         # The component container owns the physical front camera when active;
         # tell sensing.launch so it does not mistake the scoped regular-camera
         # false value for a disabled sensor and start a duplicate dummy.
         'front_camera_source_external': camera_yolo_container_active,
+        'rear_camera_source_external': rear_camera_apriltag_container_active,
         'publish_sensor_dummies_when_disabled': sim_switch(
             lc['sim'],
             'false',
@@ -1931,6 +2029,10 @@ def generate_launch_description():
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
         'use_lidar_processing_container': lc['use_lidar_processing_container'],
+        'enable_dds_shared_memory': lidar_dds_shared_memory_active,
+        'dds_shared_memory_cyclonedds_config': lc[
+            'dds_shared_memory_cyclonedds_config'
+        ],
         'enable_inflation_cost_grid': lc['enable_inflation_cost_grid'],
         'enable_lidar_driver': sim_switch(lc['sim'], 'false', lc['enable_lidar_driver']),
         'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
@@ -1972,6 +2074,16 @@ def generate_launch_description():
         'camera_params_file': sensing_args.get('camera_params_file', pkg_path('camrod_sensing', 'config/camera/camera_params.yaml')),
         'perception_param_file': perception_args.get('perception_param_file', pkg_path('camrod_perception', 'config/perception_params.yaml')),
         'front_camera_namespace': '/sensing/camera/econ_front',
+        'perception_namespace': lc['perception_namespace'],
+    }
+    rear_camera_apriltag_container_args = {
+        'enable_container': rear_camera_apriltag_container_active,
+        'camera_params_file': sensing_args.get(
+            'camera_params_file',
+            pkg_path('camrod_sensing', 'config/camera/camera_params.yaml'),
+        ),
+        'apriltag_params_file': lc['apriltag_param_file'],
+        'rear_camera_namespace': '/sensing/camera/econ_rear',
         'perception_namespace': lc['perception_namespace'],
     }
 
@@ -2026,6 +2138,7 @@ def generate_launch_description():
     localization_args['filter_gnss_reattach_param_file'] = _gnss_reattach_cfg
 
     planning_args = {
+        'use_nav2_container': lc['use_nav2_container'],
         'enable_path_cost_grids': lc['enable_path_cost_grids'],
         'enable_goal_replanner': lc['enable_goal_replanner'],
         'enable_obstacle_replan_monitor': lc['enable_obstacle_replan_monitor'],
@@ -2141,7 +2254,9 @@ def generate_launch_description():
 
     system_args = {
         'enable_checkers': lc['enable_module_validators'],
+        'use_system_tools_container': lc['use_system_tools_container'],
         'use_checker_components': lc['use_checker_components'],
+        'checker_component_groups': lc['checker_component_groups'],
         'checker_component_threads': lc['checker_component_threads'],
         # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
         # checks do not block planning/control validation.
@@ -2179,6 +2294,8 @@ def generate_launch_description():
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
         'parameter_file': lc['parking_param_file'],
+        'apriltag_parameter_file': lc['apriltag_param_file'],
+        'launch_apriltag_detector': regular_apriltag_detector_enable,
     }
 
     voice_args = {
@@ -2227,6 +2344,12 @@ def generate_launch_description():
         ('camrod_map', 'map.launch.py', map_args, None),
         ('camrod_bringup', 'fake_sensors.launch.py', fake_sensors_args, IfCondition(lc['sim'])),
         ('camrod_bringup', 'camera_yolo_container.launch.py', camera_yolo_container_args, camera_yolo_container_condition),
+        (
+            'camrod_bringup',
+            'rear_camera_apriltag_container.launch.py',
+            rear_camera_apriltag_container_args,
+            rear_camera_apriltag_container_condition,
+        ),
         (
             'camrod_sensing',
             'sensing.launch.py',
@@ -2315,8 +2438,8 @@ def generate_launch_description():
     ]
     launch_stack = GroupAction([*staged_modules, rviz_node])
     delayed_stack = TimerAction(period=1.0, actions=[launch_stack])
-    # HH_260805 - Start RouDi before the one-second module delay. The global
-    # environment applies to every subsequently spawned ROS process.
+    # HH_260805 - RouDi is needed only by the scoped physical LiDAR participants.
+    # Other ROS processes retain their host RMW and cannot exhaust iceoryx ports.
     roudi_process = ExecuteProcess(
         cmd=[
             lc['dds_shared_memory_roudi_executable'],
@@ -2324,7 +2447,7 @@ def generate_launch_description():
             '--log-level', lc['dds_shared_memory_roudi_log_level'],
         ],
         output='screen',
-        condition=IfCondition(lc['enable_dds_shared_memory']),
+        condition=IfCondition(lidar_dds_shared_memory_active),
     )
     start_stack_actions = [roudi_process, delayed_stack]
 
@@ -2350,17 +2473,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         *args,
-        SetEnvironmentVariable(
-            'RMW_IMPLEMENTATION',
-            'rmw_cyclonedds_cpp',
-            condition=IfCondition(lc['enable_dds_shared_memory']),
-        ),
-        SetEnvironmentVariable(
-            'CYCLONEDDS_URI',
-            lc['dds_shared_memory_cyclonedds_config'],
-            condition=IfCondition(lc['enable_dds_shared_memory']),
-        ),
         resolve_camera_yolo_container_active,
+        resolve_rear_camera_apriltag_container_active,
         clean_action,
         start_after_cleanup,
         start_without_cleanup,

@@ -91,8 +91,8 @@ camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_pa
 camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
 
 # HH_260805 - Keep component libraries and standalone executables for every
-# checker. Humble full-stack shutdown tests make standalone executables the
-# production default; these libraries retain an explicit bench/future option.
+# checker. Launch selects component fault domains independently and retains
+# per-checker executables for field isolation and fallback.
 function(camrod_system_add_checker_component_library target)
   add_library(${target} SHARED ${ARGN})
   target_compile_features(${target} PUBLIC cxx_std_17)
@@ -297,6 +297,25 @@ ament_target_dependencies(diagnostics_aggregator_node
 )
 install(TARGETS diagnostics_aggregator_node
   DESTINATION lib/${PROJECT_NAME})
+
+# HH_260805 - Compose the stable low-rate system core separately from checker
+# fault domains. The same sources still produce standalone executables above,
+# so field isolation remains a launch-time switch instead of a build variant.
+camrod_system_add_checker_component_library(
+  camrod_system_core_components
+  src/diagnostics/aggregator_node.cpp
+  src/system_checker_node.cpp
+  src/system_diagnostic_node.cpp
+  src/diagnostics_aggregator_node.cpp
+)
+target_link_libraries(camrod_system_core_components ${CAMROD_SYSTEM_YAML_LIB})
+rclcpp_components_register_nodes(
+  camrod_system_core_components
+  "DiagnosticsAggregator"
+  "camrod_system::SystemCheckerNode"
+  "camrod_system::SystemDiagnosticNode"
+  "camrod_system::DiagnosticsAggregatorNode"
+)
 
 if(ranger_msgs_FOUND)
   add_executable(ranger_platform_checker_node src/diagnostics/ranger_platform_checker_node.cpp)

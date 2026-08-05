@@ -64,7 +64,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
-    "local_costmap", std::string{get_namespace()}, "local_costmap");
+    "local_costmap", std::string{get_namespace()}, "local_costmap", get_node_options());
 }
 
 ControllerServer::~ControllerServer()
@@ -387,7 +387,9 @@ void ControllerServer::computeControl()
 
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
-    while (rclcpp::ok()) {
+    // HH_260805 - Controller components may run on a container-owned context.
+    const auto context = get_node_base_interface()->get_context();
+    while (rclcpp::ok(context)) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
         RCLCPP_DEBUG(get_logger(), "Action server unavailable or inactive. Stopping.");
         return;
@@ -402,8 +404,11 @@ void ControllerServer::computeControl()
 
       // Don't compute a trajectory until costmap is valid (after clear costmap)
       rclcpp::Rate r(100);
-      while (!costmap_ros_->isCurrent()) {
+      while (rclcpp::ok(context) && !costmap_ros_->isCurrent()) {
         r.sleep();
+      }
+      if (!rclcpp::ok(context)) {
+        return;
       }
 
       updateGlobalPath();

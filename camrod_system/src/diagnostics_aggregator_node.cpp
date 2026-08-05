@@ -19,8 +19,9 @@ struct Snapshot
 class DiagnosticsAggregatorNode : public rclcpp::Node
 {
 public:
-  DiagnosticsAggregatorNode()
-  : Node("diagnostics_aggregator")
+  explicit DiagnosticsAggregatorNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("diagnostics_aggregator", options)
   {
     source_topic_ = declare_parameter<std::string>("source_topic", "/diagnostics");
     // HH_260617: Default to a relative topic; system.launch.py namespaces it to
@@ -119,11 +120,5 @@ private:
 
 }  // namespace camrod_system
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<camrod_system::DiagnosticsAggregatorNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_NODE_ENTRYPOINT(camrod_system::DiagnosticsAggregatorNode)

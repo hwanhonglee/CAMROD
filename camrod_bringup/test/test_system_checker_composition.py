@@ -1,4 +1,4 @@
-"""Lock the stable production default and bench checker composition boundary."""
+"""Lock the granular production checker-composition boundary."""
 
 import importlib.util
 from pathlib import Path
@@ -25,7 +25,7 @@ def _load_system_launch():
 
 
 def test_every_checker_has_one_verified_runtime_boundary() -> None:
-    """Composition fallback must not remove or duplicate health coverage."""
+    """Optional composition must not remove or duplicate health coverage."""
     launch = _load_system_launch()
     specs = launch.CHECKER_NODE_SPECS
 
@@ -34,26 +34,35 @@ def test_every_checker_has_one_verified_runtime_boundary() -> None:
     assert set(launch.CHECKER_COMPONENT_PLUGINS) == {spec[2] for spec in specs}
 
     grouped_counts = {
-        group: sum(spec[0] in categories for spec in specs)
-        for group, categories in launch.CHECKER_COMPONENT_GROUPS.items()
+        group: len(checker_names)
+        for group, checker_names in launch.CHECKER_COMPONENT_GROUPS.items()
     }
     assert grouped_counts == {
         "hardware_sensing": 11,
-        "autonomy": 7,
+        "localization": 6,
+        "autonomy_topics": 6,
+        "planning_lifecycle": 1,
     }
-    composed_categories = set().union(*launch.CHECKER_COMPONENT_GROUPS.values())
-    standalone = [spec[2] for spec in specs if spec[0] not in composed_categories]
-    # HH_260805 - This is the reduced bench topology. Production keeps all 24
-    # checkers standalone because other composed groups also failed repeated
-    # full-stack shutdown tests on Humble.
-    assert standalone == [
-        "localization_gnss_checker",
-        "localization_mode_checker",
-        "localization_pose_checker",
-        "localization_init_checker",
-        "localization_source_checker",
-        "localization_lanelet_checker",
-    ]
+    default_composed = set().union(*(
+        launch.CHECKER_COMPONENT_GROUPS[group]
+        for group in launch.DEFAULT_CHECKER_COMPONENT_GROUPS
+    ))
+    default_standalone = [spec[2] for spec in specs if spec[2] not in default_composed]
+    assert default_standalone == []
+
+
+def test_component_group_parser_is_ordered_and_strict() -> None:
+    launch = _load_system_launch()
+    assert launch._parse_checker_component_groups(
+        "autonomy_topics,hardware_sensing,autonomy_topics"
+    ) == ("autonomy_topics", "hardware_sensing")
+
+    try:
+        launch._parse_checker_component_groups("hardware_sensing,unknown")
+    except ValueError as error:
+        assert "unknown" in str(error)
+    else:
+        raise AssertionError("unknown checker groups must fail at launch")
 
 
 def test_composed_checkers_keep_standalone_entrypoints() -> None:
@@ -70,18 +79,25 @@ def test_composed_checkers_keep_standalone_entrypoints() -> None:
 
 
 def test_bringup_guards_and_forwards_checker_composition() -> None:
-    """Composition stays available without becoming the unstable default."""
+    """Bringup selects scoped checker groups and preserves explicit fallback."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))
     system = defaults["bringup"]["system"]
-    # HH_260805 - Full-stack Humble shutdown tests reproduced intermittent
-    # component-library -11 exits; all standalone checker exits were clean.
-    assert system["use_checker_components"] is False
+    assert system["use_system_tools_container"] is True
+    assert system["use_checker_components"] is True
+    assert system["checker_component_groups"] == (
+        "hardware_sensing,localization,autonomy_topics,planning_lifecycle"
+    )
     assert system["checker_component_threads"] == 1
 
     source = BRINGUP_IMPL.read_text(encoding="utf-8")
+    assert "'use_system_tools_container': lc['use_system_tools_container']" in source
     assert "'use_checker_components': lc['use_checker_components']" in source
+    assert "'checker_component_groups': lc['checker_component_groups']" in source
     assert "'checker_component_threads': lc['checker_component_threads']" in source
 
     system_launch = SYSTEM_LAUNCH.read_text(encoding="utf-8")
-    assert 'executable="component_container"' in system_launch
-    assert 'executable="component_container_mt"' not in system_launch
+    assert 'name="system_core_container"' in system_launch
+    assert 'plugin="camrod_system::SystemDiagnosticNode"' in system_launch
+    assert 'package="camrod_runtime"' in system_launch
+    assert 'executable="scoped_component_container"' in system_launch
+    assert 'executable="scoped_component_container_mt"' not in system_launch

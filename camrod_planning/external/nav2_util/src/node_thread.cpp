@@ -22,7 +22,10 @@ namespace nav2_util
 NodeThread::NodeThread(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_base)
 : node_(node_base)
 {
-  executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  // HH_260805 - An embedded node may use a non-global scoped context.
+  rclcpp::ExecutorOptions options;
+  options.context = node_->get_context();
+  executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>(options);
   thread_ = std::make_unique<std::thread>(
     [&]()
     {
