@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_MAP = SRC_ROOT / "lanelet2_maps.osm"
-PARK_MAP_COPY = SRC_ROOT / "lanelet2_maps_(copy_park_v1.0.4).osm"
+PARK_MAP_COPY = SRC_ROOT / "lanelet2_maps_(copy_park_v1.0.5).osm"
 RUNTIME_REPORT = (
     SRC_ROOT
     / "docs"
@@ -27,6 +27,8 @@ def _tags(element: ET.Element) -> dict[str, str]:
 
 def test_active_and_named_park_maps_are_revision_15_and_synchronized() -> None:
     """Deployment must not silently use a stale copy of the user map edit."""
+    # HH_260805 - v1.0.4 remains historical; the user-authored v1.0.5 copy is
+    # the synchronization reference for the currently deployed map-v15 file.
     assert ACTIVE_MAP.read_bytes() == PARK_MAP_COPY.read_bytes()
 
     root = ET.parse(ACTIVE_MAP).getroot()
