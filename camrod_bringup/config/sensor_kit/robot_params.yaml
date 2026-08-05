@@ -60,9 +60,9 @@
     # 4. GNSS ANTENNA MOUNT POSE
     # =========================================================================
     gnss:
-      # HH_260803 - Converted from the existing rear-axle placeholder x=0.0 m.
-      # The real antenna lever arm still requires the TODOLIST field measurement.
-      x: -0.443               # 0.0 - 0.443, relative to robot_center_link [m].
+      # HH_260805 - Treat the GNSS position solution as robot-center until the
+      # physical antenna lever arm is surveyed; pose_verified remains false.
+      x: 0.0                  # Temporary robot_center_link assumption [m].
       y: 0.0                  # GNSS antenna Y offset from sensor_kit_base_link [m].
       z: 0.0                  # GNSS antenna Z offset from sensor_kit_base_link [m].
       roll: 0.0               # GNSS antenna roll offset [deg].
