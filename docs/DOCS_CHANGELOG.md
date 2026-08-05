@@ -1,30 +1,109 @@
 # Documentation Changelog
 
-<!-- HH_260805 - Record the final transport, optional-grid, and adaptive
-boundary-recovery delta before recreating the v2.1.4 tag. -->
-## [v2.1.4-transport-and-recovery-final] - 2026-08-05 (HH_260805)
+<!-- HH_260805 - Publish the scoped runtime remediation and align the explicit
+GNSS center assumption without claiming a physical antenna survey. -->
+## [v2.1.5-release-sync] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Released behavior and documentation basis |
+|---|---|
+| GNSS position contract | Changed the unmeasured converted placeholder from X `-0.443 m` to the explicit `robot_center_link` assumption `(0,0,0)` used by localization; retained `pose_verified=false` |
+| Measurement boundary | Left all non-GNSS sensor coordinates unchanged and moved dual-antenna XYZ, baseline, receiver reference, and any needed lever-arm correction to the physical TODO |
+| Runtime shutdown | Released explicit-context component containers, four checker fault domains, scoped planner/controller Nav2 composition, and normal Robot/Guest external-shutdown handling |
+| DDS transport | Removed full-graph SHM injection; physical LiDAR-only DDS-SHM and the LiDAR cost grid both remain default-OFF pending Jetson validation |
+| Evidence and visuals | Moved current runtime records under `v2.1.5`, regenerated sensor-kit figures, and marked 2026-08-04 runtime captures as historical geometry screens |
+| Version baseline | Synchronized root, package, TODO/DONE, module guide, release notes, tests, and package/bringup configuration for `develop` and annotated `v2.1.5` |
+
+### Validation
+
+- GNSS frame, Xacro fallback, diagnostics, package/bringup mirrors, and visual
+  references are protected by focused source contracts.
+- Four final AMD64 full-simulation runs reached managed Nav2 active and
+  `[SYSTEM] OK`; every run stopped six component containers without `-11`,
+  forced kill, UI event-loop, iceoryx capacity, or residual-process failure.
+- Eleven packages built; xUnit reported 487 tests with zero errors/failures and
+  17 existing lint skips. Direct UI pytest passed 28/28 and focused source
+  contracts passed 126/126; config audit matched 388/388 package, bringup, and
+  install comparisons.
+- The final domain-207 full simulation reached managed Nav2 active and
+  `[SYSTEM] OK`, exited `0`, and cleanly stopped all six containers. Exact data
+  is in `DONE.txt` and [`V2_1_5_RELEASE_NOTES.md`](V2_1_5_RELEASE_NOTES.md).
+
+---
+
+<!-- HH_260805 - Record the scoped Humble shutdown remediation separately from
+the initial topology A/B so the failed pre-fix runs remain auditable. -->
+## [v2.1.5-scoped-container-shutdown] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Current behavior and basis |
+|---|---|
+| Component runtime | Added `camrod_runtime` with one explicit Context, ordered component/plugin teardown, and process-exit containment for the ROS 2 Humble Context/DSO lifetime race |
+| System checkers | Enabled 24 checkers in four serialized fault-domain containers by default; retained all standalone executables as field-isolation fallbacks |
+| Nav2 | Enabled the scoped planner/controller container by default; retained smoother, behavior, BT, and lifecycle servers standalone because they own private vendor executors |
+| UI shutdown | Treats both `KeyboardInterrupt` and `ExternalShutdownException` as normal Robot/Guest launch shutdown |
+| DDS shared memory | Removed full-graph environment injection; explicit SHM now applies only to a non-simulation physical LiDAR driver group and remains default-OFF |
+| Field work | Kept Jetson resource measurement and ten mission/cancel/restart cycles in `TODOLIST.txt`; no AMD64 result is labeled physical acceptance |
+
+### Validation
+
+- Native tracing located the pre-fix `-11` in CycloneDDS `tev`/`recv` workers
+  racing code unload after delayed Humble Context finalization.
+- Three final full-simulation runs and one default-argument run reached managed
+  Nav2 active and `[SYSTEM] OK`; all six component containers stopped cleanly
+  with no `-11`, forced kill, event-loop error, or iceoryx capacity error.
+- Rebuilt the six affected packages and passed 22 focused shutdown, launch,
+  transport, and UI contracts.
+- The superseding machine-readable record is
+  [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json).
+
+---
+
+<!-- HH_260805 - Synchronize the component topology docs and keep unmeasured
+Jetson comparisons in the field TODO instead of presenting estimates. -->
+## [v2.1.5-transport-and-recovery-final] - 2026-08-05 (HH_260805)
 
 ### Changed
 
 | Area | Final behavior and basis |
 |---|---|
 | Operator renderer | Changed the production local-window default from WebKit to Chromium; retained explicit WebKit and Chromium-first `auto` fallback modes |
-| ROS intra-process | Composed LiDAR preprocessing and ground segmentation, retained the camera/YOLO container, and moved large publisher ownership where supported |
-| DDS shared memory | Added a bringup-owned RouDi process and central CycloneDDS/iceoryx profile, then guarded it default-OFF after full-graph Humble port/history exhaustion |
+| ROS intra-process | Composed LiDAR preprocessing/ground segmentation, retained front camera/YOLO, and added the physical rear capture/rectify/AprilTag chain |
+| DDS shared memory | The initial full-graph profile exhausted Humble ports/history; the scoped-container follow-up removed global injection and limited opt-in SHM to the physical LiDAR group |
 | Optional LiDAR rasterizer | Set `enable_lidar_cost_grid=false` by default; the component, graph node/topic requirements, and cost-grid checker entry now activate together |
 | Boundary recovery | Replaced the permanently latched first direction with projected staged reverse, reverse-yaw, and crab transitions; retained full-footprint, freshness, dynamic-obstacle, distance, time, yaw, and retry-latch limits |
-| Active map copy | Validated the user-authored active map against `lanelet2_maps_(copy_park_v1.0.5).osm`; preserved `v1.0.4` as historical input |
-| System checker runtime | Retained all component registrations for bench use but restored 24 standalone checkers as the production default after intermittent full-stack Humble component exits |
-| Package guides | Updated bringup, sensing, system, UI, control, root, release, TODO/DONE, and generated architecture assets; historical map-v14 and current map-v15 evidence are separated |
+| Active map copy | Recorded the byte-identical current-site pair fingerprint at SHA `d7b730...213f` (55 lanelets, 14 areas, 1658 nodes, 236 ways); this is a regression check, not a read-only map lock |
+| Map evidence ownership | Kept v2.1.4 recovery media bound to release SHA `e0b50f...e36d`; the renderer must reject attempts to relabel it with the current-site map |
+| System runtime | Initial A/B fell back to 24 standalone checkers after a shutdown fault; the scoped-container follow-up fixed that fault and enabled four checker containers |
+| Nav2 runtime | Initial full-server composition failed shutdown (`-11`, `-11`, forced `-9`); the follow-up uses a cleanly validated planner/controller hybrid container |
+| Runtime measurements | Added measured amd64 system-core and LiDAR A/B results; retained only the remaining Jetson camera/GPU/physical-rate and restart acceptance in `TODOLIST.txt` |
+| Package guides | Updated bringup, sensing, system, UI, control, map, root, release, TODO, and generated architecture assets; historical map-v14, release-map-v15 evidence, and the current-site OSM are separated |
 
 ### Validation
 
+- Added a normalized amd64 A/B record and chart. System-core composition reduced
+  the full-sim process tree by about 3 processes, CPU by 2.5 one-core points,
+  and PSS by 19.7 MiB with 3/3 controlled launch stops. LiDAR composition preserved
+  10 Hz and reduced CPU by 17.5%, while isolated PSS increased by 44.0 MiB.
+- Added three-run WebKit/Chromium workstation measurements. WebKit used 327.3
+  MiB less PSS and 1.44 fewer one-core CPU points. Chromium's full stack reached
+  system OK 1.33 seconds sooner, but this is not labeled browser load time.
+  Host-wide GPU readings are retained but not used.
+- Rebuilt the six modified packages and recorded 423 fresh xUnit cases with
+  zero errors/failures and 12 existing slow-cppcheck skips; direct bringup
+  pytest passed 134/134.
+- Recorded the unchanged current-site map pair SHA `d7b730...213f`. The visual
+  test proves release-SHA recovery JSON is rejected against this newer OSM;
+  neither the test nor SHA makes the files read-only.
 - All modified C++ packages compiled on the amd64 simulation workstation.
 - Runtime contract tests cover Chromium defaults, component/intra-process
   registration, shared-memory profiles, and LiDAR grid OFF/ON diagnostics.
 - RouDi loaded the checked-in pool and two isolated ROS processes exchanged a
-  message. Full bringup reproduced iceoryx endpoint/history exhaustion, so the
-  runtime contract now requires explicit opt-in.
+  message. The initial full-graph bringup reproduced iceoryx endpoint/history
+  exhaustion; global injection is now impossible and explicit opt-in is scoped
+  to the physical LiDAR driver group.
 - Current staged recovery is policy/geometry unit tested and dynamically rerun
   on map v15. Reverse-yaw, crab, rapid-recontact latch, and final zero output
   passed; route completion and real-robot response remain field-pending.

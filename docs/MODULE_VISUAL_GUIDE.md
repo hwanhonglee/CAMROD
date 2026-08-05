@@ -1,7 +1,7 @@
 # CAMROD Module Visual Guide
 
-<!-- HH_260804 - Index generated diagrams and actual runtime screens separately,
-including the rapid-recontact latch evidence and its field-claim boundary. -->
+<!-- HH_260805 - Index current generated diagrams and historical runtime screens
+separately, including scoped runtime and the unverified GNSS center contract. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -13,6 +13,7 @@ come from ROS topics, controller state, diagnostics, and safety gates.
 | `SOURCE-DERIVED` | Checked-in YAML, messages, launch defaults, and code constants | Topology and displayed values match the repository |
 | `SOURCE INVENTORY` | Files and package manifests | Interface/file/dependency counts match source |
 | `MEASURED SIM` | Committed JSON or raw ROS logs from a running simulation | Listed rates, events, displacement, and state changes were observed in that run |
+| `MEASURED WORKSTATION` | Repeated process-tree samples on the recorded amd64 host | Relative CPU/PSS/process/rate effects apply to that host and method, not Jetson acceptance |
 | `SIM RUNTIME CAPTURE` | RViz, ROS CLI, or browser connected to a live `sim:=true` graph | The displayed topics/layers/states existed in that run; no physical performance claim |
 | `FIELD REPORT / RAW LOG EXTERNAL` | Committed normalized summary backed by a report that references Jetson-only raw paths | Listed stationary values were reported; the repository cannot independently replay the raw capture |
 | `ALGORITHM SCHEMATIC` | Seeded synthetic data + active thresholds | Processing concept is reproducible; the points are not sensor evidence |
@@ -40,26 +41,29 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_bringup` | `simulation-evidence-20260804.png` | Full-bringup JSON + raw logs | 81-node startup and pose chain pass; B6/B12 round trip fails closed |
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
-| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and current map-v15 automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
+| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
 | `camrod_map` | `lanelet-map-and-cost-grids.png` | Map/grid YAML | Route/planning grid values match source; service access missing |
-| `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML | LiDAR sim path available; physical YOLO/fusion/tag pending |
-| `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, state contracts, and footprint sweep | Active topology documented; narrow corridor remains invalid |
+| `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML + rear-container ownership | LiDAR sim path available; physical YOLO/fusion/tag pending |
+| `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, scoped planner/controller default, state contracts, and footprint sweep | Hybrid Nav2 stopped cleanly 3/3; narrow corridor remains invalid |
 | `camrod_platform` | `ranger-command-and-status.png` | Ranger/visualization YAML | Hardware boundary documented; CAN/actuator timing pending |
-| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + bringup toggles | Composed LiDAR path shown; LiDAR grid is default OFF |
+| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; LiDAR grid is default OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
-| `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Geometry YAML | Physical side view and exact coordinate conversion |
-| `camrod_system` | `diagnostic-severity-and-surfaces.png` | Manifests, aggregator, hardware thresholds | Health policy documented; utilization is not measured |
-| `camrod_ui` | `robot-and-guest-mission-state.png`, Robot keypad and Guest dispatch/hold screenshots | UI policy + browser/ROS JSON | Dispatch, verification, return, hold, and operator stop observed |
+| `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Geometry YAML | Exact non-GNSS conversion; GNSS center is an unverified operational assumption |
+| `camrod_system` | `diagnostic-severity-and-surfaces.png`, `runtime-topology-amd64-ab-20260805.png` | Manifests plus 3-run system-core and 2-run LiDAR amd64 A/B JSON | Core container saves 3 processes/19.7 MiB PSS; LiDAR saves 17.5% CPU but adds 44.0 MiB PSS; Jetson pending |
+| `camrod_ui` | `robot-and-guest-mission-state.png`, Robot keypad and Guest dispatch/hold screenshots | UI policy + browser/ROS JSON + 3-run renderer A/B | Dispatch/stop observed; WebKit lighter on amd64; page-load/frame pacing remains Jetson-pending |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 All files are under `docs/assets/module-guides/`. The main package renderer
 creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add eleven
 PNGs and seven GIFs. Fifteen manually captured live screens bring the checked-in
-total to **44 PNGs and eight GIFs**.
+total to **45 PNGs and eight GIFs**.
 
-## Actual Runtime Screen Index
+## Historical Runtime Screen Index
+
+<!-- HH_260805 - These 2026-08-04 captures predate the v2.1.5 GNSS TF value;
+use current generated sensor-kit figures for exact mount coordinates. -->
 
 | Package | Live screen | Observed runtime content |
 |---|---|---|
@@ -92,8 +96,8 @@ the concise raw excerpt are in
 | Control | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | A second boundary hold occurred |
 | Control | Rapid retry containment | Map v14 recontact `0.276 s` (v13 `0.267/0.372 s`); one release; final Twist zero | Physical wheel response pending |
 | Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
-| Control | Current map-v15 route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
-| Control | Current map-v15 one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
+| Control | v2.1.4 release-map route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
+| Control | v2.1.4 release-map one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
 | UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, state 16, and B6 keypad verification observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
@@ -111,7 +115,7 @@ the concise raw excerpt are in
 
 ![Automatic route recovery](assets/module-guides/control/automatic-owner-route-retry.gif)
 
-| Current map-v15 measured result | Current staged decision policy |
+| v2.1.4 release-map measured result | Current staged decision policy |
 |---|---|
 | ![Map-v15 recovery](assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png) | ![Map-v15 recovery policy](assets/module-guides/control/map-v15-boundary-recovery-policy.png) |
 
@@ -150,8 +154,9 @@ total travel `<= 0.40 m`, and total duration `<= 10 s`. Every transition is
 checked with constant-twist swept endpoint geometry, fresh pose/lanelet data,
 the full planning footprint, and dynamic obstacles. The map-v14 PNG/GIF
 predates this staged policy and remains historical. The map-v15 PNG/GIF
-exercises the current owner dynamically, but both retry routes still ended in
-the fail-closed latch. Physical validation remains pending.
+exercises the current owner dynamically on release SHA `e0b50f...e36d`, not on
+the active current-site SHA `d7b730...213f`; both retry routes ended in the
+fail-closed latch. Physical validation remains pending.
 
 ## Mission State Interpretation
 

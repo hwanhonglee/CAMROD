@@ -1,10 +1,10 @@
 # CAMROD
 
-<!-- HH_260805 - Synchronize the optional LiDAR grid, composed transport, and
-staged boundary-recovery contracts without upgrading historical evidence. -->
+<!-- HH_260805 - Publish the v2.1.5 scoped runtime and unverified GNSS center
+contract without upgrading physical-field claims. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.4`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.1.5`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
 
@@ -29,6 +29,7 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
+| GNSS position reference | center assumption `(0,0,0)` | Matches current estimator behavior; `pose_verified=false` until dual-antenna survey |
 | Measured body | `1.49160 x 1.07000 m` | Physical length x width |
 | Planning boundary | `1.59160 x 1.17000 m` | Body plus `0.05 m` on every side |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
@@ -37,15 +38,17 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
-| Active Lanelet map | `map_version=15`, park `v1.0.5` | User-authored active OSM and current named copy are byte-identical |
+| Active Lanelet map | `map_version=15`, SHA `d7b730...213f` | User-authored active OSM and current named copy are byte-identical; SHA is a change-detection fingerprint, not a lock |
 | RPP preview | `1.1 m` | Current stable minimum lookahead |
 | Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
 | Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | LiDAR cost grid | default `OFF` | Optional component and its diagnostics activate together only when requested |
 | Operator renderer | Chromium | GPU-enabled kiosk default; WebKit remains an explicit fallback |
-| ROS transport | component intra-process; CycloneDDS/iceoryx opt-in | Hot-path ownership moves inside containers; global SHM stays OFF on Humble because its static endpoint limits abort the full graph |
-| System checker topology | `24` standalone checkers | Component libraries remain bench-only after intermittent Humble full-stack shutdown crashes |
+| ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
+| System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
+| System checker topology | `24` checkers in `4` serialized containers | Fault domains remain separate; standalone fallback remains available |
+| Nav2 process topology | planner/controller scoped container | Vendor smoother/behavior/BT/lifecycle executables stay standalone |
 
 Configured values are not performance measurements. Package tables below mark
 runtime evidence separately.
@@ -54,11 +57,13 @@ runtime evidence separately.
 
 | Check | Result | Scope |
 |---|---|---|
-| Release build/tests | **PASS** | Baseline 9-package run: 380 xUnit cases; final changed-scope rerun: 328/328 xUnit plus 27/27 UI pytest; React production build passed |
-| Full stack startup/shutdown | **PASS** | 79 steady-state ROS nodes reached `[SYSTEM] OK`; all 24 standalone checkers, controller, and both UI servers exited cleanly |
+| v2.1.5 build/tests | **PASS** | 11 packages built; 487 xUnit cases, 0 errors/failures, 17 lint skips; UI 28/28; source contracts 126/126; config audit 388/388 |
+| Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
+| amd64 runtime topology A/B | **SYSTEM CORE PASS; LIDAR TRADEOFF** | Core: 3 fewer processes, CPU -2.5 points, PSS -19.7 MiB, 3/3 controlled stop; LiDAR: CPU -17.5%, PSS +44.0 MiB, 10 Hz preserved |
+| amd64 operator renderer A/B | **WEBKIT LIGHTER; PAGE-LOAD SPEED UNRESOLVED** | Chromium vs WebKit: PSS +327.3 MiB, CPU +1.44 points; system-OK mean -1.33 s is not browser first paint; both controlled-stop 3/3 |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
-| Automatic boundary recovery | **CURRENT SIM PASS, FAIL CLOSED** | Map v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
+| Automatic boundary recovery | **v2.1.4 RELEASE-MAP SIM PASS, FAIL CLOSED** | Release map-v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
@@ -70,7 +75,9 @@ runtime evidence separately.
 
 ![Physical stationary field report](docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
 
-![Map v15 staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
+![Measured amd64 runtime topology A/B](docs/assets/module-guides/system/runtime-topology-amd64-ab-20260805.png)
+
+![v2.1.4 release-map staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
 
 ## Packages
 
@@ -140,10 +147,12 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
-| [v2.1.4 release notes](docs/V2_1_4_RELEASE_NOTES.md) | Current runtime changes, exact values, validation, and field limits |
+| [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Current runtime, GNSS center contract, exact validation, and field limits |
+| [v2.1.4 release notes](docs/V2_1_4_RELEASE_NOTES.md) | Previous map, boundary, UI, and transport baseline |
 | [v2.1.3 release notes](docs/V2_1_3_RELEASE_NOTES.md) | Released runtime scope and verification |
 | [Robot-center migration](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) | Exact before/after geometry and A/B results |
 | [Boundary recovery validation](docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md) | Crab/reverse timelines, GIFs, and limitations |
 | [Runtime capture evidence](docs/evidence/module-guides/bringup/runtime-visual-capture-20260804.json) | Live screens, retry timestamps, zero output, and operator-stop result |
+| [amd64 runtime A/B evidence](docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json) | Per-run process/CPU/RSS/PSS/rate and controlled-stop samples |
 | [Documentation changelog](docs/DOCS_CHANGELOG.md) | Post-release documentation-only updates |
 | [`TODOLIST.txt`](TODOLIST.txt) | Remaining physical acceptance work |

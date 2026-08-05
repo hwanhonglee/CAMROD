@@ -1,0 +1,137 @@
+{
+  "schema": "camrod.runtime_shutdown_regression.v1",
+  "recorded_at": "2026-08-05T22:33:49+09:00",
+  "scope": "AMD64 full-simulation lifecycle evidence; not Jetson or physical-sensor acceptance",
+  "source": {
+    "branch": "develop",
+    "working_tree": "v2.1.5 release candidate with scoped runtime and GNSS center contract",
+    "map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+  },
+  "pre_fix_diagnosis": {
+    "symptom": "Intermittent checker component exit -11 and Nav2 component shutdown failure",
+    "native_trace": "CycloneDDS tev and recv threads executed unmapped addresses during process teardown",
+    "hidden_context_references_before_reset": {
+      "hardware_sensing_checker_container": 23,
+      "localization_checker_container": 5,
+      "autonomy_topics_checker_container": 8,
+      "planning_lifecycle_checker_container": 2,
+      "system_core_container": 2,
+      "nav2_container": 2
+    },
+    "cause": "ROS 2 Humble shutdown invalidated the context but entity/guard-condition references deferred rcl_context_fini until DSO static destruction, racing CycloneDDS worker code unload"
+  },
+  "remediation": {
+    "container_package": "camrod_runtime",
+    "steps": [
+      "Use one explicit rclcpp Context for manager, loaded components, and executor",
+      "Join the deferred ROS signal-handler thread before component destruction",
+      "Detach component callback groups before destroying node instances",
+      "Retain plugin loaders until explicit manager, executor, and context cleanup completes",
+      "Release the ExecutorOptions context reference explicitly",
+      "After explicit cleanup, use std::_Exit to skip Humble DSO static destruction that retains cyclic Context owners"
+    ],
+    "nav2_scope": "Planner and controller are composed; smoother, behavior, BT navigator, and lifecycle manager remain standalone because their vendor executables own private default-context executors",
+    "checker_scope": "Four serialized fault-domain containers plus one serialized system-core container",
+    "ui_shutdown": "Robot and Guest UI accept KeyboardInterrupt and ExternalShutdownException as clean launch shutdown",
+    "dds_shm_scope": "No global environment mutation; SHM is eligible only for the non-simulation physical LiDAR driver group"
+  },
+  "final_runs": [
+    {
+      "ros_domain_id": 193,
+      "managed_nodes_active": true,
+      "system_ok": true,
+      "clean_component_containers": 6,
+      "process_failures": 0,
+      "event_loop_errors": 0,
+      "iceoryx_capacity_errors": 0
+    },
+    {
+      "ros_domain_id": 194,
+      "managed_nodes_active": true,
+      "system_ok": true,
+      "clean_component_containers": 6,
+      "process_failures": 0,
+      "event_loop_errors": 0,
+      "iceoryx_capacity_errors": 0
+    },
+    {
+      "ros_domain_id": 195,
+      "managed_nodes_active": true,
+      "system_ok": true,
+      "clean_component_containers": 6,
+      "process_failures": 0,
+      "event_loop_errors": 0,
+      "iceoryx_capacity_errors": 0
+    }
+  ],
+  "default_argument_run": {
+    "ros_domain_id": 196,
+    "explicit_topology_overrides": false,
+    "managed_nodes_active": true,
+    "system_ok": true,
+    "containers_started": 6,
+    "containers_cleanly_finished": 6,
+    "process_failures": 0
+  },
+  "release_candidate_run": {
+    "ros_domain_id": 207,
+    "command": "ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false enable_operator_ui_window:=false enable_lidar_cost_grid:=false",
+    "top_level_exit_code": 0,
+    "managed_nodes_active": true,
+    "startup_system_transitions": {
+      "warn": 1,
+      "error": 3,
+      "ok": 1,
+      "final_state": "OK",
+      "meaning": "Map and costmap diagnostics were transient while publishers initialized; the state did not remain latched"
+    },
+    "containers_started": 6,
+    "containers_cleanly_finished": 6,
+    "process_failures": 0,
+    "event_loop_errors": 0,
+    "iceoryx_capacity_errors": 0,
+    "residual_processes": 0,
+    "raw_log": "/tmp/camrod-v2.1.5-final-sim-20260805.log",
+    "raw_log_committed": false
+  },
+  "build_and_test": {
+    "packages_built": 11,
+    "package_xunit": {
+      "tests": 487,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 17
+    },
+    "direct_ui_pytest": {
+      "tests": 28,
+      "failures": 0
+    },
+    "focused_source_contract_pytest": {
+      "tests": 126,
+      "failures": 0
+    },
+    "config_audit": {
+      "package_bringup_install_comparisons": 388,
+      "mismatches": 0
+    }
+  },
+  "configuration": {
+    "use_nav2_container": true,
+    "use_checker_components": true,
+    "checker_component_groups": "hardware_sensing,localization,autonomy_topics,planning_lifecycle",
+    "use_system_tools_container": true,
+    "enable_dds_shared_memory_default": false,
+    "enable_dds_shared_memory_requested_in_final_runs": true,
+    "enable_dds_shared_memory_resolved_active_in_simulation": false,
+    "dds_shared_memory_resolution_reason": "SHM is scoped to sim=false physical LiDAR, so final sim runs never started RouDi or injected the profile",
+    "enable_lidar_cost_grid": false,
+    "gnss_mount_xyz_m": [0.0, 0.0, 0.0],
+    "gnss_pose_verified": false
+  },
+  "verdict": "AMD64 shutdown defect fixed and component defaults enabled; repeat CPU/GPU/PSS and ten-cycle mission/cancel/restart acceptance on Jetson",
+  "field_limits": [
+    "No physical CAN, wheel, camera, LiDAR, radar, docking, or charging path was exercised",
+    "DDS shared memory remains disabled by default until physical LiDAR and RouDi are measured on Jetson",
+    "This lifecycle smoke does not replace field safety or mission completion evidence"
+  ]
+}

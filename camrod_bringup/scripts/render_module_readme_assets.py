@@ -940,7 +940,7 @@ def render_planning(repo_root: Path, output_root: Path):
         "Selector policy",
         (
             f"full bringup: {planning_defaults['nav2_selected_planner']} + {planning_defaults['nav2_selected_controller']}",
-            "manual RViz goal: LaneletRoute + RotationShim(RPP)",
+            "Nav2 core: planner + controller scoped container",
             f"obstacle >= {obstacle['block_hold_s']:.0f} s: SmacLattice; restore LaneletRoute",
         ),
         face=GRAY_BG,
@@ -1094,7 +1094,7 @@ def render_perception(repo_root: Path, output_root: Path):
         "Rear-camera AprilTag parking",
         (
             f"{tag['tag_family']} ID {tag['target_tag_id']} / {tag['tag_size']:.2f} m",
-            "rear image -> image_proc -> tag pose + debug image",
+            "capture + image_proc + detector: one container",
             "launched only when parking_method:=apriltag",
         ),
         face=BLUE_BG,
@@ -1436,31 +1436,39 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
 def render_sensor_x_before_after(
     offset: float, mounts: list[dict], output: Path
 ) -> None:
-    """Render only the X values changed by the frame migration."""
+    """Render frame-migrated X values and the later GNSS center assumption."""
     figure, axis = setup_figure(
         "Sensor X coordinates: before and current",
-        "Physical mounts unchanged | metres | Y, Z, roll, pitch, and yaw unchanged",
+        "Frame migration plus GNSS center assumption | metres | other axes unchanged",
         size=(14, 8),
         module="sensor-kit",
     )
     axis.text(
         0.5,
         0.835,
-        f"current X = previous X - {offset:.3f}",
+        f"mount X = previous X - {offset:.3f} m  |  GNSS solution = center 0.000 m",
         ha="center",
         va="center",
         fontsize=12,
         color=BLUE,
         fontweight="bold",
     )
-    rows = [
-        (
-            mount["name"],
-            f"{mount['x'] + offset:+.5f}",
-            f"{mount['x']:+.5f}",
+    rows = []
+    for mount in mounts:
+        # HH_260805 - GNSS is no longer the mathematically converted rear-axle
+        # placeholder. It is an explicit robot-center assumption until survey.
+        previous_x = (
+            0.0
+            if mount["name"].startswith("GNSS")
+            else mount["x"] + offset
         )
-        for mount in mounts
-    ]
+        rows.append(
+            (
+                mount["name"],
+                f"{previous_x:+.5f}",
+                f"{mount['x']:+.5f}",
+            )
+        )
     table_axis = figure.add_axes((0.10, 0.10, 0.80, 0.66))
     table_axis.axis("off")
     table = table_axis.table(
@@ -1491,7 +1499,8 @@ def render_sensor_x_before_after(
             cell.set_facecolor(WHITE if row % 2 else "#edf2f4")
     footer(
         figure,
-        "GNSS* is the converted legacy placeholder, not a measured antenna lever arm. Every listed X changed by exactly -0.443 m.",
+        "GNSS* changed from the converted -0.443 m placeholder to an explicit "
+        "0.000 m robot-center assumption; pose_verified remains false until survey.",
     )
     save_figure(figure, output)
 
@@ -1505,7 +1514,7 @@ def render_sensor_mount_side_view(
     offset = robot["center_offset_from_rear_axle"]
     figure, _ = setup_figure(
         "Physical sensor mount side view",
-        "One physical layout | bottom: current center X | top: previous rear-axle X",
+        "Current configured layout | bottom: center X | top: historical rear-axle scale",
         size=(14, 8),
         module="sensor-kit",
     )
@@ -1693,7 +1702,8 @@ def render_sensor_mount_side_view(
     plot.legend(loc="upper left", ncol=5, fontsize=7.0, framealpha=0.92)
     footer(
         figure,
-        "SOURCE CONFIG. Physical heights and mounts are unchanged; the two X scales differ by 0.443 m. GNSS* remains an unmeasured placeholder.",
+        "SOURCE CONFIG. GNSS* is assumed at robot center and remains unverified; "
+        "other mounts retain the -0.443 m frame conversion pending new measurements.",
     )
     save_figure(figure, output)
 
@@ -1745,7 +1755,7 @@ def render_sensing(repo_root: Path, output_root: Path):
         (
             "Cameras",
             "front + rear econ",
-            "front VPI/NvJPEG\nrear GStreamer/image_proc",
+            "front camera/YOLO container\nrear capture/rectify/tag container",
             "rectified raw/compressed + CameraInfo",
             "YOLO/fusion + AprilTag parking",
             BLUE,
@@ -1809,7 +1819,7 @@ def render_sensing(repo_root: Path, output_root: Path):
         title_color=GREEN,
         body_size=7.5,
     )
-    footer(figure, "SOURCE-DERIVED. LiDAR preprocessing and ground segmentation are composed; the LiDAR rasterizer is default OFF. Hardware quality still requires field logs.")
+    footer(figure, "SOURCE-DERIVED. Front/YOLO, rear/AprilTag, and LiDAR processing have bounded containers; the LiDAR rasterizer is default OFF. Hardware quality still requires field logs.")
     save_figure(figure, output_root / "sensing" / "sensor-processing-and-cost-fusion.png")
     render_ground_segmentation_schematic(lidar, output_root / "sensing" / "ground-segmentation-schematic.png")
 
@@ -2393,9 +2403,9 @@ def render_system(repo_root: Path, output_root: Path):
     section_label(axis, 0.045, 0.84, "Health pipeline")
     chain = [
         (0.045, "Graph manifest", (f"{len(checker['required_modules'])} required modules", "node/topic/type/publisher"), BLUE),
-        (0.285, "Dedicated checkers", ("sensor + planning", "hardware + platform"), BLUE),
-        (0.525, "Aggregator", (f"{aggregator['global']['publish_rate_hz']:.0f} Hz grouped stream", "source metadata retained"), GREEN),
-        (0.765, "Operator surfaces", ("/system/status", "terminal + Robot UI"), GREEN),
+        (0.285, "Checker containers", ("24 checkers / 4 groups", "independent fault domains"), BLUE),
+        (0.525, "Core container", ("4 aggregate/status nodes", f"{aggregator['global']['publish_rate_hz']:.0f} Hz grouped stream"), GREEN),
+        (0.765, "Operator surfaces", ("metadata retained", "status + terminal + UI"), GREEN),
     ]
     for index, (x, title, lines, color) in enumerate(chain):
         draw_box(axis, x, 0.66, 0.19, 0.14, title, lines, face=BLUE_BG if color == BLUE else GREEN_BG, edge=color, title_color=color, body_size=7.1)
@@ -2438,7 +2448,7 @@ def render_system(repo_root: Path, output_root: Path):
         face=GRAY_BG,
         edge="#72848d",
     )
-    footer(figure, "SOURCE-DERIVED. Thresholds describe alert policy; they are not measured Jetson utilization.")
+    footer(figure, "SOURCE-DERIVED. The four-node core and four checker containers are default ON; standalone fallbacks remain available. Thresholds are policy, not measured Jetson utilization.")
     save_figure(figure, output_root / "system" / "diagnostic-severity-and-surfaces.png")
 
 

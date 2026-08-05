@@ -1,7 +1,7 @@
 # camrod_sensor_kit
 
-<!-- HH_260804 - Keep the useful physical side view and place all geometry,
-mount values, A/B results, and field limits in compact tables. -->
+<!-- HH_260805 - Keep the useful physical side view and distinguish the
+unverified GNSS center assumption from measured sensor mounts. -->
 
 Canonical robot geometry, URDF/xacro, static sensor TF, and the RobotParams
 library shared by localization, planning, control, platform, and diagnostics.
@@ -12,8 +12,9 @@ library shared by localization, planning, control, platform, and diagnostics.
 
 ![Live sensor TF geometry](../docs/assets/module-guides/sensor-kit/runtime-sensor-tf-20260804.png)
 
-`SIM RUNTIME CAPTURE`: the actual 3D `robot_center_link`, sensor-kit, camera,
-GNSS, IMU, LiDAR, and seven-radar TF graph loaded from the current xacro.
+`2026-08-04 SIM RUNTIME CAPTURE`: the then-running 3D sensor TF graph. It is
+historical runtime evidence; the source-derived tables and diagrams below are
+regenerated from the current v2.1.5 config, including centered `gnss_link`.
 
 ## At A Glance
 
@@ -28,7 +29,8 @@ GNSS, IMU, LiDAR, and seven-radar TF graph loaded from the current xacro.
 | Item | Before | Current |
 |---|---|---|
 | Runtime origin | rear axle `robot_base_link` | axle midpoint `robot_center_link` |
-| Coordinate conversion | rear-axle X | `current X = previous X - 0.443 m` |
+| Coordinate conversion | rear-axle X | non-GNSS mounts use `current X = previous X - 0.443 m` |
+| GNSS position reference | converted placeholder `-0.443 m` | temporary robot-center assumption `0.000 m` |
 | Compatibility | primary frame | fixed child retained at rear axle |
 | Physical mounts/body | unchanged | unchanged |
 
@@ -59,7 +61,7 @@ All XYZ values are metres from `sensor_kit_base_link`, coincident with
 | Sensor | X | Y | Z | Yaw |
 |---|---:|---:|---:|---:|
 | IMU | `+0.68800` | `0.00000` | `0.75600` | `0 deg` |
-| GNSS placeholder | `-0.44300` | `0.00000` | `0.00000` | `0 deg` |
+| GNSS center assumption* | `0.00000` | `0.00000` | `0.00000` | `0 deg` |
 | LiDAR | `+0.76336` | `0.00000` | `0.59538` | `0 deg` |
 | Front camera | `+0.76337` | `0.00000` | `0.49568` | `0 deg` |
 | Rear camera | `-0.61933` | `0.00000` | `0.30013` | `180 deg` |
@@ -70,8 +72,10 @@ All XYZ values are metres from `sensor_kit_base_link`, coincident with
 
 ![Sensor X conversion table](../docs/assets/module-guides/sensor-kit/sensor-x-before-after.png)
 
-The GNSS value is a converted old placeholder, not a measured antenna lever
-arm. It remains `pose_verified=false` until surveyed on the real robot.
+The GNSS position solution is treated as `robot_center_link` because the
+localization adapter currently applies no antenna lever-arm correction. This
+removes the former TF/localization mismatch, but it is still an assumption:
+`pose_verified=false` remains until both dual-GNSS antenna mounts are surveyed.
 
 ## Measured A/B Simulation
 
@@ -108,6 +112,7 @@ robot_center_link
 ros2 launch camrod_sensor_kit sensor_kit.launch.py
 
 ros2 run tf2_ros tf2_echo robot_center_link lidar_link
+ros2 run tf2_ros tf2_echo robot_center_link gnss_link
 ros2 run tf2_ros tf2_echo robot_center_link camera_rear
 ros2 run tf2_ros tf2_echo robot_center_link robot_base_link
 ```

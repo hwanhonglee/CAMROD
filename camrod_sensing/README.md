@@ -1,7 +1,7 @@
 # camrod_sensing
 
-<!-- HH_260805 - Document composed sensor transport and keep the LiDAR
-cost-grid optional in launch, graph readiness, and diagnostics. -->
+<!-- HH_260805 - Document the front, rear-parking, and LiDAR composition
+boundaries while keeping hardware measurements field-pending. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -52,6 +52,7 @@ checks; no source code rebuild is required.
 | Boundary | Active implementation | Reason |
 |---|---|---|
 | Front camera -> YOLO | Existing camera/YOLO component container, intra-process message ownership | Avoids an extra serialized image copy |
+| Rear camera -> rectify -> AprilTag | Bringup-owned three-node container for physical AprilTag parking, intra-process raw/rectified images | Keeps the rear image hot path in one process without duplicating publishers |
 | LiDAR preprocessor -> ground segmentation | `lidar_processing_container`, intra-process `unique_ptr` publication | Keeps large clouds in one process |
 | Ground segmentation -> optional LiDAR grid | Same container only when `enable_lidar_cost_grid:=true`; DDS transport preserves transient-local output | Humble cannot combine intra-process publication with the grid's latched QoS |
 | Remaining process boundaries | Host RMW by default; CycloneDDS/iceoryx bench opt-in | Full-graph SHM is guarded OFF on Humble due static endpoint/history limits |
@@ -59,6 +60,33 @@ checks; no source code rebuild is required.
 The Vanjee vendor driver remains a separate process because it is not a CAMROD
 component. `use_lidar_processing_container:=false` retains standalone
 executables for fault isolation.
+
+The combined rear path is selected only when `sim:=false`, rear camera and
+parking are enabled, and `parking_method:=apriltag`. Setting
+`use_rear_camera_apriltag_container:=false` restores the regular sensing camera,
+`image_proc`, and detector launches with the same public topics. The rear camera
+component is ARM64-only, so 10 Hz, tag latency, GPU/CPU, and restart acceptance
+remain Jetson tasks rather than amd64 claims.
+
+### Measured LiDAR A/B
+
+On this amd64 workstation, two isolated runs per topology used the same
+synthetic `60,000`-point, `0.916 MiB`, `10 Hz` PointCloud2 input.
+
+| Mean | Standalone processing | Intra-process container | Change |
+|---|---:|---:|---:|
+| Processes | `4` | `3` | `-1` |
+| CPU, one-core basis | `8.36%` | `6.90%` | `-17.5%` |
+| PSS | `84.75 MiB` | `128.76 MiB` | `+44.01 MiB` |
+| Output rate | `10.005 Hz` | `10.002 Hz` | unchanged |
+| Received / published | `324 / 324` | `324 / 324` | zero sample loss |
+| Clean shutdown | `2/2` | `2/2` | no regression |
+
+The isolated component loader costs memory but reduces point-cloud processing
+CPU. Shared-library memory can amortize differently in full bringup, so the
+default remains enabled for the known CPU bottleneck while Jetson rate/PSS is
+measured separately. The normalized per-run record is
+[`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
 
 ## LiDAR Ground Filter
 
@@ -161,6 +189,7 @@ ros2 launch camrod_sensing lidar.launch.py use_lidar_processing_container:=false
 ros2 launch camrod_sensing radar.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ros2 launch camrod_sensing gnss.launch.py
+ros2 launch camrod_bringup rear_camera_apriltag_container.launch.py enable_container:=true
 
 ros2 topic hz /sensing/lidar/points_filtered
 ros2 topic hz /planning/cost_grid/inflation

@@ -1,7 +1,7 @@
 # camrod_planning
 
-<!-- HH_260804 - Make active Nav2 plugins, state surfaces, handoffs, and
-simulation limits visible without a long chronological narrative. -->
+<!-- HH_260805 - Record the scoped Nav2 planner/controller production topology
+and retain standalone field-isolation fallbacks. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -44,6 +44,20 @@ Normal missions construct only policy-reachable planner/controller instances.
 Definitions for every implementation remain in `nav2_base.yaml`; the
 development-only `nav2_{planner,controller}_profiles/all.yaml` files load every
 option when comparison work is needed.
+
+## Nav2 Process Boundary
+
+`use_nav2_container:=true` is the production default. The vendored planner and
+controller share `scoped_component_container_mt`; smoother, behavior, BT
+navigator, and lifecycle manager remain standalone because their Humble vendor
+binaries own private default-context executors. Transient-local Nav2 publishers
+use DDS rather than unsupported Humble intra-process transport.
+
+The scoped path reached all managed nodes active, used `robot_center_link`,
+reached `[SYSTEM] OK`, and cleanly stopped the Nav2 plus five system containers
+in 3/3 final amd64 runs. `use_nav2_container:=false` remains the field-isolation
+fallback. Jetson still requires ten mission/cancel/restart cycles and resource
+measurement; amd64 lifecycle success is not a physical navigation claim.
 
 ## Route Flow
 
@@ -119,7 +133,7 @@ in explicit `OPERATOR_STOPPED` state.
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
-| Active map-v15 source | Synchronized OSM pair; 55 lanelets/14 areas; LaneletRoute tests pass |
+| Active map-v15 source | Synchronized SHA `d7b730...213f`; 55 lanelets/14 areas/1658 nodes; LaneletRoute tests pass |
 | Full campsite round trip | Not demonstrated; map boundary still blocks campsite entry |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
@@ -136,6 +150,7 @@ undersized mapped corridor mission-capable.
 
 ```bash
 ros2 launch camrod_planning planning.launch.py
+ros2 launch camrod_planning planning.launch.py use_nav2_container:=true  # bench only
 
 ros2 topic echo /planning/state
 ros2 topic echo /planning/route_lanelet_ids

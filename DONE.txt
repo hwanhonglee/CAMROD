@@ -1,5 +1,5 @@
 CAMROD 구현·검증 완료 기록
-작업 기준 버전: v2.1.4
+작업 기준 버전: v2.1.5
 정리일: 2026-08-05 (Asia/Seoul)
 
 # HH_260730 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
@@ -20,11 +20,14 @@ CAMROD 구현·검증 완료 기록
 - v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, Chromium 운영 창,
   transport, planner fallback 및 optional component 구현도 CODE/SIM 기준이며 Jetson/실차
   FIELD-PASS로 해석하지 않는다.
+- v2.1.5의 scoped checker/Nav2 runtime, 물리 LiDAR 한정 DDS-SHM 및 GNSS 중앙
+  가정도 CODE/SIM 기준이다. 안테나 실측과 Jetson 반복 수명 시험 전에는
+  FIELD-PASS로 해석하지 않는다.
 
 릴리스 기준점
-- branch/tag: develop / v2.1.4
-- 이전 v2.1.3 tag commit: a05c0bca1
-- v2.1.4 tag: 이 문서, 코드, 설정, 테스트 및 생성 자산을 포함하는 최종
+- branch/tag: develop / v2.1.5
+- 이전 v2.1.4 tag commit: f83975d5e
+- v2.1.5 tag: 이 문서, 코드, 설정, 테스트 및 생성 자산을 포함하는 최종
   release commit을 가리킨다.
 - 관련 세부 commit:
   - 3a724d9b feat(planning): harden goal recovery and path tracking
@@ -42,7 +45,7 @@ CAMROD 구현·검증 완료 기록
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
-0. v2.1.4 최종 optional runtime·경계 복구 확인 [DONE-CODE, DONE-SIM]
+0. v2.1.5 최종 optional runtime·경계 복구 확인 [DONE-CODE, DONE-SIM]
 - HH_260805 - LiDAR cost-grid는 운영 기본 `false`다. 실제 full sim에서
   `/sensing/lidar/lidar_cost_grid` 노드는 없고 `/sensing/cost_grid/lidar`
   publisher는 0개였으며, cost checker는 radar와 inflation만 감시했다.
@@ -52,17 +55,18 @@ CAMROD 구현·검증 완료 기록
   `LidarCostGridNode` 하나가 `lidar_processing_container`에 적재되고
   transient-local publisher 1개가 생겼다. 즉 코드와 component는 유지하되
   사용하지 않을 때 진단 ERROR를 만들지 않는다.
-- 시스템 checker component 등록은 24개 모두 유지했지만, 반복 full-stack
-  종료에서 localization과 autonomy component process의 간헐적 `-11`과
-  isolated-container 종료 hang을 재현했다. 운영 기본은 검증된 24개
-  standalone checker이고 `use_checker_components:=true`는 bench 전용이다.
+- 시스템 checker component 등록과 standalone fallback은 24개 모두 유지했다.
+  최초 반복 full-stack 종료에서 localization/autonomy의 간헐적 `-11`과
+  isolated-container hang을 재현한 뒤 scoped context/teardown을 적용했다.
+  현재 운영 기본은 네 checker fault-domain container이며 최종 AMD64 full
+  sim 3/3과 기본 인자 1회가 clean exit했다. 상세 원인과 검증은 23번에 있다.
 - map v15 동적 recovery에서 route/static case는 `REVERSE_YAW_RIGHT`, 최대
   `0.05 rad/s`, 이동 `0.0582/0.0405 m`였고 재접촉 `0.335/0.400 s` 뒤
   latch됐다. one-side case는 `CRAB_LEFT`로 `0.3378 m` 이동했고 모든 최종
   command는 zero였다. 이는 fail-closed sim 증거이며 실차 완료가 아니다.
-- 최종 기본 full sim은 steady-state 79 ROS node에서 `[SYSTEM] OK`에 도달했고 Robot/Guest
-  HTTP 200 응답은 약 7/6 ms였다. Ctrl+C에서 24 checker와 UI/Nav2/control
-  process가 모두 clean exit했다.
+- 최종 기본 full sim은 `[SYSTEM] OK`에 도달했고 Robot/Guest HTTP 200 응답은
+  약 7/6 ms였다. Ctrl+C에서 네 checker fault domain, system core, Nav2의
+  여섯 component container와 UI/control process가 모두 clean exit했다.
 
 1. 릴리스 빌드·설정·기동 검증 [DONE-CODE, DONE-SIM]
 - 영향 패키지 6개(camrod_localization, camrod_planning, camrod_system,
@@ -464,10 +468,9 @@ CAMROD 구현·검증 완료 기록
   `RotationShim(RPP)`만 생성한다. `DWB`, `MPPI`, `Graceful` 구현과 parameter는
   삭제하지 않고 `nav2_controller_profiles/all.yaml` opt-in으로 보존했다.
 - 24개 system checker의 component 등록과 standalone executable을 모두
-  구현했다. 초기 isolated 시험은 clean했지만 반복 full graph 종료에서
-  localization과 autonomy component process의 간헐적 `-11`, isolated
-  container 종료 hang이 추가 재현됐다. 최종 운영 기본은 24 standalone이며
-  component mode는 bench opt-in으로만 보존했다.
+  구현했다. 초기 full graph에서 재현한 localization/autonomy `-11`과 종료
+  hang은 22번의 최초 A/B에 보존하고, 이후 scoped runtime 수정과 현재 운영
+  기본은 23번에 기록했다.
 - EngageAwareProgressChecker가 parent lifecycle node를 소유하지 않게 하고
   parameter/subscription callback과 progress plugin을 cleanup에서 해제했다.
   전체 Ctrl+C에서 기존 `controller_server -11`이 clean exit로 바뀌었다.
@@ -528,6 +531,109 @@ CAMROD 구현·검증 완료 기록
   `/sensing/cost_grid/lidar` transient-local publisher 1개만 생성한 뒤 clean
   exit했다.
 
+22. HH_260805: 최초 component 경계와 amd64 A/B 측정
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- diagnostics aggregator 2개, system checker, system diagnostic 4개만
+  serialized `system_core_container`에 묶고 24개 source checker는 독립
+  process로 유지했다. planning lifecycle checker의 중복 async request 수명을
+  제한해 종료 중 callback 잔존도 제거했다.
+- rear physical capture, image_proc rectify, AprilTag detector는 조건부 3-node
+  container와 동일 topic의 standalone fallback을 구현했다. rear capture
+  component는 ARM64 전용이므로 amd64에서는 launch/ownership 계약만 검증했고
+  실제 10 Hz와 tag latency는 TODO 3/14에 남겼다.
+- Nav2 전체 component 경로는 managed node active와 `[SYSTEM] OK`를 3/3
+  달성했지만 종료가 `-11`, `-11`, forced `-9`였다. checker composition도
+  최초 A/B에서 간헐적 종료 실패가 있었다. 이 문단은 원인 수정 전 결과이며
+  현재 운영 판정은 아래 23번의 후속 회귀 결과가 대체한다.
+- i5-12400F amd64 headless full sim에서 system tools standalone/container를
+  각각 3회, run당 15초 측정했다. process `69.0 -> 66.1`, one-core 기준 CPU
+  `87.8 -> 85.2%`, RSS `2538.9 -> 2496.2 MiB`, PSS
+  `1632.6 -> 1612.9 MiB`였고 양쪽 모두 launch exit 0, 강제 종료/segfault/
+  잔여 process 0 기준 3/3 controlled stop이었다. system-core container는
+  clean exit했으며 일반 Python SIGINT `-2`를 node exit 0으로 재표기하지 않는다. startup-to-OK는
+  `26.51 -> 26.91 s`로 개선되지 않았다.
+- 동일 60,000-point/0.916 MiB/10 Hz synthetic LiDAR 입력의 2회 A/B에서
+  process `4 -> 3`, CPU `8.36 -> 6.90%`였고 output은
+  `10.005/10.002 Hz`, sample loss 0이었다. 반면 PSS는
+  `84.75 -> 128.76 MiB`로 44.01 MiB 증가했다. CPU 절감 때문에 기본 ON을
+  유지하되 Jetson full-stack memory/rate는 TODO 14에서 다시 판정한다.
+- 실제 X11 operator window를 켠 full sim에서 WebKit/Chromium을 각각 3회
+  교차 측정했다. Chromium run은 system OK가 평균 `1.33 s` 빨랐지만 이는
+  browser first-paint/load 시간이 아니다. WebKit보다
+  process `+11.3`, one-core CPU `+1.44 point`, RSS `+915.0 MiB`, PSS
+  `+327.3 MiB`였다. 양쪽 모두 launch 종료/잔여 process 기준 3/3 통과했다.
+  host GPU 값은 개인 브라우저와 desktop을 포함해 renderer 선택 근거에서
+  제외했다. 명시적으로 선택한 Chromium 기본은 유지하고 Jetson frame pacing,
+  GPU 및 sensor-rate 영향은 TODO 8/14에서 판정한다.
+- 현재 OSM 두 파일은 수정하지 않고 SHA `d7b730...213f`를 우발 변경 검출용
+  fingerprint로 기록했다. read-only 잠금이 아니며 다음 현장 의도적 지도
+  변경 때 revision/count/SHA 계약을 함께 갱신한다.
+- six-package fresh xUnit 423건은 error/failure 0, 기존 slow-cppcheck skip
+  12건이었고 direct bringup pytest 134/134가 통과했다. 측정 원본과 제한은
+  `docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json` 및
+  `docs/V2_1_5_RELEASE_NOTES.md`에 보존했다.
+
+23. HH_260805: scoped component 종료 오류 및 DDS-SHM 전역 용량 오류 제거
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- native `strace -k`로 checker/Nav2의 종료 fault가 CycloneDDS `tev`/`recv`
+  worker가 shared library unload와 경합하면서 unmapped code를 실행한 것임을
+  확인했다. 이는 mission/planning 알고리즘 오류가 아니라 ROS 2 Humble의
+  지연된 Context/DSO process-exit 수명 문제였다.
+- 새 `camrod_runtime` container는 manager, component, executor가 하나의 명시적
+  Context를 공유한다. signal handler join, callback-group detach, component
+  파괴, plugin loader 보존, executor Context 해제를 순서대로 수행하고, 명시적
+  cleanup 뒤에만 Humble static-destructor 경합 구간을 건너뛴다.
+- checker 24개는 hardware/sensing, localization, autonomy/topics,
+  planning/lifecycle의 네 serialized fault domain으로 실행한다. system core는
+  별도 serialized container를 유지하고 모든 checker의 standalone executable도
+  현장 격리 fallback으로 보존했다.
+- Nav2는 planner/controller만 scoped multithreaded container로 구성하고,
+  private default-context executor를 소유하는 vendor smoother, behavior, BT,
+  lifecycle manager는 standalone으로 유지했다. vendored Nav2 context 및 TF
+  callback-group 수명도 parent context와 일치시켰다.
+- Robot/Guest UI는 `KeyboardInterrupt`와 `ExternalShutdownException`을 모두
+  정상 launch 종료로 처리한다. 전역 CycloneDDS 환경 주입은 제거했고,
+  DDS-SHM/RouDi는 `sim:=false` 물리 LiDAR driver group에만 한정된다.
+- ROS domain 193/194/195의 final full sim 3회와 topology override 없는 domain
+  196 1회가 managed active와 `[SYSTEM] OK`에 도달했다. 매 실행에서 checker
+  4개, system core 1개, Nav2 1개 등 여섯 container가 clean exit했고 `-11`,
+  forced kill, event-loop error, iceoryx capacity error, 잔여 process는 0이었다.
+- 운영 기본을 checker/Nav2/system-core container ON으로 전환했다. DDS-SHM과
+  LiDAR cost grid는 각각 물리 LiDAR/Jetson 검증과 현장 필요 전까지 OFF다.
+  변경 6개 package가 빌드됐고 shutdown/launch/transport 계약 pytest 22건이
+  통과했다. Jetson 자원과 mission/cancel/restart 10회는 TODOLIST 14에 남겼다.
+- 상세 재현, pre-fix Context reference 수, 실행별 판정은
+  `docs/evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json`에
+  보존했다.
+
+24. HH_260805: GNSS position 기준을 robot center 가정과 일치
+    [DONE-CODE, DONE-SIM-CONTRACT, FIELD-PENDING]
+- 기존 `gnss_link x=-0.443 m`는 실측 안테나 위치가 아니라 후륜 기준
+  `0.0 m` placeholder를 중앙 프레임으로 변환한 값이었다. 반면 localization
+  input adapter는 NavSatFix를 lever-arm 보정 없이 곧바로
+  `robot_center_link` 위치로 사용하므로 TF/진단과 estimator 의미가 달랐다.
+- package와 bringup의 `robot_params.yaml`, Xacro fallback, default/sim 진단
+  metadata를 모두 `0.00000/0.00000/0.00000`으로 동기화했다. 진단 위치는
+  `robot_center_assumed`, 검증 표시는 `pose_verified=false`로 유지했다.
+- IMU, LiDAR, camera, radar, body, axle, footprint, controller, map, parking
+  좌표는 변경하지 않았다. 사용자가 수정한 두 OSM도 byte-identical SHA
+  `d7b730...213f` 그대로 보존했다.
+- frame/config/diagnostic 및 generated-asset 계약 pytest 44건이 통과했다.
+  전체 변경 source 계약은 126/126, UI 직접 pytest는 28/28이 통과했다.
+  11개 선택 package build와 xUnit 487건도 error/failure 0, 기존 lint skip
+  17건으로 완료됐다. package/bringup/install config audit 388개 비교도
+  mismatch 0으로 통과했다. 이는 중앙 가정의 소프트웨어 일관성만 검증하며
+  안테나 실측 정확도를 증명하지 않는다.
+- 최종 domain 207 full sim은 managed Nav2 active와 `[SYSTEM] OK`에 도달하고
+  top-level exit 0으로 끝났다. startup 중 map/costmap 준비 전 WARN 1회와
+  ERROR 3회는 최종 OK로 해소됐고, 여섯 container 모두 clean exit했으며
+  `-11/-9`, UI event-loop, iceoryx capacity 오류와 잔여 process는 0이었다.
+- 실차에서 rover/moving-base 두 안테나 XYZ, baseline 길이·방향, 수신기
+  position reference를 측정한다. 위치 해가 중앙이 아니면 TF와 localization
+  lever-arm 보정을 함께 반영한 뒤에만 `pose_verified=true`로 변경한다.
+- 세부 변경과 현장 한계는 `docs/V2_1_5_RELEASE_NOTES.md`, 실측 절차는
+  `TODOLIST.txt`의 P0 frame 항목과 TODO 10/13에 보존했다.
+
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
   2026-07-31, 600.063초, 7채널 exact dummy, evidence active 0,
@@ -544,8 +650,11 @@ CAMROD 구현·검증 완료 기록
   user map v15 `dd4658b52`, staged recovery `b91e7818e`, optional runtime
   `337d2706a`, map-v15 evidence/docs `49a8a96bd` 순서다. 이 일곱 commit과
   이전 미반영 v2.1.3 이력은 최종 `develop` 및 annotated `v2.1.4`에 포함한다.
+- v2.1.5는 위 v2.1.4 기준점 이후의 scoped runtime, 센서 container,
+  종료 오류 수정, GNSS 중앙 가정 및 해당 검증/문서를 포함한다.
 
 상세 근거 문서
+- docs/V2_1_5_RELEASE_NOTES.md
 - docs/V2_1_1_RELEASE_NOTES.md
 - docs/V2_1_0_TODO_REMEDIATION.md
 - camrod_bringup/docs/post_v2_1_0_indoor_validation.md
