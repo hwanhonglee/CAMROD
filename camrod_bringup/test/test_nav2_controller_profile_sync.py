@@ -454,3 +454,7 @@ def test_sim_runner_locks_map_fixed_obstacle_and_repeated_service_contract() -> 
     assert '"boundary_recovery_motion_seen"' in runner
     assert '"boundary_recovery_released"' in runner
     assert '"boundary_retry_latched"' in runner
+    # HH_260807 - A late WAIT_FOR_CHARGING sample from the completed cycle must
+    # not reassert charger contact while the next destination is departing.
+    assert "return_sent\n                    and parking_events" in runner
+    assert '"WAIT_FOR_CHARGING" in parking_events[-1]' in runner

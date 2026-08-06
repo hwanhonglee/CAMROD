@@ -2437,7 +2437,15 @@ class SimValidationRunner(Node):
                     )
                     return_sent = True
 
-                if any("WAIT_FOR_CHARGING" in event for event in parking_events):
+                # HH_260807 - A late status from the previous parking cycle can
+                # arrive after the next charger departure has started. Assert
+                # simulated charging only for this cycle's post-RETURN wait;
+                # otherwise charging contact oscillates and cancels the soak.
+                if (
+                    return_sent
+                    and parking_events
+                    and "WAIT_FOR_CHARGING" in parking_events[-1]
+                ):
                     self.fake_platform_charging = True
 
                 cycle_complete = bool(
