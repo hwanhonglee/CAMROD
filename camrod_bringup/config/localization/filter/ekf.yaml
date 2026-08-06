@@ -7,13 +7,15 @@
     # =========================================================================
     # 1. FILTER CORE AND FRAMES
     # =========================================================================
-    # HH_260625: Full sensing + RViz on Orin repeatedly exceeded the 20 Hz EKF
-    # budget.
-    # HH_260730: Run at the controller's 15 Hz cadence. The former 10 Hz output
-    # forced every third 15 Hz controller cycle to reuse an old pose/TF; 15 Hz
-    # removes that sampling mismatch without returning to the failed 20 Hz load.
-    frequency: 15.0
+    # HH_260625: Full sensing + RViz on Orin previously exceeded the 20 Hz EKF
+    # budget; keep Jetson moving-load acceptance explicit rather than assuming it.
+    # HH_260806 - Align the real EKF with the 20 Hz Nav2 controller. High-rate
+    # IMU and wheel odometry predict at 50 ms intervals while the verified
+    # dual-GNSS path remains a 1 Hz absolute correction source.
+    frequency: 20.0
     sensor_timeout: 0.2
+    # HH_260806 - Planar operation clamps z/roll/pitch, vz, roll/pitch rates,
+    # and az to zero. Enabled source fields describe input, not retained 3D states.
     two_d_mode: true
     map_frame: map
     odom_frame: odom
@@ -27,7 +29,11 @@
     publish_acceleration: false
     # Handle out-of-order sensor messages gracefully (IMU/GNSS timing jitter under full bringup).
     smooth_lagged_data: true
-    history_length: 0.3
+    # HH_260806 - Retain one second of real-filter history. The stationary
+    # Jetson sample saw selected-pose header age up to 747.6 ms, so the former
+    # 0.3 s window could not rewind/replay every delayed wheel/IMU/GNSS sample.
+    # The 20 Hz output still requires moving Jetson validation.
+    history_length: 1.0
     # Extrapolate filter state to current time on each publish cycle so TF/pose
     # consumers get the most recent estimate rather than the last fused timestamp.
     predict_to_current_time: true
@@ -62,7 +68,8 @@
     # HH_260625: CV7-AHRS yaw is unaided here, so do not fuse it as map heading.
     # imu0_config order:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
-    # Enabled: roll/pitch orientation + angular velocity. Yaw comes from GNSS pose1.
+    # Configured: roll/pitch fields plus xyz angular velocity. Planar mode keeps
+    # only angular.z (yaw rate); absolute yaw comes from GNSS pose1.
     # HH_260720 - robot_localization consumes the explicit standard driver boundary.
     imu0: /sensing/imu/data_ros
     imu0_config: [false, false, false,
@@ -133,6 +140,8 @@
     pose1_relative: false
     pose1_queue_size: 10
     # HH_260625: Allow startup recovery from a bad IMU-yaw seed.
+    # HH_260806 - This effectively disables heading innovation rejection. Keep
+    # it until moving residuals prove a lower threshold will not block startup.
     # Measurement covariance still controls GNSS heading update weight.
     pose1_rejection_threshold: 1000.0
 
@@ -144,6 +153,8 @@
     #   Position Q=0.05 → steady-state K≈0.51 (51% GNSS gain, 0.5m GNSS jump → 0.25m EKF jump).
     #   Position Q=0.01 → steady-state K≈0.27 (27% GNSS gain, 0.5m GNSS jump → 0.14m EKF jump).
     #   Lower Q means EKF trusts its own model more between GNSS epochs → less drift while stationary.
+    # HH_260806 - Do not rescale Q for 20 Hz. This robot_localization EKF applies
+    # process_noise_covariance * elapsed_time on every prediction.
     process_noise_covariance: [0.01, 0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
                               0.0,  0.01, 0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
                               0.0,  0.0,  0.1,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,

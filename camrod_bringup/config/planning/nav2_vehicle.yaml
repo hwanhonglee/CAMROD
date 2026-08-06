@@ -50,17 +50,20 @@ controller_server:
     RPP:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # HH_260731 - Conservative outdoor boundary-recovery profile shared by
-      # manual and UI goals. The final 0.5 gate scale limits 0.4 m/s to 0.20 m/s.
+      # manual and UI goals.
+      # HH_260806 - 1.666667 m/s raw through the 0.5 final gate is the 3.0 km/h
+      # production cruise reference. Other operational linear speeds preserve
+      # their previous ratio to this reference.
       # HH_260730: Only parameters consumed by the bundled RPP are listed here.
       # The former max/min linear and max angular keys were not read by this
       # plugin; desired_linear_vel and curvature regulation are authoritative.
-      desired_linear_vel: 0.4
+      desired_linear_vel: 1.666667
       max_angular_accel: 0.8
       # HH_260513: Increased lookahead to suppress straight-line oscillation.
-      # HH_260801 / TODOLIST 13: At the final 0.20 m/s limit, speed-scaled
-      # lookahead is clamped by this floor. Full-bringup straight/curve sweeps
+      # HH_260801 / TODOLIST 13: Full-bringup straight/curve sweeps
       # selected 1.1 m as the balance between 1.0 m tracking error and 1.2 m
-      # steering variation. Keep the 2.0 m cap and 15 Hz pose output unchanged.
+      # steering variation. Keep the 2.0 m cap; HH_260806 later synchronized
+      # the real pose and controller loops at 20 Hz.
       lookahead_dist: 1.1
       min_lookahead_dist: 1.1
       max_lookahead_dist: 2.0
@@ -80,11 +83,12 @@ controller_server:
       # Keep controller in forward-drive mode; global planner is
       # aligned to DUBIN (forward-only) in nav2_base.yaml.
       allow_reversing: False
-      # HH_260806 - Finish initial heading alignment before any forward command.
-      # A 2-degree threshold avoids the previous rotate-and-translate overlap.
-      use_rotate_to_heading: True
-      rotate_to_heading_min_angle: 0.0349066
-      min_approach_linear_velocity: 0.10
+      # HH_260806 - Keep ordinary curve tracking continuous. Gross initial
+      # heading alignment is owned by the final route-heading gate, so RPP must
+      # not alternate zero-linear rotation and translation at every small bend.
+      use_rotate_to_heading: False
+      # HH_260806 - Preserve the previous 25% final-approach ratio: 0.75 km/h.
+      min_approach_linear_velocity: 0.416667
       approach_velocity_scaling_dist: 0.6
       # HH_260618: RPP is now a fallback controller; keep its internal collision
       # check enabled when selected instead of relying only on external cmd_vel gates.
@@ -92,8 +96,8 @@ controller_server:
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
-      # Final curve-regulated minimum after the gate: 0.10 m/s.
-      regulated_linear_scaling_min_speed: 0.2
+      # HH_260806 - Preserve the previous 50% curve-floor ratio: 1.50 km/h.
+      regulated_linear_scaling_min_speed: 0.833333
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0

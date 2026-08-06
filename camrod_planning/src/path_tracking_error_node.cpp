@@ -32,7 +32,8 @@ public:
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/tracking_error");
     prefer_local_path_ = declare_parameter<bool>("prefer_local_path", true);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
-    publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 15.0);
+    // HH_260806 - Default to the production 20 Hz localization/control cadence.
+    publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 20.0);
     publish_on_input_update_ = declare_parameter<bool>("publish_on_input_update", true);
 
     sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
@@ -324,7 +325,7 @@ private:
 
   bool prefer_local_path_{true};
   double pose_timeout_s_{1.0};
-  double publish_rate_hz_{15.0};
+  double publish_rate_hz_{20.0};
   bool publish_on_input_update_{true};
 
   bool has_pose_{false};

@@ -69,8 +69,11 @@ def _dual_antenna_runtime_params(usb_rtcm_in, warm_start_on_startup=False):
         # diagnostic has left the rover tracking the wrong reference.
         "dual_antenna.warm_start_on_startup": warm_start_on_startup,
         "dual_antenna.warm_start_wait_ms": 12000,
-        # HH_260722 - The field moving base emits navigation epochs at 1 Hz.
-        # Moving-base base and rover rates must match for RELPOSNED heading.
+        # HH_260722 - The field moving-base solution is accepted at 1 Hz.
+        # HH_260806 - This repository's dual-rover setup writes CFG-RATE to RAM
+        # even when config_on_startup=false, so a receiver-saved 5 Hz profile is
+        # intentionally overridden here. Keep base and rover epochs at the same
+        # measured rate before changing this field contract.
         "rate": 1.0,
         "nav_rate": 1,
         "publish.nav.cov": True,

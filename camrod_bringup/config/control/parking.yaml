@@ -40,7 +40,8 @@
     automatically_select_reverse_approach_yaw: false
 
     start_yaw_tolerance_deg: 7.5
-    reverse_speed_mps: 0.16
+    # HH_260806 - Preserve 40% of the 3.0 km/h cruise reference after the gate.
+    reverse_speed_mps: 0.666667
     heading_proportional_gain: 0.8
     lateral_proportional_gain: -0.25
     maximum_angular_speed_radps: 0.22
@@ -95,9 +96,10 @@
     maximum_angular_speed_radps: 1.0
     maximum_approach_angle_rad: 0.5
 
-    reverse_approach_speed_mps: 0.2
+    # HH_260806 - Preserve the 50% approach and 12.5% insertion ratios.
+    reverse_approach_speed_mps: 0.833333
     invert_angular_command_while_reversing: false
-    final_insertion_speed_mps: 0.05
+    final_insertion_speed_mps: 0.208333
     # HH_260803 - Longitudinal thresholds add 0.443 m so the physical rear-axle
     # stop points remain equivalent after moving the controller reference forward.
     slowdown_start_distance_m: 1.443

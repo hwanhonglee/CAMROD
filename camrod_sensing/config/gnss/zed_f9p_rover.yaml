@@ -44,7 +44,10 @@
     # =========================================================================
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # HH_260722 - Keep this shared single-antenna profile at 10 Hz. The dual
-    # launch overlay sets 1 Hz so moving-base and rover navigation epochs match.
+    # launch overlay sets the rover to 1 Hz so moving-base epochs can match.
+    # HH_260806 - The custom dual setup applies that CFG-RATE RAM write even
+    # with config_on_startup=false; a saved 5 Hz rover profile does not survive
+    # this launch. Verify the Lite base's actual iTOW cadence independently.
     rate: 10.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)

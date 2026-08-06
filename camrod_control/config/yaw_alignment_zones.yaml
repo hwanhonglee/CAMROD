@@ -49,7 +49,8 @@ yaw_alignment_zones:
       angular_kp: 1.8
       max_angular_z: 0.8
       # Max |linear.x| allowed while approaching center during alignment.
-      max_approach_linear_x: 0.25
+      # HH_260806 - Preserve the previous 62.5% cruise cap: 1.875 km/h final.
+      max_approach_linear_x: 1.041667
 
     # --- Zone: camping_site_1_align ---
     - id: "camping_site_1_align"
@@ -64,4 +65,5 @@ yaw_alignment_zones:
       hold_s: 0.5
       angular_kp: 1.8
       max_angular_z: 0.8
-      max_approach_linear_x: 0.20
+      # HH_260806 - Preserve the previous 50% cruise cap: 1.50 km/h final.
+      max_approach_linear_x: 0.833333

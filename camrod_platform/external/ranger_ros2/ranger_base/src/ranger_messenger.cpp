@@ -442,8 +442,8 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
     odom_msg.twist.twist.linear.x = linear * std::cos(phi);
     odom_msg.twist.twist.linear.y = linear * std::sin(phi);
 
-    // HH_260731 - Publish the measured CAN yaw rate for diagnostics. The EKF
-    // intentionally uses IMU yaw-rate instead of this wheel-derived value.
+    // HH_260806 - Publish measured CAN yaw rate. The active EKF fuses this
+    // wheel-derived rate with IMU yaw rate between 1 Hz GNSS updates.
     odom_msg.twist.twist.angular.z = angular;
   } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
     odom_msg.twist.twist.linear.x = 0;

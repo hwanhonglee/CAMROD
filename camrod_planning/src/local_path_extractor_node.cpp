@@ -58,7 +58,8 @@ public:
     global_path_qos_transient_local_ =
       declare_parameter<bool>("global_path_qos_transient_local", false);
 
-    publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 15.0);
+    // HH_260806 - Default to the production 20 Hz localization/control cadence.
+    publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 20.0);
     publish_on_input_update_ = declare_parameter<bool>("publish_on_input_update", true);
     lookahead_distance_m_ = declare_parameter<double>("lookahead_distance_m", 25.0);
     lookbehind_distance_m_ = declare_parameter<double>("lookbehind_distance_m", 2.0);
@@ -646,7 +647,7 @@ private:
   std::string output_topic_;
   std::string output_topic_ros_;
   std::string planning_status_topic_;
-  double publish_rate_hz_{15.0};
+  double publish_rate_hz_{20.0};
   bool publish_on_input_update_{true};
   double lookahead_distance_m_{25.0};
   double lookbehind_distance_m_{2.0};
