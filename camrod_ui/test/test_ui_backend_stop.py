@@ -149,6 +149,10 @@ class UiBackendStopTest(unittest.TestCase):
             source = (runtime_dir / filename).read_text(encoding="utf-8")
             self.assertIn("from rclpy.executors import ExternalShutdownException", source)
             self.assertIn("except (KeyboardInterrupt, ExternalShutdownException):", source)
+            # HH_260807 - Keep Humble's shutdown-only take_message race from
+            # producing exit code 1 while preserving live RuntimeError failures.
+            self.assertIn("except RuntimeError:", source)
+            self.assertIn("if rclpy.ok():\n            raise", source)
 
     def test_http_server_is_stopped_before_node_destruction(self) -> None:
         server = SimpleNamespace(should_exit=False)

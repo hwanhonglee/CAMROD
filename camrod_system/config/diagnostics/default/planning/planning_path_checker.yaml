@@ -40,8 +40,8 @@ planning_path_checker:
     local_path:
       topic: "/planning/local_path"
       stale_timeout_s: 2.0
-      # HH_260807 - Cover one serialized callback tick while service-state and
-      # Nav2 terminal updates settle; a persistent short path still faults.
-      point_count_grace_s: 1.5
+      # HH_260807 - Start independent WARN/ERROR grace windows at their own
+      # thresholds. A persistent short/empty active route still reports at 3 s.
+      point_count_grace_s: 3.0
       min_points_warn: 8
       min_points_error: 3

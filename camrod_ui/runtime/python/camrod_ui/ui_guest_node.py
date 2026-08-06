@@ -670,6 +670,11 @@ def main() -> None:
     # Guest UI teardown does not intermittently report a process failure.
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    # HH_260807 - Treat Humble's take_message conversion race as shutdown only
+    # when the context is already invalid; never hide a live runtime failure.
+    except RuntimeError:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         try:

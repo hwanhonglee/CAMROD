@@ -88,6 +88,7 @@ running ROS backend, not generated UI mockups.
 | WebKit fallback smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
 | Historical renderer sample | Before static status cues, forced WebKit was near 97% of one workstation CPU; a later Chromium sample was 0.5% combined |
 | Current Chromium launch contract | Private kiosk profile, GPU rasterization, zero-copy compositor, backend readiness wait, and process-group shutdown are unit-tested |
+| Robot/Guest backend shutdown | Full-graph SIGINT smoke: both backends exited cleanly, with no traceback, failed process, or remaining child |
 | Charging recall | Active charger contact no longer overwrites `DEPARTING_CHARGER`; B2/B3 departure completed in the three-cycle service soak |
 | Duplicate destination | A repeated WebSocket destination while station exit is pending is idempotent; one maneuver owner and state transition remain |
 
@@ -100,6 +101,19 @@ Jetson CPU/GPU use; a production Jetson profile is still required.
 The map-v17 simulation completed charging recall and next-site departure twice
 after the initial cycle. Direct backend regression tests pass `30/30`; actual
 CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
+
+<!-- HH_260807 - Record the Humble shutdown-only conversion race separately
+from operational backend failures. -->
+On ROS 2 Humble, context teardown can raise a `RuntimeError` while converting a
+queued message instead of `ExternalShutdownException`. Robot and Guest backends
+now treat that exception as a normal shutdown only when `rclpy.ok()` is already
+false. A live `RuntimeError` is still re-raised. The full Robot+Guest UI smoke
+ended both processes with exit code 0 and left no backend process behind.
+
+The filtered [shutdown and repeated-service record](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+also covers nine successive charger recalls after the seeded B1 handoff. Each
+recall reached `DEPARTING_CHARGER`, disconnected simulated charge feedback, and
+accepted the next campsite without duplicating the destination or motion owner.
 
 ## Key ROS Interfaces
 
