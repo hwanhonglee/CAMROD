@@ -31,6 +31,7 @@
 #include "avg_msgs/msg/planning_mission_key.hpp"
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
+#include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
@@ -440,36 +441,36 @@ private:
       85);
     motion_cost_stop_config_.lanelet_current_threshold = declare_parameter<int>(
       "lanelet_safety_current_threshold", 85);
-    // HH_260806 - Keep the provisional configured body as a non-recoverable
+    // HH_260806 - Keep the fabrication-inclusive body as a non-recoverable
     // inner boundary; only its planning margin may invoke bounded recovery.
     motion_cost_stop_config_.lanelet_body_hard_stop_enabled = declare_parameter<bool>(
       "lanelet_safety_body_hard_stop_enable", true);
     motion_cost_stop_config_.lanelet_body_hard_stop_threshold = declare_parameter<int>(
       "lanelet_safety_body_hard_stop_threshold", 100);
     motion_cost_stop_config_.body_front_m = declare_parameter<double>(
-      "lanelet_safety_body_front_m", 0.65837);
+      "lanelet_safety_body_front_m", 0.70837);
     motion_cost_stop_config_.body_rear_m = declare_parameter<double>(
-      "lanelet_safety_body_rear_m", 0.63323);
+      "lanelet_safety_body_rear_m", 0.68323);
     motion_cost_stop_config_.body_left_m = declare_parameter<double>(
-      "lanelet_safety_body_left_m", 0.43505);
+      "lanelet_safety_body_left_m", 0.53505);
     motion_cost_stop_config_.body_right_m = declare_parameter<double>(
-      "lanelet_safety_body_right_m", 0.43495);
+      "lanelet_safety_body_right_m", 0.53495);
     motion_cost_stop_config_.lanelet_footprint_enabled = declare_parameter<bool>(
       "lanelet_safety_footprint_enable", true);
     motion_cost_stop_config_.lanelet_footprint_threshold = declare_parameter<int>(
       "lanelet_safety_footprint_threshold", 100);
     planning_boundary_topic_ = declare_parameter<std::string>(
       "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
-    // HH_260806 - Match the provisional four-sided 5 cm planning envelope
-    // published by sensor-kit and Nav2; field acceptance remains pending.
+    // HH_260806 - Match the fabrication-inclusive body plus four-sided 5 cm
+    // planning envelope published by sensor-kit and Nav2.
     motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
-      "lanelet_safety_footprint_front_m", 0.70837);
+      "lanelet_safety_footprint_front_m", 0.75837);
     motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
-      "lanelet_safety_footprint_rear_m", 0.68323);
+      "lanelet_safety_footprint_rear_m", 0.73323);
     motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
-      "lanelet_safety_footprint_left_m", 0.48505);
+      "lanelet_safety_footprint_left_m", 0.58505);
     motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
-      "lanelet_safety_footprint_right_m", 0.48495);
+      "lanelet_safety_footprint_right_m", 0.58495);
     motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
     motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(
@@ -567,6 +568,14 @@ private:
         "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"),
       {"align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
         "align_retrace_yaw", "reverse_out", "crab_out"});
+    motion_cost_stop_config_.campsite_lanelet_bypass_phases = parseLabelSet(
+      declare_parameter<std::string>(
+        "camping_site_maneuver_controller_lanelet_bypass_phases",
+        // HH_260806 - These phases deliberately leave the road lanelet for a
+        // mapped service area. Dynamic obstacle grids remain authoritative.
+        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"),
+      {"align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
+        "align_retrace_yaw", "reverse_out", "crab_out"});
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 
@@ -618,6 +627,17 @@ private:
     speed_scale_ = declare_parameter<double>("speed_scale", 1.0);
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
     zero_publish_rate_hz_ = declare_parameter<double>("zero_publish_rate_hz", 10.0);
+    // HH_260806 - Finish rotation/crab ownership before accepting a translating
+    // Nav2 command. This prevents mixed-source motion during phase handoff.
+    command_source_arbiter_config_.maneuver_release_hold_s = declare_parameter<double>(
+      "maneuver_command_release_hold_s", 0.5);
+    command_source_arbiter_config_.navigation_rotation_settle_s = declare_parameter<double>(
+      "navigation_rotation_settle_s", 0.5);
+    command_source_arbiter_config_.navigation_translation_epsilon_mps =
+      declare_parameter<double>("navigation_translation_epsilon_mps", 0.01);
+    command_source_arbiter_config_.navigation_rotation_min_radps = declare_parameter<double>(
+      "navigation_rotation_min_radps", 0.05);
+    command_source_arbiter_.setConfig(command_source_arbiter_config_);
 
     enable_gnss_recovery_hold_ = declare_parameter<bool>("enable_gnss_recovery_hold", true);
     localization_mode_topic_ = declare_parameter<std::string>(
@@ -708,13 +728,13 @@ private:
       drop_zone_status_topic_, 10,
       [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
         drop_zone_phase_ = phaseFromStatus(message->message);
-        motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+        updateManeuverPhases();
       });
     campsite_status_subscription_ = create_subscription<avg_msgs::msg::ModuleState>(
       campsite_status_topic_, 10,
       [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
         campsite_phase_ = phaseFromStatus(message->message);
-        motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+        updateManeuverPhases();
       });
 
     for (const auto & topic : additional_estop_topics_) {
@@ -828,6 +848,19 @@ private:
   void onCommand(avg_msgs::msg::AvgTwist command, const bool navigation_source)
   {
     const double now_sec = nowSec();
+    const auto source_decision = command_source_arbiter_.evaluate(
+      navigation_source, command.linear.x, command.linear.y, command.angular.z, now_sec);
+    if (source_decision == CommandSourceDecision::kIgnore) {
+      // HH_260806 - The active maneuver publishes its own raw command. Do not
+      // interleave Nav2 zeros or forward velocity with crab/zero-turn output.
+      logCommandSourceHold("Nav2 ignored while maneuver owns cmd_vel", now_sec);
+      return;
+    }
+    if (source_decision == CommandSourceDecision::kHoldZero) {
+      publishZero();
+      logCommandSourceHold("stationary command-source handoff", now_sec);
+      return;
+    }
     bool opposite_route_recovery = false;
     last_input_command_sec_ = now_sec;
     command_input_stale_ = false;
@@ -925,6 +958,43 @@ private:
       return;
     }
     publishCommand(scaleCommand(command));
+  }
+
+  void updateManeuverPhases()
+  {
+    motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+    const double now_sec = nowSec();
+    const auto transition = command_source_arbiter_.setManeuverPhases(
+      drop_zone_phase_, campsite_phase_, now_sec);
+    if (transition.campsite_started) {
+      // HH_260806 - A Nav2 lanelet hold describes the road approach, not the
+      // explicit off-lane campsite motion that now owns control. Clear only
+      // that route/transient hold; live obstacle latches remain fail-closed.
+      route_safety_recovery_.reset();
+      latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+      route_safety_triggered_by_navigation_ = false;
+      route_safety_retry_latched_logged_ = false;
+      motion_cost_stop_.clearTransientHold();
+      last_route_safety_log_sec_ = -1.0e9;
+      publishZero();
+      RCLCPP_INFO(
+        get_logger(),
+        "campsite maneuver took cmd_vel ownership: phase=%s; prior Nav2 route hold cleared",
+        campsite_phase_.c_str());
+    } else if (transition.maneuver_finished) {
+      publishZero();
+      RCLCPP_INFO(
+        get_logger(), "maneuver released cmd_vel ownership; stationary handoff active");
+    }
+  }
+
+  void logCommandSourceHold(const std::string & reason, const double now_sec)
+  {
+    if (now_sec - last_command_source_log_sec_ < 1.0) {
+      return;
+    }
+    last_command_source_log_sec_ = now_sec;
+    RCLCPP_INFO(get_logger(), "cmd_vel source arbitration: %s", reason.c_str());
   }
 
   void refreshRouteSafetyRecovery(const double now_sec)
@@ -1904,10 +1974,12 @@ private:
   ChargingMissionOverrideConfig charging_override_config_;
   MotionCostStopConfig motion_cost_stop_config_;
   RouteSafetyRecoveryConfig route_safety_recovery_config_;
+  CommandSourceArbiterConfig command_source_arbiter_config_;
   CmdVelGatePolicy gate_policy_;
   ChargingMissionOverride charging_mission_override_;
   MotionCostStop motion_cost_stop_;
   RouteSafetyRecovery route_safety_recovery_;
+  CommandSourceArbiter command_source_arbiter_;
 
   std::string input_topic_;
   std::string navigation_input_topic_;
@@ -1993,6 +2065,7 @@ private:
   double last_block_log_sec_{-1.0e9};
   double last_cost_log_sec_{-1.0e9};
   double last_route_safety_log_sec_{-1.0e9};
+  double last_command_source_log_sec_{-1.0e9};
   double radar_obstacle_evidence_receive_sec_{-1.0e9};
   bool radar_obstacle_evidence_received_{false};
 

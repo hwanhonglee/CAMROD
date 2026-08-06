@@ -1,5 +1,51 @@
 # Documentation Changelog
 
+<!-- HH_260806 - Record map-v16 campsite sequencing, command ownership, and
+the fabrication-inclusive active collision envelope. -->
+## [develop-map-v16-campsite-sequencing] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Campsite policy | B1-B10 use full crab-in plus on-site 180-degree turnaround; constrained B11-B13 use a `0.60 m`-capped roadside arrival and no on-site turn |
+| Command ownership | Explicit campsite/drop-zone phases suppress Nav2 command interleaving; maneuver release and Nav2 rotation-to-translation each use a `0.5 s` zero hold |
+| Lanelet safety | Only explicit campsite motion bypasses static road-lanelet cost; dynamic obstacle checks stay active and ordinary physical-body contact stays fail-closed |
+| Active geometry | Uses fabrication-inclusive body `1.39160 x 1.07000 m` and planning boundary `1.49160 x 1.17000 m`; the reduced candidate is retained as historical evidence |
+| Active map | Synchronizes both OSM files at map revision 16 and SHA `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf` |
+| Simulation | B1-B10 full site maneuvers (10/10) and B11/B12/B13 arrival-only scenarios passed on an isolated map-v16 graph with `[SYSTEM] OK` |
+| Visual evidence | Adds structured JSON, aggregate JSON, one PNG, one GIF, a reproducible renderer, and package-guide links under `docs/assets/test_result/camping-site-sequencing-20260806/` |
+| Deferred safety decision | B11-B13 return geometry remains field-pending; the arrival-only tests issue no RETURN and make no return/parking claim |
+| Final verification | Canonical build selected 7 packages; 49/49 CTest targets and 361 xUnit records passed with zero errors/failures and 13 known static-analysis skips |
+
+---
+
+<!-- HH_260806 - Replace the temporary GNSS center assumption with the measured
+left-antenna lever arm while keeping body and lanelet geometry unchanged. -->
+## [develop-gnss-left-antenna] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Physical GNSS reference | Records the NavSatFix left antenna at `(0.00000,+0.45000,0.00000) m` from `robot_center_link` |
+| Localization | Rotates the body-frame lever arm with fresh calibrated dual-GNSS yaw and subtracts it before jump rejection/EKF publication |
+| Invalid heading | Withholds corrected NavSatFix output by default instead of publishing a known displaced center pose |
+| Simulation | Emits the same raw left-antenna position and inverse-calibrated heading rather than bypassing the production correction |
+| Synchronization | Updates sensor-kit/localization package and bringup mirrors, Xacro fallback, default/sim diagnostics, contracts, TODO/DONE, and generated sensor-kit visuals |
+| Dimension clarification | Confirms base `1.19160 x 0.87000 m` and fabrication-inclusive `1.39160 x 1.07000 m`; a subsequent map/campsite update activates the latter as the body envelope |
+| Validation | Four affected packages built; GNSS GTest 6/6, frame/config/sim pytest 32/32, projection pytest 2/2, bringup CTest 19/19, and system CTest 5/5 passed; ROS A/B measured exactly `0.450000 m` correction and `0.000071 m` final center residual |
+| Sim projection | Replaced the incorrect all-axis WGS84 equatorial-radius inverse with meridional/prime-vertical radii after it produced `0.134478 m` northing residual at 43 m |
+
+### Remaining Field Work
+
+Rover X/Z, moving-base XYZ, baseline direction, receiver position reference,
+moving residuals, sensor-housing clearance, and four-side swept collision
+verification remain field-pending. The lateral measurement alone does not set
+`pose_verified=true`.
+
+---
+
 <!-- HH_260806 - Record the provisional four-sided boundary reduction and the
 two-layer runtime policy without promoting it to a completed physical survey. -->
 ## [v2.1.5-boundary-policy] - 2026-08-06 (HH_260806)

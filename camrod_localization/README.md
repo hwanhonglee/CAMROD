@@ -1,7 +1,7 @@
 # camrod_localization
 
-<!-- HH_260804 - Replace repeated architecture/state diagrams with one
-source-and-measurement visual plus compact profile and validation tables. -->
+<!-- HH_260806 - Document the measured left-GNSS lever arm and fail-closed
+heading requirement used to publish the robot-center position. -->
 
 GNSS, dual-GNSS heading, IMU, and Ranger wheel-velocity fusion for the
 canonical `robot_center_link` pose and localization-health state.
@@ -30,7 +30,8 @@ chain. It does not measure physical GNSS accuracy.
 |---|---:|---:|
 | EKF frequency | `15 Hz` | `20 Hz` |
 | Base frame | `robot_center_link` | `robot_center_link` |
-| GNSS position reference | `robot_center_link` assumption | Same |
+| GNSS raw position | left antenna `(0,+0.45,0) m` | Same modeled source |
+| GNSS published position | heading-corrected `robot_center_link` | Same correction path |
 | Mode | 2D | 2D |
 | TF | EKF publishes `odom -> robot_center_link` | Same |
 | Prediction | `predict_to_current_time: true` | Same |
@@ -60,12 +61,27 @@ chain. It does not measure physical GNSS accuracy.
 | EKF odometry | `20.000 Hz` | `1.02 ms` |
 | Selected pose | `20.000 Hz` | `1.83 ms` |
 
-The input adapter converts NavSatFix directly to a map pose and does not apply
-a physical antenna lever arm. v2.1.5 therefore aligns `gnss_link` with
-`robot_center_link` as the explicit temporary assumption. The 30-second
-stationary run proves topic continuity and prediction cadence; it does **not**
-prove field position accuracy, multipath rejection, vibration performance,
-the dual-antenna lever arm, or reduced driving oscillation.
+The input adapter converts NavSatFix to the left-antenna map point, selects the
+fresh calibrated dual-GNSS yaw, rotates `[0.0,+0.45] m` into map axes, and
+subtracts it before jump rejection and EKF publication. If heading is stale or
+invalid, the default policy withholds the corrected GNSS pose instead of
+publishing a position known to be displaced by up to `0.45 m`. Simulation now
+publishes the same raw antenna and heading contract. The earlier 30-second
+timing run proves cadence only; it predates this correction and does **not**
+prove moving field accuracy, multipath rejection, or oscillation reduction.
+
+### Focused Lever-Arm Simulation
+
+| Timestamp-matched A/B metric | Result |
+|---|---:|
+| Samples | `30` |
+| Correction ON versus OFF | `0.450000 m` |
+| Center residual, correction ON mean/max | `0.000071 / 0.000071 m` |
+| Center residual, correction OFF mean | `0.449995 m` |
+
+This isolated AMD64 ROS test verifies transform direction and simulation
+projection, not physical GNSS accuracy. Exact scope and the intermediate
+projection diagnosis are in the [test record](../docs/assets/test_result/gnss-lever-arm-20260806/README.md).
 
 ## Reported Physical Stationary Performance
 
@@ -87,7 +103,7 @@ accept moving latency, crab yaw, lateral overshoot, or antenna lever arm.
 
 | Node | Responsibility |
 |---|---|
-| `localization_input_adapter` | Converts GNSS/platform inputs to EKF ROS boundaries |
+| `localization_input_adapter` | Converts GNSS/platform inputs and corrects left-antenna position to robot center |
 | `ekf_filter` | Runs the selected `robot_localization` profile |
 | `localization_output_adapter` | Converts EKF output to generated CAMROD messages |
 | `pose_selector` | Publishes the selected primary pose source |
@@ -123,5 +139,6 @@ ros2 run tf2_ros tf2_echo odom robot_center_link
 | `config/filter/monitor.yaml` | Mode, timeout, innovation, and confidence policy |
 | `config/filter/pose_selector.yaml` | Public pose selection |
 | `config/reference/map_helper.yaml` | Lanelet/drop-zone matching |
+| `config/source/input_adapter.yaml` | GNSS lever arm, heading validity, covariance, and input adapters |
 
 Evidence JSON: [`pose-chain-sim-20260804.json`](../docs/evidence/module-guides/localization/pose-chain-sim-20260804.json).

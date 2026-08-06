@@ -53,15 +53,16 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; LiDAR grid is default OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
-| `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Geometry YAML | Exact non-GNSS conversion; GNSS center is an unverified operational assumption |
+| `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png`, `gnss-left-antenna-lever-arm.png` | Geometry/localization YAML | Exact non-GNSS conversion and measured GNSS Y correction; remaining survey is pending |
 | `camrod_system` | `diagnostic-severity-and-surfaces.png`, `runtime-topology-amd64-ab-20260805.png` | Manifests plus 3-run system-core and 2-run LiDAR amd64 A/B JSON | Core container saves 3 processes/19.7 MiB PSS; LiDAR saves 17.5% CPU but adds 44.0 MiB PSS; Jetson pending |
 | `camrod_ui` | `robot-and-guest-mission-state.png`, Robot keypad and Guest dispatch/hold screenshots | UI policy + browser/ROS JSON + 3-run renderer A/B | Dispatch/stop observed; WebKit lighter on amd64; page-load/frame pacing remains Jetson-pending |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
-All files are under `docs/assets/module-guides/`. The main package renderer
-creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add eleven
-PNGs and seven GIFs. Fifteen manually captured live screens bring the checked-in
-total to **45 PNGs and eight GIFs**.
+Package-guide files are under `docs/assets/module-guides/`; structured release
+results are under `docs/assets/test_result/`. The main package renderer creates
+**19 PNGs and one 10-frame GIF**. Release/test renderers add twelve PNGs and
+eight GIFs. Fifteen manually captured live screens bring the checked-in total
+to **47 PNGs and nine GIFs**.
 
 ## Historical Runtime Screen Index
 
@@ -92,7 +93,7 @@ the concise raw excerpt are in
 
 | Module | Measurement | Result | Limit |
 |---|---|---|---|
-| Bringup | Full graph | 79 steady-state nodes and `[SYSTEM] OK` | B6/B12 local entry still blocked |
+| Bringup | Fresh map-v16 graph | `[SYSTEM] OK`; B1-B10 site maneuver round trips PASS (10/10) | Drop-zone parking/charging not included |
 | Localization | 30-second stationary probe | Selected pose `20.000 Hz`, age p95 `1.83 ms` | No field ground truth or motion disturbance |
 | Sensor kit/planning | Common route A/B | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` | One simulated route segment |
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |
@@ -101,9 +102,10 @@ the concise raw excerpt are in
 | Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
 | Control | v2.1.4 release-map route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
 | Control | v2.1.4 release-map one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
-| Control/planning | Current-map normal route | `10.0403 m`; goal error `0.2932 m`; no route hold | Controlled route only; no campsite round trip |
-| Control | Current-map margin-only contact | ordinary output `0.0 m/s`; `CRAB_RIGHT` `0.133 m` at max `0.05 m/s` | Body stayed clear; simulation only |
-| Control | Current-map physical-body contact | candidate none; owner motion false; recovery output `0.0 m/s` | Provisional dimensions remain field-pending |
+| Control/planning | Reduced-boundary route (historical) | `10.0403 m`; goal error `0.2932 m`; no route hold | Earlier `1.29160 x 0.87000 m` body |
+| Control | Reduced-boundary margin contact (historical) | ordinary output `0.0 m/s`; `CRAB_RIGHT` `0.133 m` at max `0.05 m/s` | Policy evidence retained; geometry superseded |
+| Control | Reduced-boundary body contact (historical) | candidate none; owner motion false; recovery output `0.0 m/s` | Hard-stop policy evidence |
+| Control/bringup | B11-B13 roadside arrival | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; all PASS without zero-turn | Return geometry field-pending |
 | UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, state 16, and B6 keypad verification observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
@@ -121,7 +123,7 @@ the concise raw excerpt are in
 
 ![Automatic route recovery](assets/module-guides/control/automatic-owner-route-retry.gif)
 
-| v2.1.4 release-map measured result | Current staged decision policy |
+| v2.1.4 release-map measured result | Release staged decision policy |
 |---|---|
 | ![Map-v15 recovery](assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png) | ![Map-v15 recovery policy](assets/module-guides/control/map-v15-boundary-recovery-policy.png) |
 
@@ -137,7 +139,11 @@ the concise raw excerpt are in
 |---|---|
 | ![Live boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Live retry latch terminal](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
 
-![Fresh two-layer boundary simulation](assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary simulation](assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+![Current campsite sequencing](assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+
+![Current campsite phase order](assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
 
 | Contact geometry | Allowed action |
 |---|---|
@@ -165,14 +171,15 @@ checked with constant-twist swept endpoint geometry, fresh pose/lanelet data,
 the full planning footprint, and dynamic obstacles. The map-v14 PNG/GIF
 predates this staged policy and remains historical. The map-v15 PNG/GIF
 exercises the current owner dynamically on release SHA `e0b50f...e36d`, not on
-the active current-site SHA `d7b730...213f`; both retry routes ended in the
+the active map-v16 SHA `fd9c18...d0cf`; both retry routes ended in the
 fail-closed latch. Physical validation remains pending.
 
-The fresh current-site run uses SHA `d7b730...213f`. It completed the
+The reduced-boundary current-site run used the prior map-v15 SHA
+`d7b730...213f`. It completed the
 controlled `10.0403 m` route without a hold, recovered the `+0.19 m`
 margin-only placement with `CRAB_RIGHT`, and retained a motionless hold at the
 `+0.27 m` physical-body placement. This validates policy separation only; it
-does not validate the provisional body dimensions.
+does not validate the now-active fabrication-inclusive body dimensions.
 
 ## Mission State Interpretation
 
@@ -245,8 +252,7 @@ camrod_bringup/scripts/field_test_tool.sh record-recovery
 ```
 
 Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
-commit, duration, and pass criteria. The current `1.39160 x 0.97000 m`
-planning rectangle is a provisional remeasurement candidate, not a field-pass
-dimension. Until the complete robot envelope is surveyed and the service route
-is demonstrated, the contract animation must stay paired with the red
-`ROUND TRIP: NOT DEMONSTRATED` image.
+commit, duration, and pass criteria. The active planning rectangle is
+`1.49160 x 1.17000 m`; sensor housings and swept clearance still require field
+verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
+B11-B13 return geometry and full parking/charging remain field-pending.

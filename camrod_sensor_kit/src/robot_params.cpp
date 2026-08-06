@@ -36,7 +36,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   params.planning_margin = node->declare_parameter<double>(
     "robot.body_extents.planning_margin", params.planning_margin);
   // HH_260806 - Keep lateral planning clearance independently configurable
-  // while preserving the configured provisional body dimensions.
+  // while preserving the configured physical body dimensions.
   params.planning_lateral_margin = node->declare_parameter<double>(
     "robot.body_extents.planning_lateral_margin", params.planning_lateral_margin);
 

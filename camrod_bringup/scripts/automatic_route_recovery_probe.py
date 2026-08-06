@@ -32,10 +32,10 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
-# HH_260806 - Keep the runtime probe explicit about the provisional physical
+# HH_260806 - Keep the runtime probe explicit about the measured physical
 # and planning rectangles being evaluated against the live lanelet raster.
-BODY_EXTENTS = (0.65837, 0.63323, 0.43505, 0.43495)
-PLANNING_EXTENTS = (0.70837, 0.68323, 0.48505, 0.48495)
+BODY_EXTENTS = (0.70837, 0.68323, 0.53505, 0.53495)
+PLANNING_EXTENTS = (0.75837, 0.73323, 0.58505, 0.58495)
 # HH_260806 - Scan the live raster around this recorded route pose instead of
 # assuming a cached bag's cell alignment is identical to the running grid.
 STATIC_CONTACT_BASE_POSE = (

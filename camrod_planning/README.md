@@ -2,8 +2,8 @@
 
 <!-- HH_260805 - Record the scoped Nav2 planner/controller production topology
 and retain standalone field-isolation fallbacks. -->
-<!-- HH_260806 - Synchronize the provisional planning polygon and distinguish
-its recoverable margin from the control-owned physical-body hard stop. -->
+<!-- HH_260806 - Synchronize the fabrication-inclusive planning polygon and
+the B1-B10 turnaround / B11-B13 roadside service policy. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -14,9 +14,9 @@ planners/controllers, and semantic mission state.
 
 ![Live B6 global and local paths](../docs/assets/module-guides/planning/runtime-b6-global-local-path-20260804.png)
 
-`SIM RUNTIME CAPTURE`: live B6 goal, LaneletRoute global path, local path, and
-robot pose. The route is generated correctly but later fails closed at the
-unsurveyed service-access boundary.
+`SIM RUNTIME CAPTURE`: historical 2026-08-04 B6 goal, LaneletRoute global path,
+local path, and robot pose. Current map-v16 campsite sequencing evidence is
+shown separately below.
 
 ## At A Glance
 
@@ -39,9 +39,9 @@ unsurveyed service-access boundary.
 | Controller frequency | `15 Hz` |
 | RPP desired speed | `0.4 m/s` |
 | RPP lookahead | `1.1..2.0 m` |
-| RPP reverse / rotate-to-heading | disabled / disabled |
-| Provisional body boundary | `1.29160 x 0.87000 m` |
-| Nav2 planning footprint | `1.39160 x 0.97000 m` (body plus `0.05 m` each side) |
+| RPP reverse / rotate-to-heading | disabled / enabled at `2 deg` |
+| Physical body boundary | `1.39160 x 1.07000 m` |
+| Nav2 planning footprint | `1.49160 x 1.17000 m` (body plus `0.05 m` each side) |
 | Obstacle fallback | `SmacLattice` only on a proven `>= 2.50 m` lane, then restore `LaneletRoute` |
 
 Normal missions construct only policy-reachable planner/controller instances.
@@ -123,7 +123,8 @@ in explicit `OPERATOR_STOPPED` state.
 |---|---|
 | Drop-zone wait | none |
 | Route to campsite | Nav2/RPP |
-| Site entry, turnaround, unload wait, site exit | campsite maneuver controller |
+| B1-B10 site entry, zero-turn, unload wait, site exit | campsite maneuver controller |
+| B11-B13 roadside arrival and wait | campsite maneuver controller; return geometry field-pending |
 | Return route | Nav2/RPP |
 | Drop-zone alignment and station exit | drop-zone maneuver controller |
 | Final parking | selected reverse or AprilTag controller |
@@ -137,20 +138,24 @@ in explicit `OPERATOR_STOPPED` state.
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
-| Active map-v15 source | Synchronized SHA `d7b730...213f`; 55 lanelets/14 areas/1658 nodes; LaneletRoute tests pass |
-| Current-map controlled route | `10.0403 m`, goal error `0.2932 m`, no route hold, final command zero |
-| Current-map margin-only placement | planning max cost `100`, body max `70`; bounded `CRAB_RIGHT` cleared `0.133 m` |
-| Current-map physical-body placement | body max cost `100`; no recovery candidate or owner motion |
-| Full campsite round trip | Not demonstrated; map boundary still blocks campsite entry |
+| Active map-v16 source | Synchronized SHA `fd9c18...d0cf`; 55 lanelets/14 areas/1658 nodes; LaneletRoute contracts pass |
+| Reduced-boundary route evidence | Historical `1.29160 x 0.87000 m` run: `10.0403 m`, goal error `0.2932 m`, bounded margin recovery, physical hard stop |
+| B1-B10 site maneuver round trip | `CRAB_IN -> ROTATE_180 -> ... -> CRAB_OUT -> DONE`; all 10/10 PASS |
+| B11-B13 roadside arrival | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; all PASS with no zero-turn and no RETURN command |
+| B11-B13 return | Physical-body lanelet stop observed during the prior on-lane alignment; field geometry decision pending |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
 for the compared route. It does not prove every lane width or physical vehicle
 behavior.
 
-![Current provisional boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+![Current campsite sequencing policy](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+
+![Current campsite phase order](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
 
 Nav2 uses the larger planning polygon for both local and global footprint
-checks. `camrod_control` independently samples the smaller physical body first:
+checks. `camrod_control` independently samples the physical body first:
 body contact cannot be reclassified as a recoverable planning-margin contact.
 
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)

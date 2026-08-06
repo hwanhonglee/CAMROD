@@ -125,6 +125,13 @@ void MotionCostStop::setManeuverPhases(
   campsite_phase_ = normalizeLabel(std::move(campsite_phase));
 }
 
+void MotionCostStop::clearTransientHold()
+{
+  if (!latch_active_) {
+    hold_until_sec_ = 0.0;
+  }
+}
+
 MotionCostStopDecision MotionCostStop::evaluate(
   const avg_msgs::msg::AvgTwist & command, const double now_sec)
 {
@@ -427,6 +434,13 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
     std::abs(command.linear.x) > config_.min_translation_mps ||
     std::abs(command.linear.y) > config_.min_translation_mps ||
     std::abs(command.angular.z) > config_.min_translation_mps;
+
+  // HH_260806 - The road lanelet boundary does not describe the drivable
+  // campsite service area. Bypass it only while the dedicated campsite state
+  // machine owns motion; dynamic-source checks still run in evaluate().
+  if (any_motion && campsiteLaneletBypassActive()) {
+    return {};
+  }
 
   // HH_260806 - The physical rectangle is authoritative before the larger
   // planning margin. This reason is intentionally not eligible for crab,
@@ -1430,6 +1444,11 @@ bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command)
   const bool pure_reverse = config_.static_reverse_bypass &&
     command.linear.x < -reverse_min && std::abs(command.linear.y) <= lateral_min;
   return pure_lateral || pure_reverse;
+}
+
+bool MotionCostStop::campsiteLaneletBypassActive() const
+{
+  return config_.campsite_lanelet_bypass_phases.count(campsite_phase_) > 0U;
 }
 
 bool MotionCostStop::laneletStaticBypassActive(

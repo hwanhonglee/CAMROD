@@ -1,0 +1,236 @@
+{
+  "map_revision": 16,
+  "policy": {
+    "turnaround_sites": [
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "B6",
+      "B7",
+      "B8",
+      "B9",
+      "B10"
+    ],
+    "roadside_arrival_sites": [
+      "B11",
+      "B12",
+      "B13"
+    ],
+    "roadside_max_lateral_offset_m": 0.6,
+    "roadside_return_policy": "field_pending"
+  },
+  "runtime": {
+    "B1": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 5.22
+    },
+    "B2": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 2.16
+    },
+    "B3": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 5.26
+    },
+    "B4": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 1.95
+    },
+    "B5": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 5.25
+    },
+    "B6": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 1.91
+    },
+    "B7": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 5.23
+    },
+    "B8": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 1.79
+    },
+    "B9": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 5.31
+    },
+    "B10": {
+      "pass": true,
+      "service_mode": "turnaround",
+      "arrival_only": false,
+      "phase_sequence": [
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "rotate_180": true,
+      "max_final_cmd": 0.175,
+      "site_distance_m": 1.8
+    },
+    "B11": {
+      "pass": true,
+      "service_mode": "roadside_stop",
+      "arrival_only": true,
+      "phase_sequence": [
+        "CRAB_IN",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN"
+      ],
+      "rotate_180": false,
+      "max_final_cmd": 0.12,
+      "site_distance_m": 5.35
+    },
+    "B12": {
+      "pass": true,
+      "service_mode": "roadside_stop",
+      "arrival_only": true,
+      "phase_sequence": [
+        "CRAB_IN",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN"
+      ],
+      "rotate_180": false,
+      "max_final_cmd": 0.12,
+      "site_distance_m": 1.57
+    },
+    "B13": {
+      "pass": true,
+      "service_mode": "roadside_stop",
+      "arrival_only": true,
+      "phase_sequence": [
+        "CRAB_IN",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN"
+      ],
+      "rotate_180": false,
+      "max_final_cmd": 0.12,
+      "site_distance_m": 8.32
+    }
+  },
+  "config_contract_pass": true
+}

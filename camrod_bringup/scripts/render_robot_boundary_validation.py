@@ -130,9 +130,9 @@ def render(results, output):
     geometry_axis.set_title("Two independent safety envelopes", loc="left", fontweight="bold")
     geometry_axis.set_aspect("equal")
     planning = Rectangle(
-        (-0.68323, -0.48495),
-        1.39160,
-        0.97000,
+        (-0.73323, -0.58495),
+        1.49160,
+        1.17000,
         facecolor="#f4c864",
         edgecolor="#aa7000",
         linewidth=2.5,
@@ -140,9 +140,9 @@ def render(results, output):
         label="planning boundary",
     )
     body = Rectangle(
-        (-0.63323, -0.43495),
-        1.29160,
-        0.87000,
+        (-0.68323, -0.53495),
+        1.39160,
+        1.07000,
         facecolor="#55bfd0",
         edgecolor="#137587",
         linewidth=2.5,
@@ -160,23 +160,23 @@ def render(results, output):
         color="#1f2f36",
     )
     geometry_axis.text(
-        -0.66,
-        0.57,
-        "Planning: 1.39160 x 0.97000 m\n5 cm margin, recoverable only after projection",
+        -0.72,
+        0.67,
+        "Planning: 1.49160 x 1.17000 m\n5 cm margin, recoverable only after projection",
         color="#805400",
         fontsize=11,
         fontweight="bold",
     )
     geometry_axis.text(
-        -0.61,
         -0.66,
-        "Physical: 1.29160 x 0.87000 m\ncontact => hard stop, no recovery command",
+        -0.76,
+        "Physical: 1.39160 x 1.07000 m\ncontact => hard stop, no recovery command",
         color="#0d6575",
         fontsize=11,
         fontweight="bold",
     )
-    geometry_axis.set_xlim(-0.80, 0.82)
-    geometry_axis.set_ylim(-0.74, 0.74)
+    geometry_axis.set_xlim(-0.85, 0.87)
+    geometry_axis.set_ylim(-0.84, 0.84)
     geometry_axis.set_xticks([])
     geometry_axis.set_yticks([])
     for spine in geometry_axis.spines.values():

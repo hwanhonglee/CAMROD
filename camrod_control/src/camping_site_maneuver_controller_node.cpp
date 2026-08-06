@@ -184,6 +184,10 @@ public:
     default_lateral_offset_m_ = declare_parameter<double>("default_lateral_offset_m", 1.2);
     minimum_lateral_offset_m_ = declare_parameter<double>("min_lateral_offset_m", 0.2);
     maximum_lateral_offset_m_ = declare_parameter<double>("max_lateral_offset_m", 7.0);
+    // HH_260806 - B11-B13 are roadside service points, not drive-in bays.
+    // Keep their lateral motion shallow even when the map goal is farther away.
+    roadside_maximum_lateral_offset_m_ = std::abs(
+      declare_parameter<double>("roadside_max_lateral_offset_m", 0.60));
     default_lateral_direction_ =
       declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ = std::abs(declare_parameter<double>("crab_speed_mps", 0.18));
@@ -872,9 +876,9 @@ private:
     // HH_260721 - A direct/manual goal remains a normal turnaround unless a mission key selects otherwise.
     active_service_mode_ = serviceModeForKey(site_goal_key_);
     const auto motion = resolveLateralMotion();
-    const double lateral_offset = std::get<0>(motion);
+    const double requested_lateral_offset = std::get<0>(motion);
     const double direction = std::get<1>(motion);
-    const std::string source_name = std::get<2>(motion);
+    std::string source_name = std::get<2>(motion);
     const double forward_residual = std::get<3>(motion);
     if (source.rfind("planning_state:", 0) == 0 &&
       require_goal_pair_for_auto_start_ && source_name != "goal_pair")
@@ -886,6 +890,13 @@ private:
       active_service_mode_ != CampsiteServiceMode::kRoadsideStop)
     {
       return startReverseEntrySequence(source, source_name, forward_residual);
+    }
+    double lateral_offset = requested_lateral_offset;
+    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+      lateral_offset = std::min(lateral_offset, roadside_maximum_lateral_offset_m_);
+      if (lateral_offset + 1.0e-6 < requested_lateral_offset) {
+        source_name += "_roadside_cap";
+      }
     }
     if (lateral_offset <= 0.0 || crab_speed_mps_ <= 0.0) {
       setError("invalid lateral motion parameters");
@@ -924,6 +935,7 @@ private:
       "m direction=" + signedFixed(direction) + " rotate=" + rotate_direction_label_ +
       " service_mode=" + serviceModeName(active_service_mode_) +
       " source=" + source_name + " forward=" + fixed(forward_residual) +
+      "m requested_offset=" + fixed(requested_lateral_offset) +
       "m timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
       " duration=" + fixed(crab_duration_s_, 1) + "s");
     return {true, "site maneuver started"};
@@ -1558,6 +1570,7 @@ private:
   double default_lateral_offset_m_{1.2};
   double minimum_lateral_offset_m_{0.2};
   double maximum_lateral_offset_m_{7.0};
+  double roadside_maximum_lateral_offset_m_{0.60};
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
   double entry_position_tolerance_m_{0.15};

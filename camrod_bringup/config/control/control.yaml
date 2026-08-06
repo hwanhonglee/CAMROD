@@ -43,6 +43,8 @@
     default_lateral_offset_m: 1.2
     min_lateral_offset_m: 0.2
     max_lateral_offset_m: 7.0
+    # HH_260806 - B11-B13 stop only 0.60 m off the lane and never enter for a zero-turn.
+    roadside_max_lateral_offset_m: 0.60
     route_goal_reached_distance_m: 0.3
     adopt_site_arrival_distance_m: 3.0
     goal_pair_max_age_s: 0.0

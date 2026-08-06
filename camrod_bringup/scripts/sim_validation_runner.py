@@ -114,6 +114,11 @@ class SimValidationRunner(Node):
         self.camping_wait_drop_zone = bool(
             self.declare_parameter("camping_wait_drop_zone", False).value
         )
+        # HH_260806 - Validate constrained roadside arrival without issuing an
+        # unresolved return/turn command in a narrow real-world service area.
+        self.camping_stop_at_wait_return = bool(
+            self.declare_parameter("camping_stop_at_wait_return", False).value
+        )
         # HH_260721 - Optionally emulate normalized CAN/BMS feedback for reverse parking.
         self.simulate_platform_status = bool(
             self.declare_parameter("simulate_platform_status", False).value
@@ -164,6 +169,11 @@ class SimValidationRunner(Node):
         )
         self.run_obstacle_replan = bool(
             self.declare_parameter("run_obstacle_replan", False).value
+        )
+        # HH_260806 - Keep an absent LiDAR cost grid valid only when the launch
+        # contract explicitly disables that optional component.
+        self.expect_lidar_cost_grid = bool(
+            self.declare_parameter("expect_lidar_cost_grid", True).value
         )
         self.obstacle_replan_timeout_s = float(
             self.declare_parameter("obstacle_replan_timeout_s", 35.0).value
@@ -704,10 +714,11 @@ class SimValidationRunner(Node):
             "/sensing/imu/data": 7.0,
             "/sensing/lidar/points_filtered": 7.0,
             "/localization/input/wheel_odometry": 7.0,
-            "/sensing/cost_grid/lidar": 5.0,
             "/sensing/cost_grid/radar": 5.0,
             "/planning/cost_grid/inflation": 3.0,
         }
+        if self.expect_lidar_cost_grid:
+            expected["/sensing/cost_grid/lidar"] = 5.0
         bad = []
         metrics: dict[str, float] = {}
         for topic, min_hz in expected.items():
@@ -719,7 +730,15 @@ class SimValidationRunner(Node):
             CheckResult(
                 "baseline_hz",
                 not bad,
-                "ok" if not bad else ", ".join(bad),
+                (
+                    "ok"
+                    if not bad and self.expect_lidar_cost_grid
+                    else (
+                        "ok (optional lidar cost grid disabled)"
+                        if not bad
+                        else ", ".join(bad)
+                    )
+                ),
                 metrics,
             )
         )
@@ -1335,6 +1354,8 @@ class SimValidationRunner(Node):
         state_labels: set[str] = set()
         scenario_labels: set[str] = set()
         site_status_messages: set[str] = set()
+        # HH_260806 - Retain transition order for auditable campsite sequence assets.
+        site_phase_sequence: list[str] = []
         drop_maneuver_status_messages: set[str] = set()
         reverse_parking_controller_status_messages: set[str] = set()
         while rclpy.ok() and (time.monotonic() - start) < self.camping_timeout_s:
@@ -1367,6 +1388,17 @@ class SimValidationRunner(Node):
                 scenario_labels.add(scenario_label)
             if site_msg:
                 site_status_messages.add(site_msg)
+            site_phase = (
+                str(self.latest_site_status.operating_state).strip()
+                if self.latest_site_status
+                else ""
+            )
+            if (
+                site_phase
+                and site_phase != "IDLE"
+                and (not site_phase_sequence or site_phase_sequence[-1] != site_phase)
+            ):
+                site_phase_sequence.append(site_phase)
             if drop_maneuver_msg:
                 drop_maneuver_status_messages.add(drop_maneuver_msg)
             if reverse_parking_controller_msg:
@@ -1399,6 +1431,11 @@ class SimValidationRunner(Node):
                 and service_state_name == "WAITING_FOR_RETURN_REQUEST"
             ):
                 # HH_260721 - Do not leave the site before the public return-wait state is observable.
+                seen_service_waiting_for_return_request = True
+                if self.camping_stop_at_wait_return:
+                    # HH_260806 - B11-B13 return geometry remains field-pending;
+                    # end the arrival-only probe before any departure motion.
+                    break
                 if low_battery_finish_return_enabled:
                     if not low_battery_finish_wait_seen:
                         low_battery_finish_wait_seen = True
@@ -1674,22 +1711,38 @@ class SimValidationRunner(Node):
         route_reached = bool(reached_nav or seen_goal_reached_state)
         # HH_260721 - Roadside sites rotate on-lane after exit;
         # regular sites retain their in-site turn.
+        # HH_260806 - Arrival-only roadside validation deliberately ends before
+        # the unresolved lane-return rotation is requested.
         service_mode_ok = (
             not seen_rotate_180
             and not seen_align_retrace_yaw
-            and seen_align_return_route_yaw
+            and (
+                not seen_align_return_route_yaw
+                if self.camping_stop_at_wait_return
+                else seen_align_return_route_yaw
+            )
             if camping_service_mode == "roadside_stop"
             else seen_rotate_180
             and seen_align_retrace_yaw
             and not seen_align_return_route_yaw
         )
+        site_departure_ok = (
+            seen_service_waiting_for_return_request
+            if self.camping_stop_at_wait_return
+            else seen_crab_out and seen_done
+        )
+        # HH_260806 - The arrival-only probe intentionally seeds the robot at
+        # the snapped route endpoint. Nav2 may publish only its terminal local
+        # path there, so require goal-reached plus either path surface.
+        route_path_ok = global_new or (
+            self.camping_stop_at_wait_return and local_new
+        )
         site_ok = bool(
-            global_new
+            route_path_ok
             and cmd_max > 0.03
             and route_reached
             and seen_site_phase
-            and seen_crab_out
-            and seen_done
+            and site_departure_ok
             and service_mode_ok
             and seen_service_waiting_for_return_request
         )
@@ -1825,6 +1878,7 @@ class SimValidationRunner(Node):
                     "site_phase": seen_site_phase,
                     "service_mode": camping_service_mode,
                     "service_mode_ok": service_mode_ok,
+                    "arrival_only": self.camping_stop_at_wait_return,
                     "rotate_180": seen_rotate_180,
                     "align_retrace_yaw": seen_align_retrace_yaw,
                     "align_return_route_yaw": seen_align_return_route_yaw,
@@ -1916,6 +1970,7 @@ class SimValidationRunner(Node):
                     "state_labels_seen": ",".join(sorted(state_labels)),
                     "scenario_labels_seen": ",".join(sorted(scenario_labels)),
                     "site_statuses_seen": " | ".join(sorted(site_status_messages)),
+                    "site_phase_sequence": " -> ".join(site_phase_sequence),
                     "drop_maneuver_statuses_seen": " | ".join(
                         sorted(drop_maneuver_status_messages)
                     ),

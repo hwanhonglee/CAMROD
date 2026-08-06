@@ -322,7 +322,7 @@ bringup:
     # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
     cmd_vel_gate_cost_lookahead_m: 2.0
     # HH_260806 - This legacy dynamic-obstacle corridor remains independent
-    # from the provisional lanelet body and planning envelopes.
+    # from the physical lanelet body and planning envelopes.
     cmd_vel_gate_cost_width_m: 1.27
     cmd_vel_gate_cost_hold_s: 1.0
     # HH_260703 - Keep dynamic obstacle stops latched until perception/radar report
@@ -357,19 +357,19 @@ bringup:
     # HH_260806 - Physical-body cost 100 is non-recoverable; planning margin remains recoverable.
     cmd_vel_gate_lanelet_safety_body_hard_stop_enable: true
     cmd_vel_gate_lanelet_safety_body_hard_stop_threshold: 100
-    cmd_vel_gate_lanelet_safety_body_front_m: 0.65837
-    cmd_vel_gate_lanelet_safety_body_rear_m: 0.63323
-    cmd_vel_gate_lanelet_safety_body_left_m: 0.43505
-    cmd_vel_gate_lanelet_safety_body_right_m: 0.43495
+    cmd_vel_gate_lanelet_safety_body_front_m: 0.70837
+    cmd_vel_gate_lanelet_safety_body_rear_m: 0.68323
+    cmd_vel_gate_lanelet_safety_body_left_m: 0.53505
+    cmd_vel_gate_lanelet_safety_body_right_m: 0.53495
     cmd_vel_gate_lanelet_safety_footprint_enable: true
     # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
     cmd_vel_gate_lanelet_safety_footprint_threshold: 100
     cmd_vel_gate_robot_planning_boundary_topic: /platform/robot/planning_boundary
-    # HH_260806 - Provisional reduced body plus retained 0.05 m planning clearance.
-    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.70837
-    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.68323
-    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.48505
-    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.48495
+    # HH_260806 - Fabrication-inclusive body plus retained 0.05 m planning clearance.
+    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.75837
+    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.73323
+    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.58505
+    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.58495
     cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
     cmd_vel_gate_lanelet_safety_width_m: 0.8
     cmd_vel_gate_lanelet_safety_stop_on_unknown: true
@@ -402,6 +402,8 @@ bringup:
     cmd_vel_gate_camping_site_maneuver_controller_status_topic: /control/camping_site_maneuver_controller/status
     # HH_260721 - Match the campsite controller's explicit entry-lanelet retrace phase.
     cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT
+    # HH_260806 - Restrict off-road lanelet bypass to the dedicated campsite state machine.
+    cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT
 
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
@@ -493,6 +495,11 @@ bringup:
     # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
     cmd_vel_gate_input_timeout_s: 0.35
     cmd_vel_gate_zero_publish_rate_hz: 10.0
+    # HH_260806 - Keep the vehicle stationary while maneuver/Nav2 ownership changes.
+    cmd_vel_gate_maneuver_command_release_hold_s: 0.5
+    cmd_vel_gate_navigation_rotation_settle_s: 0.5
+    cmd_vel_gate_navigation_translation_epsilon_mps: 0.01
+    cmd_vel_gate_navigation_rotation_min_radps: 0.05
 
     # HH_260720 - CAN/DBC feedback closes the command gate on stale status, faults, and charging.
     cmd_vel_gate_status_topic: /control/cmd_vel_safety_gate/status

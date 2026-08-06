@@ -10,19 +10,18 @@
       # robot_base_link remains the rear-axle center for compatibility.
       center_offset_from_rear_axle: 0.443  # wheelbase / 2; rear axle -> robot center [m].
       # HH_260806 - Keep the legacy kinematic estimate independent from the
-      # provisional collision envelope until wheel-center track is remeasured.
+      # measured fabrication-inclusive collision envelope until track is remeasured.
       track_width: 1.07       # Provisional wheel-center/kinematic estimate [m].
-      length: 1.29160         # Provisional boundary: previous 1.49160 m minus 0.10 m at front and rear.
-      width: 0.87000          # Provisional boundary: previous 1.07000 m minus 0.10 m at left and right.
+      length: 1.39160         # Maximum measured envelope including upper fabrication [m].
+      width: 1.07000          # Maximum measured envelope including upper fabrication [m].
       height: 1.09463         # Physical vehicle body height [m].
-      # HH_260806 - Provisional remeasurement candidate. The previous surveyed
-      # 0.75837/0.73323/0.53505/0.53495 m extents are archived in
-      # docs/assets/test_result/robot-boundary-adjustment-20260806/result.json.
+      # HH_260806 - Preserve the surveyed center asymmetry while matching the
+      # confirmed 1.39160 x 1.07000 m fabrication-inclusive envelope.
       body_extents:
-        front: 0.65837        # Previous 0.75837 m minus 0.10 m [m].
-        rear: 0.63323         # Previous 0.73323 m minus 0.10 m [m].
-        left: 0.43505         # Previous 0.53505 m minus 0.10 m [m].
-        right: 0.43495        # Previous 0.53495 m minus 0.10 m [m].
+        front: 0.70837        # robot_center_link to maximum front envelope [m].
+        rear: 0.68323         # robot_center_link to maximum rear envelope [m].
+        left: 0.53505         # robot_center_link to maximum left envelope [m].
+        right: 0.53495        # robot_center_link to maximum right envelope [m].
         top_z: 0.94188        # Unchanged top Z from robot_center_link [m].
         bottom_z: -0.15275    # Unchanged bottom Z from robot_center_link [m].
         # HH_260805 - Keep one 0.05 m planning clearance around all four body sides.
@@ -63,10 +62,9 @@
     # 4. GNSS ANTENNA MOUNT POSE
     # =========================================================================
     gnss:
-      # HH_260805 - Treat the GNSS position solution as robot-center until the
-      # physical antenna lever arm is surveyed; pose_verified remains false.
-      x: 0.0                  # Temporary robot_center_link assumption [m].
-      y: 0.0                  # GNSS antenna Y offset from sensor_kit_base_link [m].
+      # HH_260806 - NavSatFix uses the left antenna, measured 0.45 m left of center.
+      x: 0.0                  # Longitudinal offset remains unchanged [m].
+      y: 0.45                 # Left antenna offset from robot_center_link (+Y) [m].
       z: 0.0                  # GNSS antenna Z offset from sensor_kit_base_link [m].
       roll: 0.0               # GNSS antenna roll offset [deg].
       pitch: 0.0              # GNSS antenna pitch offset [deg].

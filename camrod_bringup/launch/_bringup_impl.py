@@ -944,7 +944,7 @@ def generate_launch_description():
         (
             'control_cmd_vel_gate_cost_width_m',
             # HH_260806 - Keep the 1.27 m dynamic-obstacle corridor independent
-            # from the provisional lanelet body and planning envelopes.
+            # from the physical lanelet body and planning envelopes.
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_width_m', 1.27),
             'Corridor width for front dynamic cost-stop',
         ),
@@ -1053,22 +1053,22 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_body_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_front_m', 0.65837),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_front_m', 0.70837),
             'Physical body front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_body_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_rear_m', 0.63323),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_rear_m', 0.68323),
             'Physical body rear extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_body_left_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_left_m', 0.43505),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_left_m', 0.53505),
             'Physical body left extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_body_right_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_right_m', 0.43495),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_right_m', 0.53495),
             'Physical body right extent (m)',
         ),
         (
@@ -1092,22 +1092,22 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.70837),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.75837),
             'Fallback planning footprint front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.68323),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.73323),
             'Fallback planning footprint rear extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_left_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.48505),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.58505),
             'Fallback planning footprint left extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_right_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.48495),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.58495),
             'Fallback planning footprint right extent (m)',
         ),
         (
@@ -1212,6 +1212,16 @@ def generate_launch_description():
                 'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT',
             ),
             'Site maneuver phases allowed to cross static lanelet cost',
+        ),
+        (
+            'control_cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases',
+                # HH_260806 - Only explicit site phases may leave the road lanelet.
+                'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT',
+            ),
+            'Site maneuver phases allowed outside road lanelet geometry',
         ),
         # Speed-dependent front lookahead.
         (
@@ -1469,6 +1479,27 @@ def generate_launch_description():
             'control_cmd_vel_gate_zero_publish_rate_hz',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_zero_publish_rate_hz', 10.0),
             'Zero Twist publish rate while raw planning cmd_vel input is stale',
+        ),
+        # HH_260806 - Keep command-source handoff stationary after rotation and crab.
+        (
+            'control_cmd_vel_gate_maneuver_command_release_hold_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_maneuver_command_release_hold_s', 0.5),
+            'Stationary hold after maneuver command ownership ends',
+        ),
+        (
+            'control_cmd_vel_gate_navigation_rotation_settle_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_rotation_settle_s', 0.5),
+            'Stationary interval between Nav2 pure rotation and translation',
+        ),
+        (
+            'control_cmd_vel_gate_navigation_translation_epsilon_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_translation_epsilon_mps', 0.01),
+            'Translation epsilon used by command-source arbitration',
+        ),
+        (
+            'control_cmd_vel_gate_navigation_rotation_min_radps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_rotation_min_radps', 0.05),
+            'Minimum angular velocity classified as Nav2 pure rotation',
         ),
 
         (

@@ -181,6 +181,11 @@
     # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
     gnss_failure_after_s: -1.0
     gnss_recovery_after_s: -1.0
+    # HH_260806 - Match the real left-antenna source and production yaw calibration.
+    # The adapter rotates/subtracts this lever arm to recover robot center.
+    gnss_antenna_offset_x_m: 0.0
+    gnss_antenna_offset_y_m: 0.45
+    gnss_heading_raw_yaw_bias_deg: 85.0
 
     # =========================================================================
     # 12. NAVIGATION MODE AND INITIAL POSE

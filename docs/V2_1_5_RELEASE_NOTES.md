@@ -4,6 +4,10 @@
 unverified GNSS position contract with robot_center_link. -->
 <!-- HH_260806 - Add the provisional boundary reduction and enforce an
 unrecoverable physical-body contact independently of the planning margin. -->
+<!-- HH_260806 - Supersede the temporary GNSS center assumption with the
+measured left-antenna lever arm and heading-aware center correction. -->
+<!-- HH_260806 - Finalize map-v16 campsite sequencing and replace the reduced
+body candidate with the fabrication-inclusive measured envelope. -->
 
 Release date: 2026-08-06 (Asia/Seoul)
 
@@ -14,25 +18,26 @@ Previous baseline: `v2.1.4` / `f83975d5e`
 v2.1.5 closes the post-v2.1.4 runtime work as one reviewable baseline. It
 eliminates the reproduced AMD64 checker/Nav2 component shutdown faults,
 prevents full-graph DDS shared-memory exhaustion by scoping SHM to physical
-LiDAR only, and makes the existing GNSS estimator assumption explicit at
-`robot_center_link`. It also records a provisional 0.10 m reduction on every
-horizontal body side and separates physical-body contact from recoverable
-planning-margin contact in the final command gate.
+LiDAR only, and converts the measured left-GNSS antenna solution to
+`robot_center_link`. It separates physical-body contact from recoverable
+planning-margin contact, restores the fabrication-inclusive measured body as
+the active hard-stop envelope, and serializes campsite/Nav2 command ownership.
 
-This release does not claim a newly surveyed antenna, sensor layout, or body
-envelope. GNSS remains unverified, sensor mount coordinates are unchanged, and
-the reduced body dimensions are a simulation candidate only. Jetson/physical
-mission acceptance remains in `TODOLIST.txt`.
+Only the GNSS lateral offset is measured. Rover X/Z, moving-base XYZ, baseline
+direction, receiver position reference, moving residuals, sensor housings, and
+four-side swept clearance remain unverified. Jetson/physical mission acceptance
+remains in `TODOLIST.txt`.
 
 ## Active Contract
 
 | Item | v2.1.5 value | Meaning |
 |---|---:|---|
 | Navigation base | `robot_center_link` | Axle midpoint for localization, planning, control, and platform |
-| GNSS TF/position assumption | `(0, 0, 0)` from robot center | Matches the estimator's direct NavSatFix-to-center use; not a survey |
-| GNSS verification | `pose_verified=false` | Requires both dual-GNSS mounts and receiver reference measurement |
-| Provisional physical body | `1.29160 x 0.87000 m` | Previous front/rear/left/right extents minus `0.10 m`; field survey required |
-| Planning boundary | `1.39160 x 0.97000 m` | Physical body plus `0.05 m` on every side |
+| GNSS physical TF | left antenna `(0,+0.45,0) m` | ROS body `+Y` is left; X/Z retain current values |
+| GNSS estimator output | heading-corrected robot center | `p_center = p_fix - R(yaw)[0,0.45]` |
+| GNSS verification | `pose_verified=false` | Remaining dual-GNSS geometry and moving residuals require field acceptance |
+| Physical body | `1.39160 x 1.07000 m` | Fabrication-inclusive measured total used by the hard-stop layer |
+| Planning boundary | `1.49160 x 1.17000 m` | Physical body plus `0.05 m` on every side |
 | Physical-body map contact | `lanelet_physical_body_cost` | Hard stop; every automatic recovery candidate is rejected |
 | Planning-margin contact | `lanelet_footprint_cost` | Ordinary output zero; projected bounded escape may be admitted |
 | Checker topology | `24` checkers in `4` serialized containers | Standalone executables remain field fallbacks |
@@ -41,13 +46,15 @@ mission acceptance remains in `TODOLIST.txt`.
 | LiDAR cost grid | default `OFF` | Node/topic/checker requirement activate together |
 | DDS shared memory | default `OFF`, physical LiDAR only | Never exported to simulation or the full ROS graph |
 | Operator renderer | Chromium | WebKit remains the measured lighter fallback |
-| Active map | version `15`, SHA `d7b730...213f` | User-authored active/copy OSM pair remains byte-identical |
+| Campsite policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | Constrained sites stop without an on-site zero-turn |
+| Command handoff | `0.5 s` zero hold | Campsite phases own final cmd_vel; Nav2 translation cannot overlap a maneuver/rotation handoff |
+| Active map | version `16`, SHA `fd9c18...d0cf` | User-edited active/copy OSM pair remains byte-identical |
 
-## Provisional Boundary And Runtime Policy
+## Body Boundary History And Runtime Policy
 
 The prior body was `1.49160 x 1.07000 m`; the prior planning rectangle was
 `1.59160 x 1.17000 m`. v2.1.5 preserves those values and their bag hashes in
-the test record, while deploying the user's provisional candidate below:
+the test record. The initially tagged reduced candidate was:
 
 | Side | Body extent | Planning extent |
 |---|---:|---:|
@@ -72,40 +79,87 @@ selector; body contact has no automatic escape path.
 | Physical-body contact | PASS: no candidate, no owner motion, output `0.0 m/s` |
 
 These are AMD64 simulation policy results, not evidence that the reduced
-rectangle contains the real wheels, sensors, brackets, cables, or payload.
+rectangle contains the real wheels, sensors, brackets, cables, or payload. The
+candidate is now historical. The active configuration uses:
 
-## GNSS Center Alignment
+| Side | Physical body | Planning boundary |
+|---|---:|---:|
+| Front | `0.70837 m` | `0.75837 m` |
+| Rear | `0.68323 m` | `0.73323 m` |
+| Left | `0.53505 m` | `0.58505 m` |
+| Right | `0.53495 m` | `0.58495 m` |
+
+The active totals are `1.39160 x 1.07000 m` body and
+`1.49160 x 1.17000 m` planning. The body/outer-margin decision policy is
+unchanged; current four-side and swept-clearance field acceptance remains open.
+
+## Campsite Sequencing
+
+![Map-v16 campsite validation](assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+
+![Turnaround and roadside phase order](assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+
+- B1-B10 are explicitly `turnaround`. All ten full site-maneuver runs observed
+  `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN ->
+  ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; map-derived lateral entry distances
+  ranged from `1.79 m` to `5.31 m`.
+- B11-B13 are explicitly `roadside_stop`. Their lateral move is capped at
+  `0.60 m`; all three arrival-only runs observed
+  `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN` with no zero-turn and no RETURN.
+- While a campsite/drop-zone phase owns motion, Nav2 commands cannot overwrite
+  its crab or rotation. A `0.5 s` stationary handoff precedes Nav2 resumption;
+  pure Nav2 rotation also settles for `0.5 s` before translation.
+- Static road-lanelet cost is bypassed only in explicit campsite motion phases.
+  Dynamic LiDAR/radar stops remain active.
+- The prior B11 on-lane return alignment encountered
+  `lanelet_physical_body_cost` and remained stopped. Safe B11-B13 return
+  geometry is therefore field-pending, not released as a completed scenario.
+
+Structured reports and reproduction commands are in
+[`camping-site-sequencing-20260806`](assets/test_result/camping-site-sequencing-20260806/README.md).
+
+## GNSS Left-Antenna Correction
 
 Before v2.1.5, `gnss_link` used `x=-0.443 m`. That value was only the old
 rear-axle `0.0 m` placeholder converted to the axle-midpoint coordinate system;
 it was not measured on the robot.
 
-The localization input adapter converts NavSatFix directly into a map pose and
-publishes the selected base as `robot_center_link`. It does not apply an
-antenna lever-arm transform. Keeping `gnss_link=-0.443 m` therefore made TF and
-diagnostic metadata disagree with the estimator's center-position assumption.
+The initially tagged v2.1.5 contract temporarily placed GNSS at `(0,0,0)` to
+remove that mismatch. The physical clarification now identifies NavSatFix as
+the left antenna, `0.45 m` from center. TF alone is therefore insufficient:
+the position itself must be corrected with vehicle heading.
 
-v2.1.5 changes only the GNSS assumption:
+| Source | Converted placeholder | Initial center assumption | Current correction |
+|---|---:|---:|---:|
+| Package/bringup TF | `(-0.443,0,0)` | `(0,0,0)` | `(0,+0.45,0)` |
+| Xacro fallback | `(-0.443,0,0)` | `(0,0,0)` | `(0,+0.45,0)` |
+| Default/sim diagnostic mount | `-0.44300,0,0` | `0,0,0` | `0,+0.45000,0` |
+| Localization position | direct NavSatFix | direct NavSatFix | subtract heading-rotated lever arm |
+| Verification flag | `false` | `false` | `false` |
 
-| Source | Before | v2.1.5 |
-|---|---:|---:|
-| Package `robot_params.yaml` | `(-0.443, 0, 0)` | `(0, 0, 0)` |
-| Bringup mirror | `(-0.443, 0, 0)` | `(0, 0, 0)` |
-| Xacro missing-config fallback | `(-0.443, 0, 0)` | `(0, 0, 0)` |
-| Default/sim diagnostic metadata | `-0.44300,0,0` | `0.00000,0,0` |
-| Diagnostic location | `unverified` | `robot_center_assumed` |
-| Verification flag | `false` | `false` |
+The adapter requires a fresh usable dual-GNSS heading before applying the
+correction. Jump rejection then operates on the corrected center position.
+Simulation publishes a left-antenna NavSatFix and matching raw heading, so it
+executes the same transform instead of disabling it.
+
+The focused AMD64 ROS A/B matched 30 timestamps. The correction displacement
+was `0.450000 m`; center residual was `0.449995 m` with correction disabled and
+`0.000071 m` mean/max with production correction enabled. The test also fixed
+an existing fake WGS84 northing inverse error. This remains simulation evidence,
+not a field GNSS PASS. [Structured result](assets/test_result/gnss-lever-arm-20260806/README.md).
 
 ![Current sensor mount side view](assets/module-guides/sensor-kit/sensor-mount-side-view.png)
 
-![GNSS center assumption and sensor X ledger](assets/module-guides/sensor-kit/sensor-x-before-after.png)
+![GNSS left-antenna lever arm](assets/module-guides/sensor-kit/gnss-left-antenna-lever-arm.png)
 
-The GNSS alignment itself leaves IMU, LiDAR, camera, radar, axle, controller,
-map, and parking coordinates unchanged. The body and planning rectangles are
-changed separately by the provisional boundary work above. If field
-measurement shows the GNSS position solution is not the robot center, the
-correction must be implemented in localization together with TF; changing
-only the visualization frame is not accepted.
+![Sensor X ledger](assets/module-guides/sensor-kit/sensor-x-before-after.png)
+
+The GNSS correction itself leaves IMU, LiDAR, camera, radar, axle, controller,
+map, parking, body, and planning coordinates unchanged. A separate boundary
+update uses the confirmed base-platform
+`1.19160 x 0.87000 m` and fabrication-inclusive `1.39160 x 1.07000 m` totals
+as chassis and active-body values respectively. Lanelet map revision 16 is a
+separate user geometry change.
 
 ## Runtime And Shutdown
 
@@ -193,8 +247,8 @@ samples.
   forced-kill, UI event-loop, iceoryx capacity, or residual-process failures.
 - GNSS geometry, package/bringup mirrors, diagnostic metadata, and regenerated
   sensor-kit assets are protected by source contracts.
-- The active and named-copy OSM files remain byte-identical at SHA
-  `d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f`.
+- The active and named-copy map-v16 OSM files remain byte-identical at SHA
+  `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf`.
 - Eleven selected packages built successfully. Their fresh xUnit reports total
   `487` tests, zero errors/failures, and `17` existing lint skips. Direct UI
   pytest passed `28/28`; focused source contracts passed `126/126`; all `388`
@@ -206,26 +260,31 @@ samples.
 - A fresh full-bringup map-v15 run after the body-guard correction reached
   `[SYSTEM] OK`; normal route, margin stop, margin `CRAB_RIGHT`, and physical
   hard-stop scenarios all passed with final zero output.
-- The repository-standard `./src/colcon_build.sh` rebuilt control, bringup,
-  planning, sensor-kit, and platform. Fresh tests passed all `32/32` CTest
-  targets; aggregate xUnit records were `334`, with zero errors/failures and
-  eight planning cppcheck skips caused by the known disabled 2.7 checker.
+- A fresh isolated map-v16 full simulation reached `[SYSTEM] OK`. B1-B10
+  turnaround reports passed 10/10 and B11/B12/B13 arrival-only campsite reports passed; the optional
+  LiDAR cost-grid was explicitly OFF and no longer creates a false baseline-rate failure.
+- The repository-standard `./src/colcon_build.sh` rebuilt control, sensor-kit,
+  planning, platform, localization, system, and bringup. Fresh tests passed all
+  `49/49` CTest targets; aggregate xUnit records were `361`, with zero
+  errors/failures and 13 known planning/localization static-analysis skips.
 - Exact machine-readable build and run results are recorded in
   [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json)
   and summarized in `DONE.txt`.
 
 ## Field Work Still Required
 
-1. Measure rover and moving-base antenna XYZ from `robot_center_link`, baseline
-   length/direction, and the receiver's reported position reference.
-2. If needed, implement and validate heading-aware antenna-to-center lever-arm
-   correction before setting `pose_verified=true`.
+1. Measure rover X/Z and moving-base antenna XYZ from `robot_center_link`,
+   baseline length/direction, and the receiver's reported position reference.
+2. Validate the implemented heading-aware lever-arm correction during straight,
+   turn, and crab motion before setting `pose_verified=true`.
 3. Run Jetson production topology versus standalone resource A/B and ten clean
    mission/cancel/restart cycles.
-4. Measure the complete body/wheel/sensor/bracket/cable/payload envelope before
-   accepting the provisional boundary, then repeat the margin and body-contact
+4. Verify the complete body/wheel/sensor/bracket/cable/payload envelope against
+   the active fabrication-inclusive boundary, then repeat the margin and body-contact
    tests on the physical robot.
-5. Complete rear-camera rate, seven-channel radar, GNSS reacquisition, IMU
+5. Select and validate a safe B11-B13 return pose/yaw/path; do not treat the
+   arrival-only simulation as return approval.
+6. Complete rear-camera rate, seven-channel radar, GNSS reacquisition, IMU
    startup, wheel response, parking/docking, charging, and full-route field tests.
 
 Exact procedures and pass/fail thresholds remain in [`TODOLIST.txt`](../TODOLIST.txt).

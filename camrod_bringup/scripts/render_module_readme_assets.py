@@ -1431,22 +1431,26 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
         mounts,
         output_root / "sensor-kit" / "sensor-x-before-after.png",
     )
+    render_gnss_lever_arm(
+        params,
+        output_root / "sensor-kit" / "gnss-left-antenna-lever-arm.png",
+    )
 
 
 def render_sensor_x_before_after(
     offset: float, mounts: list[dict], output: Path
 ) -> None:
-    """Render frame-migrated X values and the later GNSS center assumption."""
+    """Render frame-migrated X values and the measured GNSS lateral offset."""
     figure, axis = setup_figure(
         "Sensor X coordinates: before and current",
-        "Frame migration plus GNSS center assumption | metres | other axes unchanged",
+        "Frame migration plus measured GNSS Y=+0.45 m | metres",
         size=(14, 8),
         module="sensor-kit",
     )
     axis.text(
         0.5,
         0.835,
-        f"mount X = previous X - {offset:.3f} m  |  GNSS solution = center 0.000 m",
+        f"mount X = previous X - {offset:.3f} m  |  GNSS mount X=0.000, Y=+0.450 m",
         ha="center",
         va="center",
         fontsize=12,
@@ -1455,8 +1459,8 @@ def render_sensor_x_before_after(
     )
     rows = []
     for mount in mounts:
-        # HH_260805 - GNSS is no longer the mathematically converted rear-axle
-        # placeholder. It is an explicit robot-center assumption until survey.
+        # HH_260806 - GNSS X remains zero while its measured lateral offset is
+        # documented by the dedicated top-view lever-arm figure.
         previous_x = (
             0.0
             if mount["name"].startswith("GNSS")
@@ -1499,8 +1503,8 @@ def render_sensor_x_before_after(
             cell.set_facecolor(WHITE if row % 2 else "#edf2f4")
     footer(
         figure,
-        "GNSS* changed from the converted -0.443 m placeholder to an explicit "
-        "0.000 m robot-center assumption; pose_verified remains false until survey.",
+        "GNSS* uses X=0.000 m and measured Y=+0.450 m; localization subtracts "
+        "the heading-rotated lateral lever arm before publishing robot center.",
     )
     save_figure(figure, output)
 
@@ -1702,8 +1706,126 @@ def render_sensor_mount_side_view(
     plot.legend(loc="upper left", ncol=5, fontsize=7.0, framealpha=0.92)
     footer(
         figure,
-        "SOURCE CONFIG. GNSS* is assumed at robot center and remains unverified; "
-        "other mounts retain the -0.443 m frame conversion pending new measurements.",
+        "SOURCE CONFIG. GNSS* is the left antenna at Y=+0.450 m; X/Z and the "
+        "remaining dual-GNSS survey stay pending. Other mounts retain the -0.443 m X conversion.",
+    )
+    save_figure(figure, output)
+
+
+def render_gnss_lever_arm(params: dict, output: Path) -> None:
+    """Render the measured left antenna and yaw-aware center conversion."""
+    robot = params["robot"]
+    extents = robot["body_extents"]
+    gnss = params["gnss"]
+    figure, _ = setup_figure(
+        "GNSS left-antenna lever arm",
+        "Physical TF and localization position reference | top view | metres",
+        size=(14, 8),
+        module="sensor-kit",
+    )
+
+    plot = figure.add_axes((0.055, 0.12, 0.54, 0.70), facecolor=WHITE)
+    planning = Rectangle(
+        (
+            -extents["rear"] - extents["planning_margin"],
+            -extents["right"] - extents["planning_lateral_margin"],
+        ),
+        extents["front"] + extents["rear"] + 2.0 * extents["planning_margin"],
+        extents["left"] + extents["right"] + 2.0 * extents["planning_lateral_margin"],
+        facecolor=AMBER_BG,
+        edgecolor=AMBER,
+        linewidth=2.0,
+        label="planning boundary",
+    )
+    body = Rectangle(
+        (-extents["rear"], -extents["right"]),
+        extents["front"] + extents["rear"],
+        extents["left"] + extents["right"],
+        facecolor=BLUE_BG,
+        edgecolor=BLUE,
+        linewidth=2.2,
+        label="active body",
+    )
+    plot.add_patch(planning)
+    plot.add_patch(body)
+    plot.scatter([0.0], [0.0], s=95, color=GREEN, zorder=5)
+    plot.scatter([gnss["x"]], [gnss["y"]], s=115, color=RED, zorder=6)
+    plot.annotate(
+        "",
+        xy=(gnss["x"], gnss["y"]),
+        xytext=(0.0, 0.0),
+        arrowprops={"arrowstyle": "-|>", "color": RED, "linewidth": 2.4},
+    )
+    plot.text(0.025, -0.06, "robot_center_link", color=GREEN, fontsize=9, fontweight="bold")
+    plot.text(
+        gnss["x"] + 0.025,
+        gnss["y"] + 0.075,
+        "left antenna\n(0.000, +0.450, 0.000)",
+        color=RED,
+        fontsize=9,
+        fontweight="bold",
+    )
+    plot.text(
+        -0.08,
+        gnss["y"] * 0.50,
+        "+Y left  0.45 m",
+        color=RED,
+        fontsize=9,
+        rotation=90,
+        ha="right",
+        va="center",
+    )
+    plot.annotate(
+        "+X forward",
+        xy=(0.62, -0.32),
+        xytext=(0.20, -0.32),
+        arrowprops={"arrowstyle": "-|>", "color": INK},
+        color=INK,
+        fontsize=8,
+        va="center",
+    )
+    plot.set_xlim(-0.82, 0.86)
+    plot.set_ylim(-0.62, 0.68)
+    plot.set_aspect("equal", adjustable="box")
+    plot.set_xlabel("Robot body X", fontsize=9)
+    plot.set_ylabel("Robot body Y (+left)", fontsize=9)
+    plot.grid(alpha=0.16)
+    plot.legend(loc="lower left", fontsize=8)
+
+    table_axis = figure.add_axes((0.63, 0.20, 0.33, 0.52))
+    table_axis.axis("off")
+    rows = (
+        ("Raw NavSatFix", "left antenna point"),
+        ("Required yaw", "fresh dual-GNSS"),
+        ("Map correction", "subtract R(yaw)[0, 0.45]"),
+        ("Published pose", "robot_center_link"),
+        ("Stale heading", "withhold corrected fix"),
+        ("Verification", "X/Z + moving survey pending"),
+    )
+    table = table_axis.table(
+        cellText=rows,
+        colLabels=("Contract", "Current behavior"),
+        cellLoc="left",
+        colLoc="left",
+        loc="center",
+        colWidths=(0.40, 0.60),
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(8.2)
+    table.scale(1.0, 1.55)
+    for (row, column), cell in table.get_celld().items():
+        cell.set_edgecolor("#aebbc1")
+        if row == 0:
+            cell.set_facecolor(INK)
+            cell.set_text_props(color=WHITE, fontweight="bold")
+        elif column == 0:
+            cell.set_facecolor(GRAY_BG)
+            cell.set_text_props(color=INK, fontweight="bold")
+        else:
+            cell.set_facecolor(WHITE if row % 2 else "#edf2f4")
+    footer(
+        figure,
+        "SOURCE CONFIG + UNIT-TESTED TRANSFORM. Lateral Y is measured; full dual-GNSS geometry and moving field residuals remain pending.",
     )
     save_figure(figure, output)
 

@@ -169,6 +169,13 @@ if(BUILD_TESTING)
   target_include_directories(test_navsat_fix_validation PRIVATE include)
   ament_target_dependencies(test_navsat_fix_validation sensor_msgs)
 
+  # HH_260806 - Verify heading-aware left-antenna to robot-center conversion.
+  ament_add_gtest(
+    test_gnss_lever_arm
+    test/test_gnss_lever_arm.cpp
+  )
+  target_include_directories(test_gnss_lever_arm PRIVATE include)
+
   # HH_260730 - Prevent callback order from adding one EKF cycle of selected-pose lag.
   ament_add_gtest(
     test_pose_selector_freshness

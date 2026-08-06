@@ -62,12 +62,12 @@ topics:
   - name: "gnss_checker: /sensor/gnss/main"
     group: sensing/gnss
     timeout_s: 3.0
-    # HH_260805 - Temporary robot-center assumption, not a measured lever arm.
+    # HH_260806 - Lateral lever arm is measured; X/Z still use current values.
     metadata:
       component_id: "gnss.main"
-      location: "robot_center_assumed"
+      location: "left_antenna"
       frame_id: "gnss_link"
-      mount_xyz_m: "0.00000,0.00000,0.00000"
+      mount_xyz_m: "0.00000,0.45000,0.00000"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "false"
 
@@ -258,9 +258,10 @@ topics:
     timeout_s: 5.0
     metadata:
       component_id: "gnss.localization_input"
-      location: "unverified"
-      frame_id: "gnss_link"
+      location: "robot_center_lever_arm_corrected"
+      frame_id: "robot_center_link"
       mount_xyz_m: "0.00000,0.00000,0.00000"
+      source_mount_xyz_m: "0.00000,0.45000,0.00000"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "false"
 
