@@ -8,6 +8,8 @@ the measured-body stop and historical translation-only evidence labels. -->
 high-resolution local lanelet raster for final command safety. -->
 <!-- HH_260806 - Preserve maneuver ratios under the 3 km/h production cruise profile. -->
 <!-- HH_260807 - Require observed recovery motion before the 1.5 s clear release. -->
+<!-- HH_260807 - Evaluate route safety with the final scaled command and record
+the fixed-preview service A/B. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -115,6 +117,28 @@ localization, or battery hold.
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
+<!-- HH_260807 - Explain the route-snap return anchor that prevents a narrow
+lane handoff from inheriting Nav2's early goal-reached pose. -->
+For automatic B1-B10 service, the actual Nav2 arrival pose starts and measures
+site entry, while `/planning/goal_pose_snapped` is retained as a separate return
+anchor. `CRAB_OUT` corrects both body axes toward that anchor, slows
+proportionally near it, and hands motion back only within `0.04 m`. Manual/adopt
+operation keeps the actual arrival/adopted pose as its anchor. This distinction
+matters on the current B4 lane: the observed Nav2 arrival was `0.27 m` from the
+snap, while the measured planning-margin clearance was only about `0.136 m` per
+side. A focused B1 -> B4 service run returned at `0.03/0.04 m`, completed both
+parking/charging cycles, and produced no post-return body or margin hold.
+
+The final B1-B10 endurance kept every route-snap handoff within `0.03-0.04 m`.
+B2-B10 also completed nine planning-margin recoveries with observed recovery
+motion, release, continued service, and zero retry latch.
+
+![B1-B10 route-snap return and recovery endurance](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+
+The [control/service evidence](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+separates the measured planning-margin recovery from the unchanged physical-body
+hard stop. Physical contact and swept-clearance acceptance remain field work.
+
 The low-battery latch does not auto-return while people may be unloading. If
 SOC falls below 35% during a campsite mission, the current site phase finishes
 and the normal user return request remains required.
@@ -158,6 +182,16 @@ hold or rapid-recontact latch. Recovery displacement was `0.0202`, `0.0742`,
 and `0.0715 m`; maximum recovery output was `0.05 m/s`. The clear timer starts
 only after `recovery_motion_observed=true`, and every continuous yaw arc is
 checked against the physical body before its endpoint planning margin.
+
+![3 km/h RPP service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+
+The later [source-profile A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+showed why increasing the retry count is not a control fix. A velocity-scaled
+preview of about `1.5 m` re-entered the same boundary after `0.850 s`; fixed
+`1.1 m` completed B1/B2 without a retry latch. The gate now projects, proves
+recovery motion, logs, and publishes the same final speed-scaled command. At
+the active cruise this means it evaluates `0.833333 m/s`, not the unscaled
+`1.666667 m/s` controller request.
 
 | First complete-footprint stop | Narrow-route risk map |
 |---|---|
@@ -218,6 +252,8 @@ policy. These controlled route tests do not replace the separate campsite
 | Reduced-boundary physical-body contact (historical) | body max `100`; owner motion false; recovery output `0.0 m/s` | Hold retained; no automatic escape |
 | B7 clear-road stop-go regression | `224.92 s`, `27.1492 m`; handoff `0`, stale `0` | Artificial rotation/translation stop cycle removed |
 | RPP right-oversteer regression | raw rotation/translation switches `403 -> 0`; B8 `59.931 m` and `GOAL_REACHED` | Continuous curve tracking selected at `1.1 m` |
+| 3 km/h preview A/B | scaled preview about `1.5 m`: recontact `0.850 s`; fixed `1.1 m`: B1/B2 `2/2`, restart `0` | Fixed profile selected; retry-count increase rejected |
+| B1-B10 service endurance | route-snap error `0.03-0.04 m`; B2-B10 recovery hold/motion/release `9/9/9`; retry latch `0` | 10/10 service cycles completed without restart |
 
 The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
 PNG/GIF is a v2.1.4 release-map full-simulation run of the active selector; its

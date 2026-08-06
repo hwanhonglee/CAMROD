@@ -57,7 +57,10 @@
     # HH_260806 - Preserve 60% of the 3.0 km/h cruise reference after the 0.5 gate.
     crab_speed_mps: 1.0
     entry_position_tolerance_m: 0.15
-    return_position_tolerance_m: 0.18
+    # HH_260807 - Map-v17 B4 has only about 0.136 m lateral clearance per side;
+    # finish within 0.04 m of the route snap before handing control back to Nav2.
+    return_position_tolerance_m: 0.04
+    return_translation_kp: 4.0
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0
     reverse_return_timeout_margin_s: 45.0
