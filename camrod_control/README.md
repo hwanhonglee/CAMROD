@@ -4,6 +4,10 @@
 the measured-body stop and historical translation-only evidence labels. -->
 <!-- HH_260806 - Activate the fabrication-inclusive measured body, preserve the
 5 cm planning margin, and serialize Nav2/campsite command ownership. -->
+<!-- HH_260806 - Remove artificial Nav2 rotation/translation handoffs and use a
+high-resolution local lanelet raster for final command safety. -->
+<!-- HH_260806 - Preserve maneuver ratios under the 3 km/h production cruise profile. -->
+<!-- HH_260807 - Require observed recovery motion before the 1.5 s clear release. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -41,15 +45,41 @@ recovery candidates, and published an all-zero final command.
 | Planning footprint | left/right `0.58505/0.58495 m` | Body plus `0.05 m` Y margin |
 | Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
+| Lanelet safety raster | `600 x 600 @ 0.05 m` | Independent `30 m` local grid; avoids the Nav2 grid's `0.125 m` half-cell dilation |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
-| Route-clear proof | `1.0 s` | Releases retained route hold |
+| Route-clear proof | `1.5 s` after admitted recovery motion | Releases retained route hold |
 | Automatic release budget | `1` | Allows one bounded Nav2 resume attempt |
 | Rapid recontact window | `5.0 s` | Same-route recontact latches until operator stop/replan |
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
 | Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, total travel, duration |
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
 | Maneuver release hold | `0.5 s` | Final output remains zero before Nav2 may resume |
-| Nav2 rotation settle | `0.5 s` | Translation is held after a pure rotation command |
+| Normal Nav2 rotation/translation | Continuous owner | RotationShim/RPP mode changes do not create an artificial zero handoff |
+
+## Active Linear-Speed Profile
+
+The final command gate applies `speed_scale=0.5`. The table reports limits at
+the platform output after that gate; ordinary operational linear speeds retain
+their previous ratio to the new `3.0 km/h` cruise reference.
+
+| Operation | Cruise ratio | Final limit |
+|---|---:|---:|
+| RPP cruise | `100%` | `3.000 km/h` |
+| RPP curvature floor | `50%` | `1.500 km/h` |
+| RPP final approach | `25%` | `0.750 km/h` |
+| Campsite crab | `60%` | `1.800 km/h` |
+| Campsite reverse / drop-zone exit / reverse parking | `40%` | `1.200 km/h` |
+| AprilTag approach | `50%` | `1.500 km/h` |
+| AprilTag insertion | `12.5%` | `0.375 km/h` |
+| Optional yaw-zone approach 1 / 2 | `62.5% / 50%` | `1.875 / 1.500 km/h` |
+| Zero-turn / gross yaw alignment | `0%` | `0 km/h` |
+| Route-boundary recovery safety exception | `6%` | `0.180 km/h` |
+
+Boundary recovery is intentionally not proportionally increased: its raw
+`0.10 m/s`, `0.40 m`, `10 s`, and `12 deg` limits remain a separate safety
+budget. Angular-speed limits are unchanged. Exact raw/final values and the
+AMD64 command trace are in the
+[3 km/h test record](../docs/assets/test_result/three-kph-localization-20260806/README.md).
 
 ## Runtime Owners
 
@@ -120,6 +150,15 @@ keeps the unresolved B11-B13 return geometry explicitly field-pending.
 
 ## Boundary Evidence
 
+![Current B2 recovery repeatability](../docs/assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
+
+On map v17, three identical B2 recontact trials selected
+`REVERSE_YAW_RIGHT`, completed the original mission, and produced no second
+hold or rapid-recontact latch. Recovery displacement was `0.0202`, `0.0742`,
+and `0.0715 m`; maximum recovery output was `0.05 m/s`. The clear timer starts
+only after `recovery_motion_observed=true`, and every continuous yaw arc is
+checked against the physical body before its endpoint planning margin.
+
 | First complete-footprint stop | Narrow-route risk map |
 |---|---|
 | ![First boundary stop](../docs/assets/module-guides/control/first-route-boundary-stop-location.png) | ![Narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png) |
@@ -177,10 +216,12 @@ policy. These controlled route tests do not replace the separate campsite
 | Reduced-boundary margin-only contact (historical) | body max `70`, planning max `100`; ordinary output `0.0 m/s` | Hold enforced without body contact |
 | Reduced-boundary margin recovery (historical) | `CRAB_RIGHT`, `0.133 m`, max lateral `0.05 m/s` | Both envelopes clear at release; final Twist zero |
 | Reduced-boundary physical-body contact (historical) | body max `100`; owner motion false; recovery output `0.0 m/s` | Hold retained; no automatic escape |
+| B7 clear-road stop-go regression | `224.92 s`, `27.1492 m`; handoff `0`, stale `0` | Artificial rotation/translation stop cycle removed |
+| RPP right-oversteer regression | raw rotation/translation switches `403 -> 0`; B8 `59.931 m` and `GOAL_REACHED` | Continuous curve tracking selected at `1.1 m` |
 
 The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
 PNG/GIF is a v2.1.4 release-map full-simulation run of the active selector; its
-OSM SHA is `e0b50f...e36d`, not the current map-v16 SHA `fd9c18...d0cf`. It
+OSM SHA is `e0b50f...e36d`, not the current map-v17 SHA `8cd05c...5e021`. It
 reevaluates all five projected commands on every hold update: left/right crab, straight
 reverse, and left/right reverse-yaw. A unique safe crab moves away from the
 contact. Otherwise straight reverse creates room; it may transition to the
@@ -188,6 +229,15 @@ unique safe yaw arc, or to the original RPP turn sign when both arcs are clear.
 Each stage must keep the complete projected footprint, fresh lanelet grid/pose,
 and dynamic obstacle checks clear. A blocked active crab can use straight
 reverse to reposition, then be reevaluated.
+
+The [B7 stop-go regression](../docs/assets/test_result/cmd-vel-stop-go-20260806/README.md)
+separates the corrected clear-road command stream from a later real 5 cm
+planning-margin contact. It does not claim that the complete B7 route is clear.
+
+The [RPP curve-tracking comparison](../docs/assets/test_result/rpp-curve-tracking-20260806/README.md)
+separates gross start alignment from ordinary steering. The gate performs one
+zero-linear alignment for a large initial yaw error; it no longer receives
+repeated pure-rotation requests at every 2-degree path bend.
 
 After a maximum `12 deg` heading correction, the owner removes angular velocity
 and continues only a separately checked reverse translation. The total

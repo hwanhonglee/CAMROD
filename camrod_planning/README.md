@@ -4,6 +4,9 @@
 and retain standalone field-isolation fallbacks. -->
 <!-- HH_260806 - Synchronize the fabrication-inclusive planning polygon and
 the B1-B10 turnaround / B11-B13 roadside service policy. -->
+<!-- HH_260806 - Separate gross start alignment from continuous RPP curve tracking. -->
+<!-- HH_260806 - Scale the active linear-speed profile from a 3 km/h cruise reference. -->
+<!-- HH_260807 - Preflight persistent-obstacle paths before Nav2 mission preemption. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -15,8 +18,8 @@ planners/controllers, and semantic mission state.
 ![Live B6 global and local paths](../docs/assets/module-guides/planning/runtime-b6-global-local-path-20260804.png)
 
 `SIM RUNTIME CAPTURE`: historical 2026-08-04 B6 goal, LaneletRoute global path,
-local path, and robot pose. Current map-v16 campsite sequencing evidence is
-shown separately below.
+local path, and robot pose. Historical map-v16 campsite sequencing and current
+map-v17 continuous-service evidence are shown separately below.
 
 ## At A Glance
 
@@ -36,13 +39,16 @@ shown separately below.
 | Implemented but dormant planners | `Smac2D`, `NavFn`, `ThetaStar`, `SmacHybrid` |
 | Production controller plugins loaded | `RPP`, `RotationShim` |
 | Implemented but dormant controllers | `DWB`, `MPPI`, `Graceful` |
-| Controller frequency | `15 Hz` |
-| RPP desired speed | `0.4 m/s` |
+| Controller frequency | `20 Hz` |
+| Local-path / tracking heartbeat | `20 Hz`; pose callbacks also refresh immediately |
+| RPP desired speed | raw `1.666667 m/s`; final gate `0.5`; platform `3.000 km/h` |
+| RPP curve / final-approach floor | `50% / 25%` of cruise (`1.500 / 0.750 km/h`) |
 | RPP lookahead | `1.1..2.0 m` |
-| RPP reverse / rotate-to-heading | disabled / enabled at `2 deg` |
+| RPP reverse / rotate-to-heading | disabled / disabled during continuous tracking |
+| Gross start alignment | final gate `75 deg` enter / `5 deg` release; zero linear speed |
 | Physical body boundary | `1.39160 x 1.07000 m` |
 | Nav2 planning footprint | `1.49160 x 1.17000 m` (body plus `0.05 m` each side) |
-| Obstacle fallback | `SmacLattice` only on a proven `>= 2.50 m` lane, then restore `LaneletRoute` |
+| Obstacle fallback | Width gate, then `ComputePathToPose(SmacLattice)`; preempt only when a safe path exists |
 
 Normal missions construct only policy-reachable planner/controller instances.
 Definitions for every implementation remain in `nav2_base.yaml`; the
@@ -93,15 +99,14 @@ UI mission key + site goal
 | Fallback / restore | `SmacLattice / LaneletRoute` |
 
 LiDAR/radar blockage still reports status and reaches the control safety gate
-immediately on every lane. The monitor preempts Nav2 only after the blockage
-persists for 20 seconds and when the current path, goal,
-pose, and fresh lanelet grid are available and the measured cross-section
-passes all width checks. Missing/stale geometry, an outside-lane center, or a
-narrow corridor publishes `BLOCKED_REPLAN_DENIED`; it keeps `LaneletRoute` and
-stops fail-closed instead of requesting an insufficiently bounded detour. The
-fallback remains constrained by the global lanelet cost layer, Smac footprint
-checks, and the final control gate; the width test alone is not a traffic-rule
-or lane-direction proof.
+immediately on every lane. After 20 seconds, fresh geometry and width checks
+must pass before `ComputePathToPose` probes SmacLattice. The active
+LaneletRoute mission is replaced only when that probe returns at least two path
+poses. Missing/stale/narrow geometry publishes `BLOCKED_REPLAN_DENIED`; a valid
+width with no feasible footprint path publishes `BLOCKED_REPLAN_FAILED_HOLD`
+once and keeps the original mission. Removing the obstacle clears the latch so
+the original route resumes. The width test is eligibility only; footprint,
+inflation, lanelet cost, and the final gate remain authoritative.
 
 ## State Surfaces
 
@@ -138,21 +143,47 @@ in explicit `OPERATOR_STOPPED` state.
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
-| Active map-v16 source | Synchronized SHA `fd9c18...d0cf`; 55 lanelets/14 areas/1658 nodes; LaneletRoute contracts pass |
+| Active map-v17 source | Synchronized SHA `8cd05c...5e021`; 55 lanelets/14 areas/1652 nodes; LaneletRoute contracts pass |
+| Persistent centered obstacle at mapped 3.00 m road | Immediate stop; one Smac no-path preflight; no selector/ABORT loop; original mission resumed `0.242 m` after clear |
+| Continuous service route ownership | B1/B2/B3 completed site, explicit RETURN, drop-zone, parking, charge, and next departure without bringup restart |
 | Reduced-boundary route evidence | Historical `1.29160 x 0.87000 m` run: `10.0403 m`, goal error `0.2932 m`, bounded margin recovery, physical hard stop |
 | B1-B10 site maneuver round trip | `CRAB_IN -> ROTATE_180 -> ... -> CRAB_OUT -> DONE`; all 10/10 PASS |
 | B11-B13 roadside arrival | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; all PASS with no zero-turn and no RETURN command |
 | B11-B13 return | Physical-body lanelet stop observed during the prior on-lane alignment; field geometry decision pending |
+| B8 continuous RPP route | `59.931 m`, `GOAL_REACHED`; raw rotation/translation switches `403 -> 0` |
+| Rejected B8 `1.2 m` lookahead | Margin release followed by recontact in `0.999 s`; route not completed |
+| 3 km/h command smoke | AMD64 `11.74 m` displacement; final command `3.000001 km/h`; pose max step `6.485 cm`, jumps over `20 cm`: `0` |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
 for the compared route. It does not prove every lane width or physical vehicle
 behavior.
+
+![RPP curve-tracking comparison](../docs/assets/test_result/rpp-curve-tracking-20260806/rpp-curve-tracking-comparison.png)
+
+The [curve-tracking test record](../docs/assets/test_result/rpp-curve-tracking-20260806/README.md)
+shows why the former 2-degree RPP rotate mode appeared as right oversteer and
+stop-turn-forward motion. Gross initial yaw is now completed once by the gate;
+ordinary curves retain simultaneous linear and angular commands. A same-map
+`1.2 m` lookahead comparison was worse, so the selected floor remains `1.1 m`.
+
+![3 km/h command and pose smoke test](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
+
+The [3 km/h test record](../docs/assets/test_result/three-kph-localization-20260806/README.md)
+lists every active linear-speed ratio. It is an AMD64 kinematic command/path
+check; physical 1 Hz dual-GNSS and 20 Hz Jetson localization remain pending.
 
 ![Historical reduced-boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
 ![Current campsite sequencing policy](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
 ![Current campsite phase order](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+
+![Persistent-obstacle no-path result](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+
+The active map has no surveyed road lanelet wide enough to claim a successful
+centered-obstacle bypass with the current `1.17 m` footprint and inflation.
+That positive avoidance case remains field-pending; the release result proves
+safe no-path handling and recovery after obstacle removal.
 
 Nav2 uses the larger planning polygon for both local and global footprint
 checks. `camrod_control` independently samples the physical body first:

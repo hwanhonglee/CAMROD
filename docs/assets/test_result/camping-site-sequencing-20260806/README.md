@@ -52,7 +52,7 @@ field; no turnaround sequence is inferred from unordered flags.
 ## Safety Contract
 
 - Explicit campsite phases exclusively own final `cmd_vel`; Nav2 commands are ignored until the maneuver ends.
-- The gate publishes zero for `0.5 s` at maneuver handoff and between Nav2 pure rotation and first translation.
+- This historical capture used a `0.5 s` hold both at maneuver release and at Nav2 rotation-to-translation. The later B7 stop-go regression removed only the normal Nav2 hold; explicit maneuver release still publishes zero for `0.5 s`.
 - Static road-lanelet cost is bypassed only during configured campsite motion phases because campsite areas are outside road lanelets.
 - Dynamic LiDAR/radar obstacle checks remain active during that map-only bypass.
 - Physical-body lanelet contact remains a hard stop during ordinary navigation and the unresolved B11-B13 on-lane return alignment.

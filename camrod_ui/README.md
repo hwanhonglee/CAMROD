@@ -2,6 +2,7 @@
 
 <!-- HH_260805 - Make the documented renderer match the Chromium production
 default while retaining the tested WebKit maintenance path. -->
+<!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -87,10 +88,18 @@ running ROS backend, not generated UI mockups.
 | WebKit fallback smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
 | Historical renderer sample | Before static status cues, forced WebKit was near 97% of one workstation CPU; a later Chromium sample was 0.5% combined |
 | Current Chromium launch contract | Private kiosk profile, GPU rasterization, zero-copy compositor, backend readiness wait, and process-group shutdown are unit-tested |
+| Charging recall | Active charger contact no longer overwrites `DEPARTING_CHARGER`; B2/B3 departure completed in the three-cycle service soak |
+| Duplicate destination | A repeated WebSocket destination while station exit is pending is idempotent; one maneuver owner and state transition remain |
 
 This validates browser/backend/ROS integration. It is not a physical mission or
 collision-safety test. Neither historical renderer sample proves current
 Jetson CPU/GPU use; a production Jetson profile is still required.
+
+![Three-cycle UI/service integration](../docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
+
+The map-v17 simulation completed charging recall and next-site departure twice
+after the initial cycle. Direct backend regression tests pass `30/30`; actual
+CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
 
 ## Key ROS Interfaces
 

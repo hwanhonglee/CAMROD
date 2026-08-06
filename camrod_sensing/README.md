@@ -2,6 +2,7 @@
 
 <!-- HH_260805 - Document the front, rear-parking, and LiDAR composition
 boundaries while keeping hardware measurements field-pending. -->
+<!-- HH_260807 - Bind optional LiDAR TF subscriptions to the scoped container context. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -45,7 +46,16 @@ the downstream safety gate still evaluates current source freshness and costs.
 cloud and perception remain active, while `/sensing/lidar/lidar_cost_grid` and
 `/sensing/cost_grid/lidar` are removed from graph-readiness and cost-grid
 diagnostics. Setting the flag to `true` loads that component and restores both
-checks; no source code rebuild is required.
+checks; no source code rebuild is required. The component-owned TF listener is
+bound to the same scoped node context/executor and uses a dedicated buffer
+thread with nonblocking lookups. A map-v17 full graph with the option ON
+published the 10 Hz grid, reached `[SYSTEM] OK`, and produced no null
+guard-condition or blocking TF-timeout loop.
+
+![LiDAR-backed persistent obstacle result](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+
+This amd64 run validates component/topic/checker wiring and safe no-path
+behavior. It does not validate physical LiDAR calibration or obstacle shape.
 
 ## Runtime Transport
 
@@ -128,11 +138,18 @@ robot and remains bounded by the configured per-channel windows.
 | Rear raw camera | `1920 x 1080`, target `10 Hz` | AprilTag input; subscriber-gated |
 | Rear monitoring JPEG | `2 Hz` | CPU worker avoids blocking raw publication |
 | Single F9P | requested `10 Hz` | RTK state must be checked from UBX flags |
-| Dual moving-base F9P | field behavior near `1 Hz` | Heading accuracy depends on baseline and open sky |
+| Dual moving-base F9P | runtime `1 Hz` | Launch writes rover `CFG-RATE` in RAM; base/rover epoch match and heading flags require field verification |
 
 For dual-GNSS acceptance, verify `NAV-PVT` carrier state and
 `NAV-RELPOSNED` validity/heading flags. A valid `NavSatFix` alone is not proof
 of RTK Fixed.
+
+The dual launch's `rate: 1.0` is an active receiver override, not only a ROS
+diagnostic expectation. The custom dual-rover setup writes `CFG-RATE` to rover
+RAM even with `config_on_startup: false`, so a 5 Hz profile saved in u-center is
+replaced when ROS starts. ROS does not configure the Lite moving base; compare
+base and rover `iTOW` increments before selecting any rate above the accepted
+1 Hz field profile.
 
 ## Reported Physical Stationary Performance
 
