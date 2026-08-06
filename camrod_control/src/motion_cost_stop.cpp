@@ -119,10 +119,13 @@ void MotionCostStop::setLocalPath(const avg_msgs::msg::AvgPath & path)
 }
 
 void MotionCostStop::setManeuverPhases(
-  std::string drop_zone_phase, std::string campsite_phase)
+  std::string drop_zone_phase,
+  std::string campsite_phase,
+  std::string parking_phase)
 {
   drop_zone_phase_ = normalizeLabel(std::move(drop_zone_phase));
   campsite_phase_ = normalizeLabel(std::move(campsite_phase));
+  parking_phase_ = normalizeLabel(std::move(parking_phase));
 }
 
 void MotionCostStop::clearTransientHold()
@@ -333,32 +336,68 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   }
 
   // Project a short body-frame twist, including the bounded reverse-yaw arc.
-  // The current footprint may already touch cost 100, but the projected full
-  // footprint must be clear; a command parallel to or deeper into the boundary
-  // therefore remains blocked.
+  // The current planning footprint may already touch cost 100, but the measured
+  // body must remain clear over the complete escape arc and the projected full
+  // planning footprint must be clear at its endpoint.
   const PlanarPose current_pose = *pose_;
   const double distance = std::max(0.05, probe_distance_m);
   const double duration_s = distance / translation_norm;
   const double yaw_delta = command.angular.z * duration_s;
-  double body_x = distance * command.linear.x / translation_norm;
-  double body_y = distance * command.linear.y / translation_norm;
-  if (std::abs(command.angular.z) > 1.0e-6) {
-    // Exact planar constant-twist integration prevents a yawed corner from
-    // being evaluated as if the robot had translated without rotating.
-    body_x =
-      (command.linear.x * std::sin(yaw_delta) +
-      command.linear.y * (std::cos(yaw_delta) - 1.0)) /
-      command.angular.z;
-    body_y =
-      (command.linear.x * (1.0 - std::cos(yaw_delta)) +
-      command.linear.y * std::sin(yaw_delta)) /
-      command.angular.z;
-  }
   const double cosine = std::cos(current_pose.yaw);
   const double sine = std::sin(current_pose.yaw);
-  pose_->x += cosine * body_x - sine * body_y;
-  pose_->y += sine * body_x + cosine * body_y;
-  pose_->yaw += yaw_delta;
+  const auto project_pose = [&](const double fraction) {
+      const double partial_duration_s = duration_s * fraction;
+      const double partial_yaw = command.angular.z * partial_duration_s;
+      double body_x = command.linear.x * partial_duration_s;
+      double body_y = command.linear.y * partial_duration_s;
+      if (std::abs(command.angular.z) > 1.0e-6) {
+        // Exact planar constant-twist integration prevents a yawed corner from
+        // being evaluated as if the robot had translated without rotating.
+        body_x =
+          (command.linear.x * std::sin(partial_yaw) +
+          command.linear.y * (std::cos(partial_yaw) - 1.0)) /
+          command.angular.z;
+        body_y =
+          (command.linear.x * (1.0 - std::cos(partial_yaw)) +
+          command.linear.y * std::sin(partial_yaw)) /
+          command.angular.z;
+      }
+      return PlanarPose{
+        current_pose.x + cosine * body_x - sine * body_y,
+        current_pose.y + sine * body_x + cosine * body_y,
+        current_pose.yaw + partial_yaw,
+        current_pose.frame_id,
+        current_pose.source,
+        current_pose.observation_sec};
+    };
+
+  if (config_.lanelet_body_hard_stop_enabled) {
+    // HH_260807 - Endpoint-only validation allowed a reverse-yaw chord whose
+    // middle swept a body corner through the road boundary. Sample at no more
+    // than half a safety-grid cell or two degrees so recovery can never create
+    // the physical contact that it is intended to avoid.
+    const double translation_step_m = std::max(
+      0.01, static_cast<double>(lanelet_grid_.grid.info.resolution) * 0.5);
+    constexpr double kMaximumYawStepRad = 2.0 * kPi / 180.0;
+    const int sweep_steps = std::max({
+      1,
+      static_cast<int>(std::ceil(distance / translation_step_m)),
+      static_cast<int>(std::ceil(std::abs(yaw_delta) / kMaximumYawStepRad))});
+    for (int step = 1; step <= sweep_steps; ++step) {
+      *pose_ = project_pose(static_cast<double>(step) / sweep_steps);
+      const auto body_hit = samplePhysicalBody(
+        lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
+        config_.lanelet_stop_on_unknown);
+      if (body_hit.blocked) {
+        const auto decision = laneletContactDecision(
+          "route_recovery_swept_physical_body_" + body_hit.detail, body_hit);
+        *pose_ = current_pose;
+        return decision;
+      }
+    }
+  }
+
+  *pose_ = project_pose(1.0);
   const auto projected_lanelet_decision = evaluateLanelet(command, now_sec, false);
   *pose_ = current_pose;
   if (projected_lanelet_decision.blocked) {
@@ -435,10 +474,13 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
     std::abs(command.linear.y) > config_.min_translation_mps ||
     std::abs(command.angular.z) > config_.min_translation_mps;
 
-  // HH_260806 - The road lanelet boundary does not describe the drivable
-  // campsite service area. Bypass it only while the dedicated campsite state
-  // machine owns motion; dynamic-source checks still run in evaluate().
-  if (any_motion && campsiteLaneletBypassActive()) {
+  // HH_260807 - Road lanelets do not describe the mapped campsite, charger,
+  // or charger-exit service areas. Bypass them only while a dedicated bounded
+  // state machine owns motion; dynamic-source checks still run in evaluate().
+  if (any_motion &&
+    (dropZoneLaneletBypassActive() || campsiteLaneletBypassActive() ||
+    parkingLaneletBypassActive()))
+  {
     return {};
   }
 
@@ -454,7 +496,7 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
       if (update_hold) {
         markBlocked(reason, false, now_sec);
       }
-      return {true, false, true, false, reason};
+      return laneletContactDecision(reason, body_hit);
     }
   }
 
@@ -470,7 +512,7 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
       if (update_hold) {
         markBlocked(reason, false, now_sec);
       }
-      return {true, false, true, false, reason};
+      return laneletContactDecision(reason, footprint_hit);
     }
   }
 
@@ -1156,7 +1198,10 @@ MotionCostStop::GridHit MotionCostStop::sampleFootprint(
       {-config_.footprint_rear_m, -config_.footprint_right_m},
       {-config_.footprint_rear_m, config_.footprint_left_m}};
   }
-  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local);
+  // HH_260806 - The planning margin is recoverable and must not inherit a
+  // half-cell outward dilation from raster edge lookup. Lethal cell centers
+  // inside this polygon remain authoritative.
+  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local, false);
 }
 
 MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
@@ -1169,14 +1214,17 @@ MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
     {config_.body_front_m, -config_.body_right_m},
     {-config_.body_rear_m, -config_.body_right_m},
     {-config_.body_rear_m, config_.body_left_m}};
-  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local);
+  // HH_260806 - Physical body contact remains fail-closed: any lethal raster
+  // cell touched by a body edge is a non-recoverable hard stop.
+  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local, true);
 }
 
 MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const int threshold,
   const bool stop_on_unknown,
-  const std::vector<std::pair<double, double>> & local_polygon) const
+  const std::vector<std::pair<double, double>> & local_polygon,
+  const bool edge_cell_contact) const
 {
   GridHit hit;
   if (!pose_.has_value() || !validGrid(grid) || local_polygon.size() < 3) {
@@ -1193,7 +1241,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       pose_->y + sine * point.first + cosine * point.second);
   }
 
-  auto check_point = [&](const double world_x, const double world_y) {
+  auto check_edge_point = [&](const double world_x, const double world_y) {
       int grid_x = 0;
       int grid_y = 0;
       if (!worldToGrid(grid, world_x, world_y, grid_x, grid_y)) {
@@ -1207,7 +1255,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       }
       const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
       ++hit.total_cells;
-      if (cost >= threshold) {
+      if (edge_cell_contact && cost >= threshold) {
         const auto center = gridToWorld(grid, grid_x, grid_y);
         hit.blocked = true;
         hit.world_x = center.first;
@@ -1217,8 +1265,10 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       }
     };
 
-  // HH_260727 - Sample every polygon edge at half-cell spacing. This catches contact with
-  // a boundary cell even when that cell's center lies just outside the body.
+  // HH_260806 - Every edge remains fail-closed on an out-of-grid sample. Only
+  // the physical body treats a lethal cell touched by an edge as contact; the
+  // recoverable planning margin uses the cell-center coverage pass below so a
+  // 0.05 m raster cannot enlarge that margin by another half cell.
   const double edge_step = std::max(0.01, grid.info.resolution * 0.5);
   for (std::size_t index = 0; index < world.size() && !hit.blocked; ++index) {
     const auto & start = world[index];
@@ -1227,7 +1277,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
     const int steps = std::max(1, static_cast<int>(std::ceil(length / edge_step)));
     for (int step = 0; step <= steps && !hit.blocked; ++step) {
       const double ratio = static_cast<double>(step) / static_cast<double>(steps);
-      check_point(
+      check_edge_point(
         start.first + ratio * (end.first - start.first),
         start.second + ratio * (end.second - start.second));
     }
@@ -1434,7 +1484,9 @@ std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(
 
 bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command) const
 {
-  if (config_.campsite_static_bypass_phases.count(campsite_phase_) > 0U) {
+  if (config_.campsite_static_bypass_phases.count(campsite_phase_) > 0U ||
+    config_.parking_static_bypass_phases.count(parking_phase_) > 0U)
+  {
     return true;
   }
   const double lateral_min = std::max(0.0, config_.static_lateral_bypass_min_mps);
@@ -1449,6 +1501,40 @@ bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command)
 bool MotionCostStop::campsiteLaneletBypassActive() const
 {
   return config_.campsite_lanelet_bypass_phases.count(campsite_phase_) > 0U;
+}
+
+bool MotionCostStop::dropZoneLaneletBypassActive() const
+{
+  return config_.drop_zone_lanelet_bypass_phases.count(drop_zone_phase_) > 0U;
+}
+
+bool MotionCostStop::parkingLaneletBypassActive() const
+{
+  return config_.parking_lanelet_bypass_phases.count(parking_phase_) > 0U;
+}
+
+MotionCostStopDecision MotionCostStop::laneletContactDecision(
+  const std::string & reason,
+  const GridHit & hit) const
+{
+  MotionCostStopDecision decision{true, false, true, false, reason};
+  if (!pose_.has_value()) {
+    return decision;
+  }
+  const double dx = hit.world_x - pose_->x;
+  const double dy = hit.world_y - pose_->y;
+  const double cosine = std::cos(pose_->yaw);
+  const double sine = std::sin(pose_->yaw);
+  decision.lanelet_contact_valid = true;
+  decision.lanelet_pose_x = pose_->x;
+  decision.lanelet_pose_y = pose_->y;
+  decision.lanelet_pose_yaw = pose_->yaw;
+  decision.lanelet_hit_world_x = hit.world_x;
+  decision.lanelet_hit_world_y = hit.world_y;
+  decision.lanelet_hit_body_x = cosine * dx + sine * dy;
+  decision.lanelet_hit_body_y = -sine * dx + cosine * dy;
+  decision.lanelet_hit_cost = hit.cost;
+  return decision;
 }
 
 bool MotionCostStop::laneletStaticBypassActive(

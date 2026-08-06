@@ -122,6 +122,10 @@ struct MotionCostStopConfig
 
   // HH_260721 - Keep static-cost exceptions bounded to configured maneuver phases.
   std::set<std::string> drop_zone_static_bypass_phases{"exit_straight", "align_exit_yaw"};
+  // HH_260807 - The charger approach/exit area is intentionally outside the
+  // road lanelet. Only the bounded drop-zone departure controller may cross
+  // that semantic boundary; live obstacle grids remain authoritative.
+  std::set<std::string> drop_zone_lanelet_bypass_phases{"exit_straight", "align_exit_yaw"};
   // HH_260721 - Name the campsite exception after its same-lanelet retrace behavior.
   std::set<std::string> campsite_static_bypass_phases{
     "align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
@@ -132,6 +136,15 @@ struct MotionCostStopConfig
   std::set<std::string> campsite_lanelet_bypass_phases{
     "align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
     "align_retrace_yaw", "reverse_out", "crab_out"};
+  // HH_260807 - The mapped charger is a service area outside the road
+  // lanelet. Only named parking-controller phases may cross that boundary;
+  // live LiDAR/radar grids remain authoritative.
+  std::set<std::string> parking_static_bypass_phases{
+    "reverse_approach", "waiting_for_tag", "tag_guided_reverse",
+    "final_reverse_insertion", "retry_forward_exit"};
+  std::set<std::string> parking_lanelet_bypass_phases{
+    "reverse_approach", "waiting_for_tag", "tag_guided_reverse",
+    "final_reverse_insertion", "retry_forward_exit"};
 };
 
 struct MotionCostStopDecision
@@ -141,6 +154,17 @@ struct MotionCostStopDecision
   bool lanelet_violation{false};
   bool stale_grid{false};
   std::string reason;
+  // HH_260806 - Preserve the exact map cell and robot-relative contact point
+  // so a visually ambiguous lanelet stop can be reproduced from logs.
+  bool lanelet_contact_valid{false};
+  double lanelet_pose_x{0.0};
+  double lanelet_pose_y{0.0};
+  double lanelet_pose_yaw{0.0};
+  double lanelet_hit_world_x{0.0};
+  double lanelet_hit_world_y{0.0};
+  double lanelet_hit_body_x{0.0};
+  double lanelet_hit_body_y{0.0};
+  int lanelet_hit_cost{-1};
 };
 
 class MotionCostStop
@@ -161,7 +185,10 @@ public:
     const std::vector<std::pair<double, double>> & polygon_world);
   void setOdometrySpeed(double forward_speed_mps);
   void setLocalPath(const avg_msgs::msg::AvgPath & path);
-  void setManeuverPhases(std::string drop_zone_phase, std::string campsite_phase);
+  void setManeuverPhases(
+    std::string drop_zone_phase,
+    std::string campsite_phase,
+    std::string parking_phase = "");
 
   MotionCostStopDecision evaluate(const avg_msgs::msg::AvgTwist & command, double now_sec);
   // HH_260729 - A stopped Nav2 action no longer emits a useful command, so the
@@ -299,7 +326,8 @@ private:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     int threshold,
     bool stop_on_unknown,
-    const std::vector<std::pair<double, double>> & local_polygon) const;
+    const std::vector<std::pair<double, double>> & local_polygon,
+    bool edge_cell_contact) const;
   PathSample samplePathCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double lookahead_m,
@@ -315,8 +343,13 @@ private:
     int threshold,
     double now_sec) const;
   bool staticBypassActive(const avg_msgs::msg::AvgTwist & command) const;
+  bool dropZoneLaneletBypassActive() const;
   bool campsiteLaneletBypassActive() const;
+  bool parkingLaneletBypassActive() const;
   bool laneletStaticBypassActive(const avg_msgs::msg::AvgTwist & command) const;
+  MotionCostStopDecision laneletContactDecision(
+    const std::string & reason,
+    const GridHit & hit) const;
   bool translational(const avg_msgs::msg::AvgTwist & command) const;
   bool unavoidable(const std::vector<std::pair<int, int>> & cells, int total_cells) const;
   void markBlocked(const std::string & reason, bool latch, double now_sec);
@@ -346,6 +379,7 @@ private:
   double forward_speed_mps_{0.0};
   std::string drop_zone_phase_;
   std::string campsite_phase_;
+  std::string parking_phase_;
   bool latch_active_{false};
   std::optional<LatchContext> latch_context_;
   std::optional<double> clear_since_sec_;

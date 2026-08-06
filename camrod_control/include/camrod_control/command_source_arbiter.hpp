@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <limits>
 #include <string>
 
@@ -14,9 +13,6 @@ namespace camrod_control
 struct CommandSourceArbiterConfig
 {
   double maneuver_release_hold_s{0.5};
-  double navigation_rotation_settle_s{0.5};
-  double navigation_translation_epsilon_mps{0.01};
-  double navigation_rotation_min_radps{0.05};
 };
 
 enum class CommandSourceDecision
@@ -29,7 +25,9 @@ enum class CommandSourceDecision
 struct ManeuverOwnershipTransition
 {
   bool maneuver_started{false};
+  bool drop_zone_started{false};
   bool campsite_started{false};
+  bool parking_started{false};
   bool maneuver_finished{false};
 };
 
@@ -49,13 +47,19 @@ public:
   ManeuverOwnershipTransition setManeuverPhases(
     const std::string & drop_zone_phase,
     const std::string & campsite_phase,
+    const std::string & parking_phase,
     const double now_sec)
   {
+    const bool next_drop_zone_active = dropZoneOwnsCommand(drop_zone_phase);
     const bool next_campsite_active = campsiteOwnsCommand(campsite_phase);
-    const bool next_active = next_campsite_active || dropZoneOwnsCommand(drop_zone_phase);
+    const bool next_parking_active = parkingOwnsCommand(parking_phase);
+    const bool next_active = next_campsite_active || next_parking_active ||
+      next_drop_zone_active;
     ManeuverOwnershipTransition transition;
     transition.maneuver_started = !maneuver_active_ && next_active;
+    transition.drop_zone_started = !drop_zone_active_ && next_drop_zone_active;
     transition.campsite_started = !campsite_active_ && next_campsite_active;
+    transition.parking_started = !parking_active_ && next_parking_active;
     transition.maneuver_finished = maneuver_active_ && !next_active;
 
     if (transition.maneuver_finished) {
@@ -65,15 +69,14 @@ public:
       release_hold_until_sec_ = -std::numeric_limits<double>::infinity();
     }
     maneuver_active_ = next_active;
+    drop_zone_active_ = next_drop_zone_active;
     campsite_active_ = next_campsite_active;
+    parking_active_ = next_parking_active;
     return transition;
   }
 
   CommandSourceDecision evaluate(
     const bool navigation_source,
-    const double linear_x,
-    const double linear_y,
-    const double angular_z,
     const double now_sec)
   {
     if (maneuver_active_) {
@@ -85,22 +88,9 @@ public:
     if (!navigation_source) {
       return CommandSourceDecision::kAllow;
     }
-
-    const double translation = std::hypot(linear_x, linear_y);
-    const double translation_epsilon = std::max(
-      0.0, config_.navigation_translation_epsilon_mps);
-    const bool pure_rotation = translation <= translation_epsilon &&
-      std::abs(angular_z) >= std::max(0.0, config_.navigation_rotation_min_radps);
-    if (pure_rotation) {
-      last_navigation_rotation_sec_ = now_sec;
-      return CommandSourceDecision::kAllow;
-    }
-    if (translation > translation_epsilon &&
-      now_sec - last_navigation_rotation_sec_ <
-      std::max(0.0, config_.navigation_rotation_settle_s))
-    {
-      return CommandSourceDecision::kHoldZero;
-    }
+    // HH_260806 - RotationShim/RPP is one Nav2 owner. Its normal rotation and
+    // translation commands must pass continuously; re-arbitrating those
+    // commands here produced a repeated 0.5 s stop-go cycle on curved routes.
     return CommandSourceDecision::kAllow;
   }
 
@@ -145,11 +135,21 @@ private:
            value == "align_parking_yaw";
   }
 
+  static bool parkingOwnsCommand(const std::string & phase)
+  {
+    const std::string value = normalize(phase);
+    return value == "reverse_approach" || value == "wait_for_charging" ||
+           value == "waiting_for_tag" || value == "tag_guided_reverse" ||
+           value == "final_reverse_insertion" || value == "retry_forward_exit" ||
+           value == "parked";
+  }
+
   CommandSourceArbiterConfig config_;
   bool maneuver_active_{false};
+  bool drop_zone_active_{false};
   bool campsite_active_{false};
+  bool parking_active_{false};
   double release_hold_until_sec_{-std::numeric_limits<double>::infinity()};
-  double last_navigation_rotation_sec_{-std::numeric_limits<double>::infinity()};
 };
 
 }  // namespace camrod_control

@@ -9,7 +9,7 @@ import rclpy
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from avg_msgs.msg import AvgOccupancyGrid, AvgPath, AvgPoseStamped, AvgString
 from geometry_msgs.msg import PoseStamped as RosPoseStamped
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import ComputePathToPose, NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
@@ -78,6 +78,11 @@ class ObstacleReplanMonitor(Node):
         ).strip()
         self._navigate_action_name = str(
             self.declare_parameter("navigate_action_name", "/planning/navigate_to_pose").value
+        ).strip()
+        self._compute_path_action_name = str(
+            self.declare_parameter(
+                "compute_path_action_name", "/planning/compute_path_to_pose"
+            ).value
         ).strip()
         self._navigate_status_topic = str(
             self.declare_parameter(
@@ -196,6 +201,10 @@ class ObstacleReplanMonitor(Node):
         self._last_blockage_sample: Optional[BlockageSample] = None
         self._last_replan_time: Optional[Time] = None
         self._selector_override_until: Optional[Time] = None
+        self._fallback_probe_in_flight = False
+        self._fallback_failed_latched = False
+        self._fallback_failure_reason = ""
+        self._fallback_probe_generation = 0
 
         path_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -248,6 +257,9 @@ class ObstacleReplanMonitor(Node):
         )
         self._status_pub = self.create_publisher(AvgString, self._status_topic, 10)
         self._navigate_client = ActionClient(self, NavigateToPose, self._navigate_action_name)
+        self._compute_path_client = ActionClient(
+            self, ComputePathToPose, self._compute_path_action_name
+        )
 
         monitor_period = 1.0 / max(0.5, self._monitor_rate_hz)
         selector_period = 1.0 / max(1.0, self._selector_publish_hz)
@@ -271,10 +283,16 @@ class ObstacleReplanMonitor(Node):
         self._latest_path_serialized = msg
 
     def _on_goal(self, msg: AvgPoseStamped) -> None:
+        goal_changed = self._goal_changed(msg)
         self._latest_goal = msg
         self._blocked_since = None
         self._last_blocked_sample_time = None
         self._last_blockage_sample = None
+        if goal_changed:
+            # HH_260807 - A new operator/service goal owns a fresh fallback attempt.
+            # Invalidate a late result from the previous goal instead of allowing
+            # that result to preempt the newly selected destination.
+            self._reset_fallback_probe()
 
     def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_pose = msg
@@ -344,6 +362,7 @@ class ObstacleReplanMonitor(Node):
             self._blocked_since = None
             self._last_blocked_sample_time = None
             self._last_blockage_sample = None
+            self._reset_fallback_probe()
             self._publish_status(
                 f"CLEAR: blocked={blockage.blocked_count}/{blockage.total_count} max={blockage.max_cost}"
             )
@@ -394,6 +413,18 @@ class ObstacleReplanMonitor(Node):
                 f"max={blockage.max_cost} source={blockage.source_topic}"
             )
             return
+        if self._fallback_probe_in_flight:
+            self._publish_status(
+                "BLOCKED_REPLAN_PROBING: "
+                f"planner={self._fallback_planner_id} duration={blocked_duration:.1f}s"
+            )
+            return
+        if self._fallback_failed_latched:
+            self._publish_status(
+                "BLOCKED_REPLAN_FAILED_HOLD: "
+                f"reason={self._fallback_failure_reason or 'no_safe_path'}"
+            )
+            return
         if self._last_replan_time is not None:
             cooldown = (now_time - self._last_replan_time).nanoseconds / 1.0e9
             if cooldown < self._replan_cooldown_s:
@@ -408,22 +439,88 @@ class ObstacleReplanMonitor(Node):
                 f"right={lane_width.right_clearance_m:.2f}m"
             )
             return
-        self._trigger_fallback_replan(blockage, lane_width)
+        self._probe_fallback_path(blockage, lane_width)
 
-    def _trigger_fallback_replan(
+    def _probe_fallback_path(
         self, blockage: BlockageSample, lane_width: LaneWidthSample
     ) -> None:
-        if self._latest_goal is None:
+        if self._latest_goal is None or self._latest_pose is None:
             return
         now_time = self.get_clock().now()
-        if not self._navigate_client.wait_for_server(timeout_sec=0.05):
+        if not self._compute_path_client.wait_for_server(timeout_sec=0.05):
             self.get_logger().warn(
                 "obstacle_replan_monitor: "
-                f"navigate action unavailable: {self._navigate_action_name}"
+                f"compute-path action unavailable: {self._compute_path_action_name}"
             )
             return
 
         self._last_replan_time = now_time
+        self._fallback_probe_in_flight = True
+        self._fallback_probe_generation += 1
+        probe_generation = self._fallback_probe_generation
+
+        # HH_260807 - Probe SmacLattice without replacing the active LaneletRoute
+        # navigation. A failed free-space plan therefore leaves the original
+        # mission stopped behind the obstacle gate and able to resume when clear.
+        goal_msg = ComputePathToPose.Goal()
+        goal_msg.goal = self._goal_pose_to_ros(self._latest_goal)
+        goal_msg.goal.header.stamp = now_time.to_msg()
+        goal_msg.start = self._goal_pose_to_ros(self._latest_pose)
+        goal_msg.start.header.stamp = now_time.to_msg()
+        goal_msg.planner_id = self._fallback_planner_id
+        goal_msg.use_start = True
+        send_future = self._compute_path_client.send_goal_async(goal_msg)
+        send_future.add_done_callback(
+            lambda future, generation=probe_generation: self._on_probe_goal_response(
+                future, generation
+            )
+        )
+        self.get_logger().warn(
+            "obstacle_replan_monitor: persistent dynamic blockage "
+            f"at ({blockage.point_x:.2f}, {blockage.point_y:.2f}) "
+            f"source={blockage.source_topic} cost={blockage.max_cost}; "
+            f"lane_width={lane_width.total_width_m:.2f}m; "
+            f"probing planner={self._fallback_planner_id} before preemption"
+        )
+
+    def _on_probe_goal_response(self, future, generation: int) -> None:
+        if generation != self._fallback_probe_generation:
+            return
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self._mark_fallback_probe_failed("compute_path_rejected")
+            return
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(
+            lambda result, current=generation: self._on_probe_result(result, current)
+        )
+
+    def _on_probe_result(self, future, generation: int) -> None:
+        if generation != self._fallback_probe_generation:
+            return
+        response = future.result()
+        path = getattr(getattr(response, "result", None), "path", None)
+        path_size = len(path.poses) if path is not None else 0
+        self._fallback_probe_in_flight = False
+        if response.status != GoalStatus.STATUS_SUCCEEDED or path_size < 2:
+            self._mark_fallback_probe_failed(
+                f"compute_path_status_{int(response.status)}_poses_{path_size}"
+            )
+            return
+        self.get_logger().info(
+            "obstacle_replan_monitor: fallback path validated "
+            f"planner={self._fallback_planner_id} poses={path_size}"
+        )
+        self._preempt_with_validated_fallback()
+
+    def _preempt_with_validated_fallback(self) -> None:
+        if self._latest_goal is None:
+            return
+        now_time = self.get_clock().now()
+        if not self._navigate_client.wait_for_server(timeout_sec=0.05):
+            self._mark_fallback_probe_failed("navigate_action_unavailable")
+            return
+
         self._selector_override_until = now_time + Duration(seconds=max(0.2, self._selector_override_s))
         self._selector_timer.reset()
         # HH_260702 - Publish the fallback selector before sending the action so
@@ -439,27 +536,63 @@ class ObstacleReplanMonitor(Node):
         send_future = self._navigate_client.send_goal_async(goal_msg)
         send_future.add_done_callback(self._on_goal_response)
         self.get_logger().warn(
-            "obstacle_replan_monitor: persistent dynamic blockage "
-            f"at ({blockage.point_x:.2f}, {blockage.point_y:.2f}) "
-            f"source={blockage.source_topic} cost={blockage.max_cost}; "
-            f"lane_width={lane_width.total_width_m:.2f}m; "
-            f"preempting with planner={self._fallback_planner_id}"
+            "obstacle_replan_monitor: preempting active mission with validated "
+            f"planner={self._fallback_planner_id} path"
         )
 
     def _on_goal_response(self, future) -> None:
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().warn("obstacle_replan_monitor: fallback NavigateToPose rejected")
+            self._mark_fallback_probe_failed("navigate_goal_rejected")
             return
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._on_replan_result)
 
     def _on_replan_result(self, future) -> None:
         result = future.result()
+        status = int(result.status)
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self._fallback_failed_latched = False
+            self._fallback_failure_reason = ""
+        elif status != GoalStatus.STATUS_CANCELED:
+            self._mark_fallback_probe_failed(f"navigate_status_{status}")
         self.get_logger().info(
             "obstacle_replan_monitor: "
-            f"fallback NavigateToPose finished status={int(result.status)}"
+            f"fallback NavigateToPose finished status={status}"
         )
+
+    def _mark_fallback_probe_failed(self, reason: str) -> None:
+        self._fallback_probe_in_flight = False
+        self._fallback_failed_latched = True
+        self._fallback_failure_reason = reason
+        self._restore_primary_selector()
+        self._publish_status(f"BLOCKED_REPLAN_FAILED_HOLD: reason={reason}")
+        self.get_logger().warn(
+            "obstacle_replan_monitor: fallback path unavailable; "
+            f"holding original mission reason={reason}"
+        )
+
+    def _reset_fallback_probe(self) -> None:
+        self._fallback_probe_generation += 1
+        self._fallback_probe_in_flight = False
+        self._fallback_failed_latched = False
+        self._fallback_failure_reason = ""
+
+    def _restore_primary_selector(self) -> None:
+        self._selector_override_until = None
+        self._selector_timer.cancel()
+        if self._restore_planner_id:
+            self._publish_planner_selector(self._restore_planner_id)
+
+    def _goal_changed(self, message: AvgPoseStamped) -> bool:
+        previous = self._latest_goal
+        if previous is None:
+            return True
+        if previous.header.frame_id != message.header.frame_id:
+            return True
+        dx = previous.pose.position.x - message.pose.position.x
+        dy = previous.pose.position.y - message.pose.position.y
+        return math.hypot(dx, dy) > 0.05
 
     def _publish_planner_selector(self, planner_id: Optional[str] = None) -> None:
         # HH_260720 - PlannerSelector is a Nav2 ROS boundary.

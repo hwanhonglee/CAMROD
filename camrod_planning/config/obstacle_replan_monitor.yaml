@@ -18,6 +18,8 @@
     goal_topic: "/planning/goal_pose_snapped"
     pose_topic: "/localization/pose"
     navigate_action_name: "/planning/navigate_to_pose"
+    # HH_260807 - Validate a Smac path before replacing the active route goal.
+    compute_path_action_name: "/planning/compute_path_to_pose"
     navigate_status_topic: "/planning/navigate_to_pose/_action/status"
     # HH_260720 - Explicit std_msgs boundary consumed by the Nav2 selector plugin.
     planner_selector_topic: "/planning/planner_selector_ros"
@@ -28,9 +30,9 @@
     # =========================================================================
     # 2. PLANNER PREEMPTION
     # =========================================================================
-    # HH_260805 - Permit dynamic-obstacle fallback only after the fail-closed
-    # lane-width gate below proves a wide mapped drivable cross-section. Narrow
-    # lanes keep LaneletRoute and let the control safety gate stop the robot.
+    # HH_260807 - Permit dynamic-obstacle fallback only after the fail-closed
+    # lane-width gate and a ComputePathToPose preflight both succeed. A no-path
+    # result remains stopped on LaneletRoute and is not repeatedly preempted.
     preempt_enabled: true
     fallback_planner_id: "SmacLattice"
     restore_planner_id: "LaneletRoute"
