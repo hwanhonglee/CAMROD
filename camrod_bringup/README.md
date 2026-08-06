@@ -8,6 +8,9 @@ arrival-only validation for constrained roadside sites. -->
 <!-- HH_260806 - Record the B8 RPP curve-tracking and lookahead comparison. -->
 <!-- HH_260806 - Record the 3 km/h active speed profile and bounded localization smoke result. -->
 <!-- HH_260807 - Record map-v17 repeated service and safe persistent-obstacle handling. -->
+<!-- HH_260807 - Record fixed-lookahead service A/B and single-owner platform status. -->
+<!-- HH_260807 - Record the final B1-B10 no-restart lifecycle, route-snap
+return handoff, diagnostic audit, and reproducible endurance media. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -44,6 +47,8 @@ The latest full-bringup runtime result is shown separately.
 |---|---|---:|
 | Stack startup | PASS | Fresh isolated map-v17 graph reached `[SYSTEM] OK` |
 | B1 -> B2 -> B3 continuous service | PASS (3/3) | 677.237 s, zero restart; full site/RETURN/drop-zone/parking/charging/next-site lifecycle |
+| B1-B10 service endurance | PASS (10/10) | `2210.611 s`, restart 0; cycle 1 seeded site handoff, cycles 2-10 full charger departure/outbound/RETURN/park/charge |
+| Fixed-lookahead source profile | PASS (2/2) | B1/B2 in 422.848 s, zero restart; obstacle stop/resume, margin recovery, RETURN, park and charge |
 | Charger departure | PASS | B2/B3 left CHARGING through `DEPARTING_CHARGER`; stale charge contact did not close drive authorization |
 | B2 current-map boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
@@ -61,6 +66,8 @@ The latest full-bringup runtime result is shown separately.
 | Reduced-boundary route/margin/body run | PASS, HISTORICAL | `1.29160 x 0.87000 m` candidate evidence retained; it is not the active body geometry |
 | Operator stop | PASS | `POST /ui/stop` returned HTTP 200; local owners and Nav2 canceled; state 16 published |
 | Drop-zone parking/charging continuation | PASS (AMD64 SIM) | All three continuous-service cycles reached `WAITING_FOR_CHARGING -> CHARGING` |
+| Platform status ownership | PASS | `/platform/status` publisher count `1`; `ranger_platform_bridge` alone converts fake raw BMS feedback |
+| Service handoff path diagnostic | PASS | Service-owned path clear is suppressed; WARN/ERROR timers each start at their own threshold with `3.0 s` grace |
 
 The 2026-08-04 captures are historical map-v14 evidence, the staged map-v15
 records are bound to the v2.1.4 release SHA, and the campsite policy media are
@@ -95,6 +102,25 @@ physical 1 Hz dual-GNSS path.
 ![Current map-v17 repeated service](../docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
 [Open the continuous-service GIF](../docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-timeline.gif).
+
+![B1-B10 no-restart service endurance](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+
+[Open the B1-B10 endurance GIF](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
+
+The [final endurance record](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+contains the raw runner JSON, public state/recovery/charging log, B4 route-snap
+geometry, path-diagnostic and Robot/Guest shutdown smokes, checksum manifest,
+and exact claim boundary. B1 is a seeded site handoff; B2-B10 are nine complete
+charger-departure services. The result does not claim physical-road acceptance
+or a successful bypass on the current narrow map.
+
+![3 km/h fixed-lookahead service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+
+The [RPP service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+records the rejected velocity-scaled run and the selected fixed `1.1 m` run.
+The validation runner observes normalized platform status; it changes only the
+fake raw-BMS battery input. This leaves `/platform/status` with one production-
+equivalent owner and prevents `CHARGING`/`DROP_ZONE_WAIT` oscillation.
 
 ![Persistent obstacle safe hold](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
@@ -216,6 +242,7 @@ deployment copies and are covered by synchronization tests.
 | `render_robot_boundary_validation.py` | Consolidated normal-route, margin, and physical-body simulation PNG |
 | `render_camping_site_sequence_results.py` | Structured B1-B10 turnaround and B11-B13 roadside-arrival PNG/GIF |
 | `render_v2_1_5_service_results.py` | Repeated-service, obstacle, and B2 recovery JSON -> PNG/GIF |
+| `render_rpp_service_ab.py` | Fixed-versus-scaled RPP service decision JSON -> PNG |
 
 ```bash
 python3 camrod_bringup/scripts/render_module_readme_assets.py
@@ -237,4 +264,6 @@ pytest -q camrod_bringup/test/test_module_readme_assets.py
 | Current RPP curve-tracking tests | [`rpp-curve-tracking-20260806/`](../docs/assets/test_result/rpp-curve-tracking-20260806/) |
 | Current 3 km/h command/localization smoke | [`three-kph-localization-20260806/`](../docs/assets/test_result/three-kph-localization-20260806/) |
 | Current map-v17 service/safety acceptance | [`v2-1-5-service-validation-20260807/`](../docs/assets/test_result/v2-1-5-service-validation-20260807/) |
+| Current 3 km/h RPP service A/B | [`rpp-lookahead-service-ab-20260807/`](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/) |
+| Final B1-B10 service endurance | [`b1-b10-service-endurance-20260807/`](../docs/assets/test_result/b1-b10-service-endurance-20260807/) |
 | Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |

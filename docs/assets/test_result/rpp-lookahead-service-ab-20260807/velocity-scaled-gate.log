@@ -1,0 +1,143 @@
+[INFO] [1786046573.195826968] [control.cmd_vel_safety_gate]: cmd_vel safety gate ready: maneuver_in=/control/cmd_vel_raw nav2_in=/control/nav2_cmd_vel_ros out=/control/cmd_vel driver_out=/control/cmd_vel_ros
+[INFO] [1786046573.500778535] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=engage=false(manual=false,mission=false),platform_drive_enable=false
+[INFO] [1786046604.475944582] [control.cmd_vel_safety_gate]: cmd_vel STANDBY: engage=false(manual=false,mission=false), platform_drive_enable=false
+[WARN] [1786046605.296489761] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.41s timeout=0.35s; publishing zero
+[WARN] [1786046618.896697987] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.35s timeout=0.35s; publishing zero
+[WARN] [1786046619.896737105] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.35s timeout=0.35s; publishing zero
+[WARN] [1786046622.796775838] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.40s timeout=0.35s; publishing zero
+[WARN] [1786046624.196881358] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.42s timeout=0.35s; publishing zero
+[INFO] [1786046626.025254550] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=engage=false(manual=false,mission=false)
+[WARN] [1786046626.096822448] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.42s timeout=0.35s; publishing zero
+[INFO] [1786046626.274356134] [control.cmd_vel_safety_gate]: command authorization updated: source=manual_engage state=enabled
+[WARN] [1786046626.791861539] [control.cmd_vel_safety_gate]: cmd_vel held 2.00s after EKF localization recovery 2->0
+[INFO] [1786046626.901023695] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=1.9s
+[INFO] [1786046627.089169888] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=gnss_recovery_hold=1.7s
+[INFO] [1786046627.101154146] [control.cmd_vel_safety_gate]: campsite maneuver took cmd_vel ownership: phase=CRAB_IN; prior Nav2 route hold cleared
+[WARN] [1786046627.108719684] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.7s
+[WARN] [1786046627.208457313] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.6s
+[INFO] [1786046627.301167751] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=1.5s
+[WARN] [1786046627.308499503] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.5s
+[WARN] [1786046627.408504974] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.4s
+[INFO] [1786046627.500980045] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=1.3s
+[WARN] [1786046627.508455420] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.3s
+[WARN] [1786046627.608668853] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.2s
+[INFO] [1786046627.700958055] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=1.1s
+[WARN] [1786046627.708399698] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.1s
+[WARN] [1786046627.808475714] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=1.0s
+[INFO] [1786046627.900977755] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=0.9s
+[WARN] [1786046627.908465343] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.9s
+[WARN] [1786046628.008615533] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.8s
+[INFO] [1786046628.100996906] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=0.7s
+[WARN] [1786046628.108442657] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.7s
+[WARN] [1786046628.208646504] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.6s
+[INFO] [1786046628.300969602] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=0.5s
+[WARN] [1786046628.308481853] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.5s
+[WARN] [1786046628.408495556] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.4s
+[INFO] [1786046628.500932216] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=0.3s
+[WARN] [1786046628.508472490] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.3s
+[WARN] [1786046628.608456300] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.2s
+[INFO] [1786046628.700880497] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=gnss_recovery_hold=0.1s
+[WARN] [1786046628.708673341] [control.cmd_vel_safety_gate]: cmd_vel SAFETY HOLD: gnss_recovery_hold=0.1s
+[INFO] [1786046628.901440339] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=enabled
+[INFO] [1786046658.111337719] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=platform_drive_enable=false
+[INFO] [1786046658.112139620] [control.cmd_vel_safety_gate]: command authorization updated: source=manual_engage state=engage=false(manual=false,mission=false),platform_drive_enable=false
+[INFO] [1786046658.209015415] [control.cmd_vel_safety_gate]: cmd_vel STANDBY: engage=false(manual=false,mission=false), platform_drive_enable=false
+[INFO] [1786046663.213762293] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=platform_drive_enable=false
+[INFO] [1786046663.213906914] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=enabled
+[INFO] [1786046673.709644468] [control.cmd_vel_safety_gate]: maneuver released cmd_vel ownership; stationary handoff active
+[WARN] [1786046674.097603575] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.39s timeout=0.35s; publishing zero
+[INFO] [1786046674.156297761] [control.cmd_vel_safety_gate]: cmd_vel source arbitration: stationary command-source handoff
+[WARN] [1786046743.805925496] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=1.667,y=0.000,wz=0.501) pose=(x=8.861,y=45.349,yaw=178.4deg) lanelet_hit=(world_x=8.155,world_y=45.936,body_x=0.722,body_y=-0.567,cost=100)
+[WARN] [1786046743.805971646] [control.cmd_vel_safety_gate]: cmd_vel cost stop: lanelet_footprint_cost
+[WARN] [1786046743.855766482] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=false
+[INFO] [1786046743.902689486] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.9s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046744.101551912] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046744.301977284] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.5s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046744.501815601] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.3s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046744.701712500] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost
+[WARN] [1786046744.855780478] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.66s projected_recovery_candidate_only=true auto_release_blocked=false
+[INFO] [1786046744.901783550] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046745.698820865] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[INFO] [1786046745.700872244] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=enabled
+[INFO] [1786046772.901054865] [control.cmd_vel_safety_gate]: drop_zone maneuver took cmd_vel ownership: phase=ALIGN_PARKING_YAW; prior Nav2 route hold cleared
+[INFO] [1786046782.296864715] [control.cmd_vel_safety_gate]: maneuver released cmd_vel ownership; stationary handoff active
+[INFO] [1786046782.296995666] [control.cmd_vel_safety_gate]: parking maneuver took cmd_vel ownership: phase=REVERSE_APPROACH; prior Nav2 route hold cleared
+[INFO] [1786046786.879667834] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=engage=false(manual=false,mission=false)
+[INFO] [1786046786.879953726] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=engage=false(manual=false,mission=false),platform_drive_enable=false
+[INFO] [1786046787.275246832] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=platform_drive_enable=false
+[INFO] [1786046787.275456035] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=enabled
+[INFO] [1786046787.277038659] [control.cmd_vel_safety_gate]: maneuver released cmd_vel ownership; stationary handoff active
+[INFO] [1786046787.278368699] [control.cmd_vel_safety_gate]: drop_zone maneuver took cmd_vel ownership: phase=EXIT_STRAIGHT; prior Nav2 route hold cleared
+[INFO] [1786046787.280019410] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=engage=false(manual=false,mission=false)
+[INFO] [1786046787.280374155] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=engage=false(manual=false,mission=false),platform_drive_enable=false
+[INFO] [1786046787.282876457] [control.cmd_vel_safety_gate]: command authorization updated: source=mission_engage state=platform_drive_enable=false
+[INFO] [1786046787.283037276] [control.cmd_vel_safety_gate]: command authorization updated: source=platform_drive_enable state=enabled
+[INFO] [1786046799.997203186] [control.cmd_vel_safety_gate]: maneuver released cmd_vel ownership; stationary handoff active
+[WARN] [1786046800.399756846] [control.cmd_vel_safety_gate]: cmd_vel input stale: age=0.40s timeout=0.35s; publishing zero
+[INFO] [1786046800.441306164] [control.cmd_vel_safety_gate]: cmd_vel source arbitration: stationary command-source handoff
+[WARN] [1786046831.041511294] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=1.667,y=0.000,wz=-0.688) pose=(x=10.984,y=43.657,yaw=-76.7deg) lanelet_hit=(world_x=11.714,world_y=43.070,body_x=0.740,body_y=0.574,cost=100)
+[WARN] [1786046831.041561063] [control.cmd_vel_safety_gate]: cmd_vel cost stop: lanelet_footprint_cost
+[WARN] [1786046831.091335438] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=false
+[INFO] [1786046831.102043389] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.9s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046831.301947021] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046831.502231739] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.5s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046831.702464555] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.3s,route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046831.901913938] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost
+[WARN] [1786046832.091383456] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.65s projected_recovery_candidate_only=true auto_release_blocked=false
+[INFO] [1786046832.101893899] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=route_safety_hold=lanelet_footprint_cost
+[INFO] [1786046832.941431348] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[INFO] [1786046833.100805626] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=enabled
+[ERROR] [1786046833.791360412] [control.cmd_vel_safety_gate]: rapid route recontact latched after 1 automatic release(s); operator stop/replan required
+[WARN] [1786046833.791463357] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=1.667,y=0.000,wz=-0.256) pose=(x=10.994,y=42.960,yaw=-90.7deg) lanelet_hit=(world_x=11.564,world_y=42.220,body_x=0.733,body_y=0.578,cost=100)
+[WARN] [1786046833.791480363] [control.cmd_vel_safety_gate]: cmd_vel cost stop: lanelet_footprint_cost
+[WARN] [1786046833.841394871] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[INFO] [1786046833.901073300] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.9s,route_safety_retry_latched=lanelet_footprint_cost
+[INFO] [1786046834.101091048] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.7s,route_safety_retry_latched=lanelet_footprint_cost
+[INFO] [1786046834.301090732] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.5s,route_safety_retry_latched=lanelet_footprint_cost
+[INFO] [1786046834.500994543] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.3s,route_safety_retry_latched=lanelet_footprint_cost
+[INFO] [1786046834.700962946] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=cost_hold=0.1s,route_safety_retry_latched=lanelet_footprint_cost
+[WARN] [1786046834.891373943] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[INFO] [1786046834.900996662] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=route_safety_retry_latched=lanelet_footprint_cost
+[WARN] [1786046835.911405965] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046836.911415041] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046837.941397402] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046838.991338068] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046839.991345221] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046841.011469041] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046842.011480825] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046843.011493557] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046844.011519649] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046845.011506284] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046846.011651159] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046847.041419480] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046848.041635122] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046849.091371503] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046850.091384729] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046851.111593469] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046852.111618525] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046853.111650914] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046854.111773218] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046855.141428068] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046856.191330261] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046857.191374342] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046858.191373453] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046859.211746524] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046860.211774628] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046861.211878818] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046862.241406939] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046863.291373567] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046864.291375811] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046865.291392141] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046866.311828689] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046867.311922107] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046868.311974252] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046869.341459332] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046870.391349377] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046871.391350215] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046872.391657325] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046873.391634619] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046874.412082700] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046875.441394576] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046876.491348512] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[WARN] [1786046877.491377749] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+[INFO] [1786046877.793272460] [rclcpp]: signal_handler(SIGINT/SIGTERM)

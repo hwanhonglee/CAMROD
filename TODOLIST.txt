@@ -31,9 +31,10 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
 3. P0-C 실차 3회 이상 연속 왕복 서비스와 UI/state/charging을 검증한다.
 4. P0-D 실제 margin/body 접촉 및 충분히 넓은 lane 우회를 검증한다.
 5. P1-E/F/G radar/rear-camera, Jetson 자원, Robot/Guest UI를 검증한다.
-- amd64 SIM에서 끝난 왕복 3회, B2 recovery 3회, 3.0 m lane의 안전한
-  no-path 정지/재개는 DONE.txt 28~30과 아래 evidence에 옮겼다.
-  `docs/assets/test_result/v2-1-5-service-validation-20260807/`
+- amd64 SIM에서 끝난 B1-B10 왕복 10회, planning-margin recovery 9회,
+  B5 장애물 정지/재개와 3.0 m lane의 안전한 no-path 정지/재개는
+  DONE.txt 28~33과 아래 evidence에 옮겼다.
+  `docs/assets/test_result/b1-b10-service-endurance-20260807/`
 
 공통 안전 및 기록 조건
 - 사람, 차량, 짐이 없는 통제 구역에서 조작자와 물리 E-stop 담당자 2인으로
@@ -79,7 +80,8 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   normalized innovation으로 finite sigma 후보를 검증한다.
 - IMU startup port `0x13` 오류와 재기동 후 Fixed 미획득이 재현되면 P0 FAIL이다.
 
-[P0-C] 왕복 서비스, state와 연속 mission 수명 검증 [SIM 3/3, FIELD-PENDING]
+[P0-C] 왕복 서비스, state와 연속 mission 수명 검증
+       [SIM 10/10 (9 FULL OUTBOUND), FIELD-PENDING]
 - B1-B10에서 다음 전체 순서를 사이트를 바꿔 최소 3회 연속 수행한다.
   `drop-zone/charging -> campsite route -> CRAB_IN -> ROTATE_180 ->
   WAITING_FOR_RETURN_REQUEST -> 사용자 RETURN -> CRAB_OUT -> return route ->
@@ -95,8 +97,11 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   현장 복귀 geometry가 정해질 때까지 on-site zero-turn과 자동 RETURN은 금지한다.
 - 합격: node/bringup restart 없이 3회 이상의 site-return-charge-next-site가
   순서대로 완료되고 state, motion owner와 최종 command가 일치한다.
-- SIM 기준 B1/B2/B3 3회와 cycle 2 장애물 정지/재개는 통과했다. 같은 판정을
-  실제 CAN 충전, 실제 하역 대기, 사람의 RETURN 입력으로 다시 수행해야 닫는다.
+- SIM 기준 B1-B10은 `2210.611 s`, restart 0으로 10/10 통과했다. cycle 1은
+  B1 route endpoint에 준비한 site handoff이고, cycle 2-10은 charger departure부터
+  outbound/RETURN/parking/charging까지 모두 실행했다. cycle 5 장애물
+  stop/clear/resume도 통과했다. 실제 CAN 충전, 실제 하역 대기, 사람의 RETURN
+  입력으로 같은 판정을 다시 수행해야 이 항목을 닫는다.
 
 [P0-D] 장애물 정지, 넓은 lane 우회와 boundary 회복 [SIM 부분 PASS, FIELD-PENDING]
 - 동적 장애물은 즉시 최종 cmd_vel을 0으로 만들고, 제거 후 fresh clear window
@@ -115,6 +120,8 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   body 접촉과 불충분한 우회 공간에서는 fail-closed를 유지한다.
 - map v17 B2 margin recovery는 3/3 통과했고, 약 3.00 m lane의 centered
   obstacle은 Smac preflight no-path 1회 뒤 정지 유지/제거 후 재개를 통과했다.
+  최종 B1-B10 endurance에서는 B2-B10 margin hold 9회가 모두 recovery motion,
+  1.5 s release, 원 mission 계속 주행으로 끝났고 retry latch는 0이었다.
   현재 지도에는 active footprint+inflation으로 성공 우회를 주장할 만큼 넓은
   road lanelet이 없으므로, 실측된 넓은 lane의 성공 회피는 계속 미완료다.
 

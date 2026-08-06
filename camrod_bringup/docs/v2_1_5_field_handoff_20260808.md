@@ -1,5 +1,10 @@
 # v2.1.5 Field Handoff - 2026-08-08
 
+<!-- HH_260807 - Add the fixed-preview source-profile service acceptance and
+single-owner platform-status contract. -->
+<!-- HH_260807 - Add the final ten-cycle scope, route-snap return correction,
+and exact remaining physical acceptance work. -->
+
 <!-- HH_260807 - Provide one cross-PC handoff for the active software baseline,
 measured simulation evidence, and the next physical acceptance session. -->
 
@@ -17,7 +22,7 @@ Jetson/robot PASS.
 | Planning margin | `1.49160 x 1.17000 m`, 5 cm per side; margin-only contact can request bounded recovery |
 | Safety raster | Independent robot-centered `600 x 600 @ 0.05 m`; Nav2 retains the global `0.25 m` grid |
 | Command ownership | A 0.5 s zero handoff applies only between explicit maneuver and Nav2 owners, not between normal Nav2 rotation/translation commands |
-| Curve tracking | Continuous RPP at `1.1 m` minimum lookahead; gross initial heading uses a separate `75/5 deg` zero-linear gate |
+| Curve tracking | Continuous RPP at fixed `1.1 m`; velocity scaling is disabled; gross initial heading uses a separate `75/5 deg` zero-linear gate |
 | Speed | Final cruise `3.0 km/h`; maneuver ratios are listed below; recovery remains `0.18 km/h` |
 | Pose/control clock | Real EKF, local path/tracking and Nav2 controller use `20 Hz`; delayed-data history is `1.0 s` |
 | GNSS correction clock | Hardware launch still writes `1 Hz`; 5/10 Hz is field A/B work, not a released claim |
@@ -52,8 +57,13 @@ Jetson/robot PASS.
 | GNSS lever arm | 30 matched samples; center residual `0.449995 -> 0.000071 m` | Synthetic WGS84/heading |
 | Campsites | B1-B10 full seven-phase sequence; B11-B13 arrival-only | B11-B13 RETURN is not approved |
 | Repeated service | B1 -> B2 -> B3, `3/3`, `677.237 s`, restart `0` | Simulated CAN/charging and kinematics |
+| Final service endurance | B1-B10 `10/10`, `2210.611 s`, restart `0`; cycles 2-10 full charger departure/outbound/RETURN/park/charge | Cycle 1 seeded at B1 handoff; AMD64 simulation |
+| Source-profile service A/B | scaled preview about `1.5 m`: recontact `0.850 s`; fixed `1.1 m`: B1/B2 `2/2`, `422.848 s`, restart `0` | AMD64 deterministic simulation |
 | B2 margin recovery | `3/3`, `REVERSE_YAW_RIGHT`, mission complete, second hold `0` | Real boundary/contact remains pending |
 | Persistent obstacle | 3.00 m lane: immediate stop, one no-path preflight, no ABORT loop, clear -> resume `0.242 m` | Successful bypass needs a wider surveyed lane |
+| Platform-state owner | `/platform/status` publisher count `1`: `ranger_platform_bridge` | Runner changes fake raw BMS only |
+| Return-route handoff | B1-B10 route-snap error `0.03-0.04 m`; B4 arrival offset `0.27 m -> 0.04 m` | Physical centerline/footprint survey pending |
+| Service path diagnostic | service-owned clear suppressed; independent WARN/ERROR grace `3.0 s`; endurance post-start fault `0` | Physical route fault injection pending |
 
 Source reports live under `docs/assets/test_result/`. Do not reinterpret these
 as Jetson or physical-robot acceptance.
@@ -61,6 +71,11 @@ as Jetson or physical-robot acceptance.
 The final release-candidate set is grouped at
 [`docs/assets/test_result/v2-1-5-service-validation-20260807/`](../../docs/assets/test_result/v2-1-5-service-validation-20260807/README.md),
 including raw JSON/log, SHA manifest, PNG, and GIF.
+The final RPP source-profile decision is separately grouped at
+[`rpp-lookahead-service-ab-20260807/`](../../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md).
+The no-restart B1-B10 lifecycle, exact seeded/full-route scope, route-snap
+geometry and shutdown audit are grouped at
+[`b1-b10-service-endurance-20260807/`](../../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md).
 
 ## Previous TODO Crosswalk
 

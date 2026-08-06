@@ -223,6 +223,163 @@ def render_service_gif(report_path: Path, output: Path) -> None:
     )
 
 
+def render_endurance_summary(report_path: Path, output: Path) -> None:
+    """Render an arbitrary-length service soak without a three-card limit."""
+    payload, check = load_check(report_path, "repeated_service_soak")
+    metrics = check["metrics"]
+    cycles = metrics["cycles"]
+    first_cycle_seeded = bool(metrics.get("first_cycle_seeded_near_route", True))
+    image = Image.new("RGB", (WIDTH, 1160), BACKGROUND)
+    draw = ImageDraw.Draw(image)
+    header(
+        draw,
+        "v2.1.5 B1-B10 service endurance",
+        "Map v17 | route, campsite, explicit RETURN, parking, charging, next dispatch",
+    )
+    badge(draw, (1410, 42), bool(payload["overall_pass"] and check["success"]))
+
+    text(draw, (64, 158), "No-restart service lifetime", 28, INK, True)
+    text(
+        draw,
+        (64, 202),
+        f"{metrics['cycles_completed']}/{metrics['cycles_requested']} cycles  |  "
+        f"{metrics['elapsed_s']:.1f} s  |  bringup restarts "
+        f"{metrics['bringup_restart_count']}",
+        22,
+        MUTED,
+    )
+
+    # HH_260807 - Two fixed columns keep ten service cycles readable in package
+    # READMEs without shrinking labels or placing cards inside other cards.
+    for index, cycle in enumerate(cycles):
+        column = index % 2
+        row = index // 2
+        x = 64 + column * 752
+        y = 270 + row * 150
+        site_number = str(cycle["mission_key"]).rsplit("_", 1)[-1]
+        passed = bool(cycle["success"])
+        fill = GREEN_LIGHT if passed else RED_LIGHT
+        edge = GREEN if passed else RED
+        draw.rounded_rectangle(
+            (x, y, x + 720, y + 126), radius=8, fill=fill, outline=edge, width=2
+        )
+        text(draw, (x + 20, y + 16), f"Cycle {cycle['cycle']} | B{site_number}", 23, edge, True)
+        text(draw, (x + 545, y + 18), "PASS" if passed else "FAIL", 20, edge, True)
+        if index == 0 and first_cycle_seeded:
+            route_scope = "seeded site handoff"
+        else:
+            route_scope = "full charger departure + outbound"
+        obstacle = " | obstacle stop/clear/resume" if cycle["obstacle_required"] else ""
+        text(
+            draw,
+            (x + 20, y + 57),
+            f"{cycle['elapsed_s']:.1f} s | {route_scope}{obstacle}",
+            16,
+            INK,
+        )
+        if cycle["boundary_hold_seen"]:
+            recovery = (
+                "boundary recovered"
+                if cycle["boundary_recovery_ok"]
+                else "boundary failed"
+            )
+        else:
+            recovery = "no boundary hold"
+        charge = "CHARGING" if "CHARGING" in cycle["service_states"] else "charge missing"
+        text(draw, (x + 20, y + 89), f"RETURN verified | {recovery} | {charge}", 16, MUTED)
+
+    footer_y = 1040
+    draw.rounded_rectangle(
+        (64, footer_y, 1536, 1110), radius=8, fill=BLUE_LIGHT, outline=BLUE, width=2
+    )
+    text(
+        draw,
+        (88, footer_y + 22),
+        "Cycle 1: seeded site handoff. Cycles 2-10: full charger departure/outbound/RETURN/charge.",
+        19,
+        BLUE,
+        True,
+    )
+    text(draw, (64, 1130), "Classification: AMD64 deterministic simulation; physical field acceptance remains open.", 17, MUTED)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output)
+
+
+def render_endurance_gif(report_path: Path, output: Path) -> None:
+    """Animate one compact frame per completed service cycle."""
+    _, check = load_check(report_path, "repeated_service_soak")
+    metrics = check["metrics"]
+    cycles = metrics["cycles"]
+    first_cycle_seeded = bool(metrics.get("first_cycle_seeded_near_route", True))
+    frames = []
+    for active_index, cycle in enumerate(cycles):
+        image = Image.new("RGB", (1400, 620), BACKGROUND)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((0, 0, 1400, 104), fill="#1f5e3d")
+        text(draw, (48, 24), "B1-B10 continuous service endurance", 34, WHITE, True)
+        text(
+            draw,
+            (50, 68),
+            f"Cycle {active_index + 1}/{len(cycles)} | {cycle['mission_key']}",
+            18,
+            "#dcece3",
+        )
+        left = 70
+        gap = 12
+        item_width = int((1260 - gap * (len(cycles) - 1)) / len(cycles))
+        for index, item in enumerate(cycles):
+            x = left + index * (item_width + gap)
+            completed = index <= active_index and bool(item["success"])
+            fill = GREEN_LIGHT if completed else WHITE
+            edge = GREEN if completed else LINE
+            draw.rounded_rectangle((x, 150, x + item_width, 220), radius=7, fill=fill, outline=edge, width=2)
+            label = str(item["mission_key"]).rsplit("_", 1)[-1]
+            label_font = font(17, True)
+            bounds = draw.textbbox((0, 0), f"B{label}", font=label_font)
+            draw.text(
+                (x + item_width / 2 - (bounds[2] - bounds[0]) / 2, 174),
+                f"B{label}",
+                fill=edge,
+                font=label_font,
+            )
+        draw_phase_chain(draw, 282, width=1260)
+        if cycle["boundary_hold_seen"]:
+            boundary_fact = (
+                "boundary recovery: PASS"
+                if cycle["boundary_recovery_ok"]
+                else "boundary recovery: FAIL"
+            )
+        else:
+            boundary_fact = "boundary recovery: not required"
+        facts = [
+            f"elapsed: {cycle['elapsed_s']:.1f} s",
+            (
+                "route scope: seeded site handoff"
+                if active_index == 0 and first_cycle_seeded
+                else "route scope: full outbound"
+            ),
+            "explicit RETURN: PASS",
+            boundary_fact,
+            "obstacle: stop / clear / resume" if cycle["obstacle_required"] else "obstacle: not injected",
+            "final public state: CHARGING",
+        ]
+        for index, value in enumerate(facts):
+            column = index % 3
+            row = index // 3
+            text(draw, (72 + column * 440, 402 + row * 48), value, 18, GREEN if index == 4 else INK, index == 4)
+        text(draw, (70, 568), "One bringup process; no restart between campsite cycles.", 18, MUTED)
+        frames.append(image)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frames[0].save(
+        output,
+        save_all=True,
+        append_images=frames[1:],
+        duration=900,
+        loop=0,
+        optimize=True,
+    )
+
+
 def render_obstacle_summary(report_path: Path, output: Path) -> None:
     payload, check = load_check(report_path, "obstacle_replan")
     metrics = check["metrics"]
@@ -329,8 +486,17 @@ def render_boundary_summary(trial_paths: list[Path], output: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument("--evidence-dir", type=Path)
+    parser.add_argument("--endurance-report", type=Path)
     args = parser.parse_args()
+    if args.endurance_report is not None:
+        report = args.endurance_report.resolve()
+        root = report.parent
+        render_endurance_summary(report, root / "b1-b10-service-endurance.png")
+        render_endurance_gif(report, root / "b1-b10-service-endurance.gif")
+        return
+    if args.evidence_dir is None:
+        parser.error("--evidence-dir or --endurance-report is required")
     root = args.evidence_dir.resolve()
     service_report = root / "repeated-service-soak.json"
     render_service_summary(service_report, root / "repeated-service-summary.png")

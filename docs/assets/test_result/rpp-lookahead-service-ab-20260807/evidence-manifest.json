@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "classification": "AMD64 deterministic simulation",
+  "map_sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+  "acceptance": "Velocity-scaled preview rejected after 0.849929 s same-boundary recontact; fixed 1.1 m completed B1/B2 2/2 in 422.848 s with restart 0",
+  "files": {
+    "README.md": "34586d974a65a4f02e907ce9cac67c471258309a60bb416bc4d1d8dc5659878a",
+    "comparison.json": "600535de002666ec06cf45ae7b820d02c20616e6a71680a794577e293cde0244",
+    "fixed-lookahead-gate.log": "215de0e8013477c6e34ded5252b362bae567274427b319cf3969b7261a52f565",
+    "fixed-lookahead-service.json": "ec6d4a82d1f01ddc0f51d801ba88625bc5405e143c7f8a5b0533052533c45646",
+    "rpp-lookahead-service-ab.png": "9ffd7c5fc00e2a0868bcaf187382bad01434a4159a2513353506f0eb11f69d2e",
+    "velocity-scaled-gate.log": "8d5dc25e883deeda939b394f4d6620d5eca85ac430870198080968d6be6f82b0"
+  }
+}

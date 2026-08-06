@@ -23,6 +23,8 @@ install(
     scripts/render_camping_site_sequence_results.py
     # HH_260807 - Render the v2.1.5 repeated-service and safety test reports.
     scripts/render_v2_1_5_service_results.py
+    # HH_260807 - Render the 3 km/h RPP lookahead full-service A/B decision.
+    scripts/render_rpp_service_ab.py
     # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
     scripts/render_boundary_recovery_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.

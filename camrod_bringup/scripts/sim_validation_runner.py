@@ -119,7 +119,9 @@ class SimValidationRunner(Node):
         self.camping_stop_at_wait_return = bool(
             self.declare_parameter("camping_stop_at_wait_return", False).value
         )
-        # HH_260721 - Optionally emulate normalized CAN/BMS feedback for reverse parking.
+        # HH_260807 - Require the simulated raw CAN/BMS contract when charging
+        # behavior is under test. The runner observes /platform/status but never
+        # publishes it; ranger_platform_bridge remains the single owner.
         self.simulate_platform_status = bool(
             self.declare_parameter("simulate_platform_status", False).value
         )
@@ -188,7 +190,9 @@ class SimValidationRunner(Node):
         # HH_260806 - Keep an absent LiDAR cost grid valid only when the launch
         # contract explicitly disables that optional component.
         self.expect_lidar_cost_grid = bool(
-            self.declare_parameter("expect_lidar_cost_grid", True).value
+            # HH_260807 - Match the production launch default. ON validation
+            # remains explicit with expect_lidar_cost_grid:=true.
+            self.declare_parameter("expect_lidar_cost_grid", False).value
         )
         self.obstacle_replan_timeout_s = float(
             self.declare_parameter("obstacle_replan_timeout_s", 35.0).value
@@ -268,10 +272,6 @@ class SimValidationRunner(Node):
             MotionOperation, "/parking/operation", 10
         )
         self.pub_raw = self.create_publisher(AvgTwist, "/control/cmd_vel_raw", 10)
-        # HH_260721 - Feed the same generated platform contract used by hardware CAN.
-        self.pub_platform_status = self.create_publisher(
-            AvgPlatformStatus, "/platform/status", 10
-        )
 
         self.param_client = self.create_client(
             SetParameters, f"{self.fake_sensor_node}/set_parameters"
@@ -303,6 +303,7 @@ class SimValidationRunner(Node):
         self.latest_route_recovery_status: ModuleState | None = None
         # HH_260721 - Validate the public service contract in addition to controller internals.
         self.latest_service_state: AvgServiceState | None = None
+        self.latest_platform_status: AvgPlatformStatus | None = None
         self.service_state_names_seen: list[str] = []
         # HH_260807 - Preserve repeated phase transitions across service cycles;
         # latest-only status cannot prove a second return and parking sequence.
@@ -360,6 +361,9 @@ class SimValidationRunner(Node):
             AvgServiceState, "/service/state", self._on_service_state, 10
         )
         self.create_subscription(
+            AvgPlatformStatus, "/platform/status", self._on_platform_status, 10
+        )
+        self.create_subscription(
             PlanningMissionKey,
             "/planning/state_machine/mission_source",
             self._on_mission_source,
@@ -413,10 +417,6 @@ class SimValidationRunner(Node):
             "/planning/follow_path/_action/status",
             self._on_follow_status,
             10,
-        )
-        # HH_260721 - Publish a fresh 20 Hz platform heartbeat when CAN simulation is enabled.
-        self.platform_status_timer = self.create_timer(
-            0.05, self._publish_fake_platform_status
         )
 
     def _subscribe_count(self, topic: str, msg_type) -> None:
@@ -529,22 +529,13 @@ class SimValidationRunner(Node):
         if not events or events[-1] != event:
             events.append(event)
 
-    def _publish_fake_platform_status(self) -> None:
-        if not self.simulate_platform_status:
-            return
-        msg = AvgPlatformStatus()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "robot_center_link"
-        msg.vehicle_state = 0
-        msg.control_mode = 1
-        msg.error_code = 0
-        msg.estop = False
-        msg.battery_state_available = True
-        msg.battery_percentage = max(
-            0.0, min(1.0, self.fake_platform_battery_percentage)
-        )
-        msg.is_charging = self.fake_platform_charging
-        self.pub_platform_status.publish(msg)
+    def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
+        # HH_260807 - Observe the bridge-owned normalized status. Publishing a
+        # competing status here caused CHARGING/DROP_ZONE_WAIT oscillation.
+        self.latest_platform_status = msg
+        self.fake_platform_charging = bool(msg.is_charging)
+        if msg.battery_state_available:
+            self.fake_platform_battery_percentage = float(msg.battery_percentage)
 
     def _on_replan_status(self, msg: AvgString) -> None:
         self.latest_replan_status = msg.data
@@ -597,6 +588,13 @@ class SimValidationRunner(Node):
 
     def set_fake_params(self, **kwargs) -> bool:
         return self.set_node_params(self.param_client, "fake sensor", **kwargs)
+
+    def set_simulated_battery_percentage(self, value: float) -> bool:
+        # HH_260807 - Change the raw BMS simulation, then let the platform
+        # bridge publish the canonical status exactly as hardware does.
+        percentage = max(0.0, min(1.0, float(value)))
+        self.fake_platform_battery_percentage = percentage
+        return self.set_fake_params(simulated_battery_percentage=percentage)
 
     def set_gate_params(self, **kwargs) -> bool:
         return self.set_node_params(self.gate_param_client, "planning cmd_vel gate", **kwargs)
@@ -826,7 +824,9 @@ class SimValidationRunner(Node):
             self.set_fake_params(
                 obstacle_direction=direction,
                 obstacle_offset=offsets[direction],
-                publish_fake_lidar_obstacle_cloud=False,
+                # HH_260807 - This check measures radar frequency, not source
+                # isolation. Keep the base LiDAR/perception health stream alive.
+                publish_fake_lidar_obstacle_cloud=True,
                 publish_fake_radar_ranges=True,
             )
             self.spin_for(0.4)
@@ -1440,8 +1440,6 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         self.cancel_parking_maneuvers()
         self.clear_obstacle()
-        # HH_260721 - Start the round trip disconnected from the simulated charger.
-        self.fake_platform_charging = False
         self.publish_engage(True)
         self.publish_mission_engage(True)
         mission_key = self.camping_mission_key.strip() or "camping_site_1"
@@ -1624,8 +1622,8 @@ class SimValidationRunner(Node):
                     in {"MOVING_TO_SITE", "SITE_ENTRY", "UNLOAD_WAIT"}
                 )
             ):
-                self.fake_platform_battery_percentage = max(
-                    0.0, min(1.0, self.low_battery_mission_percentage)
+                self.set_simulated_battery_percentage(
+                    self.low_battery_mission_percentage
                 )
                 self.spin_for(0.25)
                 low_battery_finish_triggered = True
@@ -1708,8 +1706,6 @@ class SimValidationRunner(Node):
             # HH_260721 - Emulate charger contact only after reverse parking reaches its stop pose.
             if "WAIT_FOR_CHARGING" in reverse_parking_controller_msg:
                 seen_reverse_wait_for_charging = True
-                if self.simulate_platform_status:
-                    self.fake_platform_charging = True
             seen_gate_charging_state = (
                 seen_gate_charging_state or "state=CHARGING" in gate_status_msg
             )
@@ -1730,8 +1726,8 @@ class SimValidationRunner(Node):
                 and seen_service_charging
                 and not low_battery_finish_recovered
             ):
-                self.fake_platform_battery_percentage = max(
-                    0.0, min(1.0, charging_recall_recovered_battery_percentage)
+                self.set_simulated_battery_percentage(
+                    charging_recall_recovered_battery_percentage
                 )
                 self.spin_for(0.25)
                 low_battery_finish_recovered = True
@@ -1765,8 +1761,8 @@ class SimValidationRunner(Node):
                 if charging_recall_goal_pose is None:
                     seen_drop_sequence_error = True
                     break
-                self.fake_platform_battery_percentage = max(
-                    0.0, min(1.0, self.charging_recall_low_battery_percentage)
+                self.set_simulated_battery_percentage(
+                    self.charging_recall_low_battery_percentage
                 )
                 self.spin_for(0.25)
                 self.reset_cmd_metrics()
@@ -1814,8 +1810,8 @@ class SimValidationRunner(Node):
                             or not self.charging_recall_via_ui
                         )
                     )
-                    self.fake_platform_battery_percentage = max(
-                        0.0, min(1.0, charging_recall_recovered_battery_percentage)
+                    self.set_simulated_battery_percentage(
+                        charging_recall_recovered_battery_percentage
                     )
                     self.spin_for(0.25)
                     self.reset_cmd_metrics()
@@ -1865,7 +1861,6 @@ class SimValidationRunner(Node):
                     and self.max_abs_since.get("/control/cmd_vel", 0.0) > 0.03
                 ):
                     charging_recall_cmd_released = True
-                    self.fake_platform_charging = False
                 charging_recall_disconnect_seen = (
                     charging_recall_disconnect_seen
                     or (charging_recall_cmd_released and not self.fake_platform_charging)
@@ -1907,7 +1902,6 @@ class SimValidationRunner(Node):
         # HH_260720 - Always stop site/drop-zone/parking controllers after a
         # focused camping run, including timeout and failed-sequence cases.
         self.cancel_parking_maneuvers()
-        self.fake_platform_charging = False
         cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
@@ -2217,7 +2211,6 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         self.cancel_parking_maneuvers()
         self.clear_obstacle()
-        self.fake_platform_charging = False
         mission_keys = self.service_soak_mission_keys
         if len(mission_keys) < 2:
             self.results.append(
@@ -2296,7 +2289,8 @@ class SimValidationRunner(Node):
 
             starts_charging = cycle_number > 1
             if starts_charging:
-                self.fake_platform_charging = True
+                # HH_260807 - The preceding PARKED cycle must leave the raw BMS
+                # simulator charging; do not synthesize a second status source.
                 self.spin_for(0.25)
             self.publish_charging_recall_request(
                 mission_key,
@@ -2356,10 +2350,12 @@ class SimValidationRunner(Node):
                 departure_seen = departure_seen or any(
                     event == "DEPARTING_CHARGER" for event in service_events
                 ) or any("DEPARTING_CHARGER" in event for event in gate_events)
-                if starts_charging and self.fake_platform_charging and departure_seen:
-                    if self.latest_control_cmd_abs > 0.03:
-                        self.fake_platform_charging = False
-                        charger_disconnected = True
+                if (
+                    starts_charging
+                    and departure_seen
+                    and not self.fake_platform_charging
+                ):
+                    charger_disconnected = True
 
                 should_inject_obstacle = (
                     cycle_number == self.service_soak_obstacle_cycle
@@ -2436,17 +2432,6 @@ class SimValidationRunner(Node):
                         repeats=1,
                     )
                     return_sent = True
-
-                # HH_260807 - A late status from the previous parking cycle can
-                # arrive after the next charger departure has started. Assert
-                # simulated charging only for this cycle's post-RETURN wait;
-                # otherwise charging contact oscillates and cancels the soak.
-                if (
-                    return_sent
-                    and parking_events
-                    and "WAIT_FOR_CHARGING" in parking_events[-1]
-                ):
-                    self.fake_platform_charging = True
 
                 cycle_complete = bool(
                     return_sent
@@ -2529,7 +2514,6 @@ class SimValidationRunner(Node):
             cycles_completed += 1
 
         self.clear_obstacle()
-        self.fake_platform_charging = False
         self.publish_engage(False)
         self.publish_mission_engage(False)
         self.cancel_all_actions()
@@ -2546,6 +2530,14 @@ class SimValidationRunner(Node):
                     "cycles_requested": len(mission_keys),
                     "cycles_completed": cycles_completed,
                     "mission_keys": mission_keys,
+                    # HH_260807 - Keep the endurance claim explicit: cycle 1
+                    # isolates the site handoff when preparation is enabled;
+                    # later cycles depart from the charger and run full routes.
+                    "first_cycle_seeded_near_route": self.camping_prepare_near_route,
+                    "full_outbound_cycles": max(
+                        0,
+                        cycles_completed - (1 if self.camping_prepare_near_route else 0),
+                    ),
                     "elapsed_s": round(time.monotonic() - soak_start, 3),
                     "bringup_restart_count": 0,
                     "cycles": cycle_reports,

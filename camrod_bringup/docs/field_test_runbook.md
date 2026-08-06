@@ -82,10 +82,11 @@ This stores:
 - CPU and memory snapshots
 - short Hz samples for LiDAR, radar, cost grids, perception, paths, and cmd_vel
 
-## 3A. Record TODO 11-13 On One Clock
+## 3A. Record Boundary And Control Work On One Clock
 
-<!-- HH_260729 / TODOLIST 11-13 - A normal snapshot does not preserve the
-     complete route hold, action result, footprint/cost, and wheel timeline. -->
+<!-- HH_260807 - This is the retained procedure for the former TODO 11-13,
+now tracked by TODOLIST P0-B/P0-D. A normal snapshot does not preserve the
+complete route hold, action result, footprint/cost, and wheel timeline. -->
 
 Start this in a separate terminal before creating a supervised lanelet-boundary
 contact or centerline-alignment run:
@@ -440,7 +441,7 @@ Run these in order and take a `snapshot` after any failure.
      full footprint 0.25 m ahead is clear. Place a rear obstacle in that escape
      corridor and confirm the command returns to zero with the dynamic source
      in the stop reason.
-   - Re-enter the safe corridor and keep pose/grid fresh. Require 1.0 s
+   - Re-enter the safe corridor and keep pose/grid fresh. Require 1.5 s
      continuous clear, then `ENABLED`. If Nav2 had reported `ABORTED`, require
      the same goal/source to be reissued after 0.5 s without site reselection.
      Verify no more than two reissues and no automatic restart after operator
@@ -451,12 +452,20 @@ Run these in order and take a `snapshot` after any failure.
    - Confirm lanelet route to snapped entry.
    - Confirm crab entry from snapped lane position.
    - Confirm 180-degree dwell after entering the site.
+   - Require `UNLOAD_WAIT -> WAITING_FOR_RETURN_REQUEST` and a zero final command.
+     The robot must not publish RETURN while a person may still be unloading.
+   - For B11-B13, stop after the capped roadside crab and unload wait. Their
+     zero-turn and return geometry remain unapproved.
 
 7. Return mission
    - Press return in UI.
    - Confirm crab exits without replaying the 180-degree turn.
+   - For an automatic B1-B10 mission, confirm the maneuver status reports
+     `return_anchor_source=route_goal_snap` and `DONE` error `<=0.04 m`.
    - Confirm route returns to the drop-zone lanelet.
    - Confirm drop-zone reverse parking uses drop-zone yaw, not campsite crab yaw.
+   - Confirm `DROP_ZONE_PARKING -> WAITING_FOR_CHARGING -> CHARGING`. Select the
+     next site while charging and require `DEPARTING_CHARGER -> MOVING_TO_SITE`.
 
 8. Steering transition and lateral overshoot
    - Start on both left and right of the centerline with small yaw error.
@@ -472,6 +481,34 @@ Run these in order and take a `snapshot` after any failure.
      touching lanelet cost 100. Do not tune prediction, gain, hysteresis, or
      footprint thresholds until the measured delay for each pipeline segment is
      attached to the field report.
+
+<!-- HH_260807 - Exercise the complete public service contract repeatedly, not
+only the first destination leg. -->
+9. Repeated service lifetime
+   - Run B1-B10 with at least three different sites and no bringup restart.
+   - For every cycle, retain the ordered state/controller evidence for route,
+     crab-in, completed zero-turn, unload wait, human RETURN, crab-out, return
+     route, drop alignment, parking, charging, charger departure, and next route.
+   - In one middle cycle, place a transient obstacle on the route. Require the
+     final command to become zero, remove it, and verify the same mission resumes
+     without reselecting the campsite.
+   - In one margin-only contact, require a projected crab/reverse/reverse-yaw
+     escape, observed owner motion, 1.5 s fresh-clear proof, and continuation of
+     the original service. A physical-body contact must produce no recovery motion.
+   - Fail the run on any retry latch followed by nonzero motion, automatic RETURN
+     before unload wait, missing state, duplicate motion owner, process restart,
+     or residual process after shutdown.
+
+10. Persistent obstacle and wide-lane bypass
+   - Keep one obstacle continuously present for 20 s. Before bypass is allowed,
+     require measured lane width `>=2.50 m`, left/right clearance each `>=0.60 m`,
+     and fresh map/cost data.
+   - On a narrow lane, require one SmacLattice preflight failure, no goal
+     replacement/ABORT loop, zero final command, and original-route resume after
+     obstacle removal.
+   - On a surveyed lane that really has enough free space, require a collision-
+     free fallback path around the obstacle and rejoin of the original mission.
+     A no-path hold must not be reported as successful avoidance.
 
 ## 8. What To Change First
 

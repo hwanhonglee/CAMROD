@@ -1496,6 +1496,12 @@ class FakeSensorPublisher(Node):
                 self.publish_rate_hz = float(p.value)
             elif p.name == "dummy_lidar_cost_grid_publish_rate_hz":
                 self.dummy_lidar_cost_grid_publish_rate_hz = float(p.value)
+            elif p.name == "simulated_battery_percentage":
+                # HH_260807 - Let validation vary the raw BMS value without
+                # creating another publisher for canonical /platform/status.
+                self.simulated_battery_percentage = max(
+                    0.0, min(1.0, float(p.value))
+                )
             elif p.name == "freeze_motion":
                 self.freeze_motion = bool(p.value)
             elif p.name == "gnss_failure_after_s":

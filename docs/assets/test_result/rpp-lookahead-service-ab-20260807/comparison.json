@@ -1,0 +1,36 @@
+{
+  "classification": "AMD64 deterministic simulation",
+  "map": {
+    "revision": "v17",
+    "sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021"
+  },
+  "common": {
+    "service_cycles": ["camping_site_1", "camping_site_2"],
+    "platform_command_mps": 0.8333333333,
+    "planning_footprint_m": [1.4916, 1.17],
+    "route_recovery_clear_required_s": 1.5
+  },
+  "baseline": {
+    "profile": "velocity-scaled lookahead",
+    "configured_min_lookahead_m": 1.1,
+    "effective_lookahead_m": 1.5,
+    "first_hold_pose": "x=10.984, y=43.657, yaw=-76.7 deg",
+    "release_time_s": 1786046832.9414313,
+    "recontact_time_s": 1786046833.7913604,
+    "recontact_after_release_s": 0.8499291,
+    "rapid_recontact_latched": true,
+    "service_completed": false
+  },
+  "selected": {
+    "profile": "fixed lookahead",
+    "lookahead_m": 1.1,
+    "cycles_completed": 2,
+    "cycles_requested": 2,
+    "elapsed_s": 422.848,
+    "bringup_restart_count": 0,
+    "b2_recovery": "REVERSE_YAW_RIGHT, released, no retry latch",
+    "obstacle_result": "stop / clear / resume PASS",
+    "final_behavior": "B2 return, park and charging complete",
+    "service_completed": true
+  }
+}

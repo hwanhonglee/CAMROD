@@ -1,0 +1,42 @@
+{
+  "classification": "AMD64 deterministic simulation",
+  "date": "2026-08-07",
+  "map": {
+    "revision": "v17",
+    "source_file": "lanelet2_maps.osm",
+    "sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021"
+  },
+  "run": {
+    "cycles_requested": 10,
+    "cycles_completed": 10,
+    "elapsed_s": 2210.611,
+    "bringup_restart_count": 0,
+    "cycle_1_scope": "seeded near the B1 route endpoint to isolate the site handoff",
+    "cycles_2_through_10_scope": "full charger departure, outbound route, site, explicit RETURN, drop-zone return, parking and charging",
+    "full_outbound_cycles": 9,
+    "transient_obstacle_cycle": 5,
+    "lidar_cost_grid_enabled": false
+  },
+  "observed_acceptance": {
+    "successful_cycles": 10,
+    "explicit_return_after_wait_cycles": 10,
+    "charging_cycles": 10,
+    "charger_departure_cycles": 9,
+    "planning_margin_hold_cycles": 9,
+    "planning_margin_recovery_cycles": 9,
+    "planning_margin_release_cycles": 9,
+    "transient_obstacle_stop_clear_resume_cycles": 1,
+    "route_safety_retry_latches": 0,
+    "physical_body_holds": 0,
+    "post_start_system_or_path_faults": 0,
+    "process_faults": 0,
+    "run_owned_residual_processes": 0,
+    "return_anchor_error_min_m": 0.03,
+    "return_anchor_error_max_m": 0.04
+  },
+  "claim_limits": [
+    "The simulated kinematics and charging feedback do not constitute physical-robot acceptance.",
+    "The current map does not contain a validated lane wide enough to claim a successful SmacLattice obstacle bypass.",
+    "B11-B13 return and zero-turn geometry remain field-pending and were not exercised."
+  ]
+}
