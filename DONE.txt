@@ -833,6 +833,18 @@ CAMROD 구현·검증 완료 기록
   Ranger steering policy GTest도 1/1 통과했다. 외부 package의 과거 lint
   결과는 이 fresh CAMROD 판정에 합산하지 않았다.
 
+31. HH_260807: service maneuver local-path 진단 전이 [DONE-CODE, SIM-RETEST]
+- 장시간 service soak의 campsite 진입과 drop-zone parking handoff에서 Nav2
+  status가 한 diagnostic tick 동안 EXECUTING으로 남고 local path는 먼저
+  clear되어 `Path point count too low`가 약 1초 표시되는 경합을 확인했다.
+- planning path checker가 `/service/state`를 구독하고, Nav2 path를 요구하지
+  않는 stationary/local-controller 상태에서 local-path clear를 정상 소유권
+  전환으로 판정하게 했다. serialized callback 순서 차이는 local path 저점수
+  `1.5 s` grace로 흡수하며, MOVING/RETURN route에서는 기존 freshness와 지속
+  point count ERROR/WARN을 그대로 유지한다.
+- package 기본 설정과 bringup 배포 mirror 및 회귀 계약을 동기화했다. 전체
+  B1-B10 post-tag service soak로 transient ERROR 제거와 반복 임무를 재검한다.
+
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
   2026-07-31, 600.063초, 7채널 exact dummy, evidence active 0,

@@ -12,6 +12,7 @@
 | Repeated service | Adds B1 -> B2 -> B3 full site/RETURN/drop-zone/parking/charging/next-site simulation, 3/3 in 677.237 s with zero restart |
 | Boundary recovery | Adds B2 repeatability 3/3, physical-body continuous-twist sweep, observed-motion clear timing, and 1.5 s release proof |
 | Charger exit | Documents delayed charge-contact tolerance and idempotent duplicate destination handling during `DEPARTING_CHARGER` |
+| Planning handoff diagnostic | Suppresses expected empty local paths in service-owned phases and adds a bounded 1.5 s low-point callback-order grace without disabling route-travel checks |
 | Persistent obstacle | Adds `ComputePathToPose` preflight, one-shot no-path latch, no repeated Nav2 ABORT, and original-route resume after obstacle clear |
 | Optional LiDAR grid | Records scoped-context TF listener correction and an ON full graph reaching `[SYSTEM] OK` |
 | Evidence | Adds raw JSON/log, SHA manifest, reproducible PNG/GIF renderer, tests, and package README links under `docs/assets/test_result/v2-1-5-service-validation-20260807/` |

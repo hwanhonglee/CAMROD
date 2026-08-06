@@ -13,6 +13,11 @@ planning_path_checker:
     # 2. MONITORED TOPICS
     # =========================================================================
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
+    service_state_topic: "/service/state"
+
+    # HH_260807 - These phases are stationary or owned by campsite/drop-zone/
+    # parking controllers, so an intentionally empty Nav2 local path is healthy.
+    local_path_suppressed_service_states: [0, 2, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16]
 
     path_names:
       - "global_path"
@@ -28,11 +33,15 @@ planning_path_checker:
       # A valid global path can remain unchanged for a whole route; local_path
       # freshness is the runtime control-path health signal.
       stale_timeout_s: 0.0
+      point_count_grace_s: 0.0
       min_points_warn: 5
       min_points_error: 2
 
     local_path:
       topic: "/planning/local_path"
       stale_timeout_s: 2.0
+      # HH_260807 - Cover one serialized callback tick while service-state and
+      # Nav2 terminal updates settle; a persistent short path still faults.
+      point_count_grace_s: 1.5
       min_points_warn: 8
       min_points_error: 3

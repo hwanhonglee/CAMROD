@@ -153,6 +153,14 @@ current cycle's post-RETURN `WAIT_FOR_CHARGING` status. A late parking status
 from the completed cycle can no longer reassert charging during the next
 charger departure and create a validation-only state oscillation.
 
+The post-release-candidate soak also exposed a one-second diagnostic race:
+Nav2 retained `EXECUTING` for one checker tick after a campsite or drop-zone
+controller had intentionally cleared `/planning/local_path`. The path checker
+now consumes `/service/state` and reports that expected service-owned handoff
+as `OK`. A bounded `1.5 s` low-point transition grace covers serialized
+service/path/action callback ordering; path freshness and persistent
+point-count faults remain active during route travel.
+
 ![B2 boundary repeatability](assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 
 Three dedicated B2 trials selected `REVERSE_YAW_RIGHT`, completed the original

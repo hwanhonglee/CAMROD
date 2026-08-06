@@ -163,6 +163,13 @@ A single `ABORTED` result may be WARN when genuinely unexpected. The checker
 uses current service context and recent status; a successful/cancelled terminal
 transition can restore health.
 
+The local-path checker follows the same ownership rule. During stationary or
+local-controller states (`SITE_ENTRY`, parking, charging and charger/drop-zone
+departure), an intentionally cleared Nav2 local path reports `OK` instead of a
+one-tick `Path point count too low` error. A `1.5 s` local-path transition grace
+covers serialized callback ordering; route-travel states still enforce
+freshness immediately and persistent point-count limits after that grace.
+
 ## Required Runtime Groups
 
 | Group | Requirement |
