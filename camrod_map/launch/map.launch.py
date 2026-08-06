@@ -160,6 +160,7 @@ def generate_launch_description():
         DeclareLaunchArgument("map_info_file",        default_value=default_map_info),
         DeclareLaunchArgument("map_param_file",        default_value=LaunchConfiguration("map_info_file")),
         DeclareLaunchArgument("lanelet_cost_grid_param_file", default_value=pkg_share("camrod_map", os.path.join("config", "lanelet_cost_grid.yaml"))),
+        DeclareLaunchArgument("lanelet_safety_cost_grid_param_file", default_value=pkg_share("camrod_map", os.path.join("config", "lanelet_safety_cost_grid.yaml"))),
         DeclareLaunchArgument("map_visualization_param_file", default_value=pkg_share("camrod_map", os.path.join("config", "map_visualization.yaml"))),
         DeclareLaunchArgument("map_path",             default_value=defaults["map_path"]),
         DeclareLaunchArgument("origin_lat",           default_value=defaults["origin_lat"]),
@@ -180,7 +181,8 @@ def generate_launch_description():
 
         _inc(cost_grid_launch,
              "module_namespace", "enable_cost_grids", "map_info_file",
-             "lanelet_cost_grid_param_file", "map_path",
+             "lanelet_cost_grid_param_file", "lanelet_safety_cost_grid_param_file",
+             "map_path",
              "origin_lat", "origin_lon", "origin_alt"),
 
         _inc(visualization_launch,

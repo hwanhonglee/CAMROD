@@ -37,8 +37,9 @@
     # 3. PUBLISH TIMING
     # =========================================================================
     # Local path is an explicit slice of the current global route.
-    # HH_260618: Keep input-triggered refresh, but lower timer heartbeat to reduce CPU/topic load.
-    publish_rate_hz: 15.0
+    # HH_260806 - Match the 20 Hz localization/controller cadence. Pose callbacks
+    # still refresh immediately; this timer is the fallback heartbeat.
+    publish_rate_hz: 20.0
     # HH_260513: Publish immediately on new global path so path updates snap
     # to current robot position right after new goal, not at next timer tick.
     publish_on_input_update: true

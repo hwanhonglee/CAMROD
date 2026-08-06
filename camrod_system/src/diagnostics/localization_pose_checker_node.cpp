@@ -22,9 +22,9 @@
  * 파라미터 구성
  * -------------
  *   pose_topic:           "/localization/pose_with_covariance"
- *   expected_hz:          30.0
- *   hz_warn_ratio:        0.7
- *   hz_error_ratio:       0.4
+ *   expected_hz:          20.0
+ *   hz_warn_ratio:        0.9
+ *   hz_error_ratio:       0.7
  *   stale_timeout:        1.0
  *   cov_warn_threshold:   1.0    # XY trace 상한 (WARN)  ← σ ≈ 0.7m (출력 불확실)
  *   cov_error_threshold:  9.0    # XY trace 상한 (ERROR) ← σ ≈ 2.0m (출력 신뢰불가)
@@ -54,9 +54,9 @@ struct PoseState
 {
   // 설정
   std::string pose_topic;
-  double expected_hz{30.0};
-  double hz_warn_ratio{0.7};
-  double hz_error_ratio{0.4};
+  double expected_hz{20.0};
+  double hz_warn_ratio{0.9};
+  double hz_error_ratio{0.7};
   double stale_timeout{1.0};
   double cov_warn_threshold{1.0};
   double cov_error_threshold{9.0};
@@ -95,9 +95,10 @@ protected:
   void declare_parameters_() override
   {
     declare_parameter("pose_topic",          std::string("/localization/pose_with_covariance"));
-    declare_parameter("expected_hz",         30.0);
-    declare_parameter("hz_warn_ratio",       0.7);
-    declare_parameter("hz_error_ratio",      0.4);
+    // HH_260806 - Keep fallback diagnostics aligned with the deployed 20 Hz EKF.
+    declare_parameter("expected_hz",         20.0);
+    declare_parameter("hz_warn_ratio",       0.9);
+    declare_parameter("hz_error_ratio",      0.7);
     declare_parameter("stale_timeout_s",       1.0);
     declare_parameter("cov_warn_threshold",  1.0);
     declare_parameter("cov_error_threshold", 9.0);

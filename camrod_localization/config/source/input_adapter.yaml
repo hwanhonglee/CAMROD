@@ -31,12 +31,11 @@
     #   navsat: use NavSatFix covariance (with floor clamp)
     #   fixed: use pose_covariance_diagonal fixed values
     navsat_covariance_source: navsat
-    # RTK fixed covariance is ~0.001 m² (1 mm²). Floor at 0.1 m² (≈32 cm) balances:
-    #   - Startup convergence: with initial_estimate_covariance[x,y]=5.0, K_init≈0.98 (fast attachment)
-    #   - Steady-state stability: with Q_xx=0.01, P_ss≈0.037, K_ss≈0.27 (27% GNSS influence per epoch)
-    #   - A single bad RTK epoch (0.5m error) shifts EKF by 0.5×0.27 = 0.14 m → acceptable.
-    # Pairs with pose0_rejection_threshold=3.0 in ekf.yaml (rejects jumps > 3σ ≈ 1.0 m from predicted).
-    # HH_260526: tuned 0.04→0.2→0.1 (0.04 caused instability, 0.2 caused slow startup convergence).
+    # RTK fixed covariance can be much smaller than the vehicle-level error.
+    # HH_260806 - Keep the 0.1 m^2 XY floor paired with the current 1.0 m^2
+    # initial XY covariance (scalar K_init about 0.91) and the EKF 3-sigma
+    # position gate. Do not retune this from the 20 Hz output-rate change alone.
+    # HH_260526: tuned 0.04 -> 0.2 -> 0.1; 0.04 was unstable and 0.2 attached slowly.
     gnss_covariance_floor_xy: 0.1
     gnss_covariance_floor_z: 0.25
 

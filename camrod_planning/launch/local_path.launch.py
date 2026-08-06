@@ -65,7 +65,8 @@ def generate_launch_description():
                 'output_topic': LaunchConfiguration('tracking_error_topic'),
                 'prefer_local_path': True,
                 'pose_timeout_s': 1.0,
-                'publish_rate_hz': 15.0,
+                # HH_260806 - Keep tracking feedback on the common 20 Hz pose/control clock.
+                'publish_rate_hz': 20.0,
                 'publish_on_input_update': True,
             }],
             condition=IfCondition(LaunchConfiguration('enable_tracking_error')),

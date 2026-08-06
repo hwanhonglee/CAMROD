@@ -151,9 +151,13 @@ def _resolve_map_path(map_share: str, map_info_file: str, requested_map_path: st
 
 def _launch_nodes(context, *_args, **_kwargs):
     map_info_file = LaunchConfiguration("map_info_file").perform(context).strip()
-    params = [
+    planning_params = [
         map_info_file,
         LaunchConfiguration("lanelet_cost_grid_param_file"),
+    ]
+    safety_params = [
+        map_info_file,
+        LaunchConfiguration("lanelet_safety_cost_grid_param_file"),
     ]
     overrides = {
         # Keep projector consistent across map/localization/planning helpers.
@@ -177,7 +181,8 @@ def _launch_nodes(context, *_args, **_kwargs):
         overrides["offset_alt"] = origin_alt
 
     if overrides:
-        params.append(overrides)
+        planning_params.append(overrides)
+        safety_params.append(overrides)
 
     return [
         Node(
@@ -187,8 +192,19 @@ def _launch_nodes(context, *_args, **_kwargs):
             namespace=LaunchConfiguration("module_namespace"),
             output="screen",
             condition=IfCondition(LaunchConfiguration("enable_cost_grids")),
-            parameters=params,
-        )
+            parameters=planning_params,
+        ),
+        # HH_260806 - Keep the 240 m Nav2 raster unchanged and publish a small
+        # 0.05 m local raster for physical/planning-boundary safety decisions.
+        Node(
+            package="camrod_map",
+            executable="lanelet_cost_grid_node",
+            name="lanelet_safety_cost_grid",
+            namespace=LaunchConfiguration("module_namespace"),
+            output="screen",
+            condition=IfCondition(LaunchConfiguration("enable_cost_grids")),
+            parameters=safety_params,
+        ),
     ]
 
 
@@ -212,6 +228,13 @@ def generate_launch_description():
         "lanelet_cost_grid_param_file",
         default_value=pkg_share("camrod_map", os.path.join("config", "lanelet_cost_grid.yaml")),
         description="Lanelet cost-grid parameters",
+    )
+    lanelet_safety_cost_grid_param_arg = DeclareLaunchArgument(
+        "lanelet_safety_cost_grid_param_file",
+        default_value=pkg_share(
+            "camrod_map", os.path.join("config", "lanelet_safety_cost_grid.yaml")
+        ),
+        description="High-resolution local lanelet safety-grid parameters",
     )
     map_path_arg = DeclareLaunchArgument(
         "map_path",
@@ -239,6 +262,7 @@ def generate_launch_description():
         enable_cost_grids_arg,
         map_info_file_arg,
         lanelet_cost_grid_param_arg,
+        lanelet_safety_cost_grid_param_arg,
         map_path_arg,
         origin_lat_arg,
         origin_lon_arg,

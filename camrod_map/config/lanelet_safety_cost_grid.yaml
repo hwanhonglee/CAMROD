@@ -1,0 +1,57 @@
+# HH_260806 - Synchronized high-resolution local lanelet raster for cmd_vel safety.
+# Nav2 keeps the independent 0.25 m /map/cost_grid/lanelet planning grid.
+/map/lanelet_safety_cost_grid:
+  ros__parameters:
+    primary_enable: true
+    output_topic: "/map/cost_grid/lanelet_safety"
+    secondary.enable: false
+
+    # A 30 m local window bounds rebuild cost while 0.05 m cells keep raster
+    # uncertainty below the configured 0.05 m planning margin.
+    map_frame_id: "map"
+    projector_type: "local_cartesian"
+    resolution: 0.05
+    width: 600
+    height: 600
+    window_mode: "robot_centered"
+    grid_yaw: 0.0
+
+    # Cost 100 is reserved for outside-lanelet space. Boundary cells remain
+    # soft (98), so the safety gate threshold 100 represents map departure.
+    cost_mode: "lanelet"
+    free_value: 0
+    lethal_value: 100
+    outside_value: 100
+    lanelet_boundary_value: 98
+    boundary_half_width: 0.05
+    boundary_clip_to_lanelet: true
+    cell_inside_min_hits: 7
+    cell_inside_min_hits_boundary: 9
+
+    # Internal lanelet joins and explicit lane-change openings are traversable.
+    lane_change_clearance_enable: true
+    lane_change_clearance_value: 0
+    lane_change_clearance_use_dashed_fallback: false
+    lane_change_clearance_half_width_m: 0.85
+    lane_change_clearance_clip_to_lanelet: false
+
+    # Cover every local lanelet independently of the active route. Recenter
+    # near the 30 m window edge instead of rebuilding at localization rate.
+    route_lanelet_filter_enable: false
+    route_lanelet_filter_wait_for_route: false
+    pose_topic: "/localization/pose"
+    path_topic: "/planning/global_path"
+    rebuild_on_pose: false
+    rebuild_on_path: false
+    rebuild_when_pose_exits_grid: true
+    rebuild_pose_grid_margin_m: 5.0
+    min_rebuild_period_s: 0.2
+    republish_period_s: 1.0
+
+    direction_penalty: 0
+    backward_penalty: 0
+    centerline_use_distance_gradient: false
+    publish_map_status: false
+    debug_build_timing: true
+    debug_boundary_stats: false
+    debug_coverage_stats: false

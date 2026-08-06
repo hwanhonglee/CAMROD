@@ -11,10 +11,13 @@ localization_pose_checker:
     pose_topic: "/localization/pose_with_covariance"     # 구독 토픽
 
     # --- Rate and staleness thresholds ---
-    # HH_260730: EKF matches the 15 Hz Nav2 controller cadence.
-    expected_hz: 15.0
-    hz_warn_ratio: 0.7         # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
-    hz_error_ratio: 0.4        # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
+    # HH_260806 - Real EKF and Nav2 controller share a 20 Hz prediction cadence.
+    # The independent physical dual-GNSS correction source remains at 1 Hz.
+    expected_hz: 20.0
+    # HH_260806 - Surface a real 20 Hz budget miss: WARN below 18 Hz and ERROR
+    # below 14 Hz. This checker observes final pose, not the 1 Hz GNSS input.
+    hz_warn_ratio: 0.90        # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
+    hz_error_ratio: 0.70       # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
     stale_timeout_s: 1.0         # 이 시간(초) 이상 메시지 없으면 STALE
 
     # XY 위치 공분산 trace 임계값 (출력 불확실도)

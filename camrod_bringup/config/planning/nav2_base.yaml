@@ -160,10 +160,10 @@ planner_server:
 controller_server:
   ros__parameters:
     use_sim_time: False
-    # Tune controller loop for real stack load.
-    # 30Hz was repeatedly missed during full sensing/RViz operation on Orin;
-    # 15Hz matches observed controller runtime and avoids abort/recovery churn.
-    controller_frequency: 15.0
+    # HH_260806 - Match the real EKF's 20 Hz output so each controller cycle can
+    # consume a fresh predicted pose. Jetson moving-load acceptance remains
+    # required because earlier full sensing/RViz runs missed this budget.
+    controller_frequency: 20.0
     # Allow longer transient control failures while local TF/costmap
     # synchronizes, so cmd_vel stream can recover instead of immediate abort.
     # Increase tolerance to avoid frequent FollowPath abort/recovery
@@ -280,7 +280,7 @@ controller_server:
     MPPI:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 40
-      # HH_260625: controller_frequency=15Hz gives a 0.0667s control period.
+      # HH_260806 - controller_frequency=20 Hz gives a 0.05 s control period.
       # MPPI requires model_dt >= controller period even when RPP is selected by default.
       model_dt: 0.07
       batch_size: 600
@@ -373,9 +373,11 @@ controller_server:
     RotationShim:
       plugin: "nav2_rotation_shim_controller::RotationShimController"
       primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # HH_260806 - Keep the shim in rotation ownership until heading error is
-      # below 2 degrees instead of handing off at the previous 45 degrees.
-      angular_dist_threshold: 0.0349066
+      # HH_260806 - Manual clicked-yaw goals engage the shim only for a gross
+      # initial error, then finish within 5 degrees before RPP takes ownership.
+      # This hysteresis avoids re-entering zero-turn mode on ordinary curves.
+      angular_dist_threshold: 0.785398
+      angular_disengage_threshold: 0.0872665
       forward_sampling_distance: 0.5
       # HH_260731 - Conservative heading transition for the outdoor recovery test.
       # The final gate limits this to 0.20 rad/s.
@@ -384,8 +386,8 @@ controller_server:
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: True
       # RotationShim owns a separate internal RPP; keep it identical to the
-      # regulated 0.4 m/s source (0.20 m/s after the final gate).
-      desired_linear_vel: 0.4
+      # direct RPP 3.0 km/h production cruise profile after the 0.5 final gate.
+      desired_linear_vel: 1.666667
       # HH_260801 - Match the full-bringup-swept low-speed preview used by the
       # direct RPP selected for UI missions.
       lookahead_dist: 1.1
@@ -395,15 +397,14 @@ controller_server:
       use_velocity_scaled_lookahead_dist: True
       use_interpolation: True
       allow_reversing: False
-      use_rotate_to_heading: True
-      rotate_to_heading_min_angle: 0.0349066
-      min_approach_linear_velocity: 0.10
+      use_rotate_to_heading: False
+      min_approach_linear_velocity: 0.416667
       approach_velocity_scaling_dist: 0.6
       use_collision_detection: True
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.2
+      regulated_linear_scaling_min_speed: 0.833333
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
