@@ -166,9 +166,18 @@ transition can restore health.
 The local-path checker follows the same ownership rule. During stationary or
 local-controller states (`SITE_ENTRY`, parking, charging and charger/drop-zone
 departure), an intentionally cleared Nav2 local path reports `OK` instead of a
-one-tick `Path point count too low` error. A `1.5 s` local-path transition grace
-covers serialized callback ordering; route-travel states still enforce
-freshness immediately and persistent point-count limits after that grace.
+one-tick `Path point count too low` error. A `3.0 s` local-path transition grace
+covers serialized callback ordering. Each new navigation episode resets the
+effective grace origin, and WARN-sized and ERROR-sized paths have independent
+timers. An idle empty path or short valid approach therefore cannot consume the
+next route's invalid-path grace; route-travel states still enforce freshness
+immediately and persistent point-count limits after that grace.
+
+<!-- HH_260807 - Link the final handoff and shutdown evidence to the checker contract. -->
+The [same-goal handoff smoke and ten-cycle audit](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+kept `/system` at OK through an expected `empty_route` transition and recorded
+zero post-service-start system/path fault during `2210.611 s`. Robot and Guest
+backend shutdown also left no failed or run-owned residual process.
 
 ## Required Runtime Groups
 

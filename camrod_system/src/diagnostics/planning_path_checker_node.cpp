@@ -30,6 +30,7 @@
  *     min_points_error: 3
  */
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <memory>
@@ -72,6 +73,8 @@ struct PathSource
   std::size_t  point_count{0};
   bool         low_point_count_active{false};
   rclcpp::Time low_point_count_since{0, 0, RCL_ROS_TIME};
+  bool         warn_point_count_active{false};
+  rclcpp::Time warn_point_count_since{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr sub;
 };
@@ -139,9 +142,11 @@ protected:
 
   void setup_tasks_() override
   {
-    // nav status 구독 (모든 경로 소스 공용)
+    // HH_260807 - Only the newest action status is relevant. A queued
+    // EXECUTING sample after terminal success can otherwise overlap the
+    // already-cleared local path during the parking ownership handoff.
     nav_sub_ = create_subscription<action_msgs::msg::GoalStatusArray>(
-      nav_status_topic_, rclcpp::QoS(10),
+      nav_status_topic_, rclcpp::QoS(1).reliable(),
       [this](const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) {
         bool active = false;
         for (const auto & s : msg->status_list) {
@@ -153,11 +158,19 @@ protected:
           }
         }
         std::lock_guard<std::mutex> lock(nav_mtx_);
+        // HH_260807 - An empty path published while Nav2 was idle must not
+        // consume the next route's transition grace. Start a separate clock
+        // whenever a new ACCEPTED/EXECUTING episode begins.
+        if (active && !nav_active_) {
+          nav_active_since_ = this->now();
+        }
         nav_active_ = active;
       });
 
+    // HH_260807 - Diagnostics need the latest service phase, not a backlog of
+    // movement states after parking takes ownership and clears the local path.
     service_state_sub_ = create_subscription<avg_msgs::msg::AvgServiceState>(
-      service_state_topic_, rclcpp::QoS(10),
+      service_state_topic_, rclcpp::QoS(1).reliable(),
       [this](const avg_msgs::msg::AvgServiceState::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(service_state_mtx_);
         service_state_ = msg->state;
@@ -172,13 +185,24 @@ protected:
           src->last_path_time = this->now();
           src->has_path       = true;
           src->point_count    = msg->poses.size();
-          if (src->point_count < src->min_points_warn) {
+          // HH_260807 - Error and warning windows start independently. A
+          // warning-sized approach path must not consume the later invalid-
+          // path grace, and a short normal arrival must not flash SYSTEM WARN.
+          if (src->point_count < src->min_points_error) {
             if (!src->low_point_count_active) {
               src->low_point_count_active = true;
               src->low_point_count_since = src->last_path_time;
             }
           } else {
             src->low_point_count_active = false;
+          }
+          if (src->point_count < src->min_points_warn) {
+            if (!src->warn_point_count_active) {
+              src->warn_point_count_active = true;
+              src->warn_point_count_since = src->last_path_time;
+            }
+          } else {
+            src->warn_point_count_active = false;
           }
         });
 
@@ -197,9 +221,11 @@ private:
   void checkPath(StatusWrapper & stat, PathSource & src)
   {
     bool nav_active;
+    rclcpp::Time nav_active_since{0, 0, RCL_ROS_TIME};
     {
       std::lock_guard<std::mutex> lock(nav_mtx_);
       nav_active = nav_active_;
+      nav_active_since = nav_active_since_;
     }
 
     bool has_service_state;
@@ -267,16 +293,46 @@ private:
     // bounded transition window; a persistent low-count route still faults.
     const double low_point_count_elapsed = src.low_point_count_active ?
       (this->now() - src.low_point_count_since).seconds() : 0.0;
+    const double warn_point_count_elapsed = src.warn_point_count_active ?
+      (this->now() - src.warn_point_count_since).seconds() : 0.0;
+    const double nav_active_elapsed = nav_active_since.nanoseconds() > 0 ?
+      (this->now() - nav_active_since).seconds() : 0.0;
+    // HH_260807 - The effective low-count duration starts at the later of the
+    // path transition and this navigation episode. This covers a delayed
+    // service-state callback without weakening a persistent route fault.
+    const double error_grace_elapsed = std::min(
+      low_point_count_elapsed, nav_active_elapsed);
+    const double warning_grace_elapsed = std::min(
+      warn_point_count_elapsed, nav_active_elapsed);
     if (
       src.low_point_count_active && src.point_count_grace > 0.0 &&
-      low_point_count_elapsed < src.point_count_grace)
+      error_grace_elapsed < src.point_count_grace)
     {
       stat.summary(
         diagnostic_msgs::msg::DiagnosticStatus::OK,
         "path point count transition grace");
       stat.add("point_count", static_cast<int>(src.point_count));
       stat.add("point_count_grace_s", src.point_count_grace);
-      stat.add("low_point_count_elapsed_s", low_point_count_elapsed);
+      stat.add("low_point_count_elapsed_s", error_grace_elapsed);
+      stat.add("nav_active_elapsed_s", nav_active_elapsed);
+      stat.add("nav_active", "true");
+      return;
+    }
+    // HH_260807 - Give a still-valid short approach path its own grace. This
+    // prevents a one-tick UI warning before SITE_ENTRY while preserving WARN
+    // for a path that remains below min_points_warn beyond the bounded window.
+    if (
+      src.point_count >= src.min_points_error && src.warn_point_count_active &&
+      src.point_count_grace > 0.0 &&
+      warning_grace_elapsed < src.point_count_grace)
+    {
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::OK,
+        "path point count warning grace");
+      stat.add("point_count", static_cast<int>(src.point_count));
+      stat.add("point_count_grace_s", src.point_count_grace);
+      stat.add("warn_point_count_elapsed_s", warning_grace_elapsed);
+      stat.add("nav_active_elapsed_s", nav_active_elapsed);
       stat.add("nav_active", "true");
       return;
     }
@@ -320,7 +376,9 @@ private:
     stat.add("last_path_sec_ago", std::string(tmp));
     stat.add("nav_active",        "true");
     stat.add("point_count_grace_s", src.point_count_grace);
-    stat.add("low_point_count_elapsed_s", low_point_count_elapsed);
+    stat.add("low_point_count_elapsed_s", error_grace_elapsed);
+    stat.add("warn_point_count_elapsed_s", warning_grace_elapsed);
+    stat.add("nav_active_elapsed_s", nav_active_elapsed);
   }
 
   std::vector<std::string>                  path_names_;
@@ -331,6 +389,7 @@ private:
 
   std::mutex                                            nav_mtx_;
   bool                                                  nav_active_{false};
+  rclcpp::Time                                           nav_active_since_{0, 0, RCL_ROS_TIME};
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr      nav_sub_;
   std::mutex                                            service_state_mtx_;
   bool                                                  has_service_state_{false};

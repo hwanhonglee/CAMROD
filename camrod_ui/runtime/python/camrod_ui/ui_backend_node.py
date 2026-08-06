@@ -2497,6 +2497,12 @@ def main() -> None:
     # both are normal shutdown paths and must leave launch with exit code 0.
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    # HH_260807 - Humble can race context shutdown with take_message conversion
+    # and raise RuntimeError instead of ExternalShutdownException. Suppress it
+    # only after the ROS context is down; operational RuntimeError still fails.
+    except RuntimeError:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         try:
