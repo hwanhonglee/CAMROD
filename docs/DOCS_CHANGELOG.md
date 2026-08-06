@@ -1,5 +1,27 @@
 # Documentation Changelog
 
+<!-- HH_260807 - Record the final RPP preview, B1-B10 endurance, return anchor,
+state ownership, path diagnostics, and clean UI shutdown. -->
+## [v2.1.5-final-service-acceptance] - 2026-08-07 (HH_260807)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| RPP preview | Disables velocity-scaled lookahead and fixes both production controllers at the selected `1.1 m` |
+| A/B decision | Records the rejected about-`1.5 m` run (`0.850 s` same-boundary recontact) and fixed-`1.1 m` B1/B2 `2/2` service pass in `422.848 s` |
+| Service endurance | Records B1-B10 `10/10` in `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff and cycles 2-10 full outbound through charging |
+| Return anchor | Separates actual entry-start pose from the automatic route-goal snap; B1-B10 handoff error is `0.03-0.04 m` |
+| Final gate consistency | Evaluates, logs, proves recovery with, and publishes the same speed-scaled command |
+| Platform state | Makes `ranger_platform_bridge` the sole `/platform/status` publisher; simulation changes only fake raw-BMS input |
+| Planning handoff diagnostic | Uses independent `3.0 s` WARN/ERROR timers and a per-navigation episode clock while service-owned path clear remains suppressed |
+| UI shutdown | Treats Humble's message-conversion `RuntimeError` as normal only after context shutdown; Robot/Guest full-graph SIGINT is clean |
+| Evidence | Adds structured JSON, source logs, renderers, SHA manifests and package links under the RPP A/B and B1-B10 endurance folders |
+| Fresh verification | Canonical wrapper rebuilt 5 changed packages; 37 CTest targets, 303 package-report cases and direct UI 30/30 passed with zero errors/failures |
+| Claim boundary | Classifies all new results as AMD64 deterministic simulation; Jetson and physical-road acceptance remain in `TODOLIST.txt` |
+
+---
+
 <!-- HH_260807 - Record final map-v17 service, boundary, and obstacle acceptance. -->
 ## [v2.1.5-map-v17-service-acceptance] - 2026-08-07 (HH_260807)
 
@@ -12,7 +34,7 @@
 | Repeated service | Adds B1 -> B2 -> B3 full site/RETURN/drop-zone/parking/charging/next-site simulation, 3/3 in 677.237 s with zero restart |
 | Boundary recovery | Adds B2 repeatability 3/3, physical-body continuous-twist sweep, observed-motion clear timing, and 1.5 s release proof |
 | Charger exit | Documents delayed charge-contact tolerance and idempotent duplicate destination handling during `DEPARTING_CHARGER` |
-| Planning handoff diagnostic | Suppresses expected empty local paths in service-owned phases and adds a bounded 1.5 s low-point callback-order grace without disabling route-travel checks |
+| Planning handoff diagnostic | Suppresses expected empty local paths in service-owned phases and adds bounded 3.0 s WARN/ERROR callback-order grace without disabling route-travel checks |
 | Persistent obstacle | Adds `ComputePathToPose` preflight, one-shot no-path latch, no repeated Nav2 ABORT, and original-route resume after obstacle clear |
 | Optional LiDAR grid | Records scoped-context TF listener correction and an ON full graph reaching `[SYSTEM] OK` |
 | Evidence | Adds raw JSON/log, SHA manifest, reproducible PNG/GIF renderer, tests, and package README links under `docs/assets/test_result/v2-1-5-service-validation-20260807/` |

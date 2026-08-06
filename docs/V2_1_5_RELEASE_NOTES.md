@@ -12,6 +12,10 @@ body candidate with the fabrication-inclusive measured envelope. -->
 <!-- HH_260806 - Remove the 2-degree RPP curve-rotation loop and retain the measured 1.1 m lookahead. -->
 <!-- HH_260806 - Add the 3 km/h operational profile and delayed-measurement EKF contract. -->
 <!-- HH_260807 - Add map-v17 repeated service, B2 recovery, and safe obstacle preflight evidence. -->
+<!-- HH_260807 - Finalize fixed 1.1 m preview, single-owner platform status,
+and service-handoff path diagnostics. -->
+<!-- HH_260807 - Record the final B1-B10 no-restart service endurance and
+route-snap campsite return contract. -->
 
 Release date: 2026-08-07 (Asia/Seoul)
 
@@ -55,7 +59,7 @@ remains in `TODOLIST.txt`.
 | Campsite policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | Constrained sites stop without an on-site zero-turn |
 | Command handoff | `0.5 s` zero hold | Applied only when an explicit campsite/drop-zone maneuver releases ownership to Nav2 |
 | Normal Nav2 stream | no source handoff | RotationShim/RPP rotation and translation remain one continuous owner |
-| RPP curve tracking | continuous at `1.1 m` | Gross yaw alignment is isolated in the gate; ordinary bends do not trigger pure rotation |
+| RPP curve tracking | continuous, fixed `1.1 m` | Velocity scaling is disabled; gross yaw alignment is isolated in the gate |
 | RPP cruise | raw `1.666667 m/s`, gate `0.5` | Final platform reference `0.833333 m/s` (`3.0 km/h`) |
 | Field EKF/controller | `20 Hz`, `1.0 s` lag history | IMU/wheel prediction at 50 ms; pose WARN/ERROR below `18/14 Hz`; physical dual-GNSS remains `1 Hz` |
 | Lanelet safety raster | `600 x 600 @ 0.05 m` | Independent local occupancy grid for body/margin checks; Nav2 retains its `0.25 m` planning grid |
@@ -148,18 +152,20 @@ The UI backend now preserves `DEPARTING_CHARGER` while a station exit is active,
 even if delayed CAN feedback still reports charger contact. Duplicate
 destination frames during that pending exit are idempotent. B2 and B3 both
 departed from simulated charging without a second motion owner or state reset.
-The extended soak runner also scopes synthetic charging assertion to the
-current cycle's post-RETURN `WAIT_FOR_CHARGING` status. A late parking status
-from the completed cycle can no longer reassert charging during the next
-charger departure and create a validation-only state oscillation.
+The extended soak runner no longer publishes normalized `/platform/status`.
+It changes only the fake raw-BMS battery input and observes the production
+`ranger_platform_bridge` conversion, leaving that bridge as the topic's sole
+publisher. This removes the validation-only `CHARGING`/`DROP_ZONE_WAIT`
+oscillation while testing the same ownership boundary used by hardware.
 
 The post-release-candidate soak also exposed a one-second diagnostic race:
 Nav2 retained `EXECUTING` for one checker tick after a campsite or drop-zone
 controller had intentionally cleared `/planning/local_path`. The path checker
 now consumes `/service/state` and reports that expected service-owned handoff
-as `OK`. A bounded `1.5 s` low-point transition grace covers serialized
-service/path/action callback ordering; path freshness and persistent
-point-count faults remain active during route travel.
+as `OK`. Independent bounded `3.0 s` timers begin when point count crosses the
+WARN and ERROR thresholds. A warning-sized but usable approach path therefore
+does not consume the later invalid-path grace or flash an arrival warning;
+freshness and persistent point-count faults remain active during route travel.
 
 ![B2 boundary repeatability](assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 
@@ -185,6 +191,41 @@ for the current footprint and inflation. JSON, log, hashes, reproduction, and
 claim limits are in the
 [`v2-1-5-service-validation-20260807`](assets/test_result/v2-1-5-service-validation-20260807/README.md)
 directory.
+
+## Final B1-B10 Service Endurance
+
+![B1-B10 no-restart service endurance](assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+
+[Open the measured ten-cycle GIF](assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
+
+The final AMD64 graph completed B1-B10 `10/10` in `2210.611 s` with no
+bringup restart. Cycle 1 was deliberately seeded at the B1 route endpoint to
+isolate the site handoff. Cycles 2-10 each completed charger departure, the
+full outbound route, campsite crab-in and 180-degree turn, unload wait,
+operator-timed RETURN, return route, drop-zone alignment, reverse parking,
+waiting for charging, charging, and the next recall.
+
+B5 stopped its final command for a transient obstacle, then resumed the same
+mission after clear. B2-B10 generated nine planning-margin holds; all nine
+observed bounded recovery motion, completed the 1.5-second clear proof, and
+continued service. No rapid-retry latch, physical-body hold, process fault, or
+post-service-start system/path fault was recorded. This does not prove a
+successful detour: the active map has no surveyed lane wide enough for the
+configured footprint and inflation, so positive avoidance remains field work.
+
+Nav2 can legally report goal reached before the body reaches the exact snapped
+route pose. Reusing that early arrival as the campsite return target left B4
+`0.27 m` from a centerline whose planning margin has only about `0.136 m`
+clearance per side. Automatic service now keeps the actual arrival pose for
+entry measurement but retains `/planning/goal_pose_snapped` as a separate
+return anchor. Crab-out corrects both map axes and slows near the anchor; all
+ten handoffs finished within `0.03-0.04 m` before Nav2 resumed.
+
+Raw reports, filtered logs, B4 geometry, path/UI shutdown smokes, SHA manifest,
+and regeneration commands are in
+[`b1-b10-service-endurance-20260807`](assets/test_result/b1-b10-service-endurance-20260807/README.md).
+These are deterministic simulation results, not Jetson, physical boundary,
+CAN charging, or road acceptance.
 
 ## B7 Stop-Go Regression
 
@@ -215,6 +256,21 @@ selected `1.1 m` B8 run traveled `59.931 m`, emitted zero raw R/T switches,
 recovered one planning-margin contact, and reached `GOAL_REACHED`. A controlled
 `1.2 m` comparison recontacted the margin `0.999 s` after release and was
 rejected. See the [structured comparison](assets/test_result/rpp-curve-tracking-20260806/README.md).
+
+The final source-profile service A/B then exercised the active `3.0 km/h`
+command path. Velocity-scaled preview grew to about `1.5 m`, recreated the
+same boundary `0.850 s` after release, and latched safely. With scaling disabled,
+fixed `1.1 m` completed B1 and B2 in `422.848 s` without a bringup restart,
+including obstacle stop/clear/resume, B2 `REVERSE_YAW_RIGHT`, explicit RETURN,
+parking, and charging. The final gate now evaluates and logs the same scaled
+`0.833333 m/s` command that it publishes.
+
+![RPP lookahead service A/B](assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+
+Raw excerpts, structured inputs, and reproduction are in the
+[`rpp-lookahead-service-ab-20260807`](assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+directory. These are AMD64 deterministic-simulation results, not Jetson or
+physical-road acceptance.
 
 ## 3 km/h Speed And Localization Latency
 
@@ -388,11 +444,15 @@ samples.
 - The active and named-copy map-v17 OSM files remain byte-identical at SHA
   `8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021`;
   they load 55 lanelets, 14 areas, and 1,652 nodes.
-- The canonical wrapper rebuilt 11 selected packages. A fresh CAMROD-only test
-  run completed `58/58` CTest targets; their xUnit reports contain `523` cases,
-  zero errors/failures, and `13` existing planning/localization static-analysis
-  skips. Direct UI unittest passed `30/30`, and the modified Ranger steering
-  policy GTest passed `1/1`.
+- The earlier complete baseline wrapper rebuilt 11 selected packages and passed
+  `58/58` CTest targets / `523` xUnit cases. After the final service fixes, the
+  canonical wrapper rebuilt the five changed control/planning/system/ui/bringup
+  packages. Their scoped run passed `37/37` CTest targets and `303` package-
+  report cases with zero errors/failures and eight expected planning cppcheck
+  skips; direct UI pytest passed `30/30`.
+- The UI production bundle compiled successfully. `npm audit` still reports 39
+  existing dependency findings (`11` low, `7` moderate, `19` high, `2`
+  critical); no unreviewed `npm audit fix --force` dependency upgrade was made.
 - A final release-candidate run on ROS domain 207 reached managed Nav2 active
   and `[SYSTEM] OK`, returned top-level exit `0`, and stopped all six containers
   cleanly. Startup-only map/costmap WARN/ERROR states resolved to OK; they did
@@ -401,13 +461,15 @@ samples.
   `[SYSTEM] OK`; normal route, margin stop, margin `CRAB_RIGHT`, and physical
   hard-stop scenarios all passed with final zero output.
 - Historical isolated map-v16 reports retain B1-B10 turnaround 10/10 and
-  B11/B12/B13 arrival-only results. A fresh map-v17 graph completed the B1/B2/B3
-  service soak 3/3 with parking/charging/next departure and zero restart.
+  B11/B12/B13 arrival-only results. The final map-v17 graph completed B1-B10
+  service `10/10` in `2210.611 s` with zero restart; cycle 1 was a seeded site
+  handoff and cycles 2-10 were complete charger-departure services.
 - Optional LiDAR cost-grid ON reached `[SYSTEM] OK` in its scoped container.
   A 20 s centered obstacle produced one safe no-path preflight, no fallback
   selector/ABORT loop, and resumed the original route after clear.
-- Map-v17 B2 boundary recovery passed 3/3 with physical-body arc sweeps,
-  observed recovery motion before release, and no second hold/retry latch.
+- Map-v17 B2-B10 planning-margin recovery passed `9/9` with observed recovery
+  motion before release and no retry latch. All route-snap return handoffs were
+  within `0.03-0.04 m`; post-start system/path faults were zero.
 - Exact machine-readable build and run results are recorded in
   [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json)
   and summarized in `DONE.txt`.

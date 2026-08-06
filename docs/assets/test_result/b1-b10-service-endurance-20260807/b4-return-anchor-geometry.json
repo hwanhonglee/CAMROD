@@ -1,0 +1,35 @@
+{
+  "classification": "map-v17 geometry and AMD64 deterministic simulation",
+  "map_sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+  "site": "camping_site_4",
+  "route_snap": {
+    "x_m": 20.07,
+    "y_m": -1.55,
+    "yaw_deg": -65.2847,
+    "lanelet_id": 2193,
+    "nearest_centerline_distance_m": 0.000707
+  },
+  "cross_section": {
+    "lane_width_m": 1.441397898,
+    "planning_width_m": 1.17,
+    "centered_clearance_per_side_m": 0.135698949
+  },
+  "observed_before_return": {
+    "nav2_arrival_to_route_snap_m": 0.27,
+    "former_return_tolerance_m": 0.18
+  },
+  "selected_return_contract": {
+    "anchor_source": "route_goal_snap",
+    "return_position_tolerance_m": 0.04,
+    "return_translation_kp": 4.0,
+    "corrected_axes": [
+      "body_x",
+      "body_y"
+    ],
+    "focused_b1_error_m": 0.03,
+    "focused_b4_error_m": 0.04,
+    "focused_cycles_completed": 2,
+    "focused_elapsed_s": 401.734,
+    "post_done_margin_or_body_hold": false
+  }
+}

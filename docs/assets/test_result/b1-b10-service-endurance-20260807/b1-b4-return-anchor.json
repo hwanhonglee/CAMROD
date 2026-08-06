@@ -1,0 +1,242 @@
+{
+  "overall_pass": true,
+  "checks": [
+    {
+      "name": "baseline_hz",
+      "success": true,
+      "detail": "ok (optional lidar cost grid disabled)",
+      "metrics": {
+        "/localization/pose": 20.0,
+        "/planning/lanelet_pose": 11.67,
+        "/sensing/imu/data": 20.0,
+        "/sensing/lidar/points_filtered": 10.0,
+        "/localization/input/wheel_odometry": 10.0,
+        "/sensing/cost_grid/radar": 10.0,
+        "/planning/cost_grid/inflation": 6.0
+      }
+    },
+    {
+      "name": "radar_direction_hz",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "/sensing/radar/front1/range": 10.0,
+        "/sensing/radar/front2/range": 10.0,
+        "/sensing/radar/left1/range": 10.0,
+        "/sensing/radar/left2/range": 10.0,
+        "/sensing/radar/right1/range": 10.0,
+        "/sensing/radar/right2/range": 10.0,
+        "/sensing/radar/rear/range": 10.0
+      }
+    },
+    {
+      "name": "repeated_service_soak",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "cycles_requested": 2,
+        "cycles_completed": 2,
+        "mission_keys": [
+          "camping_site_1",
+          "camping_site_4"
+        ],
+        "elapsed_s": 401.734,
+        "bringup_restart_count": 0,
+        "cycles": [
+          {
+            "cycle": 1,
+            "mission_key": "camping_site_1",
+            "success": true,
+            "elapsed_s": 159.384,
+            "service_states": [
+              "MOVING_TO_SITE",
+              "SITE_ENTRY",
+              "UNLOAD_WAIT",
+              "WAITING_FOR_RETURN_REQUEST",
+              "RETURN_WITH_CARGO",
+              "DROP_ZONE_PARKING",
+              "WAITING_FOR_CHARGING",
+              "CHARGING"
+            ],
+            "site_phases": [
+              "CRAB_IN|phase=CRAB_IN service_mode=turnaround return_published=False return_ack=False",
+              "ROTATE_180|phase=ROTATE_180 service_mode=turnaround return_published=False return_ack=False",
+              "UNLOAD_WAIT|phase=UNLOAD_WAIT service_mode=turnaround return_published=False return_ack=False",
+              "WAIT_RETURN|phase=WAIT_RETURN service_mode=turnaround return_published=False return_ack=False",
+              "ALIGN_RETRACE_YAW|phase=ALIGN_RETRACE_YAW service_mode=turnaround return_published=False return_ack=False",
+              "CRAB_OUT|phase=CRAB_OUT service_mode=turnaround return_published=False return_ack=False",
+              "DONE|phase=DONE service_mode=turnaround return_published=False return_ack=False",
+              "DONE|phase=DONE service_mode=turnaround return_published=True return_ack=True"
+            ],
+            "drop_phases": [
+              "ALIGN_PARKING_YAW|phase=ALIGN_PARKING_YAW target_yaw_deg=97.79",
+              "IDLE|phase=IDLE target_yaw_deg=97.79"
+            ],
+            "parking_phases": [
+              "REVERSE_APPROACH|phase=REVERSE_APPROACH charging=False",
+              "WAIT_FOR_CHARGING|phase=WAIT_FOR_CHARGING charging=False",
+              "PARKED|phase=PARKED charging=True"
+            ],
+            "gate_phases": [
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.8s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.6s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.4s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.3s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.2s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=1.0s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.8s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.6s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.4s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.3s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.2s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "SAFETY_HOLD|state=SAFETY_HOLD reasons=gnss_recovery_hold=0.0s charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "ENABLED|state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "ENABLED|state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false) charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            ],
+            "route_recovery_phases": [],
+            "global_path_updates": 1,
+            "local_path_updates": 4634,
+            "route_motion_seen": true,
+            "return_sent_after_wait": true,
+            "departure_seen": true,
+            "charger_disconnected": true,
+            "obstacle_required": false,
+            "obstacle_world_x": 0.0,
+            "obstacle_world_y": 0.0,
+            "obstacle_stop_seen": false,
+            "obstacle_cleared": false,
+            "obstacle_resume_seen": false,
+            "boundary_hold_seen": false,
+            "boundary_recovery_motion_seen": false,
+            "boundary_recovery_released": false,
+            "boundary_retry_latched": false,
+            "boundary_recovery_ok": true,
+            "replan_statuses": [
+              "CLEAR",
+              "IDLE"
+            ]
+          },
+          {
+            "cycle": 2,
+            "mission_key": "camping_site_4",
+            "success": true,
+            "elapsed_s": 238.117,
+            "service_states": [
+              "DEPARTING_CHARGER",
+              "MOVING_TO_SITE",
+              "SITE_ENTRY",
+              "UNLOAD_WAIT",
+              "WAITING_FOR_RETURN_REQUEST",
+              "RETURN_WITH_CARGO",
+              "DROP_ZONE_PARKING",
+              "WAITING_FOR_CHARGING",
+              "CHARGING"
+            ],
+            "site_phases": [
+              "CRAB_IN|phase=CRAB_IN service_mode=turnaround return_published=False return_ack=False",
+              "ROTATE_180|phase=ROTATE_180 service_mode=turnaround return_published=False return_ack=False",
+              "UNLOAD_WAIT|phase=UNLOAD_WAIT service_mode=turnaround return_published=False return_ack=False",
+              "WAIT_RETURN|phase=WAIT_RETURN service_mode=turnaround return_published=False return_ack=False",
+              "ALIGN_RETRACE_YAW|phase=ALIGN_RETRACE_YAW service_mode=turnaround return_published=False return_ack=False",
+              "CRAB_OUT|phase=CRAB_OUT service_mode=turnaround return_published=False return_ack=False",
+              "DONE|phase=DONE service_mode=turnaround return_published=False return_ack=False",
+              "DONE|phase=DONE service_mode=turnaround return_published=True return_ack=True"
+            ],
+            "drop_phases": [
+              "EXIT_STRAIGHT|phase=EXIT_STRAIGHT target_yaw_deg=6.17",
+              "ALIGN_EXIT_YAW|phase=ALIGN_EXIT_YAW target_yaw_deg=6.17",
+              "IDLE|phase=IDLE target_yaw_deg=6.17",
+              "IDLE|phase=IDLE target_yaw_deg=97.79",
+              "ALIGN_PARKING_YAW|phase=ALIGN_PARKING_YAW target_yaw_deg=97.79",
+              "IDLE|phase=IDLE target_yaw_deg=97.79"
+            ],
+            "parking_phases": [
+              "IDLE|phase=IDLE charging=True",
+              "IDLE|phase=IDLE charging=False",
+              "REVERSE_APPROACH|phase=REVERSE_APPROACH charging=False",
+              "WAIT_FOR_CHARGING|phase=WAIT_FOR_CHARGING charging=False",
+              "PARKED|phase=PARKED charging=True"
+            ],
+            "gate_phases": [
+              "STANDBY|state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "ENABLED|state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=reverse recovery_reason=lateral_blocked_reverse_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=stage_switch_to_unique_reverse_yaw",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.09 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.21 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.29 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.49 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.69 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.71 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.89 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=1.09 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=1.21 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=1.29 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ROUTE_SAFETY_HOLD|state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=1.49 recovery_motion_observed=true recovery_candidate=reverse_yaw_right recovery_reason=active_stage_still_clear",
+              "ENABLED|state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false) charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "ENABLED|state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false) charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+              "STANDBY|state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            ],
+            "route_recovery_phases": [
+              "REVERSE|distance=0.000000 yaw_deg=0.000000 elapsed=0.031740",
+              "REVERSE|distance=0.019221 yaw_deg=0.533671 elapsed=0.131744",
+              "REVERSE_YAW_RIGHT|distance=0.010379 yaw_deg=0.533672 elapsed=0.231745",
+              "REVERSE_YAW_RIGHT|distance=0.005768 yaw_deg=0.169180 elapsed=0.331746",
+              "REVERSE_YAW_RIGHT|distance=0.010862 yaw_deg=0.117336 elapsed=0.431748",
+              "REVERSE_YAW_RIGHT|distance=0.018411 yaw_deg=0.403792 elapsed=0.531751",
+              "REVERSE_YAW_RIGHT|distance=0.026032 yaw_deg=0.690251 elapsed=0.631755",
+              "REVERSE_YAW_RIGHT|distance=0.033452 yaw_deg=0.976739 elapsed=0.731751",
+              "REVERSE_YAW_RIGHT|distance=0.040629 yaw_deg=1.263222 elapsed=0.831757",
+              "REVERSE_YAW_RIGHT|distance=0.047570 yaw_deg=1.549667 elapsed=0.931756",
+              "REVERSE_YAW_RIGHT|distance=0.054293 yaw_deg=1.836136 elapsed=1.031758",
+              "REVERSE_YAW_RIGHT|distance=0.060817 yaw_deg=2.122654 elapsed=1.131762",
+              "REVERSE_YAW_RIGHT|distance=0.067161 yaw_deg=2.409142 elapsed=1.231761",
+              "REVERSE_YAW_RIGHT|distance=0.073344 yaw_deg=2.695627 elapsed=1.331762",
+              "REVERSE_YAW_RIGHT|distance=0.079382 yaw_deg=2.982095 elapsed=1.431764",
+              "REVERSE_YAW_RIGHT|distance=0.085292 yaw_deg=3.268549 elapsed=1.531766",
+              "REVERSE_YAW_RIGHT|distance=0.091088 yaw_deg=3.555034 elapsed=1.631768",
+              "REVERSE_YAW_RIGHT|distance=0.096782 yaw_deg=3.841482 elapsed=1.731769",
+              "REVERSE_YAW_RIGHT|distance=0.102386 yaw_deg=4.127969 elapsed=1.831774",
+              "REVERSE_YAW_RIGHT|distance=0.107909 yaw_deg=4.414406 elapsed=1.931771",
+              "REVERSE_YAW_RIGHT|distance=0.113151 yaw_deg=4.700917 elapsed=2.031774",
+              "REVERSE_YAW_RIGHT|distance=0.118560 yaw_deg=4.987471 elapsed=2.131778",
+              "IDLE|waiting_for_route_safety_hold"
+            ],
+            "global_path_updates": 2,
+            "local_path_updates": 7786,
+            "route_motion_seen": true,
+            "return_sent_after_wait": true,
+            "departure_seen": true,
+            "charger_disconnected": true,
+            "obstacle_required": false,
+            "obstacle_world_x": 0.0,
+            "obstacle_world_y": 0.0,
+            "obstacle_stop_seen": false,
+            "obstacle_cleared": false,
+            "obstacle_resume_seen": false,
+            "boundary_hold_seen": true,
+            "boundary_recovery_motion_seen": true,
+            "boundary_recovery_released": true,
+            "boundary_retry_latched": false,
+            "boundary_recovery_ok": true,
+            "replan_statuses": [
+              "CLEAR",
+              "IDLE"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

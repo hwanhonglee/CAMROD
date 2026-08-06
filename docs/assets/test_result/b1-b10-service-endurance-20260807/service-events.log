@@ -1,0 +1,253 @@
+[ui_backend_node-45] [INFO] [1786056924.117358307] [ui_backend]: platform drive-enable (sim_service_soak_cycle_1:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786056924.117692681] [ui_backend]: mission engage command (sim_service_soak_cycle_1:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786056924.118045700] [ui_backend]: Service state (sim_service_soak_cycle_1:start) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786056924.120164042] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786056924.188023551] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_1 offset=5.38m direction=+1 rotate=right_cw_site_1 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.38m return_anchor=route_goal_snap anchor_offset=0.00m anchor_xy=(23.25,-8.38)m timeout_speed_scale=0.40 duration=13.4s)
+[ui_backend_node-45] [INFO] [1786056936.401170575] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786056955.201436154] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786056960.301721948] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786056960.304962864] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786056960.401511717] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786056971.501218632] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.03m
+[ui_backend_node-45] [INFO] [1786056971.501879114] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.03m)
+[ui_backend_node-45] [INFO] [1786057068.587515750] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786057077.877810009] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786057082.470664244] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786057083.533563429] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786057083.633414306] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057083.636025071] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786057083.671345444] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786057083.962520695] [ui_backend]: platform drive-enable (sim_service_soak_cycle_2:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786057083.962769776] [ui_backend]: mission engage command (sim_service_soak_cycle_2:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786057083.965661944] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_2:site_departure)
+[ui_backend_node-45] [INFO] [1786057083.967208824] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786057085.133470244] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057087.577765421] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786057096.778099072] [ui_backend]: mission key (sim_service_soak_cycle_2:drop_zone_exit_complete) -> /planning/mission_key: camping_site_2
+[ui_backend_node-45] [INFO] [1786057096.779260552] [ui_backend]: Service state (sim_service_soak_cycle_2:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786057096.781004493] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786057128.021201076] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.338) pose=(x=11.021,y=43.554,yaw=-83.4deg) lanelet_hit=(world_x=11.661,world_y=42.866,body_x=0.757,body_y=0.556,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786057129.971201750] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786057195.592788096] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_2 offset=2.32m direction=-1 rotate=left_ccw_site_2 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=2.32m return_anchor=route_goal_snap anchor_offset=0.27m anchor_xy=(23.35,-8.57)m timeout_speed_scale=0.40 duration=5.8s)
+[ui_backend_node-45] [INFO] [1786057200.005692228] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786057218.806157897] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786057223.906517784] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786057223.909043100] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786057224.005943519] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786057229.005417695] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786057229.006133223] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786057326.387620120] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786057335.682305925] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786057340.275143011] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786057341.333574553] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786057341.433421979] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057341.435580093] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786057341.475385296] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786057341.762675702] [ui_backend]: platform drive-enable (sim_service_soak_cycle_3:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786057341.762922759] [ui_backend]: mission engage command (sim_service_soak_cycle_3:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786057341.765540386] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_3:site_departure)
+[ui_backend_node-45] [INFO] [1786057341.767267425] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786057342.933420902] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057345.382404137] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786057354.582251171] [ui_backend]: mission key (sim_service_soak_cycle_3:drop_zone_exit_complete) -> /planning/mission_key: camping_site_3
+[ui_backend_node-45] [INFO] [1786057354.583269792] [ui_backend]: Service state (sim_service_soak_cycle_3:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786057354.584203361] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786057385.925448628] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.322) pose=(x=11.027,y=43.492,yaw=-84.8deg) lanelet_hit=(world_x=11.651,world_y=42.836,body_x=0.710,body_y=0.562,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786057388.025389425] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786057445.587820653] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_3 offset=5.41m direction=+1 rotate=right_cw_site_3 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.41m return_anchor=route_goal_snap anchor_offset=0.26m anchor_xy=(20.49,-2.47)m timeout_speed_scale=0.40 duration=13.5s)
+[ui_backend_node-45] [INFO] [1786057456.210005031] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786057475.010605221] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786057480.110770616] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786057480.113488653] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786057480.210530424] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786057491.409887291] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.03m
+[ui_backend_node-45] [INFO] [1786057491.410565048] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.03m)
+[ui_backend_node-45] [INFO] [1786057580.587886593] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786057589.886247601] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786057594.479331889] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786057595.533513088] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786057595.633413172] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057595.635737764] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786057595.679437840] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786057595.962678960] [ui_backend]: platform drive-enable (sim_service_soak_cycle_4:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786057595.962927151] [ui_backend]: mission engage command (sim_service_soak_cycle_4:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786057595.965516074] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_4:site_departure)
+[ui_backend_node-45] [INFO] [1786057595.967218062] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786057597.133530276] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057599.586494460] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786057608.686754416] [ui_backend]: mission key (sim_service_soak_cycle_4:drop_zone_exit_complete) -> /planning/mission_key: camping_site_4
+[ui_backend_node-45] [INFO] [1786057608.687883057] [ui_backend]: Service state (sim_service_soak_cycle_4:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786057608.689163470] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786057639.879888911] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.341) pose=(x=11.019,y=43.568,yaw=-83.1deg) lanelet_hit=(world_x=11.667,world_y=42.904,body_x=0.737,body_y=0.563,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786057641.829820905] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786057698.187959905] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_4 offset=2.11m direction=-1 rotate=left_ccw_site_4 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=2.11m return_anchor=route_goal_snap anchor_offset=0.25m anchor_xy=(20.07,-1.55)m timeout_speed_scale=0.40 duration=5.3s)
+[ui_backend_node-45] [INFO] [1786057702.113996438] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786057720.914365911] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786057726.014263794] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786057726.016763458] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786057726.114356537] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786057730.713860310] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.03m
+[ui_backend_node-45] [INFO] [1786057730.714532016] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.03m)
+[ui_backend_node-45] [INFO] [1786057818.787779846] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786057827.990362327] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786057832.583141369] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786057833.633543604] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786057833.733356306] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057833.735735651] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786057833.783346591] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786057834.062496519] [ui_backend]: platform drive-enable (sim_service_soak_cycle_5:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786057834.062752466] [ui_backend]: mission engage command (sim_service_soak_cycle_5:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786057834.066246846] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_5:site_departure)
+[ui_backend_node-45] [INFO] [1786057834.067795091] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786057835.233363269] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786057837.690532178] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786057846.890786287] [ui_backend]: mission key (sim_service_soak_cycle_5:drop_zone_exit_complete) -> /planning/mission_key: camping_site_5
+[ui_backend_node-45] [INFO] [1786057846.891857823] [ui_backend]: Service state (sim_service_soak_cycle_5:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786057846.892977086] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786057880.934864792] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.347) pose=(x=11.014,y=43.625,yaw=-82.1deg) lanelet_hit=(world_x=11.691,world_y=42.956,body_x=0.756,body_y=0.579,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786057882.717957425] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786057933.388034806] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_5 offset=5.41m direction=+1 rotate=right_cw_site_5 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.41m return_anchor=route_goal_snap anchor_offset=0.23m anchor_xy=(18.10,3.00)m timeout_speed_scale=0.40 duration=13.5s)
+[ui_backend_node-45] [INFO] [1786057943.917958264] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786057962.719061326] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786057967.818770442] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786057967.822002845] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786057967.919021581] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786057979.017980455] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786057979.018991095] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786058061.188113313] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786058070.394137918] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786058074.987773038] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786058076.033535879] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786058076.133382636] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058076.135653194] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786058076.188132609] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786058076.463095107] [ui_backend]: platform drive-enable (sim_service_soak_cycle_6:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786058076.463470189] [ui_backend]: mission engage command (sim_service_soak_cycle_6:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786058076.467086874] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_6:site_departure)
+[ui_backend_node-45] [INFO] [1786058076.469104383] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786058077.633410163] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058080.094345383] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786058089.294474331] [ui_backend]: mission key (sim_service_soak_cycle_6:drop_zone_exit_complete) -> /planning/mission_key: camping_site_6
+[ui_backend_node-45] [INFO] [1786058089.295529444] [ui_backend]: Service state (sim_service_soak_cycle_6:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786058089.296748856] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786058120.637572360] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.326) pose=(x=11.023,y=43.548,yaw=-84.0deg) lanelet_hit=(world_x=11.668,world_y=42.898,body_x=0.714,body_y=0.573,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786058122.388063563] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786058171.387960049] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_6 offset=2.08m direction=-1 rotate=left_ccw_site_6 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=2.08m return_anchor=route_goal_snap anchor_offset=0.24m anchor_xy=(17.58,4.21)m timeout_speed_scale=0.40 duration=5.2s)
+[ui_backend_node-45] [INFO] [1786058175.221873401] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786058194.022121313] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786058199.023429377] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786058199.026664588] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786058199.122790348] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786058203.521726106] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786058203.522721129] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786058283.987710484] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786058293.198012279] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786058297.791141893] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786058298.833531927] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786058298.933413264] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058298.936144504] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786058298.990948763] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786058299.262506857] [ui_backend]: platform drive-enable (sim_service_soak_cycle_7:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786058299.262885334] [ui_backend]: mission engage command (sim_service_soak_cycle_7:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786058299.266289507] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_7:site_departure)
+[ui_backend_node-45] [INFO] [1786058299.267553262] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786058300.433384392] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058302.898232456] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786058311.998169222] [ui_backend]: mission key (sim_service_soak_cycle_7:drop_zone_exit_complete) -> /planning/mission_key: camping_site_7
+[ui_backend_node-45] [INFO] [1786058311.999169506] [ui_backend]: Service state (sim_service_soak_cycle_7:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786058312.000391540] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786058343.242562882] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.337) pose=(x=11.019,y=43.590,yaw=-83.0deg) lanelet_hit=(world_x=11.671,world_y=42.916,body_x=0.748,body_y=0.565,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786058344.986915466] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786058388.387894740] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_7 offset=5.38m direction=+1 rotate=right_cw_site_7 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.38m return_anchor=route_goal_snap anchor_offset=0.29m anchor_xy=(15.82,8.29)m timeout_speed_scale=0.40 duration=13.5s)
+[ui_backend_node-45] [INFO] [1786058398.825844799] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786058417.625979083] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786058422.725910731] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786058422.728654759] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786058422.826093161] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786058433.825567376] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786058433.826299679] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786058508.987958981] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786058518.201838357] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786058522.794848668] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786058523.833538706] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786058523.933404581] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058523.935786281] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786058523.994876182] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786058524.266982999] [ui_backend]: platform drive-enable (sim_service_soak_cycle_8:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786058524.267537290] [ui_backend]: mission engage command (sim_service_soak_cycle_8:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786058524.272547876] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_8:site_departure)
+[ui_backend_node-45] [INFO] [1786058524.274380902] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786058525.433407319] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058527.902045648] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786058537.002154620] [ui_backend]: mission key (sim_service_soak_cycle_8:drop_zone_exit_complete) -> /planning/mission_key: camping_site_8
+[ui_backend_node-45] [INFO] [1786058537.003055775] [ui_backend]: Service state (sim_service_soak_cycle_8:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786058537.003984417] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786058568.295145372] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.330) pose=(x=11.021,y=43.559,yaw=-83.6deg) lanelet_hit=(world_x=11.663,world_y=42.827,body_x=0.799,body_y=0.557,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786058570.095109398] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786058610.987810195] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_8 offset=1.96m direction=-1 rotate=left_ccw_site_8 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=1.96m return_anchor=route_goal_snap anchor_offset=0.24m anchor_xy=(14.93,10.39)m timeout_speed_scale=0.40 duration=4.9s)
+[ui_backend_node-45] [INFO] [1786058614.630111837] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786058633.429439766] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786058638.529565640] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786058638.532183938] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786058638.629633247] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786058642.929085034] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.03m
+[ui_backend_node-45] [INFO] [1786058642.930323025] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.03m)
+[ui_backend_node-45] [INFO] [1786058715.388204414] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786058724.605354266] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786058729.198070721] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786058730.233520897] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786058730.333398234] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058730.335893208] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786058730.398198407] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786058730.672895741] [ui_backend]: platform drive-enable (sim_service_soak_cycle_9:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786058730.673174838] [ui_backend]: mission engage command (sim_service_soak_cycle_9:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786058730.676070144] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_9:site_departure)
+[ui_backend_node-45] [INFO] [1786058730.677519679] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786058731.833415526] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058734.305467262] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786058743.405704185] [ui_backend]: mission key (sim_service_soak_cycle_9:drop_zone_exit_complete) -> /planning/mission_key: camping_site_9
+[ui_backend_node-45] [INFO] [1786058743.406710299] [ui_backend]: Service state (sim_service_soak_cycle_9:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786058743.407783571] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786058774.749956637] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.322) pose=(x=11.024,y=43.533,yaw=-84.3deg) lanelet_hit=(world_x=11.655,world_y=42.838,body_x=0.754,body_y=0.559,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786058776.632807990] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786058812.188265818] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_9 offset=5.47m direction=+1 rotate=right_cw_site_9 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.47m return_anchor=route_goal_snap anchor_offset=0.24m anchor_xy=(13.27,14.49)m timeout_speed_scale=0.40 duration=13.7s)
+[ui_backend_node-45] [INFO] [1786058822.832731349] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786058841.632975109] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786058846.733076122] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786058846.735839658] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786058846.833257440] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786058858.132853452] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786058858.133878421] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786058925.188251269] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786058934.408986530] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786058939.001722421] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786058940.033598659] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786058940.133392293] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058940.135828084] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786058940.201776456] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)
+[ui_backend_node-45] [INFO] [1786058940.488467150] [ui_backend]: platform drive-enable (sim_service_soak_cycle_10:destination) -> /platform/drive_enable: true
+[ui_backend_node-45] [INFO] [1786058940.488740274] [ui_backend]: mission engage command (sim_service_soak_cycle_10:destination) -> /planning/mission_engage: true
+[ui_backend_node-45] [INFO] [1786058940.491126370] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:EXIT_STRAIGHT:start=sim_service_soak_cycle_10:site_departure)
+[ui_backend_node-45] [INFO] [1786058940.492407051] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (Departing charger)
+[ranger_platform_bridge_node-3] [INFO] [1786058941.633412025] [ranger_platform_bridge]: charging status -> false (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786058944.108876869] [ui_backend]: Service state received: DEPARTING_CHARGER(14) (drop_zone_maneuver_controller:ALIGN_EXIT_YAW:straight exit complete)
+[ui_backend_node-45] [INFO] [1786058953.209121205] [ui_backend]: mission key (sim_service_soak_cycle_10:drop_zone_exit_complete) -> /planning/mission_key: camping_site_10
+[ui_backend_node-45] [INFO] [1786058953.210159648] [ui_backend]: Service state (sim_service_soak_cycle_10:drop_zone_exit_complete) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786058953.211163384] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[cmd_vel_safety_gate_node-35] [WARN] [1786058984.453034236] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.833,y=0.000,wz=-0.334) pose=(x=11.020,y=43.579,yaw=-83.3deg) lanelet_hit=(world_x=11.678,world_y=42.925,body_x=0.726,body_y=0.577,cost=100)
+[cmd_vel_safety_gate_node-35] [INFO] [1786058986.352694199] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[ui_backend_node-45] [INFO] [1786059019.388170217] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_10 offset=1.97m direction=-1 rotate=left_ccw_site_10 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=1.97m return_anchor=route_goal_snap anchor_offset=0.30m anchor_xy=(12.58,16.29)m timeout_speed_scale=0.40 duration=4.9s)
+[ui_backend_node-45] [INFO] [1786059023.135829017] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)
+[ui_backend_node-45] [INFO] [1786059041.836419596] [ui_backend]: Service state received: UNLOAD_WAIT(6) (camping_site_maneuver_controller:UNLOAD_WAIT:robot yaw rotated 180deg)
+[ui_backend_node-45] [INFO] [1786059046.936545422] [ui_backend]: Service state received: WAITING_FOR_RETURN_REQUEST(11) (camping_site_maneuver_controller:WAIT_RETURN:waiting external return command)
+[ui_backend_node-45] [INFO] [1786059046.939189531] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:ALIGN_RETRACE_YAW:return=sim_validation; preserve_retrace_yaw)
+[ui_backend_node-45] [INFO] [1786059047.037331174] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:CRAB_OUT:entry-lanelet retrace yaw confirmed)
+[camping_site_maneuver_controller_node-36] [INFO] [1786059051.235879288] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller DONE: returned to lanelet snap pose anchor=route_goal_snap error=0.04m
+[ui_backend_node-45] [INFO] [1786059051.236499775] [ui_backend]: Service state received: RETURN_WITH_CARGO(9) (camping_site_maneuver_controller:DONE:returned to lanelet snap pose anchor=route_goal_snap error=0.04m)
+[ui_backend_node-45] [INFO] [1786059115.987686187] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (drop_zone_maneuver_controller:ALIGN_PARKING_YAW:start=planning_state:return_to_drop_zone)
+[ui_backend_node-45] [INFO] [1786059125.212287086] [ui_backend]: Service state received: DROP_ZONE_PARKING(10) (reverse_parking_controller:REVERSE_APPROACH:start=drop_zone_maneuver_controller)
+[ui_backend_node-45] [INFO] [1786059129.804937125] [ui_backend]: Service state received: WAITING_FOR_CHARGING(12) (reverse_parking_controller:WAIT_FOR_CHARGING:reverse distance limit reached; waiting for charging)
+[fake_sensor_publisher.py-9] [INFO] [1786059130.833528512] [bringup.fake_sensor_publisher]: simulated charger contact established
+[ranger_platform_bridge_node-3] [INFO] [1786059130.933412604] [ranger_platform_bridge]: charging status -> true (threshold=0.30 A, positive_is_charging=true)
+[ui_backend_node-45] [INFO] [1786059130.936030889] [ui_backend]: Service state received: CHARGING(13) (Charging)
+[ui_backend_node-45] [INFO] [1786059131.005132411] [ui_backend]: Service state received: CHARGING(13) (reverse_parking_controller:PARKED:charging detected)

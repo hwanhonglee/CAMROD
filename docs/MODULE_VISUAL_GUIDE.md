@@ -4,6 +4,8 @@
 separately, including scoped runtime and the unverified GNSS center contract. -->
 <!-- HH_260806 - Index the fresh body-hard-stop versus planning-margin
 simulation and retain its provisional-geometry field caveat. -->
+<!-- HH_260807 - Index the final B1-B10 lifecycle and fixed-preview A/B assets
+with their exact simulation scope and current-map avoidance limitation. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -41,10 +43,12 @@ Unreferenced raw logs are intentionally excluded from source control.
 |---|---|---|---|
 | `camrod_bringup` | `full-stack-mission-contract.png`, `mission-lifecycle-contract.gif` | Launch/state/battery/parking contracts | Expected sequence only |
 | `camrod_bringup` | `simulation-evidence-20260804.png` | Full-bringup JSON + raw logs | 81-node startup and pose chain pass; B6/B12 round trip fails closed |
+| `camrod_bringup` | `test_result/b1-b10-service-endurance-20260807/` PNG/GIF | Raw runner JSON, filtered logs, geometry/scope JSON and SHA manifest | B1-B10 service 10/10; cycle 1 seeded, cycles 2-10 full outbound; field pending |
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
 | `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
 | `camrod_control` / `camrod_planning` | `test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png` | Five organized raw JSON records plus consolidated result | Fresh current-map normal route, margin stop/crab, and physical no-motion policy pass; field envelope pending |
+| `camrod_control` / `camrod_planning` | `test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png` | Source-profile JSON/logs and SHA manifest | Fixed `1.1 m` completed B1/B2 2/2; scaled preview recontacted in `0.850 s` |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
 | `camrod_map` | `lanelet-map-and-cost-grids.png` | Map/grid YAML | Route/planning grid values match source; service access missing |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML + rear-container ownership | LiDAR sim path available; physical YOLO/fusion/tag pending |
@@ -59,10 +63,10 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 Package-guide files are under `docs/assets/module-guides/`; structured release
-results are under `docs/assets/test_result/`. The main package renderer creates
-**19 PNGs and one 10-frame GIF**. Release/test renderers add twelve PNGs and
-eight GIFs. Fifteen manually captured live screens bring the checked-in total
-to **47 PNGs and nine GIFs**.
+results are under `docs/assets/test_result/`. The checked-in inventory contains
+**46 PNGs and eight GIFs** under `module-guides`, plus **14 PNGs and three GIFs**
+under `test_result`, for **60 PNGs and 11 GIFs** total. Generated evidence keeps
+its source JSON/log and checksum manifest beside the visual whenever available.
 
 ## Historical Runtime Screen Index
 
@@ -93,12 +97,14 @@ the concise raw excerpt are in
 
 | Module | Measurement | Result | Limit |
 |---|---|---|---|
-| Bringup | Fresh map-v16 graph | `[SYSTEM] OK`; B1-B10 site maneuver round trips PASS (10/10) | Drop-zone parking/charging not included |
+| Bringup | Map-v17 B1-B10 endurance | `10/10`, `2210.611 s`, restart `0`; cycles 2-10 include full outbound/RETURN/parking/charging | Cycle 1 seeded; physical CAN/road pending |
 | Localization | 30-second stationary probe | Selected pose `20.000 Hz`, age p95 `1.83 ms` | No field ground truth or motion disturbance |
 | Sensor kit/planning | Common route A/B | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` | One simulated route segment |
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |
 | Control | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | A second boundary hold occurred |
 | Control | Rapid retry containment | Map v14 recontact `0.276 s` (v13 `0.267/0.372 s`); one release; final Twist zero | Physical wheel response pending |
+| Control/planning | 3 km/h preview A/B | Scaled preview recontact `0.850 s`; fixed `1.1 m` B1/B2 `2/2` | AMD64 simulation; field tuning pending |
+| Control/bringup | Final planning-margin recovery | B2-B10 hold/motion/release `9/9/9`; retry latch `0`; service continued | Physical margin/body contact pending |
 | Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
 | Control | v2.1.4 release-map route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
 | Control | v2.1.4 release-map one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
@@ -255,4 +261,6 @@ Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
 commit, duration, and pass criteria. The active planning rectangle is
 `1.49160 x 1.17000 m`; sensor housings and swept clearance still require field
 verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
-B11-B13 return geometry and full parking/charging remain field-pending.
+the complete simulated lifecycle through parking/charging is recorded separately.
+B11-B13 return geometry and all physical parking/charging acceptance remain
+field-pending.

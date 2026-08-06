@@ -133,7 +133,6 @@ def test_local_path_diagnostic_ignores_service_owned_motion_handoffs() -> None:
         / "diagnostics"
         / "planning_path_checker_node.cpp"
     ).read_text(encoding="utf-8")
-
     # HH_260807 - Keep the package and deployed checker contract byte-identical.
     assert package_path.read_bytes() == bringup_path.read_bytes()
     assert parameters["service_state_topic"] == "/service/state"
@@ -141,8 +140,17 @@ def test_local_path_diagnostic_ignores_service_owned_motion_handoffs() -> None:
         0, 2, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16
     ]
     assert parameters["global_path"]["point_count_grace_s"] == 0.0
-    assert parameters["local_path"]["point_count_grace_s"] == 1.5
+    assert parameters["local_path"]["point_count_grace_s"] == 3.0
     assert 'src.name == "local_path"' in source
+    assert source.count("rclcpp::QoS(1).reliable()") >= 3
+    assert "src->point_count < src->min_points_error" in source
+    assert "warn_point_count_since" in source
+    # HH_260807 - Idle empty paths cannot pre-consume the next route's grace.
+    assert "if (active && !nav_active_)" in source
+    assert "nav_active_since_ = this->now()" in source
+    assert "error_grace_elapsed" in source
+    assert "std::min(\n      low_point_count_elapsed, nav_active_elapsed)" in source
+    assert "path point count warning grace" in source
     assert "service state does not require a Nav2 local path" in source
     assert "path point count transition grace" in source
 
@@ -350,11 +358,13 @@ def test_rpp_profile_contains_only_effective_limit_names() -> None:
         assert ignored_key not in rpp
 
 
-def test_low_speed_rpp_keeps_damped_preview_floor() -> None:
-    """The production cruise must not collapse the swept 1.1 m preview."""
+def test_three_kph_rpp_keeps_fixed_validated_preview() -> None:
+    """The production cruise must keep the B1/B2-validated 1.1 m preview."""
     rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
 
-    assert rpp["use_velocity_scaled_lookahead_dist"] is True
+    # HH_260807 - Velocity scaling grew the 3 km/h preview to about 1.5 m and
+    # recontacted the B2 boundary 0.85 s after an otherwise valid recovery.
+    assert rpp["use_velocity_scaled_lookahead_dist"] is False
     assert rpp["lookahead_dist"] == 1.1
     assert rpp["min_lookahead_dist"] == 1.1
     assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
@@ -436,6 +446,43 @@ def test_three_kph_operational_speed_ratios_and_safety_exception() -> None:
     )
 
 
+def test_safety_gate_evaluates_the_final_scaled_command() -> None:
+    """Keep collision projection and publication on the same final command."""
+    source = (
+        SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+    ).read_text(encoding="utf-8")
+
+    # HH_260807 - The upstream RPP command is 1.667 m/s while the deployed
+    # speed scale publishes 0.833 m/s. Safety evidence must use the latter.
+    assert "const auto evaluated_command = scaleCommand(command);" in source
+    assert "motion_cost_stop_.evaluate(evaluated_command, now_sec)" in source
+    assert "cost_decision, evaluated_command, now_sec" in source
+    assert "publishCommand(evaluated_command);" in source
+
+
+def test_campsite_return_uses_the_explicit_route_goal_anchor() -> None:
+    """Return to the centerline snap instead of Nav2's approximate arrival pose."""
+    source = (
+        SRC_ROOT
+        / "camrod_control"
+        / "src"
+        / "camping_site_maneuver_controller_node.cpp"
+    ).read_text(encoding="utf-8")
+    campsite = _node_parameters(
+        CONTROL_CONFIG / "control.yaml",
+        "/control/camping_site_maneuver_controller",
+    )
+
+    # HH_260807 - GOAL_REACHED permits a small position error. Automatic
+    # service must remove that error before handing control back to Nav2.
+    assert 'return_anchor_source_ = "route_goal_snap";' in source
+    assert "captureReturnAnchor(" in source
+    assert "distanceTo(return_anchor_x_, return_anchor_y_)" in source
+    assert "return_anchor_x_, return_anchor_y_, return_speed" in source
+    assert campsite["return_position_tolerance_m"] == 0.04
+    assert campsite["return_translation_kp"] == 4.0
+
+
 def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> None:
     """Finish a gross start turn without making normal RPP curves stop-turn."""
     vehicle = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")
@@ -486,10 +533,12 @@ def test_sim_runner_locks_map_fixed_obstacle_and_repeated_service_contract() -> 
     assert fake_config["obstacle_world_y"] == 0.0
     assert 'if self.obstacle_reference_frame == "map":' in fake_source
     assert 'obstacle_reference_frame="map"' in runner
+    assert "Keep the base LiDAR/perception health stream alive" in runner
 
     # HH_260807 - A release soak must exercise at least two destinations in one
     # process and issue RETURN only after the public unload-wait state appears.
     assert 'self.declare_parameter("run_service_soak", False)' in runner
+    assert 'self.declare_parameter("expect_lidar_cost_grid", False)' in runner
     assert '"camping_site_1", "camping_site_2", "camping_site_3"' in runner
     assert "service_soak_mission_keys requires at least two sites" in runner
     assert '"WAITING_FOR_RETURN_REQUEST" in service_events' in runner
@@ -499,7 +548,10 @@ def test_sim_runner_locks_map_fixed_obstacle_and_repeated_service_contract() -> 
     assert '"boundary_recovery_motion_seen"' in runner
     assert '"boundary_recovery_released"' in runner
     assert '"boundary_retry_latched"' in runner
-    # HH_260807 - A late WAIT_FOR_CHARGING sample from the completed cycle must
-    # not reassert charger contact while the next destination is departing.
-    assert "return_sent\n                    and parking_events" in runner
-    assert '"WAIT_FOR_CHARGING" in parking_events[-1]' in runner
+    # HH_260807 - The raw BMS simulator and platform bridge must be the only
+    # status path. A second normalized publisher oscillated charging state.
+    assert 'AvgPlatformStatus, "/platform/status", self._on_platform_status' in runner
+    assert "self.create_publisher(\n            AvgPlatformStatus" not in runner
+    assert "_publish_fake_platform_status" not in runner
+    assert 'p.name == "simulated_battery_percentage"' in fake_source
+    assert "ranger_platform_bridge remains the single owner" in runner

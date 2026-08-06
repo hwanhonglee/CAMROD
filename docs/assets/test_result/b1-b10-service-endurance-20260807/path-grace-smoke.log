@@ -1,0 +1,6 @@
+[ui_backend_node-45] [INFO] [1786056824.949020796] [ui_backend]: Service state (sim_service_soak_cycle_1:start) -> /service/state: 1 (Moving from drop zone to site)
+[ui_backend_node-45] [INFO] [1786056824.951563797] [ui_backend]: Service state received: MOVING_TO_SITE(1) (Moving from drop zone to site)
+[scoped_component_container-44] [INFO] [1786056825.028616900] [system.system_diagnostic]: [SYSTEM] OK
+[ui_backend_node-45] [INFO] [1786056825.072471840] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:CRAB_IN:start=planning_state:camping_site_1 offset=5.38m direction=+1 rotate=right_cw_site_1 service_mode=turnaround source=goal_pair forward=0.00m requested_offset=5.38m return_anchor=route_goal_snap anchor_offset=0.00m anchor_xy=(23.25,-8.38)m timeout_speed_scale=0.40 duration=13.4s)
+[scoped_component_container_mt-26] [ERROR] [1786056825.073133491] [planning.planner_server]: LaneletRoutePlanner reject: reason=empty_route start_ll=2219 goal_ll=2219 start_s=0.58 goal_s=0.58
+[ui_backend_node-45] [INFO] [1786056837.065125156] [ui_backend]: Service state received: SITE_ENTRY(5) (camping_site_maneuver_controller:ROTATE_180:crab entry pose reached)

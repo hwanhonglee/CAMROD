@@ -5,6 +5,8 @@ hard-stop envelope and retain earlier reduced-boundary runs as historical eviden
 <!-- HH_260806 - Replace the GNSS center placeholder with the measured
 left-antenna lever arm and heading-aware center correction. -->
 <!-- HH_260807 - Add map-v17 repeated service, B2 recovery, and persistent-obstacle evidence. -->
+<!-- HH_260807 - Add the final B1-B10 no-restart endurance result and fixed
+1.1 m preview/route-snap return acceptance. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.5`**.
@@ -43,7 +45,7 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
 | Active Lanelet map | `map_version=17`, SHA `8cd05c...5e021` | User-edited active OSM and named copy are byte-identical; SHA is a synchronization fingerprint, not a geometry lock |
-| RPP preview | `1.1 m` | Current stable minimum lookahead |
+| RPP preview | fixed `1.1 m` | Velocity scaling disabled after source-profile service A/B |
 | Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
 | Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
@@ -61,10 +63,11 @@ runtime evidence separately.
 
 | Check | Result | Scope |
 |---|---|---|
-| Repeated campsite service | **AMD64 SIM PASS 3/3** | B1 -> B2 -> B3 completed route, site turnaround, explicit RETURN, drop alignment, reverse parking, charging, and next departure in 677.237 s with zero bringup restart |
+| Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
+| 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.5 build/tests | **PASS** | 11 packages built; fresh CAMROD run: 58 CTest targets / 523 xUnit cases, 0 errors/failures, 13 existing static-analysis skips; UI 30/30; Ranger policy GTest 1/1 |
+| Final changed-package build/tests | **PASS** | Canonical wrapper rebuilt 5 packages; 37 CTest targets and 303 package-report cases passed with 0 errors/failures, 8 planning cppcheck skips; direct UI 30/30 |
 | Current map-v17 contract | **PASS** | Active/copy OSM SHA synchronized; 55 lanelets, 14 areas, 1,652 nodes |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
@@ -96,6 +99,12 @@ runtime evidence separately.
 ![Current campsite maneuver validation](docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
 ![Current map-v17 repeated service](docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
+
+![B1-B10 no-restart service endurance](docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+
+[Open the 10-cycle service GIF](docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
+
+![3 km/h fixed-lookahead service A/B](docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
 
 ![Current persistent-obstacle safe hold](docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
@@ -170,6 +179,8 @@ from a workstation-only simulation result.
 | [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Current runtime, GNSS center contract, exact validation, and field limits |
 | [v2.1.5 field handoff](camrod_bringup/docs/v2_1_5_field_handoff_20260808.md) | Other-PC start, TODO crosswalk, and physical test order |
 | [v2.1.5 service evidence](docs/assets/test_result/v2-1-5-service-validation-20260807/README.md) | Repeated service, obstacle, boundary JSON/log/PNG/GIF and limits |
+| [B1-B10 endurance evidence](docs/assets/test_result/b1-b10-service-endurance-20260807/README.md) | Ten-cycle lifecycle, route-snap return, path/UI shutdown logs, PNG/GIF and hashes |
+| [RPP service A/B evidence](docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md) | Rejected scaled preview and selected fixed `1.1 m` source-profile run |
 | [v2.1.4 release notes](docs/V2_1_4_RELEASE_NOTES.md) | Previous map, boundary, UI, and transport baseline |
 | [v2.1.3 release notes](docs/V2_1_3_RELEASE_NOTES.md) | Released runtime scope and verification |
 | [Robot-center migration](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) | Exact before/after geometry and A/B results |
