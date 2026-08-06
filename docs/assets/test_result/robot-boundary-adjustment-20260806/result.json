@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "experiment_id": "robot-boundary-adjustment-20260806",
+  "recorded_date": "2026-08-06",
+  "status": "provisional_remeasurement_candidate",
+  "field_pass": false,
+  "operation": "subtract_0.10_m_from_each_horizontal_body_extent",
+  "unchanged": {
+    "reference_frame": "robot_center_link",
+    "wheelbase_m": 0.886,
+    "center_offset_from_rear_axle_m": 0.443,
+    "height_m": 1.09463,
+    "planning_margin_per_side_m": 0.05,
+    "sensor_mount_coordinates": true,
+    "track_width_m_provisional": 1.07
+  },
+  "previous_body_extents_m": {
+    "front": 0.75837,
+    "rear": 0.73323,
+    "left": 0.53505,
+    "right": 0.53495,
+    "total_length": 1.4916,
+    "total_width": 1.07
+  },
+  "previous_planning_extents_m": {
+    "front": 0.80837,
+    "rear": 0.78323,
+    "left": 0.58505,
+    "right": 0.58495,
+    "total_length": 1.5916,
+    "total_width": 1.17
+  },
+  "provisional_body_extents_m": {
+    "front": 0.65837,
+    "rear": 0.63323,
+    "left": 0.43505,
+    "right": 0.43495,
+    "total_length": 1.2916,
+    "total_width": 0.87
+  },
+  "provisional_planning_extents_m": {
+    "front": 0.70837,
+    "rear": 0.68323,
+    "left": 0.48505,
+    "right": 0.48495,
+    "total_length": 1.3916,
+    "total_width": 0.97
+  },
+  "same_bag_replay": {
+    "pose_samples": 1582,
+    "edge_sample_spacing_m": 0.125,
+    "lanelet_contact_cost": 100,
+    "previous_physical_contact_samples": 262,
+    "previous_planning_contact_samples": 1574,
+    "provisional_physical_contact_samples": 0,
+    "provisional_planning_contact_samples": 0,
+    "previous_physical_first_contact": {
+      "pose_index": 444,
+      "x_m": 10.2574289051,
+      "y_m": 33.6676300655
+    },
+    "previous_physical_last_contact": {
+      "pose_index": 852,
+      "x_m": 9.8755159255,
+      "y_m": 29.6184184921
+    },
+    "interpretation": "The provisional rectangles clear this recorded map trajectory, but no new controller or real-robot run was performed."
+  },
+  "fresh_sim_runtime": {
+    "environment": "amd64_full_bringup_sim",
+    "field_pass": false,
+    "map_version": 15,
+    "map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f",
+    "policy_defect_reproduced_before_fix": {
+      "scenario": "physical_hard_stop",
+      "passed": false,
+      "owner_motion_seen": true,
+      "observed_displacement_m": 0.0652,
+      "maximum_recovery_output_mps": 0.05,
+      "interpretation": "The gate sampled only the planning polygon, so a physical-body contact could incorrectly authorize recovery."
+    },
+    "normal_route_after_fix": {
+      "passed": true,
+      "displacement_m": 10.0403,
+      "goal_error_m": 0.2932,
+      "action_status": 4,
+      "route_safety_hold_seen": false,
+      "final_output_mps": 0.0
+    },
+    "margin_contact_stop_after_fix": {
+      "passed": true,
+      "selected_lateral_offset_m": 0.19,
+      "physical_body_maximum_cost": 70,
+      "physical_body_cost_100_contact": false,
+      "planning_boundary_maximum_cost": 100,
+      "planning_boundary_cost_100_contact": true,
+      "challenged_linear_x_mps": 0.1,
+      "maximum_final_output_mps": 0.0,
+      "hold_reason": "lanelet_footprint_cost"
+    },
+    "margin_recovery_after_fix": {
+      "passed": true,
+      "selected_lateral_offset_m": 0.19,
+      "automatic_recovery_motion": "CRAB_RIGHT",
+      "recovery_displacement_m": 0.133,
+      "maximum_recovery_output_mps": 0.05,
+      "release_physical_body_maximum_cost": 70,
+      "release_planning_boundary_maximum_cost": 70,
+      "final_output_mps": 0.0
+    },
+    "physical_body_hard_stop_after_fix": {
+      "passed": true,
+      "selected_lateral_offset_m": 0.27,
+      "physical_body_maximum_cost": 100,
+      "planning_boundary_maximum_cost": 100,
+      "hold_reason": "lanelet_physical_body_cost",
+      "recovery_candidate": "none",
+      "owner_motion_seen": false,
+      "hold_retained_during_observation": true,
+      "observed_pose_variation_m": 0.0023,
+      "maximum_recovery_output_mps": 0.0,
+      "final_output_mps": 0.0
+    },
+    "raw_results": [
+      "runtime-physical-body-hard-stop-before-fix.json",
+      "runtime-route-clear.json",
+      "runtime-margin-contact-stop.json",
+      "runtime-margin-recovery.json",
+      "runtime-physical-body-hard-stop.json"
+    ]
+  },
+  "configured_hardware_conflicts": {
+    "front_lidar": {
+      "x_m": 0.76336,
+      "beyond_provisional_body_front_m": 0.10499,
+      "beyond_provisional_planning_front_m": 0.05499
+    },
+    "front_camera": {
+      "x_m": 0.76337,
+      "beyond_provisional_body_front_m": 0.105,
+      "beyond_provisional_planning_front_m": 0.055
+    },
+    "imu": {
+      "x_m": 0.688,
+      "beyond_provisional_body_front_m": 0.02963,
+      "inside_provisional_planning_front_m": 0.02037
+    },
+    "rear_camera": {
+      "x_m": -0.61933,
+      "inside_provisional_body_rear_m": 0.0139
+    },
+    "side_radar_reference_abs_y_m": 0.41005,
+    "inside_provisional_body_side_m_approx": 0.025,
+    "track_width_exceeds_planning_total_width_m": 0.1,
+    "interpretation": "Configured reference points already conflict with the reduced envelope; complete housings and wheels may protrude farther."
+  },
+  "build_and_test": {
+    "build_entrypoint": "./src/colcon_build.sh",
+    "packages_built": [
+      "camrod_control",
+      "camrod_bringup",
+      "camrod_planning",
+      "camrod_sensor_kit",
+      "camrod_platform"
+    ],
+    "ctest_targets": {
+      "camrod_control": 2,
+      "camrod_planning": 10,
+      "camrod_bringup": 18,
+      "camrod_sensor_kit": 0,
+      "camrod_platform": 2,
+      "total": 32,
+      "failed": 0
+    },
+    "aggregate_xunit_records": 334,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 8,
+    "skip_reason": "ament disables the installed cppcheck 2.7 because of its known performance issue"
+  },
+  "source": {
+    "map_path": "lanelet2_maps.osm",
+    "map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f",
+    "lanelet_snapshot_bag": "/tmp/camrod_lanelet_snapshot_20260806",
+    "lanelet_snapshot_db3_sha256": "43d74c40f5d2a9a05367003a8817a508a3add05e0ab1e10cda97eb8c74021fd5",
+    "body_only_drive_bag": "/tmp/camrod_body_only_drive_test_20260806",
+    "body_only_drive_db3_sha256": "9b8470ad5e079631d1ebb55f4b57bb907d86f4cb52ead76e71099c8e0f340474",
+    "raw_bags_committed": false
+  },
+  "required_field_validation": [
+    "measure_complete_outer_envelope_including_wheels_sensors_brackets_cables_and_payload",
+    "verify_live_planning_boundary_polygon",
+    "repeat_normal_route_clearance_on_physical_robot",
+    "repeat_margin_contact_recovery_on_physical_robot",
+    "repeat_physical_body_cost_100_hard_stop_on_physical_robot",
+    "verify_crab_and_zero_turn_swept_clearance"
+  ],
+  "figures": [
+    "01-old-new-boundary-replay.png",
+    "02-runtime-boundary-policy.png"
+  ]
+}

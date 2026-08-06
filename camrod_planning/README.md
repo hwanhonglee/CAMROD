@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Record the scoped Nav2 planner/controller production topology
 and retain standalone field-isolation fallbacks. -->
+<!-- HH_260806 - Synchronize the provisional planning polygon and distinguish
+its recoverable margin from the control-owned physical-body hard stop. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -38,6 +40,8 @@ unsurveyed service-access boundary.
 | RPP desired speed | `0.4 m/s` |
 | RPP lookahead | `1.1..2.0 m` |
 | RPP reverse / rotate-to-heading | disabled / disabled |
+| Provisional body boundary | `1.29160 x 0.87000 m` |
+| Nav2 planning footprint | `1.39160 x 0.97000 m` (body plus `0.05 m` each side) |
 | Obstacle fallback | `SmacLattice` only on a proven `>= 2.50 m` lane, then restore `LaneletRoute` |
 
 Normal missions construct only policy-reachable planner/controller instances.
@@ -134,11 +138,20 @@ in explicit `OPERATOR_STOPPED` state.
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
 | Active map-v15 source | Synchronized SHA `d7b730...213f`; 55 lanelets/14 areas/1658 nodes; LaneletRoute tests pass |
+| Current-map controlled route | `10.0403 m`, goal error `0.2932 m`, no route hold, final command zero |
+| Current-map margin-only placement | planning max cost `100`, body max `70`; bounded `CRAB_RIGHT` cleared `0.133 m` |
+| Current-map physical-body placement | body max cost `100`; no recovery candidate or owner motion |
 | Full campsite round trip | Not demonstrated; map boundary still blocks campsite entry |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
 for the compared route. It does not prove every lane width or physical vehicle
 behavior.
+
+![Current provisional boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+Nav2 uses the larger planning polygon for both local and global footprint
+checks. `camrod_control` independently samples the smaller physical body first:
+body contact cannot be reclassified as a recoverable planning-margin contact.
 
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 

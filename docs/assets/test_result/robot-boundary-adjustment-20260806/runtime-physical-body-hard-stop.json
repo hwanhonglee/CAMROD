@@ -1,0 +1,564 @@
+{
+  "passed": true,
+  "live_lateral_sweep": {
+    "base_pose": {
+      "x": 10.441374066512223,
+      "y": 35.65365899946396,
+      "yaw_rad": -1.6302914988208081
+    },
+    "step_m": 0.01,
+    "range_m": [
+      -1.6,
+      1.6
+    ],
+    "margin_only_intervals": [
+      {
+        "start_offset_m": -0.36,
+        "end_offset_m": -0.32
+      },
+      {
+        "start_offset_m": 0.17,
+        "end_offset_m": 0.21
+      }
+    ],
+    "selected_lateral_offset_m": 0.27
+  },
+  "placement_attempts": [
+    {
+      "attempt": 1,
+      "commanded_pose": {
+        "x": 10.710896351258505,
+        "y": 35.63760477805199,
+        "yaw_rad": -1.6302914988208081
+      },
+      "settled_pose": {
+        "x": 10.723377936919727,
+        "y": 35.5305611443405,
+        "yaw_rad": -1.630291498820807
+      },
+      "position_error_m": 0.107768870731658
+    },
+    {
+      "attempt": 2,
+      "commanded_pose": {
+        "x": 10.698414765597283,
+        "y": 35.74464841176347,
+        "yaw_rad": -1.6302914988208081
+      },
+      "settled_pose": {
+        "x": 10.710981058292896,
+        "y": 35.636427334928285,
+        "yaw_rad": -1.6302914988208075
+      },
+      "position_error_m": 0.0011804861673172151
+    }
+  ],
+  "tested_pose": {
+    "x": 10.710981058292896,
+    "y": 35.636427334928285,
+    "yaw_rad": -1.6302914988208075
+  },
+  "first_hold_boundary_classification": {
+    "physical_body": {
+      "available": true,
+      "cost_100_contact": true,
+      "maximum_cost": 100,
+      "sampled_cells": 30,
+      "extent_front_rear_left_right_m": [
+        0.65837,
+        0.63323,
+        0.43505,
+        0.43495
+      ]
+    },
+    "planning_boundary": {
+      "available": true,
+      "cost_100_contact": true,
+      "maximum_cost": 100,
+      "sampled_cells": 31,
+      "extent_front_rear_left_right_m": [
+        0.70837,
+        0.68323,
+        0.48505,
+        0.48495
+      ]
+    }
+  },
+  "first_hold_gate": {
+    "state": "ROUTE_SAFETY_HOLD",
+    "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+  },
+  "challenged_command": {
+    "linear_x": 0.1,
+    "linear_y": 0.0,
+    "angular_z": 0.0
+  },
+  "owner_motion_seen": false,
+  "hold_retained_during_observation": true,
+  "observed_displacement_m": 0.0023,
+  "maximum_recovery_output_mps": 0.0,
+  "final_output": {
+    "linear_x": 0.0,
+    "linear_y": 0.0,
+    "angular_z": 0.0
+  },
+  "timeline": [
+    {
+      "t": 0.04,
+      "event": "pose",
+      "x": 10.49128127033021,
+      "y": 35.6488228323307,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 0.04,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.04,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.041,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.042,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.064,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 9.421,
+      "event": "milestone",
+      "name": "lanelet_grid_available_before_scan",
+      "x": 10.49128127033021,
+      "y": 35.6488228323307,
+      "yaw_rad": -1.6302914988208075
+    },
+    {
+      "t": 9.584,
+      "event": "pose",
+      "x": 10.710896351258505,
+      "y": 35.63760477805199,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 9.635,
+      "event": "pose",
+      "x": 10.715210773930638,
+      "y": 35.600603751681824,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.834,
+      "event": "pose",
+      "x": 10.717385186915068,
+      "y": 35.581955715017216,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 9.884,
+      "event": "pose",
+      "x": 10.710896351258505,
+      "y": 35.63760477805199,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 9.935,
+      "event": "pose",
+      "x": 10.715232470511861,
+      "y": 35.600417679098086,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.984,
+      "event": "pose",
+      "x": 10.710896351258505,
+      "y": 35.63760477805199,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 10.035,
+      "event": "pose",
+      "x": 10.715215557479736,
+      "y": 35.60056272736876,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 10.234,
+      "event": "pose",
+      "x": 10.710896351258505,
+      "y": 35.63760477805199,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 10.334,
+      "event": "pose",
+      "x": 10.71523799703401,
+      "y": 35.60037028295558,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 10.434,
+      "event": "pose",
+      "x": 10.717436731313562,
+      "y": 35.58151366383381,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 10.484,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 10.518,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 10.519,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 10.534,
+      "event": "pose",
+      "x": 10.718773847140657,
+      "y": 35.57004639190938,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 10.734,
+      "event": "pose",
+      "x": 10.720334618500768,
+      "y": 35.55666102226855,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 11.035,
+      "event": "pose",
+      "x": 10.721550504102098,
+      "y": 35.54623343586437,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 11.734,
+      "event": "pose",
+      "x": 10.722782393419928,
+      "y": 35.53566859959357,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 12.685,
+      "event": "stage",
+      "name": "static_pose_settled",
+      "attempt": 1,
+      "position_error_m": 0.107768870731658,
+      "x": 10.723377936919727,
+      "y": 35.5305611443405,
+      "yaw_rad": -1.630291498820807
+    },
+    {
+      "t": 12.734,
+      "event": "pose",
+      "x": 10.702717247547286,
+      "y": 35.70759538101113,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 12.834,
+      "event": "pose",
+      "x": 10.698414765597283,
+      "y": 35.74464841176347,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 12.935,
+      "event": "pose",
+      "x": 10.70275131354687,
+      "y": 35.70730200417777,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 12.985,
+      "event": "pose",
+      "x": 10.698414765597283,
+      "y": 35.74464841176347,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 13.035,
+      "event": "pose",
+      "x": 10.702728684780864,
+      "y": 35.70749688340617,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 13.234,
+      "event": "pose",
+      "x": 10.704896190230023,
+      "y": 35.68883029816612,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 13.285,
+      "event": "pose",
+      "x": 10.698414765597283,
+      "y": 35.74464841176347,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 13.334,
+      "event": "pose",
+      "x": 10.70274569258597,
+      "y": 35.70735041196645,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 13.385,
+      "event": "pose",
+      "x": 10.698414765597283,
+      "y": 35.74464841176347,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 13.434,
+      "event": "pose",
+      "x": 10.70272885111043,
+      "y": 35.70749545097377,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 13.485,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.486,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.534,
+      "event": "pose",
+      "x": 10.704922503016071,
+      "y": 35.68860369210898,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 13.625,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 13.634,
+      "event": "pose",
+      "x": 10.706259536749867,
+      "y": 35.67708914012924,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 13.65,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false) charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.651,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.835,
+      "event": "pose",
+      "x": 10.707822954742618,
+      "y": 35.66362496395436,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 14.135,
+      "event": "pose",
+      "x": 10.709042880270973,
+      "y": 35.65311894936953,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 14.834,
+      "event": "pose",
+      "x": 10.71028042525919,
+      "y": 35.64246119576624,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 16.065,
+      "event": "stage",
+      "name": "static_pose_settled",
+      "attempt": 2,
+      "position_error_m": 0.0011804861673172151,
+      "x": 10.710981058292896,
+      "y": 35.636427334928285,
+      "yaw_rad": -1.6302914988208075
+    },
+    {
+      "t": 16.066,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 16.067,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 16.068,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.068,
+      "event": "milestone",
+      "name": "first_hold",
+      "x": 10.710981058292896,
+      "y": 35.636427334928285,
+      "yaw_rad": -1.6302914988208075
+    },
+    {
+      "t": 16.164,
+      "event": "owner",
+      "state": "SAFETY_HOLD",
+      "message": "candidate_outside_bounded_twist"
+    },
+    {
+      "t": 16.216,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.218,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.366,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.501,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.64,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.762,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 16.894,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.2s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 17.032,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.0s,route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 17.168,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_physical_body_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 18.639,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false) charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 18.639,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 18.664,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    }
+  ],
+  "scenario": "physical_hard_stop",
+  "map": {
+    "source_file": "lanelet2_maps.osm",
+    "map_version": 15,
+    "sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+  },
+  "captured_at_utc": "2026-08-05T17:44:14.500484+00:00"
+}

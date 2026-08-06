@@ -97,12 +97,17 @@ robot, measure antenna X/Y/Z from `robot_center_link`, update both
 
 ## Body And Safety Boundary
 
-> **Operational follow-up, 2026-08-05:** the current post-v2.1.3 runtime keeps
-> the measured `1.49160 x 1.07000 m` body unchanged and uses a `0.05 m`
-> planning margin on every side. Current extents are front `0.80837`, rear
-> `0.78323`, left `0.58505`, and right `0.58495 m`, producing a
-> `1.59160 x 1.17000 m` polygon. The v2.1.3 values and evidence below remain
-> historical and were not regenerated under the newer footprint.
+<!-- HH_260806 - Supersede the 2026-08-05 envelope with the provisional
+four-sided reduction while retaining every release-checkpoint value below. -->
+> **Operational follow-up, 2026-08-06:** the current v2.1.5 candidate subtracts
+> `0.10 m` from each prior physical extent. Body extents are front `0.65837`,
+> rear `0.63323`, left `0.43505`, and right `0.43495 m`, producing
+> `1.29160 x 0.87000 m`. A retained `0.05 m` margin produces planning extents
+> `0.70837/0.68323/0.48505/0.48495 m`, or `1.39160 x 0.97000 m`.
+> Physical-body cost 100 is now an unrecoverable hard stop; only margin-only
+> contact can request projected bounded recovery. These values are an
+> unmeasured reduction candidate, not FIELD-PASS. The complete previous and
+> v2.1.3 values below remain historical.
 
 At the v2.1.3 release checkpoint, the physical body was
 1.49160 x 1.07000 m and the planning margin was 0.10 m on every side, so the

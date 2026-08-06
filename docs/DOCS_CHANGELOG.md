@@ -1,5 +1,41 @@
 # Documentation Changelog
 
+<!-- HH_260806 - Record the provisional four-sided boundary reduction and the
+two-layer runtime policy without promoting it to a completed physical survey. -->
+## [v2.1.5-boundary-policy] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Previous boundary | Preserved `1.49160 x 1.07000 m` body and `1.59160 x 1.17000 m` planning values with their original rosbag SHA and results |
+| Provisional body | Reduced front/rear/left/right by `0.10 m` to `0.65837/0.63323/0.43505/0.43495 m`, total `1.29160 x 0.87000 m` |
+| Planning boundary | Retained the four-sided `0.05 m` margin, producing `0.70837/0.68323/0.48505/0.48495 m`, total `1.39160 x 0.97000 m` |
+| Synchronization | Updated sensor-kit geometry, Nav2 local/global footprint, safety-gate fallback, launch defaults, package/bringup mirrors, and source defaults |
+| Reproduced defect | A physical-body cost-100 placement incorrectly admitted `0.05 m/s` recovery and moved `0.0652 m` because only the planning polygon was sampled |
+| Control correction | Samples the physical body before the planning margin, reports `lanelet_physical_body_cost`, and rejects every physical-contact recovery candidate |
+| Evidence | Preserved same-bag replay and added fresh map-v15 full-bringup JSON/PNG for normal route, margin stop/recovery, and physical hard stop; physical field survey remains P0 |
+| Final build/test | Repository `colcon_build.sh` rebuilt 5 affected packages; all 32 CTest targets passed, with 334 aggregate xUnit records, zero errors/failures, and 8 known cppcheck skips |
+
+### AMD64 Simulation Validation
+
+| Scenario | Result |
+|---|---|
+| Normal route | `10.0403 m`, goal error `0.2932 m`, no route hold, final zero |
+| Margin-only ordinary command | body max `70`, planning max `100`, challenged `0.10 m/s`, output `0.0 m/s` |
+| Margin-only automatic recovery | `CRAB_RIGHT`, `0.133 m`, max `0.05 m/s`, both polygons clear at release |
+| Physical-body contact | body max `100`, no candidate, no owner motion, recovery output `0.0 m/s`, hold retained |
+
+### Safety Scope
+
+The reduced rectangle is a calculated remeasurement candidate. Passing the
+fresh AMD64 policy tests does not make it a FIELD-PASS value, and configured
+sensor/wheel references already indicate possible protrusion. Real robot
+operation requires a complete outer-envelope survey and controlled repetition
+of the boundary-stop/recovery cases from `TODOLIST.txt`.
+
+---
+
 <!-- HH_260805 - Publish the scoped runtime remediation and align the explicit
 GNSS center assumption without claiming a physical antenna survey. -->
 ## [v2.1.5-release-sync] - 2026-08-05 (HH_260805)

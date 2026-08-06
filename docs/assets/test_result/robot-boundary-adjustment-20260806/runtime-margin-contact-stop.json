@@ -1,0 +1,551 @@
+{
+  "passed": true,
+  "expected_physical_contact": false,
+  "live_lateral_sweep": {
+    "base_pose": {
+      "x": 10.441374066512223,
+      "y": 35.65365899946396,
+      "yaw_rad": -1.6302914988208081
+    },
+    "step_m": 0.01,
+    "range_m": [
+      -1.6,
+      1.6
+    ],
+    "margin_only_intervals": [
+      {
+        "start_offset_m": -0.36,
+        "end_offset_m": -0.32
+      },
+      {
+        "start_offset_m": 0.17,
+        "end_offset_m": 0.21
+      }
+    ],
+    "selected_lateral_offset_m": 0.19
+  },
+  "placement_attempts": [
+    {
+      "attempt": 1,
+      "commanded_pose": {
+        "x": 10.631037896518865,
+        "y": 35.642361584396276,
+        "yaw_rad": -1.6302914988208081
+      },
+      "settled_pose": {
+        "x": 10.643526582747764,
+        "y": 35.534437928943866,
+        "yaw_rad": -1.6302914988208075
+      },
+      "position_error_m": 0.1086438341091404
+    },
+    {
+      "attempt": 2,
+      "commanded_pose": {
+        "x": 10.618549210289967,
+        "y": 35.75028523984869,
+        "yaw_rad": -1.6302914988208081
+      },
+      "settled_pose": {
+        "x": 10.631023078269553,
+        "y": 35.6420349201852,
+        "yaw_rad": -1.6302914988208075
+      },
+      "position_error_m": 0.0003270001334994706
+    }
+  ],
+  "tested_pose": {
+    "x": 10.631023078269553,
+    "y": 35.6420349201852,
+    "yaw_rad": -1.6302914988208075
+  },
+  "boundary_classification": {
+    "physical_body": {
+      "available": true,
+      "cost_100_contact": false,
+      "maximum_cost": 70,
+      "sampled_cells": 24,
+      "extent_front_rear_left_right_m": [
+        0.65837,
+        0.63323,
+        0.43505,
+        0.43495
+      ]
+    },
+    "planning_boundary": {
+      "available": true,
+      "cost_100_contact": true,
+      "maximum_cost": 100,
+      "sampled_cells": 28,
+      "extent_front_rear_left_right_m": [
+        0.70837,
+        0.68323,
+        0.48505,
+        0.48495
+      ]
+    }
+  },
+  "challenged_command": {
+    "linear_x": 0.1,
+    "linear_y": 0.0,
+    "angular_z": 0.0
+  },
+  "route_safety_hold_seen": true,
+  "challenged_gate": {
+    "state": "ROUTE_SAFETY_HOLD",
+    "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+  },
+  "maximum_final_output_mps_during_challenge": 0.0,
+  "final_output": {
+    "linear_x": 0.0,
+    "linear_y": 0.0,
+    "angular_z": 0.0
+  },
+  "timeline": [
+    {
+      "t": 0.039,
+      "event": "pose",
+      "x": 10.711268944932273,
+      "y": 35.63394805142956,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 0.039,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.04,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.04,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.041,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.116,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 8.885,
+      "event": "milestone",
+      "name": "lanelet_grid_available_before_scan",
+      "x": 10.711268944932273,
+      "y": 35.63394805142956,
+      "yaw_rad": -1.630291498820807
+    },
+    {
+      "t": 9.085,
+      "event": "pose",
+      "x": 10.635313083230827,
+      "y": 35.60541664325197,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.285,
+      "event": "pose",
+      "x": 10.63747854029241,
+      "y": 35.586703382503224,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 9.335,
+      "event": "pose",
+      "x": 10.631037896518865,
+      "y": 35.642361584396276,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 9.385,
+      "event": "pose",
+      "x": 10.635341624734467,
+      "y": 35.60516999573853,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.435,
+      "event": "pose",
+      "x": 10.631037896518865,
+      "y": 35.642361584396276,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 9.485,
+      "event": "pose",
+      "x": 10.635323679166104,
+      "y": 35.605325076209034,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.685,
+      "event": "pose",
+      "x": 10.63747880723127,
+      "y": 35.58670107569386,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 9.735,
+      "event": "pose",
+      "x": 10.631037896518865,
+      "y": 35.642361584396276,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 9.785,
+      "event": "pose",
+      "x": 10.635341463326322,
+      "y": 35.60517139058155,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 9.885,
+      "event": "pose",
+      "x": 10.637523142147913,
+      "y": 35.586317946021104,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 9.935,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 9.969,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 9.969,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 9.985,
+      "event": "pose",
+      "x": 10.638850661649565,
+      "y": 35.57484590207056,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 10.185,
+      "event": "pose",
+      "x": 10.640400958363077,
+      "y": 35.56144868115463,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 10.485,
+      "event": "pose",
+      "x": 10.641609190059715,
+      "y": 35.55100748830664,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 11.185,
+      "event": "pose",
+      "x": 10.642833691793825,
+      "y": 35.54042569444692,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 12.417,
+      "event": "stage",
+      "name": "static_pose_settled",
+      "attempt": 1,
+      "position_error_m": 0.1086438341091404,
+      "x": 10.643526582747764,
+      "y": 35.534437928943866,
+      "yaw_rad": -1.6302914988208075
+    },
+    {
+      "t": 12.435,
+      "event": "pose",
+      "x": 10.618549210289967,
+      "y": 35.75028523984869,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 12.485,
+      "event": "pose",
+      "x": 10.622829525704821,
+      "y": 35.71313994436561,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 12.685,
+      "event": "pose",
+      "x": 10.624982408434304,
+      "y": 35.694456866747146,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 12.735,
+      "event": "pose",
+      "x": 10.618549210289967,
+      "y": 35.75028523984869,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 12.785,
+      "event": "pose",
+      "x": 10.622847758139924,
+      "y": 35.712981720234076,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 12.835,
+      "event": "pose",
+      "x": 10.618549210289967,
+      "y": 35.75028523984869,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 12.885,
+      "event": "pose",
+      "x": 10.622829916774002,
+      "y": 35.71313655060161,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 13.085,
+      "event": "pose",
+      "x": 10.624982419244324,
+      "y": 35.694456772936014,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 13.135,
+      "event": "pose",
+      "x": 10.618549210289967,
+      "y": 35.75028523984869,
+      "yaw_rad": -1.6302914988208084,
+      "yaw_deg": -93.40882225848955
+    },
+    {
+      "t": 13.185,
+      "event": "pose",
+      "x": 10.622847433332467,
+      "y": 35.71298453896769,
+      "yaw_rad": -1.6302914988208068,
+      "yaw_deg": -93.40882225848945
+    },
+    {
+      "t": 13.217,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.218,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.285,
+      "event": "pose",
+      "x": 10.625026535402409,
+      "y": 35.69407392551271,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 13.317,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 13.385,
+      "event": "pose",
+      "x": 10.626352522967638,
+      "y": 35.682566782897375,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 13.39,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.39,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 13.585,
+      "event": "pose",
+      "x": 10.627901011574917,
+      "y": 35.66912873889951,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 13.885,
+      "event": "pose",
+      "x": 10.6291078463601,
+      "y": 35.658655624105386,
+      "yaw_rad": -1.630291498820807,
+      "yaw_deg": -93.40882225848947
+    },
+    {
+      "t": 14.585,
+      "event": "pose",
+      "x": 10.630330962893622,
+      "y": 35.64804121356686,
+      "yaw_rad": -1.6302914988208075,
+      "yaw_deg": -93.4088222584895
+    },
+    {
+      "t": 15.817,
+      "event": "stage",
+      "name": "static_pose_settled",
+      "attempt": 2,
+      "position_error_m": 0.0003270001334994706,
+      "x": 10.631023078269553,
+      "y": 35.6420349201852,
+      "yaw_rad": -1.6302914988208075
+    },
+    {
+      "t": 15.818,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 15.819,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 15.821,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 15.917,
+      "event": "owner",
+      "state": "SAFETY_HOLD",
+      "message": "candidate_outside_bounded_twist"
+    },
+    {
+      "t": 15.973,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.11,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.261,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.4,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.548,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.696,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 16.842,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 17.364,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=platform_drive_enable=false,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+    },
+    {
+      "t": 17.365,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 17.417,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 17.756,
+      "event": "milestone",
+      "name": "static_contact_complete",
+      "passed": true,
+      "expected_physical_contact": false,
+      "peak_output_mps": 0.0
+    }
+  ],
+  "scenario": "margin_contact",
+  "map": {
+    "source_file": "lanelet2_maps.osm",
+    "map_version": 15,
+    "sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+  },
+  "captured_at_utc": "2026-08-05T17:47:20.220712+00:00"
+}

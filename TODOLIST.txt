@@ -1,5 +1,5 @@
 CAMROD v2.1.5 이후 미완료 실차 확인 목록
-갱신일: 2026-08-05 (Asia/Seoul)
+갱신일: 2026-08-06 (Asia/Seoul)
 
 # HH_260730 - 완료된 구현·원인 규명·단위/sim 검증은 DONE.txt로 분리했다.
 # 이 파일에는 아직 실제 로봇에서 실행하고 PASS/FAIL을 판정할 작업만 둔다.
@@ -20,6 +20,10 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
 - 중앙 기준 프레임 전환표: docs/V2_1_3_ROBOT_CENTER_MIGRATION.md
 - v2.1.5는 software/config/sim 기준점이며 변경 후 전체 실차 주행
   FIELD-PASS는 아직 없다.
+- HH_260806 AMD64 full-bringup에서 정상 route, margin-only 정지/복구,
+  physical-body hard stop은 통과했다. 이는 실차 외곽 치수 검증이 아니라
+  두 경계의 제어 정책 검증이며 원본 JSON/PNG는
+  `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 있다.
 
 # HH_260805 - robot_center_link 코드/config 전환과 GNSS 중앙 가정은
 # 완료했지만 실차 TF와 dual-GNSS lever arm은 아직 FIELD-PASS가 아니다.
@@ -29,9 +33,21 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   호환 프레임이어야 하며 EKF/Ranger가 별도로 발행하면 실패다.
 - `robot_center_link`에서 LiDAR/카메라/IMU/radar 각 TF를 조회해
   `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`의 변경 후 XYZ/RPY와 대조한다.
-- Nav2와 safety gate의 현재 planning boundary가 전후
-  0.80837/0.78323 m, 좌우 0.58505/0.58495 m인지 확인한다. 실제 차체
-  크기 1.49160 x 1.07000 m는 그대로이고, 네 방향 margin은 0.05 m여야 한다.
+- HH_260806 임시 후보 기준으로 Nav2와 safety gate의 planning boundary가
+  전후 0.70837/0.68323 m, 좌우 0.48505/0.48495 m인지 확인한다. 후보 차체
+  경계는 1.29160 x 0.87000 m이고, 네 방향 planning margin은 0.05 m다.
+- 이전 1.49160 x 1.07000 m 경계는 삭제하지 않고
+  `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 보존한다.
+  새 값은 기존 앞/뒤/좌/우에서 각각 0.10 m를 뺀 계산 후보일 뿐 실측
+  완료값이 아니다. 바퀴, 센서 하우징, 브래킷, 케이블, 적재함까지 포함한
+  실제 최대 외곽을 네 방향에서 재측정하고 후보보다 돌출하면 즉시 FAIL로
+  판정해 더 큰 실제 외곽값으로 복원한다.
+- 소스 기준 front LiDAR/카메라 X는 0.76336/0.76337 m라 후보 body front
+  0.65837 m보다 약 0.105 m, planning front 0.70837 m보다 약 0.055 m
+  돌출한다. IMU도 body보다 0.02963 m 앞이다. mount 기준점만으로 이미
+  충돌 경계 밖이므로 housing 크기를 포함한 재실측 전 실차 주행은 FAIL이다.
+  `track_width=1.07 m`가 실제 휠 중심 폭인지도 확인하고, 맞다면 현재
+  0.97 m planning 폭보다 넓으므로 좌우 경계를 반드시 확장한다.
 - 사람과 짐이 없는 통제 구역에서 직선, 좌우 offset, crab, 제자리 회전,
   campsite 진입/복귀, reverse parking/AprilTag docking 순서로 재검증한다.
 - 현재 `robot_center_link -> gnss_link`와 진단 mount XYZ는 0/0/0이어야 한다.
@@ -128,10 +144,14 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   `/map/cost_grid/lanelet`, map 원점·해상도·접촉 cell과 gate reason.
 - 합격:
   1) planning boundary 전체가 허용 corridor 안이면 주행한다.
-  2) boundary 어느 한 점이라도 off-lane cost 100에 닿으면 계속 정지한다.
-  3) 좌표·map 정렬 오류로 정상 corridor 안에서 거짓 정지하지 않는다.
+  2) planning margin만 off-lane cost 100에 닿으면 일반 주행 명령은 0이 되고,
+     반대 방향 projected full-footprint가 검증될 때만 제한된 recovery가 움직인다.
+  3) physical body 어느 한 점이라도 cost 100에 닿으면 recovery candidate와
+     owner motion 없이 `lanelet_physical_body_cost`로 계속 정지한다.
+  4) 좌표·map 정렬 오류로 정상 corridor 안에서 거짓 정지하지 않는다.
 - 금지:
-  좌표 증거 없이 footprint guard 또는 threshold를 낮추지 않는다.
+  좌표 증거와 전체 외곽 실측 없이 footprint guard 또는 threshold를 더
+  낮추지 않는다. HH_260806 후보는 실차 주행 승인값이 아니다.
 - HH_260731 정지 상태 부분 확인:
   현재 주차 위치는 lanelet 밖이었다. 실제 실행 파라미터에서 차체 경계는
   `1.49160 x 1.07000 m`, planning margin은 사방 `0.10 m`, 최종 planning
@@ -142,8 +162,26 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   정상이나, 정상 route 내부 주행과 한쪽 접촉/지속 정지는 아직 미실시다.
 - HH_260805 현재 설정 후속 확인:
   위 HH_260731 결과는 당시 사방 0.10 m 경계의 과거 기록이다. 현재
-  `1.59160 x 1.17000 m` 경계(사방 0.05 m)로 정상 route, 한쪽 접촉,
-  body 접촉 정지와 오차 여유를 다시 FIELD-PASS해야 한다.
+  HH_260806 이전 `1.59160 x 1.17000 m` 경계(사방 0.05 m) 결과도 과거
+  기록으로 보존한다.
+- HH_260806 임시 경계 후속:
+  기존 body-only bag을 재판독하면 새 `1.39160 x 0.97000 m` planning
+  경계는 1582 pose 모두 cost 100 비접촉이었다. 이는 동일 기록을 새
+  사각형으로 계산한 offline replay일 뿐 실제 차량 외곽이나 실주행
+  FIELD-PASS가 아니다.
+- HH_260806 AMD64 SIM-PASS:
+  1) 수정 전 physical-body 접촉 재현은 recovery `0.05 m/s`, 이동 `0.0652 m`로
+     실패했다. 원인은 gate가 planning polygon만 검사한 것이었다.
+  2) body polygon을 먼저 검사하도록 수정한 뒤 정상 route는 `10.0403 m`,
+     goal error `0.2932 m`, route hold 0회로 끝났다.
+  3) +0.19 m margin-only 위치에서 body max cost 70, planning max cost 100이었고
+     일반 `0.10 m/s` 명령의 최종 출력은 `0.0 m/s`였다.
+  4) 같은 위치의 자동 복구는 반대쪽 `CRAB_RIGHT`만 선택해 `0.133 m`,
+     최대 `0.05 m/s`로 이동한 뒤 두 polygon max cost 70에서 해제됐다.
+  5) +0.27 m physical-body 위치는 `lanelet_physical_body_cost`, candidate none,
+     owner motion false, recovery output `0.0 m/s`로 hold를 유지했다.
+  위 결과는 정책 SIM-PASS다. 외곽 재실측 후 정상 route, 한쪽 margin 접촉,
+  실제 body 접촉 hard stop, crab/zero-turn swept clearance를 실차에서 반복한다.
 - 근거:
   `/home/nvidia/camrod_field_logs/20260731_144047/boundary_live_params.txt`
   `/home/nvidia/camrod_field_logs/20260731_144047/boundary_current_offlane_probe.txt`

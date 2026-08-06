@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Synchronize scoped component shutdown, LiDAR-only SHM, and
 the optional-grid diagnostic contract. -->
+<!-- HH_260806 - Add the fresh normal-route, recoverable-margin, and physical
+body hard-stop simulation contract for the provisional boundary. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -43,6 +45,9 @@ The latest full-bringup runtime result is shown separately.
 | Rapid route recontact | PASS, FAIL CLOSED | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with zero output |
 | Map-v14 recovery rerun | PASS, FAIL CLOSED | route 0.366 s latch; reverse 0.0721 m; crab-left 0.3321 m; final commands zero |
 | v2.1.4 release-map staged recovery | PASS, FAIL CLOSED | release SHA `e0b50f...e36d`; reverse-yaw max 0.05 rad/s; route recontact 0.335 s; crab-left 0.3378 m; final commands zero |
+| Current-map normal route | PASS | `10.0403 m`; goal error `0.2932 m`; no route hold; final command zero |
+| Current-map planning margin | PASS | ordinary command stopped at `0.0 m/s`; projected `CRAB_RIGHT` cleared `0.133 m` at max `0.05 m/s` |
+| Current-map physical body | PASS, FAIL CLOSED | `lanelet_physical_body_cost`; no candidate, no owner motion, recovery output `0.0 m/s` |
 | Operator stop | PASS | `POST /ui/stop` returned HTTP 200; local owners and Nav2 canceled; state 16 published |
 | Complete round trip | NOT DEMONSTRATED | Return, parking, and charging were not reached |
 
@@ -51,8 +56,13 @@ map-v15 records are bound to the v2.1.4 release SHA. The current synchronized
 OSM pair remains `map_version=15` but has SHA `d7b730...213f`; it is the active
 current-site map and is intentionally not relabeled with the older recovery
 measurements. The active footprint uses `0.05 m` on every body side while
-retaining the complete-footprint gate; no current-map full-round-trip claim is
-inferred.
+retaining the complete-footprint gate. The provisional physical body is
+`1.29160 x 0.87000 m`, and the planning boundary is
+`1.39160 x 0.97000 m`. Physical-body cost 100 is an unrecoverable hard stop;
+only margin-only contact can request a separately projected bounded escape.
+No current-map full-round-trip claim is inferred.
+
+![Current-map boundary policy validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
 ![Map v14 boundary recovery rerun](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
 
@@ -169,6 +179,7 @@ deployment copies and are covered by synchronization tests.
 | `render_module_readme_assets.py` | Reproducible source/evidence diagrams |
 | `automatic_route_recovery_probe.py` | Production gate/controller crab, reverse, retry, latch, and final command timeline |
 | `render_automatic_recovery_results.py` | Map-version-checked PNG/GIF from the three recovery timelines |
+| `render_robot_boundary_validation.py` | Consolidated normal-route, margin, and physical-body simulation PNG |
 
 ```bash
 python3 camrod_bringup/scripts/render_module_readme_assets.py
@@ -185,4 +196,5 @@ pytest -q camrod_bringup/test/test_module_readme_assets.py
 | Released v2.1.3 evidence | `docs/evidence/v2.1.3/` |
 | Map-v14 recovery rerun | [`map-v14-boundary-recovery/`](../docs/evidence/v2.1.3/map-v14-boundary-recovery/) |
 | Map-v15 staged recovery | [`map-v15-boundary-recovery/`](../docs/evidence/v2.1.4/map-v15-boundary-recovery/) |
+| Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/test_result/robot-boundary-adjustment-20260806/) |
 | Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |
