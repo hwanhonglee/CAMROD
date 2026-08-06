@@ -21,6 +21,8 @@ install(
     scripts/render_robot_boundary_validation.py
     # HH_260806 - Render B1-B10 turnaround and B11-B13 roadside arrival evidence.
     scripts/render_camping_site_sequence_results.py
+    # HH_260807 - Render the v2.1.5 repeated-service and safety test reports.
+    scripts/render_v2_1_5_service_results.py
     # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
     scripts/render_boundary_recovery_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
@@ -168,7 +170,15 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
-  # HH_260806 - Validate the active synchronized map-v16 pair independently
+  # HH_260807 - Keep v2.1.5 service/obstacle/boundary visuals traceable to
+  # the committed machine-readable simulation reports.
+  ament_add_pytest_test(
+    test_v2_1_5_service_results
+    test/test_v2_1_5_service_results.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260807 - Validate the active synchronized map-v17 pair independently
   # from preserved historical map-v14/v15 runtime evidence.
   ament_add_pytest_test(
     test_lanelet_map_revision_sync

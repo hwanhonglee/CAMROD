@@ -18,7 +18,7 @@ RUNTIME_REPORT = (
     / "runtime-visual-capture-20260804.json"
 )
 ACTIVE_MAP_SHA256 = (
-    "fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf"
+    "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021"
 )
 
 
@@ -29,9 +29,9 @@ def _tags(element: ET.Element) -> dict[str, str]:
     }
 
 
-def test_active_and_named_park_maps_are_revision_16_and_synchronized() -> None:
+def test_active_and_named_park_maps_are_revision_17_and_synchronized() -> None:
     """Deployment must not silently use a stale copy of the user map edit."""
-    # HH_260806 - Keep this user-authored pair synchronized for the current site.
+    # HH_260807 - Keep this user-authored pair synchronized for the current site.
     # A different field must receive a new revision instead of silently
     # replacing this deployed geometry under the same test contract.
     assert ACTIVE_MAP.read_bytes() == PARK_MAP_COPY.read_bytes()
@@ -40,12 +40,12 @@ def test_active_and_named_park_maps_are_revision_16_and_synchronized() -> None:
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "16"
+    assert metadata.attrib["map_version"] == "17"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
-    assert len(root.findall("node")) == 1658
+    assert len(root.findall("node")) == 1652
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

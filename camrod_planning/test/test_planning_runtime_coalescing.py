@@ -5,9 +5,11 @@ import math
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from action_msgs.msg import GoalStatus
 from avg_msgs.msg import AvgOccupancyGrid, AvgPath, AvgPoseStamped
 import rclpy
 from rclpy.serialization import deserialize_message, serialize_message
@@ -247,6 +249,118 @@ class PlanningRuntimeCoalescingTest(unittest.TestCase):
                 node._blocked_since = node.get_clock().now() - Duration(seconds=20.1)
                 node._on_monitor_timer()
                 trigger.assert_called_once()
+        finally:
+            node.destroy_node()
+
+    def test_obstacle_fallback_probes_path_before_navigation_preemption(self):
+        """A no-path result must not replace the still-recoverable route mission."""
+        node = OBSTACLE_MONITOR.ObstacleReplanMonitor()
+        try:
+            node._latest_goal = AvgPoseStamped()
+            node._latest_goal.header.frame_id = "map"
+            node._latest_goal.pose.orientation.w = 1.0
+            node._latest_pose = AvgPoseStamped()
+            node._latest_pose.header.frame_id = "map"
+            node._latest_pose.pose.orientation.w = 1.0
+            blockage = OBSTACLE_MONITOR.BlockageSample(
+                blocked=True,
+                blocked_count=8,
+                total_count=20,
+                max_cost=100,
+                source_topic="/sensing/cost_grid/lidar",
+                point_x=2.0,
+                point_y=0.0,
+            )
+            lane_width = OBSTACLE_MONITOR.LaneWidthSample(
+                allowed=True,
+                total_width_m=3.0,
+                left_clearance_m=1.5,
+                right_clearance_m=1.5,
+                reason="wide_lane",
+            )
+            send_future = mock.Mock()
+
+            with mock.patch.object(
+                node._compute_path_client, "wait_for_server", return_value=True
+            ), mock.patch.object(
+                node._compute_path_client,
+                "send_goal_async",
+                return_value=send_future,
+            ) as compute_send, mock.patch.object(
+                node._navigate_client, "send_goal_async"
+            ) as navigate_send:
+                node._probe_fallback_path(blockage, lane_width)
+
+            self.assertTrue(node._fallback_probe_in_flight)
+            compute_goal = compute_send.call_args.args[0]
+            self.assertEqual(compute_goal.planner_id, "SmacLattice")
+            self.assertTrue(compute_goal.use_start)
+            send_future.add_done_callback.assert_called_once()
+            navigate_send.assert_not_called()
+        finally:
+            node.destroy_node()
+
+    def test_obstacle_failed_probe_latches_without_repeated_preemption(self):
+        node = OBSTACLE_MONITOR.ObstacleReplanMonitor()
+        try:
+            node._fallback_probe_generation = 7
+            node._fallback_probe_in_flight = True
+            response = SimpleNamespace(
+                status=GoalStatus.STATUS_ABORTED,
+                result=SimpleNamespace(path=SimpleNamespace(poses=[])),
+            )
+            future = mock.Mock()
+            future.result.return_value = response
+
+            with mock.patch.object(node, "_restore_primary_selector"), mock.patch.object(
+                node, "_publish_status"
+            ), mock.patch.object(node, "_preempt_with_validated_fallback") as preempt:
+                node._on_probe_result(future, 7)
+
+            self.assertFalse(node._fallback_probe_in_flight)
+            self.assertTrue(node._fallback_failed_latched)
+            self.assertEqual(
+                node._fallback_failure_reason, "compute_path_status_6_poses_0"
+            )
+            preempt.assert_not_called()
+
+            node._preempt_enabled = True
+            blockage = OBSTACLE_MONITOR.BlockageSample(
+                True, 8, 20, 100, "/sensing/cost_grid/lidar", 2.0, 0.0
+            )
+            with mock.patch.object(node, "_publish_status") as publish_status, mock.patch.object(
+                node, "_probe_fallback_path"
+            ) as probe:
+                node._maybe_trigger_fallback_replan(
+                    blockage, node.get_clock().now(), 25.0, "BLOCKED_NO_PREEMPT"
+                )
+            probe.assert_not_called()
+            self.assertIn("BLOCKED_REPLAN_FAILED_HOLD", publish_status.call_args.args[0])
+
+            node._reset_fallback_probe()
+            self.assertFalse(node._fallback_failed_latched)
+            self.assertEqual(node._fallback_failure_reason, "")
+        finally:
+            node.destroy_node()
+
+    def test_obstacle_validated_probe_is_the_only_preemption_path(self):
+        node = OBSTACLE_MONITOR.ObstacleReplanMonitor()
+        try:
+            node._fallback_probe_generation = 3
+            node._fallback_probe_in_flight = True
+            response = SimpleNamespace(
+                status=GoalStatus.STATUS_SUCCEEDED,
+                result=SimpleNamespace(path=SimpleNamespace(poses=[object(), object()])),
+            )
+            future = mock.Mock()
+            future.result.return_value = response
+
+            with mock.patch.object(node, "_preempt_with_validated_fallback") as preempt:
+                node._on_probe_result(future, 3)
+
+            self.assertFalse(node._fallback_probe_in_flight)
+            self.assertFalse(node._fallback_failed_latched)
+            preempt.assert_called_once_with()
         finally:
             node.destroy_node()
 

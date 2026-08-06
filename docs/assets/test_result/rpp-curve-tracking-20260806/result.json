@@ -1,0 +1,84 @@
+{
+  "test_id": "rpp-curve-tracking-20260806",
+  "captured_at_local": "2026-08-06",
+  "environment": {
+    "architecture": "amd64",
+    "mode": "full bringup simulation",
+    "branch": "develop",
+    "base_commit": "27e895fa6325ccc67c5ed058d0f1c2f990d8a08d",
+    "map_sha256": "559bdad88e2733c854024013e02c2f29e4ad4aaef5bc6678e3c593d6c4e49516"
+  },
+  "root_cause": {
+    "parameter": "RPP.use_rotate_to_heading",
+    "previous_value": true,
+    "previous_threshold_deg": 2.0,
+    "effect": "RPP repeatedly replaced normal curve translation with pure rotation"
+  },
+  "selected_contract": {
+    "rpp_use_rotate_to_heading": false,
+    "rpp_lookahead_floor_m": 1.1,
+    "route_heading_gate_enter_deg": 75.0,
+    "route_heading_gate_exit_deg": 5.0,
+    "route_heading_gate_max_linear_mps": 0.0,
+    "manual_rotation_shim_enter_deg": 45.0,
+    "manual_rotation_shim_release_deg": 5.0
+  },
+  "before_correction": {
+    "mission_key": "camping_site_7",
+    "lookahead_floor_m": 1.1,
+    "raw_rotation_translation_switches": 403,
+    "clear_window_s": 224.9219,
+    "clear_window_pose_path_m": 27.1492,
+    "route_completed": false,
+    "termination_reason": "planning-margin contact followed by rapid recontact latch"
+  },
+  "selected_lookahead_1_1_m": {
+    "mission_key_requested": "camping_site_8",
+    "active_goal_source": "manual",
+    "planned_route_length_m": 60.15,
+    "navigation_duration_s": 321.4,
+    "pose_path_m": 59.931179,
+    "route_completed": true,
+    "final_planning_state": "GOAL_REACHED",
+    "raw_command_samples": 4818,
+    "raw_translation_samples": 4818,
+    "raw_pure_rotation_samples": 0,
+    "raw_rotation_translation_switches": 0,
+    "gate_initial_alignment_s": 19.2,
+    "gate_max_linear_x_mps": 0.2,
+    "gate_max_angular_z_radps": 0.175,
+    "recoverable_planning_margin_contacts": 1,
+    "contact_pose": {
+      "x_m": 11.031,
+      "y_m": 43.572,
+      "yaw_deg": -83.9
+    },
+    "start_pose": [-13.880149, 43.538423, -173.827439],
+    "end_pose": [14.790592, 10.689911, -65.857526]
+  },
+  "rejected_lookahead_1_2_m": {
+    "mission_key_requested": "camping_site_8",
+    "active_goal_source": "manual",
+    "pose_path_m": 26.032716,
+    "route_completed": false,
+    "raw_command_samples": 2634,
+    "raw_translation_samples": 2634,
+    "raw_pure_rotation_samples": 0,
+    "raw_rotation_translation_switches": 0,
+    "first_hold_elapsed_s": 148.201,
+    "first_release_elapsed_s": 149.601,
+    "rapid_recontact_elapsed_s": 150.6,
+    "recontact_after_release_s": 0.999,
+    "first_contact_pose": [11.002, 43.751, -78.5],
+    "second_contact_pose": [11.007, 43.552, -83.0],
+    "termination_reason": "rapid planning-margin recontact latched"
+  },
+  "raw_evidence": {
+    "before_bag": "/tmp/b7_stop_go_final_bag_20260806",
+    "before_bag_db3_sha256": "2b9d029489f47eec1ab89ecb2a7d8a9c48148df8f8e52696aad7c094c732946d",
+    "selected_bag": "/tmp/b8_oversteer_after_bag_20260806_1925",
+    "selected_bag_db3_sha256": "c45afc8ed8c48fe45deb253b86a5fde76baa1bdff2db49d2dba8e90d698c6183",
+    "rejected_bag": "/tmp/b8_oversteer_lookahead12_bag_20260806",
+    "rejected_bag_db3_sha256": "fc6ccf4622a229bc00541f0e6aaee607a8827214b1d23400c48a023a9bcc9d8b"
+  }
+}

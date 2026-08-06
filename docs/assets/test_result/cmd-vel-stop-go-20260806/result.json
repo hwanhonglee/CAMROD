@@ -1,0 +1,98 @@
+{
+  "test_id": "cmd-vel-stop-go-20260806",
+  "captured_at_local": "2026-08-06",
+  "environment": {
+    "architecture": "amd64",
+    "mode": "full bringup simulation",
+    "ros_domain_id": 92,
+    "branch": "develop",
+    "base_commit": "27e895fa6325ccc67c5ed058d0f1c2f990d8a08d",
+    "map_version": 15,
+    "map_sha256": "559bdad88e2733c854024013e02c2f29e4ad4aaef5bc6678e3c593d6c4e49516"
+  },
+  "reported_run": {
+    "source": "user B7 terminal log",
+    "navigation_window_s": 49.1217,
+    "stationary_command_source_handoffs": 15,
+    "cmd_vel_input_stale_events": 15,
+    "first_lanelet_hold_reason": "lanelet_footprint_cost"
+  },
+  "corrected_full_route_run": {
+    "mission_key": "camping_site_7",
+    "planned_route_length_m": 62.42,
+    "clear_window_before_first_real_margin_contact_s": 224.9219,
+    "clear_window_pose_path_m": 27.1492,
+    "stationary_command_source_handoffs": 0,
+    "cmd_vel_input_stale_events": 0,
+    "nav2_command_rate_hz": 14.983,
+    "gate_output_rate_hz": 14.996,
+    "maximum_nav2_input_gap_s": 0.0695,
+    "maximum_gate_output_gap_s": 0.1002,
+    "all_zero_output_runs_at_least_0_2_s": 1,
+    "maximum_all_zero_output_run_s": 0.2221,
+    "route_completed": false,
+    "termination_reason": "real planning-margin contact followed by rapid recontact latch"
+  },
+  "raster_false_positive_regression": {
+    "pose": {
+      "x_m": 8.418,
+      "y_m": 45.236,
+      "yaw_deg": 6.8
+    },
+    "old_grid_resolution_m": 0.25,
+    "new_safety_grid_resolution_m": 0.05,
+    "physical_body_vector_clearance_m": 0.17405,
+    "planning_boundary_vector_clearance_m": 0.12405,
+    "old_lethal_cell_center_outside_vector_lanelet_m": 0.01286,
+    "corrected_run_passed_pose": true
+  },
+  "first_real_margin_contact": {
+    "pose": {
+      "x_m": 10.747,
+      "y_m": 43.654,
+      "yaw_deg": -79.4
+    },
+    "hit": {
+      "world_x_m": 10.238,
+      "world_y_m": 43.194,
+      "cost": 100
+    },
+    "physical_body_fully_inside": true,
+    "physical_body_vector_clearance_m": 0.04544,
+    "planning_boundary_fully_inside": false,
+    "planning_boundary_maximum_overrun_m": 0.00455,
+    "planning_boundary_outside_area_m2": 0.000906,
+    "classification": "recoverable planning-margin contact, not physical-body contact"
+  },
+  "isolated_margin_recovery": {
+    "initial_pose": {
+      "x_m": 10.74695,
+      "y_m": 43.65401,
+      "yaw_deg": -79.4
+    },
+    "owner_phase_sequence": [
+      "CRAB_LEFT",
+      "REVERSE_YAW_LEFT"
+    ],
+    "hold_released_to_nav2": true,
+    "challenge_total_displacement_including_resumed_nav2_m": 0.7160,
+    "rapid_recontact_latched": true,
+    "final_command_zero_after_disarm": true
+  },
+  "verification": {
+    "control_policy_gtests": 62,
+    "reverse_parking_gtests": 2,
+    "total_control_tests_passed": 64,
+    "total_control_tests_failed": 0,
+    "package_build_passed": true,
+    "config_mirrors_identical": true
+  },
+  "raw_evidence": {
+    "bag_path": "/tmp/b7_stop_go_final_bag_20260806",
+    "bag_db3_sha256": "2b9d029489f47eec1ab89ecb2a7d8a9c48148df8f8e52696aad7c094c732946d",
+    "launch_log_path": "/tmp/camrod_b7_stop_go_final.log",
+    "launch_log_sha256": "42d8dc4cad57e533e0639c656b19d39e87f3f57f45c0e48d9ef1f663e9ee4ce3",
+    "runner_report_path": "/tmp/b7_stop_go_final.json",
+    "runner_report_sha256": "793c88a56e5b2976f9189aaea3f74f1314e7f344326182062579fd3b301585da"
+  }
+}

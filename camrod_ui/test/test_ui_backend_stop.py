@@ -12,11 +12,12 @@ sys.path.insert(
     str(Path(__file__).resolve().parents[1] / "runtime" / "python"),
 )
 
-from avg_msgs.msg import AvgServiceState, MotionOperation  # noqa: E402
+from avg_msgs.msg import AvgPlatformStatus, AvgServiceState, MotionOperation  # noqa: E402
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
 class _FakeLogger:
+
     def __init__(self) -> None:
         self.info_messages = []
         self.warning_messages = []
@@ -29,6 +30,7 @@ class _FakeLogger:
 
 
 class _FakeCancelClient:
+
     def __init__(self, ready: bool) -> None:
         self.ready = ready
         self.requests = []
@@ -42,6 +44,7 @@ class _FakeCancelClient:
 
 
 class _FakeLoop:
+
     def __init__(self) -> None:
         self.wake_calls = 0
 
@@ -54,6 +57,7 @@ class _FakeLoop:
 
 
 class _FakeThread:
+
     def __init__(self) -> None:
         self.alive = True
         self.join_timeouts = []
@@ -67,6 +71,7 @@ class _FakeThread:
 
 
 class _FakeBackend:
+
     def __init__(self) -> None:
         self.nav2_cancel_action_topics = ["/ready/cancel", "/missing/cancel"]
         self.nav2_cancel_clients = [
@@ -93,6 +98,51 @@ class _FakeBackend:
 
 
 class UiBackendStopTest(unittest.TestCase):
+
+    def test_charging_contact_does_not_cancel_active_station_departure(self) -> None:
+        published_states = []
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_CHARGER),
+            _runtime_policy=SimpleNamespace(update_platform=lambda **_kwargs: None),
+        )
+        backend.get_logger = lambda: logger
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_service_state = (
+            lambda state, source: published_states.append((state, source))
+        )
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+
+        message = AvgPlatformStatus()
+        message.is_charging = True
+        message.battery_state_available = False
+        UiBackendNode._on_platform_status(backend, message)
+
+        self.assertTrue(backend._latest_platform_is_charging)
+        self.assertEqual(published_states, [])
+        self.assertIn("preserving departure authorization", logger.info_messages[-1])
+
+    def test_duplicate_destination_is_idempotent_during_station_departure(self) -> None:
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _pending_site_after_drop_zone_exit=("B2", "camping_site_2", "first"),
+        )
+        backend.get_logger = lambda: logger
+
+        result = UiBackendNode._apply_destination_command(
+            backend,
+            site="B2",
+            run=True,
+            source="retry",
+        )
+
+        self.assertEqual(result["mission_key"], "camping_site_2")
+        self.assertFalse(result["goal_pose_published"])
+        self.assertIn("already pending", result["message"])
+
     def test_both_ui_nodes_accept_external_shutdown_as_clean_exit(self) -> None:
         runtime_dir = Path(__file__).resolve().parents[1] / "runtime" / "python" / "camrod_ui"
         for filename in ("ui_backend_node.py", "ui_guest_node.py"):

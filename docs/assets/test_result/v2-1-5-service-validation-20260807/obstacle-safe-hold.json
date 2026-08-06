@@ -1,0 +1,63 @@
+{
+  "overall_pass": true,
+  "checks": [
+    {
+      "name": "baseline_hz",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "/localization/pose": 20.0,
+        "/planning/lanelet_pose": 10.67,
+        "/sensing/imu/data": 20.0,
+        "/sensing/lidar/points_filtered": 10.0,
+        "/localization/input/wheel_odometry": 10.0,
+        "/sensing/cost_grid/radar": 10.0,
+        "/planning/cost_grid/inflation": 6.0,
+        "/sensing/cost_grid/lidar": 10.0
+      }
+    },
+    {
+      "name": "radar_direction_hz",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "/sensing/radar/front1/range": 10.0,
+        "/sensing/radar/front2/range": 10.0,
+        "/sensing/radar/left1/range": 10.0,
+        "/sensing/radar/left2/range": 10.0,
+        "/sensing/radar/right1/range": 10.0,
+        "/sensing/radar/right2/range": 10.0,
+        "/sensing/radar/rear/range": 10.0
+      }
+    },
+    {
+      "name": "obstacle_replan",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "route_ready": true,
+        "global_path_points": 47,
+        "local_path_points": 39,
+        "blocked_seen": true,
+        "stop_seen": true,
+        "fallback_expected": false,
+        "safe_hold_expected": true,
+        "fallback_selector_seen": false,
+        "fallback_path_seen": false,
+        "fallback_failed_hold_seen": true,
+        "motion_around_obstacle_seen": false,
+        "resumed_after_obstacle_clear": true,
+        "moved_m": 0.242,
+        "obstacle_world_x": 81.985,
+        "obstacle_world_y": -10.942,
+        "latest_replan_status": "IDLE: navigation inactive",
+        "latest_planner_selector": "LaneletRoute",
+        "replan_statuses_seen": "BLOCKED,BLOCKED_HOLD,BLOCKED_REPLAN_FAILED_HOLD,CLEAR,IDLE",
+        "planner_selectors_seen": "LaneletRoute",
+        "cmd_max": 0.856,
+        "global_path_updates": 1,
+        "local_path_updates": 1093
+      }
+    }
+  ]
+}
