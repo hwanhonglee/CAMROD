@@ -2,8 +2,8 @@
 
 <!-- HH_260805 - Document adaptive reverse/yaw/crab recovery while preserving
 the measured-body stop and historical translation-only evidence labels. -->
-<!-- HH_260806 - Separate the provisional physical-body hard stop from the
-recoverable 5 cm planning margin and publish fresh map-v15 simulation results. -->
+<!-- HH_260806 - Activate the fabrication-inclusive measured body, preserve the
+5 cm planning margin, and serialize Nav2/campsite command ownership. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -35,10 +35,10 @@ recovery candidates, and published an all-zero final command.
 | New campsite mission | `SOC >= 35%` | Departure admitted |
 | Critical battery | `SOC <= 20%` | Hard command stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
-| Physical body | front/rear `0.65837/0.63323 m` | Cost 100/unknown is `lanelet_physical_body_cost`; no automatic motion |
-| Physical body | left/right `0.43505/0.43495 m` | Independent hard-stop rectangle |
-| Planning footprint | front/rear `0.70837/0.68323 m` | Body plus `0.05 m` X margin |
-| Planning footprint | left/right `0.48505/0.48495 m` | Body plus `0.05 m` Y margin |
+| Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; no automatic motion on cost 100/unknown |
+| Physical body | left/right `0.53505/0.53495 m` | Fabrication-inclusive `1.07000 m` hard-stop width |
+| Planning footprint | front/rear `0.75837/0.73323 m` | Body plus `0.05 m` X margin |
+| Planning footprint | left/right `0.58505/0.58495 m` | Body plus `0.05 m` Y margin |
 | Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
@@ -48,6 +48,8 @@ recovery candidates, and published an all-zero final command.
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
 | Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, total travel, duration |
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
+| Maneuver release hold | `0.5 s` | Final output remains zero before Nav2 may resume |
+| Nav2 rotation settle | `0.5 s` | Translation is held after a pure rotation command |
 
 ## Runtime Owners
 
@@ -77,8 +79,9 @@ localization, or battery hold.
 
 | Site mode | Phase order |
 |---|---|
-| Active B1-B13 turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
-| Optional roadside policy | Supported by the controller but not selected by the active campsite configuration |
+| Active B1-B10 turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
+| Active B11-B13 roadside arrival | capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; no on-site zero-turn |
+| B11-B13 return | Field geometry decision pending; arrival-only tests do not publish RETURN |
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
@@ -99,6 +102,21 @@ and the normal user return request remains required.
 The reverse controller defaults to `complete_without_charging: false` and a
 `20 s` charging wait. `CHARGING` therefore takes precedence on the public state
 surface while the internal controller remains `PARKED`.
+
+## Campsite Sequencing Evidence
+
+![Map-v16 campsite policy validation](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+
+![Turnaround and roadside phase order](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+
+All B1-B10 sites completed the full turnaround/return sequence with map-derived
+lateral entries from `1.79 m` to `5.31 m`. B11-B13 each stopped at
+`WAIT_RETURN` after a `0.60 m`-capped roadside crab and never entered
+`ROTATE_180`. The final gate ignores Nav2 commands while a campsite phase owns
+motion, then enforces a stationary handoff. Static road-lanelet cost is bypassed
+only for explicit campsite motion; live dynamic obstacle checks remain active.
+The [structured result](../docs/assets/test_result/camping-site-sequencing-20260806/README.md)
+keeps the unresolved B11-B13 return geometry explicitly field-pending.
 
 ## Boundary Evidence
 
@@ -132,7 +150,7 @@ surface while the internal controller remains `PARKED`.
 | ![Margin contact](../docs/assets/test_result/route-boundary-recovery-20260806/01-margin-contact-analysis.png) | ![Ten-release timeline](../docs/assets/test_result/route-boundary-recovery-20260806/02-ten-release-retry-timeline.png) | ![Body contact segment](../docs/assets/test_result/route-boundary-recovery-20260806/03-body-only-drive-trajectory.png) |
 
 The [full test record](../docs/assets/test_result/route-boundary-recovery-20260806/README.md)
-uses the previous `1.49160 x 1.07000 m` body and separates a margin-only first
+uses the earlier `1.49160 x 1.07000 m` body and separates a margin-only first
 stop from a downstream physical-body map contact. Raising the release limit
 from `1` to `10` repeated the same reverse/re-entry behavior and selected no
 crab, so retry count alone is not a valid fix. The
@@ -155,14 +173,14 @@ policy. These controlled route tests do not replace the separate campsite
 | Map-v15 route probe | `REVERSE_YAW_RIGHT`, recovery `0.0582 m`, max yaw `0.05 rad/s`, recontact `0.335 s` | Retry latched; final Twist all zero |
 | Map-v15 static probe | `REVERSE_YAW_RIGHT`, recovery `0.0405 m`, max yaw `0.05 rad/s`, recontact `0.400 s` | Retry latched; final Twist all zero |
 | Map-v15 one-side probe | `CRAB_LEFT`, `0.3378 m`, max lateral `0.05 m/s` | First hold released without recontact; mission incomplete |
-| Current-map normal route after boundary change | `10.0403 m`, goal error `0.2932 m`, no route hold | Controlled route completed; final Twist zero |
-| Current-map margin-only contact | body max `70`, planning max `100`; ordinary output `0.0 m/s` | Hold enforced without body contact |
-| Current-map margin recovery | `CRAB_RIGHT`, `0.133 m`, max lateral `0.05 m/s` | Both envelopes clear at release; final Twist zero |
-| Current-map physical-body contact | body max `100`; owner motion false; recovery output `0.0 m/s` | Hold retained; no automatic escape |
+| Reduced-boundary normal route (historical) | `10.0403 m`, goal error `0.2932 m`, no route hold | Controlled route completed; final Twist zero |
+| Reduced-boundary margin-only contact (historical) | body max `70`, planning max `100`; ordinary output `0.0 m/s` | Hold enforced without body contact |
+| Reduced-boundary margin recovery (historical) | `CRAB_RIGHT`, `0.133 m`, max lateral `0.05 m/s` | Both envelopes clear at release; final Twist zero |
+| Reduced-boundary physical-body contact (historical) | body max `100`; owner motion false; recovery output `0.0 m/s` | Hold retained; no automatic escape |
 
 The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
 PNG/GIF is a v2.1.4 release-map full-simulation run of the active selector; its
-OSM SHA is `e0b50f...e36d`, not the current-site map SHA `d7b730...213f`. It
+OSM SHA is `e0b50f...e36d`, not the current map-v16 SHA `fd9c18...d0cf`. It
 reevaluates all five projected commands on every hold update: left/right crab, straight
 reverse, and left/right reverse-yaw. A unique safe crab moves away from the
 contact. Otherwise straight reverse creates room; it may transition to the

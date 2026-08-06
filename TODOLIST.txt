@@ -15,7 +15,7 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
 - v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
 - v2.1.3 중앙 프레임·경계 회복·UI 범위: docs/V2_1_3_RELEASE_NOTES.md
 - v2.1.4 운영 설정·map v15·Chromium·transport 범위: docs/V2_1_4_RELEASE_NOTES.md
-- v2.1.5 scoped runtime·GNSS 중앙 가정 범위: docs/V2_1_5_RELEASE_NOTES.md
+- v2.1.5 scoped runtime·GNSS lever-arm·map-v16 campsite 범위: docs/V2_1_5_RELEASE_NOTES.md
 - 완료 구현·진단 결과: DONE.txt
 - 중앙 기준 프레임 전환표: docs/V2_1_3_ROBOT_CENTER_MIGRATION.md
 - v2.1.5는 software/config/sim 기준점이며 변경 후 전체 실차 주행
@@ -25,37 +25,43 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   두 경계의 제어 정책 검증이며 원본 JSON/PNG는
   `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 있다.
 
-# HH_260805 - robot_center_link 코드/config 전환과 GNSS 중앙 가정은
-# 완료했지만 실차 TF와 dual-GNSS lever arm은 아직 FIELD-PASS가 아니다.
+# HH_260806 - GNSS 좌측 안테나 Y=+0.45 m 보정은 구현했지만 X/Z, moving-base
+# 안테나, baseline 방향과 이동 중 잔차는 아직 FIELD-PASS가 아니다.
 [P0] robot_center_link 전환 실차 확인
 - 정지 상태에서 `map -> odom -> robot_center_link -> robot_base_link` TF가
   단일 트리인지 확인한다. `robot_base_link`는 X -0.443 m의 고정 후륜 차축
   호환 프레임이어야 하며 EKF/Ranger가 별도로 발행하면 실패다.
 - `robot_center_link`에서 LiDAR/카메라/IMU/radar 각 TF를 조회해
   `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`의 변경 후 XYZ/RPY와 대조한다.
-- HH_260806 임시 후보 기준으로 Nav2와 safety gate의 planning boundary가
-  전후 0.70837/0.68323 m, 좌우 0.48505/0.48495 m인지 확인한다. 후보 차체
-  경계는 1.29160 x 0.87000 m이고, 네 방향 planning margin은 0.05 m다.
+- 현재 Nav2와 safety gate의 planning boundary가 전후
+  `0.75837/0.73323 m`, 좌우 `0.58505/0.58495 m`인지 확인한다. active
+  physical body는 가공품 포함 `1.39160 x 1.07000 m`, planning boundary는
+  `1.49160 x 1.17000 m`이며 네 방향 margin은 `0.05 m`다.
 - 이전 1.49160 x 1.07000 m 경계는 삭제하지 않고
   `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 보존한다.
-  새 값은 기존 앞/뒤/좌/우에서 각각 0.10 m를 뺀 계산 후보일 뿐 실측
-  완료값이 아니다. 바퀴, 센서 하우징, 브래킷, 케이블, 적재함까지 포함한
-  실제 최대 외곽을 네 방향에서 재측정하고 후보보다 돌출하면 즉시 FAIL로
-  판정해 더 큰 실제 외곽값으로 복원한다.
-- 소스 기준 front LiDAR/카메라 X는 0.76336/0.76337 m라 후보 body front
-  0.65837 m보다 약 0.105 m, planning front 0.70837 m보다 약 0.055 m
-  돌출한다. IMU도 body보다 0.02963 m 앞이다. mount 기준점만으로 이미
-  충돌 경계 밖이므로 housing 크기를 포함한 재실측 전 실차 주행은 FAIL이다.
-  `track_width=1.07 m`가 실제 휠 중심 폭인지도 확인하고, 맞다면 현재
-  0.97 m planning 폭보다 넓으므로 좌우 경계를 반드시 확장한다.
+  해당 `1.29160 x 0.87000 m` 값은 과거 계산 후보이며 현재 배포값이 아니다.
+  바퀴, 센서 하우징, 브래킷, 케이블, 적재함까지 포함한 실제 최대 외곽을
+  네 방향에서 다시 대조하고 active body보다 돌출하면 즉시 FAIL로 판정한다.
+- 기본 플랫폼 `1.19160 x 0.87000 m`와 상부 가공품 포함 active body
+  `1.39160 x 1.07000 m`를 혼용하지 않는다. 총 길이/폭은 반영됐지만
+  front/rear/left/right 분할과 회전 swept envelope는 실차에서 확인한다.
+- 소스 기준 front LiDAR/카메라 X `0.76336/0.76337 m`는 active body front
+  `0.70837 m`보다 약 `0.055 m`, planning front `0.75837 m`보다 약 `0.005 m`
+  앞이다. housing까지 포함해 hard-stop body/front planning 값을 재검증한다.
+  `track_width=1.07 m`의 의미와 실제 바퀴 최외곽도 active body/planning 폭과
+  대조한다.
 - 사람과 짐이 없는 통제 구역에서 직선, 좌우 offset, crab, 제자리 회전,
   campsite 진입/복귀, reverse parking/AprilTag docking 순서로 재검증한다.
-- 현재 `robot_center_link -> gnss_link`와 진단 mount XYZ는 0/0/0이어야 한다.
-  이는 localization이 NavSatFix를 중앙 pose로 직접 사용하는 것과 맞춘 운영
-  가정이며 실측값이 아니다. rover 안테나와 moving-base 안테나 각각의 XYZ,
-  baseline 길이/방향, 수신기가 보고하는 position reference를 실측한다.
-  위치 해가 중앙이 아니면 TF만 바꾸지 말고 localization lever-arm 보정을
-  함께 구현·검증한 뒤에만 `pose_verified=true`로 변경한다.
+- B1-B10은 site 내부 crab 완료 후 zero-turn, 그 후 하역 대기인지 확인한다.
+  B11-B13은 RETURN을 누르지 않은 arrival-only 상태까지만 먼저 확인한다.
+  안전한 복귀 pose/yaw/후진·crab 경로를 현장 측정으로 정하기 전에는
+  B11-B13 자동 복귀를 FIELD-PASS로 판정하지 않는다.
+- 현재 `robot_center_link -> gnss_link`와 진단 mount는
+  `(0.00000,+0.45000,0.00000) m`여야 한다. NavSatFix는 좌측 안테나 위치이며
+  localization은 fresh heading으로 이 벡터를 회전해 뺀 center pose를
+  발행한다. rover X/Z, moving-base XYZ, baseline 길이/방향, 수신기 position
+  reference와 이동 중 center residual을 확인한 뒤에만 `pose_verified=true`로
+  변경한다.
 
 다음 실차 세션 우선순위
 1) 후방 카메라 raw가 10 Hz에 미달하는 원인과 CPU 포화 영향을 분리한다.
@@ -485,12 +491,10 @@ CAMROD v2.1.5 이후 미완료 실차 확인 목록
   6) pure crab 구간에서 비영 covariance의 Ranger wheel yaw-rate와 IMU
      yaw-rate가 함께 EKF에 융합되고, dual-GNSS 절대 yaw 보정 사이에서
      final yaw가 허용 오차 안에 유지되는지 확인한다.
-  7) rover와 moving-base GNSS 안테나 각각의 robot_center_link 기준 x/y/z,
-     baseline 길이/방향, 수신기의 position reference를 실측한다. 현재
-     robot_params의 0/0/0은 localization의 직접 center-pose 해석과 맞춘
-     운영 가정이며 실측값이 아니다. 위치 해가 중앙이 아니면 TF와
-     localization lever-arm 보정을 함께 반영한 뒤 GNSS position과 final
-     center pose 차이를 재측정한다.
+  7) rover 좌측 안테나의 확인된 Y `+0.45 m` 외에 X/Z, moving-base 안테나
+     XYZ, baseline 길이/방향, 수신기의 position reference를 실측한다.
+     적용된 `p_center = p_fix - R(yaw)[0,0.45]` 뒤 GNSS position과 final
+     center pose 차이를 직선/회전/crab에서 재측정한다.
 - 실패 시 다음 변경 후보:
   측정값을 근거로 lateral prediction, controller gain/ratio,
   sign-change hysteresis, stale-command 처리 중 한 계층만 선택한다.

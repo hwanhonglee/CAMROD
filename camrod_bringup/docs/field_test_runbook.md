@@ -181,10 +181,10 @@ production GNSS heading-validity ceiling (`100 rad²`). A GNSS placeholder such
 as `yaw=0`, covariance `1e6` is shown as zero yaw pairs (`-/-/-`), not as a
 localization yaw error.
 
-<!-- HH_260803 - GNSS NavSatFix represents the antenna point while the final
-pose represents robot_center_link. The current -0.443/0/0 mount is only the
-converted old rear-axle 0/0/0 placeholder. Until the antenna mount is measured,
-treat a stable XY difference as a possible lever-arm issue, not an EKF-rate issue. -->
+<!-- HH_260806 - NavSatFix represents the left antenna at body Y=+0.45 m.
+The adapter subtracts the heading-rotated lever arm to publish robot center.
+Treat a stable residual after correction as an X/Z, yaw, baseline, or timestamp
+calibration issue before changing EKF rate. -->
 A missing publisher, graph type mismatch, invalid/zero/future header, no valid
 message, or only one valid message returns a non-zero exit code and is retained
 in the JSON `errors` list.

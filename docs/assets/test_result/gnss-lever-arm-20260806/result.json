@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-06",
+  "environment": {
+    "architecture": "x86_64",
+    "ros_distribution": "humble",
+    "ros_domain_id": 223,
+    "source_commit_before_changes": "7c495a64f49886769b16ae5943708cecbc920960",
+    "map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+  },
+  "contract": {
+    "navsat_reference": "left_antenna",
+    "antenna_offset_body_m": [0.0, 0.45, 0.0],
+    "correction": "p_center = p_fix - R(yaw) * [0.0, 0.45]",
+    "fresh_heading_required": true
+  },
+  "pre_projection_fix": {
+    "matched_samples": 20,
+    "lever_shift_m": 0.45,
+    "center_error_corrected_mean_m": 0.134478,
+    "center_error_uncorrected_mean_m": 0.581708,
+    "diagnosis": "fake northing inverse used WGS84_A instead of meridional radius"
+  },
+  "final": {
+    "matched_samples": 30,
+    "lever_shift_m": 0.45,
+    "center_error_corrected_mean_m": 0.000071,
+    "center_error_corrected_max_m": 0.000071,
+    "center_error_uncorrected_mean_m": 0.449995,
+    "gnss_heading_rate_hz": 10.0,
+    "corrected_pose_rate_hz": 10.0,
+    "process_shutdown_clean": true,
+    "result": "PASS"
+  },
+  "acceptance": {
+    "lever_shift_tolerance_m": 0.002,
+    "corrected_center_residual_max_m": 0.01,
+    "field_pass": false
+  },
+  "regression_tests": {
+    "fake_gnss_projection_pytest": "2/2 PASS",
+    "enu_round_trip_tolerance_m": 0.001,
+    "bringup_ctest": "19/19 PASS",
+    "system_ctest": "5/5 PASS"
+  }
+}

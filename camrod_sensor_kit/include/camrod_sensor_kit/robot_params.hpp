@@ -25,19 +25,18 @@ struct RobotParams
   // --- Robot Geometry ---
   double wheelbase{1.10};
   double track_width{1.07000};
-  // HH_260806 - Provisional collision envelope pending a complete field survey.
-  double length{1.29160};
-  double width{0.87000};
+  // HH_260806 - Maximum measured envelope including the upper fabrication.
+  double length{1.39160};
+  double width{1.07000};
   double height{1.09463};
   // HH_260803 - Front/rear axle midpoint is 0.443 m ahead of legacy rear-axle base.
   double center_offset_from_rear_axle{0.443};
 
-  // HH_260806 - Provisional reduced body extents from robot_center_link. The
-  // previous surveyed values remain in the boundary-adjustment test record.
-  double body_front_extent{0.65837};
-  double body_rear_extent{0.63323};
-  double body_left_extent{0.43505};
-  double body_right_extent{0.43495};
+  // HH_260806 - Center-relative extents preserve the measured asymmetry.
+  double body_front_extent{0.70837};
+  double body_rear_extent{0.68323};
+  double body_left_extent{0.53505};
+  double body_right_extent{0.53495};
   double body_top_z{0.94188};
   double body_bottom_z{-0.15275};
   double planning_margin{0.05};

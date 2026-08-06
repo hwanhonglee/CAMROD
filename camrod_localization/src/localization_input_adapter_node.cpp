@@ -27,6 +27,7 @@
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include "camrod_localization/gnss_lever_arm.hpp"
 #include "camrod_localization/navsat_fix_validation.hpp"
 
 namespace
@@ -159,6 +160,24 @@ public:
     gnss_heading_unavailable_covariance_ =
       declare_parameter<double>("gnss_heading_unavailable_covariance", 1.0e6);
     hold_last_gnss_heading_ = declare_parameter<bool>("hold_last_gnss_heading", true);
+    // HH_260806 - The NavSatFix origin is the left antenna, not robot_center_link.
+    enable_gnss_lever_arm_correction_ =
+      declare_parameter<bool>("enable_gnss_lever_arm_correction", false);
+    gnss_antenna_offset_x_m_ = declare_parameter<double>("gnss_antenna_offset_x_m", 0.0);
+    gnss_antenna_offset_y_m_ = declare_parameter<double>("gnss_antenna_offset_y_m", 0.0);
+    gnss_lever_arm_require_fresh_heading_ =
+      declare_parameter<bool>("gnss_lever_arm_require_fresh_heading", true);
+    if (!std::isfinite(gnss_antenna_offset_x_m_) ||
+      !std::isfinite(gnss_antenna_offset_y_m_))
+    {
+      throw std::runtime_error("GNSS antenna lever-arm offsets must be finite");
+    }
+    if (enable_gnss_lever_arm_correction_ && !enable_gnss_heading_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "GNSS lever-arm correction is enabled without GNSS heading; "
+        "NavSatFix output will wait for a usable heading");
+    }
     enable_pose_cov_bridge_ = declare_parameter<bool>("enable_pose_cov_bridge", true);
     enable_odometry_to_pose_ = declare_parameter<bool>("enable_odometry_to_pose", true);
     enable_wheel_odometry_bridge_ = declare_parameter<bool>("enable_wheel_odometry_bridge", true);
@@ -504,6 +523,27 @@ private:
     }
 
     const rclcpp::Time stamp(msg->header.stamp);
+    geometry_msgs::msg::Quaternion heading_orientation;
+    double heading_yaw_covariance = gnss_heading_unavailable_covariance_;
+    const bool has_fresh_heading =
+      selectHeading(stamp, heading_orientation, heading_yaw_covariance);
+
+    if (enable_gnss_lever_arm_correction_) {
+      if (!has_fresh_heading && gnss_lever_arm_require_fresh_heading_) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Wait for fresh GNSS heading before applying antenna lever arm "
+          "x=%.3f y=%.3f m",
+          gnss_antenna_offset_x_m_, gnss_antenna_offset_y_m_);
+        return;
+      }
+
+      const auto center = camrod_localization::antennaPositionToRobotCenter(
+        p.x, p.y, yawFromQuat(heading_orientation),
+        gnss_antenna_offset_x_m_, gnss_antenna_offset_y_m_);
+      p.x = center.x;
+      p.y = center.y;
+    }
 
     if (has_last_position_) {
       const double dx = p.x - last_position_.x;
@@ -533,10 +573,6 @@ private:
     pose.header = msg->header;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position = p;
-    geometry_msgs::msg::Quaternion heading_orientation;
-    double heading_yaw_covariance = gnss_heading_unavailable_covariance_;
-    const bool has_fresh_heading =
-      selectHeading(stamp, heading_orientation, heading_yaw_covariance);
     // HH_260604: Publish GNSS pose orientation from the selected heading instead of fixed yaw.
     pose.pose.orientation = heading_orientation;
 
@@ -869,6 +905,10 @@ private:
   double gnss_heading_max_covariance_{100.0};
   double gnss_heading_unavailable_covariance_{1.0e6};
   bool hold_last_gnss_heading_{true};
+  bool enable_gnss_lever_arm_correction_{false};
+  double gnss_antenna_offset_x_m_{0.0};
+  double gnss_antenna_offset_y_m_{0.0};
+  bool gnss_lever_arm_require_fresh_heading_{true};
   bool enable_pose_cov_bridge_{true};
   HeadingSample gnss_heading_;
   HeadingSample last_any_heading_;

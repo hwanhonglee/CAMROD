@@ -302,6 +302,7 @@ def test_renderer_can_target_sensor_kit_without_runtime_evidence(
         if path.is_file()
     )
     assert generated == [
+        "sensor-kit/gnss-left-antenna-lever-arm.png",
         "sensor-kit/reference-frame-before-after.png",
         "sensor-kit/sensor-mount-side-view.png",
         "sensor-kit/sensor-x-before-after.png",
@@ -342,7 +343,7 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
 
 def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> None:
     """Released recovery evidence must reject the later deployed map geometry."""
-    # HH_260805 - The user kept a newer map-v15 geometry for current operation.
+    # HH_260806 - The user deployed map-v16 geometry for current operation.
     # Preserve the old recovery run as release evidence and prove the renderer
     # refuses to relabel it as a measurement on the newer OSM.
     active_map = SRC_ROOT / "lanelet2_maps.osm"
@@ -372,7 +373,12 @@ def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> No
         text=True,
     )
     assert result.returncode != 0
-    assert "evidence OSM hash does not match the selected map" in result.stderr
+    # Version identity is checked before SHA identity once the active map has a
+    # new map_version. Either guard prevents historical evidence relabeling.
+    assert (
+        "evidence map v15 does not match OSM map v16" in result.stderr
+        or "evidence OSM hash does not match the selected map" in result.stderr
+    )
 
 
 def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
@@ -398,7 +404,8 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
             assert (asset_root / relative_path).resolve() in linked_assets
 
     all_visuals = tuple(asset_root.rglob("*"))
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 45
+    # HH_260806 - Include the source-derived GNSS left-antenna lever-arm view.
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 46
     assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 8
 
 

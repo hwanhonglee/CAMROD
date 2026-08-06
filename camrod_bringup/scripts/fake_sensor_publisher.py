@@ -76,6 +76,24 @@ def ecef_to_enu(ref_ecef, cur_ecef, lat_ref, lon_ref):
     return (east, north, up)
 
 
+# HH_260806 - Keep fake GNSS inverse projection independently testable. The
+# local tangent approximation is sufficient for this site's sub-kilometre map.
+def local_enu_xy_to_latlon(x, y, origin_lat, origin_lon, origin_alt):
+    origin_lat_rad = deg2rad(origin_lat)
+    sin_lat = math.sin(origin_lat_rad)
+    cos_lat = math.cos(origin_lat_rad)
+    curvature = math.sqrt(1.0 - WGS84_E2 * sin_lat * sin_lat)
+    prime_vertical_radius = WGS84_A / curvature
+    meridional_radius = (
+        WGS84_A * (1.0 - WGS84_E2) / (curvature ** 3)
+    )
+    lat_rad = origin_lat_rad + y / (meridional_radius + origin_alt)
+    lon_rad = deg2rad(origin_lon) + x / (
+        (prime_vertical_radius + origin_alt) * cos_lat
+    )
+    return math.degrees(lat_rad), math.degrees(lon_rad)
+
+
 # Implements `yaw_to_quat` behavior.
 def yaw_to_ros_quaternion(yaw):
     half = yaw * 0.5
@@ -453,6 +471,16 @@ class FakeSensorPublisher(Node):
         self.gnss_recovery_after_s = float(
             self.declare_parameter("gnss_recovery_after_s", -1.0).value
         )
+        # HH_260806 - Simulate the same left-antenna NavSatFix contract as hardware.
+        self.gnss_antenna_offset_x_m = float(
+            self.declare_parameter("gnss_antenna_offset_x_m", 0.0).value
+        )
+        self.gnss_antenna_offset_y_m = float(
+            self.declare_parameter("gnss_antenna_offset_y_m", 0.45).value
+        )
+        self.gnss_heading_raw_yaw_bias_deg = float(
+            self.declare_parameter("gnss_heading_raw_yaw_bias_deg", 85.0).value
+        )
         self._gnss_active = True
         # Keep selected simulation controls adjustable at runtime via ros2 param set.
         self.add_on_set_parameters_callback(self._on_set_parameters)
@@ -517,6 +545,9 @@ class FakeSensorPublisher(Node):
         # HH_260720 - Publish only raw simulated hardware streams with standard ROS types.
         self.pub_navsat = self.create_publisher(
             RosNavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10
+        )
+        self.pub_gnss_heading = self.create_publisher(
+            RosImu, "/sensing/gnss/navheading", 10
         )
         # HH_260720 - Sim exposes the same raw `_ros` boundary and generated stream as hardware.
         self.pub_imu_ros = self.create_publisher(RosImu, "/sensing/imu/data_ros", 10)
@@ -937,13 +968,17 @@ class FakeSensorPublisher(Node):
                 break
         return selected_left, selected_right
 
-    # HH_260428: Convert ENU map coordinates (x=east, y=north) to lat/lon.
-    # Uses flat-earth approximation; accurate to ~cm within a few km of origin.
+    # HH_260806 - Convert local ENU XY with the WGS84 prime-vertical and
+    # meridional radii. Using WGS84_A for both axes caused 13 cm northing error
+    # only 43 m from this map origin and obscured GNSS lever-arm validation.
     def _xy_to_latlon(self, x, y):
-        lat = self.origin_lat + (y / WGS84_A) * (180.0 / math.pi)
-        cos_lat = math.cos(deg2rad(self.origin_lat))
-        lon = self.origin_lon + (x / (WGS84_A * cos_lat)) * (180.0 / math.pi)
-        return lat, lon
+        return local_enu_xy_to_latlon(
+            x,
+            y,
+            self.origin_lat,
+            self.origin_lon,
+            self.origin_alt,
+        )
 
     # Implements `_build_path_from_way` behavior.
     def _build_path_from_way(self, way_nodes, nodes):
@@ -1145,13 +1180,12 @@ class FakeSensorPublisher(Node):
             y = self._free_nav_y
             z = 0.0
             yaw = self._free_nav_yaw
-            lat, lon = self._xy_to_latlon(x, y)
         else:
             self._motion_distance += motion_speed * dt
             if not self.loop:
                 self._motion_distance = max(0.0, self._motion_distance)
             dist = self._motion_distance
-            (x, y, z, lat, lon), yaw = self._sample_path(dist)
+            (x, y, z, _, _), yaw = self._sample_path(dist)
 
         # HH_260720 - Keep the simulated internal pose generated; raw clouds get a ROS header.
         pose_msg = AvgPoseStamped()
@@ -1166,13 +1200,27 @@ class FakeSensorPublisher(Node):
         raw_sensor_header.stamp = now
         raw_sensor_header.frame_id = self.frame_id
 
+        # HH_260806 - Shift center truth to the physical left antenna before
+        # geographic conversion. The localization adapter reverses this shift.
+        yaw_cos = math.cos(yaw)
+        yaw_sin = math.sin(yaw)
+        gnss_x = x + (
+            yaw_cos * self.gnss_antenna_offset_x_m
+            - yaw_sin * self.gnss_antenna_offset_y_m
+        )
+        gnss_y = y + (
+            yaw_sin * self.gnss_antenna_offset_x_m
+            + yaw_cos * self.gnss_antenna_offset_y_m
+        )
+        gnss_lat, gnss_lon = self._xy_to_latlon(gnss_x, gnss_y)
+
         navsat = RosNavSatFix()
         navsat.header.stamp = now
-        navsat.header.frame_id = self.frame_id
+        navsat.header.frame_id = "gnss_link"
         navsat.status.status = RosNavSatStatus.STATUS_FIX
         navsat.status.service = RosNavSatStatus.SERVICE_GPS
-        navsat.latitude = lat
-        navsat.longitude = lon
+        navsat.latitude = gnss_lat
+        navsat.longitude = gnss_lon
         navsat.altitude = self.origin_alt
         # Set realistic RTK-quality covariance so localization_monitor's
         # gnss_cov_trace_fail (0.3 m^2) accepts the fake GNSS (trace = 0.08 < 0.3).
@@ -1196,6 +1244,18 @@ class FakeSensorPublisher(Node):
                     f"[GNSS SIM] FAILURE at t={elapsed:.1f}s — NavSatFix publishing stopped"
                 )
         if self._gnss_active:
+            # Production subtracts 85 deg from the receiver heading. Add the
+            # inverse bias here so its corrected simulated yaw equals body yaw.
+            heading_msg = RosImu()
+            heading_msg.header.stamp = now
+            heading_msg.header.frame_id = "gnss_link"
+            heading_msg.orientation = yaw_to_ros_quaternion(
+                yaw + deg2rad(self.gnss_heading_raw_yaw_bias_deg)
+            )
+            heading_msg.orientation_covariance[0] = 1.0e6
+            heading_msg.orientation_covariance[4] = 1.0e6
+            heading_msg.orientation_covariance[8] = deg2rad(1.0) ** 2
+            self.pub_gnss_heading.publish(heading_msg)
             self.pub_navsat.publish(navsat)
 
         imu_msg = RosImu()

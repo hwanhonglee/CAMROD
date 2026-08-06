@@ -12,6 +12,7 @@
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
+#include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
@@ -814,7 +815,7 @@ TEST(MotionCostStop, LaneletFootprintBlocksWhenCenterLinkCellIsClear)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260806 - robot_center_link at (0,0) is clear, but the provisional
+  // HH_260806 - robot_center_link at (0,0) is clear, but the configured
   // front-right planning boundary covers this raw lanelet cost cell.
   const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
   ASSERT_EQ(MotionCostStop::sampleGridCost(boundary_cost, 0.0, 0.0), 0);
@@ -870,7 +871,7 @@ TEST(MotionCostStop, PublishedPlanningBoundaryOverridesFallbackFootprint)
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
 }
 
-TEST(MotionCostStop, PlanningMarginStopsBeforeProvisionalBodyTouchesOffLane)
+TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -880,28 +881,28 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeProvisionalBodyTouchesOffLane)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260806 - Exercise the provisional body candidate from robot_center_link.
-  constexpr double body_front = 0.65837;
-  constexpr double body_rear = 0.63323;
-  constexpr double body_left = 0.43505;
-  constexpr double body_right = 0.43495;
+  // HH_260806 - Exercise the measured body from robot_center_link.
+  constexpr double body_front = 0.70837;
+  constexpr double body_rear = 0.68323;
+  constexpr double body_left = 0.53505;
+  constexpr double body_right = 0.53495;
   constexpr double longitudinal_margin = 0.05;
   constexpr double lateral_margin = 0.05;
   auto margin_only_cost = makeGrid();
-  // Offset the 0.10 m raster so the 0.43505 m body edge and the 0.48505 m
+  // Offset the 0.10 m raster so the 0.53505 m body edge and the 0.58505 m
   // planning edge occupy adjacent cells.
   margin_only_cost.info.origin.position.y = -4.04;
   const int margin_grid_x = static_cast<int>(
     std::floor((0.0 - margin_only_cost.info.origin.position.x) /
     margin_only_cost.info.resolution));
   const int margin_grid_y = static_cast<int>(
-    std::floor((0.50 - margin_only_cost.info.origin.position.y) /
+    std::floor((0.60 - margin_only_cost.info.origin.position.y) /
     margin_only_cost.info.resolution));
   margin_only_cost.data[
     margin_grid_y * static_cast<int>(margin_only_cost.info.width) + margin_grid_x] = 100;
   cost_stop.setLaneletGrid(margin_only_cost, 0.0);
 
-  // HH_260806 - The lethal cell is outside the provisional body but inside the
+  // HH_260806 - The lethal cell is outside the measured body but inside the
   // published planning boundary. This proves the 0.05 m lateral margin stops motion
   // before the chassis itself reaches the off-lane cell.
   cost_stop.setFootprintPolygonWorld(
@@ -919,7 +920,7 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeProvisionalBodyTouchesOffLane)
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
 }
 
-TEST(MotionCostStop, ProvisionalBodyBoundaryStopsOnOffLaneCost)
+TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -929,12 +930,12 @@ TEST(MotionCostStop, ProvisionalBodyBoundaryStopsOnOffLaneCost)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260806 - Isolate the provisional chassis polygon from its planning margin.
+  // HH_260806 - Isolate the measured chassis polygon from its planning margin.
   // Use the deployed 0.25 m lanelet-grid resolution: cost 100 on the body edge
   // must stop translation even when crab static-cost bypass is enabled.
   cost_stop.setFootprintPolygonWorld(
-    {{0.65837, 0.43505}, {0.65837, -0.43495},
-      {-0.63323, -0.43495}, {-0.63323, 0.43505}});
+    {{0.70837, 0.53505}, {0.70837, -0.53495},
+      {-0.68323, -0.53495}, {-0.68323, 0.53505}});
   cost_stop.setLaneletGrid(makeGrid({{0.0, 0.40, 100}}, 0.25), 0.0);
   const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.0);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
@@ -956,7 +957,42 @@ TEST(MotionCostStop, RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsA
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
 }
 
-TEST(MotionCostStop, ConfiguredCampsiteBypassPhasesStillCheckLaneletFootprint)
+TEST(CommandSourceArbiter, ManeuverOwnsCommandUntilStationaryReleaseCompletes)
+{
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases("", "CRAB_IN", 1.0);
+  EXPECT_TRUE(started.campsite_started);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(
+    arbiter.evaluate(false, 0.0, 0.2, 0.0, 1.0), CommandSourceDecision::kAllow);
+
+  const auto rotating = arbiter.setManeuverPhases("", "ROTATE_180", 2.0);
+  EXPECT_FALSE(rotating.maneuver_started);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 2.0), CommandSourceDecision::kIgnore);
+
+  const auto finished = arbiter.setManeuverPhases("", "WAIT_RETURN", 3.0);
+  EXPECT_FALSE(finished.maneuver_finished);
+  arbiter.setManeuverPhases("", "DONE", 4.0);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 4.49), CommandSourceDecision::kHoldZero);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 4.50), CommandSourceDecision::kAllow);
+}
+
+TEST(CommandSourceArbiter, Nav2RotationSettlesBeforeTranslation)
+{
+  CommandSourceArbiter arbiter;
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.0, 0.0, 0.3, 10.0), CommandSourceDecision::kAllow);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 10.49), CommandSourceDecision::kHoldZero);
+  EXPECT_EQ(
+    arbiter.evaluate(true, 0.2, 0.0, 0.0, 10.50), CommandSourceDecision::kAllow);
+}
+
+TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -964,18 +1000,28 @@ TEST(MotionCostStop, ConfiguredCampsiteBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_current_allow_route_reentry = false;
   const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
-  // HH_260727 - Every configured campsite exception skips only legacy static
-  // checks; it can never permit the planning footprint to cross raw lanelet cost.
-  for (const auto & phase : config.campsite_static_bypass_phases) {
+  // HH_260806 - A mapped campsite is outside the road lanelet, so only the
+  // dedicated state machine may cross that static boundary.
+  for (const auto & phase : config.campsite_lanelet_bypass_phases) {
     SCOPED_TRACE(phase);
     auto cost_stop = makeMotionCostStop(config);
     cost_stop.setManeuverPhases("", phase);
     cost_stop.setMergedGrid(boundary_cost, 0.0);
     cost_stop.setLaneletGrid(boundary_cost, 0.0);
     const auto decision = cost_stop.evaluate(command(0.0, 0.2), 0.0);
-    EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
-    EXPECT_NE(decision.reason.find("lanelet_footprint"), std::string::npos);
+    EXPECT_FALSE(decision.blocked) << decision.reason;
   }
+
+  // HH_260806 - The exception is map-only. Live LiDAR/radar evidence still
+  // blocks the same crab motion inside an explicit campsite phase.
+  auto dynamic_stop = makeMotionCostStop(config);
+  dynamic_stop.setManeuverPhases("", "crab_in");
+  dynamic_stop.setLaneletGrid(boundary_cost, 0.0);
+  dynamic_stop.setMergedGrid(makeGrid({{0.0, 0.5, 90}}), 0.0);
+  dynamic_stop.setSourceGrid("lidar", makeGrid({{0.0, 0.5, 90}}), 0.0);
+  const auto dynamic_decision = dynamic_stop.evaluate(command(0.0, 0.2), 0.0);
+  EXPECT_TRUE(dynamic_decision.blocked);
+  EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
 }
 
 TEST(MotionCostStop, ConfiguredDropZoneBypassPhasesStillCheckLaneletFootprint)

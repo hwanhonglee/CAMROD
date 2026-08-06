@@ -20,8 +20,9 @@ CAMROD 구현·검증 완료 기록
 - v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, Chromium 운영 창,
   transport, planner fallback 및 optional component 구현도 CODE/SIM 기준이며 Jetson/실차
   FIELD-PASS로 해석하지 않는다.
-- v2.1.5의 scoped checker/Nav2 runtime, 물리 LiDAR 한정 DDS-SHM, GNSS 중앙
-  가정, 임시 축소 경계와 두 겹 body/margin 정책도 CODE/SIM 기준이다.
+- v2.1.5 이후 develop의 scoped checker/Nav2 runtime, 물리 LiDAR 한정
+  DDS-SHM, GNSS lever-arm 보정, 실측 body/margin, map-v16 및 campsite
+  sequencing도 CODE/SIM 기준이다.
   안테나·전체 외곽 실측과 Jetson 반복 수명 시험 전에는 FIELD-PASS로
   해석하지 않는다.
 
@@ -46,7 +47,65 @@ CAMROD 구현·검증 완료 기록
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
-0A. v2.1.5 임시 경계와 body/margin 정책 [DONE-CODE, DONE-SIM]
+0C. HH_260806 map-v16 campsite 명령 순서 [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- B1-B10은 `turnaround`, B11-B13은 `roadside_stop`으로 planning package와
+  bringup YAML을 byte 동기화했다. B11-B13의 crab offset은 `0.60 m`로
+  제한하고 현장 `ROTATE_180`은 금지했다.
+- campsite/drop-zone 명시 maneuver가 final cmd_vel 소유권을 갖는 동안
+  Nav2 명령을 무시하고, 종료 후 `0.5 s` zero handoff를 추가했다. Nav2의
+  pure rotation 뒤 첫 translation도 `0.5 s` 정지 후 허용해 crab/zero-turn
+  완료 전에 전진 명령이 섞이지 않게 했다.
+- campsite는 road lanelet 밖의 semantic service area이므로 명시 phase에서만
+  static lanelet 검사를 우회한다. 동적 LiDAR/radar cost는 계속 차단하며,
+  일반 Nav2와 미결 B11-B13 차로 회전에는 physical-body hard stop을 유지한다.
+- map-v16 isolated full sim에서 B1-B10 전부는
+  `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`
+  전체 site maneuver를 PASS했다. map-derived lateral 진입 거리는
+  `1.79-5.31 m`였고 각 사이트의 원본 JSON을 남겼다. B11/B12/B13은 각각
+  `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN` arrival-only PASS였고 RETURN과
+  zero-turn을 발행하지 않았다.
+- B11 exploratory RETURN은 lane snap 뒤 기존 on-lane 회전에서
+  `lanelet_physical_body_cost`로 안전 정지했다. 따라서 B11-B13 return geometry는
+  완료로 처리하지 않고 TODOLIST의 현장 결정으로 남겼다.
+- active OSM 두 파일은 map revision 16, SHA-256
+  `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf`로
+  byte 동기화했다. campsite 구조화 JSON/PNG/GIF와 재현 스크립트는
+  `docs/assets/test_result/camping-site-sequencing-20260806/`에 보존했다.
+- canonical `colcon_build.sh`로 control, sensor-kit, planning, platform,
+  localization, system, bringup 7개 패키지를 빌드했다. 총 49/49 CTest
+  target과 361개 xUnit record가 error/failure 0으로 통과했고,
+  planning/localization의 기존 정적분석 skip은 13건이다.
+
+0B. HH_260806 좌측 GNSS 안테나 중심 보정 [DONE-CODE, DONE-SIM-CONTRACT, FIELD-PENDING]
+- NavSatFix 기준점이 `robot_center_link`의 왼쪽 `0.45 m`인 안테나임을
+  반영해 sensor-kit TF와 default/sim 진단 metadata를
+  `(0.00000,+0.45000,0.00000) m`로 package/bringup에 동기화했다. X/Z는
+  현재값 0을 유지하고 전체 `pose_verified`는 false로 유지했다.
+- localization input adapter가 fresh dual-GNSS yaw로 body lever arm을 map
+  축에 회전하고 `p_center = p_fix - R(yaw)[0,0.45]`를 적용한 뒤 jump
+  rejection과 EKF 입력을 수행한다. heading이 stale/invalid이면 잘못된
+  center pose를 내보내지 않고 기다리는 fail-closed 기본값을 추가했다.
+- full sim fake sensor도 중심 truth에 회전된 안테나 벡터를 더한 NavSatFix와
+  production `-85 deg` 보정의 역 bias를 가진 navheading을 발행한다. 따라서
+  sim이 보정을 우회하지 않고 같은 raw sensor 계약을 실행한다.
+- 첫 ROS A/B에서 lever shift는 `0.450000 m`였지만 기존 fake 위도 역변환이
+  남북축에도 WGS84 적도 반경을 써서 43 m 거리에서 `0.134478 m` center
+  잔차를 만들었다. 자오선/동서 곡률 반경을 분리한 뒤 timestamp 일치 30개
+  표본에서 보정 전 `0.449995 m`, 보정 후 평균/최대 `0.000071 m`였고
+  heading/pose는 각각 10 Hz였다. 세 테스트 프로세스도 clean exit했다.
+- 단위 테스트는 yaw 0/90/180도와 결합 X/Y offset을 확인했고 GNSS 관련
+  GTest 6건, frame/config/sim 계약 pytest 32건, 역투영 pytest 2건이
+  통과했다. 새 테스트를 포함한 bringup CTest도 19/19가 통과했으며 canonical
+  `colcon_build.sh`로 localization, sensor-kit, bringup, system 4개 패키지를
+  빌드했다. system CTest도 5/5가 통과했다.
+- 기본 플랫폼 `1.19160 x 0.87000 m`와 가공품 포함
+  `1.39160 x 1.07000 m`를 구분해 기록했다. 후속 campsite/map 작업에서
+  fabrication-inclusive 값을 active hard-stop body로, 사방 `0.05 m`를 더한
+  `1.49160 x 1.17000 m`를 planning boundary로 동기화했다.
+- 구조화 결과와 범위는
+  `docs/assets/test_result/gnss-lever-arm-20260806/`에 보존했다.
+
+0A. v2.1.5 임시 경계와 body/margin 정책 [DONE-CODE, DONE-SIM, HISTORICAL]
 - HH_260806 - 기존 body `1.49160 x 1.07000 m`에서 앞/뒤/좌/우를 각각
   `0.10 m` 줄인 임시 후보 `1.29160 x 0.87000 m`를 source, package config,
   bringup mirror, Nav2 footprint, safety-gate fallback에 동기화했다. planning

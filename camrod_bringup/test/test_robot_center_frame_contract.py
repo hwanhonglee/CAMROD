@@ -14,11 +14,22 @@ PACKAGE_SENSOR_CONFIG = (
 BRINGUP_SENSOR_CONFIG = (
     SRC_ROOT / "camrod_bringup" / "config" / "sensor_kit" / "robot_params.yaml"
 )
+PACKAGE_LOCALIZATION_CONFIG = (
+    SRC_ROOT / "camrod_localization" / "config" / "source" / "input_adapter.yaml"
+)
+BRINGUP_LOCALIZATION_CONFIG = (
+    SRC_ROOT
+    / "camrod_bringup"
+    / "config"
+    / "localization"
+    / "source"
+    / "input_adapter.yaml"
+)
 CENTER_OFFSET_M = 0.443
-BOUNDARY_REDUCTION_PER_SIDE_M = 0.10
-PREVIOUS_BODY_EXTENTS_M = {
-    "front": 0.75837,
-    "rear": 0.73323,
+GNSS_LEFT_ANTENNA_OFFSET_M = 0.45
+MEASURED_BODY_EXTENTS_M = {
+    "front": 0.70837,
+    "rear": 0.68323,
     "left": 0.53505,
     "right": 0.53495,
 }
@@ -62,16 +73,14 @@ def test_sensor_config_mirror_is_byte_synchronized() -> None:
     assert PACKAGE_SENSOR_CONFIG.read_bytes() == BRINGUP_SENSOR_CONFIG.read_bytes()
 
 
-def test_center_offset_and_provisional_body_reduction_are_auditable() -> None:
-    """Keep the axle midpoint while reducing each prior boundary side by 0.10 m."""
+def test_center_offset_and_measured_body_are_auditable() -> None:
+    """Keep the axle midpoint and the fabrication-inclusive measured envelope."""
     robot = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]
 
     assert robot["center_offset_from_rear_axle"] == pytest.approx(CENTER_OFFSET_M)
     assert robot["wheelbase"] / 2.0 == pytest.approx(CENTER_OFFSET_M)
-    for side, previous_extent in PREVIOUS_BODY_EXTENTS_M.items():
-        assert robot["body_extents"][side] == pytest.approx(
-            previous_extent - BOUNDARY_REDUCTION_PER_SIDE_M
-        )
+    for side, measured_extent in MEASURED_BODY_EXTENTS_M.items():
+        assert robot["body_extents"][side] == pytest.approx(measured_extent)
     assert (
         robot["body_extents"]["front"] + robot["body_extents"]["rear"]
     ) == pytest.approx(robot["length"])
@@ -81,18 +90,18 @@ def test_center_offset_and_provisional_body_reduction_are_auditable() -> None:
 
 
 def test_planning_margin_is_five_centimeters_on_every_side() -> None:
-    """The planning envelope adds 5 cm around the provisional body candidate."""
+    """The planning envelope adds 5 cm around the measured body."""
     extents = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]["body_extents"]
 
     assert extents["planning_margin"] == pytest.approx(0.05)
     assert extents["planning_lateral_margin"] == pytest.approx(0.05)
-    assert extents["front"] + extents["planning_margin"] == pytest.approx(0.70837)
-    assert extents["rear"] + extents["planning_margin"] == pytest.approx(0.68323)
+    assert extents["front"] + extents["planning_margin"] == pytest.approx(0.75837)
+    assert extents["rear"] + extents["planning_margin"] == pytest.approx(0.73323)
     assert extents["left"] + extents["planning_lateral_margin"] == pytest.approx(
-        0.48505
+        0.58505
     )
     assert extents["right"] + extents["planning_lateral_margin"] == pytest.approx(
-        0.48495
+        0.58495
     )
 
 
@@ -107,22 +116,48 @@ def test_sensor_x_shift_preserves_physical_mount(
     assert pose["x"] == pytest.approx(legacy_x - CENTER_OFFSET_M)
 
 
-def test_gnss_solution_uses_unverified_robot_center_assumption() -> None:
-    """GNSS is centered intentionally until a physical lever arm is surveyed."""
+def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
+    """TF exposes the left antenna while localization publishes robot center."""
     gnss = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["gnss"]
+    localization = _wildcard_parameters(PACKAGE_LOCALIZATION_CONFIG)
 
     assert gnss["x"] == pytest.approx(0.0)
-    assert gnss["y"] == pytest.approx(0.0)
+    assert gnss["y"] == pytest.approx(GNSS_LEFT_ANTENNA_OFFSET_M)
     assert gnss["z"] == pytest.approx(0.0)
+    assert localization["enable_gnss_lever_arm_correction"] is True
+    assert localization["gnss_antenna_offset_x_m"] == pytest.approx(gnss["x"])
+    assert localization["gnss_antenna_offset_y_m"] == pytest.approx(gnss["y"])
+    assert localization["gnss_lever_arm_require_fresh_heading"] is True
+    assert PACKAGE_LOCALIZATION_CONFIG.read_bytes() == (
+        BRINGUP_LOCALIZATION_CONFIG.read_bytes()
+    )
+
+
+def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
+    """Full simulation must exercise rather than bypass lever-arm correction."""
+    localization = _wildcard_parameters(PACKAGE_LOCALIZATION_CONFIG)
+    fake = _yaml(SRC_ROOT / "camrod_bringup" / "config" / "sim" / "fake_sensors.yaml")
+    fake = fake["/bringup/fake_sensor_publisher"]["ros__parameters"]
+
+    assert fake["gnss_antenna_offset_x_m"] == pytest.approx(
+        localization["gnss_antenna_offset_x_m"]
+    )
+    assert fake["gnss_antenna_offset_y_m"] == pytest.approx(
+        localization["gnss_antenna_offset_y_m"]
+    )
+    assert (
+        fake["gnss_heading_raw_yaw_bias_deg"]
+        + localization["gnss_heading_yaw_offset_deg"]
+    ) == pytest.approx(0.0)
 
 
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     """Planning and final command authorization must use one occupied boundary."""
     expected = [
-        [0.70837, 0.48505],
-        [0.70837, -0.48495],
-        [-0.68323, -0.48495],
-        [-0.68323, 0.48505],
+        [0.75837, 0.58505],
+        [0.75837, -0.58495],
+        [-0.73323, -0.58495],
+        [-0.73323, 0.58505],
     ]
     nav2 = _yaml(
         SRC_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml"
@@ -138,14 +173,14 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert gate["robot_base_frame"] == "robot_center_link"
     assert gate["lanelet_safety_body_hard_stop_enable"] is True
     assert gate["lanelet_safety_body_hard_stop_threshold"] == 100
-    assert gate["lanelet_safety_body_front_m"] == pytest.approx(0.65837)
-    assert gate["lanelet_safety_body_rear_m"] == pytest.approx(0.63323)
-    assert gate["lanelet_safety_body_left_m"] == pytest.approx(0.43505)
-    assert gate["lanelet_safety_body_right_m"] == pytest.approx(0.43495)
-    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.70837)
-    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.68323)
-    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.48505)
-    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.48495)
+    assert gate["lanelet_safety_body_front_m"] == pytest.approx(0.70837)
+    assert gate["lanelet_safety_body_rear_m"] == pytest.approx(0.68323)
+    assert gate["lanelet_safety_body_left_m"] == pytest.approx(0.53505)
+    assert gate["lanelet_safety_body_right_m"] == pytest.approx(0.53495)
+    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.75837)
+    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.73323)
+    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.58505)
+    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.58495)
 
 
 def test_visual_boundary_uses_five_centimeter_margins() -> None:
@@ -252,7 +287,7 @@ def test_urdf_has_one_center_root_and_a_rear_axle_compatibility_child() -> None:
 
     assert '<xacro:arg name="robot_center_link" default="robot_center_link"/>' in xacro
     assert '<xacro:arg name="robot_base_link" default="robot_base_link"/>' in xacro
-    assert '<xacro:arg name="gnss_xyz" default="0.0 0.0 0.0"/>' in xacro
+    assert '<xacro:arg name="gnss_xyz" default="0.0 0.45 0.0"/>' in xacro
     assert '<parent link="${center_link_name}"/>' in xacro
     assert '<child link="${rear_base_link_name}"/>' in xacro
     assert 'xyz="-${rear_axle_offset_x_val} 0 0"' in xacro
@@ -276,7 +311,7 @@ def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None
         if "metadata" in topic and "component_id" in topic["metadata"]
     }
     expected = {
-        "gnss.main": "0.00000,0.00000,0.00000",
+        "gnss.main": "0.00000,0.45000,0.00000",
         "imu.main": "0.68800,0.00000,0.75600",
         "lidar.main": "0.76336,0.00000,0.59538",
         "lidar.filtered": "0.76336,0.00000,0.59538",
@@ -299,5 +334,18 @@ def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None
         for topic in config["topics"]
         if topic.get("metadata", {}).get("component_id") == "gnss.main"
     )
-    assert gnss_metadata["location"] == "robot_center_assumed"
+    assert gnss_metadata["location"] == "left_antenna"
     assert gnss_metadata["pose_verified"] == "false"
+
+    localization_metadata = next(
+        topic["metadata"]
+        for topic in config["topics"]
+        if topic.get("metadata", {}).get("component_id")
+        == "gnss.localization_input"
+    )
+    assert localization_metadata["location"] == "robot_center_lever_arm_corrected"
+    assert localization_metadata["frame_id"] == "robot_center_link"
+    assert localization_metadata["mount_xyz_m"] == "0.00000,0.00000,0.00000"
+    assert localization_metadata["source_mount_xyz_m"] == (
+        "0.00000,0.45000,0.00000"
+    )

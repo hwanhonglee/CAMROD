@@ -86,28 +86,26 @@ not a physical antenna measurement. Before claiming lever-arm accuracy on the
 robot, measure antenna X/Y/Z from `robot_center_link`, update both
 `robot_params.yaml` copies, and repeat GNSS-to-final-pose validation.
 
-> **v2.1.5 operational override, 2026-08-05:** `gnss_link` now uses
-> `(0.00000, 0.00000, 0.00000)` relative to `robot_center_link`. The
-> localization input adapter already treated NavSatFix as the center pose and
-> had no lever-arm correction, so retaining the converted `-0.443 m` TF made
-> visualization/diagnostics disagree with the estimator assumption. The new
-> zero value resolves that software-contract mismatch only. It remains
-> `pose_verified=false` until both dual-GNSS antenna mounts and the receiver's
-> reported position reference are physically surveyed.
+> **Operational correction, 2026-08-06:** the NavSatFix reference was confirmed
+> as the left antenna, `0.45 m` left of center. `gnss_link` therefore uses
+> `(0.00000,+0.45000,0.00000)` and localization publishes
+> `p_center = p_fix - R(yaw)[0,0.45]`. The earlier `(0,0,0)` center assumption is
+> superseded. `pose_verified=false` remains until X/Z, the moving-base antenna,
+> baseline direction, receiver reference, and moving residuals are accepted.
 
 ## Body And Safety Boundary
 
-<!-- HH_260806 - Supersede the 2026-08-05 envelope with the provisional
-four-sided reduction while retaining every release-checkpoint value below. -->
-> **Operational follow-up, 2026-08-06:** the current v2.1.5 candidate subtracts
-> `0.10 m` from each prior physical extent. Body extents are front `0.65837`,
-> rear `0.63323`, left `0.43505`, and right `0.43495 m`, producing
-> `1.29160 x 0.87000 m`. A retained `0.05 m` margin produces planning extents
-> `0.70837/0.68323/0.48505/0.48495 m`, or `1.39160 x 0.97000 m`.
-> Physical-body cost 100 is now an unrecoverable hard stop; only margin-only
-> contact can request projected bounded recovery. These values are an
-> unmeasured reduction candidate, not FIELD-PASS. The complete previous and
-> v2.1.3 values below remain historical.
+<!-- HH_260806 - Supersede the temporary reduced candidate with the
+fabrication-inclusive measured total while retaining release checkpoints. -->
+> **Operational follow-up, 2026-08-06:** the active physical extents are front
+> `0.70837`, rear `0.68323`, left `0.53505`, and right `0.53495 m`, producing
+> the fabrication-inclusive `1.39160 x 1.07000 m` body. A `0.05 m` margin on
+> every side produces planning extents
+> `0.75837/0.73323/0.58505/0.58495 m`, or `1.49160 x 1.17000 m`.
+> Physical-body cost 100 is an unrecoverable hard stop; only margin-only contact
+> can request projected bounded recovery. The intermediate
+> `1.29160 x 0.87000 m` candidate and complete v2.1.3 values below are
+> historical. Sensor housing and swept-clearance FIELD-PASS remains pending.
 
 At the v2.1.3 release checkpoint, the physical body was
 1.49160 x 1.07000 m and the planning margin was 0.10 m on every side, so the

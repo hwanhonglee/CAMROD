@@ -109,14 +109,14 @@
     lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
     lanelet_safety_threshold: 85
     lanelet_safety_current_threshold: 85
-    # HH_260806 - Cost 100 inside the provisional physical body is a hard stop;
+    # HH_260806 - Cost 100 inside the measured physical body is a hard stop;
     # it cannot be cleared by crab/reverse/yaw recovery motion.
     lanelet_safety_body_hard_stop_enable: true
     lanelet_safety_body_hard_stop_threshold: 100
-    lanelet_safety_body_front_m: 0.65837
-    lanelet_safety_body_rear_m: 0.63323
-    lanelet_safety_body_left_m: 0.43505
-    lanelet_safety_body_right_m: 0.43495
+    lanelet_safety_body_front_m: 0.70837
+    lanelet_safety_body_rear_m: 0.68323
+    lanelet_safety_body_left_m: 0.53505
+    lanelet_safety_body_right_m: 0.53495
     # HH_260803 - Check the complete axle-midpoint planning boundary.
     lanelet_safety_footprint_enable: true
     # HH_260727 - 98 is the soft/rasterized lane edge; 100 is truly off-lane.
@@ -125,11 +125,11 @@
     robot_planning_boundary_topic: "/platform/robot/planning_boundary"
     # Fallback dimensions match robot_params/Nav2 footprint if the boundary
     # publisher has not produced its transient-local polygon yet.
-    # HH_260806 - Provisional body reduction retains 0.05 m planning clearance on every side.
-    lanelet_safety_footprint_front_m: 0.70837
-    lanelet_safety_footprint_rear_m: 0.68323
-    lanelet_safety_footprint_left_m: 0.48505
-    lanelet_safety_footprint_right_m: 0.48495
+    # HH_260806 - Measured body retains 0.05 m planning clearance on every side.
+    lanelet_safety_footprint_front_m: 0.75837
+    lanelet_safety_footprint_rear_m: 0.73323
+    lanelet_safety_footprint_left_m: 0.58505
+    lanelet_safety_footprint_right_m: 0.58495
     lanelet_safety_lookahead_m: 1.0
     lanelet_safety_width_m: 0.8
     lanelet_safety_stop_on_unknown: true
@@ -188,6 +188,9 @@
     camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
     # HH_260721 - Bypass static lanelet cost during bounded entry-lanelet retrace alignment.
     camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
+    # HH_260806 - Campsite areas lie outside road lanelets. Only these explicit
+    # phases bypass lanelet geometry; live LiDAR/radar checks remain enabled.
+    camping_site_maneuver_controller_lanelet_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
 
     # =========================================================================
     # Speed-dependent front corridor
@@ -256,3 +259,9 @@
     speed_scale: 1.0
     input_timeout_s: 0.35
     zero_publish_rate_hz: 10.0
+    # HH_260806 - Do not translate until a zero-turn/crab owner has fully
+    # released cmd_vel and Nav2 rotation has remained settled for 0.5 s.
+    maneuver_command_release_hold_s: 0.5
+    navigation_rotation_settle_s: 0.5
+    navigation_translation_epsilon_mps: 0.01
+    navigation_rotation_min_radps: 0.05

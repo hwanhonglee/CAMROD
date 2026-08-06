@@ -42,7 +42,7 @@
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
     # HH_260805 - Match the four-sided 0.05 m planning footprint contract.
-    # HH_260806 - Apply clearance around the provisional configured body.
+    # HH_260806 - Apply clearance around the fabrication-inclusive body.
     planning_boundary_margin: 0.05               # Front/rear margin beyond body [m].
     planning_boundary_lateral_margin: 0.05       # Left/right margin beyond body [m].
     range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

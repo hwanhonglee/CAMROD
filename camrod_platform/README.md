@@ -2,8 +2,8 @@
 
 <!-- HH_260804 - Summarize the Jetson/Ranger hardware boundary, active
 transition values, normalized status, and evidence limit in one page. -->
-<!-- HH_260806 - Publish the provisional body/planning dimensions carried by
-the platform boundary topic without claiming a physical envelope survey. -->
+<!-- HH_260806 - Publish the fabrication-inclusive body and synchronized
+four-sided planning boundary carried by the platform topic. -->
 
 Ranger CAN command/feedback bridge, BMS charging interpretation, robot
 visualization, planning-boundary publication, and light control.
@@ -42,8 +42,8 @@ measurements.
 | Charging threshold | `> 0.3 A`, 2 samples | Debounced positive-current charging rule |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |
 | Robot marker/boundary rate | `5 Hz` | RViz/diagnostic publication |
-| Provisional body | `1.29160 x 0.87000 m` | Physical-body hard-stop source; field survey pending |
-| Published planning boundary | `1.39160 x 0.97000 m` | Body plus `0.05 m` on every side |
+| Physical body | `1.39160 x 1.07000 m` | Fabrication-inclusive hard-stop source; four-side field verification pending |
+| Published planning boundary | `1.49160 x 1.17000 m` | Body plus `0.05 m` on every side |
 
 ## Command And Feedback
 

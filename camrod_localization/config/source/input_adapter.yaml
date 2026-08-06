@@ -19,8 +19,13 @@
     # HH_260720 - Explicit standard-ROS mirror consumed only by robot_localization.
     gnss_pose_cov_ros_topic: "/sensing/gnss/pose_with_covariance_ros"
     map_frame_id: "map"
-    # HH_260805 - NavSatFix is treated as the robot_center_link position. The
-    # sensor-kit GNSS TF is therefore 0/0/0 until a surveyed lever-arm model is added.
+    # HH_260806 - NavSatFix is referenced to the left antenna at body +Y 0.45 m.
+    # Rotate that lever arm with fresh dual-GNSS yaw, then subtract it so every
+    # published GNSS pose represents robot_center_link instead of the antenna.
+    enable_gnss_lever_arm_correction: true
+    gnss_antenna_offset_x_m: 0.0
+    gnss_antenna_offset_y_m: 0.45
+    gnss_lever_arm_require_fresh_heading: true
     publish_gnss_covariance: true
     # HH_260527: navsat_covariance_source options:
     #   navsat: use NavSatFix covariance (with floor clamp)

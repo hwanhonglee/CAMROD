@@ -19,6 +19,8 @@ install(
     scripts/render_automatic_recovery_results.py
     # HH_260806 - Render the body-hard-stop and recoverable-margin runtime proof.
     scripts/render_robot_boundary_validation.py
+    # HH_260806 - Render B1-B10 turnaround and B11-B13 roadside arrival evidence.
+    scripts/render_camping_site_sequence_results.py
     # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
     scripts/render_boundary_recovery_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
@@ -142,8 +144,16 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
-  # HH_260805 - All active campsite configs rotate at arrival before waiting
-  # for the explicit return command, including the former B12/B13 exception.
+  # HH_260806 - Prevent the fake WGS84 inverse from masking GNSS lever-arm
+  # regressions with a latitude-dependent northing error.
+  ament_add_pytest_test(
+    test_fake_gnss_projection
+    test/test_fake_gnss_projection.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260806 - B1-B10 rotate inside their service area; constrained B11-B13
+  # stop at the roadside without an on-site zero-turn.
   ament_add_pytest_test(
     test_camping_site_turnaround_contract
     test/test_camping_site_turnaround_contract.py
@@ -158,8 +168,8 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
-  # HH_260805 - Validate the active synchronized map-v15 pair independently
-  # from the preserved historical map-v14 runtime evidence.
+  # HH_260806 - Validate the active synchronized map-v16 pair independently
+  # from preserved historical map-v14/v15 runtime evidence.
   ament_add_pytest_test(
     test_lanelet_map_revision_sync
     test/test_lanelet_map_revision_sync.py

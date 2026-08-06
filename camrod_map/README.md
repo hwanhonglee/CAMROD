@@ -2,8 +2,8 @@
 
 <!-- HH_260805 - Record the current-site map fingerprint while separating
 older hash-bound recovery evidence from the active deployment geometry. -->
-<!-- HH_260806 - Explain how the unchanged cost-100 raster is consumed by the
-independent body hard-stop and recoverable planning-margin polygons. -->
+<!-- HH_260806 - Record map-v16 and separate road lanelet safety from explicit
+off-lane campsite service-area motion. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -32,8 +32,8 @@ reference.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=15` (user-provided geometry revision) |
-| Active SHA-256 | `d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f` |
+| Active source revision | `map_version=16` (user-provided geometry revision) |
+| Active SHA-256 | `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf` |
 | Loaded primitives | 55 lanelets, 14 areas, 1,658 nodes, 236 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
@@ -44,7 +44,7 @@ reference.
 The absolute map path is a Jetson deployment path. Workstation testing may
 override it, but must not rewrite the production path solely for local use.
 `lanelet2_maps_(copy_park_v1.0.5).osm` is byte-identical to the active file.
-This pair remains unchanged at the current site; a different field requires a
+This pair is synchronized for the current site; a different field requires a
 new survey and map revision.
 
 The SHA value is a file fingerprint, not a read-only lock and not a map edit.
@@ -75,27 +75,30 @@ revision, primitive counts, and SHA in the same reviewed change.
 
 ![Map-v14 measured boundary recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
 
-![Current-map two-layer boundary validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+![Current map-v16 campsite validation](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
 The historical map-v14 B6 run contacted the mapped boundary at approximately
-`(4.3688, 45.0583)`. Existing campsite Areas do not provide surveyed
-road-to-service `service_access` geometry. This is a map-data limitation; the
-active planning envelope uses a `0.05 m` margin on every body side, and the
-hard footprint threshold remains unchanged.
+`(4.3688, 45.0583)`. Campsite Areas remain semantic service geometry outside
+road lanelets. The control gate now permits static-lanelet crossing only while
+the explicit campsite state machine owns motion; dynamic obstacle checks remain
+active. Ordinary navigation still uses the complete physical/planning boundary.
 The repeatable three-case run is bound to OSM SHA-256
 `2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe`.
 It is retained as v14 evidence and is not presented as a map-v15 rerun.
 The v2.1.4 map-v15 recovery media are likewise bound to release SHA
 `e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
 They demonstrate the staged controller on that release map, not a run on the
-current active SHA shown above.
+current map-v16 SHA shown above.
 
-On the current SHA, a fresh controlled route traveled `10.0403 m` with no
+On the prior map-v15 SHA `d7b730...213f`, a controlled route traveled `10.0403 m` with no
 route hold. A `+0.19 m` placement touched only the planning margin and admitted
 bounded `CRAB_RIGHT`; a `+0.27 m` physical-body placement retained a no-motion
 hold. The map raster and threshold did not change for this test. Only the
-provisional polygons and control interpretation changed, and their real-world
-dimensions remain field-pending.
+reduced candidate polygons and control interpretation changed; this evidence
+is historical. Fresh map-v16 B1-B10 site maneuvers (10/10) and B11-B13 arrival-only
+checks passed, while B11-B13 return geometry remains field-pending.
 
 ## Nodes And Products
 

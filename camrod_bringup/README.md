@@ -2,8 +2,8 @@
 
 <!-- HH_260805 - Synchronize scoped component shutdown, LiDAR-only SHM, and
 the optional-grid diagnostic contract. -->
-<!-- HH_260806 - Add the fresh normal-route, recoverable-margin, and physical
-body hard-stop simulation contract for the provisional boundary. -->
+<!-- HH_260806 - Add map-v16 campsite sequencing, measured body geometry, and
+arrival-only validation for constrained roadside sites. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -38,31 +38,33 @@ The latest full-bringup runtime result is shown separately.
 
 | Check | Result | Measured value |
 |---|---|---:|
-| Stack startup | PASS | 79 steady-state nodes; `[SYSTEM] OK` |
+| Stack startup | PASS | Fresh isolated map-v16 graph reached `[SYSTEM] OK` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |
-| B6 turnaround | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
-| B12 roadside stop | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
+| B1-B10 site maneuver round trip | PASS (10/10) | Every map-derived entry (`1.79-5.31 m`) completed crab, 180-degree turn, explicit RETURN, crab-out, and `DONE` |
+| B11-B13 roadside arrival | PASS | Capped `0.60 m` crab, unload wait, `WAIT_RETURN`; no zero-turn or RETURN issued |
+| B11-B13 return | FIELD-PENDING | Earlier on-lane alignment attempt was safely blocked by `lanelet_physical_body_cost` |
 | Rapid route recontact | PASS, FAIL CLOSED | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with zero output |
 | Map-v14 recovery rerun | PASS, FAIL CLOSED | route 0.366 s latch; reverse 0.0721 m; crab-left 0.3321 m; final commands zero |
 | v2.1.4 release-map staged recovery | PASS, FAIL CLOSED | release SHA `e0b50f...e36d`; reverse-yaw max 0.05 rad/s; route recontact 0.335 s; crab-left 0.3378 m; final commands zero |
-| Current-map normal route | PASS | `10.0403 m`; goal error `0.2932 m`; no route hold; final command zero |
-| Current-map planning margin | PASS | ordinary command stopped at `0.0 m/s`; projected `CRAB_RIGHT` cleared `0.133 m` at max `0.05 m/s` |
-| Current-map physical body | PASS, FAIL CLOSED | `lanelet_physical_body_cost`; no candidate, no owner motion, recovery output `0.0 m/s` |
+| Reduced-boundary route/margin/body run | PASS, HISTORICAL | `1.29160 x 0.87000 m` candidate evidence retained; it is not the active body geometry |
 | Operator stop | PASS | `POST /ui/stop` returned HTTP 200; local owners and Nav2 canceled; state 16 published |
-| Complete round trip | NOT DEMONSTRATED | Return, parking, and charging were not reached |
+| Drop-zone parking/charging continuation | NOT INCLUDED | Campsite tests end after site exit/return request; parking and charging retain separate validation |
 
 The 2026-08-04 captures are historical map-v14 evidence, and the staged
 map-v15 records are bound to the v2.1.4 release SHA. The current synchronized
-OSM pair remains `map_version=15` but has SHA `d7b730...213f`; it is the active
-current-site map and is intentionally not relabeled with the older recovery
-measurements. The active footprint uses `0.05 m` on every body side while
-retaining the complete-footprint gate. The provisional physical body is
-`1.29160 x 0.87000 m`, and the planning boundary is
-`1.39160 x 0.97000 m`. Physical-body cost 100 is an unrecoverable hard stop;
+OSM pair is `map_version=16`, SHA `fd9c18...d0cf`; it is intentionally not
+relabeled with older recovery measurements. The active fabrication-inclusive
+physical body is `1.39160 x 1.07000 m`, and the planning boundary is
+`1.49160 x 1.17000 m` with `0.05 m` on every side. Physical-body cost 100 is an unrecoverable hard stop;
 only margin-only contact can request a separately projected bounded escape.
-No current-map full-round-trip claim is inferred.
+The current campsite result covers site entry/exit sequencing, not a complete
+drop-zone parking and charging mission.
 
-![Current-map boundary policy validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary policy validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+![Current map-v16 campsite validation](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+
+[Open the campsite sequencing GIF](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif).
 
 ![Map v14 boundary recovery rerun](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
 
@@ -180,6 +182,7 @@ deployment copies and are covered by synchronization tests.
 | `automatic_route_recovery_probe.py` | Production gate/controller crab, reverse, retry, latch, and final command timeline |
 | `render_automatic_recovery_results.py` | Map-version-checked PNG/GIF from the three recovery timelines |
 | `render_robot_boundary_validation.py` | Consolidated normal-route, margin, and physical-body simulation PNG |
+| `render_camping_site_sequence_results.py` | Structured B1-B10 turnaround and B11-B13 roadside-arrival PNG/GIF |
 
 ```bash
 python3 camrod_bringup/scripts/render_module_readme_assets.py
@@ -197,4 +200,5 @@ pytest -q camrod_bringup/test/test_module_readme_assets.py
 | Map-v14 recovery rerun | [`map-v14-boundary-recovery/`](../docs/evidence/v2.1.3/map-v14-boundary-recovery/) |
 | Map-v15 staged recovery | [`map-v15-boundary-recovery/`](../docs/evidence/v2.1.4/map-v15-boundary-recovery/) |
 | Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/test_result/robot-boundary-adjustment-20260806/) |
+| Current campsite sequencing tests | [`camping-site-sequencing-20260806/`](../docs/assets/test_result/camping-site-sequencing-20260806/) |
 | Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |

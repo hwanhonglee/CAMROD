@@ -1,9 +1,9 @@
 # CAMROD
 
-<!-- HH_260806 - Publish the provisional reduced boundary while retaining the
-previous surveyed envelope as auditable test evidence. -->
-<!-- HH_260806 - Publish the fresh two-layer boundary simulation without
-promoting the provisional physical dimensions to FIELD-PASS. -->
+<!-- HH_260806 - Use the fabrication-inclusive measured body as the active
+hard-stop envelope and retain earlier reduced-boundary runs as historical evidence. -->
+<!-- HH_260806 - Replace the GNSS center placeholder with the measured
+left-antenna lever arm and heading-aware center correction. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.5`**.
@@ -31,16 +31,17 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
-| GNSS position reference | center assumption `(0,0,0)` | Matches current estimator behavior; `pose_verified=false` until dual-antenna survey |
-| Provisional body boundary | `1.29160 x 0.87000 m` | Cost-100 body contact is a hard stop with no automatic recovery; field survey pending |
-| Planning boundary | `1.39160 x 0.97000 m` | Body plus `0.05 m` each side; margin-only contact may use projected bounded recovery |
+| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; localization subtracts it to publish robot center |
+| Physical body boundary | `1.39160 x 1.07000 m` | Fabrication-inclusive measured envelope; cost-100 contact is a hard stop with no automatic recovery |
+| Planning boundary | `1.49160 x 1.17000 m` | Physical body plus `0.05 m` on all four sides; margin-only contact may use projected bounded recovery |
+| Base platform dimensions | `1.19160 x 0.87000 m` | Chassis-only value retained separately from the fabrication-inclusive collision envelope |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
 | Hard safety stop | `<= 20%` | Final command output is stopped |
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
 | Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
-| Active Lanelet map | `map_version=15`, SHA `d7b730...213f` | User-authored active OSM and current named copy are byte-identical; SHA is a change-detection fingerprint, not a lock |
+| Active Lanelet map | `map_version=16`, SHA `fd9c18...d0cf` | User-edited active OSM and named copy are byte-identical; SHA is a synchronization fingerprint, not a geometry lock |
 | RPP preview | `1.1 m` | Current stable minimum lookahead |
 | Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
 | Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
@@ -60,6 +61,7 @@ runtime evidence separately.
 | Check | Result | Scope |
 |---|---|---|
 | v2.1.5 build/tests | **PASS** | 11 packages built; 487 xUnit cases, 0 errors/failures, 17 lint skips; UI 28/28; source contracts 126/126; config audit 388/388 |
+| Current map-v16/GNSS/campsite integration | **PASS** | Canonical build selected 7 packages; 49/49 CTest targets; 361 xUnit cases, 0 errors/failures, 13 known static-analysis skips |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
 | amd64 runtime topology A/B | **SYSTEM CORE PASS; LIDAR TRADEOFF** | Core: 3 fewer processes, CPU -2.5 points, PSS -19.7 MiB, 3/3 controlled stop; LiDAR: CPU -17.5%, PSS +44.0 MiB, 10 Hz preserved |
@@ -67,12 +69,14 @@ runtime evidence separately.
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
 | Automatic boundary recovery | **v2.1.4 RELEASE-MAP SIM PASS, FAIL CLOSED** | Release map-v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
-| Current provisional boundary policy | **AMD64 SIM PASS; FIELD PENDING** | Normal route `10.0403 m` without hold; margin `CRAB_RIGHT` `0.133 m`; physical contact issued no candidate or motion; full outer-envelope survey still required |
+| Earlier reduced-boundary policy | **AMD64 SIM PASS; HISTORICAL** | The `1.29160 x 0.87000 m` candidate produced normal-route, margin recovery, and physical-stop evidence retained for comparison; it is no longer the active body |
+| Campsite sequencing | **PASS; B11-B13 RETURN FIELD-PENDING** | Map-v16 B1-B10 all completed crab, zero-turn, wait, explicit return, and crab-out; B11-B13 reached roadside `WAIT_RETURN` without any on-site turn |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
 | Physical rear camera rate | **FIELD-FAIL** | Raw `3.633 Hz` versus `10 Hz` target under field load |
-| B6/B12 round trip | **NOT DEMONSTRATED** | Full footprint stops at missing surveyed service-access geometry |
+| B1-B10 turnaround | **SIM PASS (10/10)** | All ten map-derived lateral entries (`1.79-5.31 m`) completed full round trips with maneuver-exclusive command ownership |
+| B11-B13 roadside | **ARRIVAL SIM PASS; RETURN UNRESOLVED** | Each site stopped at `WAIT_RETURN` after a capped `0.60 m` crab; no RETURN was issued |
 | Physical Ranger/sensors/audio | **FIELD PENDING** | Jetson and real-robot measurements are still required |
 
 ![Measured full-bringup result](docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
@@ -83,7 +87,9 @@ runtime evidence separately.
 
 ![v2.1.4 release-map staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
 
-![Current physical-body and planning-margin validation](docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-body and planning-margin validation](docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+![Current campsite maneuver validation](docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
 ## Packages
 

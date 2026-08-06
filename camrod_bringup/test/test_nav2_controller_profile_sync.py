@@ -19,6 +19,7 @@ SHARED_TRACKING_KEYS = (
     "use_interpolation",
     "allow_reversing",
     "use_rotate_to_heading",
+    "rotate_to_heading_min_angle",
     "min_approach_linear_velocity",
     "approach_velocity_scaling_dist",
     "use_collision_detection",
@@ -206,3 +207,16 @@ def test_low_speed_rpp_keeps_damped_preview_floor() -> None:
     assert rpp["lookahead_dist"] == 1.1
     assert rpp["min_lookahead_dist"] == 1.1
     assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
+
+
+def test_nav2_rotation_finishes_before_translation() -> None:
+    """Initial yaw alignment must not emit forward motion at a large yaw error."""
+    vehicle = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")
+    base = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
+    threshold = 0.0349066
+
+    assert vehicle["RPP"]["use_rotate_to_heading"] is True
+    assert vehicle["RPP"]["rotate_to_heading_min_angle"] == threshold
+    assert base["RotationShim"]["use_rotate_to_heading"] is True
+    assert base["RotationShim"]["rotate_to_heading_min_angle"] == threshold
+    assert base["RotationShim"]["angular_dist_threshold"] == threshold

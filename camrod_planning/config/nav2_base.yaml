@@ -373,7 +373,9 @@ controller_server:
     RotationShim:
       plugin: "nav2_rotation_shim_controller::RotationShimController"
       primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      angular_dist_threshold: 0.785
+      # HH_260806 - Keep the shim in rotation ownership until heading error is
+      # below 2 degrees instead of handing off at the previous 45 degrees.
+      angular_dist_threshold: 0.0349066
       forward_sampling_distance: 0.5
       # HH_260731 - Conservative heading transition for the outdoor recovery test.
       # The final gate limits this to 0.20 rad/s.
@@ -393,7 +395,8 @@ controller_server:
       use_velocity_scaled_lookahead_dist: True
       use_interpolation: True
       allow_reversing: False
-      use_rotate_to_heading: False
+      use_rotate_to_heading: True
+      rotate_to_heading_min_angle: 0.0349066
       min_approach_linear_velocity: 0.10
       approach_velocity_scaling_dist: 0.6
       use_collision_detection: True
