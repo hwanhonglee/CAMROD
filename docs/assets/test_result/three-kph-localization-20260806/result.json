@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "test_id": "three-kph-localization-20260806",
+  "date": "2026-08-06",
+  "architecture": "amd64",
+  "scope": "kinematic_simulation",
+  "source_commit_before_changes": "27e895fa6325ccc67c5ed058d0f1c2f990d8a08d",
+  "map_sha256": "559bdad88e2733c854024013e02c2f29e4ad4aaef5bc6678e3c593d6c4e49516",
+  "gate_speed_scale": 0.5,
+  "manual_route": {
+    "status": "PASS",
+    "displacement_m": 11.74,
+    "nav2_result": "SUCCEEDED"
+  },
+  "command": {
+    "raw_linear_x_max_mps": 1.666667,
+    "raw_linear_x_max_kph": 6.000001,
+    "final_linear_x_max_mps": 0.833333,
+    "final_linear_x_max_kph": 3.000001,
+    "final_abs_angular_z_max_radps": 0.029098
+  },
+  "selected_pose": {
+    "samples": 757,
+    "rate_hz": 20.024,
+    "gap_p95_ms": 50.903,
+    "gap_max_ms": 51.752,
+    "header_age_p95_ms": 1.531,
+    "header_age_max_ms": 45.982,
+    "path_length_m": 11.833422,
+    "step_p95_cm": 4.1969,
+    "step_max_cm": 6.4851,
+    "steps_over_20_cm": 0
+  },
+  "input_rates_hz": {
+    "fake_gnss": 10.0,
+    "fake_imu": 10.0,
+    "fake_wheel_odometry": 10.0,
+    "simulation_ekf": 20.0
+  },
+  "raw_bag": {
+    "path": "/tmp/camrod_three_kph_smoke_bag_20260806",
+    "duration_s": 37.78,
+    "messages": 4700,
+    "db3_sha256": "2caa1add8d474b89fc3e74b69012053d1e43a587c96d704f40b65caf33a7c807"
+  },
+  "limitations": [
+    "Simulation GNSS is 10 Hz rather than the physical dual-GNSS 1 Hz rate.",
+    "Simulation EKF is 20 Hz rather than the physical 15 Hz profile.",
+    "No physical Jetson, IMU, wheel-scale, timestamp, multipath, or CPU-load acceptance is claimed."
+  ]
+}

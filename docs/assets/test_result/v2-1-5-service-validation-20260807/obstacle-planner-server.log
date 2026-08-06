@@ -1,0 +1,112 @@
+[INFO] [1786042689.827312141] [planning.nav2_container]: Load Library: /home/hong/camrod_ws/install/nav2_planner/lib/libplanner_server_core.so
+[INFO] [1786042689.843720248] [planning.nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[INFO] [1786042689.843769509] [planning.nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[INFO] [1786042689.852815181] [planning.planner_server]: 
+	planner_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1786042689.875572754] [planning.planner_server]: Creating
+[INFO] [1786042689.883853386] [planning.global_costmap.global_costmap]: 
+	global_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1786042689.891645183] [planning.global_costmap.global_costmap]: Creating Costmap
+[INFO] [1786042689.915339664] [planning.nav2_container]: Load Library: /home/hong/camrod_ws/install/nav2_controller/lib/libcontroller_server_core.so
+[INFO] [1786042689.921446055] [planning.nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[INFO] [1786042689.921487552] [planning.nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[INFO] [1786042689.934865205] [planning.controller_server]: 
+	controller_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1786042689.963747358] [planning.planner_server]: Configuring
+[INFO] [1786042689.963785290] [planning.global_costmap.global_costmap]: Configuring
+[INFO] [1786042689.973896628] [planning.global_costmap.global_costmap]: Using plugin "lanelet_cost_layer_base"
+[INFO] [1786042689.982096198] [planning.global_costmap.global_costmap]: Initialized plugin "lanelet_cost_layer_base"
+[INFO] [1786042689.982132532] [planning.global_costmap.global_costmap]: Using plugin "lidar_cost_layer"
+[INFO] [1786042689.985311975] [planning.global_costmap.global_costmap]: Initialized plugin "lidar_cost_layer"
+[INFO] [1786042689.985345838] [planning.global_costmap.global_costmap]: Using plugin "radar_cost_layer"
+[INFO] [1786042689.988157239] [planning.global_costmap.global_costmap]: Initialized plugin "radar_cost_layer"
+[INFO] [1786042689.988196131] [planning.global_costmap.global_costmap]: Using plugin "inflation_layer"
+[INFO] [1786042689.997160853] [planning.global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1786042690.021135768] [planning.planner_server]: Created global planner plugin LaneletRoute of type camrod_planning::LaneletRoutePlanner
+[INFO] [1786042690.031556302] [planning.planner_server]: LaneletRoutePlanner async initialization started: map=/home/hong/camrod_ws/src/lanelet2_maps.osm participant=vehicle:car wait_timeout=60.0s
+[INFO] [1786042690.037006962] [planning.controller_server]: Creating controller server
+[INFO] [1786042690.039246440] [planning.planner_server]: Created global planner plugin SmacLattice of type nav2_smac_planner/SmacPlannerLattice
+[INFO] [1786042690.040550712] [planning.planner_server]: Configuring SmacLattice of type SmacPlannerLattice
+[INFO] [1786042690.049187582] [planning.planner_server]: Even sized heuristic lookup table size set 200.000000, increasing size by 1 to make odd
+[INFO] [1786042690.049950618] [planning.planner_server]: LaneletRoutePlanner map load timing: 18.35ms path=/home/hong/camrod_ws/src/lanelet2_maps.osm
+[INFO] [1786042690.053074830] [planning.planner_server]: LaneletRoutePlanner routing graph timing: 3.05ms participant=vehicle:car
+[INFO] [1786042690.053124958] [planning.planner_server]: LaneletRoutePlanner ready: map=/home/hong/camrod_ws/src/lanelet2_maps.osm frame=map lane_changes=false resolution=0.20m
+[INFO] [1786042690.053462181] [planning.local_costmap.local_costmap]: 
+	local_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1786042690.056376249] [planning.local_costmap.local_costmap]: Creating Costmap
+[INFO] [1786042690.162283617] [planning.planner_server]: Configured plugin SmacLattice of type SmacPlannerLattice with maximum iterations 2000000, max on approach iterations 1000, and not allowing unknown traversal. Tolerance 0.50. Using motion model: State Lattice. State lattice file: /home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/lattice_primitives/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json.
+[INFO] [1786042690.162467990] [planning.planner_server]: Planner Server has LaneletRoute SmacLattice  planners available.
+[INFO] [1786042690.162591307] [planning.planner_server]: planner costmap wait timeout: 2.50s (0.0 means wait forever)
+[INFO] [1786042690.171228109] [planning.controller_server]: Configuring controller interface
+[INFO] [1786042690.171360530] [planning.controller_server]: getting goal checker plugins..
+[INFO] [1786042690.171385678] [planning.controller_server]: Controller frequency set to 20.0000Hz
+[INFO] [1786042690.171411555] [planning.local_costmap.local_costmap]: Configuring
+[INFO] [1786042690.173431315] [planning.local_costmap.local_costmap]: Using plugin "lidar_cost_layer"
+[INFO] [1786042690.174818583] [planning.local_costmap.local_costmap]: Initialized plugin "lidar_cost_layer"
+[INFO] [1786042690.174844157] [planning.local_costmap.local_costmap]: Using plugin "radar_cost_layer"
+[INFO] [1786042690.182708096] [planning.local_costmap.local_costmap]: Initialized plugin "radar_cost_layer"
+[INFO] [1786042690.182747269] [planning.local_costmap.local_costmap]: Using plugin "inflation_layer"
+[INFO] [1786042690.184061683] [planning.local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1786042690.370596136] [planning.controller_server]: Created progress_checker : progress_checker of type camrod_planning::EngageAwareProgressChecker
+[INFO] [1786042690.372458392] [planning.controller_server]: Created goal checker : goal_checker of type nav2_controller::SimpleGoalChecker
+[INFO] [1786042690.373368538] [planning.controller_server]: Created goal checker : manual_goal_checker of type nav2_controller::SimpleGoalChecker
+[INFO] [1786042690.374036663] [planning.controller_server]: Controller Server has goal_checker manual_goal_checker  goal checkers available.
+[INFO] [1786042690.375188106] [planning.controller_server]: Created controller : RPP of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786042690.540386626] [planning.controller_server]: Created controller : RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[INFO] [1786042690.542708158] [planning.controller_server]: Created internal controller for rotation shimming: RotationShim of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786042690.545809892] [planning.controller_server]: Controller Server has RPP RotationShim  controllers available.
+[INFO] [1786042690.904254001] [planning.planner_server]: Activating
+[INFO] [1786042690.904289313] [planning.global_costmap.global_costmap]: Activating
+[INFO] [1786042690.904299337] [planning.global_costmap.global_costmap]: Checking transform
+[INFO] [1786042690.904365238] [planning.global_costmap.global_costmap]: start
+[INFO] [1786042692.304457302] [planning.planner_server]: Activating plugin SmacLattice of type SmacPlannerLattice
+[INFO] [1786042692.304878230] [planning.planner_server]: Creating bond (planner_server) to lifecycle manager.
+[INFO] [1786042692.408437171] [planning.controller_server]: Activating
+[INFO] [1786042692.408466347] [planning.local_costmap.local_costmap]: Activating
+[INFO] [1786042692.408474796] [planning.local_costmap.local_costmap]: Checking transform
+[INFO] [1786042692.408523237] [planning.local_costmap.local_costmap]: start
+[INFO] [1786042692.458679347] [planning.controller_server]: Activating controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[INFO] [1786042692.458732635] [planning.controller_server]: Activating controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786042692.458748840] [planning.controller_server]: Activating controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786042692.458763137] [planning.controller_server]: Creating bond (controller_server) to lifecycle manager.
+[INFO] [1786042739.929452499] [planning.planner_server]: LaneletRoutePlanner plan: start_ll=4584 goal_ll=4647 mode=one_way reverse_source=none heading_error=0.5deg lanelets=2 points=47 length=9.00m total_abs_turn=0.034rad mean_abs_curvature=0.004/m max_abs_curvature=0.062/m timing snap=0.08ms route=0.06ms geometry=0.27ms total=0.42ms
+[INFO] [1786042740.249098139] [planning.controller_server]: Received a goal, begin computing control effort.
+[ERROR] [1786042740.249331569] [transformPoseInTargetFrame]: Extrapolation Error looking up target frame: Lookup would require extrapolation into the future.  Requested time 1786042740.249244 but the latest data is at time 1786042740.248477, when looking up transform from frame [map] to frame [robot_center_link]
+
+[WARN] [1786042760.266703413] [planning.planner_server]: SmacLattice: failed to create plan, no valid path found.
+[WARN] [1786042760.266749855] [planning.planner_server]: Planning algorithm SmacLattice failed to generate a valid path to (87.97, -10.47)
+[WARN] [1786042760.266765906] [planning.planner_server]: [compute_path_to_pose] [ActionServer] Aborting handle.
+[INFO] [1786042765.449226137] [planning.controller_server]: Goal was canceled. Stopping the robot.
+[INFO] [1786042765.449278401] [planning.controller_server]: [follow_path] [ActionServer] Client requested to cancel the goal. Cancelling.
+[INFO] [1786043540.751224638] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1786043540.751255947] [planning.controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[INFO] [1786043540.751300610] [planning.controller_server]: Deactivating
+[INFO] [1786043540.751317972] [planning.controller_server]: Deactivating controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[INFO] [1786043540.751326924] [planning.controller_server]: Deactivating controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786043540.751337728] [planning.controller_server]: Deactivating controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786043540.751355632] [planning.local_costmap.local_costmap]: Deactivating
+[INFO] [1786043540.809358956] [planning.controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[INFO] [1786043540.809535328] [planning.controller_server]: Cleaning up
+[INFO] [1786043540.809551961] [planning.controller_server]: Cleaning up controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[INFO] [1786043540.809561318] [planning.controller_server]: Cleaning up controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786043540.809581254] [planning.controller_server]: Cleaning up controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [1786043540.809637395] [planning.local_costmap.local_costmap]: Cleaning up
+[INFO] [1786043541.234383049] [planning.controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[INFO] [1786043541.234427793] [planning.planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[INFO] [1786043541.234450141] [planning.planner_server]: Deactivating
+[INFO] [1786043541.234479964] [planning.global_costmap.global_costmap]: Deactivating
+[INFO] [1786043541.904536310] [planning.planner_server]: Deactivating plugin SmacLattice of type SmacPlannerLattice
+[INFO] [1786043541.904576583] [planning.planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[INFO] [1786043541.904604206] [planning.planner_server]: Cleaning up
+[INFO] [1786043541.920270856] [planning.global_costmap.global_costmap]: Cleaning up
+[INFO] [1786043541.933071053] [planning.planner_server]: Cleaning up plugin SmacLattice of type SmacPlannerLattice
+[INFO] [1786043541.933614928] [planning.planner_server]: Destroying plugin SmacLattice of type SmacPlannerLattice
+[INFO] [1786043541.947348063] [planning.planner_server]: Destroying bond (planner_server) to lifecycle manager.

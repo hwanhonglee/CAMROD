@@ -32,8 +32,10 @@ avg_msgs::msg::AvgOccupancyGrid makeGrid(
   avg_msgs::msg::AvgOccupancyGrid grid;
   grid.header.frame_id = "map";
   grid.info.resolution = resolution;
-  grid.info.width = 80;
-  grid.info.height = 80;
+  // HH_260806 - Preserve the fixture's -4..+4 m world extent when a test uses
+  // the runtime 0.05 m safety-grid resolution.
+  grid.info.width = static_cast<std::uint32_t>(std::ceil(8.0 / resolution));
+  grid.info.height = static_cast<std::uint32_t>(std::ceil(8.0 / resolution));
   grid.info.origin.position.x = -4.0;
   grid.info.origin.position.y = -4.0;
   grid.info.origin.orientation.z = std::sin(origin_yaw * 0.5);
@@ -294,6 +296,9 @@ TEST(RouteSafetyRecovery, PreservesTriggerDirectionUntilContinuousClear)
 
   EXPECT_FALSE(recovery.updateProbe(MotionCostStopDecision{}, 11.0));
   EXPECT_TRUE(recovery.active());
+  EXPECT_FALSE(recovery.recoveryMotionObserved());
+  recovery.observeRecoveryMotion();
+  EXPECT_TRUE(recovery.recoveryMotionObserved());
   EXPECT_FALSE(recovery.updateProbe(violation, 11.5));
   EXPECT_FALSE(recovery.updateProbe(MotionCostStopDecision{}, 12.0));
   EXPECT_TRUE(recovery.updateProbe(MotionCostStopDecision{}, 13.0));
@@ -327,6 +332,7 @@ TEST(RouteSafetyRecovery, LatchesRapidRecontactAfterConfiguredAutomaticRelease)
   const MotionCostStopDecision clear{};
 
   ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+  recovery.observeRecoveryMotion();
   EXPECT_FALSE(recovery.updateProbe(clear, 1.0));
   EXPECT_TRUE(recovery.updateProbe(clear, 1.2));
   EXPECT_FALSE(recovery.active());
@@ -356,6 +362,7 @@ TEST(RouteSafetyRecovery, AllowsAutomaticRecoveryAgainAfterRecontactWindow)
   const MotionCostStopDecision clear{};
 
   ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+  recovery.observeRecoveryMotion();
   EXPECT_FALSE(recovery.updateProbe(clear, 1.0));
   EXPECT_TRUE(recovery.updateProbe(clear, 1.2));
 
@@ -553,6 +560,30 @@ TEST(MotionCostStop, RouteRecoveryBoundsReverseYawRate)
   EXPECT_EQ(excessive.reason, "route_recovery_angular_rate_exceeded");
 }
 
+TEST(MotionCostStop, RouteRecoveryRejectsPhysicalContactAlongYawArc)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.body_front_m = 0.20;
+  config.body_rear_m = 0.20;
+  config.body_left_m = 0.10;
+  config.body_right_m = 0.10;
+  config.lanelet_footprint_enabled = false;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  // HH_260807 - This cell is clear of both endpoint rectangles, but the
+  // reverse-left arc sweeps its rear corner through it near half distance.
+  cost_stop.setLaneletGrid(makeGrid({{-0.399, 0.051, 100}}, 0.05), 1.0);
+
+  const auto yaw_arc = cost_stop.evaluateRouteRecoveryCommand(
+    command(-0.1, 0.0, 0.10), 1.0, 0.30, 0.5);
+  EXPECT_TRUE(yaw_arc.blocked);
+  EXPECT_EQ(yaw_arc.reason, "route_recovery_swept_physical_body_cost");
+}
+
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStalePoseEvidence)
 {
   auto config = baseCostConfig();
@@ -582,7 +613,7 @@ TEST(MotionCostStop, OppositeRecoveryRequiresProjectedFullFootprintClear)
   MotionCostStop cost_stop(config);
   cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
   cost_stop.setMergedGrid(makeGrid(), 1.0);
-  cost_stop.setLaneletGrid(makeGrid({{0.15, 0.0, 100}}), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.05, 0.0, 100}}), 1.0);
 
   ASSERT_TRUE(cost_stop.evaluate(command(-0.1), 1.0).blocked);
   EXPECT_FALSE(
@@ -646,6 +677,10 @@ TEST(MotionCostStop, PhysicalBodyContactRejectsEveryRecoveryCommand)
   const auto trigger = cost_stop.evaluate(command(0.1), 1.0);
   ASSERT_TRUE(trigger.blocked);
   EXPECT_EQ(trigger.reason, "lanelet_physical_body_cost");
+  EXPECT_TRUE(trigger.lanelet_contact_valid);
+  EXPECT_EQ(trigger.lanelet_hit_cost, 100);
+  EXPECT_NEAR(trigger.lanelet_hit_body_x, 0.05, 1.0e-6);
+  EXPECT_NEAR(trigger.lanelet_hit_body_y, 0.15, 1.0e-6);
   for (const auto & recovery :
     {command(-0.1), command(0.0, -0.1), command(-0.1, 0.0, 0.1)})
   {
@@ -679,9 +714,62 @@ TEST(MotionCostStop, PlanningMarginContactStillAllowsProjectedCrabRecovery)
   const auto trigger = cost_stop.evaluate(command(0.1), 1.0);
   ASSERT_TRUE(trigger.blocked);
   EXPECT_EQ(trigger.reason, "lanelet_footprint_cost");
+  EXPECT_TRUE(trigger.lanelet_contact_valid);
+  EXPECT_EQ(trigger.lanelet_hit_cost, 100);
+  EXPECT_NEAR(trigger.lanelet_hit_body_x, 0.05, 1.0e-6);
+  EXPECT_NEAR(trigger.lanelet_hit_body_y, 0.25, 1.0e-6);
   EXPECT_FALSE(
     cost_stop.evaluateRouteRecoveryCommand(
       command(0.0, -0.1), 1.1, 0.3, 0.5).blocked);
+}
+
+TEST(MotionCostStop, PlanningMarginIgnoresLethalCellWhoseCenterIsOutside)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = false;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.footprint_front_m = 0.31;
+  config.footprint_rear_m = 0.31;
+  config.footprint_left_m = 0.31;
+  config.footprint_right_m = 0.31;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+
+  // HH_260806 - Reproduce the field case: the 0.05 m cell center is 1.5 cm
+  // outside the planning polygon although the polygon edge maps to that cell.
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.325, 100}}, 0.05), 1.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.1), 1.0).blocked);
+
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.275, 100}}, 0.05), 1.1);
+  const auto covered_center = cost_stop.evaluate(command(0.0, 0.1), 1.1);
+  EXPECT_TRUE(covered_center.blocked);
+  EXPECT_EQ(covered_center.reason, "lanelet_footprint_cost");
+}
+
+TEST(MotionCostStop, PhysicalBodyKeepsFailClosedEdgeCellContact)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.body_front_m = 0.31;
+  config.body_rear_m = 0.31;
+  config.body_left_m = 0.31;
+  config.body_right_m = 0.31;
+  config.lanelet_footprint_enabled = false;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.325, 100}}, 0.05), 1.0);
+
+  // HH_260806 - Unlike the recoverable margin, a lethal cell touched by the
+  // measured body edge must remain a hard stop even when its center is outside.
+  const auto decision = cost_stop.evaluate(command(0.0, 0.1), 1.0);
+  EXPECT_TRUE(decision.blocked);
+  EXPECT_EQ(decision.reason, "lanelet_physical_body_cost");
 }
 
 TEST(MotionCostStop, RouteRecoveryCommandFailsClosedWithoutFreshLaneletGrid)
@@ -888,18 +976,9 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   constexpr double body_right = 0.53495;
   constexpr double longitudinal_margin = 0.05;
   constexpr double lateral_margin = 0.05;
-  auto margin_only_cost = makeGrid();
-  // Offset the 0.10 m raster so the 0.53505 m body edge and the 0.58505 m
-  // planning edge occupy adjacent cells.
-  margin_only_cost.info.origin.position.y = -4.04;
-  const int margin_grid_x = static_cast<int>(
-    std::floor((0.0 - margin_only_cost.info.origin.position.x) /
-    margin_only_cost.info.resolution));
-  const int margin_grid_y = static_cast<int>(
-    std::floor((0.60 - margin_only_cost.info.origin.position.y) /
-    margin_only_cost.info.resolution));
-  margin_only_cost.data[
-    margin_grid_y * static_cast<int>(margin_only_cost.info.width) + margin_grid_x] = 100;
+  // The cell center at y=0.55 m lies outside the 0.53505 m body and inside
+  // the 0.58505 m planning margin.
+  auto margin_only_cost = makeGrid({{0.0, 0.55, 100}});
   cost_stop.setLaneletGrid(margin_only_cost, 0.0);
 
   // HH_260806 - The lethal cell is outside the measured body but inside the
@@ -960,36 +1039,57 @@ TEST(MotionCostStop, RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsA
 TEST(CommandSourceArbiter, ManeuverOwnsCommandUntilStationaryReleaseCompletes)
 {
   CommandSourceArbiter arbiter;
-  const auto started = arbiter.setManeuverPhases("", "CRAB_IN", 1.0);
+  const auto started = arbiter.setManeuverPhases("", "CRAB_IN", "", 1.0);
   EXPECT_TRUE(started.campsite_started);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 1.0), CommandSourceDecision::kIgnore);
+    arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
   EXPECT_EQ(
-    arbiter.evaluate(false, 0.0, 0.2, 0.0, 1.0), CommandSourceDecision::kAllow);
+    arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
 
-  const auto rotating = arbiter.setManeuverPhases("", "ROTATE_180", 2.0);
+  const auto rotating = arbiter.setManeuverPhases("", "ROTATE_180", "", 2.0);
   EXPECT_FALSE(rotating.maneuver_started);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 2.0), CommandSourceDecision::kIgnore);
+    arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
 
-  const auto finished = arbiter.setManeuverPhases("", "WAIT_RETURN", 3.0);
+  const auto finished = arbiter.setManeuverPhases("", "WAIT_RETURN", "", 3.0);
   EXPECT_FALSE(finished.maneuver_finished);
-  arbiter.setManeuverPhases("", "DONE", 4.0);
+  arbiter.setManeuverPhases("", "DONE", "", 4.0);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 4.49), CommandSourceDecision::kHoldZero);
+    arbiter.evaluate(true, 4.49), CommandSourceDecision::kHoldZero);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 4.50), CommandSourceDecision::kAllow);
+    arbiter.evaluate(true, 4.50), CommandSourceDecision::kAllow);
 }
 
-TEST(CommandSourceArbiter, Nav2RotationSettlesBeforeTranslation)
+TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff)
 {
   CommandSourceArbiter arbiter;
+  // HH_260806 - RotationShim may alternate pure rotation and translation on a
+  // curved route. Both belong to Nav2 and must pass without a stop-go hold.
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.0, 0.0, 0.3, 10.0), CommandSourceDecision::kAllow);
+    arbiter.evaluate(true, 10.0), CommandSourceDecision::kAllow);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 10.49), CommandSourceDecision::kHoldZero);
+    arbiter.evaluate(true, 10.01), CommandSourceDecision::kAllow);
   EXPECT_EQ(
-    arbiter.evaluate(true, 0.2, 0.0, 0.0, 10.50), CommandSourceDecision::kAllow);
+    arbiter.evaluate(true, 10.02), CommandSourceDecision::kAllow);
+}
+
+TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle)
+{
+  CommandSourceArbiter arbiter;
+  // HH_260807 - Parking is a third explicit owner. Nav2 must not interleave a
+  // forward command while reverse or AprilTag docking controls the platform.
+  const auto started = arbiter.setManeuverPhases(
+    "IDLE", "IDLE", "REVERSE_APPROACH", 1.0);
+  EXPECT_TRUE(started.parking_started);
+  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+
+  const auto parked = arbiter.setManeuverPhases("IDLE", "IDLE", "PARKED", 2.0);
+  EXPECT_FALSE(parked.maneuver_finished);
+  const auto finished = arbiter.setManeuverPhases("IDLE", "IDLE", "IDLE", 3.0);
+  EXPECT_TRUE(finished.maneuver_finished);
+  EXPECT_EQ(arbiter.evaluate(true, 3.49), CommandSourceDecision::kHoldZero);
+  EXPECT_EQ(arbiter.evaluate(true, 3.50), CommandSourceDecision::kAllow);
 }
 
 TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop)
@@ -1024,7 +1124,7 @@ TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop)
   EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
 }
 
-TEST(MotionCostStop, ConfiguredDropZoneBypassPhasesStillCheckLaneletFootprint)
+TEST(MotionCostStop, DropZoneExitBypassesRoadLaneletButNeverLiveObstacle)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -1032,17 +1132,28 @@ TEST(MotionCostStop, ConfiguredDropZoneBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_current_allow_route_reentry = false;
   const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
-  // HH_260727 - Forward drop-zone departure may bypass a legacy route corridor,
-  // but the full occupied boundary remains mandatory.
-  for (const auto & phase : config.drop_zone_static_bypass_phases) {
+  config.require_dynamic_source = true;
+  // HH_260807 - The charger is outside the road lanelet. Only explicit exit
+  // phases may cross it, and the same ordinary command must remain fail-closed.
+  auto ordinary_stop = makeMotionCostStop(config);
+  ordinary_stop.setMergedGrid(boundary_cost, 0.0);
+  ordinary_stop.setLaneletGrid(boundary_cost, 0.0);
+  EXPECT_TRUE(ordinary_stop.evaluate(command(0.2), 0.0).lanelet_violation);
+
+  for (const auto & phase : config.drop_zone_lanelet_bypass_phases) {
     SCOPED_TRACE(phase);
     auto cost_stop = makeMotionCostStop(config);
     cost_stop.setManeuverPhases(phase, "");
     cost_stop.setMergedGrid(boundary_cost, 0.0);
     cost_stop.setLaneletGrid(boundary_cost, 0.0);
-    const auto decision = cost_stop.evaluate(command(0.2), 0.0);
-    EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
-    EXPECT_NE(decision.reason.find("lanelet_footprint"), std::string::npos);
+    EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+
+    const auto front_obstacle = makeGrid({{0.4, 0.0, 100}});
+    cost_stop.setMergedGrid(front_obstacle, 0.1);
+    cost_stop.setSourceGrid("radar", front_obstacle, 0.1);
+    const auto obstacle_decision = cost_stop.evaluate(command(0.2), 0.1);
+    EXPECT_TRUE(obstacle_decision.blocked);
+    EXPECT_TRUE(obstacle_decision.dynamic_obstacle) << obstacle_decision.reason;
   }
 }
 
@@ -1392,6 +1503,43 @@ TEST(MotionCostStop, ReverseParkingIgnoresDisabledLaneletDirectionButStopsDynami
   config.lanelet_check_reverse = true;
   cost_stop.setConfig(config);
   EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.2).lanelet_violation);
+}
+
+TEST(MotionCostStop, ParkingPhaseBypassesRoadLaneletButNeverLiveObstacle)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_check_reverse = true;
+  config.require_dynamic_source = true;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto charger_outside_road = makeGrid(
+    {
+      {-0.1, -0.1, 100}, {-0.1, 0.0, 100}, {-0.1, 0.1, 100},
+      {0.0, -0.1, 100}, {0.0, 0.0, 100}, {0.0, 0.1, 100},
+      {0.1, -0.1, 100}, {0.1, 0.0, 100}, {0.1, 0.1, 100},
+    });
+  cost_stop.setMergedGrid(charger_outside_road, 0.0);
+  cost_stop.setLaneletGrid(charger_outside_road, 0.0);
+
+  // HH_260807 - Ordinary reverse remains fail-closed at the same pose.
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.0).lanelet_violation);
+
+  cost_stop.setManeuverPhases("IDLE", "IDLE", "REVERSE_APPROACH");
+  EXPECT_FALSE(cost_stop.evaluate(command(-0.2), 0.1).blocked);
+  const auto rear_obstacle = makeGrid({{-0.4, 0.0, 100}});
+  cost_stop.setSourceGrid("lidar", rear_obstacle, 0.2);
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.2).dynamic_obstacle);
+
+  auto retry_stop = makeMotionCostStop(config);
+  retry_stop.setMergedGrid(charger_outside_road, 1.0);
+  retry_stop.setLaneletGrid(charger_outside_road, 1.0);
+  retry_stop.setManeuverPhases("IDLE", "IDLE", "RETRY_FORWARD_EXIT");
+  EXPECT_FALSE(retry_stop.evaluate(command(0.2), 1.0).blocked);
+  const auto front_obstacle = makeGrid({{0.4, 0.0, 100}});
+  retry_stop.setSourceGrid("radar", front_obstacle, 1.1);
+  EXPECT_TRUE(retry_stop.evaluate(command(0.2), 1.1).dynamic_obstacle);
 }
 
 TEST(MotionCostStop, ManeuverPhaseBypassesStaticButNotDynamicCost)

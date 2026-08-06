@@ -23,7 +23,8 @@
     # =========================================================================
     # 2. MOTION SOURCE AND COMMAND INPUT
     # =========================================================================
-    speed_mps: 1.4
+    # HH_260806 - Constant-speed fallback matches the 3.0 km/h final cruise.
+    speed_mps: 0.833333
     # HH_260526: Motion source mode.
     # motion_source: cmd_vel | constant_speed
     motion_source: "cmd_vel"
@@ -66,8 +67,8 @@
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps
     freeze_motion: false
-    # HH_260618: 15 Hz is enough for sim localization/control while reducing CPU and topic traffic.
-    # HH_260618: 10 Hz is sufficient for sim localization/planning smoke tests and reduces CPU.
+    # HH_260806 - Keep fake sensor inputs at 10 Hz; the simulation EKF predicts
+    # and publishes at 20 Hz, matching the production pose/control contract.
     publish_rate_hz: 10.0
     loop: true
     # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
@@ -109,6 +110,11 @@
     obstacle_direction: "front"
     # Additional shift in vehicle-left axis (m). Keep 0.0 for centered tests.
     obstacle_lateral_offset: 0.0
+    # HH_260807 - Runtime validation may pin a synthetic obstacle in map
+    # coordinates; ordinary directional gate tests retain robot-relative mode.
+    obstacle_reference_frame: "robot"
+    obstacle_world_x: 0.0
+    obstacle_world_y: 0.0
     # HH_260630: Compact fake obstacle cluster for directional stop validation.
     fake_obstacle_cluster_radius_m: 0.12
     # Publish synthetic obstacle cloud to both perception and

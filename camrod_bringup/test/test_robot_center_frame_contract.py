@@ -133,6 +133,28 @@ def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     )
 
 
+def test_real_ekf_lag_window_and_deployment_mirror() -> None:
+    """Keep the measured-delay rewind window identical in package and bringup."""
+    package_path = SRC_ROOT / "camrod_localization" / "config" / "filter" / "ekf.yaml"
+    bringup_path = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "localization"
+        / "filter"
+        / "ekf.yaml"
+    )
+
+    assert package_path.read_bytes() == bringup_path.read_bytes()
+    parameters = _wildcard_parameters(package_path)
+    # HH_260806 - Cover the measured 747.6 ms selected-pose age while keeping
+    # the real EKF and Nav2 controller on the same 20 Hz prediction cadence.
+    assert parameters["frequency"] == pytest.approx(20.0)
+    assert parameters["smooth_lagged_data"] is True
+    assert parameters["predict_to_current_time"] is True
+    assert parameters["history_length"] == pytest.approx(1.0)
+
+
 def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
     """Full simulation must exercise rather than bypass lever-arm correction."""
     localization = _wildcard_parameters(PACKAGE_LOCALIZATION_CONFIG)
@@ -217,6 +239,61 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
     parameters = _yaml(package_path)["/**"]["ros__parameters"]
     assert parameters["route_safety_recovery_max_auto_releases"] == 1
     assert parameters["route_safety_recovery_recontact_window_s"] == pytest.approx(5.0)
+
+
+def test_high_resolution_lanelet_safety_grid_and_nav2_owner_contract() -> None:
+    """Keep final safety resolution separate from Nav2 without stop-go arbitration."""
+    package_grid = (
+        SRC_ROOT / "camrod_map" / "config" / "lanelet_safety_cost_grid.yaml"
+    )
+    bringup_grid = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "map"
+        / "lanelet_safety_cost_grid.yaml"
+    )
+    package_gate = (
+        SRC_ROOT / "camrod_control" / "config" / "cmd_vel_safety_gate.yaml"
+    )
+    defaults_path = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "bringup"
+        / "launch_defaults.yaml"
+    )
+
+    # HH_260806 - A coarse 0.25 m cell produced a visible false stop even with
+    # 12.4 cm exact planning clearance. Lock the independent local grid and
+    # prevent the removed Nav2 rotation/translation handoff from returning.
+    assert package_grid.read_bytes() == bringup_grid.read_bytes()
+    grid = _yaml(package_grid)["/map/lanelet_safety_cost_grid"]["ros__parameters"]
+    assert grid["output_topic"] == "/map/cost_grid/lanelet_safety"
+    assert grid["resolution"] == pytest.approx(0.05)
+    assert grid["width"] == 600
+    assert grid["height"] == 600
+    assert grid["window_mode"] == "robot_centered"
+    assert grid["outside_value"] == 100
+    assert grid["lanelet_boundary_value"] == 98
+
+    gate = _wildcard_parameters(package_gate)
+    assert gate["lanelet_safety_grid_topic"] == "/map/cost_grid/lanelet_safety"
+    assert gate["maneuver_command_release_hold_s"] == pytest.approx(0.5)
+    for obsolete in (
+        "navigation_rotation_settle_s",
+        "navigation_translation_epsilon_mps",
+        "navigation_rotation_min_radps",
+    ):
+        assert obsolete not in gate
+
+    defaults = _yaml(defaults_path)["bringup"]
+    assert defaults["control"]["cmd_vel_gate_lanelet_safety_grid_topic"] == (
+        "/map/cost_grid/lanelet_safety"
+    )
+    assert defaults["map"]["lanelet_safety_cost_grid_param_file"] == (
+        "map/lanelet_safety_cost_grid.yaml"
+    )
 
 
 def test_apriltag_longitudinal_thresholds_preserve_rear_axle_stop_points() -> None:

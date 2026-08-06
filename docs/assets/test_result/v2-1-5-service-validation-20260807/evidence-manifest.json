@@ -1,0 +1,32 @@
+{
+  "captured_on": "2026-08-07",
+  "classification": "amd64_ros2_simulation",
+  "field_claim": false,
+  "release": "v2.1.5",
+  "base_commit_before_changes": "27e895fa6325",
+  "map": {
+    "file": "lanelet2_maps.osm",
+    "map_version": 17,
+    "sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+    "lanelets": 55,
+    "areas": 14,
+    "points": 1652
+  },
+  "reports": {
+    "repeated-service-soak.json": "4e9fe8cebbc1ea210b01df5e005a3e85034ff0bb0866e1ec82ed39653a3ebe70",
+    "repeated-service-soak.log": "4f3a7cc3614dba3b69f02e1ffa3cc06251f27b1dd267d0e16abcd4bf6447f71c",
+    "obstacle-safe-hold.json": "be10441cf86e09c9c6df42236a14b6c8c7c85264f6908071c50f436d6a027193",
+    "obstacle-replan-monitor.log": "7af3180e3d4e06610671302e5845dfb2960867923d79e78425131006cdb4d731",
+    "obstacle-planner-server.log": "ecc02deef997a9f43fe33dbd9ccaba38424860c4ae26669fc7d14a9b4d93f9a8",
+    "b2-boundary-recovery-trial-1.json": "eb759acce2f401baffb64638b7fd25e537b8ff6d0aa125275d0831c2ba84141a",
+    "b2-boundary-recovery-trial-2.json": "9d423d9c32725cf1305a67adc08419547ea2ab1f7e38b274684349ce39ecf67a",
+    "b2-boundary-recovery-trial-3.json": "2852c5b3312840e21d74708b83c6230deb8f7ff4756c33de8520fbca258d0e7e"
+  },
+  "acceptance": {
+    "repeated_service_cycles": "PASS_3_OF_3",
+    "boundary_recovery_trials": "PASS_3_OF_3",
+    "persistent_obstacle_no_path": "PASS_SAFE_HOLD_AND_RESUME",
+    "wide_lane_avoidance": "PENDING_NO_SUITABLE_ROAD_IN_MAP_V17",
+    "jetson_field": "PENDING"
+  }
+}

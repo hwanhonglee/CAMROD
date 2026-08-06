@@ -32,6 +32,10 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
+# HH_260807 - Reproduce the map-v17 B2 charger-departure curve without waiting
+# for a complete campsite/return/parking cycle. This still drives the production
+# RPP, safety gate and bounded recovery owner through their ROS interfaces.
+B2_RECONTACT_ROUTE_IDS = (2751, 2720, 2744, 2690)
 # HH_260806 - Keep the runtime probe explicit about the measured physical
 # and planning rectangles being evaluated against the live lanelet raster.
 BODY_EXTENTS = (0.70837, 0.68323, 0.53505, 0.53495)
@@ -94,10 +98,10 @@ def resample(points, step=0.10):
     return output
 
 
-def load_route(map_path):
+def load_lanelet_route(map_path, lanelet_ids, skip_points=5):
     lanelet_map = lanelet2.io.load(str(map_path), LocalCartesianProjector(ORIGIN))
     points = []
-    for lanelet_id in ROUTE_IDS:
+    for lanelet_id in lanelet_ids:
         current = [
             (point.x, point.y)
             for point in lanelet_map.laneletLayer[lanelet_id].centerline
@@ -105,7 +109,11 @@ def load_route(map_path):
         if points and math.dist(points[-1], current[0]) < 0.5:
             current = current[1:]
         points.extend(current)
-    return resample(points)[5:]
+    return resample(points)[skip_points:]
+
+
+def load_route(map_path):
+    return load_lanelet_route(map_path, ROUTE_IDS)
 
 
 def load_one_sided_crab_route(map_path):
@@ -183,9 +191,9 @@ class AutomaticRecoveryProbe(Node):
         self.create_subscription(
             AvgPoseStamped, "/localization/pose", self.on_pose, 20
         )
-        # HH_260806 - The 960x960 lanelet raster is diagnostic-only here.
-        # Match the production reliable/transient-local writer at depth 1 so a
-        # short-lived probe deterministically receives the cached raster.
+        # HH_260807 - Classify evidence against the same 0.05 m robot-centred
+        # safety raster consumed by the final gate. The 0.25 m map display grid
+        # is intentionally not authoritative for physical/planning contact.
         lanelet_grid_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -193,7 +201,7 @@ class AutomaticRecoveryProbe(Node):
         )
         self.create_subscription(
             AvgOccupancyGrid,
-            "/map/cost_grid/lanelet",
+            "/map/cost_grid/lanelet_safety",
             self.on_lanelet_grid,
             lanelet_grid_qos,
         )
@@ -694,6 +702,7 @@ class AutomaticRecoveryProbe(Node):
             raise RuntimeError("FollowPath action unavailable")
         self.reset_pose()
         handle = self.start_goal()
+        result_future = handle.get_result_async()
         first_hold = self.wait_until(self.gate_in_hold, "first_hold", 45.0)
         recovery_start = self.wait_until(
             self.owner_moving, "automatic_recovery_started", 3.0
@@ -704,13 +713,26 @@ class AutomaticRecoveryProbe(Node):
         )
         second_hold = None
         if observe_retry:
-            second_hold = self.wait_until(self.gate_in_hold, "second_hold", 25.0)
+            # HH_260807 - A corrected route may finish before a second contact.
+            # Preserve that as positive evidence instead of throwing away the
+            # first-hold/recovery timeline because retry was not observed.
+            deadline = time.monotonic() + 25.0
+            while rclpy.ok() and time.monotonic() < deadline:
+                self.spin(0.05, authorize=True)
+                if self.gate_in_hold():
+                    second_hold = self.pose_snapshot()
+                    self.append("milestone", name="second_hold", **second_hold)
+                    break
+                if result_future.done():
+                    self.append("milestone", name="route_completed_after_recovery")
+                    break
         else:
             self.spin(1.0, authorize=True)
 
-        cancel = handle.cancel_goal_async()
-        while rclpy.ok() and not cancel.done():
-            self.spin(0.05, authorize=True)
+        if not result_future.done():
+            cancel = handle.cancel_goal_async()
+            while rclpy.ok() and not cancel.done():
+                self.spin(0.05, authorize=True)
         self.authorize(False)
         self.spin(0.4)
 
@@ -786,7 +808,11 @@ class AutomaticRecoveryProbe(Node):
                 "linear_y": self.latest_output.linear.y,
                 "angular_z": self.latest_output.angular.z,
             },
-            "mission_completed": False,
+            "mission_completed": bool(
+                result_future.done()
+                and int(result_future.result().status)
+                == GoalStatus.STATUS_SUCCEEDED
+            ),
             "timeline": self.timeline,
         }
 
@@ -1161,6 +1187,7 @@ def main():
         choices=(
             "route_clear",
             "route_retry",
+            "b2_recontact",
             "static_reverse_retry",
             "one_sided_crab",
             "margin_contact",
@@ -1177,8 +1204,18 @@ def main():
     if args.scenario in STATIC_CONTACT_SCENARIOS:
         path_points = load_route(args.map)
         initial_pose = STATIC_CONTACT_BASE_POSE
-    elif args.scenario in {"route_clear", "route_retry", "static_reverse_retry"}:
-        path_points = load_route(args.map)
+    elif args.scenario in {
+        "route_clear",
+        "route_retry",
+        "b2_recontact",
+        "static_reverse_retry",
+    }:
+        if args.scenario == "b2_recontact":
+            path_points = load_lanelet_route(
+                args.map, B2_RECONTACT_ROUTE_IDS, skip_points=0
+            )
+        else:
+            path_points = load_route(args.map)
         if args.scenario == "static_reverse_retry":
             # HH_260803 - Start from the observed route-contact pose with zero
             # platform velocity so the validated reverse output is observable,
@@ -1186,27 +1223,62 @@ def main():
             initial_pose = (3.93, 45.245, math.radians(-12.5))
     else:
         path_points, initial_pose = load_one_sided_crab_route(args.map)
-    lanelet_ids = ROUTE_IDS if args.scenario != "one_sided_crab" else (4677,)
+    lanelet_ids = (
+        B2_RECONTACT_ROUTE_IDS
+        if args.scenario == "b2_recontact"
+        else ROUTE_IDS
+        if args.scenario != "one_sided_crab"
+        else (4677,)
+    )
     node = AutomaticRecoveryProbe(
         path_points,
         initial_pose=initial_pose,
         lanelet_ids=lanelet_ids,
     )
     try:
-        if args.scenario == "route_clear":
-            # HH_260806 - The reduced boundary must prove that the previously
-            # blocked production route now completes without a safety hold.
-            result = node.run_clear()
-        elif args.scenario == "margin_recovery":
-            result = node.run_margin_recovery()
-        elif args.scenario == "physical_hard_stop":
-            result = node.run_physical_hard_stop()
-        elif args.scenario in STATIC_CONTACT_SCENARIOS:
-            result = node.run_static_contact(
-                expected_physical_contact=args.scenario == "physical_contact"
-            )
-        else:
-            result = node.run(observe_retry=args.scenario != "one_sided_crab")
+        try:
+            if args.scenario == "route_clear":
+                # HH_260806 - The reduced boundary must prove that the previously
+                # blocked production route now completes without a safety hold.
+                result = node.run_clear()
+            elif args.scenario == "margin_recovery":
+                result = node.run_margin_recovery()
+            elif args.scenario == "physical_hard_stop":
+                result = node.run_physical_hard_stop()
+            elif args.scenario in STATIC_CONTACT_SCENARIOS:
+                result = node.run_static_contact(
+                    expected_physical_contact=args.scenario == "physical_contact"
+                )
+            else:
+                result = node.run(observe_retry=args.scenario != "one_sided_crab")
+        except Exception as error:
+            # HH_260807 - Timeout and safety-latch runs are required evidence,
+            # not disposable console output. Preserve the last gate/owner state
+            # and timeline before returning a non-zero process status.
+            result = {
+                "passed": False,
+                "error": str(error),
+                "last_gate_state": (
+                    node.latest_gate.operating_state if node.latest_gate else None
+                ),
+                "last_gate_message": (
+                    node.latest_gate.message if node.latest_gate else None
+                ),
+                "last_owner_state": (
+                    node.latest_owner.operating_state if node.latest_owner else None
+                ),
+                "last_owner_message": (
+                    node.latest_owner.message if node.latest_owner else None
+                ),
+                "timeline": node.timeline,
+            }
+            result["scenario"] = args.scenario
+            result["map"] = map_metadata(args.map)
+            result["captured_at_utc"] = datetime.now(timezone.utc).isoformat()
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("w", encoding="utf-8") as stream:
+                json.dump(result, stream, indent=2)
+            raise
         result["scenario"] = args.scenario
         # HH_260804 - Bind evidence to the exact user-provided map revision;
         # regenerated images must not silently reuse an older map result.

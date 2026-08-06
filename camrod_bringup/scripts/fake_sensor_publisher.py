@@ -332,6 +332,17 @@ class FakeSensorPublisher(Node):
         self.obstacle_lateral_offset = float(
             self.declare_parameter("obstacle_lateral_offset", 0.0).value
         )
+        # HH_260807 - Service and fallback tests need a map-fixed obstacle that
+        # does not move ahead of the robot while it plans and drives around it.
+        self.obstacle_reference_frame = self._normalize_obstacle_reference_frame(
+            self.declare_parameter("obstacle_reference_frame", "robot").value
+        )
+        self.obstacle_world_x = float(
+            self.declare_parameter("obstacle_world_x", 0.0).value
+        )
+        self.obstacle_world_y = float(
+            self.declare_parameter("obstacle_world_y", 0.0).value
+        )
         # HH_260630: Keep the synthetic obstacle compact around the requested
         # direction center. A wide perpendicular spread can make side/rear
         # tests appear in the wrong corridor.
@@ -1336,16 +1347,20 @@ class FakeSensorPublisher(Node):
             obstacle_dir_x = -forward_x
             obstacle_dir_y = -forward_y
 
-        center_x = (
-            x
-            + self.obstacle_offset * obstacle_dir_x
-            + self.obstacle_lateral_offset * left_x
-        )
-        center_y = (
-            y
-            + self.obstacle_offset * obstacle_dir_y
-            + self.obstacle_lateral_offset * left_y
-        )
+        if self.obstacle_reference_frame == "map":
+            center_x = self.obstacle_world_x
+            center_y = self.obstacle_world_y
+        else:
+            center_x = (
+                x
+                + self.obstacle_offset * obstacle_dir_x
+                + self.obstacle_lateral_offset * left_x
+            )
+            center_y = (
+                y
+                + self.obstacle_offset * obstacle_dir_y
+                + self.obstacle_lateral_offset * left_y
+            )
         # HH_260630: Publish a compact 3x3 cluster centered at the requested
         # obstacle point so directional stop tests exercise the intended corridor.
         obstacle_perp_x = -obstacle_dir_y
@@ -1441,6 +1456,15 @@ class FakeSensorPublisher(Node):
         )
         return "front"
 
+    def _normalize_obstacle_reference_frame(self, value):
+        reference = str(value).strip().lower()
+        if reference in ("robot", "map"):
+            return reference
+        self.get_logger().warn(
+            f"Invalid obstacle_reference_frame '{value}'. Falling back to 'robot'."
+        )
+        return "robot"
+
     # Applies selected runtime parameter updates without node restart.
     def _on_set_parameters(self, params):
         for p in params:
@@ -1452,6 +1476,14 @@ class FakeSensorPublisher(Node):
                 self.obstacle_direction = self._normalize_obstacle_direction(p.value)
             elif p.name == "obstacle_lateral_offset":
                 self.obstacle_lateral_offset = float(p.value)
+            elif p.name == "obstacle_reference_frame":
+                self.obstacle_reference_frame = self._normalize_obstacle_reference_frame(
+                    p.value
+                )
+            elif p.name == "obstacle_world_x":
+                self.obstacle_world_x = float(p.value)
+            elif p.name == "obstacle_world_y":
+                self.obstacle_world_y = float(p.value)
             elif p.name == "fake_obstacle_cluster_radius_m":
                 self.fake_obstacle_cluster_radius_m = float(p.value)
             elif p.name == "publish_fake_lidar_obstacle_cloud":

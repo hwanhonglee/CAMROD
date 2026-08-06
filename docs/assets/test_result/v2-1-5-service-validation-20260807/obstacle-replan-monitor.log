@@ -1,0 +1,3 @@
+[INFO] [1786042690.254740751] [planning.obstacle_replan_monitor]: obstacle_replan_monitor: enabled=true grids=/sensing/cost_grid/lidar,/sensing/cost_grid/radar fallback=SmacLattice preempt=true wide_lane_min=2.50m lookahead=8.0m hold=20.0s
+[WARN] [1786042760.243935737] [planning.obstacle_replan_monitor]: obstacle_replan_monitor: persistent dynamic blockage at (81.22, -11.03) source=/sensing/cost_grid/lidar cost=88; lane_width=3.00m; probing planner=SmacLattice before preemption
+[WARN] [1786042760.267862790] [planning.obstacle_replan_monitor]: obstacle_replan_monitor: fallback path unavailable; holding original mission reason=compute_path_status_6_poses_0

@@ -170,6 +170,21 @@ class SimValidationRunner(Node):
         self.run_obstacle_replan = bool(
             self.declare_parameter("run_obstacle_replan", False).value
         )
+        self.obstacle_replan_expect_fallback = bool(
+            self.declare_parameter("obstacle_replan_expect_fallback", False).value
+        )
+        self.obstacle_replan_expect_safe_hold = bool(
+            self.declare_parameter("obstacle_replan_expect_safe_hold", False).value
+        )
+        self.obstacle_replan_start_x = float(
+            self.declare_parameter("obstacle_replan_start_x", float("nan")).value
+        )
+        self.obstacle_replan_start_y = float(
+            self.declare_parameter("obstacle_replan_start_y", float("nan")).value
+        )
+        self.obstacle_replan_start_yaw_deg = float(
+            self.declare_parameter("obstacle_replan_start_yaw_deg", 0.0).value
+        )
         # HH_260806 - Keep an absent LiDAR cost grid valid only when the launch
         # contract explicitly disables that optional component.
         self.expect_lidar_cost_grid = bool(
@@ -189,6 +204,29 @@ class SimValidationRunner(Node):
         )
         self.default_fake_obstacle_cluster_radius_m = float(
             self.declare_parameter("default_fake_obstacle_cluster_radius_m", 0.12).value
+        )
+        self.run_service_soak = bool(
+            self.declare_parameter("run_service_soak", False).value
+        )
+        self.service_soak_mission_keys = [
+            str(value).strip()
+            for value in self.declare_parameter(
+                "service_soak_mission_keys",
+                ["camping_site_1", "camping_site_2", "camping_site_3"],
+            ).value
+            if str(value).strip()
+        ]
+        self.service_soak_cycle_timeout_s = float(
+            self.declare_parameter("service_soak_cycle_timeout_s", 300.0).value
+        )
+        self.service_soak_obstacle_cycle = int(
+            self.declare_parameter("service_soak_obstacle_cycle", 2).value
+        )
+        self.service_soak_obstacle_hold_s = float(
+            self.declare_parameter("service_soak_obstacle_hold_s", 3.0).value
+        )
+        self.service_soak_obstacle_offset_m = float(
+            self.declare_parameter("service_soak_obstacle_offset_m", 1.5).value
         )
         self.fake_sensor_node = str(
             self.declare_parameter("fake_sensor_node", "/bringup/fake_sensor_publisher").value
@@ -262,9 +300,18 @@ class SimValidationRunner(Node):
         self.latest_drop_maneuver_status: ModuleState | None = None
         self.latest_reverse_parking_controller_status: ModuleState | None = None
         self.latest_gate_status: ModuleState | None = None
+        self.latest_route_recovery_status: ModuleState | None = None
         # HH_260721 - Validate the public service contract in addition to controller internals.
         self.latest_service_state: AvgServiceState | None = None
         self.service_state_names_seen: list[str] = []
+        # HH_260807 - Preserve repeated phase transitions across service cycles;
+        # latest-only status cannot prove a second return and parking sequence.
+        self.site_status_events: list[str] = []
+        self.drop_status_events: list[str] = []
+        self.parking_status_events: list[str] = []
+        self.gate_status_events: list[str] = []
+        self.route_recovery_status_events: list[str] = []
+        self.latest_control_cmd_abs = 0.0
         self.fake_platform_charging = False
         self.latest_replan_status = ""
         self.latest_planner_selector = ""
@@ -340,6 +387,12 @@ class SimValidationRunner(Node):
             ModuleState,
             "/control/cmd_vel_safety_gate/status",
             self._on_gate_status,
+            10,
+        )
+        self.create_subscription(
+            ModuleState,
+            "/control/route_safety_recovery_controller/status",
+            self._on_route_recovery_status,
             10,
         )
         self.create_subscription(
@@ -421,6 +474,7 @@ class SimValidationRunner(Node):
         self._record_twist("/control/cmd_vel_raw", msg)
 
     def _on_control_cmd(self, msg: AvgTwist) -> None:
+        self.latest_control_cmd_abs = twist_abs(msg)
         self._record_twist("/control/cmd_vel", msg)
 
     def _on_state(self, msg: PlanningState) -> None:
@@ -441,20 +495,39 @@ class SimValidationRunner(Node):
 
     def _on_site_status(self, msg: ModuleState) -> None:
         self.latest_site_status = msg
+        self._append_status_event(self.site_status_events, msg)
         self._count("/control/camping_site_maneuver_controller/status")
 
     def _on_drop_maneuver_status(self, msg: ModuleState) -> None:
         self.latest_drop_maneuver_status = msg
+        self._append_status_event(self.drop_status_events, msg)
         self._count("/control/drop_zone_maneuver_controller/status")
 
     def _on_reverse_parking_controller_status(self, msg: ModuleState) -> None:
         self.latest_reverse_parking_controller_status = msg
+        self._append_status_event(self.parking_status_events, msg)
         self._count("/parking/reverse_parking_controller/status")
 
     def _on_gate_status(self, msg: ModuleState) -> None:
         # HH_260721 - Observe CHARGING and DEPARTING_CHARGER transitions directly.
         self.latest_gate_status = msg
+        self._append_status_event(self.gate_status_events, msg)
         self._count("/control/cmd_vel_safety_gate/status")
+
+    def _on_route_recovery_status(self, msg: ModuleState) -> None:
+        # HH_260807 - Record the automatic recovery owner separately from the
+        # gate. A gate release alone does not prove reverse/crab motion occurred.
+        self.latest_route_recovery_status = msg
+        self._append_status_event(self.route_recovery_status_events, msg)
+        self._count("/control/route_safety_recovery_controller/status")
+
+    @staticmethod
+    def _append_status_event(events: list[str], msg: ModuleState) -> None:
+        state = str(msg.operating_state).strip()
+        message = str(msg.message).strip()
+        event = f"{state}|{message}"
+        if not events or events[-1] != event:
+            events.append(event)
 
     def _publish_fake_platform_status(self) -> None:
         if not self.simulate_platform_status:
@@ -559,6 +632,7 @@ class SimValidationRunner(Node):
 
     def clear_obstacle(self) -> None:
         self.set_fake_params(
+            obstacle_reference_frame="robot",
             obstacle_offset=30.0,
             obstacle_lateral_offset=0.0,
             fake_obstacle_cluster_radius_m=self.default_fake_obstacle_cluster_radius_m,
@@ -1011,9 +1085,11 @@ class SimValidationRunner(Node):
             destination.run = True
             destination.mission_key = recall_key
             destination.source = source
-            for _ in range(4):
-                self.pub_ui_destination.publish(destination)
-                self.spin_for(0.05)
+            # HH_260807 - UiDestinationCommand uses a reliable local ROS topic.
+            # Publish one user intent; retries are not separate missions and can
+            # otherwise restart the bounded charger-exit handoff.
+            self.pub_ui_destination.publish(destination)
+            self.spin_for(0.10)
             return
 
         recall_msg = PlanningMissionKey()
@@ -1139,6 +1215,23 @@ class SimValidationRunner(Node):
             self.results.append(CheckResult("obstacle_replan", False, "missing pose"))
             return
 
+        if math.isfinite(self.obstacle_replan_start_x) and math.isfinite(
+            self.obstacle_replan_start_y
+        ):
+            # HH_260807 - Reproduce the fallback on a map-measured wide lane
+            # instead of inheriting whichever narrow pose a previous run left.
+            seeded = RosPoseStamped()
+            seeded.header.stamp = self.get_clock().now().to_msg()
+            seeded.header.frame_id = "map"
+            seeded.pose.position.x = self.obstacle_replan_start_x
+            seeded.pose.position.y = self.obstacle_replan_start_y
+            seeded.pose.orientation = quat_from_yaw(
+                math.radians(self.obstacle_replan_start_yaw_deg)
+            )
+            self.publish_initialpose(seeded)
+            self.spin_for(1.0)
+            base = self.latest_pose or seeded
+
         self.publish_initialpose(base)
         self.spin_for(0.8)
         yaw = yaw_from_quat(base.pose.orientation)
@@ -1166,11 +1259,26 @@ class SimValidationRunner(Node):
             lambda: self.global_path_count > base_global and self.navigation_active(),
             12.0,
         )
+        obstacle_world_x = 0.0
+        obstacle_world_y = 0.0
         if route_ready:
-            # HH_260702 - Place a live synthetic obstacle on the active route.
-            # The monitor should report BLOCKED without forcing a fallback
-            # global replan in the default stable-route policy.
+            obstacle_pose = self.latest_pose or base
+            obstacle_yaw = yaw_from_quat(obstacle_pose.pose.orientation)
+            obstacle_world_x = (
+                obstacle_pose.pose.position.x
+                + self.obstacle_replan_obstacle_offset_m * math.cos(obstacle_yaw)
+            )
+            obstacle_world_y = (
+                obstacle_pose.pose.position.y
+                + self.obstacle_replan_obstacle_offset_m * math.sin(obstacle_yaw)
+            )
+            # HH_260807 - Keep the obstacle fixed in map coordinates so an
+            # alternate SmacLattice path can pass it instead of chasing a point
+            # that moves with the simulated robot.
             self.set_fake_params(
+                obstacle_reference_frame="map",
+                obstacle_world_x=obstacle_world_x,
+                obstacle_world_y=obstacle_world_y,
                 obstacle_direction="front",
                 obstacle_offset=self.obstacle_replan_obstacle_offset_m,
                 obstacle_lateral_offset=0.0,
@@ -1181,31 +1289,114 @@ class SimValidationRunner(Node):
         start = time.monotonic()
         seen_blocked = False
         seen_fallback = False
+        seen_fallback_path = False
+        seen_stop = False
+        seen_motion_around_obstacle = False
+        seen_failed_hold = False
+        resumed_after_clear = False
+        obstacle_clear_requested = False
+        pose_at_clear = None
         blocked_seen_at: float | None = None
+        fallback_global_base: int | None = None
+        start_pose = self.latest_pose
         while route_ready and rclpy.ok() and (time.monotonic() - start) < self.obstacle_replan_timeout_s:
             rclpy.spin_once(self, timeout_sec=0.05)
             if self.latest_replan_status.startswith("BLOCKED"):
                 seen_blocked = True
+                seen_stop = seen_stop or self.latest_control_cmd_abs <= 0.03
                 if blocked_seen_at is None:
                     blocked_seen_at = time.monotonic()
-            seen_fallback = (
+            if self.latest_replan_status.startswith("BLOCKED_REPLAN_FAILED_HOLD"):
+                seen_failed_hold = True
+                if self.obstacle_replan_expect_safe_hold and not obstacle_clear_requested:
+                    # HH_260807 - A failed Smac preflight must leave LaneletRoute
+                    # active. Remove the obstacle only after observing the latch,
+                    # then prove that the original mission resumes without a new goal.
+                    pose_at_clear = self.latest_pose
+                    self.clear_obstacle()
+                    obstacle_clear_requested = True
+            fallback_now = (
                 seen_fallback
                 or self.latest_planner_selector == "Smac2D"
                 or "Smac2D" in self.planner_selectors_seen
                 or self.latest_planner_selector == "SmacLattice"
                 or "SmacLattice" in self.planner_selectors_seen
             )
-            if seen_fallback:
+            if fallback_now and not seen_fallback:
+                fallback_global_base = self.global_path_count
+            seen_fallback = fallback_now
+            if fallback_global_base is not None and self.global_path_count > fallback_global_base:
+                seen_fallback_path = True
+            moved_m = (
+                math.hypot(
+                    self.latest_pose.pose.position.x - start_pose.pose.position.x,
+                    self.latest_pose.pose.position.y - start_pose.pose.position.y,
+                )
+                if self.latest_pose is not None and start_pose is not None
+                else 0.0
+            )
+            seen_motion_around_obstacle = (
+                seen_motion_around_obstacle
+                or (
+                    seen_fallback_path
+                    and self.latest_control_cmd_abs > 0.03
+                    and moved_m > 0.20
+                )
+            )
+            if obstacle_clear_requested and pose_at_clear is not None and self.latest_pose is not None:
+                resumed_after_clear = resumed_after_clear or (
+                    self.latest_control_cmd_abs > 0.03
+                    and math.hypot(
+                        self.latest_pose.pose.position.x - pose_at_clear.pose.position.x,
+                        self.latest_pose.pose.position.y - pose_at_clear.pose.position.y,
+                    )
+                    > 0.20
+                )
+            if self.obstacle_replan_expect_fallback and seen_motion_around_obstacle:
                 break
-            if blocked_seen_at is not None and (time.monotonic() - blocked_seen_at) >= 2.0:
+            if self.obstacle_replan_expect_safe_hold and resumed_after_clear:
+                break
+            if (
+                not self.obstacle_replan_expect_fallback
+                and not self.obstacle_replan_expect_safe_hold
+                and blocked_seen_at is not None
+                and (time.monotonic() - blocked_seen_at) >= 2.0
+            ):
                 break
 
         cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
+        moved_m = (
+            math.hypot(
+                self.latest_pose.pose.position.x - start_pose.pose.position.x,
+                self.latest_pose.pose.position.y - start_pose.pose.position.y,
+            )
+            if self.latest_pose is not None and start_pose is not None
+            else 0.0
+        )
         self.clear_obstacle()
         self.publish_engage(False)
         self.cancel_all_actions()
         self.cancel_parking_maneuvers()
-        ok = bool(route_ready and seen_blocked and not seen_fallback)
+        if self.obstacle_replan_expect_safe_hold:
+            ok = bool(
+                route_ready
+                and seen_blocked
+                and seen_stop
+                and seen_failed_hold
+                and not seen_fallback
+                and resumed_after_clear
+            )
+        elif self.obstacle_replan_expect_fallback:
+            ok = bool(
+                route_ready
+                and seen_blocked
+                and seen_stop
+                and seen_fallback
+                and seen_fallback_path
+                and seen_motion_around_obstacle
+            )
+        else:
+            ok = bool(route_ready and seen_blocked and not seen_fallback)
         self.results.append(
             CheckResult(
                 "obstacle_replan",
@@ -1214,14 +1405,26 @@ class SimValidationRunner(Node):
                 if ok
                 else (
                     f"route_ready={route_ready} blocked={seen_blocked} "
-                    f"unexpected_fallback={seen_fallback} status={self.latest_replan_status}"
+                    f"stopped={seen_stop} fallback={seen_fallback} "
+                    f"fallback_path={seen_fallback_path} moved={moved_m:.2f} "
+                    f"status={self.latest_replan_status}"
                 ),
                 {
                     "route_ready": route_ready,
                     "global_path_points": self.global_path_points,
                     "local_path_points": self.local_path_points,
                     "blocked_seen": seen_blocked,
-                    "unexpected_fallback_selector_seen": seen_fallback,
+                    "stop_seen": seen_stop,
+                    "fallback_expected": self.obstacle_replan_expect_fallback,
+                    "safe_hold_expected": self.obstacle_replan_expect_safe_hold,
+                    "fallback_selector_seen": seen_fallback,
+                    "fallback_path_seen": seen_fallback_path,
+                    "fallback_failed_hold_seen": seen_failed_hold,
+                    "motion_around_obstacle_seen": seen_motion_around_obstacle,
+                    "resumed_after_obstacle_clear": resumed_after_clear,
+                    "moved_m": round(moved_m, 3),
+                    "obstacle_world_x": round(obstacle_world_x, 3),
+                    "obstacle_world_y": round(obstacle_world_y, 3),
                     "latest_replan_status": self.latest_replan_status,
                     "latest_planner_selector": self.latest_planner_selector,
                     "replan_statuses_seen": ",".join(sorted(self.replan_statuses_seen)),
@@ -1984,6 +2187,364 @@ class SimValidationRunner(Node):
             )
         )
 
+    @staticmethod
+    def _event_contains(events: list[str], start_index: int, token: str) -> bool:
+        return any(token in event for event in events[start_index:])
+
+    @staticmethod
+    def _route_recovery_progress(events: list[str]) -> tuple[bool, bool]:
+        motion_prefixes = (
+            "CRAB_LEFT|",
+            "CRAB_RIGHT|",
+            "REVERSE|",
+            "REVERSE_YAW_LEFT|",
+            "REVERSE_YAW_RIGHT|",
+        )
+        motion_index = next(
+            (index for index, event in enumerate(events) if event.startswith(motion_prefixes)),
+            None,
+        )
+        if motion_index is None:
+            return False, False
+        # HH_260807 - The owner publishes IDLE only after the gate removes its
+        # route hold. Requiring IDLE after the motion event avoids counting the
+        # initial pre-contact IDLE sample as a completed recovery.
+        released = any(event.startswith("IDLE|") for event in events[motion_index + 1:])
+        return True, released
+
+    def check_repeated_service_soak(self) -> None:
+        """Run multiple site-return-charge cycles without restarting bringup."""
+        self.cancel_all_actions()
+        self.cancel_parking_maneuvers()
+        self.clear_obstacle()
+        self.fake_platform_charging = False
+        mission_keys = self.service_soak_mission_keys
+        if len(mission_keys) < 2:
+            self.results.append(
+                CheckResult(
+                    "repeated_service_soak",
+                    False,
+                    "service_soak_mission_keys requires at least two sites",
+                )
+            )
+            return
+
+        site_configs = [self.load_camping_site_config(key) for key in mission_keys]
+        invalid = [key for key, config in zip(mission_keys, site_configs) if config is None]
+        roadside = [
+            key
+            for key, config in zip(mission_keys, site_configs)
+            if config is not None
+            and str(config.get("service_mode", "turnaround")).strip().lower()
+            != "turnaround"
+        ]
+        if invalid or roadside:
+            self.results.append(
+                CheckResult(
+                    "repeated_service_soak",
+                    False,
+                    f"invalid_sites={invalid} roadside_return_not_approved={roadside}",
+                )
+            )
+            return
+
+        first_goal = self.load_camping_goal(mission_keys[0])
+        if first_goal is None or not self.prepare_camping_start_pose(first_goal):
+            self.results.append(
+                CheckResult(
+                    "repeated_service_soak",
+                    False,
+                    "failed to prepare first service route",
+                )
+            )
+            return
+
+        # HH_260807 - Only the first cycle is seeded near the route endpoint.
+        # Every later cycle departs naturally from the simulated charger and
+        # must return, park, charge, and accept the next destination in one
+        # uninterrupted bringup process.
+        self.cancel_parking_maneuvers()
+        self.publish_engage(True)
+        self.publish_mission_engage(True)
+        self.spin_for(0.3)
+
+        cycle_reports: list[dict[str, object]] = []
+        cycles_completed = 0
+        overall_ok = True
+        soak_start = time.monotonic()
+
+        for cycle_number, mission_key in enumerate(mission_keys, start=1):
+            goal_pose = self.load_camping_goal(mission_key)
+            if goal_pose is None:
+                overall_ok = False
+                cycle_reports.append(
+                    {"cycle": cycle_number, "mission_key": mission_key, "error": "missing goal"}
+                )
+                break
+
+            service_base = len(self.service_state_names_seen)
+            site_base = len(self.site_status_events)
+            drop_base = len(self.drop_status_events)
+            parking_base = len(self.parking_status_events)
+            gate_base = len(self.gate_status_events)
+            recovery_base = len(self.route_recovery_status_events)
+            global_base = self.global_path_count
+            local_base = self.local_path_count
+            self.latest_replan_status = ""
+            self.replan_statuses_seen.clear()
+            self.reset_cmd_metrics()
+
+            starts_charging = cycle_number > 1
+            if starts_charging:
+                self.fake_platform_charging = True
+                self.spin_for(0.25)
+            self.publish_charging_recall_request(
+                mission_key,
+                goal_pose,
+                f"sim_service_soak_cycle_{cycle_number}",
+            )
+
+            cycle_start = time.monotonic()
+            return_sent = False
+            departure_seen = not starts_charging
+            charger_disconnected = not starts_charging
+            route_motion_seen = False
+            obstacle_injected = False
+            obstacle_stop_seen = False
+            obstacle_cleared = False
+            obstacle_resume_seen = False
+            obstacle_started_at = 0.0
+            obstacle_world_x = 0.0
+            obstacle_world_y = 0.0
+            cycle_complete = False
+            boundary_hold_seen = False
+            boundary_recovery_motion_seen = False
+            boundary_recovery_released = False
+            boundary_retry_latched = False
+
+            while (
+                rclpy.ok()
+                and time.monotonic() - cycle_start < self.service_soak_cycle_timeout_s
+            ):
+                rclpy.spin_once(self, timeout_sec=0.05)
+                service_events = self.service_state_names_seen[service_base:]
+                site_events = self.site_status_events[site_base:]
+                parking_events = self.parking_status_events[parking_base:]
+                gate_events = self.gate_status_events[gate_base:]
+                recovery_events = self.route_recovery_status_events[recovery_base:]
+
+                boundary_hold_seen = boundary_hold_seen or any(
+                    "ROUTE_SAFETY_HOLD" in event or "route_safety_hold=" in event
+                    for event in gate_events
+                )
+                boundary_retry_latched = boundary_retry_latched or any(
+                    "route_safety_retry_latched=" in event
+                    or "rapid_recontact_latched" in event
+                    for event in gate_events
+                )
+                recovery_motion, recovery_released = self._route_recovery_progress(
+                    recovery_events
+                )
+                boundary_recovery_motion_seen = (
+                    boundary_recovery_motion_seen or recovery_motion
+                )
+                boundary_recovery_released = (
+                    boundary_recovery_released or recovery_released
+                )
+
+                route_motion_seen = route_motion_seen or self.latest_control_cmd_abs > 0.03
+                departure_seen = departure_seen or any(
+                    event == "DEPARTING_CHARGER" for event in service_events
+                ) or any("DEPARTING_CHARGER" in event for event in gate_events)
+                if starts_charging and self.fake_platform_charging and departure_seen:
+                    if self.latest_control_cmd_abs > 0.03:
+                        self.fake_platform_charging = False
+                        charger_disconnected = True
+
+                should_inject_obstacle = (
+                    cycle_number == self.service_soak_obstacle_cycle
+                    and not obstacle_injected
+                    and route_motion_seen
+                    and self.navigation_active()
+                    and self.global_path_count > global_base
+                    and self.latest_pose is not None
+                    and time.monotonic() - cycle_start > 1.0
+                )
+                if should_inject_obstacle:
+                    yaw = yaw_from_quat(self.latest_pose.pose.orientation)
+                    obstacle_world_x = (
+                        self.latest_pose.pose.position.x
+                        + self.service_soak_obstacle_offset_m * math.cos(yaw)
+                    )
+                    obstacle_world_y = (
+                        self.latest_pose.pose.position.y
+                        + self.service_soak_obstacle_offset_m * math.sin(yaw)
+                    )
+                    self.set_fake_params(
+                        obstacle_reference_frame="map",
+                        obstacle_world_x=obstacle_world_x,
+                        obstacle_world_y=obstacle_world_y,
+                        obstacle_direction="front",
+                        obstacle_offset=self.service_soak_obstacle_offset_m,
+                        obstacle_lateral_offset=0.0,
+                        fake_obstacle_cluster_radius_m=0.35,
+                        publish_fake_lidar_obstacle_cloud=True,
+                        publish_fake_radar_ranges=True,
+                    )
+                    obstacle_injected = True
+                    obstacle_started_at = time.monotonic()
+
+                if obstacle_injected and not obstacle_cleared:
+                    obstacle_stop_seen = obstacle_stop_seen or (
+                        self.latest_control_cmd_abs <= 0.03
+                        and (
+                            self.latest_replan_status.startswith("BLOCKED")
+                            or any(
+                                token in event.lower()
+                                for event in gate_events
+                                for token in ("obstacle", "radar", "lidar", "cost")
+                            )
+                        )
+                    )
+                    if (
+                        obstacle_stop_seen
+                        and time.monotonic() - obstacle_started_at
+                        >= max(0.5, self.service_soak_obstacle_hold_s)
+                    ):
+                        self.clear_obstacle()
+                        obstacle_cleared = True
+
+                if obstacle_cleared:
+                    obstacle_resume_seen = (
+                        obstacle_resume_seen or self.latest_control_cmd_abs > 0.03
+                    )
+
+                waiting_for_return = (
+                    any("WAIT_RETURN" in event for event in site_events)
+                    and "WAITING_FOR_RETURN_REQUEST" in service_events
+                )
+                obstacle_cycle_ready = (
+                    cycle_number != self.service_soak_obstacle_cycle
+                    or (obstacle_stop_seen and obstacle_cleared and obstacle_resume_seen)
+                )
+                if waiting_for_return and obstacle_cycle_ready and not return_sent:
+                    # HH_260807 - Mirror a human RETURN only after the public
+                    # unload-wait state; never auto-return on first arrival.
+                    self.publish_operation(
+                        self.pub_site_operation,
+                        MotionOperation.RETURN,
+                        repeats=1,
+                    )
+                    return_sent = True
+
+                if any("WAIT_FOR_CHARGING" in event for event in parking_events):
+                    self.fake_platform_charging = True
+
+                cycle_complete = bool(
+                    return_sent
+                    and any("CRAB_IN" in event for event in site_events)
+                    and any("ROTATE_180" in event for event in site_events)
+                    and any("CRAB_OUT" in event for event in site_events)
+                    and any("DONE" in event for event in site_events)
+                    and any("ALIGN_PARKING_YAW" in event for event in self.drop_status_events[drop_base:])
+                    and any("PARKED" in event for event in parking_events)
+                    and "WAITING_FOR_CHARGING" in service_events
+                    and "CHARGING" in service_events
+                )
+                if cycle_complete:
+                    break
+
+            if obstacle_injected and not obstacle_cleared:
+                self.clear_obstacle()
+
+            service_events = self.service_state_names_seen[service_base:]
+            site_events = self.site_status_events[site_base:]
+            drop_events = self.drop_status_events[drop_base:]
+            parking_events = self.parking_status_events[parking_base:]
+            gate_events = self.gate_status_events[gate_base:]
+            recovery_events = self.route_recovery_status_events[recovery_base:]
+            obstacle_required = cycle_number == self.service_soak_obstacle_cycle
+            boundary_recovery_ok = bool(
+                not boundary_retry_latched
+                and (
+                    not boundary_hold_seen
+                    or (boundary_recovery_motion_seen and boundary_recovery_released)
+                )
+            )
+            cycle_ok = bool(
+                cycle_complete
+                and route_motion_seen
+                and departure_seen
+                and charger_disconnected
+                and (self.global_path_count > global_base or self.local_path_count > local_base)
+                and (
+                    not obstacle_required
+                    or (obstacle_stop_seen and obstacle_cleared and obstacle_resume_seen)
+                )
+                and boundary_recovery_ok
+            )
+            cycle_reports.append(
+                {
+                    "cycle": cycle_number,
+                    "mission_key": mission_key,
+                    "success": cycle_ok,
+                    "elapsed_s": round(time.monotonic() - cycle_start, 3),
+                    "service_states": service_events,
+                    "site_phases": site_events,
+                    "drop_phases": drop_events,
+                    "parking_phases": parking_events,
+                    "gate_phases": gate_events,
+                    "route_recovery_phases": recovery_events,
+                    "global_path_updates": self.global_path_count - global_base,
+                    "local_path_updates": self.local_path_count - local_base,
+                    "route_motion_seen": route_motion_seen,
+                    "return_sent_after_wait": return_sent,
+                    "departure_seen": departure_seen,
+                    "charger_disconnected": charger_disconnected,
+                    "obstacle_required": obstacle_required,
+                    "obstacle_world_x": round(obstacle_world_x, 3),
+                    "obstacle_world_y": round(obstacle_world_y, 3),
+                    "obstacle_stop_seen": obstacle_stop_seen,
+                    "obstacle_cleared": obstacle_cleared,
+                    "obstacle_resume_seen": obstacle_resume_seen,
+                    "boundary_hold_seen": boundary_hold_seen,
+                    "boundary_recovery_motion_seen": boundary_recovery_motion_seen,
+                    "boundary_recovery_released": boundary_recovery_released,
+                    "boundary_retry_latched": boundary_retry_latched,
+                    "boundary_recovery_ok": boundary_recovery_ok,
+                    "replan_statuses": sorted(self.replan_statuses_seen),
+                }
+            )
+            if not cycle_ok:
+                overall_ok = False
+                break
+            cycles_completed += 1
+
+        self.clear_obstacle()
+        self.fake_platform_charging = False
+        self.publish_engage(False)
+        self.publish_mission_engage(False)
+        self.cancel_all_actions()
+        self.cancel_parking_maneuvers()
+        overall_ok = overall_ok and cycles_completed == len(mission_keys)
+        self.results.append(
+            CheckResult(
+                "repeated_service_soak",
+                overall_ok,
+                "ok"
+                if overall_ok
+                else f"completed={cycles_completed}/{len(mission_keys)}",
+                {
+                    "cycles_requested": len(mission_keys),
+                    "cycles_completed": cycles_completed,
+                    "mission_keys": mission_keys,
+                    "elapsed_s": round(time.monotonic() - soak_start, 3),
+                    "bringup_restart_count": 0,
+                    "cycles": cycle_reports,
+                },
+            )
+        )
+
     def run(self) -> int:
         self.spin_for(1.0)
         self.publish_mission_engage(False)
@@ -2000,6 +2561,8 @@ class SimValidationRunner(Node):
             self.check_obstacle_replan()
         if self.run_camping:
             self.check_camping_site_smoke()
+        if self.run_service_soak:
+            self.check_repeated_service_soak()
         self.clear_obstacle()
         self.publish_engage(False)
         self.publish_mission_engage(False)
