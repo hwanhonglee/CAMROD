@@ -18,7 +18,7 @@ namespace camrod_control
 struct RouteSafetyRecoveryConfig
 {
   bool enabled{true};
-  double clear_required_s{1.0};
+  double clear_required_s{1.5};
   int max_automatic_releases{1};
   double rapid_recontact_window_s{5.0};
   bool allow_opposite_recovery_command{true};
@@ -58,6 +58,7 @@ public:
       return false;
     }
     active_ = true;
+    recovery_motion_observed_ = false;
     trigger_command_ = command;
     trigger_reason_ = decision.reason;
     activated_sec_ = now_sec;
@@ -81,6 +82,13 @@ public:
     }
     if (decision.blocked) {
       latest_reason_ = decision.reason;
+      clear_since_sec_.reset();
+      return false;
+    }
+    // HH_260807 - Braking/coasting can move a simulated or physical platform
+    // briefly clear after the stop command. Do not release Nav2 until a fully
+    // validated opposite/crab recovery command has actually reached the gate.
+    if (!recovery_motion_observed_) {
       clear_since_sec_.reset();
       return false;
     }
@@ -150,6 +158,8 @@ public:
   }
 
   bool automaticReleaseBlocked() const {return active_ && automatic_release_blocked_;}
+  void observeRecoveryMotion() {recovery_motion_observed_ = active_;}
+  bool recoveryMotionObserved() const {return recovery_motion_observed_;}
   int automaticReleasesInWindow() const {return automatic_releases_in_window_;}
   bool active() const {return active_;}
   const avg_msgs::msg::AvgTwist & triggerCommand() const {return trigger_command_;}
@@ -177,11 +187,13 @@ private:
     activated_sec_ = 0.0;
     clear_since_sec_.reset();
     automatic_release_blocked_ = false;
+    recovery_motion_observed_ = false;
   }
 
   RouteSafetyRecoveryConfig config_;
   bool active_{false};
   bool automatic_release_blocked_{false};
+  bool recovery_motion_observed_{false};
   int automatic_releases_in_window_{0};
   avg_msgs::msg::AvgTwist trigger_command_;
   std::string trigger_reason_;

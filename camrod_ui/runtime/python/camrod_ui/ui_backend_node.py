@@ -1197,11 +1197,24 @@ class UiBackendNode(Node):
         charging_changed = charging != self._latest_platform_is_charging
         self._latest_platform_is_charging = charging
         if charging_changed and charging:
-            # HH_260721 - Display confirmed CAN charging independently from parking completion.
-            self._publish_service_state(
-                AvgServiceState.CHARGING,
-                source="platform_status:charging_started",
-            )
+            departure_active = self._drop_zone_exit_active or self._latest_service_state in {
+                int(AvgServiceState.DEPARTING_CHARGER),
+                int(AvgServiceState.DEPARTING_DROP_ZONE),
+            }
+            if departure_active:
+                # HH_260807 - Charger contact remains true until the platform
+                # physically moves clear. Preserve the authorized departure
+                # state instead of closing drive-enable on that expected edge.
+                self.get_logger().info(
+                    "charging contact still active during drop-zone departure; "
+                    "preserving departure authorization"
+                )
+            else:
+                # HH_260721 - Display confirmed CAN charging independently from parking completion.
+                self._publish_service_state(
+                    AvgServiceState.CHARGING,
+                    source="platform_status:charging_started",
+                )
         elif (
             charging_changed
             and not charging
@@ -1796,6 +1809,26 @@ class UiBackendNode(Node):
                 "mission_key": "",
                 "goal_pose_published": False,
                 "message": "run=false -> operator stop, engage off, goal cancelled",
+            }
+
+        pending_departure = getattr(self, "_pending_site_after_drop_zone_exit", None)
+        if (
+            getattr(self, "_drop_zone_exit_active", False)
+            and pending_departure is not None
+            and pending_departure[0] == site
+        ):
+            # HH_260807 - A reliable ROS topic or websocket retry may deliver the
+            # same selection more than once. Keep one motion owner and one state
+            # transition while the already accepted station exit is in progress.
+            self.get_logger().info(
+                f"duplicate destination ignored during drop-zone departure: site={site}"
+            )
+            return {
+                "site": site,
+                "run": True,
+                "mission_key": pending_departure[1],
+                "goal_pose_published": False,
+                "message": "destination already pending drop-zone departure",
             }
 
         mission_key = self._resolve_mission_key_for_site(site) or ""

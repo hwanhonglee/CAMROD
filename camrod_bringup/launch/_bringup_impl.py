@@ -107,6 +107,9 @@ OVERRIDE_SPECS = {
         'map_info_file': ('map/map_info_file',),
         'map_param_file': ('map/map_param_file',),
         'lanelet_cost_grid_param_file': ('map/lanelet_cost_grid_param_file',),
+        'lanelet_safety_cost_grid_param_file': (
+            'map/lanelet_safety_cost_grid_param_file',
+        ),
         'map_visualization_param_file': ('map/map_visualization_param_file',),
     },
     'perception': {
@@ -1026,7 +1029,11 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_grid_topic',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_grid_topic', '/map/cost_grid/lanelet'),
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_grid_topic',
+                '/map/cost_grid/lanelet_safety',
+            ),
             'Raw lanelet cost grid topic for safety stop',
         ),
         (
@@ -1480,26 +1487,11 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_zero_publish_rate_hz', 10.0),
             'Zero Twist publish rate while raw planning cmd_vel input is stale',
         ),
-        # HH_260806 - Keep command-source handoff stationary after rotation and crab.
+        # HH_260806 - Keep explicit maneuver/Nav2 ownership handoff stationary.
         (
             'control_cmd_vel_gate_maneuver_command_release_hold_s',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_maneuver_command_release_hold_s', 0.5),
             'Stationary hold after maneuver command ownership ends',
-        ),
-        (
-            'control_cmd_vel_gate_navigation_rotation_settle_s',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_rotation_settle_s', 0.5),
-            'Stationary interval between Nav2 pure rotation and translation',
-        ),
-        (
-            'control_cmd_vel_gate_navigation_translation_epsilon_mps',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_translation_epsilon_mps', 0.01),
-            'Translation epsilon used by command-source arbitration',
-        ),
-        (
-            'control_cmd_vel_gate_navigation_rotation_min_radps',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_navigation_rotation_min_radps', 0.05),
-            'Minimum angular velocity classified as Nav2 pure rotation',
         ),
 
         (

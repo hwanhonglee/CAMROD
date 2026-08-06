@@ -85,7 +85,8 @@
     cost_source_debug_enable: true
     cost_source_debug_max_age_s: 1.0
     cost_source_debug_topics:
-      - "/map/cost_grid/lanelet"
+      # HH_260806 - Match diagnostics to the high-resolution control raster.
+      - "/map/cost_grid/lanelet_safety"
       # Compatibility topic currently contains perception-filtered obstacles only.
       - "/sensing/cost_grid/lidar"
       - "/sensing/cost_grid/radar"
@@ -106,7 +107,9 @@
     # Static lanelet guard
     # =========================================================================
     lanelet_safety_enable: true
-    lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
+    # HH_260806 - The 0.25 m Nav2 grid visibly inflated a 5 cm margin by up to
+    # half a cell. Use the independent 0.05 m local safety raster instead.
+    lanelet_safety_grid_topic: "/map/cost_grid/lanelet_safety"
     lanelet_safety_threshold: 85
     lanelet_safety_current_threshold: 85
     # HH_260806 - Cost 100 inside the measured physical body is a hard stop;
@@ -148,7 +151,9 @@
     # saved trigger direction to remain clear before the same mission resumes.
     route_safety_recovery_enable: true
     # Runtime updates outside [0.1, 30.0] s are rejected.
-    route_safety_recovery_clear_required_s: 1.0
+    # HH_260807 - Map-v17 B2 A/B: 1.0 s recontacted in 0.58 s; 1.5 s
+    # completed the same RPP goal in 3/3 runs after real recovery motion.
+    route_safety_recovery_clear_required_s: 1.5
     # HH_260804 - Permit one automatic clear/release. If the same route is
     # contacted again within 5 s, latch safely instead of crab/release looping.
     route_safety_recovery_max_auto_releases: 1
@@ -185,12 +190,22 @@
     # =========================================================================
     drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"
     drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
+    # HH_260807 - Permit only the bounded charger-exit controller to cross the
+    # off-road service-area boundary; live LiDAR/radar stops remain enabled.
+    drop_zone_maneuver_controller_lanelet_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
     camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
     # HH_260721 - Bypass static lanelet cost during bounded entry-lanelet retrace alignment.
     camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
     # HH_260806 - Campsite areas lie outside road lanelets. Only these explicit
     # phases bypass lanelet geometry; live LiDAR/radar checks remain enabled.
     camping_site_maneuver_controller_lanelet_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
+    # HH_260807 - Reverse and AprilTag docking finish in the mapped charger
+    # service area outside the road lanelet. Keep this exception phase-bounded;
+    # source-specific LiDAR/radar obstacle checks remain active.
+    reverse_parking_controller_status_topic: "/parking/reverse_parking_controller/status"
+    apriltag_parking_controller_status_topic: "/parking/apriltag_parking_controller/status"
+    parking_controller_static_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"
+    parking_controller_lanelet_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"
 
     # =========================================================================
     # Speed-dependent front corridor
@@ -247,7 +262,9 @@
     route_heading_lateral_cmd_epsilon_mps: 0.02
     route_heading_lookahead_m: 2.0
     route_heading_error_enter_deg: 75.0
-    route_heading_error_exit_deg: 35.0
+    # HH_260806 - A gross start alignment must finish before forward motion;
+    # ordinary curve tracking stays with continuous RPP control.
+    route_heading_error_exit_deg: 5.0
     route_heading_angular_kp: 0.8
     route_heading_max_angular_z: 0.35
     route_heading_max_linear_x: 0.0
@@ -256,12 +273,11 @@
     # =========================================================================
     # Output shaping and stale-input behavior
     # =========================================================================
-    speed_scale: 1.0
+    # HH_260806 - Keep standalone control and full bringup on the same 3 km/h
+    # profile: the active raw 1.666667 m/s cruise is halved at the final gate.
+    speed_scale: 0.5
     input_timeout_s: 0.35
     zero_publish_rate_hz: 10.0
-    # HH_260806 - Do not translate until a zero-turn/crab owner has fully
-    # released cmd_vel and Nav2 rotation has remained settled for 0.5 s.
+    # HH_260806 - Hold only when an explicit zero-turn/crab owner releases
+    # cmd_vel. Normal RotationShim/RPP commands remain continuous.
     maneuver_command_release_hold_s: 0.5
-    navigation_rotation_settle_s: 0.5
-    navigation_translation_epsilon_mps: 0.01
-    navigation_rotation_min_radps: 0.05

@@ -115,7 +115,15 @@ public:
         "route_lanelet_filter_fail_open_when_robot_outside", true);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    // HH_260807 - Bind TF subscriptions to this node's executor/context. The
+    // buffer-only listener creates its own spinning node and fails inside the
+    // scoped component container with a null guard-condition context.
+    tf_listener_ =
+        std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this, false);
+    // HH_260807 - TF callbacks are serviced by the owning executor. Queries
+    // below remain non-blocking, so this flag enables Buffer's timeout API
+    // without creating a second executor or blocking standalone operation.
+    tf_buffer_->setUsingDedicatedThread(true);
 
     // HH_260720 - Publish the fused LiDAR cost grid as a generated CAMROD message.
     pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
@@ -415,8 +423,10 @@ private:
     base_origin.point.z = 0.0;
 
     try {
+      // HH_260807 - Never block the component callback group while waiting for
+      // TF. A missing sample is retried on the next 10 Hz grid tick.
       base_in_output = tf_buffer_->transform(base_origin, output_frame_id_,
-                                             tf2::durationFromSec(0.05));
+                                             tf2::durationFromSec(0.0));
       return true;
     } catch (const tf2::TransformException &ex) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -442,7 +452,7 @@ private:
     try {
       tf_out =
           tf_buffer_->lookupTransform(output_frame_id_, cloud_header.frame_id,
-                                      stamp, tf2::durationFromSec(0.05));
+                                      stamp, tf2::durationFromSec(0.0));
       return true;
     } catch (const tf2::TransformException &) {
       // HH_260315-00:00 Fallback to latest TF when exact pointcloud stamp is
@@ -451,7 +461,7 @@ private:
         tf_out = tf_buffer_->lookupTransform(
             output_frame_id_, cloud_header.frame_id,
             rclcpp::Time(0, 0, get_clock()->get_clock_type()),
-            tf2::durationFromSec(0.05));
+            tf2::durationFromSec(0.0));
         return true;
       } catch (const tf2::TransformException &ex_latest) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -481,13 +491,13 @@ private:
 
     try {
       point_out = tf_buffer_->transform(point, output_frame_id_,
-                                        tf2::durationFromSec(0.05));
+                                        tf2::durationFromSec(0.0));
       return true;
     } catch (const tf2::TransformException &) {
       point.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
       try {
         point_out = tf_buffer_->transform(point, output_frame_id_,
-                                          tf2::durationFromSec(0.05));
+                                          tf2::durationFromSec(0.0));
         return true;
       } catch (const tf2::TransformException &ex_latest) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,

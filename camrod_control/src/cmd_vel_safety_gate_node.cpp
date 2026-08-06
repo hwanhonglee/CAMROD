@@ -504,7 +504,7 @@ private:
     route_safety_recovery_config_.enabled = declare_parameter<bool>(
       "route_safety_recovery_enable", true);
     route_safety_recovery_config_.clear_required_s = declare_parameter<double>(
-      "route_safety_recovery_clear_required_s", 1.0);
+      "route_safety_recovery_clear_required_s", 1.5);
     route_safety_recovery_config_.max_automatic_releases = declare_parameter<int>(
       "route_safety_recovery_max_auto_releases", 1);
     route_safety_recovery_config_.rapid_recontact_window_s = declare_parameter<double>(
@@ -558,6 +558,13 @@ private:
         "drop_zone_maneuver_controller_static_bypass_phases",
         "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
       {"exit_straight", "align_exit_yaw"});
+    motion_cost_stop_config_.drop_zone_lanelet_bypass_phases = parseLabelSet(
+      declare_parameter<std::string>(
+        "drop_zone_maneuver_controller_lanelet_bypass_phases",
+        // HH_260807 - The bounded station exit starts outside road lanelets;
+        // dynamic LiDAR/radar checks are still evaluated before publication.
+        "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
+      {"exit_straight", "align_exit_yaw"});
     campsite_status_topic_ = declare_parameter<std::string>(
       "camping_site_maneuver_controller_status_topic",
       "/control/camping_site_maneuver_controller/status");
@@ -576,6 +583,28 @@ private:
         "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"),
       {"align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
         "align_retrace_yaw", "reverse_out", "crab_out"});
+    reverse_parking_status_topic_ = declare_parameter<std::string>(
+      "reverse_parking_controller_status_topic",
+      "/parking/reverse_parking_controller/status");
+    apriltag_parking_status_topic_ = declare_parameter<std::string>(
+      "apriltag_parking_controller_status_topic",
+      "/parking/apriltag_parking_controller/status");
+    motion_cost_stop_config_.parking_static_bypass_phases = parseLabelSet(
+      declare_parameter<std::string>(
+        "parking_controller_static_bypass_phases",
+        "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,"
+        "FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"),
+      {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
+        "final_reverse_insertion", "retry_forward_exit"});
+    motion_cost_stop_config_.parking_lanelet_bypass_phases = parseLabelSet(
+      declare_parameter<std::string>(
+        "parking_controller_lanelet_bypass_phases",
+        // HH_260807 - The parking station is outside road lanelets; only the
+        // selected parking controller may cross that semantic boundary.
+        "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,"
+        "FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"),
+      {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
+        "final_reverse_insertion", "retry_forward_exit"});
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 
@@ -627,16 +656,10 @@ private:
     speed_scale_ = declare_parameter<double>("speed_scale", 1.0);
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
     zero_publish_rate_hz_ = declare_parameter<double>("zero_publish_rate_hz", 10.0);
-    // HH_260806 - Finish rotation/crab ownership before accepting a translating
-    // Nav2 command. This prevents mixed-source motion during phase handoff.
+    // HH_260806 - Finish explicit maneuver ownership before accepting Nav2.
+    // RotationShim/RPP sequencing remains entirely inside the Nav2 owner.
     command_source_arbiter_config_.maneuver_release_hold_s = declare_parameter<double>(
       "maneuver_command_release_hold_s", 0.5);
-    command_source_arbiter_config_.navigation_rotation_settle_s = declare_parameter<double>(
-      "navigation_rotation_settle_s", 0.5);
-    command_source_arbiter_config_.navigation_translation_epsilon_mps =
-      declare_parameter<double>("navigation_translation_epsilon_mps", 0.01);
-    command_source_arbiter_config_.navigation_rotation_min_radps = declare_parameter<double>(
-      "navigation_rotation_min_radps", 0.05);
     command_source_arbiter_.setConfig(command_source_arbiter_config_);
 
     enable_gnss_recovery_hold_ = declare_parameter<bool>("enable_gnss_recovery_hold", true);
@@ -734,6 +757,18 @@ private:
       campsite_status_topic_, 10,
       [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
         campsite_phase_ = phaseFromStatus(message->message);
+        updateManeuverPhases();
+      });
+    reverse_parking_status_subscription_ = create_subscription<avg_msgs::msg::ModuleState>(
+      reverse_parking_status_topic_, 10,
+      [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
+        parking_phase_ = phaseFromStatus(message->message);
+        updateManeuverPhases();
+      });
+    apriltag_parking_status_subscription_ = create_subscription<avg_msgs::msg::ModuleState>(
+      apriltag_parking_status_topic_, 10,
+      [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
+        parking_phase_ = phaseFromStatus(message->message);
         updateManeuverPhases();
       });
 
@@ -848,22 +883,24 @@ private:
   void onCommand(avg_msgs::msg::AvgTwist command, const bool navigation_source)
   {
     const double now_sec = nowSec();
-    const auto source_decision = command_source_arbiter_.evaluate(
-      navigation_source, command.linear.x, command.linear.y, command.angular.z, now_sec);
+    const auto source_decision = command_source_arbiter_.evaluate(navigation_source, now_sec);
     if (source_decision == CommandSourceDecision::kIgnore) {
       // HH_260806 - The active maneuver publishes its own raw command. Do not
       // interleave Nav2 zeros or forward velocity with crab/zero-turn output.
       logCommandSourceHold("Nav2 ignored while maneuver owns cmd_vel", now_sec);
       return;
     }
+    // HH_260806 - A command intentionally held during the finite ownership
+    // handoff is still a fresh input. Refresh the watchdog before publishing
+    // zero so it cannot emit a false stale warning during the handoff.
+    last_input_command_sec_ = now_sec;
+    command_input_stale_ = false;
     if (source_decision == CommandSourceDecision::kHoldZero) {
       publishZero();
       logCommandSourceHold("stationary command-source handoff", now_sec);
       return;
     }
     bool opposite_route_recovery = false;
-    last_input_command_sec_ = now_sec;
-    command_input_stale_ = false;
     refreshMotionCostStopPose();
 
     // HH_260729 - Do not let a zero or changed Nav2 command redefine the route
@@ -901,7 +938,9 @@ private:
       }
     }
 
-    if (!effectiveEnabled(now_sec)) {
+    if (!(opposite_route_recovery ?
+      effectiveEnabledForRouteRecovery(now_sec) : effectiveEnabled(now_sec)))
+    {
       if (publish_zero_when_blocked_) {
         publishZero();
       }
@@ -949,27 +988,50 @@ private:
         publishZero();
       }
       if (route_hold_started) {
-        RCLCPP_WARN(
-          get_logger(),
-          "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f)",
-          cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z);
+        if (cost_decision.lanelet_contact_valid) {
+          RCLCPP_WARN(
+            get_logger(),
+            "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f) "
+            "pose=(x=%.3f,y=%.3f,yaw=%.1fdeg) "
+            "lanelet_hit=(world_x=%.3f,world_y=%.3f,body_x=%.3f,body_y=%.3f,cost=%d)",
+            cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z,
+            cost_decision.lanelet_pose_x, cost_decision.lanelet_pose_y,
+            cost_decision.lanelet_pose_yaw * 180.0 / kPi,
+            cost_decision.lanelet_hit_world_x, cost_decision.lanelet_hit_world_y,
+            cost_decision.lanelet_hit_body_x, cost_decision.lanelet_hit_body_y,
+            cost_decision.lanelet_hit_cost);
+        } else {
+          RCLCPP_WARN(
+            get_logger(),
+            "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f)",
+            cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z);
+        }
       }
       logMotionCostStopDecision(cost_decision, now_sec);
       return;
+    }
+    if (opposite_route_recovery) {
+      // HH_260807 - Automatic release requires evidence that this projected,
+      // obstacle-checked recovery command reached the final gate. Coasting
+      // after the initial zero command is not recovery evidence.
+      route_safety_recovery_.observeRecoveryMotion();
     }
     publishCommand(scaleCommand(command));
   }
 
   void updateManeuverPhases()
   {
-    motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+    motion_cost_stop_.setManeuverPhases(
+      drop_zone_phase_, campsite_phase_, parking_phase_);
     const double now_sec = nowSec();
     const auto transition = command_source_arbiter_.setManeuverPhases(
-      drop_zone_phase_, campsite_phase_, now_sec);
-    if (transition.campsite_started) {
-      // HH_260806 - A Nav2 lanelet hold describes the road approach, not the
-      // explicit off-lane campsite motion that now owns control. Clear only
-      // that route/transient hold; live obstacle latches remain fail-closed.
+      drop_zone_phase_, campsite_phase_, parking_phase_, now_sec);
+    if (transition.drop_zone_started || transition.campsite_started ||
+      transition.parking_started)
+    {
+      // HH_260807 - A Nav2 lanelet hold describes the road approach, not an
+      // explicit off-lane campsite/charger motion that now owns control. Clear
+      // only that route/transient hold; live obstacle latches remain fail-closed.
       route_safety_recovery_.reset();
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
       route_safety_triggered_by_navigation_ = false;
@@ -977,10 +1039,14 @@ private:
       motion_cost_stop_.clearTransientHold();
       last_route_safety_log_sec_ = -1.0e9;
       publishZero();
+      const char * owner = transition.drop_zone_started ? "drop_zone" :
+        transition.campsite_started ? "campsite" : "parking";
+      const std::string & owner_phase = transition.drop_zone_started ? drop_zone_phase_ :
+        transition.campsite_started ? campsite_phase_ : parking_phase_;
       RCLCPP_INFO(
         get_logger(),
-        "campsite maneuver took cmd_vel ownership: phase=%s; prior Nav2 route hold cleared",
-        campsite_phase_.c_str());
+        "%s maneuver took cmd_vel ownership: phase=%s; prior Nav2 route hold cleared",
+        owner, owner_phase.c_str());
     } else if (transition.maneuver_finished) {
       publishZero();
       RCLCPP_INFO(
@@ -1074,7 +1140,7 @@ private:
     charging_mission_override_.setCharging(message->is_charging);
     gate_policy_.setEstopSource(platform_status_topic_, message->estop);
     publishState();
-    if (!effectiveEnabled(nowSec()) && publish_zero_when_blocked_) {
+    if (!effectiveEnabledConsideringRouteRecovery(nowSec()) && publish_zero_when_blocked_) {
       publishZero();
     }
   }
@@ -1123,7 +1189,7 @@ private:
   {
     publishState();
     const double now_sec = nowSec();
-    if (!effectiveEnabled(now_sec) && publish_zero_when_blocked_) {
+    if (!effectiveEnabledConsideringRouteRecovery(now_sec) && publish_zero_when_blocked_) {
       publishZero();
     }
     // HH_260721 - Log authorization only when its effective reason set changes.
@@ -1142,6 +1208,32 @@ private:
     updatePolicyCostState();
     return gate_policy_.enabled(
       now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
+  }
+
+  bool effectiveEnabledForRouteRecovery(const double now_sec)
+  {
+    updatePolicyCostState();
+    const auto reasons = gate_policy_.blockReasons(
+      now_sec, charging_mission_override_.charging(),
+      charging_mission_override_.isActive(now_sec));
+    // HH_260807 - The route violation itself starts a short generic cost hold.
+    // A separately projected recovery candidate may ignore only that reason;
+    // every platform, E-stop, charging, battery, GNSS and dynamic-latch reason
+    // remains authoritative and the command is cost-evaluated again below.
+    return std::all_of(
+      reasons.begin(), reasons.end(), [](const std::string & reason) {
+        return reason.rfind("cost_hold=", 0U) == 0U;
+      });
+  }
+
+  bool effectiveEnabledConsideringRouteRecovery(const double now_sec)
+  {
+    if (route_safety_recovery_.active() && route_safety_triggered_by_navigation_ &&
+      !route_safety_recovery_.automaticReleaseBlocked())
+    {
+      return effectiveEnabledForRouteRecovery(now_sec);
+    }
+    return effectiveEnabled(now_sec);
   }
 
   std::vector<std::string> currentBlockReasons(const double now_sec)
@@ -1208,6 +1300,8 @@ private:
       " charging=" + std::string(charging_mission_override_.charging() ? "true" : "false") +
       " battery=" + batteryText() +
       " route_clear_s=" + fixed(route_safety_recovery_.clearElapsed(now_sec), 2) +
+      " recovery_motion_observed=" +
+      std::string(route_safety_recovery_.recoveryMotionObserved() ? "true" : "false") +
       " recovery_candidate=" + routeRecoveryCandidateName(recovery_candidate.kind) +
       " recovery_reason=" + recovery_candidate.reason;
     status.operating_state = operating_state;
@@ -1450,6 +1544,8 @@ private:
         MotionCostStop::normalizeLabel(drop_zone_phase_)) > 0U ||
       motion_cost_stop_config_.campsite_static_bypass_phases.count(
         MotionCostStop::normalizeLabel(campsite_phase_)) > 0U ||
+      motion_cost_stop_config_.parking_static_bypass_phases.count(
+        MotionCostStop::normalizeLabel(parking_phase_)) > 0U ||
       std::abs(command.linear.y) > route_heading_lateral_cmd_epsilon_mps_ ||
       command.linear.x < -route_heading_min_cmd_x_mps_)
     {
@@ -1996,6 +2092,8 @@ private:
   std::string platform_status_topic_;
   std::string drop_zone_status_topic_;
   std::string campsite_status_topic_;
+  std::string reverse_parking_status_topic_;
+  std::string apriltag_parking_status_topic_;
   std::string cost_grid_topic_;
   std::string lanelet_grid_topic_;
   std::string pose_topic_;
@@ -2012,6 +2110,7 @@ private:
   std::string lanelet_grid_frame_;
   std::string drop_zone_phase_;
   std::string campsite_phase_;
+  std::string parking_phase_;
   std::string radar_obstacle_evidence_topic_;
   std::string radar_obstacle_evidence_;
   std::string radar_trigger_evidence_;
@@ -2107,6 +2206,10 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr platform_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr drop_zone_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr campsite_status_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
+    reverse_parking_status_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
+    apriltag_parking_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dr_timeout_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr
     localization_mode_subscription_;
