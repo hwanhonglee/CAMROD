@@ -148,6 +148,10 @@ The UI backend now preserves `DEPARTING_CHARGER` while a station exit is active,
 even if delayed CAN feedback still reports charger contact. Duplicate
 destination frames during that pending exit are idempotent. B2 and B3 both
 departed from simulated charging without a second motion owner or state reset.
+The extended soak runner also scopes synthetic charging assertion to the
+current cycle's post-RETURN `WAIT_FOR_CHARGING` status. A late parking status
+from the completed cycle can no longer reassert charging during the next
+charger departure and create a validation-only state oscillation.
 
 ![B2 boundary repeatability](assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 

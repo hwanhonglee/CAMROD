@@ -807,6 +807,10 @@ CAMROD 구현·검증 완료 기록
   무시한다. UI 회귀 30건과 3회 service soak가 통과했다.
 - JSON/log/PNG/GIF와 재현 명령은
   `docs/assets/test_result/v2-1-5-service-validation-20260807/`에 보존했다.
+- 후속 10-cycle 검증에서 이전 cycle의 늦은 `WAIT_FOR_CHARGING` status가 다음
+  출발 중 fake charging을 다시 켜는 검증 러너 경합을 재현했다. 현재 cycle이
+  RETURN을 발행했고 최신 parking status가 `WAIT_FOR_CHARGING`일 때만 synthetic
+  charging을 켜도록 제한했으며 bringup CTest 20/20으로 guard를 고정했다.
 
 30. HH_260807: optional LiDAR component와 지속 장애물 no-path 안전성
     [DONE-CODE, DONE-SIM, FIELD-PENDING]
