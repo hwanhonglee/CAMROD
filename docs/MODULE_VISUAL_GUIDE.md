@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Index current generated diagrams and historical runtime screens
 separately, including scoped runtime and the unverified GNSS center contract. -->
+<!-- HH_260806 - Index the fresh body-hard-stop versus planning-margin
+simulation and retain its provisional-geometry field caveat. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -42,6 +44,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
 | `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
+| `camrod_control` / `camrod_planning` | `test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png` | Five organized raw JSON records plus consolidated result | Fresh current-map normal route, margin stop/crab, and physical no-motion policy pass; field envelope pending |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
 | `camrod_map` | `lanelet-map-and-cost-grids.png` | Map/grid YAML | Route/planning grid values match source; service access missing |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML + rear-container ownership | LiDAR sim path available; physical YOLO/fusion/tag pending |
@@ -98,6 +101,9 @@ the concise raw excerpt are in
 | Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
 | Control | v2.1.4 release-map route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
 | Control | v2.1.4 release-map one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
+| Control/planning | Current-map normal route | `10.0403 m`; goal error `0.2932 m`; no route hold | Controlled route only; no campsite round trip |
+| Control | Current-map margin-only contact | ordinary output `0.0 m/s`; `CRAB_RIGHT` `0.133 m` at max `0.05 m/s` | Body stayed clear; simulation only |
+| Control | Current-map physical-body contact | candidate none; owner motion false; recovery output `0.0 m/s` | Provisional dimensions remain field-pending |
 | UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, state 16, and B6 keypad verification observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
@@ -131,8 +137,12 @@ the concise raw excerpt are in
 |---|---|
 | ![Live boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Live retry latch terminal](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
 
+![Fresh two-layer boundary simulation](assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
 | Contact geometry | Allowed action |
 |---|---|
+| Physical body touches cost 100/unknown | Hard stop with `lanelet_physical_body_cost`; no automatic candidate |
+| Only the outer 5 cm planning margin touches | Ordinary command remains zero; continue only with a separately projected bounded candidate |
 | Exactly one lateral candidate clear | Pure crab away from contact |
 | Lateral candidates blocked and reverse clear | Reverse to create room |
 | Reverse active; one yaw arc clear | Switch to that projected reverse-yaw arc |
@@ -157,6 +167,12 @@ predates this staged policy and remains historical. The map-v15 PNG/GIF
 exercises the current owner dynamically on release SHA `e0b50f...e36d`, not on
 the active current-site SHA `d7b730...213f`; both retry routes ended in the
 fail-closed latch. Physical validation remains pending.
+
+The fresh current-site run uses SHA `d7b730...213f`. It completed the
+controlled `10.0403 m` route without a hold, recovered the `+0.19 m`
+margin-only placement with `CRAB_RIGHT`, and retained a motionless hold at the
+`+0.27 m` physical-body placement. This validates policy separation only; it
+does not validate the provisional body dimensions.
 
 ## Mission State Interpretation
 
@@ -229,6 +245,8 @@ camrod_bringup/scripts/field_test_tool.sh record-recovery
 ```
 
 Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
-commit, duration, and pass criteria. Until surveyed service access permits the
-full `1.59160 x 1.17000 m` planning rectangle, the contract animation must stay
-paired with the red `ROUND TRIP: NOT DEMONSTRATED` image.
+commit, duration, and pass criteria. The current `1.39160 x 0.97000 m`
+planning rectangle is a provisional remeasurement candidate, not a field-pass
+dimension. Until the complete robot envelope is surveyed and the service route
+is demonstrated, the contract animation must stay paired with the red
+`ROUND TRIP: NOT DEMONSTRATED` image.

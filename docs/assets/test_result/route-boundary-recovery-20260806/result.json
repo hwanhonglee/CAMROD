@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "experiment_id": "route-boundary-recovery-20260806",
+  "recorded_date": "2026-08-06",
+  "scope": "AMD64 simulation diagnosis of lanelet margin recovery and physical-body clearance",
+  "not_in_scope": [
+    "real robot motion",
+    "campsite CRAB_IN mission transition",
+    "Jetson performance"
+  ],
+  "environment": {
+    "architecture": "amd64",
+    "mode": "simulation",
+    "sensor_source": "fake_sensor_publisher",
+    "active_map_path": "lanelet2_maps.osm",
+    "active_map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f",
+    "lanelet_grid": {
+      "width_cells": 960,
+      "height_cells": 960,
+      "resolution_m": 0.25,
+      "origin_x_m": -109.2942924382,
+      "origin_y_m": -80.8907690812,
+      "stop_cost": 100
+    }
+  },
+  "footprints": {
+    "physical_body_m": {
+      "front": 0.75837,
+      "rear": 0.73323,
+      "left": 0.53505,
+      "right": 0.53495,
+      "total_length": 1.4916,
+      "total_width": 1.07
+    },
+    "planning_m": {
+      "front": 0.80837,
+      "rear": 0.78323,
+      "left": 0.58505,
+      "right": 0.58495,
+      "total_length": 1.5916,
+      "total_width": 1.17
+    },
+    "margin_per_side_m": 0.05
+  },
+  "initial_margin_contact": {
+    "pose": {
+      "x_m": 10.4413740665,
+      "y_m": 35.6536589995,
+      "yaw_deg": -93.4088
+    },
+    "planning_perimeter_cost_100_points": 2,
+    "physical_perimeter_cost_100": false,
+    "physical_perimeter_max_cost": 98,
+    "center_to_cost_100_left_m": 0.77,
+    "center_to_cost_100_right_m": 0.74
+  },
+  "ten_release_diagnostic": {
+    "temporary_max_auto_releases": 10,
+    "start_pose": {
+      "x_m": 10.6149387956,
+      "y_m": 38.9325754987,
+      "yaw_deg": -93.47
+    },
+    "displacement_before_repeated_contact_m_approx": 3.2,
+    "repeated_contact_y_m_approx": 35.65,
+    "route_contacts_after_reengage": 10,
+    "final_gate_state": "ROUTE_SAFETY_HOLD",
+    "candidate_sample_counts": {
+      "none": 1538,
+      "reverse": 169,
+      "reverse_yaw_left": 26,
+      "crab": 0
+    },
+    "command_samples": {
+      "nonzero": 489,
+      "total": 2681
+    },
+    "verdict": "Retry count alone repeats reverse/re-entry and does not find a new escape direction."
+  },
+  "offline_body_safe_search": {
+    "translation_step_m": 0.1,
+    "yaw_step_deg": 2.0,
+    "target_local_path_index_13": {
+      "distance_ahead_m_approx": 2.6,
+      "path_found": true,
+      "step_count": 25,
+      "action_sequence": [
+        "F10",
+        "FL2",
+        "F4",
+        "FR2",
+        "CR1",
+        "FR2",
+        "F4"
+      ],
+      "end_pose": {
+        "x_m_approx": 10.206,
+        "y_m_approx": 33.266,
+        "yaw_deg_approx": -97.4
+      }
+    },
+    "target_local_path_index_31": {
+      "distance_ahead_m_approx": 6.0,
+      "path_found": false,
+      "expanded_states": 10134,
+      "reachable_states": 4133
+    }
+  },
+  "body_only_diagnostic": {
+    "temporary_lanelet_safety_footprint_enable": false,
+    "start_pose": {
+      "x_m": 10.4413740665,
+      "y_m": 35.6536589995
+    },
+    "end_pose": {
+      "x_m": 10.166019,
+      "y_m": 23.544544
+    },
+    "enabled_drive_displacement_m": 12.112245,
+    "pose_samples": 1582,
+    "physical_body_cost_100_samples": 262,
+    "planning_margin_cost_100_samples": 1574,
+    "first_physical_body_contact": {
+      "x_m": 10.2574289051,
+      "y_m": 33.6676300655
+    },
+    "last_physical_body_contact": {
+      "x_m": 9.8755159255,
+      "y_m": 29.6184184921
+    },
+    "verdict": "The first margin stop is passable, but the downstream physical body intersects lanelet cost 100."
+  },
+  "campsite_crab_contract": {
+    "site_entry_mode": "crab",
+    "crab_speed_mps": 0.24,
+    "route_goal_reached_distance_m": 0.3,
+    "manual_pose_relocation_triggers_crab": false,
+    "required_planning_states": [
+      "GOAL_REACHED:DELIVERY_TO_SITE",
+      "GOAL_REACHED:RECALL_TO_SITE"
+    ],
+    "required_mission_key_prefix": "camping_site_"
+  },
+  "restored_runtime": {
+    "lanelet_safety_footprint_enable": true,
+    "route_safety_recovery_max_auto_releases": 1,
+    "manual_engage": false,
+    "mission_engage": false,
+    "gate_state": "STANDBY"
+  },
+  "raw_bags_committed": false,
+  "raw_bags": [
+    {
+      "path": "/tmp/camrod_route_recovery_live_20260806_run2",
+      "db3_sha256": "d85ca74c55dceafe1b69db1116c0d5d32ff3e2cbb5f79d71494d87eaa4dd2a92"
+    },
+    {
+      "path": "/tmp/camrod_lanelet_snapshot_20260806",
+      "db3_sha256": "43d74c40f5d2a9a05367003a8817a508a3add05e0ab1e10cda97eb8c74021fd5"
+    },
+    {
+      "path": "/tmp/camrod_body_only_drive_test_20260806",
+      "db3_sha256": "9b8470ad5e079631d1ebb55f4b57bb907d86f4cb52ead76e71099c8e0f340474"
+    }
+  ],
+  "figures": [
+    "01-margin-contact-analysis.png",
+    "02-ten-release-retry-timeline.png",
+    "03-body-only-drive-trajectory.png"
+  ]
+}

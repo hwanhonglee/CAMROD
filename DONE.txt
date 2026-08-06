@@ -1,6 +1,6 @@
 CAMROD 구현·검증 완료 기록
 작업 기준 버전: v2.1.5
-정리일: 2026-08-05 (Asia/Seoul)
+정리일: 2026-08-06 (Asia/Seoul)
 
 # HH_260730 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
@@ -20,9 +20,10 @@ CAMROD 구현·검증 완료 기록
 - v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, Chromium 운영 창,
   transport, planner fallback 및 optional component 구현도 CODE/SIM 기준이며 Jetson/실차
   FIELD-PASS로 해석하지 않는다.
-- v2.1.5의 scoped checker/Nav2 runtime, 물리 LiDAR 한정 DDS-SHM 및 GNSS 중앙
-  가정도 CODE/SIM 기준이다. 안테나 실측과 Jetson 반복 수명 시험 전에는
-  FIELD-PASS로 해석하지 않는다.
+- v2.1.5의 scoped checker/Nav2 runtime, 물리 LiDAR 한정 DDS-SHM, GNSS 중앙
+  가정, 임시 축소 경계와 두 겹 body/margin 정책도 CODE/SIM 기준이다.
+  안테나·전체 외곽 실측과 Jetson 반복 수명 시험 전에는 FIELD-PASS로
+  해석하지 않는다.
 
 릴리스 기준점
 - branch/tag: develop / v2.1.5
@@ -44,6 +45,33 @@ CAMROD 구현·검증 완료 기록
   - b0e10814 feat(platform): publish steering transition evidence
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
+
+0A. v2.1.5 임시 경계와 body/margin 정책 [DONE-CODE, DONE-SIM]
+- HH_260806 - 기존 body `1.49160 x 1.07000 m`에서 앞/뒤/좌/우를 각각
+  `0.10 m` 줄인 임시 후보 `1.29160 x 0.87000 m`를 source, package config,
+  bringup mirror, Nav2 footprint, safety-gate fallback에 동기화했다. planning
+  margin은 사방 `0.05 m`, 최종 polygon은 `1.39160 x 0.97000 m`다.
+- 수정 전 physical-body cost-100 위치를 재현하자 planning polygon만 검사해
+  recovery output `0.05 m/s`, 이동 `0.0652 m`가 발생했다. body polygon을
+  planning margin보다 먼저 검사하고 `lanelet_physical_body_cost`일 때 모든
+  crab/reverse/reverse-yaw 후보를 거부하도록 수정했다.
+- fresh AMD64 full-bringup map-v15 검증:
+  1) 정상 route `10.0403 m`, goal error `0.2932 m`, route hold 없음, final zero.
+  2) margin-only +0.19 m에서 body max 70/planning max 100, 일반 0.10 m/s
+     입력의 final output 0.0 m/s.
+  3) 같은 margin 위치 자동 복구는 `CRAB_RIGHT`, `0.133 m`, 최대 0.05 m/s,
+     해제 시 body/planning max 70, final zero.
+  4) physical-body +0.27 m에서 body/planning max 100, candidate none,
+     owner motion false, recovery output 0.0 m/s, hold 유지.
+- 저장소 표준 `./src/colcon_build.sh`로 control, bringup, planning,
+  sensor-kit, platform 5개 영향 패키지를 최종 증분 빌드했다. 이어서 control
+  2개, planning 10개, bringup 18개, platform 2개 CTest target이 모두
+  통과했다. xUnit 통합 레코드는 334건, error/failure 0, 알려진 cppcheck
+  2.7 비활성 skip 8건이며 sensor-kit에는 등록된 test target이 없다.
+- 원본 JSON, 통합 JSON, old/new replay와 결과 PNG는
+  `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 보존했다.
+  실제 휠·센서·브래킷·케이블·payload가 후보 경계 안에 있다는 의미는 아니며
+  외곽 실측과 실차 반복 시험은 TODOLIST P0에 남겼다.
 
 0. v2.1.5 최종 optional runtime·경계 복구 확인 [DONE-CODE, DONE-SIM]
 - HH_260805 - LiDAR cost-grid는 운영 기본 `false`다. 실제 full sim에서

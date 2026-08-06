@@ -2,8 +2,10 @@
 
 <!-- HH_260805 - Release the scoped runtime remediation and align the
 unverified GNSS position contract with robot_center_link. -->
+<!-- HH_260806 - Add the provisional boundary reduction and enforce an
+unrecoverable physical-body contact independently of the planning margin. -->
 
-Release date: 2026-08-05 (Asia/Seoul)
+Release date: 2026-08-06 (Asia/Seoul)
 
 Previous baseline: `v2.1.4` / `f83975d5e`
 
@@ -13,11 +15,14 @@ v2.1.5 closes the post-v2.1.4 runtime work as one reviewable baseline. It
 eliminates the reproduced AMD64 checker/Nav2 component shutdown faults,
 prevents full-graph DDS shared-memory exhaustion by scoping SHM to physical
 LiDAR only, and makes the existing GNSS estimator assumption explicit at
-`robot_center_link`.
+`robot_center_link`. It also records a provisional 0.10 m reduction on every
+horizontal body side and separates physical-body contact from recoverable
+planning-margin contact in the final command gate.
 
-This release does not claim a newly surveyed antenna or sensor layout. The
-GNSS center value remains unverified, all other sensor coordinates are
-unchanged, and Jetson/physical mission acceptance remains in `TODOLIST.txt`.
+This release does not claim a newly surveyed antenna, sensor layout, or body
+envelope. GNSS remains unverified, sensor mount coordinates are unchanged, and
+the reduced body dimensions are a simulation candidate only. Jetson/physical
+mission acceptance remains in `TODOLIST.txt`.
 
 ## Active Contract
 
@@ -26,6 +31,10 @@ unchanged, and Jetson/physical mission acceptance remains in `TODOLIST.txt`.
 | Navigation base | `robot_center_link` | Axle midpoint for localization, planning, control, and platform |
 | GNSS TF/position assumption | `(0, 0, 0)` from robot center | Matches the estimator's direct NavSatFix-to-center use; not a survey |
 | GNSS verification | `pose_verified=false` | Requires both dual-GNSS mounts and receiver reference measurement |
+| Provisional physical body | `1.29160 x 0.87000 m` | Previous front/rear/left/right extents minus `0.10 m`; field survey required |
+| Planning boundary | `1.39160 x 0.97000 m` | Physical body plus `0.05 m` on every side |
+| Physical-body map contact | `lanelet_physical_body_cost` | Hard stop; every automatic recovery candidate is rejected |
+| Planning-margin contact | `lanelet_footprint_cost` | Ordinary output zero; projected bounded escape may be admitted |
 | Checker topology | `24` checkers in `4` serialized containers | Standalone executables remain field fallbacks |
 | System core | `4` nodes in one serialized container | Aggregate/status fault domain |
 | Nav2 topology | planner/controller container | Smoother, behavior, BT, and lifecycle servers remain standalone |
@@ -33,6 +42,37 @@ unchanged, and Jetson/physical mission acceptance remains in `TODOLIST.txt`.
 | DDS shared memory | default `OFF`, physical LiDAR only | Never exported to simulation or the full ROS graph |
 | Operator renderer | Chromium | WebKit remains the measured lighter fallback |
 | Active map | version `15`, SHA `d7b730...213f` | User-authored active/copy OSM pair remains byte-identical |
+
+## Provisional Boundary And Runtime Policy
+
+The prior body was `1.49160 x 1.07000 m`; the prior planning rectangle was
+`1.59160 x 1.17000 m`. v2.1.5 preserves those values and their bag hashes in
+the test record, while deploying the user's provisional candidate below:
+
+| Side | Body extent | Planning extent |
+|---|---:|---:|
+| Front | `0.65837 m` | `0.70837 m` |
+| Rear | `0.63323 m` | `0.68323 m` |
+| Left | `0.43505 m` | `0.48505 m` |
+| Right | `0.43495 m` | `0.48495 m` |
+
+An initial physical-contact simulation exposed that the gate sampled only the
+larger planning polygon: it issued `0.05 m/s` recovery and moved `0.0652 m`
+while the body was already on map cost 100. The corrected gate samples the
+body first. Only margin-only contact can reach the projected crab/reverse/yaw
+selector; body contact has no automatic escape path.
+
+![Fresh boundary-policy simulation](assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
+| Fresh map-v15 scenario | Measured result |
+|---|---|
+| Normal route | PASS: `10.0403 m`, goal error `0.2932 m`, no route hold |
+| Margin ordinary command | PASS: body max `70`, planning max `100`, output `0.0 m/s` |
+| Margin recovery | PASS: `CRAB_RIGHT`, `0.133 m`, max `0.05 m/s` |
+| Physical-body contact | PASS: no candidate, no owner motion, output `0.0 m/s` |
+
+These are AMD64 simulation policy results, not evidence that the reduced
+rectangle contains the real wheels, sensors, brackets, cables, or payload.
 
 ## GNSS Center Alignment
 
@@ -60,11 +100,12 @@ v2.1.5 changes only the GNSS assumption:
 
 ![GNSS center assumption and sensor X ledger](assets/module-guides/sensor-kit/sensor-x-before-after.png)
 
-IMU, LiDAR, camera, radar, body, axle, footprint, controller, map, and parking
-coordinates are unchanged. If field measurement shows the GNSS position
-solution is not the robot center, the correction must be implemented in
-localization together with TF; changing only the visualization frame is not
-accepted.
+The GNSS alignment itself leaves IMU, LiDAR, camera, radar, axle, controller,
+map, and parking coordinates unchanged. The body and planning rectangles are
+changed separately by the provisional boundary work above. If field
+measurement shows the GNSS position solution is not the robot center, the
+correction must be implemented in localization together with TF; changing
+only the visualization frame is not accepted.
 
 ## Runtime And Shutdown
 
@@ -162,6 +203,13 @@ samples.
   and `[SYSTEM] OK`, returned top-level exit `0`, and stopped all six containers
   cleanly. Startup-only map/costmap WARN/ERROR states resolved to OK; they did
   not remain latched.
+- A fresh full-bringup map-v15 run after the body-guard correction reached
+  `[SYSTEM] OK`; normal route, margin stop, margin `CRAB_RIGHT`, and physical
+  hard-stop scenarios all passed with final zero output.
+- The repository-standard `./src/colcon_build.sh` rebuilt control, bringup,
+  planning, sensor-kit, and platform. Fresh tests passed all `32/32` CTest
+  targets; aggregate xUnit records were `334`, with zero errors/failures and
+  eight planning cppcheck skips caused by the known disabled 2.7 checker.
 - Exact machine-readable build and run results are recorded in
   [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json)
   and summarized in `DONE.txt`.
@@ -174,7 +222,10 @@ samples.
    correction before setting `pose_verified=true`.
 3. Run Jetson production topology versus standalone resource A/B and ten clean
    mission/cancel/restart cycles.
-4. Complete rear-camera rate, seven-channel radar, GNSS reacquisition, IMU
+4. Measure the complete body/wheel/sensor/bracket/cable/payload envelope before
+   accepting the provisional boundary, then repeat the margin and body-contact
+   tests on the physical robot.
+5. Complete rear-camera rate, seven-channel radar, GNSS reacquisition, IMU
    startup, wheel response, parking/docking, charging, and full-route field tests.
 
 Exact procedures and pass/fail thresholds remain in [`TODOLIST.txt`](../TODOLIST.txt).

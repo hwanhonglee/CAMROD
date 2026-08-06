@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Document adaptive reverse/yaw/crab recovery while preserving
 the measured-body stop and historical translation-only evidence labels. -->
+<!-- HH_260806 - Separate the provisional physical-body hard stop from the
+recoverable 5 cm planning margin and publish fresh map-v15 simulation results. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -24,7 +26,7 @@ recovery candidates, and published an all-zero final command.
 |---|---|---|
 | Nav2 command, local maneuver commands, parking, and recovery | Selects one raw command owner | `/control/cmd_vel_raw` |
 | SOC, CAN, localization, LiDAR/radar/map costs | Applies the final motion authorization policy | `/control/cmd_vel`, `/control/cmd_vel_ros` |
-| Complete robot footprint and projected candidates | Stops at map contact and permits only bounded escape | Gate/candidate/controller status |
+| Physical body, planning margin, and projected candidates | Hard-stops body contact; permits only bounded margin escape | Gate/candidate/controller status |
 
 ## Active Safety Values
 
@@ -33,9 +35,11 @@ recovery candidates, and published an all-zero final command.
 | New campsite mission | `SOC >= 35%` | Departure admitted |
 | Critical battery | `SOC <= 20%` | Hard command stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
-| Planning footprint | front/rear `0.80837/0.78323 m` | X extents including `0.05 m` margin |
-| Planning footprint | left/right `0.58505/0.58495 m` | Y extents including `0.05 m` margin |
-| Full-footprint stop | cost `100` or unknown | `ROUTE_SAFETY_HOLD` |
+| Physical body | front/rear `0.65837/0.63323 m` | Cost 100/unknown is `lanelet_physical_body_cost`; no automatic motion |
+| Physical body | left/right `0.43505/0.43495 m` | Independent hard-stop rectangle |
+| Planning footprint | front/rear `0.70837/0.68323 m` | Body plus `0.05 m` X margin |
+| Planning footprint | left/right `0.48505/0.48495 m` | Body plus `0.05 m` Y margin |
+| Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
 | Route-clear proof | `1.0 s` | Releases retained route hold |
@@ -120,6 +124,25 @@ surface while the internal controller remains `PARKED`.
 
 ![Map-v14 reverse, retry latch, and crab recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery.gif)
 
+<!-- HH_260806 - Link the current-map live retry and physical-clearance diagnosis. -->
+### Current-map live diagnosis (2026-08-06)
+
+| Margin-only first stop | Ten-release behavior | Body-only diagnostic |
+|---|---|---|
+| ![Margin contact](../docs/assets/test_result/route-boundary-recovery-20260806/01-margin-contact-analysis.png) | ![Ten-release timeline](../docs/assets/test_result/route-boundary-recovery-20260806/02-ten-release-retry-timeline.png) | ![Body contact segment](../docs/assets/test_result/route-boundary-recovery-20260806/03-body-only-drive-trajectory.png) |
+
+The [full test record](../docs/assets/test_result/route-boundary-recovery-20260806/README.md)
+uses the previous `1.49160 x 1.07000 m` body and separates a margin-only first
+stop from a downstream physical-body map contact. Raising the release limit
+from `1` to `10` repeated the same reverse/re-entry behavior and selected no
+crab, so retry count alone is not a valid fix. The
+[boundary adjustment replay](../docs/assets/test_result/robot-boundary-adjustment-20260806/README.md)
+preserves that replay and adds fresh full-bringup tests of the final two-layer
+policy. These controlled route tests do not replace the separate campsite
+`GOAL_REACHED -> CRAB_IN` mission validation.
+
+![Fresh physical-body and planning-margin policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+
 | Simulation case | Measured result | Verdict |
 |---|---:|---|
 | One lateral side clear | Crab displacement `0.3375 m`; output `<= 0.05 m/s` | Hold released; mission not complete |
@@ -132,6 +155,10 @@ surface while the internal controller remains `PARKED`.
 | Map-v15 route probe | `REVERSE_YAW_RIGHT`, recovery `0.0582 m`, max yaw `0.05 rad/s`, recontact `0.335 s` | Retry latched; final Twist all zero |
 | Map-v15 static probe | `REVERSE_YAW_RIGHT`, recovery `0.0405 m`, max yaw `0.05 rad/s`, recontact `0.400 s` | Retry latched; final Twist all zero |
 | Map-v15 one-side probe | `CRAB_LEFT`, `0.3378 m`, max lateral `0.05 m/s` | First hold released without recontact; mission incomplete |
+| Current-map normal route after boundary change | `10.0403 m`, goal error `0.2932 m`, no route hold | Controlled route completed; final Twist zero |
+| Current-map margin-only contact | body max `70`, planning max `100`; ordinary output `0.0 m/s` | Hold enforced without body contact |
+| Current-map margin recovery | `CRAB_RIGHT`, `0.133 m`, max lateral `0.05 m/s` | Both envelopes clear at release; final Twist zero |
+| Current-map physical-body contact | body max `100`; owner motion false; recovery output `0.0 m/s` | Hold retained; no automatic escape |
 
 The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
 PNG/GIF is a v2.1.4 release-map full-simulation run of the active selector; its
@@ -151,7 +178,8 @@ release is permitted; same-route recontact within 5 seconds latches zero output
 until stop/replan/re-engage. The staged selector and swept projection are unit
 validated and were exercised dynamically on the release map-v15 geometry. Both
 route retry cases remained fail-closed rather than completing a mission;
-physical recovery remains pending.
+physical-robot recovery remains pending. The current AMD64 result additionally
+proves that a physical-body cost-100 contact is not a recoverable state.
 
 ## Configuration
 

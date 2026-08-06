@@ -1,7 +1,7 @@
 # camrod_sensor_kit
 
-<!-- HH_260805 - Keep the useful physical side view and distinguish the
-unverified GNSS center assumption from measured sensor mounts. -->
+<!-- HH_260806 - Distinguish the provisional reduced collision boundary from
+the archived surveyed envelope and unchanged sensor mount coordinates. -->
 
 Canonical robot geometry, URDF/xacro, static sensor TF, and the RobotParams
 library shared by localization, planning, control, platform, and diagnostics.
@@ -20,7 +20,7 @@ regenerated from the current v2.1.5 config, including centered `gnss_link`.
 
 | Uses | Function | Main outputs |
 |---|---|---|
-| `robot_params.yaml` | Single source for measured body, wheelbase, margin, and sensor mounts | RobotParams API and xacro properties |
+| `robot_params.yaml` | Single source for provisional body, wheelbase, margin, and sensor mounts | RobotParams API and xacro properties |
 | URDF/xacro + `robot_state_publisher` | Publishes body, axle, wheel, and sensor frame tree | `/robot_description`, `/tf_static` |
 | Axle-midpoint reference | Keeps Dual-Ackermann, crab, zero-turn, EKF, and footprint geometry consistent | `robot_center_link` |
 
@@ -32,7 +32,7 @@ regenerated from the current v2.1.5 config, including centered `gnss_link`.
 | Coordinate conversion | rear-axle X | non-GNSS mounts use `current X = previous X - 0.443 m` |
 | GNSS position reference | converted placeholder `-0.443 m` | temporary robot-center assumption `0.000 m` |
 | Compatibility | primary frame | fixed child retained at rear axle |
-| Physical mounts/body | unchanged | unchanged |
+| Physical mounts | unchanged | unchanged; collision boundary is a separate provisional candidate |
 
 `robot_base_link` remains available for compatibility. It is no longer the
 navigation/control reference.
@@ -43,11 +43,23 @@ navigation/control reference.
 |---|---:|
 | Wheelbase | `0.886 m` |
 | Rear axle to center | `0.443 m` |
-| Measured body | `1.49160 x 1.07000 x 1.09463 m` |
-| Body extents from center | front `0.75837`, rear `0.73323`, left `0.53505`, right `0.53495 m` |
+| Provisional body boundary | `1.29160 x 0.87000 x 1.09463 m` |
+| Body extents from center | front `0.65837`, rear `0.63323`, left `0.43505`, right `0.43495 m` |
 | Planning margin | front/rear/left/right `0.05 m` |
-| Planning rectangle | `1.59160 x 1.17000 m` |
+| Planning rectangle | `1.39160 x 0.97000 m` |
 | Wheel radius | `0.15275 m` |
+
+The previous `1.49160 x 1.07000 m` envelope and the exact old/new conversion
+are retained in the [2026-08-06 boundary adjustment record](../docs/assets/test_result/robot-boundary-adjustment-20260806/README.md).
+The reduced values are not a completed physical survey. Wheels, body corners,
+sensor housings, brackets, and carried cargo must all fit inside the confirmed
+field envelope before real-robot acceptance.
+
+The two rectangles have different runtime meanings. A cost-100 cell inside
+the provisional body is an unrecoverable hard stop. Contact only in the outer
+`0.05 m` planning margin stops the ordinary command but may admit a separately
+projected, speed/distance/time-bounded escape. The [fresh simulation summary](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+shows both cases; it does not validate the reduced physical dimensions.
 
 ## Physical Side View
 

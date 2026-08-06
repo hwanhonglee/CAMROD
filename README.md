@@ -1,7 +1,9 @@
 # CAMROD
 
-<!-- HH_260805 - Publish the v2.1.5 scoped runtime and unverified GNSS center
-contract without upgrading physical-field claims. -->
+<!-- HH_260806 - Publish the provisional reduced boundary while retaining the
+previous surveyed envelope as auditable test evidence. -->
+<!-- HH_260806 - Publish the fresh two-layer boundary simulation without
+promoting the provisional physical dimensions to FIELD-PASS. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.5`**.
@@ -30,8 +32,8 @@ paths. This is not a generated diagram or a real-robot field claim.
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
 | GNSS position reference | center assumption `(0,0,0)` | Matches current estimator behavior; `pose_verified=false` until dual-antenna survey |
-| Measured body | `1.49160 x 1.07000 m` | Physical length x width |
-| Planning boundary | `1.59160 x 1.17000 m` | Body plus `0.05 m` on every side |
+| Provisional body boundary | `1.29160 x 0.87000 m` | Cost-100 body contact is a hard stop with no automatic recovery; field survey pending |
+| Planning boundary | `1.39160 x 0.97000 m` | Body plus `0.05 m` each side; margin-only contact may use projected bounded recovery |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
 | Hard safety stop | `<= 20%` | Final command output is stopped |
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
@@ -58,12 +60,14 @@ runtime evidence separately.
 | Check | Result | Scope |
 |---|---|---|
 | v2.1.5 build/tests | **PASS** | 11 packages built; 487 xUnit cases, 0 errors/failures, 17 lint skips; UI 28/28; source contracts 126/126; config audit 388/388 |
+| Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
 | amd64 runtime topology A/B | **SYSTEM CORE PASS; LIDAR TRADEOFF** | Core: 3 fewer processes, CPU -2.5 points, PSS -19.7 MiB, 3/3 controlled stop; LiDAR: CPU -17.5%, PSS +44.0 MiB, 10 Hz preserved |
 | amd64 operator renderer A/B | **WEBKIT LIGHTER; PAGE-LOAD SPEED UNRESOLVED** | Chromium vs WebKit: PSS +327.3 MiB, CPU +1.44 points; system-OK mean -1.33 s is not browser first paint; both controlled-stop 3/3 |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
 | Automatic boundary recovery | **v2.1.4 RELEASE-MAP SIM PASS, FAIL CLOSED** | Release map-v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
+| Current provisional boundary policy | **AMD64 SIM PASS; FIELD PENDING** | Normal route `10.0403 m` without hold; margin `CRAB_RIGHT` `0.133 m`; physical contact issued no candidate or motion; full outer-envelope survey still required |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
@@ -78,6 +82,8 @@ runtime evidence separately.
 ![Measured amd64 runtime topology A/B](docs/assets/module-guides/system/runtime-topology-amd64-ab-20260805.png)
 
 ![v2.1.4 release-map staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
+
+![Current physical-body and planning-margin validation](docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
 ## Packages
 

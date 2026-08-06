@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Record the current-site map fingerprint while separating
 older hash-bound recovery evidence from the active deployment geometry. -->
+<!-- HH_260806 - Explain how the unchanged cost-100 raster is consumed by the
+independent body hard-stop and recoverable planning-margin polygons. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -59,7 +61,8 @@ revision, primitive counts, and SHA in the same reviewed change.
 
 | Rule | Current behavior |
 |---|---|
-| Hard body boundary | Full footprint stops at cost `100` or unknown |
+| Physical-body boundary | Cost `100` or unknown hard-stops with no automatic recovery |
+| Planning-margin boundary | Ordinary command stops; only a projected bounded escape may run while the body remains clear |
 | Soft mapped edge | Cost `98` biases planning but remains traversable |
 | Lane change | `lane_change=yes` can clear configured crossing cells |
 | Grid placement | Robot-centered window |
@@ -71,6 +74,8 @@ revision, primitive counts, and SHA in the same reviewed change.
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 
 ![Map-v14 measured boundary recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+
+![Current-map two-layer boundary validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
 The historical map-v14 B6 run contacted the mapped boundary at approximately
 `(4.3688, 45.0583)`. Existing campsite Areas do not provide surveyed
@@ -84,6 +89,13 @@ The v2.1.4 map-v15 recovery media are likewise bound to release SHA
 `e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
 They demonstrate the staged controller on that release map, not a run on the
 current active SHA shown above.
+
+On the current SHA, a fresh controlled route traveled `10.0403 m` with no
+route hold. A `+0.19 m` placement touched only the planning margin and admitted
+bounded `CRAB_RIGHT`; a `+0.27 m` physical-body placement retained a no-motion
+hold. The map raster and threshold did not change for this test. Only the
+provisional polygons and control interpretation changed, and their real-world
+dimensions remain field-pending.
 
 ## Nodes And Products
 
