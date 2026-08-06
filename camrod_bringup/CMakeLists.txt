@@ -17,6 +17,8 @@ install(
     # HH_260803 / TODOLIST 12 - Reproduce production-owned boundary recovery.
     scripts/automatic_route_recovery_probe.py
     scripts/render_automatic_recovery_results.py
+    # HH_260806 - Render the body-hard-stop and recoverable-margin runtime proof.
+    scripts/render_robot_boundary_validation.py
     # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
     scripts/render_boundary_recovery_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.

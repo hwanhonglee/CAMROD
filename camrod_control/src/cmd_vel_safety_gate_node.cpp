@@ -440,22 +440,36 @@ private:
       85);
     motion_cost_stop_config_.lanelet_current_threshold = declare_parameter<int>(
       "lanelet_safety_current_threshold", 85);
+    // HH_260806 - Keep the provisional configured body as a non-recoverable
+    // inner boundary; only its planning margin may invoke bounded recovery.
+    motion_cost_stop_config_.lanelet_body_hard_stop_enabled = declare_parameter<bool>(
+      "lanelet_safety_body_hard_stop_enable", true);
+    motion_cost_stop_config_.lanelet_body_hard_stop_threshold = declare_parameter<int>(
+      "lanelet_safety_body_hard_stop_threshold", 100);
+    motion_cost_stop_config_.body_front_m = declare_parameter<double>(
+      "lanelet_safety_body_front_m", 0.65837);
+    motion_cost_stop_config_.body_rear_m = declare_parameter<double>(
+      "lanelet_safety_body_rear_m", 0.63323);
+    motion_cost_stop_config_.body_left_m = declare_parameter<double>(
+      "lanelet_safety_body_left_m", 0.43505);
+    motion_cost_stop_config_.body_right_m = declare_parameter<double>(
+      "lanelet_safety_body_right_m", 0.43495);
     motion_cost_stop_config_.lanelet_footprint_enabled = declare_parameter<bool>(
       "lanelet_safety_footprint_enable", true);
     motion_cost_stop_config_.lanelet_footprint_threshold = declare_parameter<int>(
       "lanelet_safety_footprint_threshold", 100);
     planning_boundary_topic_ = declare_parameter<std::string>(
       "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
-    // HH_260805 - Match the four-sided 5 cm planning envelope published by
-    // sensor-kit and Nav2 while retaining the smaller measured-body hard stop.
+    // HH_260806 - Match the provisional four-sided 5 cm planning envelope
+    // published by sensor-kit and Nav2; field acceptance remains pending.
     motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
-      "lanelet_safety_footprint_front_m", 0.80837);
+      "lanelet_safety_footprint_front_m", 0.70837);
     motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
-      "lanelet_safety_footprint_rear_m", 0.78323);
+      "lanelet_safety_footprint_rear_m", 0.68323);
     motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
-      "lanelet_safety_footprint_left_m", 0.58505);
+      "lanelet_safety_footprint_left_m", 0.48505);
     motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
-      "lanelet_safety_footprint_right_m", 0.58495);
+      "lanelet_safety_footprint_right_m", 0.48495);
     motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
     motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(
@@ -1712,6 +1726,18 @@ private:
         motion_cost_stop_config_.lanelet_threshold = parameter.as_int();
       } else if (name == "lanelet_safety_current_threshold") {
         motion_cost_stop_config_.lanelet_current_threshold = parameter.as_int();
+      } else if (name == "lanelet_safety_body_hard_stop_enable") {
+        motion_cost_stop_config_.lanelet_body_hard_stop_enabled = parameter.as_bool();
+      } else if (name == "lanelet_safety_body_hard_stop_threshold") {
+        motion_cost_stop_config_.lanelet_body_hard_stop_threshold = parameter.as_int();
+      } else if (name == "lanelet_safety_body_front_m") {
+        motion_cost_stop_config_.body_front_m = parameter.as_double();
+      } else if (name == "lanelet_safety_body_rear_m") {
+        motion_cost_stop_config_.body_rear_m = parameter.as_double();
+      } else if (name == "lanelet_safety_body_left_m") {
+        motion_cost_stop_config_.body_left_m = parameter.as_double();
+      } else if (name == "lanelet_safety_body_right_m") {
+        motion_cost_stop_config_.body_right_m = parameter.as_double();
       } else if (name == "lanelet_safety_footprint_enable") {
         motion_cost_stop_config_.lanelet_footprint_enabled = parameter.as_bool();
       } else if (name == "lanelet_safety_footprint_threshold") {

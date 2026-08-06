@@ -293,6 +293,19 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     return {true, false, true, true, "route_recovery_frame_mismatch"};
   }
 
+  // HH_260806 - Planning-margin contact may use a bounded escape candidate,
+  // but a cost-100 cell inside the physical body is never recoverable motion.
+  if (config_.lanelet_body_hard_stop_enabled) {
+    const auto body_hit = samplePhysicalBody(
+      lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
+      config_.lanelet_stop_on_unknown);
+    if (body_hit.blocked) {
+      return {
+        true, false, true, false,
+        "route_recovery_physical_body_" + body_hit.detail};
+    }
+  }
+
   // HH_260729 - A dynamic-obstacle latch remains authoritative during route
   // recovery. Moving away from a map boundary never bypasses live evidence.
   if (latch_active_) {
@@ -414,6 +427,22 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
     std::abs(command.linear.x) > config_.min_translation_mps ||
     std::abs(command.linear.y) > config_.min_translation_mps ||
     std::abs(command.angular.z) > config_.min_translation_mps;
+
+  // HH_260806 - The physical rectangle is authoritative before the larger
+  // planning margin. This reason is intentionally not eligible for crab,
+  // reverse, or reverse-yaw recovery.
+  if (config_.lanelet_body_hard_stop_enabled && any_motion) {
+    const auto body_hit = samplePhysicalBody(
+      lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
+      config_.lanelet_stop_on_unknown);
+    if (body_hit.blocked) {
+      const std::string reason = "lanelet_physical_body_" + body_hit.detail;
+      if (update_hold) {
+        markBlocked(reason, false, now_sec);
+      }
+      return {true, false, true, false, reason};
+    }
+  }
 
   // HH_260727 - A maneuver/static exception may skip only the legacy
   // base-link current-cell and directional corridor checks. The complete
@@ -1105,11 +1134,6 @@ MotionCostStop::GridHit MotionCostStop::sampleFootprint(
   const int threshold,
   const bool stop_on_unknown) const
 {
-  GridHit hit;
-  if (!pose_.has_value() || !validGrid(grid)) {
-    return hit;
-  }
-
   std::vector<std::pair<double, double>> local = footprint_polygon_local_;
   if (local.size() < 3) {
     local = {
@@ -1118,12 +1142,38 @@ MotionCostStop::GridHit MotionCostStop::sampleFootprint(
       {-config_.footprint_rear_m, -config_.footprint_right_m},
       {-config_.footprint_rear_m, config_.footprint_left_m}};
   }
+  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local);
+}
+
+MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
+  const avg_msgs::msg::AvgOccupancyGrid & grid,
+  const int threshold,
+  const bool stop_on_unknown) const
+{
+  const std::vector<std::pair<double, double>> local{
+    {config_.body_front_m, config_.body_left_m},
+    {config_.body_front_m, -config_.body_right_m},
+    {-config_.body_rear_m, -config_.body_right_m},
+    {-config_.body_rear_m, config_.body_left_m}};
+  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local);
+}
+
+MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
+  const avg_msgs::msg::AvgOccupancyGrid & grid,
+  const int threshold,
+  const bool stop_on_unknown,
+  const std::vector<std::pair<double, double>> & local_polygon) const
+{
+  GridHit hit;
+  if (!pose_.has_value() || !validGrid(grid) || local_polygon.size() < 3) {
+    return hit;
+  }
 
   const double cosine = std::cos(pose_->yaw);
   const double sine = std::sin(pose_->yaw);
   std::vector<std::pair<double, double>> world;
-  world.reserve(local.size());
-  for (const auto & point : local) {
+  world.reserve(local_polygon.size());
+  for (const auto & point : local_polygon) {
     world.emplace_back(
       pose_->x + cosine * point.first - sine * point.second,
       pose_->y + sine * point.first + cosine * point.second);

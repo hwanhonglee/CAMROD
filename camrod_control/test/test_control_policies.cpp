@@ -114,6 +114,7 @@ MotionCostStopConfig baseCostConfig()
   MotionCostStopConfig config;
   config.stale_stop_enabled = false;
   config.lanelet_enabled = false;
+  config.lanelet_body_hard_stop_enabled = false;
   config.lanelet_footprint_enabled = false;
   config.require_dynamic_source = false;
   config.latch_enabled = false;
@@ -621,6 +622,67 @@ TEST(MotionCostStop, CrabRecoveryMovesAwayFromSideBoundaryOnly)
     std::string::npos);
 }
 
+TEST(MotionCostStop, PhysicalBodyContactRejectsEveryRecoveryCommand)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.body_front_m = 0.2;
+  config.body_rear_m = 0.2;
+  config.body_left_m = 0.2;
+  config.body_right_m = 0.2;
+  config.lanelet_footprint_enabled = true;
+  config.footprint_front_m = 0.3;
+  config.footprint_rear_m = 0.3;
+  config.footprint_left_m = 0.3;
+  config.footprint_right_m = 0.3;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.15, 100}}), 1.0);
+
+  const auto trigger = cost_stop.evaluate(command(0.1), 1.0);
+  ASSERT_TRUE(trigger.blocked);
+  EXPECT_EQ(trigger.reason, "lanelet_physical_body_cost");
+  for (const auto & recovery :
+    {command(-0.1), command(0.0, -0.1), command(-0.1, 0.0, 0.1)})
+  {
+    const auto decision =
+      cost_stop.evaluateRouteRecoveryCommand(recovery, 1.1, 0.3, 0.5);
+    EXPECT_TRUE(decision.blocked);
+    EXPECT_EQ(decision.reason, "route_recovery_physical_body_cost");
+  }
+}
+
+TEST(MotionCostStop, PlanningMarginContactStillAllowsProjectedCrabRecovery)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.body_front_m = 0.15;
+  config.body_rear_m = 0.15;
+  config.body_left_m = 0.15;
+  config.body_right_m = 0.15;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.footprint_front_m = 0.3;
+  config.footprint_rear_m = 0.3;
+  config.footprint_left_m = 0.3;
+  config.footprint_right_m = 0.3;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.25, 100}}), 1.0);
+
+  const auto trigger = cost_stop.evaluate(command(0.1), 1.0);
+  ASSERT_TRUE(trigger.blocked);
+  EXPECT_EQ(trigger.reason, "lanelet_footprint_cost");
+  EXPECT_FALSE(
+    cost_stop.evaluateRouteRecoveryCommand(
+      command(0.0, -0.1), 1.1, 0.3, 0.5).blocked);
+}
+
 TEST(MotionCostStop, RouteRecoveryCommandFailsClosedWithoutFreshLaneletGrid)
 {
   auto config = baseCostConfig();
@@ -752,9 +814,9 @@ TEST(MotionCostStop, LaneletFootprintBlocksWhenCenterLinkCellIsClear)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260803 - robot_center_link at (0,0) is clear, but the configured front-right body
-  // boundary covers this raw lanelet cost cell.
-  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
+  // HH_260806 - robot_center_link at (0,0) is clear, but the provisional
+  // front-right planning boundary covers this raw lanelet cost cell.
+  const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
   ASSERT_EQ(MotionCostStop::sampleGridCost(boundary_cost, 0.0, 0.0), 0);
   cost_stop.setLaneletGrid(boundary_cost, 0.0);
   const auto decision = cost_stop.evaluate(command(0.2), 0.0);
@@ -768,16 +830,20 @@ TEST(MotionCostStop, LaneletFootprintAllowsSoftBoundaryButBlocksOffLane)
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_footprint_threshold = 100;
+  // HH_260806 - Isolate the complete-footprint 98/100 contract now that the
+  // reduced footprint lies inside the legacy front-corridor width.
+  config.lanelet_threshold = 100;
+  config.lanelet_current_threshold = 100;
   config.lanelet_current_allow_route_reentry = false;
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
   // HH_260727 - The map uses 98 as a narrow-lane planning penalty and 100 as
   // truly off-lane. The full footprint may touch 98 but must stop on 100.
-  cost_stop.setLaneletGrid(makeGrid({{0.75, -0.55, 98}}), 0.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.65, -0.45, 98}}), 0.0);
   EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 
-  cost_stop.setLaneletGrid(makeGrid({{0.75, -0.55, 100}}), 0.1);
+  cost_stop.setLaneletGrid(makeGrid({{0.65, -0.45, 100}}), 0.1);
   const auto blocked = cost_stop.evaluate(command(0.2), 0.1);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
@@ -804,7 +870,7 @@ TEST(MotionCostStop, PublishedPlanningBoundaryOverridesFallbackFootprint)
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
 }
 
-TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
+TEST(MotionCostStop, PlanningMarginStopsBeforeProvisionalBodyTouchesOffLane)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -814,28 +880,28 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260803 - Same measured chassis as before, expressed from the axle midpoint.
-  constexpr double body_front = 0.75837;
-  constexpr double body_rear = 0.73323;
-  constexpr double body_left = 0.53505;
-  constexpr double body_right = 0.53495;
+  // HH_260806 - Exercise the provisional body candidate from robot_center_link.
+  constexpr double body_front = 0.65837;
+  constexpr double body_rear = 0.63323;
+  constexpr double body_left = 0.43505;
+  constexpr double body_right = 0.43495;
   constexpr double longitudinal_margin = 0.05;
   constexpr double lateral_margin = 0.05;
   auto margin_only_cost = makeGrid();
-  // Offset the 0.10 m raster so the measured 0.53505 m body edge and the
-  // 0.58505 m planning edge occupy adjacent cells.
+  // Offset the 0.10 m raster so the 0.43505 m body edge and the 0.48505 m
+  // planning edge occupy adjacent cells.
   margin_only_cost.info.origin.position.y = -4.04;
   const int margin_grid_x = static_cast<int>(
     std::floor((0.0 - margin_only_cost.info.origin.position.x) /
     margin_only_cost.info.resolution));
   const int margin_grid_y = static_cast<int>(
-    std::floor((0.60 - margin_only_cost.info.origin.position.y) /
+    std::floor((0.50 - margin_only_cost.info.origin.position.y) /
     margin_only_cost.info.resolution));
   margin_only_cost.data[
     margin_grid_y * static_cast<int>(margin_only_cost.info.width) + margin_grid_x] = 100;
   cost_stop.setLaneletGrid(margin_only_cost, 0.0);
 
-  // HH_260801 - The lethal cell is outside the measured body but inside the
+  // HH_260806 - The lethal cell is outside the provisional body but inside the
   // published planning boundary. This proves the 0.05 m lateral margin stops motion
   // before the chassis itself reaches the off-lane cell.
   cost_stop.setFootprintPolygonWorld(
@@ -853,7 +919,7 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
 }
 
-TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
+TEST(MotionCostStop, ProvisionalBodyBoundaryStopsOnOffLaneCost)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -863,13 +929,13 @@ TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260801 - Isolate the measured chassis polygon from its planning margin.
+  // HH_260806 - Isolate the provisional chassis polygon from its planning margin.
   // Use the deployed 0.25 m lanelet-grid resolution: cost 100 on the body edge
   // must stop translation even when crab static-cost bypass is enabled.
   cost_stop.setFootprintPolygonWorld(
-    {{0.75837, 0.53505}, {0.75837, -0.53495},
-      {-0.73323, -0.53495}, {-0.73323, 0.53505}});
-  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.50, 100}}, 0.25), 0.0);
+    {{0.65837, 0.43505}, {0.65837, -0.43495},
+      {-0.63323, -0.43495}, {-0.63323, 0.43505}});
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.40, 100}}, 0.25), 0.0);
   const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.0);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
@@ -884,7 +950,7 @@ TEST(MotionCostStop, RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsA
   config.lanelet_current_allow_route_reentry = false;
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
-  cost_stop.setLaneletGrid(makeGrid({{0.75, 0.5, 100}}), 0.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.65, 0.45, 100}}), 0.0);
 
   const auto decision = cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.0);
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
@@ -896,7 +962,7 @@ TEST(MotionCostStop, ConfiguredCampsiteBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
-  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
   // HH_260727 - Every configured campsite exception skips only legacy static
   // checks; it can never permit the planning footprint to cross raw lanelet cost.
@@ -918,7 +984,7 @@ TEST(MotionCostStop, ConfiguredDropZoneBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
-  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
   // HH_260727 - Forward drop-zone departure may bypass a legacy route corridor,
   // but the full occupied boundary remains mandatory.
@@ -942,7 +1008,7 @@ TEST(MotionCostStop, PureLateralAndReverseStaticBypassStillCheckLaneletFootprint
   config.lanelet_current_allow_route_reentry = false;
   config.static_lateral_bypass = true;
   config.static_reverse_bypass = true;
-  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
   // HH_260727 - The merged-grid static bypass remains useful for crab/reverse
   // maneuvers, but it must not suppress the independent raw-lanelet footprint.
