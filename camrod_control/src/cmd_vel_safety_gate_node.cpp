@@ -929,7 +929,7 @@ private:
 
     // HH_260721 - Re-evaluate a latched obstacle before authorization so clear time can advance.
     if (motion_cost_stop_.latched()) {
-      const auto latch_decision = motion_cost_stop_.evaluate(command, now_sec);
+      const auto latch_decision = motion_cost_stop_.evaluate(scaleCommand(command), now_sec);
       updatePolicyCostState();
       if (latch_decision.blocked) {
         publishZero();
@@ -956,8 +956,11 @@ private:
       command = *heading_override;
     }
 
+    // HH_260807 - Collision projection, route-recovery evidence and the
+    // published command must describe the same final speed-scaled motion.
+    const auto evaluated_command = scaleCommand(command);
     if (opposite_route_recovery &&
-      !route_safety_recovery_.permitsProjectedRecoveryCandidate(command))
+      !route_safety_recovery_.permitsProjectedRecoveryCandidate(evaluated_command))
     {
       publishZero();
       logRouteSafetyHold(now_sec);
@@ -965,11 +968,11 @@ private:
     }
     const auto cost_decision = opposite_route_recovery ?
       motion_cost_stop_.evaluateRouteRecoveryCommand(
-      command, now_sec, route_safety_recovery_.oppositeRecoveryProbeDistance(),
+      evaluated_command, now_sec, route_safety_recovery_.oppositeRecoveryProbeDistance(),
       route_safety_recovery_.poseMaxAge()) :
-      motion_cost_stop_.evaluate(command, now_sec);
+      motion_cost_stop_.evaluate(evaluated_command, now_sec);
     const bool route_hold_started =
-      route_safety_recovery_.observeViolation(cost_decision, command, now_sec);
+      route_safety_recovery_.observeViolation(cost_decision, evaluated_command, now_sec);
     if (route_hold_started) {
       route_safety_triggered_by_navigation_ = navigation_source;
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
@@ -994,7 +997,8 @@ private:
             "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f) "
             "pose=(x=%.3f,y=%.3f,yaw=%.1fdeg) "
             "lanelet_hit=(world_x=%.3f,world_y=%.3f,body_x=%.3f,body_y=%.3f,cost=%d)",
-            cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z,
+            cost_decision.reason.c_str(), evaluated_command.linear.x,
+            evaluated_command.linear.y, evaluated_command.angular.z,
             cost_decision.lanelet_pose_x, cost_decision.lanelet_pose_y,
             cost_decision.lanelet_pose_yaw * 180.0 / kPi,
             cost_decision.lanelet_hit_world_x, cost_decision.lanelet_hit_world_y,
@@ -1004,7 +1008,8 @@ private:
           RCLCPP_WARN(
             get_logger(),
             "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f)",
-            cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z);
+            cost_decision.reason.c_str(), evaluated_command.linear.x,
+            evaluated_command.linear.y, evaluated_command.angular.z);
         }
       }
       logMotionCostStopDecision(cost_decision, now_sec);
@@ -1016,7 +1021,7 @@ private:
       // after the initial zero command is not recovery evidence.
       route_safety_recovery_.observeRecoveryMotion();
     }
-    publishCommand(scaleCommand(command));
+    publishCommand(evaluated_command);
   }
 
   void updateManeuverPhases()

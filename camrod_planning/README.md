@@ -7,6 +7,7 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 <!-- HH_260806 - Separate gross start alignment from continuous RPP curve tracking. -->
 <!-- HH_260806 - Scale the active linear-speed profile from a 3 km/h cruise reference. -->
 <!-- HH_260807 - Preflight persistent-obstacle paths before Nav2 mission preemption. -->
+<!-- HH_260807 - Fix the 3 km/h RPP preview at the selected 1.1 m A/B result. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -43,7 +44,7 @@ map-v17 continuous-service evidence are shown separately below.
 | Local-path / tracking heartbeat | `20 Hz`; pose callbacks also refresh immediately |
 | RPP desired speed | raw `1.666667 m/s`; final gate `0.5`; platform `3.000 km/h` |
 | RPP curve / final-approach floor | `50% / 25%` of cruise (`1.500 / 0.750 km/h`) |
-| RPP lookahead | `1.1..2.0 m` |
+| RPP lookahead | fixed `1.1 m`; velocity scaling disabled |
 | RPP reverse / rotate-to-heading | disabled / disabled during continuous tracking |
 | Gross start alignment | final gate `75 deg` enter / `5 deg` release; zero linear speed |
 | Physical body boundary | `1.39160 x 1.07000 m` |
@@ -152,6 +153,8 @@ in explicit `OPERATOR_STOPPED` state.
 | B11-B13 return | Physical-body lanelet stop observed during the prior on-lane alignment; field geometry decision pending |
 | B8 continuous RPP route | `59.931 m`, `GOAL_REACHED`; raw rotation/translation switches `403 -> 0` |
 | Rejected B8 `1.2 m` lookahead | Margin release followed by recontact in `0.999 s`; route not completed |
+| 3 km/h preview A/B | Velocity-scaled preview reached about `1.5 m` and recontacted in `0.850 s`; fixed `1.1 m` completed B1/B2 service `2/2` with no restart |
+| B1-B10 service endurance | `10/10` in `2210.611 s`; restart `0`; cycles 2-10 completed full charger departure and outbound route |
 | 3 km/h command smoke | AMD64 `11.74 m` displacement; final command `3.000001 km/h`; pose max step `6.485 cm`, jumps over `20 cm`: `0` |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
@@ -165,6 +168,23 @@ shows why the former 2-degree RPP rotate mode appeared as right oversteer and
 stop-turn-forward motion. Gross initial yaw is now completed once by the gate;
 ordinary curves retain simultaneous linear and angular commands. A same-map
 `1.2 m` lookahead comparison was worse, so the selected floor remains `1.1 m`.
+
+![3 km/h RPP service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+
+The [service A/B record](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+tests the active `3.0 km/h` profile rather than only a controller unit path.
+The rejected velocity-scaled run recreated the same margin contact `0.850 s`
+after release. The fixed `1.1 m` source profile completed B1 and B2 through
+explicit RETURN, drop-zone parking, charging, and next departure. This is an
+AMD64 deterministic-simulation selection, not a physical-road claim.
+
+![B1-B10 planning and service endurance](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+
+The [ten-cycle report](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+records nine full charger-departure routes after the seeded B1 handoff, ten
+explicit RETURN paths, and zero post-start planning/path fault. The B5 obstacle
+case proves stop, clear, and same-mission resume. A successful detour is not
+claimed because the active map has no surveyed lane wide enough for it.
 
 ![3 km/h command and pose smoke test](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
 

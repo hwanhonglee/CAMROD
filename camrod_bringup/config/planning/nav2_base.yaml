@@ -394,7 +394,9 @@ controller_server:
       min_lookahead_dist: 1.1
       max_lookahead_dist: 2.0
       lookahead_time: 1.8
-      use_velocity_scaled_lookahead_dist: True
+      # HH_260807 - Keep the RotationShim child controller on the same fixed
+      # 1.1 m preview as the direct RPP controller at the final 3 km/h cruise.
+      use_velocity_scaled_lookahead_dist: False
       use_interpolation: True
       allow_reversing: False
       use_rotate_to_heading: False

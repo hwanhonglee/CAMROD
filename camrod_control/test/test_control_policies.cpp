@@ -13,6 +13,7 @@
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
+#include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
@@ -23,6 +24,25 @@ namespace camrod_control
 
 namespace
 {
+
+TEST(MotionGeometry, BodyTranslationTowardTargetCorrectsBothAxesAtBoundedSpeed)
+{
+  const auto diagonal = bodyTranslationTowardTarget(
+    0.0, 0.0, M_PI, 1.0, 1.0, 0.5);
+  EXPECT_NEAR(diagonal.first, -0.5 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(diagonal.second, -0.5 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(std::hypot(diagonal.first, diagonal.second), 0.5, 1.0e-9);
+
+  const auto lateral = bodyTranslationTowardTarget(
+    0.0, 0.0, M_PI_2, 1.0, 0.0, 0.5);
+  EXPECT_NEAR(lateral.first, 0.0, 1.0e-9);
+  EXPECT_NEAR(lateral.second, -0.5, 1.0e-9);
+
+  const auto stopped = bodyTranslationTowardTarget(
+    1.0, 1.0, 0.0, 1.0, 1.0, 0.5);
+  EXPECT_DOUBLE_EQ(stopped.first, 0.0);
+  EXPECT_DOUBLE_EQ(stopped.second, 0.0);
+}
 
 avg_msgs::msg::AvgOccupancyGrid makeGrid(
   const std::vector<std::tuple<double, double, int>> & occupied_cells = {},

@@ -78,7 +78,10 @@ controller_server:
       #   use_collision_detection: True=controller-level collision check enabled, False=skip internal check
       #   use_regulated_linear_velocity_scaling: True=curve-based linear speed scaling, False=disabled
       #   use_cost_regulated_linear_velocity_scaling: True=costmap-based linear speed scaling, False=disabled
-      use_velocity_scaled_lookahead_dist: True
+      # HH_260807 - At the final 3 km/h cruise, velocity scaling expanded the
+      # preview to about 1.5 m and caused a rapid B2 boundary recontact. The
+      # validated fixed 1.1 m preview completed the same B1/B2 service sequence.
+      use_velocity_scaled_lookahead_dist: False
       use_interpolation: True
       # Keep controller in forward-drive mode; global planner is
       # aligned to DUBIN (forward-only) in nav2_base.yaml.

@@ -50,6 +50,28 @@ inline std::pair<double, double> relativeXy(
     -std::sin(yaw) * dx + std::cos(yaw) * dy};
 }
 
+// HH_260807 - Convert a map-frame return-anchor vector into a constant-speed
+// body-frame translation so crab mode can remove both lateral and axial drift.
+inline std::pair<double, double> bodyTranslationTowardTarget(
+  const double current_x,
+  const double current_y,
+  const double current_yaw,
+  const double target_x,
+  const double target_y,
+  const double speed)
+{
+  const double dx = target_x - current_x;
+  const double dy = target_y - current_y;
+  const double distance = std::hypot(dx, dy);
+  if (distance <= 1.0e-9 || speed <= 0.0) {
+    return {0.0, 0.0};
+  }
+  const double body_x = std::cos(current_yaw) * dx + std::sin(current_yaw) * dy;
+  const double body_y = -std::sin(current_yaw) * dx + std::cos(current_yaw) * dy;
+  const double scale = speed / distance;
+  return {body_x * scale, body_y * scale};
+}
+
 inline geometry_msgs::msg::Quaternion quaternionFromYaw(const double yaw)
 {
   geometry_msgs::msg::Quaternion output;
