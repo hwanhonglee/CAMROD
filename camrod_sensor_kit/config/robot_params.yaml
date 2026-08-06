@@ -9,17 +9,20 @@
       # HH_260803 - robot_center_link is the front/rear axle midpoint. The legacy
       # robot_base_link remains the rear-axle center for compatibility.
       center_offset_from_rear_axle: 0.443  # wheelbase / 2; rear axle -> robot center [m].
-      track_width: 1.07       # Body lateral envelope used until wheel-center track is measured [m].
-      length: 1.49160         # Physical vehicle body length: front 0.75837 + rear 0.73323 [m].
-      width: 1.07000          # Physical vehicle body width: left 0.53505 + right 0.53495 [m].
+      # HH_260806 - Keep the legacy kinematic estimate independent from the
+      # provisional collision envelope until wheel-center track is remeasured.
+      track_width: 1.07       # Provisional wheel-center/kinematic estimate [m].
+      length: 1.29160         # Provisional boundary: previous 1.49160 m minus 0.10 m at front and rear.
+      width: 0.87000          # Provisional boundary: previous 1.07000 m minus 0.10 m at left and right.
       height: 1.09463         # Physical vehicle body height [m].
-      # HH_260803 - Same measured body, expressed from robot_center_link.
-      # Conversion: center_x = rear_axle_x - 0.443 m.
+      # HH_260806 - Provisional remeasurement candidate. The previous surveyed
+      # 0.75837/0.73323/0.53505/0.53495 m extents are archived in
+      # docs/assets/test_result/robot-boundary-adjustment-20260806/result.json.
       body_extents:
-        front: 0.75837        # Was 1.20137 m from rear-axle robot_base_link.
-        rear: 0.73323         # Was 0.29023 m behind rear-axle robot_base_link.
-        left: 0.53505         # Unchanged lateral extent from robot_center_link [m].
-        right: 0.53495        # Unchanged lateral extent from robot_center_link [m].
+        front: 0.65837        # Previous 0.75837 m minus 0.10 m [m].
+        rear: 0.63323         # Previous 0.73323 m minus 0.10 m [m].
+        left: 0.43505         # Previous 0.53505 m minus 0.10 m [m].
+        right: 0.43495        # Previous 0.53495 m minus 0.10 m [m].
         top_z: 0.94188        # Unchanged top Z from robot_center_link [m].
         bottom_z: -0.15275    # Unchanged bottom Z from robot_center_link [m].
         # HH_260805 - Keep one 0.05 m planning clearance around all four body sides.

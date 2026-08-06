@@ -87,17 +87,25 @@ struct MotionCostStopConfig
   bool lanelet_enabled{true};
   int lanelet_threshold{85};
   int lanelet_current_threshold{85};
+  // HH_260806 - Cost-100 contact inside the provisional configured body is a
+  // hard stop. Unlike planning-margin contact, it may never authorize
+  // recovery motion.
+  bool lanelet_body_hard_stop_enabled{true};
+  int lanelet_body_hard_stop_threshold{100};
+  double body_front_m{0.65837};
+  double body_rear_m{0.63323};
+  double body_left_m{0.43505};
+  double body_right_m{0.43495};
   // HH_260727 - Check the complete configured planning footprint against raw
   // lanelet cost, not only the robot_center_link cell. A separate lethal
   // threshold lets narrow lanes retain their soft 98 boundary penalty.
   bool lanelet_footprint_enabled{true};
   int lanelet_footprint_threshold{100};
-  // HH_260805 - Values are relative to robot_center_link. The measured body is
-  // unchanged; fallback clearance is 0.05 m on all four sides.
-  double footprint_front_m{0.80837};
-  double footprint_rear_m{0.78323};
-  double footprint_left_m{0.58505};
-  double footprint_right_m{0.58495};
+  // HH_260806 - Provisional body candidate plus 0.05 m clearance on all sides.
+  double footprint_front_m{0.70837};
+  double footprint_rear_m{0.68323};
+  double footprint_left_m{0.48505};
+  double footprint_right_m{0.48495};
   double lanelet_lookahead_m{1.0};
   double lanelet_width_m{0.8};
   bool lanelet_stop_on_unknown{true};
@@ -274,6 +282,15 @@ private:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     int threshold,
     bool stop_on_unknown) const;
+  GridHit samplePhysicalBody(
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
+    int threshold,
+    bool stop_on_unknown) const;
+  GridHit samplePolygonFootprint(
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
+    int threshold,
+    bool stop_on_unknown,
+    const std::vector<std::pair<double, double>> & local_polygon) const;
   PathSample samplePathCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double lookahead_m,

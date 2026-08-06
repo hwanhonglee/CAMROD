@@ -943,7 +943,8 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_cost_width_m',
-            # HH_260623 - Default is measured body width plus 0.10 m margin per side.
+            # HH_260806 - Keep the 1.27 m dynamic-obstacle corridor independent
+            # from the provisional lanelet body and planning envelopes.
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_width_m', 1.27),
             'Corridor width for front dynamic cost-stop',
         ),
@@ -1038,6 +1039,38 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_threshold', 85),
             'Raw lanelet current-cell threshold for safety stop',
         ),
+        # HH_260806 - Distinguish non-recoverable physical-body contact from
+        # recoverable contact in the surrounding planning margin.
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_hard_stop_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_hard_stop_enable', True),
+            'Block all recovery motion while the physical body touches cost 100',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_hard_stop_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_hard_stop_threshold', 100),
+            'Physical body hard-stop lanelet threshold',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_front_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_front_m', 0.65837),
+            'Physical body front extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_rear_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_rear_m', 0.63323),
+            'Physical body rear extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_left_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_left_m', 0.43505),
+            'Physical body left extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_body_right_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_right_m', 0.43495),
+            'Physical body right extent (m)',
+        ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_enable',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_enable', True),
@@ -1059,22 +1092,22 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.80837),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.70837),
             'Fallback planning footprint front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.78323),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.68323),
             'Fallback planning footprint rear extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_left_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.58505),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.48505),
             'Fallback planning footprint left extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_right_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.58495),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.48495),
             'Fallback planning footprint right extent (m)',
         ),
         (

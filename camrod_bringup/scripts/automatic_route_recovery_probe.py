@@ -6,24 +6,49 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import time
 from pathlib import Path
+import time
 import xml.etree.ElementTree as ET
 
+from action_msgs.msg import GoalStatus
+from avg_msgs.msg import (
+    AvgBool,
+    AvgOccupancyGrid,
+    AvgPoseStamped,
+    AvgTwist,
+    ModuleState,
+)
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 import lanelet2
-import rclpy
-from avg_msgs.msg import AvgBool, AvgPoseStamped, AvgTwist, ModuleState
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from lanelet2.io import Origin
 from lanelet2.projection import LocalCartesianProjector
 from nav2_msgs.action import FollowPath
 from nav_msgs.msg import Path as NavPath
+import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
+# HH_260806 - Keep the runtime probe explicit about the provisional physical
+# and planning rectangles being evaluated against the live lanelet raster.
+BODY_EXTENTS = (0.65837, 0.63323, 0.43505, 0.43495)
+PLANNING_EXTENTS = (0.70837, 0.68323, 0.48505, 0.48495)
+# HH_260806 - Scan the live raster around this recorded route pose instead of
+# assuming a cached bag's cell alignment is identical to the running grid.
+STATIC_CONTACT_BASE_POSE = (
+    10.441374066512223,
+    35.65365899946396,
+    -1.6302914988208081,
+)
+STATIC_CONTACT_SCENARIOS = {
+    "margin_contact",
+    "margin_recovery",
+    "physical_contact",
+    "physical_hard_stop",
+}
 
 
 def map_metadata(map_path):
@@ -119,6 +144,7 @@ class AutomaticRecoveryProbe(Node):
         self.lanelet_ids = tuple(lanelet_ids)
         self.started = time.monotonic()
         self.latest_pose = None
+        self.latest_lanelet_grid = None
         self.latest_gate = None
         self.latest_owner = None
         self.latest_candidate = AvgTwist()
@@ -129,6 +155,7 @@ class AutomaticRecoveryProbe(Node):
         self.last_owner_signature = None
         self.last_candidate_signature = None
         self.last_output_signature = None
+        self.route_hold_seen = False
         self.max_output_mps = 0.0
         self.max_recovery_output_mps = 0.0
         self.minimum_recovery_linear_x = 0.0
@@ -147,8 +174,28 @@ class AutomaticRecoveryProbe(Node):
         self.drive_enable_publisher = self.create_publisher(
             AvgBool, "/platform/drive_enable", 10
         )
+        self.raw_command_publisher = self.create_publisher(
+            AvgTwist, "/control/cmd_vel_raw", 10
+        )
+        self.navigation_command_publisher = self.create_publisher(
+            Twist, "/control/nav2_cmd_vel_ros", 10
+        )
         self.create_subscription(
             AvgPoseStamped, "/localization/pose", self.on_pose, 20
+        )
+        # HH_260806 - The 960x960 lanelet raster is diagnostic-only here.
+        # Match the production reliable/transient-local writer at depth 1 so a
+        # short-lived probe deterministically receives the cached raster.
+        lanelet_grid_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(
+            AvgOccupancyGrid,
+            "/map/cost_grid/lanelet",
+            self.on_lanelet_grid,
+            lanelet_grid_qos,
         )
         self.create_subscription(
             ModuleState,
@@ -195,8 +242,199 @@ class AutomaticRecoveryProbe(Node):
             )
             self.last_pose_sample = point
 
+    def on_lanelet_grid(self, message):
+        self.latest_lanelet_grid = message
+
+    @staticmethod
+    def point_in_polygon(x, y, polygon):
+        inside = False
+        previous = polygon[-1]
+        for current in polygon:
+            crosses = (current[1] > y) != (previous[1] > y)
+            if crosses:
+                edge_x = (
+                    (previous[0] - current[0]) * (y - current[1])
+                    / (previous[1] - current[1])
+                    + current[0]
+                )
+                if x < edge_x:
+                    inside = not inside
+            previous = current
+        return inside
+
+    @staticmethod
+    def world_to_grid(grid, world_x, world_y):
+        origin_yaw = yaw_from_quaternion(grid.info.origin.orientation)
+        dx = world_x - grid.info.origin.position.x
+        dy = world_y - grid.info.origin.position.y
+        local_x = math.cos(origin_yaw) * dx + math.sin(origin_yaw) * dy
+        local_y = -math.sin(origin_yaw) * dx + math.cos(origin_yaw) * dy
+        grid_x = math.floor(local_x / grid.info.resolution)
+        grid_y = math.floor(local_y / grid.info.resolution)
+        if grid_x < 0 or grid_y < 0 or grid_x >= grid.info.width or grid_y >= grid.info.height:
+            return None
+        return int(grid_x), int(grid_y)
+
+    @staticmethod
+    def grid_to_world(grid, grid_x, grid_y):
+        origin_yaw = yaw_from_quaternion(grid.info.origin.orientation)
+        local_x = (grid_x + 0.5) * grid.info.resolution
+        local_y = (grid_y + 0.5) * grid.info.resolution
+        return (
+            grid.info.origin.position.x
+            + math.cos(origin_yaw) * local_x
+            - math.sin(origin_yaw) * local_y,
+            grid.info.origin.position.y
+            + math.sin(origin_yaw) * local_x
+            + math.cos(origin_yaw) * local_y,
+        )
+
+    def classify_boundary(self, pose, extents):
+        grid = self.latest_lanelet_grid
+        if grid is None or not grid.data:
+            return {"available": False, "cost_100_contact": None}
+        front, rear, left, right = extents
+        local = ((front, left), (front, -right), (-rear, -right), (-rear, left))
+        cosine = math.cos(pose["yaw_rad"])
+        sine = math.sin(pose["yaw_rad"])
+        polygon = [
+            (
+                pose["x"] + cosine * x - sine * y,
+                pose["y"] + sine * x + cosine * y,
+            )
+            for x, y in local
+        ]
+        sampled_cells = set()
+        edge_step = max(0.01, grid.info.resolution * 0.5)
+        for start, end in zip(polygon, polygon[1:] + polygon[:1]):
+            length = math.dist(start, end)
+            steps = max(1, math.ceil(length / edge_step))
+            for index in range(steps + 1):
+                ratio = index / steps
+                cell = self.world_to_grid(
+                    grid,
+                    start[0] + ratio * (end[0] - start[0]),
+                    start[1] + ratio * (end[1] - start[1]),
+                )
+                if cell is not None:
+                    sampled_cells.add(cell)
+
+        grid_vertices = [self.world_to_grid(grid, x, y) for x, y in polygon]
+        grid_vertices = [cell for cell in grid_vertices if cell is not None]
+        if grid_vertices:
+            min_x = max(0, min(cell[0] for cell in grid_vertices) - 1)
+            max_x = min(grid.info.width - 1, max(cell[0] for cell in grid_vertices) + 1)
+            min_y = max(0, min(cell[1] for cell in grid_vertices) - 1)
+            max_y = min(grid.info.height - 1, max(cell[1] for cell in grid_vertices) + 1)
+            for grid_y in range(min_y, max_y + 1):
+                for grid_x in range(min_x, max_x + 1):
+                    world = self.grid_to_world(grid, grid_x, grid_y)
+                    if self.point_in_polygon(world[0], world[1], polygon):
+                        sampled_cells.add((grid_x, grid_y))
+
+        costs = [
+            int(grid.data[grid_y * grid.info.width + grid_x])
+            for grid_x, grid_y in sampled_cells
+        ]
+        return {
+            "available": True,
+            "cost_100_contact": any(cost >= 100 for cost in costs),
+            "maximum_cost": max(costs, default=-1),
+            "sampled_cells": len(costs),
+            "extent_front_rear_left_right_m": list(extents),
+        }
+
+    def classify_physical_and_planning_boundaries(self, pose):
+        return {
+            "physical_body": self.classify_boundary(pose, BODY_EXTENTS),
+            "planning_boundary": self.classify_boundary(pose, PLANNING_EXTENTS),
+        }
+
+    def scan_static_contact_pose(self, expected_physical_contact):
+        """Select a robust contact pose from the currently published lanelet grid."""
+        base_x, base_y, yaw = STATIC_CONTACT_BASE_POSE
+        samples = []
+        for index in range(-160, 161):
+            lateral_offset = index * 0.01
+            pose = {
+                "x": base_x - math.sin(yaw) * lateral_offset,
+                "y": base_y + math.cos(yaw) * lateral_offset,
+                "yaw_rad": yaw,
+            }
+            classification = self.classify_physical_and_planning_boundaries(pose)
+            samples.append({
+                "offset_m": lateral_offset,
+                "pose": pose,
+                "physical_contact": classification["physical_body"][
+                    "cost_100_contact"
+                ],
+                "planning_contact": classification["planning_boundary"][
+                    "cost_100_contact"
+                ],
+            })
+
+        margin_indices = [
+            index
+            for index, sample in enumerate(samples)
+            if sample["physical_contact"] is False
+            and sample["planning_contact"] is True
+        ]
+        margin_groups = []
+        for index in margin_indices:
+            if not margin_groups or index != margin_groups[-1][-1] + 1:
+                margin_groups.append([index])
+            else:
+                margin_groups[-1].append(index)
+        if not margin_groups:
+            raise RuntimeError("live lanelet grid has no planning-margin-only band")
+
+        positive_groups = [
+            group for group in margin_groups if samples[group[len(group) // 2]]["offset_m"] > 0
+        ]
+        candidate_groups = positive_groups or margin_groups
+        margin_group = min(
+            candidate_groups,
+            key=lambda group: abs(samples[group[len(group) // 2]]["offset_m"]),
+        )
+        if expected_physical_contact:
+            margin_outer_index = margin_group[-1]
+            physical_indices = [
+                index
+                for index in range(margin_outer_index + 1, len(samples))
+                if samples[index]["physical_contact"] is True
+                and samples[index]["planning_contact"] is True
+            ]
+            if not physical_indices:
+                raise RuntimeError("live lanelet grid has no body-contact band")
+            # Enter 5 cm into the body-contact band to avoid a cell-edge-only result.
+            selected_index = physical_indices[min(5, len(physical_indices) - 1)]
+        else:
+            selected_index = margin_group[len(margin_group) // 2]
+
+        selected = samples[selected_index]
+        intervals = [
+            {
+                "start_offset_m": samples[group[0]]["offset_m"],
+                "end_offset_m": samples[group[-1]]["offset_m"],
+            }
+            for group in margin_groups
+        ]
+        return selected["pose"], {
+            "base_pose": {
+                "x": base_x,
+                "y": base_y,
+                "yaw_rad": yaw,
+            },
+            "step_m": 0.01,
+            "range_m": [-1.6, 1.6],
+            "margin_only_intervals": intervals,
+            "selected_lateral_offset_m": selected["offset_m"],
+        }
+
     def on_gate(self, message):
         self.latest_gate = message
+        if message.operating_state == "ROUTE_SAFETY_HOLD":
+            self.route_hold_seen = True
         signature = (message.operating_state, message.message)
         if signature != self.last_gate_signature:
             self.append(
@@ -308,6 +546,70 @@ class AutomaticRecoveryProbe(Node):
                 self.append("stage", name="pose_reset")
                 return
         raise RuntimeError("initial pose reset did not converge")
+
+    def wait_for_pose_settle(self, timeout_s=6.0, stable_s=0.6, tolerance_m=0.003):
+        """Wait until the simulated localization pose stops carrying reset momentum."""
+        deadline = time.monotonic() + timeout_s
+        stable_since = None
+        stable_anchor = None
+        while rclpy.ok() and time.monotonic() < deadline:
+            self.spin(0.10)
+            if self.latest_pose is None:
+                continue
+            current = self.pose_snapshot()
+            point = (current["x"], current["y"])
+            if stable_anchor is None or math.dist(point, stable_anchor) > tolerance_m:
+                stable_anchor = point
+                stable_since = time.monotonic()
+                continue
+            if stable_since is not None and time.monotonic() - stable_since >= stable_s:
+                return current
+        raise RuntimeError("simulated pose did not settle after initialpose reset")
+
+    def place_static_contact_pose(self):
+        """Compensate deterministic simulator settling and reach the measured test pose."""
+        desired = self.initial_pose
+        commanded = desired
+        attempts = []
+        for attempt in range(3):
+            self.initial_pose = commanded
+            self.reset_pose()
+            self.authorize(False)
+            observed = self.wait_for_pose_settle()
+            error_x = desired[0] - observed["x"]
+            error_y = desired[1] - observed["y"]
+            error_m = math.hypot(error_x, error_y)
+            attempts.append({
+                "attempt": attempt + 1,
+                "commanded_pose": {
+                    "x": commanded[0],
+                    "y": commanded[1],
+                    "yaw_rad": commanded[2],
+                },
+                "settled_pose": observed,
+                "position_error_m": error_m,
+            })
+            self.append(
+                "stage",
+                name="static_pose_settled",
+                attempt=attempt + 1,
+                position_error_m=error_m,
+                **observed,
+            )
+            if error_m <= 0.02:
+                self.initial_pose = desired
+                return observed, attempts
+            # HH_260806 - Correct only the measured translation error. The
+            # simulator preserves the requested yaw exactly during this reset.
+            commanded = (
+                commanded[0] + error_x,
+                commanded[1] + error_y,
+                desired[2],
+            )
+        self.initial_pose = desired
+        raise RuntimeError(
+            "static contact pose correction did not converge within 0.02 m"
+        )
 
     def make_goal(self):
         goal = FollowPath.Goal()
@@ -443,6 +745,9 @@ class AutomaticRecoveryProbe(Node):
             "route_lanelet_ids": list(self.lanelet_ids),
             "automatic_recovery_motion": recovery_motion,
             "first_hold": first_hold,
+            "first_hold_boundary_classification": (
+                self.classify_physical_and_planning_boundaries(first_hold)
+            ),
             "recovery_start": recovery_start,
             "hold_release": release,
             "second_hold": second_hold,
@@ -485,6 +790,359 @@ class AutomaticRecoveryProbe(Node):
             "timeline": self.timeline,
         }
 
+    def run_clear(self, timeout_s=120.0):
+        """Verify that the production controller completes a known route without a hold."""
+        if not self.action.wait_for_server(timeout_sec=10.0):
+            raise RuntimeError("FollowPath action unavailable")
+        self.reset_pose()
+        start = self.pose_snapshot()
+        handle = self.start_goal()
+        result_future = handle.get_result_async()
+        deadline = time.monotonic() + timeout_s
+        while rclpy.ok() and not result_future.done() and time.monotonic() < deadline:
+            self.spin(0.05, authorize=True)
+
+        timed_out = not result_future.done()
+        status = GoalStatus.STATUS_UNKNOWN
+        if timed_out:
+            cancel = handle.cancel_goal_async()
+            while rclpy.ok() and not cancel.done():
+                self.spin(0.05, authorize=True)
+        else:
+            status = int(result_future.result().status)
+
+        end = self.pose_snapshot()
+        self.authorize(False)
+        self.spin(0.4)
+        goal_x, goal_y = self.path_points[-1]
+        displacement = math.hypot(end["x"] - start["x"], end["y"] - start["y"])
+        goal_error = math.hypot(end["x"] - goal_x, end["y"] - goal_y)
+        final_speed = math.hypot(
+            self.latest_output.linear.x, self.latest_output.linear.y
+        )
+        passed = bool(
+            not timed_out
+            and status == GoalStatus.STATUS_SUCCEEDED
+            and not self.route_hold_seen
+            and displacement > 1.0
+            and goal_error <= 0.5
+            and final_speed <= 0.001
+            and abs(self.latest_output.angular.z) <= 0.001
+        )
+        self.append(
+            "milestone",
+            name="route_clear_complete",
+            passed=passed,
+            status=status,
+            timed_out=timed_out,
+            route_hold_seen=self.route_hold_seen,
+            displacement_m=displacement,
+            goal_error_m=goal_error,
+        )
+        return {
+            "route_lanelet_ids": list(self.lanelet_ids),
+            "passed": passed,
+            "timed_out": timed_out,
+            "action_status": status,
+            "route_safety_hold_seen": self.route_hold_seen,
+            "start_pose": start,
+            "end_pose": end,
+            "displacement_m": round(displacement, 4),
+            "goal_error_m": round(goal_error, 4),
+            "maximum_final_output_mps": round(self.max_output_mps, 4),
+            "final_output": {
+                "linear_x": self.latest_output.linear.x,
+                "linear_y": self.latest_output.linear.y,
+                "angular_z": self.latest_output.angular.z,
+            },
+            "timeline": self.timeline,
+        }
+
+    def prepare_static_contact(self, expected_physical_contact):
+        """Find, place, and classify one contact pose against the live grid."""
+        self.wait_until(
+            lambda: self.latest_lanelet_grid is not None,
+            "lanelet_grid_available_before_scan",
+            20.0,
+        )
+        selected_pose, live_sweep = self.scan_static_contact_pose(
+            expected_physical_contact
+        )
+        self.initial_pose = (
+            selected_pose["x"],
+            selected_pose["y"],
+            selected_pose["yaw_rad"],
+        )
+        pose, placement_attempts = self.place_static_contact_pose()
+        pose = self.pose_snapshot()
+        classification = self.classify_physical_and_planning_boundaries(pose)
+        return pose, placement_attempts, live_sweep, classification
+
+    def run_static_contact(self, expected_physical_contact):
+        """Verify that a classified static contact cannot pass a drive command."""
+        pose, placement_attempts, live_sweep, classification = (
+            self.prepare_static_contact(expected_physical_contact)
+        )
+
+        # HH_260806 - Reset after pose convergence so the peak represents only
+        # the challenged command window, not localization reset transients.
+        self.max_output_mps = 0.0
+        self.route_hold_seen = False
+        command = AvgTwist()
+        command.linear.x = 0.10
+        deadline = time.monotonic() + 1.5
+        while rclpy.ok() and time.monotonic() < deadline:
+            self.authorize(True)
+            self.raw_command_publisher.publish(command)
+            rclpy.spin_once(self, timeout_sec=0.04)
+
+        challenged_gate = {
+            "state": self.latest_gate.operating_state if self.latest_gate else None,
+            "message": self.latest_gate.message if self.latest_gate else None,
+        }
+        peak_output = self.max_output_mps
+        self.authorize(False)
+        self.spin(0.4)
+        final_speed = math.hypot(
+            self.latest_output.linear.x, self.latest_output.linear.y
+        )
+        physical_contact = classification["physical_body"]["cost_100_contact"]
+        planning_contact = classification["planning_boundary"]["cost_100_contact"]
+        reason_is_footprint = "lanelet_footprint_cost" in (
+            challenged_gate["message"] or ""
+        )
+        passed = bool(
+            physical_contact is expected_physical_contact
+            and planning_contact is True
+            and self.route_hold_seen
+            and challenged_gate["state"] == "ROUTE_SAFETY_HOLD"
+            and reason_is_footprint
+            and peak_output <= 0.001
+            and final_speed <= 0.001
+            and abs(self.latest_output.angular.z) <= 0.001
+        )
+        self.append(
+            "milestone",
+            name="static_contact_complete",
+            passed=passed,
+            expected_physical_contact=expected_physical_contact,
+            peak_output_mps=peak_output,
+        )
+        return {
+            "passed": passed,
+            "expected_physical_contact": expected_physical_contact,
+            "live_lateral_sweep": live_sweep,
+            "placement_attempts": placement_attempts,
+            "tested_pose": pose,
+            "boundary_classification": classification,
+            "challenged_command": {
+                "linear_x": command.linear.x,
+                "linear_y": command.linear.y,
+                "angular_z": command.angular.z,
+            },
+            "route_safety_hold_seen": self.route_hold_seen,
+            "challenged_gate": challenged_gate,
+            "maximum_final_output_mps_during_challenge": round(peak_output, 4),
+            "final_output": {
+                "linear_x": self.latest_output.linear.x,
+                "linear_y": self.latest_output.linear.y,
+                "angular_z": self.latest_output.angular.z,
+            },
+            "timeline": self.timeline,
+        }
+
+    def run_margin_recovery(self):
+        """Verify that a navigation-triggered margin contact moves and releases."""
+        pose, placement_attempts, live_sweep, classification = (
+            self.prepare_static_contact(expected_physical_contact=False)
+        )
+        self.route_hold_seen = False
+        self.max_recovery_output_mps = 0.0
+        self.minimum_recovery_linear_x = 0.0
+        self.maximum_recovery_abs_linear_y = 0.0
+        self.maximum_recovery_abs_angular_z = 0.0
+
+        command = Twist()
+        command.linear.x = 0.10
+        deadline = time.monotonic() + 5.0
+        first_hold = None
+        while rclpy.ok() and time.monotonic() < deadline:
+            self.authorize(True)
+            self.navigation_command_publisher.publish(command)
+            rclpy.spin_once(self, timeout_sec=0.04)
+            if self.gate_in_hold():
+                first_hold = self.pose_snapshot()
+                self.append("milestone", name="first_hold", **first_hold)
+                break
+        if first_hold is None:
+            raise RuntimeError("margin contact did not trigger route safety hold")
+        first_hold_gate = {
+            "state": self.latest_gate.operating_state if self.latest_gate else None,
+            "message": self.latest_gate.message if self.latest_gate else None,
+        }
+
+        recovery_start = self.wait_until(
+            self.owner_moving, "automatic_recovery_started", 3.0
+        )
+        recovery_motion = self.latest_owner.operating_state
+        release = self.wait_until(
+            lambda: not self.gate_in_hold(), "hold_released", 12.0
+        )
+        release_classification = self.classify_physical_and_planning_boundaries(
+            release
+        )
+        self.authorize(False)
+        self.spin(0.4)
+        displacement = math.hypot(
+            release["x"] - first_hold["x"],
+            release["y"] - first_hold["y"],
+        )
+        final_speed = math.hypot(
+            self.latest_output.linear.x, self.latest_output.linear.y
+        )
+        passed = bool(
+            classification["physical_body"]["cost_100_contact"] is False
+            and classification["planning_boundary"]["cost_100_contact"] is True
+            and self.route_hold_seen
+            and recovery_motion
+            in {
+                "CRAB_LEFT",
+                "CRAB_RIGHT",
+                "REVERSE",
+                "REVERSE_YAW_LEFT",
+                "REVERSE_YAW_RIGHT",
+            }
+            and displacement >= 0.02
+            and self.max_recovery_output_mps <= 0.101
+            and final_speed <= 0.001
+            and abs(self.latest_output.angular.z) <= 0.001
+        )
+        return {
+            "passed": passed,
+            "live_lateral_sweep": live_sweep,
+            "placement_attempts": placement_attempts,
+            "tested_pose": pose,
+            "first_hold_boundary_classification": classification,
+            "first_hold_gate": first_hold_gate,
+            "challenged_command": {
+                "linear_x": command.linear.x,
+                "linear_y": command.linear.y,
+                "angular_z": command.angular.z,
+            },
+            "automatic_recovery_motion": recovery_motion,
+            "recovery_start": recovery_start,
+            "hold_release": release,
+            "hold_release_boundary_classification": release_classification,
+            "recovery_displacement_m": round(displacement, 4),
+            "maximum_recovery_output_mps": round(
+                self.max_recovery_output_mps, 4
+            ),
+            "minimum_recovery_linear_x_mps": round(
+                self.minimum_recovery_linear_x, 4
+            ),
+            "maximum_recovery_abs_linear_y_mps": round(
+                self.maximum_recovery_abs_linear_y, 4
+            ),
+            "maximum_recovery_abs_angular_z_radps": round(
+                self.maximum_recovery_abs_angular_z, 4
+            ),
+            "final_output": {
+                "linear_x": self.latest_output.linear.x,
+                "linear_y": self.latest_output.linear.y,
+                "angular_z": self.latest_output.angular.z,
+            },
+            "timeline": self.timeline,
+        }
+
+    def run_physical_hard_stop(self):
+        """Verify that navigation cannot turn a physical-body contact into recovery."""
+        pose, placement_attempts, live_sweep, classification = (
+            self.prepare_static_contact(expected_physical_contact=True)
+        )
+        self.route_hold_seen = False
+        self.max_recovery_output_mps = 0.0
+        command = Twist()
+        command.linear.x = 0.10
+        deadline = time.monotonic() + 5.0
+        first_hold = None
+        while rclpy.ok() and time.monotonic() < deadline:
+            self.authorize(True)
+            self.navigation_command_publisher.publish(command)
+            rclpy.spin_once(self, timeout_sec=0.04)
+            if self.gate_in_hold():
+                first_hold = self.pose_snapshot()
+                self.append("milestone", name="first_hold", **first_hold)
+                break
+        if first_hold is None:
+            raise RuntimeError("physical contact did not trigger route safety hold")
+        first_hold_gate = {
+            "state": self.latest_gate.operating_state if self.latest_gate else None,
+            "message": self.latest_gate.message if self.latest_gate else None,
+        }
+
+        observation_start = self.relative_time()
+        self.spin(2.5, authorize=True)
+        observed_pose = self.pose_snapshot()
+        owner_motion_seen = any(
+            event.get("event") == "owner"
+            and event.get("t", 0.0) >= observation_start
+            and event.get("state")
+            in {
+                "CRAB_LEFT",
+                "CRAB_RIGHT",
+                "REVERSE",
+                "REVERSE_YAW_LEFT",
+                "REVERSE_YAW_RIGHT",
+            }
+            for event in self.timeline
+        )
+        displacement = math.hypot(
+            observed_pose["x"] - first_hold["x"],
+            observed_pose["y"] - first_hold["y"],
+        )
+        hold_retained = self.gate_in_hold()
+        self.authorize(False)
+        self.spin(0.4)
+        final_speed = math.hypot(
+            self.latest_output.linear.x, self.latest_output.linear.y
+        )
+        passed = bool(
+            classification["physical_body"]["cost_100_contact"] is True
+            and classification["planning_boundary"]["cost_100_contact"] is True
+            and self.route_hold_seen
+            and not owner_motion_seen
+            and self.max_recovery_output_mps <= 0.001
+            and displacement <= 0.01
+            and hold_retained
+            and final_speed <= 0.001
+            and abs(self.latest_output.angular.z) <= 0.001
+        )
+        return {
+            "passed": passed,
+            "live_lateral_sweep": live_sweep,
+            "placement_attempts": placement_attempts,
+            "tested_pose": pose,
+            "first_hold_boundary_classification": classification,
+            "first_hold_gate": first_hold_gate,
+            "challenged_command": {
+                "linear_x": command.linear.x,
+                "linear_y": command.linear.y,
+                "angular_z": command.angular.z,
+            },
+            "owner_motion_seen": owner_motion_seen,
+            "hold_retained_during_observation": hold_retained,
+            "observed_displacement_m": round(displacement, 4),
+            "maximum_recovery_output_mps": round(
+                self.max_recovery_output_mps, 4
+            ),
+            "final_output": {
+                "linear_x": self.latest_output.linear.x,
+                "linear_y": self.latest_output.linear.y,
+                "angular_z": self.latest_output.angular.z,
+            },
+            "timeline": self.timeline,
+        }
+
 
 def milestone_time(timeline, name):
     return next(
@@ -500,14 +1158,26 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
         "--scenario",
-        choices=("route_retry", "static_reverse_retry", "one_sided_crab"),
+        choices=(
+            "route_clear",
+            "route_retry",
+            "static_reverse_retry",
+            "one_sided_crab",
+            "margin_contact",
+            "margin_recovery",
+            "physical_contact",
+            "physical_hard_stop",
+        ),
         default="route_retry",
     )
     args = parser.parse_args()
 
     rclpy.init()
     initial_pose = None
-    if args.scenario in {"route_retry", "static_reverse_retry"}:
+    if args.scenario in STATIC_CONTACT_SCENARIOS:
+        path_points = load_route(args.map)
+        initial_pose = STATIC_CONTACT_BASE_POSE
+    elif args.scenario in {"route_clear", "route_retry", "static_reverse_retry"}:
         path_points = load_route(args.map)
         if args.scenario == "static_reverse_retry":
             # HH_260803 - Start from the observed route-contact pose with zero
@@ -523,7 +1193,20 @@ def main():
         lanelet_ids=lanelet_ids,
     )
     try:
-        result = node.run(observe_retry=args.scenario != "one_sided_crab")
+        if args.scenario == "route_clear":
+            # HH_260806 - The reduced boundary must prove that the previously
+            # blocked production route now completes without a safety hold.
+            result = node.run_clear()
+        elif args.scenario == "margin_recovery":
+            result = node.run_margin_recovery()
+        elif args.scenario == "physical_hard_stop":
+            result = node.run_physical_hard_stop()
+        elif args.scenario in STATIC_CONTACT_SCENARIOS:
+            result = node.run_static_contact(
+                expected_physical_contact=args.scenario == "physical_contact"
+            )
+        else:
+            result = node.run(observe_retry=args.scenario != "one_sided_crab")
         result["scenario"] = args.scenario
         # HH_260804 - Bind evidence to the exact user-provided map revision;
         # regenerated images must not silently reuse an older map result.

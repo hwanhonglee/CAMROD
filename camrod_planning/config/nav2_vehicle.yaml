@@ -8,13 +8,14 @@
 #   --- Geometry ---
 #   wheelbase:       0.89 m   front-to-rear axle distance
 #                             lf = CG->front axle, lr = CG->rear axle (lf≈lr≈0.445 m if CG centered)
-#   track_width:     0.56 m   left-to-right wheel centerline distance
+#   track_width:     1.07 m   configured provisional kinematic estimate;
+#                             vendor reference is 0.56 m and field measurement is pending
 #   tire_radius:     0.13 m   wheel radius (approx 260 mm dia / 2)
-#   HH_260803 - measured body envelope relative to robot_center_link:
-#   body_front:      0.75837 m  (1.20137 - 0.443)
-#   body_rear:       0.73323 m  (0.29023 + 0.443)
-#   body_left:       0.53505 m
-#   body_right:      0.53495 m
+#   HH_260806 - provisional body envelope relative to robot_center_link:
+#   body_front:      0.65837 m  (previous 0.75837 - 0.10)
+#   body_rear:       0.63323 m  (previous 0.73323 - 0.10)
+#   body_left:       0.43505 m  (previous 0.53505 - 0.10)
+#   body_right:      0.43495 m  (previous 0.53495 - 0.10)
 #   planning_margin: 0.05 m on every body side
 #
 #   --- Inertia / Mass ---
@@ -104,8 +105,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # HH_260805 - Center-based body with a 0.05 m margin on all four sides.
-      footprint: "[[0.80837, 0.58505], [0.80837, -0.58495], [-0.78323, -0.58495], [-0.78323, 0.58505]]"
+      # HH_260806 - Provisional body with the retained 0.05 m four-sided margin.
+      footprint: "[[0.70837, 0.48505], [0.70837, -0.48495], [-0.68323, -0.48495], [-0.68323, 0.48505]]"
       robot_radius: 0.0
 
 # =========================================================================
@@ -114,6 +115,6 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      # HH_260805 - Center-based body with a 0.05 m margin on all four sides.
-      footprint: "[[0.80837, 0.58505], [0.80837, -0.58495], [-0.78323, -0.58495], [-0.78323, 0.58505]]"
+      # HH_260806 - Provisional body with the retained 0.05 m four-sided margin.
+      footprint: "[[0.70837, 0.48505], [0.70837, -0.48495], [-0.68323, -0.48495], [-0.68323, 0.48505]]"
       robot_radius: 0.0
