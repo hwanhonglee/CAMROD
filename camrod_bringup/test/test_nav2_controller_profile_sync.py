@@ -102,6 +102,51 @@ def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
     assert checker["hz_error_ratio"] == 0.70
 
 
+def test_local_path_diagnostic_ignores_service_owned_motion_handoffs() -> None:
+    """An expected Nav2 path clear must not flash SYSTEM ERROR in a maneuver."""
+    package_path = (
+        SRC_ROOT
+        / "camrod_system"
+        / "config"
+        / "diagnostics"
+        / "default"
+        / "planning"
+        / "planning_path_checker.yaml"
+    )
+    bringup_path = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "system"
+        / "diagnostics"
+        / "default"
+        / "planning"
+        / "planning_path_checker.yaml"
+    )
+    parameters = yaml.safe_load(package_path.read_text(encoding="utf-8"))[
+        "planning_path_checker"
+    ]["ros__parameters"]
+    source = (
+        SRC_ROOT
+        / "camrod_system"
+        / "src"
+        / "diagnostics"
+        / "planning_path_checker_node.cpp"
+    ).read_text(encoding="utf-8")
+
+    # HH_260807 - Keep the package and deployed checker contract byte-identical.
+    assert package_path.read_bytes() == bringup_path.read_bytes()
+    assert parameters["service_state_topic"] == "/service/state"
+    assert parameters["local_path_suppressed_service_states"] == [
+        0, 2, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16
+    ]
+    assert parameters["global_path"]["point_count_grace_s"] == 0.0
+    assert parameters["local_path"]["point_count_grace_s"] == 1.5
+    assert 'src.name == "local_path"' in source
+    assert "service state does not require a Nav2 local path" in source
+    assert "path point count transition grace" in source
+
+
 def test_local_path_chain_matches_twenty_hz_pose_control_clock() -> None:
     """Keep safety-path and tracking feedback on the 50 ms control period."""
     package_path = PLANNING_CONFIG / "local_path_extractor.yaml"

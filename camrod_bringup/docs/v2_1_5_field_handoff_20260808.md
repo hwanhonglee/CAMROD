@@ -22,6 +22,7 @@ Jetson/robot PASS.
 | Pose/control clock | Real EKF, local path/tracking and Nav2 controller use `20 Hz`; delayed-data history is `1.0 s` |
 | GNSS correction clock | Hardware launch still writes `1 Hz`; 5/10 Hz is field A/B work, not a released claim |
 | Campsite policy | B1-B10 turn around on site; B11-B13 stop roadside at a 0.60 m crab cap and have no approved return geometry |
+| Planning diagnostics | Expected empty local paths in service-owned maneuver/parking/departure states remain `OK`; route travel still checks freshness and point count |
 | Runtime | Checker/Nav2/system-core containers ON; LiDAR cost grid and DDS-SHM OFF by default; Chromium is the default operator window |
 | Active map | User-authored map v17, SHA `8cd05c...5e021`; 55 lanelets, 14 areas, 1,652 nodes |
 
