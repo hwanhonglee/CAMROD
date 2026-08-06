@@ -52,9 +52,11 @@ CAMROD 구현·검증 완료 기록
   bringup YAML을 byte 동기화했다. B11-B13의 crab offset은 `0.60 m`로
   제한하고 현장 `ROTATE_180`은 금지했다.
 - campsite/drop-zone 명시 maneuver가 final cmd_vel 소유권을 갖는 동안
-  Nav2 명령을 무시하고, 종료 후 `0.5 s` zero handoff를 추가했다. Nav2의
-  pure rotation 뒤 첫 translation도 `0.5 s` 정지 후 허용해 crab/zero-turn
-  완료 전에 전진 명령이 섞이지 않게 했다.
+  Nav2 명령을 무시하고, 종료 후 `0.5 s` zero handoff를 추가했다.
+- HH_260806 B7 회귀에서 normal RotationShim/RPP의 pure rotation과 translation
+  전환까지 별도 handoff로 처리하면 15회의 zero/stale stop-go가 생기는 것을
+  확인했다. 두 명령은 같은 Nav2 owner로 연속 처리하며 `0.5 s` hold는 명시
+  maneuver 종료에만 적용한다.
 - campsite는 road lanelet 밖의 semantic service area이므로 명시 phase에서만
   static lanelet 검사를 우회한다. 동적 LiDAR/radar cost는 계속 차단하며,
   일반 Nav2와 미결 B11-B13 차로 회전에는 physical-body hard stop을 유지한다.
@@ -348,9 +350,10 @@ CAMROD 구현·검증 완료 기록
 - 좌/우 수렴·진동·실차 latency 판정은 TODOLIST 13에 남아 있다.
 
 13. HH_260731: crab yaw와 GNSS/final 위치 차이 감사 [DONE-CODE, DONE-DIAGNOSIS]
-- production EKF는 dual-GNSS pose의 x/y/z/yaw, IMU roll/pitch와
-  angular velocity, Ranger wheel vx/vy/wz를 함께 사용한다. 절대 IMU yaw는
-  쓰지 않고 GNSS heading이 절대 yaw를 계속 보정한다.
+- production EKF input은 dual-GNSS pose의 x/y/z/yaw, IMU orientation/
+  angular velocity, Ranger wheel vx/vy/wz로 구성된다. 실제 2D filter state는
+  z/roll/pitch와 roll/pitch rate를 0으로 고정해 IMU angular.z만 사용하고,
+  절대 IMU yaw는 쓰지 않으며 GNSS heading이 절대 yaw를 계속 보정한다.
 - 기존 Ranger PARALLEL odometry는 CAN angular velocity를 버리고 wz=0을
   covariance 0으로 발행했으며 EKF가 이 wheel wz를 50 Hz로 융합했다.
 - 실차에서 IMU 단독 yaw-rate가 더 불안정하다는 확인에 따라 wheel wz
@@ -720,6 +723,111 @@ CAMROD 구현·검증 완료 기록
   lever-arm 보정을 함께 반영한 뒤에만 `pose_verified=true`로 변경한다.
 - 세부 변경과 현장 한계는 `docs/V2_1_5_RELEASE_NOTES.md`, 실측 절차는
   `TODOLIST.txt`의 P0 frame 항목과 TODO 10/13에 보존했다.
+
+25. HH_260806: 3 km/h 활성 속도 비율 및 localization 지연 계약
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- final gate `speed_scale=0.5`는 유지하고 활성 RPP raw cruise를
+  `1.666667 m/s`로 설정해 최종 `0.833333 m/s = 3.0 km/h`를 만들었다.
+  curve/final approach, campsite crab/reverse, drop-zone exit, reverse/
+  AprilTag parking, optional yaw-zone 접근 속도는 기존 순항 대비 비율을
+  그대로 유지했다. zero-turn은 선형 0이고 경계 회복은 별도 안전 예외로
+  최종 `0.18 km/h`를 유지했다.
+- real EKF가 planar GNSS absolute position/yaw, IMU yaw-rate,
+  wheel vx/vy/yaw-rate를 융합하고 z/roll/pitch를 고정하는 계약을 회귀
+  테스트에 고정했다. HH_260806 후속 변경으로 real EKF, local-path/tracking
+  heartbeat, Nav2 controller, final-pose checker를 `15 -> 20 Hz`로 동기화하고
+  delayed-data history를 `0.3 -> 1.0 s`로 늘려
+  기존 정지 측정의 최대 `747.6 ms` 지연을 수용한다. dual-GNSS는 현장
+  동작이 확인된 1 Hz를 유지하며 20 Hz 실차 부하는 아직 FIELD-PENDING이다.
+- canonical wrapper로 localization/planning/control/bringup 4개 package를
+  빌드했고 직접 speed/frame/localization 회귀 49건이 통과했다. isolated
+  AMD64 12 m 주행은 Nav2
+  success, final `3.000001 km/h`, pose `20.024 Hz`, 최대 step `6.485 cm`,
+  20 cm 초과 jump 0회를 기록했다.
+- 이 sim은 fake GNSS 10 Hz와 EKF 20 Hz를 사용하므로 실제 dual-GNSS 1 Hz,
+  Jetson CPU, wheel scale, IMU bias 또는 moving localization을 합격시키지
+  않는다. `TODOLIST.txt` P0 13에 `1/2/3 km/h` 단계 실차 절차를 남겼고
+  구조화 JSON/PNG/bag hash는
+  `docs/assets/test_result/three-kph-localization-20260806/`에 보존했다.
+- HH_260806 20 Hz 후속 검증에서 local-path/tracking heartbeat와 C++ fallback
+  기본값도 20 Hz로 동기화했다. cadence/frame/GNSS 계약 73건과 README asset
+  13건이 통과했고, 별도 ROS domain의 설치 runtime에서 EKF/local-path/
+  tracking parameter가 각각 20 Hz임을 확인했다. EKF Q/R은 변경하지 않았다.
+
+26. HH_260807: map v17 및 현재 배포 기하 계약 [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- 사용자가 수정한 active/copy OSM을 `map_version=17`, lanelet 55, area 14,
+  point 1652, SHA-256 `8cd05c66...5e021`로 byte-identical 동기화했다. 지도
+  형상은 자동 수정하지 않았고 역사 map-v14/v15 결과도 새 지도 결과로
+  재표기하지 않았다.
+- 실측 원 플랫폼 수치 `1.1916 x 0.87 m`가 아니라 상부 가공품을 포함한 현재
+  hard-stop body `1.3916 x 1.07 m`를 유지했다. planning boundary는 사방
+  5 cm인 `1.4916 x 1.17 m`이며 package, bringup, C++ fallback, Nav2와
+  RViz 계약을 동기화했다.
+- GNSS NavSatFix가 왼쪽 안테나 기준이라는 사용자 실측을 반영해 localization
+  input adapter에 Y `+0.45 m` lever-arm 보정을 추가했다. 나머지 sensor XYZ는
+  추정 변경하지 않고 실측 전 `pose_verified=false`를 유지했다.
+
+27. HH_260807: campsite/drop-zone/parking command ownership 정리
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- B1-B10은 `CRAB_IN` 완료 뒤 `ROTATE_180`을 완전히 끝내고 하역 대기로
+  전환하며, RETURN 뒤 `ALIGN_RETRACE_YAW -> CRAB_OUT` 순서를 유지한다.
+  B11-B13은 좁은 갓길 정책에 따라 arrival까지만 허용하고 zero-turn/return
+  geometry는 현장 측량 전 생성하지 않는다.
+- campsite, drop-zone exit, parking의 lanelet bypass를 각 controller의 실제
+  maneuver phase에만 한정했다. command source arbiter가 해당 phase 동안만
+  owner command를 허용하며 LiDAR/radar와 physical-body hard stop은 우회하지
+  않는다. parking/drop-zone owner 진단 문자열도 실제 소유자와 일치시켰다.
+- 제로턴/크랩이 끝나기 전에 Nav2 전진 명령이 섞이지 않도록 phase owner와
+  zero hold를 고정했고, reverse parking은 `WAIT_FOR_CHARGING -> PARKED`,
+  CAN charging feedback은 외부 `/service/state=CHARGING`을 결정한다.
+
+28. HH_260807: B2 margin 재접촉 회복 3회 [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- recovery candidate를 끝점만 보지 않고 continuous twist arc의 모든 중간
+  pose에서 physical footprint로 검사한다. physical body 접촉 후보는 즉시
+  거부하고 endpoint planning footprint가 clear인 경우만 회복 명령을 허용한다.
+- final gate가 실제 recovery command를 통과시킨 뒤에만 route clear timer를
+  시작하도록 `recovery_motion_observed` 계약을 추가했다. clear release는
+  `1.0 -> 1.5 s`로 늘리고 status에 관측값을 노출했다.
+- map v17 B2 동일 조건 3회 모두 `REVERSE_YAW_RIGHT`, mission complete,
+  second hold 없음, rapid retry latch 없음이었다. 회복 변위는 0.0202/0.0742/
+  0.0715 m, recovery max는 0.05 m/s였다. 구조화 결과와 PNG는
+  `docs/assets/test_result/v2-1-5-service-validation-20260807/`에 보존했다.
+
+29. HH_260807: 3회 연속 왕복 서비스 및 charger departure
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- B1 -> B2 -> B3을 bringup restart 없이 677.237초 동안 연속 실행했다. 각
+  cycle이 campsite route, CRAB_IN, ROTATE_180, unload/wait, 명시적 RETURN,
+  CRAB_OUT, return route, drop alignment, reverse parking, charging을 완료했다.
+- cycle 2에는 3초 map-fixed dynamic obstacle을 주입해 final command stop,
+  obstacle clear, 같은 mission resume를 확인했다. 세 cycle 모두 margin hold,
+  실제 recovery motion, 1.5초 release, retry latch 없음도 확인했다.
+- charger contact feedback이 출발 직후 남아 있어도 active drop-zone exit와
+  `DEPARTING_CHARGER`를 CHARGING으로 되돌리지 않게 UI backend를 수정했다.
+  같은 destination의 중복 WebSocket command는 exit 대기 중 idempotent하게
+  무시한다. UI 회귀 30건과 3회 service soak가 통과했다.
+- JSON/log/PNG/GIF와 재현 명령은
+  `docs/assets/test_result/v2-1-5-service-validation-20260807/`에 보존했다.
+
+30. HH_260807: optional LiDAR component와 지속 장애물 no-path 안전성
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- scoped LiDAR container의 TF listener를 동일 node context/executor에 연결하고
+  dedicated TF buffer thread와 nonblocking lookup을 사용했다. optional LiDAR
+  cost grid ON full graph에서 component/topic/checker가 함께 활성화되고
+  guard-condition 오류나 TF timeout spam 없이 `[SYSTEM] OK`에 도달했다.
+- 20초 지속 장애물 fallback은 Nav2 goal을 먼저 선점하지 않는다. fresh lane
+  width gate 통과 뒤 `ComputePathToPose(SmacLattice)`로 경로를 사전 계산하고,
+  2 pose 이상의 성공 결과일 때만 planner selector와 NavigateToPose를 발행한다.
+- map v17의 약 3.00 m road에서 centered obstacle은 footprint/inflation 때문에
+  no-path였다. 사전 계산 실패를 `BLOCKED_REPLAN_FAILED_HOLD`로 1회 latch해
+  반복 ABORT/preemption을 제거했고, 장애물 제거 뒤 LaneletRoute 원 mission이
+  새 goal 없이 0.242 m 재이동하는 full graph PASS를 확인했다.
+- 현재 지도에는 성공 회피를 검증할 충분한 road 폭이 없어 wide-lane bypass는
+  FIELD-PENDING으로 남겼다. 폭/footprint/inflation을 줄여 PASS를 만들지 않았다.
+- canonical `colcon_build.sh`로 11개 선택 package를 다시 빌드했다. fresh
+  CAMROD test는 CTest target 58/58, xUnit 523건(error/failure 0, 기존
+  planning/localization static-analysis skip 13), UI 30/30을 통과했고 수정된
+  Ranger steering policy GTest도 1/1 통과했다. 외부 package의 과거 lint
+  결과는 이 fresh CAMROD 판정에 합산하지 않았다.
 
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:

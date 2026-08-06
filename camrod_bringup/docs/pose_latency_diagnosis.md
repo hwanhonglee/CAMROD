@@ -1,5 +1,7 @@
 # Pose latency diagnosis
 
+<!-- HH_260806 - Separate the 3 km/h command smoke result from physical 1 Hz GNSS acceptance. -->
+
 This note separates three different causes that can look like delayed vehicle
 pose during driving:
 
@@ -66,7 +68,7 @@ The production data flow is:
   -> /localization/input/wheel_odometry_ros
   -> robot_localization EKF
 
-robot_localization EKF                              (real: 15 Hz, sim: 20 Hz)
+robot_localization EKF                              (real: 20 Hz, sim: 20 Hz)
   -> /localization/primary/odometry_ros
   -> localization_input_adapter
   -> /localization/primary/pose_with_covariance
@@ -80,12 +82,18 @@ selector republishes the selected primary pose with that source header.
 filter cycle.
 
 Consequently, a healthy real robot should still publish the final localization
-pose near the 15 Hz EKF rate. A 1 Hz GNSS fix is not by itself a reason for a
+pose near the 20 Hz EKF rate. A 1 Hz GNSS fix is not by itself a reason for a
 1 Hz `/localization/pose`. It does, however, mean that absolute lateral
 position and GNSS heading corrections arrive only once per second; wheel and
 IMU data predict between those updates. That correction cadence can contribute
 to a visible staircase correction or lateral overshoot even while the final
-pose topic remains healthy at 15 Hz.
+pose topic remains healthy at 20 Hz.
+
+With `two_d_mode=true`, the real EKF fuses absolute GNSS `x/y` and dual-GNSS
+yaw, IMU yaw rate, and wheel-odometry body `vx/vy` plus yaw rate. The filter
+clamps `z/roll/pitch`, `vz`, roll/pitch rates, and `az`. Absolute IMU yaw is disabled.
+The adapter prefers
+`/platform/status/odometry` and falls back to `/rmp401/odom` after `0.7 s`.
 
 ## Clean sim measurement and selector correction on 2026-07-30
 
@@ -100,9 +108,10 @@ the new odometry stamp but copied the previous pose-covariance payload, then
 marked that new stamp as published. When the matching pose covariance arrived,
 the same stamp was already consumed. At the 20 Hz sim rate this added about
 50 ms; at the former 10 Hz real filter rate it could add about 100 ms.
-The v2.1.1 real profile now runs at 15 Hz, matching the controller, so the
-remaining publication-period bound is approximately 67 ms before transport
-and scheduling delay.
+The v2.1.1 real profile ran at 15 Hz, matching its controller, so its remaining
+publication-period bound was approximately 67 ms before transport and
+scheduling delay. HH_260806 synchronizes both real loops at 20 Hz, reducing
+the configured period to 50 ms; this remains pending moving Jetson acceptance.
 
 `localization_pose_selector_node` now chooses the freshest cached payload by
 header stamp and reconstructs the matching pose/odometry pair before publishing.
@@ -161,14 +170,14 @@ Interpret the result as follows:
 
 | Observation | Primary diagnosis |
 |---|---|
-| GNSS is near 1 Hz, while EKF and final pose are near 15 Hz with fresh stamps | Expected dual-GNSS cadence; no localization publication-rate failure |
+| GNSS is near 1 Hz, while EKF and final pose are near 20 Hz with fresh stamps | Expected dual-GNSS cadence; no localization publication-rate failure |
 | GNSS alone is stale or substantially below 1 Hz | Receiver/serial/timestamp path |
 | GNSS, IMU, and wheel all lose rate together while total CPU is high | System scheduling load |
-| Inputs are healthy, but EKF output is below 14 Hz or has growing stamp age | EKF scheduling/configuration |
+| Inputs are healthy, but EKF output is below 18 Hz or has growing stamp age | EKF scheduling/configuration |
 | EKF output is healthy, but adapter or selected pose loses rate/adds age | Adapter/selector path |
 | Final pose is healthy when stationary, but lateral correction overshoots only while moving | Dynamic fusion/controller-delay test still required |
 
-For an initial pass, treat a real EKF/final-pose sustained rate below 14 Hz,
+For an initial pass, treat a real EKF/final-pose sustained rate below 18 Hz,
 header-age p95 above 200 ms, or repeated age above 500 ms as evidence requiring
 investigation. These are diagnostic screening limits, not final safety
 acceptance thresholds. A stationary test cannot validate the phase delay
@@ -185,17 +194,37 @@ CPU-saturated session, which remains a scheduling concern and requires a
 production-only profile, but it does not prove that pose cadence causes the
 lateral sine-wave motion.
 
-At the final field speed limit of `0.20 m/s`, velocity-scaled RPP computes only
-`0.20 * 1.8 = 0.36 m` before applying its minimum lookahead. The minimum is
-therefore the effective low-speed control parameter. HH_260801 synchronizes
-the UI mission RPP and the manual-engage RotationShim internal RPP at a
-`1.1 m` minimum preview. A full-bringup sweep used straight and S-curve
-FollowPath inputs with lateral offsets. `1.0 m` corrected fastest but used more
-steering variation, while `1.2 m` was smoother but retained more path error;
-`1.1 m` was selected as the balance. Boundary-stop trials are excluded from
-tracking scores. The `2.0 m` cap, controller frequency, pose rate, Ranger
-`0.25 rad/s` steering slew, gain, footprint, and cost thresholds remain
-unchanged.
+The HH_260801 controller sweep used the former final `0.20 m/s` field baseline.
+At that speed, velocity-scaled RPP computed only `0.20 * 1.8 = 0.36 m` before
+the minimum lookahead, so the minimum was the effective parameter. The UI
+mission RPP and manual-engage RotationShim internal RPP remain synchronized at
+the selected `1.1 m` minimum preview: `1.0 m` corrected fastest but used more
+steering variation, while `1.2 m` was smoother but retained more path error.
+
+HH_260806 raises the active final cruise reference to `3.0 km/h`
+(`0.833333 m/s`) while preserving operational linear-speed ratios. At this
+speed, the vehicle travels approximately `4.17 cm` per `20 Hz` EKF cycle and
+`0.833 m` between physical `1 Hz` GNSS corrections. The prior stationary
+header-age p95/max of `352.5/747.6 ms` corresponds to `0.294/0.623 m` of travel,
+so delayed absolute correction can become visually significant. HH_260806
+synchronizes the real EKF and controller at `20 Hz`; `smooth_lagged_data`
+history increases from `0.3 s` to `1.0 s` so the filter can rewind/replay the
+measured maximum delay. The prior 15 Hz stationary result does not accept this
+new cadence under moving Jetson load.
+
+The local-path extractor and tracking-error fallback heartbeats now also use
+`20 Hz`. Both nodes publish immediately on pose/path callbacks, so the change
+mainly removes a 15 Hz fallback/default mismatch. The active process-noise
+matrix is not rescaled: the bundled `robot_localization` EKF already multiplies
+it by elapsed time, so the per-second model noise remains consistent at 20 Hz.
+
+An AMD64 12 m kinematic smoke run reached a final command of
+`3.000001 km/h`, maintained selected pose at `20.024 Hz`, measured a maximum
+pose step of `6.485 cm`, and found zero steps over `20 cm`. Its fake GNSS is
+`10 Hz` and sim EKF is `20 Hz`, so it does not reproduce or accept the physical
+1 Hz GNSS/20 Hz EKF/Jetson case. Boundary-stop trials remain excluded from
+tracking scores. The `2.0 m` lookahead cap, Ranger `0.25 rad/s` steering slew,
+gains, footprint, costs, and angular-speed limits remain unchanged.
 
 Record `/platform/steering_transition_state` with `/actuator_state` during both
 left- and right-offset runs. Repeated target-angle sign changes identify the

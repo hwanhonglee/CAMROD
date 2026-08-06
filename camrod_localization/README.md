@@ -2,6 +2,7 @@
 
 <!-- HH_260806 - Document the measured left-GNSS lever arm and fail-closed
 heading requirement used to publish the robot-center position. -->
+<!-- HH_260806 - Document IMU/wheel fusion and extend real-filter lag history for the 3 km/h profile. -->
 
 GNSS, dual-GNSS heading, IMU, and Ranger wheel-velocity fusion for the
 canonical `robot_center_link` pose and localization-health state.
@@ -28,7 +29,7 @@ chain. It does not measure physical GNSS accuracy.
 
 | Item | Field | Simulation |
 |---|---:|---:|
-| EKF frequency | `15 Hz` | `20 Hz` |
+| EKF frequency | `20 Hz` | `20 Hz` |
 | Base frame | `robot_center_link` | `robot_center_link` |
 | GNSS raw position | left antenna `(0,+0.45,0) m` | Same modeled source |
 | GNSS published position | heading-corrected `robot_center_link` | Same correction path |
@@ -36,20 +37,50 @@ chain. It does not measure physical GNSS accuracy.
 | TF | EKF publishes `odom -> robot_center_link` | Same |
 | Prediction | `predict_to_current_time: true` | Same |
 | Lag handling | `smooth_lagged_data: true` | Same |
-| IMU yaw source | Physical heading/IMU policy | Map-consistent fake yaw allowed |
+| Lag history | `1.0 s` | `0.3 s` |
+| Absolute yaw | Dual-GNSS heading; IMU yaw disabled | Map-consistent fake GNSS heading |
 
 ## Inputs And Outputs
 
 | Direction | Topic | Role |
 |---|---|---|
 | Input | `/sensing/gnss/pose_with_covariance_ros` | Absolute map position and optional valid heading covariance |
-| Input | `/sensing/imu/data_ros` | Orientation components and angular velocity |
+| Input | `/sensing/imu/data_ros` | Yaw-rate prediction; 2D mode clamps roll/pitch and their rates |
 | Input | `/platform/status/odometry` | Ranger wheel motion source |
 | Internal | `/localization/input/wheel_odometry_ros` | EKF-ready wheel odometry |
 | Output | `/localization/pose_ros` | ROS pose consumed by Nav2 and probes |
 | Output | `/localization/pose` | Generated CAMROD pose contract |
 | Output | `/localization/mode` | `NORMAL`, degraded/dead-reckoning, or invalid state |
 | Output | `/localization/centerline_pose` | Lanelet-aligned planning reference |
+
+### EKF Fusion Channels
+
+| Source | Field input | Fused state |
+|---|---|---|
+| GNSS position | `/sensing/gnss/pose_with_covariance_ros` | Absolute `x/y`; 2D mode clamps `z` |
+| Dual-GNSS heading | same normalized pose contract | Absolute yaw |
+| IMU | `/sensing/imu/data_ros` | `angular.z` yaw rate; absolute IMU yaw is disabled and 2D mode clamps roll/pitch rates |
+| Ranger wheel odometry | `/localization/input/wheel_odometry_ros` | Body velocity `vx/vy` and yaw rate |
+
+The adapter prefers `/platform/status/odometry` and falls back to
+`/rmp401/odom` after `0.7 s`. IMU and wheel odometry predict motion between the
+physical dual-GNSS corrections, which arrive at `1 Hz` in the field profile.
+
+### EKF Parameter Review
+
+| Parameter group | Active value | Decision |
+|---|---:|---|
+| Prediction/output | `20 Hz`, `sensor_timeout=0.2 s` | Matches Nav2 and local-path control timing |
+| Planar model | `two_d_mode=true` | Keeps `x/y/yaw`, `vx/vy/yaw-rate`; clamps `z/roll/pitch`, `vz`, roll/pitch rates, and `az` |
+| Delayed samples | smoothing on, `history_length=1.0 s` | Covers the measured `747.6 ms` stationary header age |
+| GNSS XY measurement | covariance floor `0.1 m^2`, rejection `3 sigma` | Retained from prior field tuning |
+| GNSS heading | floor `1 deg^2`, rejection `1000 sigma` | Startup-friendly but effectively ungated; requires moving residual data before tightening |
+| Process-noise diagonal | XY `0.01`, yaw `0.1`, `vx/vy=0.05`, yaw-rate `0.1` | Unchanged; `robot_localization` scales process noise by elapsed time |
+
+Changing the filter from 15 to 20 Hz therefore does not require multiplying or
+dividing process noise. GNSS heading gain, rejection, and wheel/IMU covariance
+must be tuned from the same moving rosbag; changing them from stationary or
+10 Hz fake-GNSS evidence could hide the actual steering or timestamp fault.
 
 ## Measured Simulation Timing
 
@@ -83,6 +114,24 @@ This isolated AMD64 ROS test verifies transform direction and simulation
 projection, not physical GNSS accuracy. Exact scope and the intermediate
 projection diagnosis are in the [test record](../docs/assets/test_result/gnss-lever-arm-20260806/README.md).
 
+### 3 km/h Kinematic Smoke Test
+
+![3 km/h command and selected pose](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
+
+| Metric | AMD64 result |
+|---|---:|
+| Final command maximum | `0.833333 m/s` (`3.000001 km/h`) |
+| Selected-pose rate | `20.024 Hz` |
+| Selected-pose gap p95 / max | `50.903 / 51.752 ms` |
+| Header age p95 / max | `1.531 / 45.982 ms` |
+| Pose step p95 / max | `4.197 / 6.485 cm` |
+| Steps over `20 cm` | `0` |
+
+This smoke test uses fake GNSS, IMU, and wheel inputs at `10 Hz` and the
+simulation EKF at `20 Hz`; it does not reproduce the physical `1 Hz` GNSS,
+real-stack Jetson load, wheel scale, or IMU bias. See the
+[structured test record](../docs/assets/test_result/three-kph-localization-20260806/README.md).
+
 ## Reported Physical Stationary Performance
 
 ![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
@@ -98,6 +147,10 @@ projection diagnosis are in the [test record](../docs/assets/test_result/gnss-le
 This run occurred under CPU saturation and did not exercise driving. Raw files
 are referenced by the field report but are not committed; the result does not
 accept moving latency, crab yaw, lateral overshoot, or antenna lever arm.
+The measured run used the former `15 Hz` field EKF. The configured real EKF is
+now `20 Hz`, synchronized with the Nav2 controller, while its delayed-data
+rewind history remains `1.0 s`. That rate change is not a physical moving PASS
+until it meets the Jetson load and timing criteria.
 
 ## Nodes
 

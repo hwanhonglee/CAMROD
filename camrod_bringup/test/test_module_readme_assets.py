@@ -343,7 +343,7 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
 
 def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> None:
     """Released recovery evidence must reject the later deployed map geometry."""
-    # HH_260806 - The user deployed map-v16 geometry for current operation.
+    # HH_260807 - Historical map-v15 evidence must reject the active map-v17 geometry.
     # Preserve the old recovery run as release evidence and prove the renderer
     # refuses to relabel it as a measurement on the newer OSM.
     active_map = SRC_ROOT / "lanelet2_maps.osm"
@@ -376,7 +376,7 @@ def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> No
     # Version identity is checked before SHA identity once the active map has a
     # new map_version. Either guard prevents historical evidence relabeling.
     assert (
-        "evidence map v15 does not match OSM map v16" in result.stderr
+        "evidence map v15 does not match OSM map v17" in result.stderr
         or "evidence OSM hash does not match the selected map" in result.stderr
     )
 

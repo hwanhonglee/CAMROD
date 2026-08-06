@@ -1,5 +1,78 @@
 # Documentation Changelog
 
+<!-- HH_260807 - Record final map-v17 service, boundary, and obstacle acceptance. -->
+## [v2.1.5-map-v17-service-acceptance] - 2026-08-07 (HH_260807)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| TODO split | Keeps only unresolved physical acceptance in `TODOLIST.txt`; moves completed code/SIM details to `DONE.txt` and the field handoff |
+| Active map | Records synchronized user map v17, SHA `8cd05c...5e021`, 55 lanelets, 14 areas, and 1,652 nodes without relabeling older map evidence |
+| Repeated service | Adds B1 -> B2 -> B3 full site/RETURN/drop-zone/parking/charging/next-site simulation, 3/3 in 677.237 s with zero restart |
+| Boundary recovery | Adds B2 repeatability 3/3, physical-body continuous-twist sweep, observed-motion clear timing, and 1.5 s release proof |
+| Charger exit | Documents delayed charge-contact tolerance and idempotent duplicate destination handling during `DEPARTING_CHARGER` |
+| Persistent obstacle | Adds `ComputePathToPose` preflight, one-shot no-path latch, no repeated Nav2 ABORT, and original-route resume after obstacle clear |
+| Optional LiDAR grid | Records scoped-context TF listener correction and an ON full graph reaching `[SYSTEM] OK` |
+| Evidence | Adds raw JSON/log, SHA manifest, reproducible PNG/GIF renderer, tests, and package README links under `docs/assets/test_result/v2-1-5-service-validation-20260807/` |
+| Fresh verification | Canonical 11-package build passed; CAMROD completed 58/58 CTest targets and 523 xUnit cases with zero errors/failures, UI 30/30, and Ranger policy GTest 1/1 |
+| Claim boundary | Marks wide-lane successful bypass, Jetson resources, physical contact, sensors, and real CAN mission lifetime as field-pending |
+
+---
+
+<!-- HH_260806 - Record the 3 km/h operational profile and localization fusion boundary. -->
+## [develop-three-kph-localization] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Speed reference | Active RPP cruise is final `3.0 km/h` through the retained `0.5` command gate |
+| Ratios | Preserves curve, approach, campsite, drop-zone, parking, and optional yaw-zone linear-speed ratios; zero-turn remains zero-linear |
+| Safety exception | Keeps route-boundary recovery at final `0.18 km/h` with its existing distance/time/yaw budget |
+| Localization inputs | Records planar GNSS position/yaw, IMU yaw-rate, and wheel `vx/vy`/yaw-rate fusion; 2D mode clamps the remaining 3D states and absolute IMU yaw remains disabled |
+| Pose/control cadence | Synchronizes real EKF, local-path/tracking heartbeat, Nav2 controller, and final-pose diagnostic at `20 Hz`; WARN/ERROR below `18/14 Hz`; keeps dual-GNSS correction at `1 Hz` |
+| EKF review | Retains measured covariance/process-noise values because elapsed-time scaling preserves per-second process noise; records GNSS heading rejection as field-review work |
+| Delayed data | Extends real EKF history `0.3 -> 1.0 s` to cover the observed `747.6 ms` stationary delay |
+| AMD64 simulation | `11.74 m`, final `3.000001 km/h`, pose `20.024 Hz`, max step `6.485 cm`, no step over `20 cm` |
+| Claim boundary | Fake GNSS is 10 Hz and sim EKF is 20 Hz; physical 1 Hz dual-GNSS/Jetson moving acceptance remains open |
+| Evidence | Adds structured JSON, PNG, bag/map hashes, and package-guide links under `docs/assets/test_result/three-kph-localization-20260806/` |
+
+---
+
+<!-- HH_260806 - Record the RPP stop-turn-forward correction and same-map lookahead comparison. -->
+## [develop-rpp-curve-tracking] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Root cause | The 2-degree RPP rotate-to-heading threshold was applied to every path carrot and produced 403 rotation/translation switches |
+| Controller contract | Continuous RPP curve tracking with `use_rotate_to_heading=false`; gross yaw is isolated in a zero-linear final-gate alignment |
+| Alignment hysteresis | Route gate `75/5 deg`; manual RotationShim `45/5 deg` |
+| Selected simulation | `1.1 m` lookahead, B8 `59.931 m`, zero raw R/T switches, one recovered margin contact, `GOAL_REACHED` |
+| Rejected comparison | `1.2 m` lookahead released one margin contact but recontacted in `0.999 s` and latched safely |
+| Evidence | Adds JSON, PNG, bag hashes, scope limits, and package-guide links under `docs/assets/test_result/rpp-curve-tracking-20260806/` |
+
+---
+
+<!-- HH_260806 - Record the B7 command-continuity correction and exact boundary classification. -->
+## [develop-b7-stop-go-regression] - 2026-08-06 (HH_260806)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Command ownership | Treats normal RotationShim/RPP rotation and translation as one Nav2 owner; the `0.5 s` hold remains only at explicit maneuver release |
+| Reproduced defect | User B7 log had 15 false source handoffs and 15 paired input-stale zeros before the first lanelet event |
+| Corrected simulation | `224.92 s` and `27.1492 m` clear-drive window with handoff `0`, stale `0`, and `14.983/14.996 Hz` input/output |
+| Lanelet raster | Adds an independent `600 x 600 @ 0.05 m` local safety grid while retaining the `0.25 m` Nav2 planning grid |
+| Raster semantics | Planning margin uses covered lethal cell centers; physical-body edge contact remains fail-closed |
+| Exact geometry | First remaining B7 hold is margin-only: body clearance `4.54 cm`, planning overrun `4.55 mm`; full-route PASS is not claimed |
+| Evidence | Adds JSON, PNG, reproduction commands, raw bag/log hashes, and package-guide links under `docs/assets/test_result/cmd-vel-stop-go-20260806/` |
+
+---
+
 <!-- HH_260806 - Record map-v16 campsite sequencing, command ownership, and
 the fabrication-inclusive active collision envelope. -->
 ## [develop-map-v16-campsite-sequencing] - 2026-08-06 (HH_260806)
@@ -9,7 +82,7 @@ the fabrication-inclusive active collision envelope. -->
 | Area | Current behavior and documentation basis |
 |---|---|
 | Campsite policy | B1-B10 use full crab-in plus on-site 180-degree turnaround; constrained B11-B13 use a `0.60 m`-capped roadside arrival and no on-site turn |
-| Command ownership | Explicit campsite/drop-zone phases suppress Nav2 command interleaving; maneuver release and Nav2 rotation-to-translation each use a `0.5 s` zero hold |
+| Command ownership | Explicit campsite/drop-zone phases suppress Nav2 command interleaving; this historical entry used a Nav2 rotation-to-translation hold that the later B7 regression correction removes |
 | Lanelet safety | Only explicit campsite motion bypasses static road-lanelet cost; dynamic obstacle checks stay active and ordinary physical-body contact stays fail-closed |
 | Active geometry | Uses fabrication-inclusive body `1.39160 x 1.07000 m` and planning boundary `1.49160 x 1.17000 m`; the reduced candidate is retained as historical evidence |
 | Active map | Synchronizes both OSM files at map revision 16 and SHA `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf` |

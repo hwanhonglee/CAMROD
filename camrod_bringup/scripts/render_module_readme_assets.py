@@ -755,14 +755,14 @@ def render_localization(repo_root: Path, report_path: Path, output_root: Path):
 
     figure, axis = setup_figure(
         "Localization pose generation and measured timing",
-        "GNSS absolute position + dual-GNSS heading + IMU + wheel velocity -> EKF prediction -> selected robot pose",
+        "GNSS absolute XY + dual-GNSS heading + IMU/wheel yaw rate -> EKF prediction -> selected robot pose",
         module="localization",
     )
     section_label(axis, 0.045, 0.84, "Pose generation chain")
     inputs = [
-        ("GNSS position", "/sensing/gnss/pose...", "absolute XYZ + covariance"),
+        ("GNSS position", "/sensing/gnss/pose...", "absolute XY; planar Z is clamped"),
         ("Dual-GNSS yaw", "same pose topic", "used only with valid heading covariance"),
-        ("IMU", "/sensing/imu/data_ros", "field: roll/pitch/rates; sim: fake yaw too"),
+        ("IMU", "/sensing/imu/data_ros", "yaw rate; planar mode clamps roll/pitch rates"),
         ("Wheel odometry", "/localization/input/wheel...", "vx, vy, yaw rate"),
     ]
     for index, (title, topic, detail) in enumerate(inputs):
