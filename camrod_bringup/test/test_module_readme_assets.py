@@ -1,6 +1,7 @@
 """Keep source-derived package visuals reproducible and reviewable."""
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -379,6 +380,38 @@ def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> No
         "evidence map v15 does not match OSM map v17" in result.stderr
         or "evidence OSM hash does not match the selected map" in result.stderr
     )
+
+
+def test_recovery_renderer_uses_captured_geometry_without_relabeling_history() -> None:
+    """New 10 cm runs and metadata-free release runs keep distinct envelopes."""
+    spec = importlib.util.spec_from_file_location(
+        "camrod_automatic_recovery_renderer", AUTOMATIC_RECOVERY_RENDERER
+    )
+    assert spec is not None and spec.loader is not None
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+
+    metadata_free_runs = ({}, {}, {})
+    assert renderer.evidence_planning_extents(metadata_free_runs, 15) == (
+        0.80837,
+        0.78323,
+        0.58505,
+        0.58495,
+    )
+
+    current_geometry = {
+        "geometry": {
+            "planning_boundary_extents_m": {
+                "front": 0.80837,
+                "rear": 0.78323,
+                "left": 0.63505,
+                "right": 0.63495,
+            }
+        }
+    }
+    assert renderer.evidence_planning_extents(
+        (current_geometry, current_geometry, current_geometry), 17
+    ) == (0.80837, 0.78323, 0.63505, 0.63495)
 
 
 def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:

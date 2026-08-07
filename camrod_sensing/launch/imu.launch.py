@@ -74,7 +74,9 @@ def generate_launch_description():
         DeclareLaunchArgument('use_ntrip',        default_value='true',
                               description='(gq7 only) Launch NTRIP client for RTK corrections'),
         DeclareLaunchArgument('ntrip_param_file', default_value=default_ntrip_params),
-        DeclareLaunchArgument('module_namespace', default_value='imu'),
+        # HH_260807 - Direct launch uses the same canonical namespace as
+        # sensing.launch.py; the aggregate explicitly passes relative `imu`.
+        DeclareLaunchArgument('module_namespace', default_value='sensing/imu'),
 
         DeclareLaunchArgument('velocity_converter_param_file', default_value=default_converter_params),
         DeclareLaunchArgument('velocity_topic',   default_value='/platform/status/velocity'),

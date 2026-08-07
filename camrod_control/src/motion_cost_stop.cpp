@@ -90,22 +90,18 @@ void MotionCostStop::setPose(const PlanarPose & pose)
   pose_ = pose;
 }
 
-void MotionCostStop::setFootprintPolygonWorld(
-  const std::vector<std::pair<double, double>> & polygon_world)
+void MotionCostStop::setFootprintPolygonLocal(
+  const std::vector<std::pair<double, double>> & polygon_local)
 {
-  if (!pose_.has_value() || polygon_world.size() < 3) {
+  if (polygon_local.size() < 3 ||
+    !std::all_of(
+      polygon_local.begin(), polygon_local.end(), [](const auto & point) {
+        return std::isfinite(point.first) && std::isfinite(point.second);
+      }))
+  {
     return;
   }
-  const double cosine = std::cos(pose_->yaw);
-  const double sine = std::sin(pose_->yaw);
-  std::vector<std::pair<double, double>> local;
-  local.reserve(polygon_world.size());
-  for (const auto & point : polygon_world) {
-    const double dx = point.first - pose_->x;
-    const double dy = point.second - pose_->y;
-    local.emplace_back(cosine * dx + sine * dy, -sine * dx + cosine * dy);
-  }
-  footprint_polygon_local_ = std::move(local);
+  footprint_polygon_local_ = polygon_local;
 }
 
 void MotionCostStop::setOdometrySpeed(const double forward_speed_mps)
@@ -303,21 +299,32 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     return {true, false, true, true, "route_recovery_frame_mismatch"};
   }
 
-  // HH_260806 - Planning-margin contact may use a bounded escape candidate,
-  // but a cost-100 cell inside the physical body is never recoverable motion.
+  // HH_260807 - Ordinary motion always hard-stops on physical-body contact.
+  // Recovery is admitted only when its complete short sweep monotonically
+  // reduces the number of touched lethal cells and reaches zero contact.
+  GridHit initial_body_hit;
+  bool escaping_physical_contact = false;
+  int previous_body_contact_cells = 0;
+  std::set<std::pair<int, int>> previous_body_contact_indices;
   if (config_.lanelet_body_hard_stop_enabled) {
-    const auto body_hit = samplePhysicalBody(
+    initial_body_hit = samplePhysicalBody(
       lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
       config_.lanelet_stop_on_unknown);
-    if (body_hit.blocked) {
-      return {
-        true, false, true, false,
-        "route_recovery_physical_body_" + body_hit.detail};
+    if (initial_body_hit.blocked) {
+      if (initial_body_hit.detail != "cost" || initial_body_hit.contact_cells <= 0) {
+        return laneletContactDecision(
+          "route_recovery_physical_body_" + initial_body_hit.detail, initial_body_hit);
+      }
+      escaping_physical_contact = true;
+      previous_body_contact_cells = initial_body_hit.contact_cells;
+      previous_body_contact_indices.insert(
+        initial_body_hit.lethal_cells.begin(), initial_body_hit.lethal_cells.end());
     }
   }
 
-  // HH_260729 - A dynamic-obstacle latch remains authoritative during route
-  // recovery. Moving away from a map boundary never bypasses live evidence.
+  // HH_260807 - A route-retry latch is never an obstacle bypass.  Dynamic
+  // evidence and every ordinary non-route interlock are evaluated below even
+  // when the current map contact is eligible for monotonic escape.
   if (latch_active_) {
     const auto latch_decision = evaluateLatchedHazard(now_sec);
     if (latch_decision.blocked) {
@@ -327,7 +334,8 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   if (config_.stale_stop_enabled && config_.stale_timeout_s > 0.0) {
     if (!merged_grid_.available || !validGrid(merged_grid_.grid)) {
       markBlocked("merged_cost_grid_missing", false, now_sec);
-      return {true, false, false, true, "merged_cost_grid_missing"};
+      return {
+        true, false, false, true, "merged_cost_grid_missing"};
     }
     if (std::max(0.0, now_sec - merged_grid_.receive_sec) > config_.stale_timeout_s) {
       markBlocked("merged_cost_grid_stale", false, now_sec);
@@ -388,12 +396,42 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
       const auto body_hit = samplePhysicalBody(
         lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
         config_.lanelet_stop_on_unknown);
-      if (body_hit.blocked) {
+      if (!escaping_physical_contact && body_hit.blocked) {
         const auto decision = laneletContactDecision(
           "route_recovery_swept_physical_body_" + body_hit.detail, body_hit);
         *pose_ = current_pose;
         return decision;
       }
+      if (escaping_physical_contact) {
+        if (body_hit.detail == "out_of_grid") {
+          const auto decision = laneletContactDecision(
+            "route_recovery_swept_physical_body_out_of_grid", body_hit);
+          *pose_ = current_pose;
+          return decision;
+        }
+        const std::set<std::pair<int, int>> current_body_contact_indices{
+          body_hit.lethal_cells.begin(), body_hit.lethal_cells.end()};
+        const bool introduced_new_contact = !std::includes(
+          previous_body_contact_indices.begin(), previous_body_contact_indices.end(),
+          current_body_contact_indices.begin(), current_body_contact_indices.end());
+        if (body_hit.contact_cells > previous_body_contact_cells || introduced_new_contact) {
+          const auto decision = laneletContactDecision(
+            "route_recovery_physical_body_overlap_increased", body_hit);
+          *pose_ = current_pose;
+          return decision;
+        }
+        previous_body_contact_cells = body_hit.contact_cells;
+        previous_body_contact_indices = current_body_contact_indices;
+      }
+    }
+    if (escaping_physical_contact && previous_body_contact_cells != 0) {
+      const auto body_hit = samplePhysicalBody(
+        lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
+        config_.lanelet_stop_on_unknown);
+      const auto decision = laneletContactDecision(
+        "route_recovery_predicted_physical_body_" + body_hit.detail, body_hit);
+      *pose_ = current_pose;
+      return decision;
     }
   }
 
@@ -484,9 +522,9 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
     return {};
   }
 
-  // HH_260806 - The physical rectangle is authoritative before the larger
-  // planning margin. This reason is intentionally not eligible for crab,
-  // reverse, or reverse-yaw recovery.
+  // HH_260807 - The physical rectangle is authoritative before the larger
+  // planning margin. Ordinary motion stops here; only the separate swept
+  // evaluator may admit a monotonic, projected-clear inward recovery.
   if (config_.lanelet_body_hard_stop_enabled && any_motion) {
     const auto body_hit = samplePhysicalBody(
       lanelet_grid_.grid, config_.lanelet_body_hard_stop_threshold,
@@ -1214,8 +1252,8 @@ MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
     {config_.body_front_m, -config_.body_right_m},
     {-config_.body_rear_m, -config_.body_right_m},
     {-config_.body_rear_m, config_.body_left_m}};
-  // HH_260806 - Physical body contact remains fail-closed: any lethal raster
-  // cell touched by a body edge is a non-recoverable hard stop.
+  // HH_260807 - Any lethal raster cell touched by a body edge is an ordinary
+  // hard stop and contributes to the monotonic bounded-escape overlap proof.
   return samplePolygonFootprint(grid, threshold, stop_on_unknown, local, true);
 }
 
@@ -1241,27 +1279,45 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       pose_->y + sine * point.first + cosine * point.second);
   }
 
+  // HH_260807 - Track unique lethal cells, rather than edge samples, so every
+  // projected sweep set can be proven a subset of the previous one. Preserve
+  // the first contact for diagnostics.
+  std::set<std::pair<int, int>> contact_indices;
+  bool out_of_grid = false;
+  const auto record_contact = [&](const int grid_x, const int grid_y, const int cost) {
+      if (!contact_indices.insert({grid_x, grid_y}).second) {
+        return;
+      }
+      if (!hit.blocked) {
+        const auto center = gridToWorld(grid, grid_x, grid_y);
+        hit.world_x = center.first;
+        hit.world_y = center.second;
+        hit.cost = cost;
+        hit.detail = "cost";
+      }
+      hit.blocked = true;
+    };
+
   auto check_edge_point = [&](const double world_x, const double world_y) {
       int grid_x = 0;
       int grid_y = 0;
       if (!worldToGrid(grid, world_x, world_y, grid_x, grid_y)) {
         if (stop_on_unknown) {
+          if (!out_of_grid) {
+            hit.world_x = world_x;
+            hit.world_y = world_y;
+            hit.cost = -1;
+            hit.detail = "out_of_grid";
+          }
           hit.blocked = true;
-          hit.world_x = world_x;
-          hit.world_y = world_y;
-          hit.detail = "out_of_grid";
+          out_of_grid = true;
         }
         return;
       }
       const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
       ++hit.total_cells;
       if (edge_cell_contact && cost >= threshold) {
-        const auto center = gridToWorld(grid, grid_x, grid_y);
-        hit.blocked = true;
-        hit.world_x = center.first;
-        hit.world_y = center.second;
-        hit.cost = cost;
-        hit.detail = "cost";
+        record_contact(grid_x, grid_y, cost);
       }
     };
 
@@ -1270,19 +1326,21 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
   // recoverable planning margin uses the cell-center coverage pass below so a
   // 0.05 m raster cannot enlarge that margin by another half cell.
   const double edge_step = std::max(0.01, grid.info.resolution * 0.5);
-  for (std::size_t index = 0; index < world.size() && !hit.blocked; ++index) {
+  for (std::size_t index = 0; index < world.size(); ++index) {
     const auto & start = world[index];
     const auto & end = world[(index + 1) % world.size()];
     const double length = std::hypot(end.first - start.first, end.second - start.second);
     const int steps = std::max(1, static_cast<int>(std::ceil(length / edge_step)));
-    for (int step = 0; step <= steps && !hit.blocked; ++step) {
+    for (int step = 0; step <= steps; ++step) {
       const double ratio = static_cast<double>(step) / static_cast<double>(steps);
       check_edge_point(
         start.first + ratio * (end.first - start.first),
         start.second + ratio * (end.second - start.second));
     }
   }
-  if (hit.blocked) {
+  if (out_of_grid) {
+    hit.contact_cells = static_cast<int>(contact_indices.size());
+    hit.lethal_cells.assign(contact_indices.begin(), contact_indices.end());
     return hit;
   }
 
@@ -1314,8 +1372,8 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
   const int y_end = std::min(
     static_cast<int>(grid.info.height) - 1,
     static_cast<int>(std::ceil(max_grid_y)) + 1);
-  for (int grid_y = y_begin; grid_y <= y_end && !hit.blocked; ++grid_y) {
-    for (int grid_x = x_begin; grid_x <= x_end && !hit.blocked; ++grid_x) {
+  for (int grid_y = y_begin; grid_y <= y_end; ++grid_y) {
+    for (int grid_x = x_begin; grid_x <= x_end; ++grid_x) {
       const auto cell = gridToWorld(grid, grid_x, grid_y);
       if (!pointInPolygon(cell.first, cell.second, world)) {
         continue;
@@ -1323,14 +1381,12 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
       ++hit.total_cells;
       if (cost >= threshold) {
-        hit.blocked = true;
-        hit.world_x = cell.first;
-        hit.world_y = cell.second;
-        hit.cost = cost;
-        hit.detail = "cost";
+        record_contact(grid_x, grid_y, cost);
       }
     }
   }
+  hit.contact_cells = static_cast<int>(contact_indices.size());
+  hit.lethal_cells.assign(contact_indices.begin(), contact_indices.end());
   return hit;
 }
 
@@ -1420,7 +1476,7 @@ MotionCostStop::PathSample MotionCostStop::samplePathCorridor(
         int grid_y = 0;
         if (!worldToGrid(grid, world_x, world_y, grid_x, grid_y)) {
           if (stop_on_unknown) {
-            output.hit = {true, world_x, world_y, -1, "out_of_grid", 0, {}};
+            output.hit = {true, world_x, world_y, -1, "out_of_grid", 0, 0, {}};
             return output;
           }
           continue;
@@ -1428,7 +1484,7 @@ MotionCostStop::PathSample MotionCostStop::samplePathCorridor(
         const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
         if (cost >= threshold) {
           const auto world = gridToWorld(grid, grid_x, grid_y);
-          output.hit = {true, world.first, world.second, cost, "cost", 0, {}};
+          output.hit = {true, world.first, world.second, cost, "cost", 0, 1, {}};
           return output;
         }
       }

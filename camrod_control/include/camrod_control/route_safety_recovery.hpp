@@ -19,7 +19,10 @@ struct RouteSafetyRecoveryConfig
 {
   bool enabled{true};
   double clear_required_s{1.5};
-  int max_automatic_releases{1};
+  // HH_260807 - Field operation needs several bounded escape/retry cycles on a
+  // long route.  The retry budget limits same-direction Nav2 releases; it must
+  // never suppress a separately projected command that moves the body inward.
+  int max_automatic_releases{12};
   double rapid_recontact_window_s{5.0};
   bool allow_opposite_recovery_command{true};
   double opposite_direction_cosine_max{-0.5};
@@ -52,6 +55,7 @@ public:
     if (!config_.enabled || !decision.blocked || !decision.lanelet_violation) {
       return false;
     }
+    latest_decision_ = decision;
     latest_reason_ = decision.reason;
     if (active_) {
       clear_since_sec_.reset();
@@ -80,6 +84,7 @@ public:
     if (!active_) {
       return false;
     }
+    latest_decision_ = decision;
     if (decision.blocked) {
       latest_reason_ = decision.reason;
       clear_since_sec_.reset();
@@ -98,9 +103,10 @@ public:
     if (now_sec - *clear_since_sec_ < std::max(0.0, config_.clear_required_s)) {
       return false;
     }
-    // HH_260804 - A brief clear followed by the same route contact used to
-    // release Nav2 indefinitely. Keep the second rapid contact latched until
-    // an operator stop/re-engage or a genuinely later retry resets the budget.
+    // HH_260807 - A chain of rapid clear/recontact episodes may release Nav2
+    // only up to the configured field budget. Once exhausted, projected-safe
+    // inward escape remains available but same-direction Nav2 resume waits for
+    // operator re-engage or a later episode outside the rolling window.
     if (automatic_release_blocked_) {
       return false;
     }
@@ -112,8 +118,11 @@ public:
 
   bool permitsProjectedRecoveryCandidate(const avg_msgs::msg::AvgTwist & command) const
   {
-    if (!active_ || automatic_release_blocked_ ||
-      !config_.allow_opposite_recovery_command)
+    // HH_260807 - A rapid-recontact latch blocks only another same-direction
+    // Nav2 release.  It must not deadlock the robot on the boundary: every
+    // recovery candidate still passes the physical-body sweep, full planning
+    // footprint endpoint, live obstacle and platform-interlock checks.
+    if (!active_ || !config_.allow_opposite_recovery_command)
     {
       return false;
     }
@@ -165,6 +174,7 @@ public:
   const avg_msgs::msg::AvgTwist & triggerCommand() const {return trigger_command_;}
   const std::string & triggerReason() const {return trigger_reason_;}
   const std::string & latestReason() const {return latest_reason_;}
+  const MotionCostStopDecision & latestDecision() const {return latest_decision_;}
   double activatedSec() const {return activated_sec_;}
   double oppositeRecoveryProbeDistance() const
   {
@@ -184,6 +194,7 @@ private:
     trigger_command_ = avg_msgs::msg::AvgTwist{};
     trigger_reason_.clear();
     latest_reason_.clear();
+    latest_decision_ = MotionCostStopDecision{};
     activated_sec_ = 0.0;
     clear_since_sec_.reset();
     automatic_release_blocked_ = false;
@@ -198,6 +209,7 @@ private:
   avg_msgs::msg::AvgTwist trigger_command_;
   std::string trigger_reason_;
   std::string latest_reason_;
+  MotionCostStopDecision latest_decision_;
   double activated_sec_{0.0};
   std::optional<double> clear_since_sec_;
   std::optional<double> last_release_sec_;

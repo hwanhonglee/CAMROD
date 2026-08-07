@@ -109,7 +109,27 @@ public:
 
         // controller feedback (via TF)
         buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-        tf_listener = std::make_shared<tf2_ros::TransformListener>(*buffer);
+        // HH_260807 - This component runs in camrod_runtime's explicitly owned
+        // ROS context. The node-less TransformListener constructor creates a
+        // hidden node from the global default context, which is null here and
+        // made component loading fail at guard-condition creation. Attach TF
+        // subscriptions to this component and let the container spin them.
+        // Keep TF in a separate reentrant callback group: segmentation performs
+        // bounded transform waits, so the multi-threaded container must be able
+        // to receive the requested transform while a cloud callback is active.
+        tf_callback_group = this->create_callback_group(
+            rclcpp::CallbackGroupType::Reentrant);
+        rclcpp::SubscriptionOptions tf_options;
+        tf_options.callback_group = tf_callback_group;
+        rclcpp::SubscriptionOptions tf_static_options;
+        tf_static_options.callback_group = tf_callback_group;
+        tf_listener = std::make_shared<tf2_ros::TransformListener>(
+            *buffer, this, false, tf2_ros::DynamicListenerQoS(),
+            tf2_ros::StaticListenerQoS(), tf_options, tf_static_options);
+        // TransformListener only sets this flag when it owns a private executor.
+        // Here the scoped multi-threaded container services the separate TF
+        // callback group, which provides the same concurrency for timeout APIs.
+        buffer->setUsingDedicatedThread(true);
 
         final_non_ground_points = std::make_shared<pcl::PointCloud<PointType>>(); 
         final_ground_points = std::make_shared<pcl::PointCloud<PointType>>(); 
@@ -133,6 +153,7 @@ private:
 
     std::shared_ptr<tf2_ros::Buffer> buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+    rclcpp::CallbackGroup::SharedPtr tf_callback_group;
     std::unique_ptr<PointCloudGrid<PointType>> pre_processor, post_processor;
     GridConfig pre_processor_config, post_processor_config;
 

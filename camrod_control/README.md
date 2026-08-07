@@ -3,13 +3,14 @@
 <!-- HH_260805 - Document adaptive reverse/yaw/crab recovery while preserving
 the measured-body stop and historical translation-only evidence labels. -->
 <!-- HH_260806 - Activate the fabrication-inclusive measured body, preserve the
-5 cm planning margin, and serialize Nav2/campsite command ownership. -->
+10 cm planning margin, and serialize Nav2/campsite command ownership. -->
 <!-- HH_260806 - Remove artificial Nav2 rotation/translation handoffs and use a
 high-resolution local lanelet raster for final command safety. -->
 <!-- HH_260806 - Preserve maneuver ratios under the 3 km/h production cruise profile. -->
 <!-- HH_260807 - Require observed recovery motion before the 1.5 s clear release. -->
 <!-- HH_260807 - Evaluate route safety with the final scaled command and record
 the fixed-preview service A/B. -->
+<!-- HH_260807 - Reduce the production cruise to 2 km/h while preserving maneuver ratios. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -32,7 +33,7 @@ recovery candidates, and published an all-zero final command.
 |---|---|---|
 | Nav2 command, local maneuver commands, parking, and recovery | Selects one raw command owner | `/control/cmd_vel_raw` |
 | SOC, CAN, localization, LiDAR/radar/map costs | Applies the final motion authorization policy | `/control/cmd_vel`, `/control/cmd_vel_ros` |
-| Physical body, planning margin, and projected candidates | Hard-stops body contact; permits only bounded margin escape | Gate/candidate/controller status |
+| Physical body, planning margin, and projected candidates | Hard-stops ordinary contact; permits only bounded monotonic inward escape | Gate/candidate/controller status |
 
 ## Active Safety Values
 
@@ -41,17 +42,18 @@ recovery candidates, and published an all-zero final command.
 | New campsite mission | `SOC >= 35%` | Departure admitted |
 | Critical battery | `SOC <= 20%` | Hard command stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
-| Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; no automatic motion on cost 100/unknown |
+| Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; only projected monotonic inward escape on cost 100 |
 | Physical body | left/right `0.53505/0.53495 m` | Fabrication-inclusive `1.07000 m` hard-stop width |
-| Planning footprint | front/rear `0.75837/0.73323 m` | Body plus `0.05 m` X margin |
-| Planning footprint | left/right `0.58505/0.58495 m` | Body plus `0.05 m` Y margin |
+| Planning footprint | front/rear `0.80837/0.78323 m` | Body plus `0.10 m` X margin |
+| Planning footprint | left/right `0.63505/0.63495 m` | Body plus `0.10 m` Y margin |
+| Planning polygon frame | `robot_center_link` | Gate consumes local points directly; map-pose callback timing cannot shift the collision envelope |
 | Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Lanelet safety raster | `600 x 600 @ 0.05 m` | Independent `30 m` local grid; avoids the Nav2 grid's `0.125 m` half-cell dilation |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
 | Route-clear proof | `1.5 s` after admitted recovery motion | Releases retained route hold |
-| Automatic release budget | `1` | Allows one bounded Nav2 resume attempt |
-| Rapid recontact window | `5.0 s` | Same-route recontact latches until operator stop/replan |
+| Automatic release budget | `12` | Allows twelve bounded Nav2 resume attempts |
+| Rapid recontact window | `5.0 s` | Exhaustion blocks same-direction Nav2 resume; projected-safe inward escape remains available |
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
 | Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, total travel, duration |
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
@@ -62,25 +64,25 @@ recovery candidates, and published an all-zero final command.
 
 The final command gate applies `speed_scale=0.5`. The table reports limits at
 the platform output after that gate; ordinary operational linear speeds retain
-their previous ratio to the new `3.0 km/h` cruise reference.
+their previous ratio to the current `2.0 km/h` cruise reference.
 
 | Operation | Cruise ratio | Final limit |
 |---|---:|---:|
-| RPP cruise | `100%` | `3.000 km/h` |
-| RPP curvature floor | `50%` | `1.500 km/h` |
-| RPP final approach | `25%` | `0.750 km/h` |
-| Campsite crab | `60%` | `1.800 km/h` |
-| Campsite reverse / drop-zone exit / reverse parking | `40%` | `1.200 km/h` |
-| AprilTag approach | `50%` | `1.500 km/h` |
-| AprilTag insertion | `12.5%` | `0.375 km/h` |
-| Optional yaw-zone approach 1 / 2 | `62.5% / 50%` | `1.875 / 1.500 km/h` |
+| RPP cruise | `100%` | `2.000 km/h` |
+| RPP curvature floor | `50%` | `1.000 km/h` |
+| RPP final approach | `25%` | `0.500 km/h` |
+| Campsite crab | `60%` | `1.200 km/h` |
+| Campsite reverse / drop-zone exit / reverse parking | `40%` | `0.800 km/h` |
+| AprilTag approach | `50%` | `1.000 km/h` |
+| AprilTag insertion | `12.5%` | `0.250 km/h` |
+| Optional yaw-zone approach 1 / 2 | `62.5% / 50%` | `1.250 / 1.000 km/h` |
 | Zero-turn / gross yaw alignment | `0%` | `0 km/h` |
-| Route-boundary recovery safety exception | `6%` | `0.180 km/h` |
+| Route-boundary recovery safety exception | `9%` | `0.180 km/h` |
 
 Boundary recovery is intentionally not proportionally increased: its raw
 `0.10 m/s`, `0.40 m`, `10 s`, and `12 deg` limits remain a separate safety
-budget. Angular-speed limits are unchanged. Exact raw/final values and the
-AMD64 command trace are in the
+budget. Angular-speed limits are unchanged. The previous 3 km/h raw/final
+values and AMD64 command trace remain as historical evidence in the
 [3 km/h test record](../docs/assets/test_result/three-kph-localization-20260806/README.md).
 
 ## Runtime Owners
@@ -136,8 +138,9 @@ motion, release, continued service, and zero retry latch.
 ![B1-B10 route-snap return and recovery endurance](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
 The [control/service evidence](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
-separates the measured planning-margin recovery from the unchanged physical-body
-hard stop. Physical contact and swept-clearance acceptance remain field work.
+separates measured planning-margin recovery from the then-active no-motion
+physical-body policy. The current monotonic-overlap/swept-clearance rule for a
+virtual body-boundary contact remains physical field work.
 
 The low-battery latch does not auto-return while people may be unloading. If
 SOC falls below 35% during a campsite mission, the current site phase finishes
@@ -190,8 +193,8 @@ showed why increasing the retry count is not a control fix. A velocity-scaled
 preview of about `1.5 m` re-entered the same boundary after `0.850 s`; fixed
 `1.1 m` completed B1/B2 without a retry latch. The gate now projects, proves
 recovery motion, logs, and publishes the same final speed-scaled command. At
-the active cruise this means it evaluates `0.833333 m/s`, not the unscaled
-`1.666667 m/s` controller request.
+the active cruise this means it evaluates `0.555556 m/s`, not the unscaled
+`1.111111 m/s` controller request.
 
 | First complete-footprint stop | Narrow-route risk map |
 |---|---|
@@ -277,13 +280,14 @@ repeated pure-rotation requests at every 2-degree path bend.
 
 After a maximum `12 deg` heading correction, the owner removes angular velocity
 and continues only a separately checked reverse translation. The total
-`0.40 m`/`10 s` budget is not reset during a stage transition. Only one route
-release is permitted; same-route recontact within 5 seconds latches zero output
-until stop/replan/re-engage. The staged selector and swept projection are unit
-validated and were exercised dynamically on the release map-v15 geometry. Both
-route retry cases remained fail-closed rather than completing a mission;
-physical-robot recovery remains pending. The current AMD64 result additionally
-proves that a physical-body cost-100 contact is not a recoverable state.
+`0.40 m`/`10 s` budget is not reset during a stage transition. Up to 12 route
+releases are permitted in the 5-second recontact window. Reaching that budget
+blocks another same-direction Nav2 resume, but does not suppress an inward
+escape candidate whose contact overlap decreases monotonically and whose swept
+physical body plus endpoint planning footprint are clear. Dynamic obstacles
+and platform interlocks remain fail-closed. Older map-v15 retry/body cases in
+the evidence table retain their measured zero-output outcomes; the current
+physical-robot recovery policy remains field-pending.
 
 ## Configuration
 

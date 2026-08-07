@@ -26,6 +26,14 @@
     gnss_antenna_offset_x_m: 0.0
     gnss_antenna_offset_y_m: 0.45
     gnss_lever_arm_require_fresh_heading: true
+    # HH_260807 - During a brief receiver-heading gap, use a time-aligned EKF
+    # yaw delta only to rotate the antenna lever arm. Fallback requires a prior
+    # valid dual-GNSS anchor, expires after 3 s, and never makes GNSS yaw valid.
+    enable_gnss_lever_arm_ekf_heading_fallback: true
+    gnss_lever_arm_fallback_anchor_max_age_s: 3.0
+    gnss_lever_arm_fallback_history_s: 5.0
+    gnss_lever_arm_fallback_match_tolerance_s: 0.2
+    gnss_lever_arm_fallback_max_ekf_yaw_covariance: 1.0
     publish_gnss_covariance: true
     # HH_260527: navsat_covariance_source options:
     #   navsat: use NavSatFix covariance (with floor clamp)

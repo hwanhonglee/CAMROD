@@ -27,6 +27,15 @@ are separate surfaces.
 
 This package observes health. It never generates vehicle motion commands.
 
+## Active Rate Contract
+
+| Diagnostic input | Expected rate | Scope |
+|---|---:|---|
+| Physical GNSS and localization GNSS input | `5 Hz` | Receiver corrections; independent of EKF prediction |
+| Selected localization pose | `20 Hz` | EKF/final-pose output |
+| LiDAR raw / filtered cloud | `10 Hz` | Required physical sensing chain |
+| Optional LiDAR cost grid | `10 Hz` when enabled | Its node/topic are omitted when OFF; the shared checker still monitors radar + inflation |
+
 ## Runtime Composition
 
 | Mode | Runtime boundary | Status |

@@ -18,10 +18,10 @@ gnss_checker:
       # false/stale heartbeat restores the normal physical-sensor diagnosis.
       dummy_active_topic: "/sensing/gnss/dummy_active"
       dummy_active_timeout_s: 1.0
-      # HH_260703 - Field ZED-F9P currently publishes NavSatFix at 1 Hz even
-      # with the driver rate parameter set higher. Keep freshness/fix checks
-      # active without forcing ERROR_STOP from this stable field rate.
-      expected_hz: 1.0
+      # HH_260807 - The current physical GNSS validation profile uses a 200 ms
+      # receiver epoch. Diagnose that intentional 5 Hz stream instead of
+      # reporting every healthy test run as critically slow.
+      expected_hz: 5.0
       hz_warn_ratio: 0.8
       hz_error_ratio: 0.5
       stale_timeout_s: 2.0

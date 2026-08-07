@@ -1,5 +1,25 @@
 # Documentation Changelog
 
+<!-- HH_260807 - Publish the v2.1.6 active contract while preserving every
+older measurement under its original release and evidence label. -->
+## [v2.1.6-field-contract-sync] - 2026-08-07 (HH_260807)
+
+### Changed
+
+| Area | Current behavior and documentation basis |
+|---|---|
+| Sensor cadence | Separates physical GNSS `5 Hz`/200 ms epochs, localization pose `20 Hz`, and required LiDAR raw/filtered `10 Hz` |
+| Motion | Sets final straight cruise to `2.0 km/h` through the retained `0.5` command gate |
+| Boundary | Records the measured `1.39160 x 1.07000 m` body and `1.59160 x 1.27000 m` planning polygon (`0.10 m` per side) |
+| Recovery | Sets 12 releases in the 5-second recontact window; budget blocks same-direction Nav2 resume while a monotonic-overlap, swept-body/endpoint-clear inward escape remains eligible |
+| Radar | Documents the level-1/level-4 physical profile and real seven-channel subscriber-only visualization; no dummy publisher is implied |
+| LiDAR cost grid | Keeps the optional raster node/topic and graph entry OFF while the shared checker still monitors radar + inflation and the raw/filtered chain remains required at 10 Hz |
+| Operator UI | Aligns root/package documentation with the configured WebKit default and keeps Chromium/`auto` as alternatives |
+| Build/setup | Records `colcon_build.sh` Release-by-default install synchronization and confirms `setup_camrod.sh` remains dependency-only |
+| Evidence boundary | Leaves v2.1.5 and earlier measured values unchanged and labels current configured values as field-pending until new robot logs exist |
+
+---
+
 <!-- HH_260807 - Record the final RPP preview, B1-B10 endurance, return anchor,
 state ownership, path diagnostics, and clean UI shutdown. -->
 ## [v2.1.5-final-service-acceptance] - 2026-08-07 (HH_260807)

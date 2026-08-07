@@ -21,14 +21,14 @@ not physical sensor accuracy or field rate.
 
 | Sensor/source | Processing | Main output / consumer |
 |---|---|---|
-| Vanjee 750C LiDAR | Intra-process ROI, voxel downsample, DFKI ground segmentation | Filtered cloud -> perception; optional LiDAR grid -> control |
+| Vanjee 750C LiDAR | Intra-process ROI, voxel downsample, DFKI ground segmentation | Filtered cloud -> perception; optional LiDAR grid -> bench/visualization |
 | SEN0592 x7 | Serial polling, fixed-return filter, map projection | Range topics and radar cost grid -> control |
 | Front econ camera | VPI rectification + NvJPEG | Compressed image + CameraInfo -> YOLO/fusion |
 | Rear econ camera | GStreamer/OpenCV raw + monitoring JPEG | Raw image + CameraInfo -> AprilTag parking |
 | F9P GNSS | NTRIP/RTK, optional moving-base heading | Fix, pose, and heading -> localization |
 | CV7 or GQ7 IMU | Driver selection and frame/covariance conversion | IMU -> localization |
 | Ranger wheel feedback | Velocity conversion | Twist/odometry -> localization |
-| Map + LiDAR + radar + path grids | Robot-centered fusion | `/planning/cost_grid/inflation` -> Nav2/control |
+| Lanelet + radar + global-path grids | Robot-centered fusion | `/planning/cost_grid/inflation` -> Nav2/control |
 
 ## Cost Grids
 
@@ -36,11 +36,14 @@ not physical sensor accuracy or field rate.
 |---|---|---:|---|
 | LiDAR, optional | `180 x 180 @ 0.10 m` | `10 Hz` when enabled | `0.20 m`; production default `OFF` |
 | Radar | `120 x 120 @ 0.10 m` | `10 Hz` | `0.30 m` |
-| Inflation/fusion | `180 x 180 @ 0.10 m` | `6 Hz` | Merges lanelet, LiDAR, radar, and path |
+| Inflation/fusion | `180 x 180 @ 0.10 m` | `6 Hz` | Merges lanelet, radar, and global path in production |
 
-LiDAR and radar costs are clipped to active-route lanelets plus a `0.35 m`
-margin. Missing or stale route-mask data fails open for obstacle pass-through;
-the downstream safety gate still evaluates current source freshness and costs.
+Radar costs, and LiDAR costs when the optional grid is enabled, are clipped to
+active-route lanelets plus a `0.35 m` margin. Missing or stale route-mask data
+fails open for obstacle pass-through; the downstream safety gate still
+evaluates current source freshness and costs. Production inflation consumes
+only lanelet, radar, and global-path grids. Enabling the optional LiDAR grid
+does not add it to fusion without an explicit alternate inflation input config.
 
 `enable_lidar_cost_grid:=false` is the production default. The filtered LiDAR
 cloud and perception remain active, while `/sensing/lidar/lidar_cost_grid` and
@@ -108,6 +111,8 @@ measured separately. The normalized per-run record is
 | Ground cells | `0.50 x 0.50 m` |
 | Maximum slope | `20 deg` |
 | Ground inlier threshold | `0.05 m` |
+| Raw/filtered cadence target | `10 Hz` |
+| Preprocessor rate cap | `0.0` (process every input cloud) |
 
 The image uses deterministic synthetic points to explain the algorithm. It is
 not a field point-cloud capture and does not measure ground-classification
@@ -119,16 +124,21 @@ accuracy.
 |---|---|
 | Channels | FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
 | Serial | CH9344 USB ports, `115200` baud |
-| Hardware beam | angle level `1` on all channels |
-| Hardware range | front/sides level `2`; rear level `1` |
-| Software maximum | front `1.50 m`, sides `0.80 m`, rear `0.50 m` |
+| Hardware beam | angle level `4` on all channels (widest; approximately 65 deg horizontal / 80 deg vertical) |
+| Hardware range level | all channels level 1 (approximately `0.50 m`) |
+| Software observation maximum | all channels `0.50 m` (full level-1 window) |
+| Radar stop windows | FRONT1 `(0.220, 0.320] m`, FRONT2 `(0.117, 0.217] m`, REAR `(0.106, 0.206] m`; left/right cut off at `0.10 m` |
 | Automatic startup learning | disabled in field-driving profile |
-| Fixed-return filter | named narrow bands only |
+| Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
 | Cost message maximum age | `0.35 s` |
 
 The side harness order is explicitly configured; do not infer left/right from
 USB index. A supervised calibration requires a clear, stationary, disengaged
 robot and remains bounded by the configured per-channel windows.
+
+`radar_status_gui.py` is a read-only visualization of the seven physical
+`sen0592_radar_node` `/range_ros` streams. It neither launches nor publishes a
+dummy radar source; an absent channel remains visibly absent/stale.
 
 ## Camera And GNSS Values
 
@@ -137,19 +147,20 @@ robot and remains bounded by the configured per-channel windows.
 | Front camera | `1920 x 1080`, rectified JPEG target `10 Hz` | Physical decode/rate requires Jetson probe |
 | Rear raw camera | `1920 x 1080`, target `10 Hz` | AprilTag input; subscriber-gated |
 | Rear monitoring JPEG | `2 Hz` | CPU worker avoids blocking raw publication |
-| Single F9P | requested `10 Hz` | RTK state must be checked from UBX flags |
-| Dual moving-base F9P | runtime `1 Hz` | Launch writes rover `CFG-RATE` in RAM; base/rover epoch match and heading flags require field verification |
+| Single F9P | requested `5 Hz` | RTK state must be checked from UBX flags |
+| Dual moving-base F9P | configured `5 Hz` | Launch writes rover `CFG-RATE` in RAM; 200 ms base/rover epoch match and heading flags require field verification |
 
 For dual-GNSS acceptance, verify `NAV-PVT` carrier state and
 `NAV-RELPOSNED` validity/heading flags. A valid `NavSatFix` alone is not proof
 of RTK Fixed.
 
-The dual launch's `rate: 1.0` is an active receiver override, not only a ROS
+<!-- HH_260807 - Align the dual rover with the moving base's 200 ms epochs. -->
+The dual launch's `rate: 5.0` is an active receiver override, not only a ROS
 diagnostic expectation. The custom dual-rover setup writes `CFG-RATE` to rover
-RAM even with `config_on_startup: false`, so a 5 Hz profile saved in u-center is
-replaced when ROS starts. ROS does not configure the Lite moving base; compare
-base and rover `iTOW` increments before selecting any rate above the accepted
-1 Hz field profile.
+RAM even with `config_on_startup: false`, so a profile saved in u-center is
+replaced when ROS starts. ROS does not configure the Lite moving base; confirm
+200 ms `iTOW` increments at both receivers and verify link bandwidth before
+accepting the 5 Hz field profile.
 
 ## Reported Physical Stationary Performance
 
@@ -204,6 +215,7 @@ ros2 launch camrod_sensing lidar.launch.py
 ros2 launch camrod_sensing lidar.launch.py enable_lidar_cost_grid:=true
 ros2 launch camrod_sensing lidar.launch.py use_lidar_processing_container:=false
 ros2 launch camrod_sensing radar.launch.py
+ros2 run camrod_sensing radar_status_gui.py  # seven physical /range_ros streams
 ros2 launch camrod_sensing camera.launch.py
 ros2 launch camrod_sensing gnss.launch.py
 ros2 launch camrod_bringup rear_camera_apriltag_container.launch.py enable_container:=true

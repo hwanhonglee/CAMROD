@@ -23,8 +23,8 @@
     # =========================================================================
     # 2. MOTION SOURCE AND COMMAND INPUT
     # =========================================================================
-    # HH_260806 - Constant-speed fallback matches the 3.0 km/h final cruise.
-    speed_mps: 0.833333
+    # HH_260807 - Constant-speed fallback matches the 2.0 km/h final cruise.
+    speed_mps: 0.555556
     # HH_260526: Motion source mode.
     # motion_source: cmd_vel | constant_speed
     motion_source: "cmd_vel"

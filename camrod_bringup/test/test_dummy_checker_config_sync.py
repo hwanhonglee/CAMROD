@@ -111,6 +111,28 @@ def test_every_hardware_source_has_an_explicit_freshness_contract():
         assert radar[name]["dummy_active_timeout_s"] == 1.0
 
 
+# HH_260807 - Diagnostics must reject the former 1 Hz rover profile while the
+# current physical validation run intentionally uses 200 ms receiver epochs.
+def test_physical_gnss_checkers_expect_five_hz():
+    sensing = _checker_params("sensing", "gnss_checker.yaml")
+    localization = _checker_params(
+        "localization", "localization_gnss_checker.yaml"
+    )
+
+    assert sensing["main"]["expected_hz"] == 5.0
+    assert localization["main"]["expected_hz"] == 5.0
+
+
+# HH_260807 - The raw sensor and motion-relevant ground-segmented output are
+# both required to preserve the physical LiDAR's 10 Hz cadence end to end.
+def test_physical_lidar_checker_expects_ten_hz_end_to_end():
+    sensing = _checker_params("sensing", "lidar_checker.yaml")
+
+    assert sensing["main"]["expected_hz"] == 10.0
+    assert sensing["filtered"]["topic"] == "/sensing/lidar/points_filtered"
+    assert sensing["filtered"]["expected_hz"] == 10.0
+
+
 def test_checker_sources_keep_dummy_mode_explicit_and_fail_visible():
     source_names = (
         "camera_checker_node.cpp",

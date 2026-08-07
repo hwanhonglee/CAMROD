@@ -9,6 +9,15 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "config" / "filter"
 
 
 class EkfSensorInputTest(unittest.TestCase):
+    def test_real_monitor_uses_rolling_three_hz_gnss_floor(self):
+        """Tolerate transient 5 Hz loss but reject the former 1 Hz profile."""
+        with (CONFIG_DIR / "monitor.yaml").open(encoding="utf-8") as stream:
+            parameters = yaml.safe_load(stream)["/**"]["ros__parameters"]
+
+        # HH_260807 - Rate is averaged over unique GNSS epochs for two seconds.
+        self.assertEqual(parameters["gnss_min_hz"], 3.0)
+        self.assertEqual(parameters["gnss_rate_window_s"], 2.0)
+
     def test_gnss_position_and_heading_inputs_are_contiguous(self):
         for config_name in ("ekf.yaml", "ekf_sim.yaml"):
             with self.subTest(config_name=config_name):
@@ -30,7 +39,7 @@ class EkfSensorInputTest(unittest.TestCase):
         with (CONFIG_DIR / "ekf.yaml").open(encoding="utf-8") as stream:
             parameters = yaml.safe_load(stream)["/**"]["ros__parameters"]
 
-        # HH_260806 - Keep 1 Hz dual-GNSS independent from the 20 Hz prediction
+        # HH_260807 - Keep 5 Hz dual-GNSS independent from the 20 Hz prediction
         # loop; Jetson moving-load acceptance remains a field requirement.
         self.assertEqual(parameters["frequency"], 20.0)
         self.assertTrue(parameters["smooth_lagged_data"])
@@ -38,7 +47,7 @@ class EkfSensorInputTest(unittest.TestCase):
         self.assertGreaterEqual(parameters["history_length"], 0.75)
 
     def test_real_filter_configures_imu_and_wheel_prediction_sources(self):
-        """Keep both high-rate prediction inputs active between 1 Hz GNSS fixes."""
+        """Keep both prediction inputs active between 5 Hz GNSS fixes."""
         with (CONFIG_DIR / "ekf.yaml").open(encoding="utf-8") as stream:
             parameters = yaml.safe_load(stream)["/**"]["ros__parameters"]
 

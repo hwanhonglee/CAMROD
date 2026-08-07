@@ -1,6 +1,6 @@
 # Pose latency diagnosis
 
-<!-- HH_260806 - Separate the 3 km/h command smoke result from physical 1 Hz GNSS acceptance. -->
+<!-- HH_260807 - Dual GNSS is configured at 5 Hz; preserve old 1 Hz measurements as history, not current acceptance. -->
 
 This note separates three different causes that can look like delayed vehicle
 pose during driving:
@@ -9,15 +9,15 @@ pose during driving:
 2. the EKF/selected localization output cadence and message age, and
 3. system-wide CPU scheduling delay.
 
-It is a measurement guide, not authorization to change the GNSS rate. The
-production dual-antenna rate must not be changed without a stationary hardware
-acceptance test followed by an open-sky field test.
+It is a measurement guide. HH_260807 changes the configured production
+dual-antenna rate to 5 Hz to match the moving base; that configuration is not
+accepted until a stationary hardware test and an open-sky field test pass.
 
 ## Active production rate configuration
 
-The shared receiver YAML contains `rate: 10.0` in
-`camrod_sensing/config/gnss/zed_f9p_rover.yaml`. That value applies to the
-single-antenna profile only.
+The shared receiver YAML contains `rate: 5.0` in
+`camrod_sensing/config/gnss/zed_f9p_rover.yaml`. Both single-antenna operation
+and the dual-mode inline overlay now use this rate.
 
 The normal bringup profile sets `ublox_dual_antenna: true` in
 `camrod_bringup/config/bringup/launch_defaults.yaml`. Bringup forwards that
@@ -29,7 +29,7 @@ When dual-antenna mode is true,
 an inline parameter overlay containing:
 
 ```python
-"rate": 1.0,
+"rate": 5.0,
 "nav_rate": 1,
 ```
 
@@ -39,13 +39,11 @@ The ublox node receives parameters in this order:
 parameters=[ublox_param_file, ublox_inline_params]
 ```
 
-The inline overlay therefore wins over the YAML value. The active field
-receiver cadence is 1 Hz, despite the 10 Hz value visible in the shared YAML.
-The reason recorded in the launch file is that the field moving base emits
-navigation epochs at 1 Hz and its rate must match the rover for RELPOSNED
-moving-baseline heading.
+The inline overlay therefore remains authoritative. It now writes a 200 ms
+measurement period to rover RAM, matching the configured moving-base epochs.
+`nav_rate: 1` means one navigation solution per measurement cycle, not 1 Hz.
 
-Do not raise this value on the rover alone. A rate mismatch can make
+Do not change this value on the rover alone. A rate mismatch can make
 moving-baseline epochs unavailable or unstable, lose fixed heading, or create
 intermittent position/heading timing. A higher rate also increases serial,
 DDS, adapter, and EKF input load. Any rate change must configure and verify
@@ -57,7 +55,7 @@ moving/fixed/heading-valid flags.
 The production data flow is:
 
 ```text
-/sensing/gnss/ublox_gps_node/fix                    (dual mode: 1 Hz)
+/sensing/gnss/ublox_gps_node/fix                    (dual mode target: 5 Hz)
   -> localization_input_adapter
   -> /sensing/gnss/pose_with_covariance_ros         (follows accepted GNSS)
   -> robot_localization EKF pose0 position + pose1 heading
@@ -81,13 +79,11 @@ selector republishes the selected primary pose with that source header.
 `predict_to_current_time: true` makes the EKF predict its output to the current
 filter cycle.
 
-Consequently, a healthy real robot should still publish the final localization
-pose near the 20 Hz EKF rate. A 1 Hz GNSS fix is not by itself a reason for a
-1 Hz `/localization/pose`. It does, however, mean that absolute lateral
-position and GNSS heading corrections arrive only once per second; wheel and
-IMU data predict between those updates. That correction cadence can contribute
-to a visible staircase correction or lateral overshoot even while the final
-pose topic remains healthy at 20 Hz.
+Consequently, a healthy real robot should publish accepted GNSS poses near
+5 Hz and the final localization pose near the 20 Hz EKF rate. Wheel and IMU
+data continue to predict between the 200 ms absolute position/heading updates.
+A visible correction staircase at this cadence requires checking epoch loss,
+header age, lever-arm timing, and fusion behavior rather than accepting 1 Hz.
 
 With `two_d_mode=true`, the real EKF fuses absolute GNSS `x/y` and dual-GNSS
 yaw, IMU yaw rate, and wheel-odometry body `vx/vy` plus yaw rate. The filter
@@ -138,8 +134,8 @@ therefore removed roughly one complete 20 Hz cycle while preserving the final
 10 Hz simulated GNSS input.
 
 The real dual-GNSS profile still requires the stationary/open-sky test below.
-Its 1 Hz absolute correction cadence can affect moving lateral correction, but
-it should no longer be compounded by a selector callback-order delay.
+Its configured 5 Hz cadence is not accepted until the physical link shows
+aligned 200 ms epochs without loss or invalid heading flags.
 
 ## Real non-motion diagnosis
 
@@ -170,8 +166,8 @@ Interpret the result as follows:
 
 | Observation | Primary diagnosis |
 |---|---|
-| GNSS is near 1 Hz, while EKF and final pose are near 20 Hz with fresh stamps | Expected dual-GNSS cadence; no localization publication-rate failure |
-| GNSS alone is stale or substantially below 1 Hz | Receiver/serial/timestamp path |
+| GNSS is near 5 Hz, while EKF and final pose are near 20 Hz with fresh stamps | Expected configured cadence; continue RTK/heading and epoch-alignment checks |
+| GNSS alone is stale or substantially below 4 Hz | Receiver/serial/timestamp/link-bandwidth path |
 | GNSS, IMU, and wheel all lose rate together while total CPU is high | System scheduling load |
 | Inputs are healthy, but EKF output is below 18 Hz or has growing stamp age | EKF scheduling/configuration |
 | EKF output is healthy, but adapter or selected pose loses rate/adds age | Adapter/selector path |
@@ -201,11 +197,11 @@ mission RPP and manual-engage RotationShim internal RPP remain synchronized at
 the selected `1.1 m` minimum preview: `1.0 m` corrected fastest but used more
 steering variation, while `1.2 m` was smoother but retained more path error.
 
-HH_260806 raises the active final cruise reference to `3.0 km/h`
-(`0.833333 m/s`) while preserving operational linear-speed ratios. At this
-speed, the vehicle travels approximately `4.17 cm` per `20 Hz` EKF cycle and
-`0.833 m` between physical `1 Hz` GNSS corrections. The prior stationary
-header-age p95/max of `352.5/747.6 ms` corresponds to `0.294/0.623 m` of travel,
+The active final cruise reference is now `2.0 km/h` (`0.555556 m/s`) while
+preserving operational linear-speed ratios. At this speed, the vehicle travels
+approximately `2.78 cm` per `20 Hz` EKF cycle and `0.1111 m` between configured
+`5 Hz` GNSS corrections. The prior stationary header-age p95/max of
+`352.5/747.6 ms` corresponds to `0.196/0.415 m` of travel,
 so delayed absolute correction can become visually significant. HH_260806
 synchronizes the real EKF and controller at `20 Hz`; `smooth_lagged_data`
 history increases from `0.3 s` to `1.0 s` so the filter can rewind/replay the
@@ -218,11 +214,11 @@ mainly removes a 15 Hz fallback/default mismatch. The active process-noise
 matrix is not rescaled: the bundled `robot_localization` EKF already multiplies
 it by elapsed time, so the per-second model noise remains consistent at 20 Hz.
 
-An AMD64 12 m kinematic smoke run reached a final command of
+The earlier AMD64 12 m kinematic smoke run reached a final command of
 `3.000001 km/h`, maintained selected pose at `20.024 Hz`, measured a maximum
 pose step of `6.485 cm`, and found zero steps over `20 cm`. Its fake GNSS is
-`10 Hz` and sim EKF is `20 Hz`, so it does not reproduce or accept the physical
-1 Hz GNSS/20 Hz EKF/Jetson case. Boundary-stop trials remain excluded from
+`10 Hz` and sim EKF is `20 Hz`, so its input cadence does not reproduce or
+accept the physical 5 Hz moving-base link/20 Hz EKF/Jetson case. Boundary-stop trials remain excluded from
 tracking scores. The `2.0 m` lookahead cap, Ranger `0.25 rad/s` steering slew,
 gains, footprint, costs, and angular-speed limits remain unchanged.
 

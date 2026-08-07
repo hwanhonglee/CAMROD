@@ -39,7 +39,7 @@ B2_RECONTACT_ROUTE_IDS = (2751, 2720, 2744, 2690)
 # HH_260806 - Keep the runtime probe explicit about the measured physical
 # and planning rectangles being evaluated against the live lanelet raster.
 BODY_EXTENTS = (0.70837, 0.68323, 0.53505, 0.53495)
-PLANNING_EXTENTS = (0.75837, 0.73323, 0.58505, 0.58495)
+PLANNING_EXTENTS = (0.80837, 0.78323, 0.63505, 0.63495)
 # HH_260806 - Scan the live raster around this recorded route pose instead of
 # assuming a cached bag's cell alignment is identical to the running grid.
 STATIC_CONTACT_BASE_POSE = (
@@ -53,6 +53,19 @@ STATIC_CONTACT_SCENARIOS = {
     "physical_contact",
     "physical_hard_stop",
 }
+
+
+def geometry_contract():
+    """Bind every new evidence file to the geometry used by its runtime probe."""
+    names = ("front", "rear", "left", "right")
+    return {
+        "physical_body_extents_m": dict(zip(names, BODY_EXTENTS)),
+        "planning_boundary_extents_m": dict(zip(names, PLANNING_EXTENTS)),
+        "planning_margin_m": {
+            name: round(planning - body, 5)
+            for name, planning, body in zip(names, PLANNING_EXTENTS, BODY_EXTENTS)
+        },
+    }
 
 
 def map_metadata(map_path):
@@ -191,7 +204,7 @@ class AutomaticRecoveryProbe(Node):
         self.create_subscription(
             AvgPoseStamped, "/localization/pose", self.on_pose, 20
         )
-        # HH_260807 - Classify evidence against the same 0.05 m robot-centred
+        # HH_260807 - Classify evidence against the same 0.10 m robot-centred
         # safety raster consumed by the final gate. The 0.25 m map display grid
         # is intentionally not authoritative for physical/planning contact.
         lanelet_grid_qos = QoSProfile(
@@ -1274,6 +1287,7 @@ def main():
             }
             result["scenario"] = args.scenario
             result["map"] = map_metadata(args.map)
+            result["geometry"] = geometry_contract()
             result["captured_at_utc"] = datetime.now(timezone.utc).isoformat()
             args.output.parent.mkdir(parents=True, exist_ok=True)
             with args.output.open("w", encoding="utf-8") as stream:
@@ -1283,6 +1297,7 @@ def main():
         # HH_260804 - Bind evidence to the exact user-provided map revision;
         # regenerated images must not silently reuse an older map result.
         result["map"] = map_metadata(args.map)
+        result["geometry"] = geometry_contract()
         result["captured_at_utc"] = datetime.now(timezone.utc).isoformat()
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w", encoding="utf-8") as stream:

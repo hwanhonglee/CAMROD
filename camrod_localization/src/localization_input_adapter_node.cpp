@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include "camrod_localization/gnss_heading_fallback.hpp"
 #include "camrod_localization/gnss_lever_arm.hpp"
 #include "camrod_localization/navsat_fix_validation.hpp"
 
@@ -167,11 +169,41 @@ public:
     gnss_antenna_offset_y_m_ = declare_parameter<double>("gnss_antenna_offset_y_m", 0.0);
     gnss_lever_arm_require_fresh_heading_ =
       declare_parameter<bool>("gnss_lever_arm_require_fresh_heading", true);
+    // HH_260807 - Preserve center-referenced GNSS position through a short
+    // receiver-heading gap using only a time-aligned, previously GNSS-anchored
+    // EKF yaw delta.  This fallback never becomes a valid GNSS yaw measurement.
+    enable_gnss_lever_arm_ekf_heading_fallback_ = declare_parameter<bool>(
+      "enable_gnss_lever_arm_ekf_heading_fallback", true);
+    gnss_lever_arm_fallback_anchor_max_age_s_ = declare_parameter<double>(
+      "gnss_lever_arm_fallback_anchor_max_age_s", 3.0);
+    gnss_lever_arm_fallback_history_s_ = declare_parameter<double>(
+      "gnss_lever_arm_fallback_history_s", 5.0);
+    gnss_lever_arm_fallback_match_tolerance_s_ = declare_parameter<double>(
+      "gnss_lever_arm_fallback_match_tolerance_s", 0.2);
+    gnss_lever_arm_fallback_max_ekf_yaw_covariance_ = declare_parameter<double>(
+      "gnss_lever_arm_fallback_max_ekf_yaw_covariance", 1.0);
     if (!std::isfinite(gnss_antenna_offset_x_m_) ||
       !std::isfinite(gnss_antenna_offset_y_m_))
     {
       throw std::runtime_error("GNSS antenna lever-arm offsets must be finite");
     }
+    if (!std::isfinite(gnss_lever_arm_fallback_anchor_max_age_s_) ||
+      gnss_lever_arm_fallback_anchor_max_age_s_ < 0.0 ||
+      !std::isfinite(gnss_lever_arm_fallback_history_s_) ||
+      gnss_lever_arm_fallback_history_s_ < gnss_lever_arm_fallback_anchor_max_age_s_ ||
+      !std::isfinite(gnss_lever_arm_fallback_match_tolerance_s_) ||
+      gnss_lever_arm_fallback_match_tolerance_s_ < 0.0 ||
+      !std::isfinite(gnss_lever_arm_fallback_max_ekf_yaw_covariance_) ||
+      gnss_lever_arm_fallback_max_ekf_yaw_covariance_ <= 0.0)
+    {
+      throw std::runtime_error(
+              "GNSS lever-arm EKF fallback requires finite non-negative timing, "
+              "history >= anchor age, and positive yaw covariance limit");
+    }
+    gnss_heading_fallback_.configure(
+      gnss_lever_arm_fallback_anchor_max_age_s_,
+      gnss_lever_arm_fallback_history_s_,
+      gnss_lever_arm_fallback_match_tolerance_s_);
     if (enable_gnss_lever_arm_correction_ && !enable_gnss_heading_) {
       RCLCPP_WARN(
         get_logger(),
@@ -464,14 +496,31 @@ private:
       gnss_heading_unavailable_covariance_;
 
     const double yaw = normalizeYaw(yawFromQuat(msg->orientation) + gnss_heading_yaw_offset_rad_);
-    gnss_heading_.orientation = yawToQuat(yaw);
-    gnss_heading_.yaw_covariance = yaw_cov;
-    gnss_heading_.stamp = rclcpp::Time(msg->header.stamp);
-    gnss_heading_.has_sample = true;
-    // HH_260629: u-blox publishes a deterministic placeholder yaw while
-    // RELPOSNED heading is invalid. Keep that sample out of the fallback cache.
-    if (yaw_cov <= gnss_heading_max_covariance_) {
-      rememberHeading(gnss_heading_);
+    HeadingSample candidate;
+    candidate.orientation = yawToQuat(yaw);
+    candidate.yaw_covariance = yaw_cov;
+    candidate.stamp = rclcpp::Time(msg->header.stamp);
+    candidate.has_sample = true;
+
+    // HH_260807: u-blox interleaves valid RELPOSNED headings with deterministic
+    // unavailable placeholders (currently yaw covariance=1000).  Never let an
+    // unavailable sample overwrite the most recent valid heading: doing so made
+    // the strict antenna lever-arm correction reject otherwise healthy 5 Hz
+    // NavSatFix messages until another valid heading happened to be scheduled.
+    // Freshness is still checked against the valid sample timestamp below, so a
+    // genuinely lost heading expires after gnss_heading_timeout_s as intended.
+    if (!std::isfinite(yaw_cov) || yaw_cov <= 0.0 ||
+      yaw_cov > gnss_heading_max_covariance_)
+    {
+      return;
+    }
+
+    gnss_heading_ = candidate;
+    rememberHeading(candidate);
+    if (enable_gnss_lever_arm_ekf_heading_fallback_) {
+      // Anchor only after receiver covariance has passed the validity gate.
+      // A missing time-aligned EKF sample simply leaves fallback unavailable.
+      gnss_heading_fallback_.anchorWithValidGnss(candidate.stamp.nanoseconds(), yaw);
     }
   }
 
@@ -529,17 +578,38 @@ private:
       selectHeading(stamp, heading_orientation, heading_yaw_covariance);
 
     if (enable_gnss_lever_arm_correction_) {
-      if (!has_fresh_heading && gnss_lever_arm_require_fresh_heading_) {
+      const std::optional<double> fresh_heading_yaw = has_fresh_heading ?
+        std::make_optional(yawFromQuat(heading_orientation)) : std::nullopt;
+      const auto lever_heading = gnss_heading_fallback_.select(
+        stamp.nanoseconds(), fresh_heading_yaw);
+      const bool fallback_selected =
+        enable_gnss_lever_arm_ekf_heading_fallback_ &&
+        lever_heading.source == camrod_localization::LeverArmHeadingSource::kEkfDelta;
+      const bool lever_heading_available =
+        lever_heading.source == camrod_localization::LeverArmHeadingSource::kFreshGnss ||
+        fallback_selected;
+
+      if (!lever_heading_available && gnss_lever_arm_require_fresh_heading_) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Wait for fresh GNSS heading before applying antenna lever arm "
-          "x=%.3f y=%.3f m",
+          "Wait for fresh GNSS heading or bounded time-aligned EKF fallback "
+          "before applying antenna lever arm x=%.3f y=%.3f m",
           gnss_antenna_offset_x_m_, gnss_antenna_offset_y_m_);
         return;
       }
 
+      const double lever_arm_yaw = lever_heading_available ?
+        lever_heading.yaw : yawFromQuat(heading_orientation);
+      if (fallback_selected) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "GNSS heading unavailable: rotate lever arm with GNSS-anchored EKF yaw delta "
+          "anchor_age=%.2fs sample_offset=%.3fs; GNSS yaw remains unavailable",
+          lever_heading.anchor_age_s, lever_heading.sample_offset_s);
+      }
+
       const auto center = camrod_localization::antennaPositionToRobotCenter(
-        p.x, p.y, yawFromQuat(heading_orientation),
+        p.x, p.y, lever_arm_yaw,
         gnss_antenna_offset_x_m_, gnss_antenna_offset_y_m_);
       p.x = center.x;
       p.y = center.y;
@@ -684,6 +754,19 @@ private:
   // HH_260720 - Convert the EKF standard output once, then remain generated internally.
   void onOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
   {
+    // HH_260807 - Cache only covariance-qualified EKF yaw.  The history is
+    // indexed by message stamp so a delayed GNSS fix does not use current yaw
+    // while the robot is turning.
+    if (enable_gnss_lever_arm_ekf_heading_fallback_ &&
+      quaternionIsUsable(msg->pose.pose.orientation))
+    {
+      gnss_heading_fallback_.recordEkfYaw(
+        rclcpp::Time(msg->header.stamp).nanoseconds(),
+        yawFromQuat(msg->pose.pose.orientation),
+        msg->pose.covariance[35],
+        gnss_lever_arm_fallback_max_ekf_yaw_covariance_);
+    }
+
     nav_msgs::msg::Odometry normalized_odometry = *msg;
     if (!odom_output_frame_id_.empty()) {
       normalized_odometry.header.frame_id = odom_output_frame_id_;
@@ -909,6 +992,12 @@ private:
   double gnss_antenna_offset_x_m_{0.0};
   double gnss_antenna_offset_y_m_{0.0};
   bool gnss_lever_arm_require_fresh_heading_{true};
+  bool enable_gnss_lever_arm_ekf_heading_fallback_{true};
+  double gnss_lever_arm_fallback_anchor_max_age_s_{3.0};
+  double gnss_lever_arm_fallback_history_s_{5.0};
+  double gnss_lever_arm_fallback_match_tolerance_s_{0.2};
+  double gnss_lever_arm_fallback_max_ekf_yaw_covariance_{1.0};
+  camrod_localization::GnssHeadingFallback gnss_heading_fallback_;
   bool enable_pose_cov_bridge_{true};
   HeadingSample gnss_heading_;
   HeadingSample last_any_heading_;

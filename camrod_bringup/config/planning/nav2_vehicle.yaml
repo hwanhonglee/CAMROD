@@ -16,7 +16,7 @@
 #   body_rear:       0.68323 m
 #   body_left:       0.53505 m
 #   body_right:      0.53495 m
-#   planning_margin: 0.05 m on every body side
+#   planning_margin: 0.10 m on every body side
 #
 #   --- Inertia / Mass ---
 #   mass:            100.0 kg   vehicle dry weight (rated payload 150 kg, IP55)
@@ -32,7 +32,7 @@
 #                             (Skid-steer: coupling is indirect; treat as soft reference.)
 #
 #   --- Performance Limits ---
-#   max_velocity:    1.4 m/s   operational speed cap (hardware max 2.6 m/s)
+#   max_velocity:    1.4 m/s   dormant DWB reference (hardware max 2.6 m/s)
 #   max_accel:       1.5 m/s²  longitudinal acceleration limit
 #   max_decel:      -2.0 m/s²  braking decel limit (negative = opposing-motion force)
 #   max_jerk:        3.0 m/s³  rate of change of acceleration (smoothness / jerk limit)
@@ -51,13 +51,13 @@ controller_server:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # HH_260731 - Conservative outdoor boundary-recovery profile shared by
       # manual and UI goals.
-      # HH_260806 - 1.666667 m/s raw through the 0.5 final gate is the 3.0 km/h
-      # production cruise reference. Other operational linear speeds preserve
-      # their previous ratio to this reference.
+      # HH_260807 - 1.111111 m/s raw through the retained 0.5 final gate is the
+      # 2.0 km/h production cruise reference. Other operational linear speeds
+      # preserve their previous ratio to this reference.
       # HH_260730: Only parameters consumed by the bundled RPP are listed here.
       # The former max/min linear and max angular keys were not read by this
       # plugin; desired_linear_vel and curvature regulation are authoritative.
-      desired_linear_vel: 1.666667
+      desired_linear_vel: 1.111111
       max_angular_accel: 0.8
       # HH_260513: Increased lookahead to suppress straight-line oscillation.
       # HH_260801 / TODOLIST 13: Full-bringup straight/curve sweeps
@@ -78,9 +78,9 @@ controller_server:
       #   use_collision_detection: True=controller-level collision check enabled, False=skip internal check
       #   use_regulated_linear_velocity_scaling: True=curve-based linear speed scaling, False=disabled
       #   use_cost_regulated_linear_velocity_scaling: True=costmap-based linear speed scaling, False=disabled
-      # HH_260807 - At the final 3 km/h cruise, velocity scaling expanded the
-      # preview to about 1.5 m and caused a rapid B2 boundary recontact. The
-      # validated fixed 1.1 m preview completed the same B1/B2 service sequence.
+      # HH_260807 - In the historical 3 km/h A/B run, velocity scaling expanded
+      # the preview to about 1.5 m and caused a rapid B2 boundary recontact. Keep
+      # the validated fixed 1.1 m preview for the current 2 km/h profile.
       use_velocity_scaled_lookahead_dist: False
       use_interpolation: True
       # Keep controller in forward-drive mode; global planner is
@@ -90,8 +90,8 @@ controller_server:
       # heading alignment is owned by the final route-heading gate, so RPP must
       # not alternate zero-linear rotation and translation at every small bend.
       use_rotate_to_heading: False
-      # HH_260806 - Preserve the previous 25% final-approach ratio: 0.75 km/h.
-      min_approach_linear_velocity: 0.416667
+      # HH_260807 - Preserve the 25% final-approach ratio: 0.50 km/h final.
+      min_approach_linear_velocity: 0.277778
       approach_velocity_scaling_dist: 0.6
       # HH_260618: RPP is now a fallback controller; keep its internal collision
       # check enabled when selected instead of relying only on external cmd_vel gates.
@@ -99,8 +99,8 @@ controller_server:
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
-      # HH_260806 - Preserve the previous 50% curve-floor ratio: 1.50 km/h.
-      regulated_linear_scaling_min_speed: 0.833333
+      # HH_260807 - Preserve the 50% curve-floor ratio: 1.00 km/h final.
+      regulated_linear_scaling_min_speed: 0.555556
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
@@ -113,8 +113,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # HH_260806 - Measured body with the retained 0.05 m four-sided margin.
-      footprint: "[[0.75837, 0.58505], [0.75837, -0.58495], [-0.73323, -0.58495], [-0.73323, 0.58505]]"
+      # HH_260807 - Measured body with a 0.10 m four-sided planning margin.
+      footprint: "[[0.80837, 0.63505], [0.80837, -0.63495], [-0.78323, -0.63495], [-0.78323, 0.63505]]"
       robot_radius: 0.0
 
 # =========================================================================
@@ -123,6 +123,6 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      # HH_260806 - Measured body with the retained 0.05 m four-sided margin.
-      footprint: "[[0.75837, 0.58505], [0.75837, -0.58495], [-0.73323, -0.58495], [-0.73323, 0.58505]]"
+      # HH_260807 - Measured body with a 0.10 m four-sided planning margin.
+      footprint: "[[0.80837, 0.63505], [0.80837, -0.63495], [-0.78323, -0.63495], [-0.78323, 0.63505]]"
       robot_radius: 0.0

@@ -29,6 +29,10 @@ ROUDI_CONFIG = (
     SRC_ROOT / "camrod_bringup" / "config" / "middleware" / "iceoryx_roudi.toml"
 )
 LIDAR_LAUNCH = SRC_ROOT / "camrod_sensing" / "launch" / "lidar_driver.launch.py"
+GROUND_SEGMENTATION = (
+    SRC_ROOT / "camrod_sensing" / "external" / "ground_segmentation_ros2"
+    / "src" / "ground_segmentation_ros2_node.cpp"
+)
 SYSTEM_LAUNCH = SRC_ROOT / "camrod_system" / "launch" / "system.launch.py"
 RECOVERY_PROBE = (
     SRC_ROOT / "camrod_bringup" / "scripts" / "automatic_route_recovery_probe.py"
@@ -66,7 +70,7 @@ def _component_plugins(module, monkeypatch, *, cost_grid: bool) -> list[str]:
     return [item["plugin"] for item in captured]
 
 
-def test_production_defaults_use_chromium_and_scope_shared_memory() -> None:
+def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -> None:
     """The central deployment profile must select one explicit runtime policy."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))["bringup"]
 
@@ -75,7 +79,7 @@ def test_production_defaults_use_chromium_and_scope_shared_memory() -> None:
     assert defaults["runtime"]["enable_dds_shared_memory"] is False
     assert defaults["sensing"]["use_lidar_processing_container"] is True
     assert defaults["sensing"]["enable_lidar_cost_grid"] is False
-    assert defaults["system"]["operator_ui_window_engine"] == "chromium"
+    assert defaults["system"]["operator_ui_window_engine"] == "webkit"
 
     bringup_source = BRINGUP_IMPL.read_text(encoding="utf-8")
     lidar_source = LIDAR_LAUNCH.read_text(encoding="utf-8")
@@ -152,6 +156,15 @@ def test_lidar_grid_diagnostics_follow_the_same_toggle() -> None:
     assert "disabled_topics_csv" in source
 
 
+def test_ground_segmentation_tf_listener_uses_component_context() -> None:
+    """The scoped LiDAR container has no usable global default ROS context."""
+    source = GROUND_SEGMENTATION.read_text(encoding="utf-8")
+    assert "*buffer, this, false" in source
+    assert "TransformListener>(*buffer);" not in source
+    assert "CallbackGroupType::Reentrant" in source
+    assert "buffer->setUsingDedicatedThread(true);" in source
+
+
 def test_sensor_hot_paths_use_components_and_move_ownership() -> None:
     """Intra-process transport needs component registration and movable messages."""
     sensing_cmake = (SRC_ROOT / "camrod_sensing" / "CMakeLists.txt").read_text(
@@ -167,13 +180,13 @@ def test_sensor_hot_paths_use_components_and_move_ownership() -> None:
 
     assert "lidar_preprocessor_component SHARED" in sensing_cmake
     assert "lidar_cost_grid_component SHARED" in sensing_cmake
-    assert lidar_source.count('"use_intra_process_comms": True') == 2
-    assert lidar_source.count('"use_intra_process_comms": False') == 1
+    assert lidar_source.count('"use_intra_process_comms": True') == 1
+    assert lidar_source.count('"use_intra_process_comms": False') == 2
     assert 'package="camrod_runtime"' in lidar_source
     assert 'executable="scoped_component_container_mt"' in lidar_source
     # HH_260805 - Three components and their containing process share the namespace.
     assert lidar_source.count('namespace=LaunchConfiguration("module_namespace")') == 4
-    assert "transient-local durability" in lidar_source
+    assert "transient-local" in lidar_source
     assert "pub_->publish(std::move(out_msg))" in preprocessor
     assert "rect_pub_->publish(std::move(rect_message))" in front_camera
 

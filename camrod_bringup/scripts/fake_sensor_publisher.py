@@ -167,7 +167,8 @@ class FakeSensorPublisher(Node):
         self.origin_lon = self.declare_parameter("origin_lon", 0.0).value
         self.origin_alt = self.declare_parameter("origin_alt", 0.0).value
         self.lanelet_id = int(self.declare_parameter("lanelet_id", -1).value)
-        self.speed_mps = self.declare_parameter("speed_mps", 1.4).value
+        # HH_260807 - Standalone fallback matches the final 2 km/h profile.
+        self.speed_mps = self.declare_parameter("speed_mps", 0.555556).value
         # Debug option:
         # - true  : keep fake sensor pose fixed on the path start anchor
         # - false : move along centerline path with `speed_mps`

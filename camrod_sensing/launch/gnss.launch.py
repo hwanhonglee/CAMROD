@@ -69,12 +69,14 @@ def _dual_antenna_runtime_params(usb_rtcm_in, warm_start_on_startup=False):
         # diagnostic has left the rover tracking the wrong reference.
         "dual_antenna.warm_start_on_startup": warm_start_on_startup,
         "dual_antenna.warm_start_wait_ms": 12000,
-        # HH_260722 - The field moving-base solution is accepted at 1 Hz.
         # HH_260806 - This repository's dual-rover setup writes CFG-RATE to RAM
-        # even when config_on_startup=false, so a receiver-saved 5 Hz profile is
-        # intentionally overridden here. Keep base and rover epochs at the same
-        # measured rate before changing this field contract.
-        "rate": 1.0,
+        # even when config_on_startup=false, so the inline rate is the active
+        # receiver contract rather than only a ROS publication expectation.
+        # HH_260807 - The current physical validation profile uses 200 ms rover
+        # epochs. ``rate`` is Hz; ``nav_rate=1`` means every measurement epoch,
+        # not 1 Hz. Validate the independently configured moving-base cadence
+        # before changing this profile after the 5 Hz test.
+        "rate": 5.0,
         "nav_rate": 1,
         "publish.nav.cov": True,
         "publish.nav.status": True,
@@ -286,8 +288,9 @@ def generate_launch_description():
         DeclareLaunchArgument("gnss_log_level",      default_value="error",
                               description="ROS log level for GNSS/NTRIP nodes"),
         DeclareLaunchArgument("gnss_namespace",
-                              # HH_260317-00:00 Standalone default /gnss/*; sensing.launch.py overrides to /sensing/gnss/*.
-                              default_value="gnss",
+                              # HH_260807 - Direct and aggregate launches publish the same canonical topics.
+                              # sensing.launch.py explicitly passes relative `gnss` under its /sensing scope.
+                              default_value="sensing/gnss",
                               description="GNSS stack namespace"),
         DeclareLaunchArgument("rtcm_topic",
                               # HH_260317-00:00 Relative default: namespace + rtcm -> /gnss/rtcm.

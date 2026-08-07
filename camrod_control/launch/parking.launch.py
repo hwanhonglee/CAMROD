@@ -22,6 +22,10 @@ def generate_launch_description():
         "camrod_perception",
         os.path.join("config", "apriltag_parking_detector.yaml"),
     )
+    # HH_260807 - Give standalone reverse parking the active map semantics.
+    default_drop_zones_yaml = package_path(
+        "camrod_map", os.path.join("config", "drop_zones.yaml")
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument("parking_namespace", default_value="parking"),
@@ -33,7 +37,7 @@ def generate_launch_description():
         DeclareLaunchArgument("parking_method", default_value="reverse"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
         DeclareLaunchArgument("vehicle_pose_topic", default_value="/localization/pose"),
-        DeclareLaunchArgument("drop_zones_yaml", default_value=""),
+        DeclareLaunchArgument("drop_zones_yaml", default_value=default_drop_zones_yaml),
         # HH_260720 - AprilTag parking starts its perception input only when selected.
         DeclareLaunchArgument("launch_apriltag_detector", default_value="true"),
 

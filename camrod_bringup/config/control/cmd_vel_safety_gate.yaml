@@ -87,13 +87,12 @@
     cost_source_debug_topics:
       # HH_260806 - Match diagnostics to the high-resolution control raster.
       - "/map/cost_grid/lanelet_safety"
-      # Compatibility topic currently contains perception-filtered obstacles only.
-      - "/sensing/cost_grid/lidar"
+      # HH_260807 - Production dynamic cost is radar-only; LiDAR is not merged.
       - "/sensing/cost_grid/radar"
       - "/planning/cost_grid/global_path"
-    cost_source_debug_labels: ["lanelet", "perception", "radar", "global_path"]
+    cost_source_debug_labels: ["lanelet", "radar", "global_path"]
     cost_stop_require_dynamic_source: true
-    cost_stop_dynamic_source_labels: "perception,radar"
+    cost_stop_dynamic_source_labels: "radar"
     # HH_260729 - Diagnostic-only companion to the aggregate radar grid.
     # It adds SENSOR/frame/range/map point/cost to radar stop logs; occupancy
     # grid evaluation remains the sole authority for stopping and releasing.
@@ -112,8 +111,9 @@
     lanelet_safety_grid_topic: "/map/cost_grid/lanelet_safety"
     lanelet_safety_threshold: 85
     lanelet_safety_current_threshold: 85
-    # HH_260806 - Cost 100 inside the measured physical body is a hard stop;
-    # it cannot be cleared by crab/reverse/yaw recovery motion.
+    # HH_260807 - Cost 100 inside the measured physical body hard-stops ordinary
+    # motion. A bounded recovery is admitted only when every 0.05 m-raster sweep
+    # sample is non-increasing and its body + planning-footprint endpoint is clear.
     lanelet_safety_body_hard_stop_enable: true
     lanelet_safety_body_hard_stop_threshold: 100
     lanelet_safety_body_front_m: 0.70837
@@ -125,14 +125,16 @@
     # HH_260727 - 98 is the soft/rasterized lane edge; 100 is truly off-lane.
     # This preserves whole-body containment without immobilizing narrow mapped lanes.
     lanelet_safety_footprint_threshold: 100
+    # HH_260807 - Polygon points are robot_center_link-local; reject map-frame
+    # polygons instead of reconstructing geometry from an asynchronous pose.
     robot_planning_boundary_topic: "/platform/robot/planning_boundary"
     # Fallback dimensions match robot_params/Nav2 footprint if the boundary
     # publisher has not produced its transient-local polygon yet.
-    # HH_260806 - Measured body retains 0.05 m planning clearance on every side.
-    lanelet_safety_footprint_front_m: 0.75837
-    lanelet_safety_footprint_rear_m: 0.73323
-    lanelet_safety_footprint_left_m: 0.58505
-    lanelet_safety_footprint_right_m: 0.58495
+    # HH_260807 - Add 0.10 m recoverable clearance around the unchanged body.
+    lanelet_safety_footprint_front_m: 0.80837
+    lanelet_safety_footprint_rear_m: 0.78323
+    lanelet_safety_footprint_left_m: 0.63505
+    lanelet_safety_footprint_right_m: 0.63495
     lanelet_safety_lookahead_m: 1.0
     lanelet_safety_width_m: 0.8
     lanelet_safety_stop_on_unknown: true
@@ -154,9 +156,11 @@
     # HH_260807 - Map-v17 B2 A/B: 1.0 s recontacted in 0.58 s; 1.5 s
     # completed the same RPP goal in 3/3 runs after real recovery motion.
     route_safety_recovery_clear_required_s: 1.5
-    # HH_260804 - Permit one automatic clear/release. If the same route is
-    # contacted again within 5 s, latch safely instead of crab/release looping.
-    route_safety_recovery_max_auto_releases: 1
+    # HH_260807 - Permit 12 bounded clear/release cycles during long autonomous
+    # runs. Exhaustion blocks same-direction Nav2 resume but never suppresses a
+    # separately projected-safe inward escape from the active boundary contact.
+    # Runtime updates outside [0, 15] are rejected.
+    route_safety_recovery_max_auto_releases: 12
     route_safety_recovery_recontact_window_s: 5.0
     # Runtime updates outside [0.1, 60.0] s are rejected.
     route_safety_recovery_log_interval_s: 1.0
@@ -273,8 +277,8 @@
     # =========================================================================
     # Output shaping and stale-input behavior
     # =========================================================================
-    # HH_260806 - Keep standalone control and full bringup on the same 3 km/h
-    # profile: the active raw 1.666667 m/s cruise is halved at the final gate.
+    # HH_260807 - Keep standalone control and full bringup on the same 2 km/h
+    # profile: the active raw 1.111111 m/s cruise is halved at the final gate.
     speed_scale: 0.5
     input_timeout_s: 0.35
     zero_publish_rate_hz: 10.0

@@ -20,8 +20,9 @@ from matplotlib.patches import FancyArrowPatch, Polygon as PolygonPatch
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
 CRAB_LANELET_ID = 4677
-# HH_260805 - These are the historical map-v14 extents. main() switches only
-# map v15+ output to the current four-sided 0.05 m planning margin.
+# HH_260807 - These defaults reproduce historical map-v14 evidence. New probe
+# output carries its exact geometry contract; metadata-free release evidence
+# uses the version-specific fallback in evidence_planning_extents().
 FRONT, REAR = 0.85837, 0.83323
 LEFT, RIGHT = 0.58505, 0.58495
 FPS = 8
@@ -60,6 +61,32 @@ def evidence_map_version(runs, fallback, fallback_sha256=None):
     if hashes and fallback_sha256 and next(iter(hashes)) != fallback_sha256:
         raise ValueError("evidence OSM hash does not match the selected map")
     return evidence_version
+
+
+def evidence_planning_extents(runs, version):
+    """Use captured geometry when available without relabeling old evidence."""
+    names = ("front", "rear", "left", "right")
+    captured = {
+        tuple(
+            run["geometry"]["planning_boundary_extents_m"][name]
+            for name in names
+        )
+        for run in runs
+        if run.get("geometry", {}).get("planning_boundary_extents_m")
+    }
+    if len(captured) > 1:
+        raise ValueError("input evidence uses multiple planning geometries")
+    if captured:
+        return next(iter(captured))
+
+    # Metadata-free release records predate the explicit geometry contract.
+    # Preserve their then-active envelope instead of drawing today's 10 cm
+    # boundary over historical measurements.
+    if version <= 14:
+        return (0.85837, 0.83323, 0.58505, 0.58495)
+    if version == 15:
+        return (0.80837, 0.78323, 0.58505, 0.58495)
+    return (0.75837, 0.73323, 0.58505, 0.58495)
 
 
 def retry_latched(run):
@@ -611,7 +638,7 @@ def render_gif(output, lanelet_map, route, reverse, crab, version):
 
 
 def main():
-    global FRONT, REAR
+    global FRONT, REAR, LEFT, RIGHT
     parser = argparse.ArgumentParser()
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--route", required=True, type=Path)
@@ -635,9 +662,9 @@ def main():
         map_version(args.map),
         hashlib.sha256(args.map.read_bytes()).hexdigest(),
     )
-    if version >= 15:
-        # HH_260805 - Current body extents plus 0.05 m on every side.
-        FRONT, REAR = 0.80837, 0.78323
+    FRONT, REAR, LEFT, RIGHT = evidence_planning_extents(
+        (route, reverse, crab), version
+    )
     if args.artifact_prefix:
         contact = args.output_dir / f"{args.artifact_prefix}-contact-sheet.png"
         policy = args.output_dir / f"{args.artifact_prefix}-policy.png"

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Render the current robot-boundary simulation result as one concise figure."""
+"""Render the fixed 2026-08-06 robot-boundary evidence as one concise figure."""
 
-# HH_260806 - Keep the provisional geometry, runtime policy, and field caveat
-# reproducible from the four raw scenario records instead of hand-editing PNGs.
+# HH_260807 - This renderer intentionally preserves the historical 5 cm
+# geometry captured by the four raw scenario records. It is not the active
+# 10 cm production geometry renderer.
 
 import argparse
 import json

@@ -199,6 +199,7 @@ bringup:
     imu_converter_param_file: sensing/imu/platform_velocity_converter.yaml
     radar_sensor_param_file: sensing/radar/sen0592_radar.yaml
     radar_cost_grid_param_file: sensing/radar/cost_grid.yaml
+    lidar_preprocessor_param_file: sensing/lidar/preprocessor.yaml
     lidar_cost_grid_param_file: sensing/lidar/cost_grid.yaml
     inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
     # HH_260611: Current rover default is simpleRTK2B Heading through ublox_gps.
@@ -337,10 +338,10 @@ bringup:
     cmd_vel_gate_cost_grid_stale_stop_enable: true
     cmd_vel_gate_cost_grid_stale_timeout_s: 1.0
     cmd_vel_gate_cost_grid_stale_log_interval_s: 1.0
-    # HH_260622 - The merged inflation grid also carries static lanelet/global
-    # path guidance. Only live dynamic sensor sources may block cmd_vel here.
+    # HH_260807 - The production inflation grid carries static lanelet/path
+    # guidance plus radar. LiDAR/perception is intentionally not a cost source.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
-    cmd_vel_gate_cost_stop_dynamic_source_labels: perception,radar
+    cmd_vel_gate_cost_stop_dynamic_source_labels: radar
     # HH_260702 - When Nav2 publishes an avoidance local path, validate that
     # path corridor before blocking on the old body-front obstacle rectangle.
     cmd_vel_gate_front_dynamic_stop_use_local_path: true
@@ -355,7 +356,8 @@ bringup:
     cmd_vel_gate_lanelet_safety_grid_topic: /map/cost_grid/lanelet_safety
     cmd_vel_gate_lanelet_safety_threshold: 85
     cmd_vel_gate_lanelet_safety_current_threshold: 85
-    # HH_260806 - Physical-body cost 100 is non-recoverable; planning margin remains recoverable.
+    # HH_260807 - Physical-body cost 100 stops ordinary motion; only a monotonic,
+    # projected-clear bounded escape is recoverable.
     cmd_vel_gate_lanelet_safety_body_hard_stop_enable: true
     cmd_vel_gate_lanelet_safety_body_hard_stop_threshold: 100
     cmd_vel_gate_lanelet_safety_body_front_m: 0.70837
@@ -366,11 +368,11 @@ bringup:
     # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
     cmd_vel_gate_lanelet_safety_footprint_threshold: 100
     cmd_vel_gate_robot_planning_boundary_topic: /platform/robot/planning_boundary
-    # HH_260806 - Fabrication-inclusive body plus retained 0.05 m planning clearance.
-    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.75837
-    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.73323
-    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.58505
-    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.58495
+    # HH_260807 - Fabrication-inclusive body plus 0.10 m recoverable clearance.
+    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.80837
+    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.78323
+    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.63505
+    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.63495
     cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
     cmd_vel_gate_lanelet_safety_width_m: 0.8
     cmd_vel_gate_lanelet_safety_stop_on_unknown: true
@@ -394,6 +396,8 @@ bringup:
     cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
     cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
     cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
+    # HH_260807 - Retry exhaustion blocks Nav2 resume, not projected inward escape.
+    cmd_vel_gate_route_safety_recovery_max_auto_releases: 12
     # HH_260720 - During explicit drop-zone exit, bypass only static lanelet
     # cost for these control phases; dynamic obstacle stops remain active.
     cmd_vel_gate_drop_zone_maneuver_controller_status_topic: /control/drop_zone_maneuver_controller/status
@@ -591,11 +595,12 @@ bringup:
     api_ui_low_battery_return_after_current_mission: true
     api_ui_low_battery_return_threshold_percent: 35.0
 
-    # HH_260805 - Use Chromium by default for touch/IME support and GPU-backed
-    # rendering. WebKit remains an explicit low-overhead fallback.
+    # HH_260807 - The installed Snap Chromium exits before opening a window
+    # because snap-confine lacks cap_dac_override in the robot launch context.
+    # Use the verified GTK/WebKit renderer so physical bringup always shows UI.
     # Disable for headless bringup or when rendering the UI on another device.
     enable_operator_ui_window: true
-    operator_ui_window_engine: chromium
+    operator_ui_window_engine: webkit
     operator_ui_window_url: http://127.0.0.1:8010
     operator_ui_window_width: 1280
     operator_ui_window_height: 800

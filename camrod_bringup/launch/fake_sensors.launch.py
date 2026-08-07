@@ -128,7 +128,8 @@ def generate_launch_description():
     )
     speed_mps_arg = DeclareLaunchArgument(
         'speed_mps',
-        default_value='1.4',
+        # HH_260807 - Match the constant-speed fallback to the final 2 km/h profile.
+        default_value='0.555556',
         description='Fake vehicle speed (m/s)',
     )
     publish_rate_arg = DeclareLaunchArgument(

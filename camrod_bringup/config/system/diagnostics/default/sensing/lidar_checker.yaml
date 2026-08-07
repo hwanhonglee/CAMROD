@@ -39,11 +39,12 @@ lidar_checker:
       topic: "/sensing/lidar/points_filtered"
       dummy_active_topic: "/sensing/lidar/dummy_active"
       dummy_active_timeout_s: 1.0
-      # HH_260701 - ground_segmentation is the intentional bottleneck after
-      # 10 Hz preprocessor output; 6 Hz is the profiled stable planning input.
+      # HH_260807 - The complete physical LiDAR chain, including
+      # ground_segmentation, must preserve the sensor's 10 Hz cadence. Do not
+      # hide processing regressions by lowering this diagnostic expectation.
       # HH_260702 - This entry is the motion-relevant LiDAR health check:
       # freshness/rate must stay alive and filtered NaN/Inf should be nearly zero.
-      expected_hz: 6.0
+      expected_hz: 10.0
       hz_warn_ratio: 0.5
       hz_error_ratio: 0.25
       stale_timeout_s: 3.0

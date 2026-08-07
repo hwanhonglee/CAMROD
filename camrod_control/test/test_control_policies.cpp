@@ -360,10 +360,16 @@ TEST(RouteSafetyRecovery, LatchesRapidRecontactAfterConfiguredAutomaticRelease)
 
   ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 2.0));
   EXPECT_TRUE(recovery.automaticReleaseBlocked());
-  EXPECT_FALSE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
+  // HH_260807 - Retry containment blocks same-direction Nav2 release, not a
+  // candidate that still has to pass the gate's projected inward-escape proof.
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
   EXPECT_FALSE(recovery.updateProbe(clear, 2.0));
   EXPECT_FALSE(recovery.updateProbe(clear, 3.0));
+  EXPECT_FALSE(recovery.latestDecision().blocked);
   EXPECT_TRUE(recovery.active());
+  // The clear robot stays stopped for replan instead of resuming the same Nav2
+  // direction, while a later renewed contact could still request inward escape.
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, -0.1)));
 
   recovery.reset();
   EXPECT_FALSE(recovery.automaticReleaseBlocked());
@@ -674,7 +680,7 @@ TEST(MotionCostStop, CrabRecoveryMovesAwayFromSideBoundaryOnly)
     std::string::npos);
 }
 
-TEST(MotionCostStop, PhysicalBodyContactRejectsEveryRecoveryCommand)
+TEST(MotionCostStop, PhysicalBodyContactAllowsOnlyMonotonicProjectedClearEscape)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -701,14 +707,81 @@ TEST(MotionCostStop, PhysicalBodyContactRejectsEveryRecoveryCommand)
   EXPECT_EQ(trigger.lanelet_hit_cost, 100);
   EXPECT_NEAR(trigger.lanelet_hit_body_x, 0.05, 1.0e-6);
   EXPECT_NEAR(trigger.lanelet_hit_body_y, 0.15, 1.0e-6);
-  for (const auto & recovery :
-    {command(-0.1), command(0.0, -0.1), command(-0.1, 0.0, 0.1)})
-  {
-    const auto decision =
-      cost_stop.evaluateRouteRecoveryCommand(recovery, 1.1, 0.3, 0.5);
-    EXPECT_TRUE(decision.blocked);
-    EXPECT_EQ(decision.reason, "route_recovery_physical_body_cost");
-  }
+  const auto inward = cost_stop.evaluateRouteRecoveryCommand(
+    command(0.0, -0.1), 1.1, 0.3, 0.5);
+  EXPECT_FALSE(inward.blocked) << inward.reason;
+
+  // A reverse candidate is also valid here because the projection proves that
+  // it moves this isolated side contact completely clear without overlap growth.
+  const auto reverse_clear =
+    cost_stop.evaluateRouteRecoveryCommand(command(-0.1), 1.1, 0.3, 0.5);
+  EXPECT_FALSE(reverse_clear.blocked) << reverse_clear.reason;
+
+  const auto outward = cost_stop.evaluateRouteRecoveryCommand(
+    command(0.0, 0.1), 1.1, 0.3, 0.5);
+  EXPECT_TRUE(outward.blocked);
+  EXPECT_NE(outward.reason.find("physical_body"), std::string::npos);
+}
+
+TEST(MotionCostStop, PhysicalContactEscapeStillRequiresPlanningFootprintEndpointClear)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.body_front_m = 0.2;
+  config.body_rear_m = 0.2;
+  config.body_left_m = 0.2;
+  config.body_right_m = 0.2;
+  config.lanelet_footprint_enabled = true;
+  config.footprint_front_m = 0.4;
+  config.footprint_rear_m = 0.4;
+  config.footprint_left_m = 0.3;
+  config.footprint_right_m = 0.3;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  // First cell is current body contact. The second is outside the swept body
+  // but inside the endpoint's larger planning footprint after moving right.
+  cost_stop.setLaneletGrid(
+    makeGrid({{0.0, 0.15, 100}, {0.35, -0.25, 100}}), 1.0);
+
+  const auto decision = cost_stop.evaluateRouteRecoveryCommand(
+    command(0.0, -0.1), 1.1, 0.3, 0.5);
+  EXPECT_TRUE(decision.blocked);
+  EXPECT_NE(
+    decision.reason.find("route_recovery_predicted_lanelet_footprint"),
+    std::string::npos) << decision.reason;
+}
+
+TEST(MotionCostStop, PhysicalContactEscapeKeepsDynamicObstacleAuthoritative)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.body_front_m = 0.2;
+  config.body_rear_m = 0.2;
+  config.body_left_m = 0.2;
+  config.body_right_m = 0.2;
+  config.lanelet_footprint_enabled = true;
+  config.footprint_front_m = 0.3;
+  config.footprint_rear_m = 0.3;
+  config.footprint_left_m = 0.3;
+  config.footprint_right_m = 0.3;
+  config.require_dynamic_source = true;
+  config.dynamic_source_labels = {"radar"};
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  const auto radar = makeGrid({{0.0, -0.35, 90}});
+  cost_stop.setMergedGrid(radar, 1.0);
+  cost_stop.setSourceGrid("radar", radar, 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.15, 100}}), 1.0);
+
+  const auto decision = cost_stop.evaluateRouteRecoveryCommand(
+    command(0.0, -0.1), 1.1, 0.3, 0.5);
+  EXPECT_TRUE(decision.blocked);
+  EXPECT_TRUE(decision.dynamic_obstacle) << decision.reason;
 }
 
 TEST(MotionCostStop, PlanningMarginContactStillAllowsProjectedCrabRecovery)
@@ -958,7 +1031,7 @@ TEST(MotionCostStop, LaneletFootprintAllowsSoftBoundaryButBlocksOffLane)
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
 }
 
-TEST(MotionCostStop, PublishedPlanningBoundaryOverridesFallbackFootprint)
+TEST(MotionCostStop, LocalPlanningBoundaryOverridesFallbackWithoutPoseTimingDependency)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -970,8 +1043,12 @@ TEST(MotionCostStop, PublishedPlanningBoundaryOverridesFallbackFootprint)
   config.footprint_left_m = 0.2;
   config.footprint_right_m = 0.2;
   auto cost_stop = makeMotionCostStop(config);
-  cost_stop.setFootprintPolygonWorld(
+  // HH_260807 - The boundary is owned by robot_center_link. Its shape remains
+  // exact even when localization has already advanced before the callback.
+  cost_stop.setPose(PlanarPose{3.0, -2.0, 0.7, "map", "test", 0.0});
+  cost_stop.setFootprintPolygonLocal(
     {{1.5, 0.6}, {1.5, -0.6}, {-0.4, -0.6}, {-0.4, 0.6}});
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 0.0});
   cost_stop.setMergedGrid(makeGrid(), 0.0);
   cost_stop.setLaneletGrid(makeGrid({{1.4, 0.0, 100}}), 0.0);
 
@@ -994,22 +1071,22 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   constexpr double body_rear = 0.68323;
   constexpr double body_left = 0.53505;
   constexpr double body_right = 0.53495;
-  constexpr double longitudinal_margin = 0.05;
-  constexpr double lateral_margin = 0.05;
-  // The cell center at y=0.55 m lies outside the 0.53505 m body and inside
-  // the 0.58505 m planning margin.
-  auto margin_only_cost = makeGrid({{0.0, 0.55, 100}});
+  constexpr double longitudinal_margin = 0.10;
+  constexpr double lateral_margin = 0.10;
+  // The cell center at y=0.60 m lies outside the 0.53505 m body and inside
+  // the 0.63505 m planning boundary.
+  auto margin_only_cost = makeGrid({{0.0, 0.60, 100}});
   cost_stop.setLaneletGrid(margin_only_cost, 0.0);
 
   // HH_260806 - The lethal cell is outside the measured body but inside the
-  // published planning boundary. This proves the 0.05 m lateral margin stops motion
+  // published planning boundary. This proves the 0.10 m lateral margin stops motion
   // before the chassis itself reaches the off-lane cell.
-  cost_stop.setFootprintPolygonWorld(
+  cost_stop.setFootprintPolygonLocal(
     {{body_front, body_left}, {body_front, -body_right},
       {-body_rear, -body_right}, {-body_rear, body_left}});
   EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.2), 0.0).blocked);
 
-  cost_stop.setFootprintPolygonWorld(
+  cost_stop.setFootprintPolygonLocal(
     {{body_front + longitudinal_margin, body_left + lateral_margin},
       {body_front + longitudinal_margin, -(body_right + lateral_margin)},
       {-(body_rear + longitudinal_margin), -(body_right + lateral_margin)},
@@ -1032,7 +1109,7 @@ TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
   // HH_260806 - Isolate the measured chassis polygon from its planning margin.
   // Use the deployed 0.25 m lanelet-grid resolution: cost 100 on the body edge
   // must stop translation even when crab static-cost bypass is enabled.
-  cost_stop.setFootprintPolygonWorld(
+  cost_stop.setFootprintPolygonLocal(
     {{0.70837, 0.53505}, {0.70837, -0.53495},
       {-0.68323, -0.53495}, {-0.68323, 0.53505}});
   cost_stop.setLaneletGrid(makeGrid({{0.0, 0.40, 100}}, 0.25), 0.0);

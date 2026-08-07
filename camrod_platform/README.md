@@ -26,7 +26,7 @@ measurements.
 |---|---|---|
 | Ranger CAN driver | Converts final ROS Twist to platform motion | Ranger actuator commands and odometry |
 | CAN/BMS frames | Normalizes vehicle, actuator, wheel, error, battery, and charging state | `/platform/status` and status subtopics |
-| Localization + sensor-kit geometry | Publishes robot markers and complete planning polygon | `/platform/robot/markers`, `/platform/robot/planning_boundary` |
+| Localization + sensor-kit geometry | Publishes map markers and a robot-center-local planning polygon | `/platform/robot/markers`, `/platform/robot/planning_boundary` |
 
 ## Active Values
 
@@ -42,8 +42,8 @@ measurements.
 | Charging threshold | `> 0.3 A`, 2 samples | Debounced positive-current charging rule |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |
 | Robot marker/boundary rate | `5 Hz` | RViz/diagnostic publication |
-| Physical body | `1.39160 x 1.07000 m` | Fabrication-inclusive hard-stop source; four-side field verification pending |
-| Published planning boundary | `1.49160 x 1.17000 m` | Body plus `0.05 m` on every side |
+| Physical body | `1.39160 x 1.07000 m` | Fabrication-inclusive ordinary-stop/swept-recovery envelope; four-side verification pending |
+| Published planning boundary | `1.59160 x 1.27000 m`, `robot_center_link` | Body plus `0.10 m` on every side; TF aligns RViz without changing collision geometry |
 
 ## Command And Feedback
 
@@ -72,7 +72,7 @@ instead of adding a competing status writer.
 |---|---|
 | `ranger_base` | Physical CAN transport and motion command |
 | `ranger_platform_bridge` | Generated status, charging, odometry, and fallback normalization |
-| `robot_visualization` | Map-frame markers and complete planning boundary |
+| `robot_visualization` | Map-frame markers and robot-center-local planning boundary |
 | `light_controller` | Platform indicator/light command handling |
 
 ## Run And Validate

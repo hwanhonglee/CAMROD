@@ -59,6 +59,34 @@ TEST(RadarSelfEchoFilter, BuildsReadableNamedMinMaxSpecs)
   EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(1U, 0.177, bands));
 }
 
+// HH_260807 - These touching intervals deliberately model the measured body
+// envelope. The first external millimeter must remain available to stopping.
+TEST(RadarSelfEchoFilter, ExcludesConfiguredFrontAndRearBodyEnvelopesOnly)
+{
+  const std::vector<std::string> input_topics{
+    "/sensing/radar/front1/range",
+    "/sensing/radar/front2/range",
+    "/sensing/radar/rear/range"};
+  std::vector<Band> bands;
+  std::string error;
+  ASSERT_TRUE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{
+      "FRONT1:0.020:0.120",
+      "FRONT1:0.120:0.220",
+      "FRONT2:0.020:0.117",
+      "REAR:0.020:0.106"},
+    input_topics, bands, error));
+
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(0U, 0.020, bands));
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(0U, 0.120, bands));
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(0U, 0.220, bands));
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(0U, 0.221, bands));
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(1U, 0.117, bands));
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(1U, 0.118, bands));
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(2U, 0.106, bands));
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(2U, 0.107, bands));
+}
+
 // HH_260729 - A typo must leave zero notches rather than accepting the entries
 // before it and silently hiding real obstacles on only part of the robot.
 TEST(RadarSelfEchoFilter, MalformedOrUnknownNamedSpecFailsSafe)

@@ -43,6 +43,8 @@
   <!-- HJ_260529: optional YOLO packages — declared so packages-up-to pulls them in automatically -->
   <exec_depend>yolov9mit</exec_depend>
   <exec_depend>yolov9mit_ros</exec_depend>
+  <!-- HH_260807 - Standalone campsite occupancy resolves active site semantics. -->
+  <exec_depend>camrod_planning</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

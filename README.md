@@ -7,9 +7,11 @@ left-antenna lever arm and heading-aware center correction. -->
 <!-- HH_260807 - Add map-v17 repeated service, B2 recovery, and persistent-obstacle evidence. -->
 <!-- HH_260807 - Add the final B1-B10 no-restart endurance result and fixed
 1.1 m preview/route-snap return acceptance. -->
+<!-- HH_260807 - Synchronize the v2.1.6 field contract: GNSS 5 Hz, localization
+20 Hz, LiDAR 10 Hz, 2 km/h cruise, 10 cm boundary, and bounded recovery retries. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.5`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.1.6`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
 
@@ -34,23 +36,27 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
-| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; localization subtracts it to publish robot center |
-| Physical body boundary | `1.39160 x 1.07000 m` | Fabrication-inclusive measured envelope; cost-100 contact is a hard stop with no automatic recovery |
-| Planning boundary | `1.49160 x 1.17000 m` | Physical body plus `0.05 m` on all four sides; margin-only contact may use projected bounded recovery |
+| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most 3 s without making GNSS yaw valid |
+| GNSS receiver cadence | `5 Hz` (`200 ms` epoch) | Rover is configured on launch; moving-base epoch/link acceptance remains a physical test |
+| Localization pose cadence | `20 Hz` | EKF predicts between GNSS corrections; this is not a claim that GNSS itself publishes at 20 Hz |
+| Physical body boundary | `1.39160 x 1.07000 m` | Cost-100 overlap stops ordinary motion; only a monotonic inward, swept-body-clear escape may be projected |
+| Planning boundary | `1.59160 x 1.27000 m` | Physical body plus `0.10 m` on all four sides; endpoint planning clearance remains mandatory for escape |
 | Base platform dimensions | `1.19160 x 0.87000 m` | Chassis-only value retained separately from the fabrication-inclusive collision envelope |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
 | Hard safety stop | `<= 20%` | Final command output is stopped |
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
 | Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
+| Straight cruise | `2.000 km/h` (`0.555556 m/s` final) | Raw RPP `1.111111 m/s` passes through the retained `0.5` command gate |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
 | Active Lanelet map | `map_version=17`, SHA `8cd05c...5e021` | User-edited active OSM and named copy are byte-identical; SHA is a synchronization fingerprint, not a geometry lock |
-| RPP preview | fixed `1.1 m` | Velocity scaling disabled after source-profile service A/B |
+| RPP preview | UI mission `1.1 m`; manual RotationShim `2.0 m` | Both fixed; manual profile uses the longer field anti-oscillation preview |
 | Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
-| Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
+| Recovery retry guard | `12 releases`, `5 s` | At budget, same-direction Nav2 resume stays blocked; separately projected inward escape remains eligible |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
-| LiDAR cost grid | default `OFF` | Optional component and its diagnostics activate together only when requested |
-| Operator renderer | Chromium | GPU-enabled kiosk default; WebKit remains an explicit fallback |
+| LiDAR processing | raw/filtered target `10 Hz`; cost grid default `OFF` | Physical cloud processing remains required; only the optional raster node/topic and its graph entry are disabled |
+| Radar visualization | seven real `/range_ros` streams | `radar_status_gui.py` observes physical publishers and never starts a dummy publisher |
+| Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
 | System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
 | System checker topology | `24` checkers in `4` serialized containers | Fault domains remain separate; standalone fallback remains available |
@@ -176,7 +182,8 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
-| [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Current runtime, GNSS center contract, exact validation, and field limits |
+| [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Current sensor cadence, motion/boundary policy, visualization, and remaining field acceptance |
+| [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Previous baseline and its exact historical evidence |
 | [v2.1.5 field handoff](camrod_bringup/docs/v2_1_5_field_handoff_20260808.md) | Other-PC start, TODO crosswalk, and physical test order |
 | [v2.1.5 service evidence](docs/assets/test_result/v2-1-5-service-validation-20260807/README.md) | Repeated service, obstacle, boundary JSON/log/PNG/GIF and limits |
 | [B1-B10 endurance evidence](docs/assets/test_result/b1-b10-service-endurance-20260807/README.md) | Ten-cycle lifecycle, route-snap return, path/UI shutdown logs, PNG/GIF and hashes |

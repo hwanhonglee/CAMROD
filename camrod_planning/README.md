@@ -8,6 +8,7 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 <!-- HH_260806 - Scale the active linear-speed profile from a 3 km/h cruise reference. -->
 <!-- HH_260807 - Preflight persistent-obstacle paths before Nav2 mission preemption. -->
 <!-- HH_260807 - Fix the 3 km/h RPP preview at the selected 1.1 m A/B result. -->
+<!-- HH_260807 - Reduce the active cruise to 2 km/h without changing controller geometry. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -42,13 +43,14 @@ map-v17 continuous-service evidence are shown separately below.
 | Implemented but dormant controllers | `DWB`, `MPPI`, `Graceful` |
 | Controller frequency | `20 Hz` |
 | Local-path / tracking heartbeat | `20 Hz`; pose callbacks also refresh immediately |
-| RPP desired speed | raw `1.666667 m/s`; final gate `0.5`; platform `3.000 km/h` |
-| RPP curve / final-approach floor | `50% / 25%` of cruise (`1.500 / 0.750 km/h`) |
-| RPP lookahead | fixed `1.1 m`; velocity scaling disabled |
+| RPP desired speed | raw `1.111111 m/s`; final gate `0.5`; platform `2.000 km/h` |
+| RPP curve / final-approach floor | `50% / 25%` of cruise (`1.000 / 0.500 km/h`) |
+| UI mission RPP lookahead | fixed `1.1 m`; velocity scaling disabled |
+| Manual RotationShim child lookahead | fixed `2.0 m`; longer field anti-oscillation preview |
 | RPP reverse / rotate-to-heading | disabled / disabled during continuous tracking |
 | Gross start alignment | final gate `75 deg` enter / `5 deg` release; zero linear speed |
 | Physical body boundary | `1.39160 x 1.07000 m` |
-| Nav2 planning footprint | `1.49160 x 1.17000 m` (body plus `0.05 m` each side) |
+| Nav2 planning footprint | `1.59160 x 1.27000 m` (body plus `0.10 m` each side) |
 | Obstacle fallback | Width gate, then `ComputePathToPose(SmacLattice)`; preempt only when a safe path exists |
 
 Normal missions construct only policy-reachable planner/controller instances.
@@ -172,7 +174,7 @@ ordinary curves retain simultaneous linear and angular commands. A same-map
 ![3 km/h RPP service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
 
 The [service A/B record](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
-tests the active `3.0 km/h` profile rather than only a controller unit path.
+tested the then-active `3.0 km/h` profile rather than only a controller unit path.
 The rejected velocity-scaled run recreated the same margin contact `0.850 s`
 after release. The fixed `1.1 m` source profile completed B1 and B2 through
 explicit RETURN, drop-zone parking, charging, and next departure. This is an
@@ -190,7 +192,7 @@ claimed because the active map has no surveyed lane wide enough for it.
 
 The [3 km/h test record](../docs/assets/test_result/three-kph-localization-20260806/README.md)
 lists every active linear-speed ratio. It is an AMD64 kinematic command/path
-check; physical 1 Hz dual-GNSS and 20 Hz Jetson localization remain pending.
+check; physical 5 Hz moving-base GNSS and 20 Hz Jetson localization remain pending.
 
 ![Historical reduced-boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
@@ -201,7 +203,7 @@ check; physical 1 Hz dual-GNSS and 20 Hz Jetson localization remain pending.
 ![Persistent-obstacle no-path result](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
 The active map has no surveyed road lanelet wide enough to claim a successful
-centered-obstacle bypass with the current `1.17 m` footprint and inflation.
+centered-obstacle bypass with the current `1.27 m` planning footprint and inflation.
 That positive avoidance case remains field-pending; the release result proves
 safe no-path handling and recovery after obstacle removal.
 

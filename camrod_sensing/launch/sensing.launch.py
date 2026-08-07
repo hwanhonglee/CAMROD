@@ -115,6 +115,7 @@ def generate_launch_description():
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
         "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
+        "lidar_preprocessor_param_file":  os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
         "radar_sensor_param_file":        os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
         "radar_cost_grid_param_file":     os.path.join(sensing_share, "config", "radar", "cost_grid.yaml"),
@@ -374,6 +375,7 @@ def generate_launch_description():
 
             _inc(lidar_launch,
                  "ground_seg_param_file",
+                 "lidar_preprocessor_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
                  "enable_lidar_driver", "enable_lidar_cost_grid",
                  "use_lidar_processing_container", "enable_vanjee_static_tf",

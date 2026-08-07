@@ -31,7 +31,7 @@
     # Cost model
     free_value: 0
     # HH_260703 - Static guide costs are cleared inside the footprint, but live
-    # LiDAR/Radar costs stay visible so side/rear safety stops are not erased.
+    # radar costs stay visible so side/rear safety stops are not erased.
     ego_clear_radius_m: 0.50
 
     # =========================================================================
@@ -51,11 +51,12 @@
     # =========================================================================
     # HH_260424: Inputs merged cell-wise (max). Order doesn't matter.
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)
-    #   lidar/radar:  sensor obstacle costs (0=free, up to 95=obstacle)
+    #   radar:        sensor obstacle costs (0=free, up to 95=obstacle)
     #   global_path:  route-strip bias (low on active path ~10-40, high outside ~80)
+    # HH_260807 - LiDAR is intentionally not an input to the production cost
+    # grid. Camera perception remains diagnostic; radar owns near-field cost.
     input_topics:
       - "/map/cost_grid/lanelet"
-      - "/sensing/cost_grid/lidar"
       - "/sensing/cost_grid/radar"
       - "/planning/cost_grid/global_path"
 
@@ -63,7 +64,6 @@
     #   sensor grids update at ~10-20 Hz. Must match order of input_topics above.
     input_max_ages_s:
       - 5.0    # lanelet: static map, rarely changes
-      - 1.50   # HH_260707 - lidar cost_grid, tolerate brief filtered/perception stalls
       - 0.50   # radar cost_grid
       - 10.0   # global_path: infrequent replanning
     max_message_age_s: 1.50

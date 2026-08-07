@@ -34,11 +34,12 @@ _SENSOR_NAMES = [
 
 _EXPECTED_DRIVER_ARRAYS = {
     "sensor_names": _SENSOR_NAMES,
-    # HH_260731: Keep the operator-requested LEFT2/RIGHT2 field quarantine.
-    "sensor_enabled": [True, True, True, False, True, False, True],
-    "hardware_angle_levels": [1] * 7,
-    "hardware_range_levels": [2, 2, 2, 2, 2, 2, 1],
-    "software_max_ranges_m": [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50],
+    # HH_260807: All seven physical ports are active for the live profile.
+    "sensor_enabled": [True] * 7,
+    "hardware_angle_levels": [4] * 7,
+    # HH_260807: Shortest hardware level with its full observation window.
+    "hardware_range_levels": [1] * 7,
+    "software_max_ranges_m": [0.50] * 7,
     "frame_ids": [
         "radar_front1_link",
         "radar_front2_link",
@@ -80,14 +81,14 @@ _EXPECTED_DRIVER_ARRAYS = {
 _EXPECTED_DRIVER_SCALARS = {
     "hardware_write_on_startup": True,
     "software_min_range_m": 0.02,
-    "software_default_max_range_m": 4.50,
-    "range_message_field_of_view_rad": 0.26,
+    "software_default_max_range_m": 0.50,
+    "range_message_field_of_view_rad": 1.134464,
 }
 
 _EXPECTED_FIXED_RETURN_INTERVALS = [
-    ("FRONT1", 0.099, 0.123),
-    ("FRONT1", 0.152, 0.220),
-    ("FRONT2", 0.097, 0.117),
+    ("FRONT1", 0.020, 0.120),
+    ("FRONT1", 0.120, 0.220),
+    ("FRONT2", 0.020, 0.117),
     ("LEFT1", 0.182, 0.226),
     ("LEFT1", 0.234, 0.258),
     ("LEFT2", 0.045, 0.068),
@@ -95,7 +96,17 @@ _EXPECTED_FIXED_RETURN_INTERVALS = [
     ("RIGHT1", 0.055, 0.080),
     ("RIGHT1", 0.253, 0.277),
     ("RIGHT2", 0.248, 0.278),
-    ("REAR", 0.090, 0.190),
+    ("REAR", 0.020, 0.106),
+]
+
+_EXPECTED_STOP_CANDIDATE_MAX_RANGES_M = [
+    0.320,
+    0.217,
+    0.100,
+    0.100,
+    0.100,
+    0.100,
+    0.206,
 ]
 
 _OLD_DRIVER_KEYS = {
@@ -303,6 +314,20 @@ def test_startup_return_learning_has_complete_sensor_mapping():
 # retired self-echo/index aliases must not reappear in either mirror.
 def test_active_cost_grid_uses_canonical_cost_and_return_names_only():
     params = _load_cost_grid_params()
+    assert params["stop_candidate_max_range_m"] == 0.10
+    assert (
+        params["stop_candidate_max_ranges_m"]
+        == _EXPECTED_STOP_CANDIDATE_MAX_RANGES_M
+    )
+    assert len(params["stop_candidate_max_ranges_m"]) == len(params["input_topics"])
+    body_upper_m = {"FRONT1": 0.220, "FRONT2": 0.117, "REAR": 0.106}
+    topic_labels = [
+        topic.rstrip("/").split("/")[-2].upper()
+        for topic in params["input_topics"]
+    ]
+    per_sensor_max = dict(zip(topic_labels, params["stop_candidate_max_ranges_m"]))
+    for sensor, body_upper in body_upper_m.items():
+        assert abs(per_sensor_max[sensor] - body_upper - 0.10) < 1e-9
     assert params["cost_near_distance_m"] == 0.30
     assert params["cost_far_distance_m"] == 2.00
     assert (

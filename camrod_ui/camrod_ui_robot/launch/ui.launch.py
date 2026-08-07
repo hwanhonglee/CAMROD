@@ -65,7 +65,9 @@ def generate_launch_description():
     )
     ui_host_arg = DeclareLaunchArgument(
         'ui_host',
-        default_value='127.0.0.1',
+        # HH_260807 - Match full bringup so the standalone package serves the
+        # robot UI on the trusted robot LAN as well as on the local display.
+        default_value='0.0.0.0',
         description='UI backend bind host',
     )
     ui_port_arg = DeclareLaunchArgument(
@@ -88,7 +90,9 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
-    # HH_260805 - Use the Chromium kiosk for touch/IME compatibility; WebKit remains selectable.
+    # HH_260807 - Snap Chromium cannot enter its sandbox on this robot because
+    # snap-confine lacks cap_dac_override.  Keep standalone and full bringup on
+    # the field-verified WebKit path; Chromium remains an explicit override.
     enable_operator_ui_window_arg = DeclareLaunchArgument(
         'enable_operator_ui_window',
         default_value='true',
@@ -96,8 +100,8 @@ def generate_launch_description():
     )
     operator_ui_window_engine_arg = DeclareLaunchArgument(
         'operator_ui_window_engine',
-        default_value='chromium',
-        description='Operator UI renderer: chromium (default), webkit, or auto',
+        default_value='webkit',
+        description='Operator UI renderer: webkit (default), chromium, or auto',
     )
     operator_ui_window_url_arg = DeclareLaunchArgument(
         'operator_ui_window_url',

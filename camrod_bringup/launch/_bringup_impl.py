@@ -87,6 +87,9 @@ OVERRIDE_SPECS = {
         'imu_converter_param_file': ('sensing/imu_converter_param_file',),
         'radar_sensor_param_file': ('sensing/radar_sensor_param_file',),
         'radar_cost_grid_param_file': ('sensing/radar_cost_grid_param_file',),
+        'lidar_preprocessor_param_file': (
+            'sensing/lidar_preprocessor_param_file',
+        ),
         'lidar_cost_grid_param_file': ('sensing/lidar_cost_grid_param_file',),
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
         'gnss_param_file':        ('sensing/gnss_param_file',),
@@ -1001,7 +1004,7 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_cost_stop_dynamic_source_labels',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_dynamic_source_labels', 'lidar,radar'),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_dynamic_source_labels', 'radar'),
             'Comma-separated source labels that can trigger dynamic cost-stop',
         ),
         (
@@ -1046,12 +1049,12 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_threshold', 85),
             'Raw lanelet current-cell threshold for safety stop',
         ),
-        # HH_260806 - Distinguish non-recoverable physical-body contact from
-        # recoverable contact in the surrounding planning margin.
+        # HH_260807 - Physical contact stops ordinary motion. Only a monotonic,
+        # projected-clear bounded escape may move back inside the lanelet.
         (
             'control_cmd_vel_gate_lanelet_safety_body_hard_stop_enable',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_hard_stop_enable', True),
-            'Block all recovery motion while the physical body touches cost 100',
+            'Hard-stop ordinary motion on body cost 100; allow only verified inward escape',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_body_hard_stop_threshold',
@@ -1099,22 +1102,22 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.75837),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.80837),
             'Fallback planning footprint front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.73323),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.78323),
             'Fallback planning footprint rear extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_left_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.58505),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.63505),
             'Fallback planning footprint left extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_right_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.58495),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.63495),
             'Fallback planning footprint right extent (m)',
         ),
         (
@@ -1190,6 +1193,15 @@ def generate_launch_description():
             'control_cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
             'Require forward cmd_vel for current-cell route re-entry bypass',
+        ),
+        (
+            'control_cmd_vel_gate_route_safety_recovery_max_auto_releases',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_route_safety_recovery_max_auto_releases',
+                12,
+            ),
+            'Bounded Nav2 route-resume attempts before same-direction retry latch',
         ),
         # HH_260720 - Drop-zone exit is explicit control motion; bypass only
         # static lanelet cost during its bounded phases.
@@ -1611,7 +1623,9 @@ def generate_launch_description():
         ),
         (
             'operator_ui_window_engine',
-            cfg_get(launch_cfg, 'system/operator_ui_window_engine', 'chromium'),
+            # HH_260807 - Keep the fallback aligned with standalone UI launch
+            # and the robot profile even if launch_defaults.yaml is unavailable.
+            cfg_get(launch_cfg, 'system/operator_ui_window_engine', 'webkit'),
             'Operator UI renderer: chromium, webkit, or auto',
         ),
         (
@@ -1659,7 +1673,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'sensing/use_lidar_processing_container', True),
             'Compose LiDAR preprocessing, segmentation, and optional cost-grid nodes',
         ),
-        ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
+        ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
         ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable physical IMU driver (converter remains available for dummy input)'),
         # HH_260528: Unified IMU model selector (imu_mode → imu_model).

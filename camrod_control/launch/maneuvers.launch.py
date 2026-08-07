@@ -17,6 +17,14 @@ def generate_launch_description():
     default_parameter_file = package_path(
         "camrod_control", os.path.join("config", "control.yaml")
     )
+    # HH_260807 - Standalone controllers need the same semantic areas that
+    # full bringup injects; empty defaults start nodes that cannot serve sites.
+    default_drop_zones_yaml = package_path(
+        "camrod_map", os.path.join("config", "drop_zones.yaml")
+    )
+    default_camping_sites_yaml = package_path(
+        "camrod_planning", os.path.join("config", "camping_sites.yaml")
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument("control_namespace", default_value="control"),
@@ -26,8 +34,8 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_route_safety_recovery_controller", default_value="true"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
         DeclareLaunchArgument("vehicle_pose_topic", default_value="/localization/pose"),
-        DeclareLaunchArgument("drop_zones_yaml", default_value=""),
-        DeclareLaunchArgument("camping_sites_yaml", default_value=""),
+        DeclareLaunchArgument("drop_zones_yaml", default_value=default_drop_zones_yaml),
+        DeclareLaunchArgument("camping_sites_yaml", default_value=default_camping_sites_yaml),
 
         Node(
             package="camrod_control",

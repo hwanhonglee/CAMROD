@@ -30,6 +30,9 @@
   <depend>yaml-cpp</depend>
   <!-- HH_260720 - AprilTag parking conditionally launches its perception detector. -->
   <exec_depend>camrod_perception</exec_depend>
+  <!-- HH_260807 - Standalone maneuver/parking launches resolve active semantic maps. -->
+  <exec_depend>camrod_map</exec_depend>
+  <exec_depend>camrod_planning</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

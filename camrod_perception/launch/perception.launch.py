@@ -83,6 +83,10 @@ def _resolve_camera_pipeline(context, *args, **kwargs):
 
 def generate_launch_description():
     default_param = pkg_share('camrod_perception', os.path.join('config', 'perception_params.yaml'))
+    # HH_260807 - Standalone campsite occupancy uses the same semantic site
+    # source as bringup instead of silently receiving an empty path.
+    default_camping_sites_yaml = pkg_share(
+        'camrod_planning', os.path.join('config', 'camping_sites.yaml'))
 
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace',       default_value='perception'),
@@ -100,7 +104,8 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_front_camera',    default_value='true'),
         DeclareLaunchArgument('sim',                    default_value='false'),
         DeclareLaunchArgument('camera_device_path',     default_value='/dev/video0'),
-        DeclareLaunchArgument('camping_sites_yaml',     default_value=''),
+        DeclareLaunchArgument(
+            'camping_sites_yaml', default_value=default_camping_sites_yaml),
 
         SetLaunchConfiguration('enable_camera_effective', 'false'),
         SetLaunchConfiguration('enable_yolo_effective', 'false'),

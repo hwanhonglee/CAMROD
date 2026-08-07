@@ -1,5 +1,7 @@
 # camrod_localization
 
+<!-- HH_260807 - Document the bounded GNSS-anchored EKF yaw-delta fallback
+used only to preserve lever-arm correction through a short heading gap. -->
 <!-- HH_260806 - Document the measured left-GNSS lever arm and fail-closed
 heading requirement used to publish the robot-center position. -->
 <!-- HH_260806 - Document IMU/wheel fusion and extend real-filter lag history for the 3 km/h profile. -->
@@ -30,6 +32,7 @@ chain. It does not measure physical GNSS accuracy.
 | Item | Field | Simulation |
 |---|---:|---:|
 | EKF frequency | `20 Hz` | `20 Hz` |
+| GNSS correction cadence | configured `5 Hz` | fake input `10 Hz` |
 | Base frame | `robot_center_link` | `robot_center_link` |
 | GNSS raw position | left antenna `(0,+0.45,0) m` | Same modeled source |
 | GNSS published position | heading-corrected `robot_center_link` | Same correction path |
@@ -64,7 +67,10 @@ chain. It does not measure physical GNSS accuracy.
 
 The adapter prefers `/platform/status/odometry` and falls back to
 `/rmp401/odom` after `0.7 s`. IMU and wheel odometry predict motion between the
-physical dual-GNSS corrections, which arrive at `1 Hz` in the field profile.
+physical dual-GNSS corrections. As of HH_260807 the production contract is
+configured at `5 Hz`; moving-base link and open-sky acceptance remain required.
+The EKF and selected pose remain `20 Hz`; prediction between 200 ms GNSS epochs
+does not turn the receiver stream itself into 20 Hz data.
 
 ### EKF Parameter Review
 
@@ -94,10 +100,13 @@ must be tuned from the same moving rosbag; changing them from stationary or
 
 The input adapter converts NavSatFix to the left-antenna map point, selects the
 fresh calibrated dual-GNSS yaw, rotates `[0.0,+0.45] m` into map axes, and
-subtracts it before jump rejection and EKF publication. If heading is stale or
-invalid, the default policy withholds the corrected GNSS pose instead of
-publishing a position known to be displaced by up to `0.45 m`. Simulation now
-publishes the same raw antenna and heading contract. The earlier 30-second
+subtracts it before jump rejection and EKF publication. During a short receiver
+heading gap, a time-aligned EKF yaw change may rotate that lever arm only after
+a valid GNSS heading anchor and for at most `3.0 s`; it never makes GNSS yaw
+valid for fusion. Without a usable fresh or bounded fallback heading, the
+adapter withholds the corrected GNSS pose instead of publishing a position
+known to be displaced by up to `0.45 m`. Simulation now publishes the same raw
+antenna and heading contract. The earlier 30-second
 timing run proves cadence only; it predates this correction and does **not**
 prove moving field accuracy, multipath rejection, or oscillation reduction.
 
@@ -128,8 +137,9 @@ projection diagnosis are in the [test record](../docs/assets/test_result/gnss-le
 | Steps over `20 cm` | `0` |
 
 This smoke test uses fake GNSS, IMU, and wheel inputs at `10 Hz` and the
-simulation EKF at `20 Hz`; it does not reproduce the physical `1 Hz` GNSS,
-real-stack Jetson load, wheel scale, or IMU bias. See the
+simulation EKF at `20 Hz`; its fake input cadence does not reproduce the
+physical `5 Hz` moving-base link, real-stack Jetson load, wheel scale, or IMU
+bias. See the
 [structured test record](../docs/assets/test_result/three-kph-localization-20260806/README.md).
 
 ## Reported Physical Stationary Performance
