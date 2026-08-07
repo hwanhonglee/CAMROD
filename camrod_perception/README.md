@@ -29,6 +29,7 @@ physical YOLO, camera-LiDAR calibration, or AprilTag accuracy.
 
 | Item | Value | Meaning |
 |---|---:|---|
+| Filtered LiDAR input | target `10 Hz` | Required perception source even when the optional LiDAR cost grid is OFF |
 | LiDAR cluster tolerance | `0.25 m` | Neighbor distance for cluster growth |
 | Cluster size | `12..8000 points` | Accepted cluster point count |
 | LiDAR ROI | `x 0..5 m`, `y -3..3 m` | Local obstacle search region |

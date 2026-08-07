@@ -10,8 +10,9 @@
     # HH_260625: Full sensing + RViz on Orin previously exceeded the 20 Hz EKF
     # budget; keep Jetson moving-load acceptance explicit rather than assuming it.
     # HH_260806 - Align the real EKF with the 20 Hz Nav2 controller. High-rate
-    # IMU and wheel odometry predict at 50 ms intervals while the verified
-    # dual-GNSS path remains a 1 Hz absolute correction source.
+    # IMU and wheel odometry predict at 50 ms intervals.
+    # HH_260807 - Dual-GNSS absolute corrections are now configured at 5 Hz;
+    # keep the 20 Hz prediction loop independent of that external cadence.
     frequency: 20.0
     sensor_timeout: 0.2
     # HH_260806 - Planar operation clamps z/roll/pitch, vz, roll/pitch rates,

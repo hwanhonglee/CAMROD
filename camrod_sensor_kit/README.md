@@ -1,7 +1,7 @@
 # camrod_sensor_kit
 
 <!-- HH_260806 - Record the left-GNSS lever arm and activate the
-fabrication-inclusive body envelope with a four-sided 5 cm planning margin. -->
+fabrication-inclusive body envelope with a four-sided 10 cm planning margin. -->
 
 Canonical robot geometry, URDF/xacro, static sensor TF, and the RobotParams
 library shared by localization, planning, control, platform, and diagnostics.
@@ -45,8 +45,8 @@ navigation/control reference.
 | Rear axle to center | `0.443 m` |
 | Physical body boundary | `1.39160 x 1.07000 x 1.09463 m` |
 | Body extents from center | front `0.70837`, rear `0.68323`, left `0.53505`, right `0.53495 m` |
-| Planning margin | front/rear/left/right `0.05 m` |
-| Planning rectangle | `1.49160 x 1.17000 m` |
+| Planning margin | front/rear/left/right `0.10 m` |
+| Planning rectangle | `1.59160 x 1.27000 m` |
 | Wheel radius | `0.15275 m` |
 
 The base chassis and active collision envelopes remain separately identified:
@@ -54,8 +54,8 @@ The base chassis and active collision envelopes remain separately identified:
 | Envelope | Length | Width | Runtime role |
 |---|---:|---:|---:|
 | Base platform | `1.19160 m` | `0.87000 m` | Chassis-only reference |
-| Active fabrication-inclusive body | `1.39160 m` | `1.07000 m` | Physical-body hard stop |
-| Active planning rectangle | `1.49160 m` | `1.17000 m` | Body plus `0.05 m` on every side |
+| Active fabrication-inclusive body | `1.39160 m` | `1.07000 m` | Ordinary-motion stop and swept-body recovery envelope |
+| Active planning rectangle | `1.59160 m` | `1.27000 m` | Body plus `0.10 m` on every side |
 
 Height remains `1.09463 m`. The configured front/rear and left/right split
 preserves the existing `robot_center_link` asymmetry while matching the measured
@@ -69,10 +69,12 @@ That record's reduced `1.29160 x 0.87000 m` candidate is historical and is no
 longer deployed.
 
 The two rectangles have different runtime meanings. A cost-100 cell inside
-the physical body is an unrecoverable hard stop. Contact only in the outer
-`0.05 m` planning margin stops the ordinary command but may admit a separately
-projected, speed/distance/time-bounded escape. The [fresh simulation summary](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
-shows the earlier two-layer behavior; current geometry remains field-pending.
+the physical body stops ordinary motion. A virtual-boundary escape is admitted
+only if it monotonically reduces current overlap and its swept physical body
+plus endpoint planning rectangle are clear. Contact only in the outer `0.10 m`
+margin uses the same projected speed/distance/time bounds. The [fresh simulation summary](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+shows the earlier no-body-recovery behavior; current geometry/policy remains
+field-pending.
 
 ## Physical Side View
 

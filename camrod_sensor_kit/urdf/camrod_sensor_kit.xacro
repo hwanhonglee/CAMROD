@@ -62,16 +62,17 @@
   <xacro:arg name="radar_front2_xyz" default="0.62787 0.11005 0.33378"/>
   <xacro:arg name="radar_front2_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="radar_left1_xyz"  default="0.29188 0.41005 0.29013"/>
+  <!-- HH_260807 - Side radar XY values are measured from robot_center_link. -->
+  <xacro:arg name="radar_left1_xyz"  default="0.38 0.53 0.29013"/>
   <xacro:arg name="radar_left1_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_left2_xyz"  default="-0.28334 0.41005 0.29013"/>
+  <xacro:arg name="radar_left2_xyz"  default="-0.38 0.53 0.29013"/>
   <xacro:arg name="radar_left2_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_right1_xyz" default="0.29188 -0.41005 0.29013"/>
+  <xacro:arg name="radar_right1_xyz" default="0.38 -0.53 0.29013"/>
   <xacro:arg name="radar_right1_rpy" default="0.0 0.0 -1.570796"/>
 
-  <xacro:arg name="radar_right2_xyz" default="-0.28334 -0.41005 0.29013"/>
+  <xacro:arg name="radar_right2_xyz" default="-0.38 -0.53 0.29013"/>
   <xacro:arg name="radar_right2_rpy" default="0.0 0.0 -1.570796"/>
 
   <xacro:arg name="radar_rear_xyz"   default="-0.61733 0.0 0.33978"/>

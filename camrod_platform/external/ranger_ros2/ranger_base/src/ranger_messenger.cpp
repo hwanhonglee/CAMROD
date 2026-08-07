@@ -443,7 +443,9 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
     odom_msg.twist.twist.linear.y = linear * std::sin(phi);
 
     // HH_260806 - Publish measured CAN yaw rate. The active EKF fuses this
-    // wheel-derived rate with IMU yaw rate between 1 Hz GNSS updates.
+    // wheel-derived rate with IMU yaw rate between GNSS updates.
+    // HH_260807 - Wheel/IMU prediction bridges the physical dual-GNSS 5 Hz
+    // correction epochs; localization output itself remains 20 Hz.
     odom_msg.twist.twist.angular.z = angular;
   } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
     odom_msg.twist.twist.linear.x = 0;

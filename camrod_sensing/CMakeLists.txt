@@ -282,6 +282,9 @@ install(
   PROGRAMS
     scripts/rtcm_serial_writer.py
     scripts/radar_dummy_publisher.py
+    # HH_260807 - Display only the seven real SEN0592 Range streams; this tool
+    # never substitutes or publishes dummy radar data.
+    scripts/radar_status_gui.py
     scripts/sensing_dummy_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -309,6 +312,13 @@ if(BUILD_TESTING)
     test/test_radar_self_echo_filter.cpp
   )
   target_include_directories(test_radar_self_echo_filter PRIVATE include)
+  # HH_260807 - Verify that the 0.10 m stop-candidate gate does not truncate
+  # the driver's independent 0.50 m level-1 observation contract.
+  ament_add_gtest(
+    test_radar_stop_range_filter
+    test/test_radar_stop_range_filter.cpp
+  )
+  target_include_directories(test_radar_stop_range_filter PRIVATE include)
   # HH_260729 - Lock the no-target value and per-channel dummy marker naming
   # used when one SEN0592 port is intentionally disabled.
   ament_add_gtest(
@@ -337,6 +347,14 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_radar_dummy_publisher
     test/test_radar_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260807 - Lock the physical radar GUI's no-target classification, robot
+  # axes, beam arcs, and all-seven-channel live YAML contract.
+  ament_add_pytest_test(
+    test_radar_status_gui
+    test/test_radar_status_gui.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

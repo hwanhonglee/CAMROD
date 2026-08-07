@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260805 - Use Chromium as the production kiosk while retaining WebKit fallback.
+# HH_260807 - Use the field-verified WebKit kiosk while retaining Chromium override.
 """Open the CAMROD operator web UI in a managed local kiosk window."""
 
 from __future__ import annotations
@@ -71,8 +71,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--engine",
         choices=("auto", "chromium", "webkit"),
-        default="chromium",
-        help="rendering engine (default: chromium; auto falls back to WebKit)",
+        default="webkit",
+        help="rendering engine (default: webkit; auto tries Chromium then WebKit)",
     )
     return parser
 

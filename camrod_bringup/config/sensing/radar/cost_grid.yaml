@@ -17,7 +17,7 @@
     dummy_active_topic: "/sensing/radar/dummy_active"
     dummy_active_timeout_s: 1.0
 
-    # Index order used by startup_return_max_ranges_m.
+    # Index order used by all per-channel range arrays below.
     input_topics:
       - "/sensing/radar/front1/range"   # 0 FRONT1
       - "/sensing/radar/front2/range"   # 1 FRONT2
@@ -45,6 +45,12 @@
     # with distance and reaches min_cost at/beyond far distance.
     min_cost: 85
     max_cost: 95
+    # HH_260807 - Keep 0.10 m as the backward-compatible side/fallback gate.
+    # Front/rear entries are the measured body-return upper edge plus another
+    # 0.10 m of usable stopping distance, all measured from the sensor face.
+    stop_candidate_max_range_m: 0.10
+    # input_topics order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
+    stop_candidate_max_ranges_m: [0.320, 0.217, 0.100, 0.100, 0.100, 0.100, 0.206]
     cost_near_distance_m: 0.30
     cost_far_distance_m: 2.00
     obstacle_radius_m: 0.30
@@ -57,13 +63,17 @@
     # 4. FIXED RANGE EXCLUSIONS
     # =========================================================================
     # Format: "SENSOR:min_m:max_m" (inclusive).
-    # Only these narrow field-classified persistent returns are excluded.
+    # HH_260807 - FRONT1, FRONT2, and REAR currently see the vehicle body.
+    # Exclude that complete measured envelope, then admit only the following
+    # 0.10 m via stop_candidate_max_ranges_m. A real object at the same scalar
+    # range cannot be distinguished and is also ignored (see limitation below).
     fixed_return_filter_enable: true
     fixed_return_bands:
-      - "FRONT1:0.099:0.123"
-      # HH_260729 - All-true live sample remained at 0.204..0.211 m.
-      - "FRONT1:0.152:0.220"
-      - "FRONT2:0.097:0.117"
+      # FRONT1's 0.020..0.220 m body envelope is split only because each named
+      # exclusion is independently limited to 0.10 m by the safety parser.
+      - "FRONT1:0.020:0.120"
+      - "FRONT1:0.120:0.220"
+      - "FRONT2:0.020:0.117"
       - "LEFT1:0.182:0.226"
       - "LEFT1:0.234:0.258"
       # HH_260731 - Outdoor all-physical audit: LEFT2 stayed at 0.051..0.062 m
@@ -77,8 +87,7 @@
       - "RIGHT1:0.055:0.080"
       - "RIGHT1:0.253:0.277"
       - "RIGHT2:0.248:0.278"
-      # HH_260729 - All-true REAR/USB6 sample spanned 0.131..0.179 m.
-      - "REAR:0.090:0.190"
+      - "REAR:0.020:0.106"
 
     # HH_260729 - After applying angle level 1, a stationary 15 s audit in the
     # current, not-completely-clear field area also found persistent unfiltered

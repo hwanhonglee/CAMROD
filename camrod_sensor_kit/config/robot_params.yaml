@@ -24,9 +24,10 @@
         right: 0.53495        # robot_center_link to maximum right envelope [m].
         top_z: 0.94188        # Unchanged top Z from robot_center_link [m].
         bottom_z: -0.15275    # Unchanged bottom Z from robot_center_link [m].
-        # HH_260805 - Keep one 0.05 m planning clearance around all four body sides.
-        planning_margin: 0.05          # Front/rear planning clearance [m].
-        planning_lateral_margin: 0.05  # Left/right planning clearance [m].
+        # HH_260807 - Increase the recoverable planning clearance to 0.10 m;
+        # the measured physical-body hard-stop envelope remains unchanged.
+        planning_margin: 0.10          # Front/rear planning clearance [m].
+        planning_lateral_margin: 0.10  # Left/right planning clearance [m].
       # HH_260623 - Updated from measured wheel radius 152.75 mm.
       wheel_radius: 0.15275   # Effective rolling radius used by kinematic helpers [m].
       encoder_resolution: 2048  # Encoder ticks per wheel revolution.
@@ -111,6 +112,8 @@
     # =========================================================================
     # HH_260623 - Canonical radar TF keys match camrod_sensing 7-channel radar frame_ids.
     # HH_260803 - X values were shifted by -0.443 m from the rear-axle reference.
+    # HH_260807 - Side radar positions were remeasured from robot_center_link:
+    # pair 1 at x=+0.38 m, pair 2 at x=-0.38 m, and y=+/-0.53 m.
     radar:
       front1:
         x: 0.62787            # Was 1.07087 m from rear-axle robot_base_link.
@@ -127,29 +130,29 @@
         pitch: 0.0            # Front radar #2 pitch offset [deg].
         yaw: 0.0              # Front radar #2 yaw offset [deg].
       left1:
-        x: 0.29188            # Was 0.73488 m from rear-axle robot_base_link.
-        y: 0.41005            # Left radar #1 Y offset from sensor_kit_base_link [m].
+        x: 0.38               # Front-side pair, relative to robot_center_link [m].
+        y: 0.53               # Left side, relative to robot_center_link [m].
         z: 0.29013            # Left radar #1 Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Left radar #1 roll offset [deg].
         pitch: 0.0            # Left radar #1 pitch offset [deg].
         yaw: 90.0             # Left radar #1 yaw offset [deg].
       left2:
-        x: -0.28334           # Was 0.15966 m from rear-axle robot_base_link.
-        y: 0.41005            # Left radar #2 Y offset from sensor_kit_base_link [m].
+        x: -0.38              # Rear-side pair, relative to robot_center_link [m].
+        y: 0.53               # Left side, relative to robot_center_link [m].
         z: 0.29013            # Left radar #2 Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Left radar #2 roll offset [deg].
         pitch: 0.0            # Left radar #2 pitch offset [deg].
         yaw: 90.0             # Left radar #2 yaw offset [deg].
       right1:
-        x: 0.29188            # Was 0.73488 m from rear-axle robot_base_link.
-        y: -0.41005           # Right radar #1 Y offset from sensor_kit_base_link [m].
+        x: 0.38               # Front-side pair, relative to robot_center_link [m].
+        y: -0.53              # Right side, relative to robot_center_link [m].
         z: 0.29013            # Right radar #1 Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Right radar #1 roll offset [deg].
         pitch: 0.0            # Right radar #1 pitch offset [deg].
         yaw: -90.0            # Right radar #1 yaw offset [deg].
       right2:
-        x: -0.28334           # Was 0.15966 m from rear-axle robot_base_link.
-        y: -0.41005           # Right radar #2 Y offset from sensor_kit_base_link [m].
+        x: -0.38              # Rear-side pair, relative to robot_center_link [m].
+        y: -0.53              # Right side, relative to robot_center_link [m].
         z: 0.29013            # Right radar #2 Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Right radar #2 roll offset [deg].
         pitch: 0.0            # Right radar #2 pitch offset [deg].

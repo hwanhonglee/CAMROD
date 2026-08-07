@@ -92,8 +92,8 @@ def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
         "localization_pose_checker"
     ]["ros__parameters"]
 
-    # HH_260806 - GNSS remains a 1 Hz absolute correction; these two high-rate
-    # loops use IMU and wheel odometry to avoid stale-pose controller cycles.
+    # HH_260807 - GNSS corrections are configured at 5 Hz; the 20 Hz EKF and
+    # controller still use IMU/wheel prediction between absolute updates.
     assert checker_path.read_bytes() == checker_mirror.read_bytes()
     assert controller["controller_frequency"] == 20.0
     assert localization["frequency"] == 20.0
@@ -329,8 +329,8 @@ def test_progress_checker_releases_parent_callbacks_during_lifecycle_cleanup() -
     assert "progress_checker_.reset();" in cleanup
 
 
-def test_manual_rotation_shim_uses_the_ui_rpp_tracking_profile() -> None:
-    """Only manual yaw handling may differ; path tracking must be identical."""
+def test_manual_rotation_shim_keeps_shared_limits_with_longer_preview() -> None:
+    """Keep speed/safety limits shared while preserving manual anti-oscillation preview."""
     base = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
     vehicle = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")
     direct_rpp = vehicle["RPP"]
@@ -339,8 +339,24 @@ def test_manual_rotation_shim_uses_the_ui_rpp_tracking_profile() -> None:
     assert manual_rpp["primary_controller"].endswith(
         "RegulatedPurePursuitController"
     )
+    manual_preview_keys = {
+        "lookahead_dist",
+        "min_lookahead_dist",
+        "max_lookahead_dist",
+    }
     for key in SHARED_TRACKING_KEYS:
+        if key in manual_preview_keys:
+            continue
         assert manual_rpp[key] == direct_rpp[key], key
+
+    # HH_260807 - UI missions retain the 1.1 m service-A/B result. The manual
+    # RotationShim child uses the longer fixed preview selected after the live
+    # oscillation report; velocity scaling remains disabled for both profiles.
+    assert direct_rpp["lookahead_dist"] == 1.1
+    assert manual_rpp["lookahead_dist"] == 2.0
+    assert manual_rpp["min_lookahead_dist"] == 1.5
+    assert manual_rpp["max_lookahead_dist"] == 4.5
+    assert manual_rpp["use_velocity_scaled_lookahead_dist"] is False
 
 
 def test_rpp_profile_contains_only_effective_limit_names() -> None:
@@ -358,20 +374,20 @@ def test_rpp_profile_contains_only_effective_limit_names() -> None:
         assert ignored_key not in rpp
 
 
-def test_three_kph_rpp_keeps_fixed_validated_preview() -> None:
+def test_two_kph_rpp_keeps_fixed_validated_preview() -> None:
     """The production cruise must keep the B1/B2-validated 1.1 m preview."""
     rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
 
-    # HH_260807 - Velocity scaling grew the 3 km/h preview to about 1.5 m and
-    # recontacted the B2 boundary 0.85 s after an otherwise valid recovery.
+    # HH_260807 - The historical 3 km/h A/B run selected this fixed preview;
+    # lowering the cruise to 2 km/h must not silently retune its geometry.
     assert rpp["use_velocity_scaled_lookahead_dist"] is False
     assert rpp["lookahead_dist"] == 1.1
     assert rpp["min_lookahead_dist"] == 1.1
     assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
 
 
-def test_three_kph_operational_speed_ratios_and_safety_exception() -> None:
-    """Scale service motion from 3 km/h while keeping recovery deliberately slow."""
+def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
+    """Scale service motion from 2 km/h while keeping recovery deliberately slow."""
     for filename in ("control.yaml", "parking.yaml", "yaw_alignment_zones.yaml"):
         assert (CONTROL_CONFIG / filename).read_bytes() == (
             BRINGUP_CONTROL_CONFIG / filename
@@ -417,17 +433,22 @@ def test_three_kph_operational_speed_ratios_and_safety_exception() -> None:
         CONTROL_CONFIG / "parking.yaml",
         "/parking/apriltag_parking_controller",
     )
+    yaw_zones = yaml.safe_load(
+        (CONTROL_CONFIG / "yaw_alignment_zones.yaml").read_text(encoding="utf-8")
+    )["yaw_alignment_zones"]["zones"]
 
     expected_kph = {
-        "cruise": (rpp["desired_linear_vel"], 3.0),
-        "curve_floor": (rpp["regulated_linear_scaling_min_speed"], 1.5),
-        "final_approach": (rpp["min_approach_linear_velocity"], 0.75),
-        "campsite_crab": (campsite["crab_speed_mps"], 1.8),
-        "campsite_reverse": (campsite["reverse_entry_speed_mps"], 1.2),
-        "drop_zone_exit": (drop_zone["exit_speed_mps"], 1.2),
-        "reverse_parking": (reverse_parking["reverse_speed_mps"], 1.2),
-        "tag_approach": (tag_parking["reverse_approach_speed_mps"], 1.5),
-        "tag_insertion": (tag_parking["final_insertion_speed_mps"], 0.375),
+        "cruise": (rpp["desired_linear_vel"], 2.0),
+        "curve_floor": (rpp["regulated_linear_scaling_min_speed"], 1.0),
+        "final_approach": (rpp["min_approach_linear_velocity"], 0.5),
+        "campsite_crab": (campsite["crab_speed_mps"], 1.2),
+        "campsite_reverse": (campsite["reverse_entry_speed_mps"], 0.8),
+        "drop_zone_exit": (drop_zone["exit_speed_mps"], 0.8),
+        "reverse_parking": (reverse_parking["reverse_speed_mps"], 0.8),
+        "tag_approach": (tag_parking["reverse_approach_speed_mps"], 1.0),
+        "tag_insertion": (tag_parking["final_insertion_speed_mps"], 0.25),
+        "yaw_zone_1": (yaw_zones[0]["max_approach_linear_x"], 1.25),
+        "yaw_zone_2": (yaw_zones[1]["max_approach_linear_x"], 1.0),
     }
     for name, (raw_mps, target_kph) in expected_kph.items():
         assert math.isclose(
@@ -446,18 +467,57 @@ def test_three_kph_operational_speed_ratios_and_safety_exception() -> None:
     )
 
 
+def test_fake_constant_speed_fallback_matches_two_kph_cruise() -> None:
+    """Standalone and YAML simulation fallbacks must model the final command."""
+    fake_config = yaml.safe_load(
+        (
+            SRC_ROOT / "camrod_bringup" / "config" / "sim" / "fake_sensors.yaml"
+        ).read_text(encoding="utf-8")
+    )["/bringup/fake_sensor_publisher"]["ros__parameters"]
+    fake_launch = (
+        SRC_ROOT / "camrod_bringup" / "launch" / "fake_sensors.launch.py"
+    ).read_text(encoding="utf-8")
+    fake_publisher = (
+        SRC_ROOT / "camrod_bringup" / "scripts" / "fake_sensor_publisher.py"
+    ).read_text(encoding="utf-8")
+
+    assert math.isclose(fake_config["speed_mps"] * 3.6, 2.0, abs_tol=0.00001)
+    assert "default_value='0.555556'" in fake_launch
+    assert 'declare_parameter("speed_mps", 0.555556)' in fake_publisher
+
+
 def test_safety_gate_evaluates_the_final_scaled_command() -> None:
     """Keep collision projection and publication on the same final command."""
     source = (
         SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
     ).read_text(encoding="utf-8")
 
-    # HH_260807 - The upstream RPP command is 1.667 m/s while the deployed
-    # speed scale publishes 0.833 m/s. Safety evidence must use the latter.
+    # HH_260807 - The upstream RPP command is 1.111 m/s while the deployed
+    # speed scale publishes 0.556 m/s. Safety evidence must use the latter.
     assert "const auto evaluated_command = scaleCommand(command);" in source
     assert "motion_cost_stop_.evaluate(evaluated_command, now_sec)" in source
     assert "cost_decision, evaluated_command, now_sec" in source
     assert "publishCommand(evaluated_command);" in source
+
+
+def test_production_dynamic_stop_sources_are_radar_only() -> None:
+    """LiDAR processing stays live without re-entering the production cost merge."""
+    gate = yaml.safe_load(
+        (CONTROL_CONFIG / "cmd_vel_safety_gate.yaml").read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+    source = (
+        SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert gate["cost_source_debug_topics"] == [
+        "/map/cost_grid/lanelet_safety",
+        "/sensing/cost_grid/radar",
+        "/planning/cost_grid/global_path",
+    ]
+    assert gate["cost_source_debug_labels"] == ["lanelet", "radar", "global_path"]
+    assert gate["cost_stop_dynamic_source_labels"] == "radar"
+    assert '"cost_stop_dynamic_source_labels", "radar"' in source
+    assert '"cost_stop_dynamic_source_labels", "lidar,radar"' not in source
 
 
 def test_campsite_return_uses_the_explicit_route_goal_anchor() -> None:

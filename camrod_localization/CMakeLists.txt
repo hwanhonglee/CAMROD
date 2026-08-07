@@ -63,6 +63,7 @@ ament_target_dependencies(localization_input_adapter_node
 add_executable(localization_monitor_node
   src/localization_monitor_node.cpp
 )
+target_include_directories(localization_monitor_node PRIVATE include)
 ament_target_dependencies(localization_monitor_node
   rclcpp
   avg_msgs
@@ -176,6 +177,22 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_gnss_lever_arm PRIVATE include)
 
+  # HH_260807 - A short, GNSS-anchored EKF yaw delta may rotate only the
+  # antenna lever arm while receiver heading is temporarily unavailable.
+  ament_add_gtest(
+    test_gnss_heading_fallback
+    test/test_gnss_heading_fallback.cpp
+  )
+  target_include_directories(test_gnss_heading_fallback PRIVATE include)
+
+  # HH_260807 - Average unique GNSS epochs so one delayed 5 Hz fix does not
+  # immediately force DR_ONLY while a sustained former 1 Hz profile still does.
+  ament_add_gtest(
+    test_gnss_rate_window
+    test/test_gnss_rate_window.cpp
+  )
+  target_include_directories(test_gnss_rate_window PRIVATE include)
+
   # HH_260730 - Prevent callback order from adding one EKF cycle of selected-pose lag.
   ament_add_gtest(
     test_pose_selector_freshness
@@ -208,6 +225,14 @@ if(BUILD_TESTING)
   add_test(
     NAME test_ekf_sensor_inputs
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_ekf_sensor_inputs.py
+  )
+
+  # HH_260807 - A RELPOSNED unavailable placeholder must not evict the latest
+  # valid heading needed by the strict GNSS antenna lever-arm correction.
+  add_test(
+    NAME test_gnss_heading_cache_contract
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_gnss_heading_cache_contract.py
   )
 endif()
 

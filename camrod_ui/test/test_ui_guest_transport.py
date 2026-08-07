@@ -147,9 +147,9 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertTrue(_build_parser().parse_args([]).fullscreen)
         self.assertFalse(_build_parser().parse_args(["--no-fullscreen"]).fullscreen)
 
-    def test_chromium_engine_is_default_with_explicit_webkit_fallback(self) -> None:
+    def test_webkit_engine_is_default_with_explicit_chromium_override(self) -> None:
         parser = _build_parser()
-        self.assertEqual(parser.parse_args([]).engine, "chromium")
+        self.assertEqual(parser.parse_args([]).engine, "webkit")
         self.assertEqual(parser.parse_args(["--engine", "webkit"]).engine, "webkit")
         self.assertEqual(
             parser.parse_args(["--engine", "chromium"]).engine,
@@ -210,7 +210,7 @@ class OperatorWindowTest(unittest.TestCase):
         )
         system = defaults["bringup"]["system"]
         self.assertTrue(system["operator_ui_window_fullscreen"])
-        self.assertEqual(system["operator_ui_window_engine"], "chromium")
+        self.assertEqual(system["operator_ui_window_engine"], "webkit")
 
         launch_text = (
             src_root
@@ -219,8 +219,10 @@ class OperatorWindowTest(unittest.TestCase):
             / "launch"
             / "ui.launch.py"
         ).read_text(encoding="utf-8")
+        self.assertIn("default_value='0.0.0.0'", launch_text)
         self.assertIn("operator_ui_window_fullscreen", launch_text)
         self.assertIn("operator_ui_window_engine", launch_text)
+        self.assertIn("default_value='webkit'", launch_text)
         self.assertIn("'--fullscreen' if '", launch_text)
         self.assertIn("else '--no-fullscreen'", launch_text)
 

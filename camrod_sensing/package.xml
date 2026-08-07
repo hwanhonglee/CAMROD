@@ -29,6 +29,11 @@
   <!-- HH_260729 - Lightweight disabled-hardware publishers use rclpy with the
        same avg_msgs/sensor_msgs boundaries as the physical sensor drivers. -->
   <depend>rclpy</depend>
+  <!-- HH_260807 - The physical radar dashboard loads the installed YAML and
+       renders its seven live Range streams in a local Tk window. -->
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-tk</exec_depend>
   <depend>avg_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>opencv</depend>

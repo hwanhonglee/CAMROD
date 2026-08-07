@@ -124,6 +124,23 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260807 - Every standalone package owns its default config.  Full
+  # bringup carries byte-identical deployment mirrors; reject any future file,
+  # comment, or value drift across the complete mirrored trees.
+  ament_add_pytest_test(
+    test_package_config_mirrors
+    test/test_package_config_mirrors.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260807 - The canonical LiDAR preprocessor YAML must match the component
+  # schema and feed both standalone and composed launch paths.
+  ament_add_pytest_test(
+    test_lidar_preprocessor_config_sync
+    test/test_lidar_preprocessor_config_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260730 - Keep latency percentile/rate calculations deterministic without
   # requiring a live ROS graph in unit tests.
   ament_add_pytest_test(

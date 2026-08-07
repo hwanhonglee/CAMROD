@@ -70,9 +70,12 @@ install(TARGETS
 
 # HH_260729 - Keep raw Ranger topic contracts alive with an explicit
 # ESTOP/non-drivable heartbeat only while the physical CAN driver is disabled.
+# HH_260807 - Install the physical CAN ground-speed GUI as a normal ros2 run
+# executable; copying scripts only under share/ leaves it undiscoverable.
 install(
   PROGRAMS
     scripts/platform_dummy_publisher.py
+    scripts/velocity_kph_gui.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -116,6 +119,12 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_platform_dummy_publisher
     test/test_platform_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  ament_add_pytest_test(
+    test_velocity_kph_gui
+    test/test_velocity_kph_gui.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

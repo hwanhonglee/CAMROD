@@ -13,6 +13,8 @@
 // Publishes:
 //   ~/image_raw            (sensor_msgs/Image,           on demand)
 //   ~/image_raw/compressed (sensor_msgs/CompressedImage, rate-limited CPU JPEG)
+//   ~/image_rect/compressed (sensor_msgs/CompressedImage, rate-limited CPU JPEG,
+//                            plumb_bob undistort via cv::remap — no VIC/VPI, unlike front)
 //   ~/camera_info          (sensor_msgs/CameraInfo)
 
 #include <array>

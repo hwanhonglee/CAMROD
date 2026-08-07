@@ -440,14 +440,15 @@ private:
     markers.markers.emplace_back(boundary_marker);
 
     avg_msgs::msg::AvgPolygonStamped polygon_msg;
-    polygon_msg.header.frame_id = map_frame_id_;
+    // HH_260807 - Publish collision geometry in its owning local frame.  RViz
+    // transforms it with TF, while the gate consumes the exact same points
+    // without an asynchronous map-pose inverse that can shift the footprint.
+    polygon_msg.header.frame_id = base_frame_id_;
     polygon_msg.header.stamp = now;
     for (size_t i = 0; i < 4; ++i) {
-      const auto map_point =
-        transformLocal(boundary_local_points[i].x, boundary_local_points[i].y, 0.0);
       avg_msgs::msg::AvgPoint32 p32;
-      p32.x = map_point.x;
-      p32.y = map_point.y;
+      p32.x = boundary_local_points[i].x;
+      p32.y = boundary_local_points[i].y;
       p32.z = 0.0;
       polygon_msg.polygon.points.emplace_back(p32);
     }
@@ -718,8 +719,8 @@ private:
 
   RobotParams params_;
   PoseRPY base_pose_;
-  double planning_boundary_margin_{0.05};
-  double planning_boundary_lateral_margin_{0.05};  // HH_260805 - Per-side width clearance.
+  double planning_boundary_margin_{0.10};
+  double planning_boundary_lateral_margin_{0.10};  // HH_260807 - Per-side width clearance.
   double body_scale_factor_{1.0};
   double ground_z_offset_{0.0};
   std::string ground_z_source_{"lanelet_map"};

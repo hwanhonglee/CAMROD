@@ -24,6 +24,8 @@
   <depend>camrod_sensor_kit</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
+  <!-- HH_260807: velocity_kph_gui.py uses the system Tk runtime. -->
+  <exec_depend>python3-tk</exec_depend>
   <depend>nlohmann-json-dev</depend> <!-- 260708: light MCU serial JSON bridge -->
   <!-- HH_260410: Platform status topics are published directly from ranger_base_node. -->
   <depend>ranger_msgs</depend>

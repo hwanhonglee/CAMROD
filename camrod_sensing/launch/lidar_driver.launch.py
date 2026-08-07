@@ -40,21 +40,12 @@ def _standalone_condition(enabled, use_container):
     ]))
 
 
-def _lidar_parameters() -> dict:
+def _lidar_runtime_overrides() -> dict:
+    # HH_260807 - Geometry, filtering, QoS, and load policy are owned by
+    # config/lidar/preprocessor.yaml. Only graph wiring remains launch-time.
     return {
         "input_topic": LaunchConfiguration("preprocessor_input_topic"),
         "output_topic": LaunchConfiguration("preprocessor_output_topic"),
-        "marker_frame_id": LaunchConfiguration("preprocessor_marker_frame_id"),
-        "angle_filter_deg": LaunchConfiguration("preprocessor_angle_filter_deg"),
-        "roi_x_min": LaunchConfiguration("preprocessor_roi_x_min"),
-        "roi_x_max": LaunchConfiguration("preprocessor_roi_x_max"),
-        "roi_y_min": LaunchConfiguration("preprocessor_roi_y_min"),
-        "roi_y_max": LaunchConfiguration("preprocessor_roi_y_max"),
-        "roi_z_min": LaunchConfiguration("preprocessor_roi_z_min"),
-        "roi_z_max": LaunchConfiguration("preprocessor_roi_z_max"),
-        "voxel_leaf_size": LaunchConfiguration("preprocessor_voxel_leaf_size"),
-        "qos_depth": LaunchConfiguration("preprocessor_qos_depth"),
-        "max_process_hz": LaunchConfiguration("preprocessor_max_process_hz"),
     }
 
 
@@ -83,7 +74,10 @@ def _build_lidar_processing_container(context, *args, **kwargs):
                 plugin="camrod::sensing::LidarPreprocessorNode",
                 name="lidar_preprocessor",
                 namespace=LaunchConfiguration("module_namespace"),
-                parameters=[_lidar_parameters()],
+                parameters=[
+                    LaunchConfiguration("lidar_preprocessor_param_file"),
+                    _lidar_runtime_overrides(),
+                ],
                 extra_arguments=[{"use_intra_process_comms": True}],
             )
         )
@@ -101,7 +95,13 @@ def _build_lidar_processing_container(context, *args, **kwargs):
                     ("/ground_segmentation/obstacle_points",
                      LaunchConfiguration("lidar_filtered_topic")),
                 ],
-                extra_arguments=[{"use_intra_process_comms": True}],
+                # HH_260807 - Ground segmentation owns a transient-local
+                # /tf_static subscription. Humble rejects any transient-local
+                # endpoint when this node enables intra-process transport,
+                # causing the component constructor to fail and removing
+                # /sensing/lidar/points_filtered. Keep the node composed in the
+                # shared container, but use DDS for its cloud and TF endpoints.
+                extra_arguments=[{"use_intra_process_comms": False}],
             )
         )
     if cost_grid_enabled:
@@ -115,9 +115,9 @@ def _build_lidar_processing_container(context, *args, **kwargs):
                 name="lidar_cost_grid",
                 namespace=LaunchConfiguration("module_namespace"),
                 parameters=[LaunchConfiguration("lidar_cost_grid_param_file")],
-                # HH_260805 - Humble rejects intra-process publishers that use
-                # transient-local durability. Keep the grid latched for late
-                # subscribers and compose it with DDS transport instead.
+                # HH_260805 - Humble rejects transient-local endpoints when
+                # intra-process transport is enabled. Keep the grid latched for
+                # late subscribers and compose it with DDS transport instead.
                 extra_arguments=[{"use_intra_process_comms": False}],
             )
         )
@@ -146,6 +146,9 @@ def generate_launch_description():
     default_cost_grid_param = os.path.join(
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
+    default_preprocessor_param = os.path.join(
+        sensing_share, "config", "lidar", "preprocessor.yaml"
+    )
     default_vanjee_config, has_vanjee_driver_pkg = _resolve_vanjee_config_and_presence()
     default_cyclonedds_config = os.path.join(
         sensing_share, "config", "middleware", "cyclonedds_lidar_shm.xml"
@@ -154,6 +157,10 @@ def generate_launch_description():
 
     declare_args = [
         DeclareLaunchArgument("ground_seg_param_file", default_value=default_ground_seg_param),
+        DeclareLaunchArgument(
+            "lidar_preprocessor_param_file",
+            default_value=default_preprocessor_param,
+        ),
         DeclareLaunchArgument("lidar_cost_grid_param_file", default_value=default_cost_grid_param),
         DeclareLaunchArgument("vanjee_config_path", default_value=default_vanjee_config),
         DeclareLaunchArgument("enable_lidar_driver", default_value=enable_driver_default),
@@ -165,23 +172,13 @@ def generate_launch_description():
             default_value=default_cyclonedds_config,
         ),
         DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
-        DeclareLaunchArgument("module_namespace", default_value="lidar"),
+        # HH_260807 - Keep direct driver debugging on the public sensing scope.
+        DeclareLaunchArgument("module_namespace", default_value="sensing/lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace", default_value="vanjee"),
         DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
         DeclareLaunchArgument("preprocessor_output_topic", default_value="filtered_cloud"),
         DeclareLaunchArgument("lidar_filtered_topic", default_value="points_filtered"),
         DeclareLaunchArgument("enable_lidar_preprocessor", default_value="true"),
-        DeclareLaunchArgument("preprocessor_marker_frame_id", default_value="lidar_link"),
-        DeclareLaunchArgument("preprocessor_angle_filter_deg", default_value="64.0"),
-        DeclareLaunchArgument("preprocessor_roi_x_min", default_value="0.0"),
-        DeclareLaunchArgument("preprocessor_roi_x_max", default_value="3.0"),
-        DeclareLaunchArgument("preprocessor_roi_y_min", default_value="-1.5"),
-        DeclareLaunchArgument("preprocessor_roi_y_max", default_value="1.5"),
-        DeclareLaunchArgument("preprocessor_roi_z_min", default_value="-1.0"),
-        DeclareLaunchArgument("preprocessor_roi_z_max", default_value="1.0"),
-        DeclareLaunchArgument("preprocessor_voxel_leaf_size", default_value="0.03"),
-        DeclareLaunchArgument("preprocessor_qos_depth", default_value="2"),
-        DeclareLaunchArgument("preprocessor_max_process_hz", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_x", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_y", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_z", default_value="0.9"),
@@ -253,7 +250,10 @@ def generate_launch_description():
             name="lidar_preprocessor",
             namespace=module_namespace,
             output="screen",
-            parameters=[_lidar_parameters()],
+            parameters=[
+                LaunchConfiguration("lidar_preprocessor_param_file"),
+                _lidar_runtime_overrides(),
+            ],
             condition=IfCondition(PythonExpression([
                 "'", enable_lidar_driver, "' == 'true' and '",
                 enable_lidar_preprocessor, "' == 'true' and '", use_container,

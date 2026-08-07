@@ -54,8 +54,8 @@
     # 3. MANEUVER TUNING
     # =========================================================================
     # HH_260720 - Preserve all field-tuned campsite control values during the package move.
-    # HH_260806 - Preserve 60% of the 3.0 km/h cruise reference after the 0.5 gate.
-    crab_speed_mps: 1.0
+    # HH_260807 - Preserve 60% of the 2.0 km/h cruise reference after the 0.5 gate.
+    crab_speed_mps: 0.666667
     entry_position_tolerance_m: 0.15
     # HH_260807 - Map-v17 B4 has only about 0.136 m lateral clearance per side;
     # finish within 0.04 m of the route snap before handing control back to Nav2.
@@ -75,8 +75,8 @@
     right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
     left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
 
-    # HH_260806 - Preserve 40% of the cruise reference: 1.20 km/h final.
-    reverse_entry_speed_mps: 0.666667
+    # HH_260807 - Preserve 40% of the cruise reference: 0.80 km/h final.
+    reverse_entry_speed_mps: 0.444444
     reverse_entry_yaw_kp: 1.0
     reverse_entry_lateral_kp: -0.25
     reverse_entry_max_angular_speed_radps: 0.25
@@ -158,8 +158,8 @@
     yaw_proportional_gain: 1.2
     maximum_angular_speed_radps: 0.35
     exit_distance_m: 1.2
-    # HH_260806 - Preserve 40% of the cruise reference: 1.20 km/h final.
-    exit_speed_mps: 0.666667
+    # HH_260807 - Preserve 40% of the cruise reference: 0.80 km/h final.
+    exit_speed_mps: 0.444444
     exit_timeout_s: 30.0
 
     # =========================================================================

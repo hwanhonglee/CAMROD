@@ -13,7 +13,10 @@
     # HH_260708 - Use the operator-verified ttyACM port for the field harness.
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
     device: /dev/ttyACM0
-    frame_id: gps
+    # HH_260807 - This receiver measures at the physical antenna represented by
+    # gnss_link. Changing the header does not move raw LLH; the localization
+    # adapter remains the sole owner of the heading-rotated lever-arm correction.
+    frame_id: gnss_link
     # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
     # External CORS goes to the Lite moving base through FTDI DN03DF8V
     # by its stable by-id path; only the corrected moving-base stream reaches
@@ -43,12 +46,12 @@
     # 3. RATES AND ROVER MODE
     # =========================================================================
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
-    # HH_260722 - Keep this shared single-antenna profile at 10 Hz. The dual
-    # launch overlay sets the rover to 1 Hz so moving-base epochs can match.
-    # HH_260806 - The custom dual setup applies that CFG-RATE RAM write even
-    # with config_on_startup=false; a saved 5 Hz rover profile does not survive
-    # this launch. Verify the Lite base's actual iTOW cadence independently.
-    rate: 10.0
+    # HH_260806 - The custom dual setup applies a CFG-RATE RAM write even with
+    # config_on_startup=false, so a receiver-saved profile does not override ROS.
+    # HH_260807 - Use the current 5 Hz physical validation profile (200 ms
+    # receiver epochs). nav_rate=1 is one solution per measurement cycle; it
+    # is not a 1 Hz setting. Validate moving-base epoch compatibility separately.
+    rate: 5.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)
@@ -96,5 +99,8 @@
     # POWER+XBEE FTDI connected to the Lite moving-base UART1.
     # Use this stable identity because the Quectel modem shares ttyUSB indices
     # and must not receive RTCM.
+    # HH_260807 - This 115200 setting is the CORS-to-Lite input only. The
+    # Lite-to-rover output baud is stored on both receiver boards and must be
+    # checked separately for RTCM bandwidth and matching endpoint values.
     device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
     baud: 115200

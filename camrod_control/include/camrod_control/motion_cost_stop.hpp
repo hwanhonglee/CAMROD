@@ -87,9 +87,10 @@ struct MotionCostStopConfig
   bool lanelet_enabled{true};
   int lanelet_threshold{85};
   int lanelet_current_threshold{85};
-  // HH_260806 - Cost-100 contact inside the physical configured body is a
-  // hard stop. Unlike planning-margin contact, it may never authorize
-  // recovery motion.
+  // HH_260807 - Cost-100 contact inside the configured physical body is a hard
+  // stop for ordinary motion.  The only exception is a bounded recovery whose
+  // complete raster sweep monotonically reduces contact and ends with both the
+  // physical body and the larger planning footprint clear.
   bool lanelet_body_hard_stop_enabled{true};
   int lanelet_body_hard_stop_threshold{100};
   double body_front_m{0.70837};
@@ -101,11 +102,11 @@ struct MotionCostStopConfig
   // threshold lets narrow lanes retain their soft 98 boundary penalty.
   bool lanelet_footprint_enabled{true};
   int lanelet_footprint_threshold{100};
-  // HH_260806 - Measured body plus 0.05 m clearance on all sides.
-  double footprint_front_m{0.75837};
-  double footprint_rear_m{0.73323};
-  double footprint_left_m{0.58505};
-  double footprint_right_m{0.58495};
+  // HH_260807 - Measured body plus 0.10 m recoverable clearance on all sides.
+  double footprint_front_m{0.80837};
+  double footprint_rear_m{0.78323};
+  double footprint_left_m{0.63505};
+  double footprint_right_m{0.63495};
   double lanelet_lookahead_m{1.0};
   double lanelet_width_m{0.8};
   bool lanelet_stop_on_unknown{true};
@@ -181,8 +182,11 @@ public:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double receive_sec);
   void setPose(const PlanarPose & pose);
-  void setFootprintPolygonWorld(
-    const std::vector<std::pair<double, double>> & polygon_world);
+  // HH_260807 - Accept the planning polygon only in robot_center_link-local
+  // coordinates.  Reconstructing local geometry from an asynchronously sampled
+  // map pose can shift the safety footprint while the vehicle is moving.
+  void setFootprintPolygonLocal(
+    const std::vector<std::pair<double, double>> & polygon_local);
   void setOdometrySpeed(double forward_speed_mps);
   void setLocalPath(const avg_msgs::msg::AvgPath & path);
   void setManeuverPhases(
@@ -248,6 +252,10 @@ private:
     int cost{-1};
     std::string detail{"clear"};
     int total_cells{0};
+    // Unique threshold-crossing raster cells touched by this polygon. Route
+    // recovery requires every sweep set to be a subset of the previous one and
+    // the count to be non-increasing; ordinary stops use `blocked`/first hit.
+    int contact_cells{0};
     std::vector<std::pair<int, int>> lethal_cells;
   };
 

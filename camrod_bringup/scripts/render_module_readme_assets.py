@@ -594,7 +594,7 @@ def render_bringup_evidence(repo_root: Path, report_path: Path, output_root: Pat
         (
             "Survey explicit service_access polygons",
             "Join each road lanelet to its maneuver Area",
-            "Rerun B6 + B12 with current 0.05 m all-side margin",
+            "At capture: rerun B6 + B12 with then-active 0.05 m margin",
         ),
         face=GRAY_BG,
         edge="#72848d",

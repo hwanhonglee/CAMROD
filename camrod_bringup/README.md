@@ -9,6 +9,7 @@ arrival-only validation for constrained roadside sites. -->
 <!-- HH_260806 - Record the 3 km/h active speed profile and bounded localization smoke result. -->
 <!-- HH_260807 - Record map-v17 repeated service and safe persistent-obstacle handling. -->
 <!-- HH_260807 - Record fixed-lookahead service A/B and single-owner platform status. -->
+<!-- HH_260807 - Configure the current final 2 km/h production motion profile. -->
 <!-- HH_260807 - Record the final B1-B10 no-restart lifecycle, route-snap
 return handoff, diagnostic audit, and reproducible endurance media. -->
 
@@ -32,6 +33,20 @@ physical drive. The orange path is the dispatched B6 route.
 | ROS 2 launch, package-owned YAML, bringup mirrors | Starts platform through UI in dependency order | One complete ROS graph with selected hardware/simulation profile |
 | Fake sensor/platform publishers | Exercises message, state, planner, control, and UI contracts | Deterministic simulation topics and normalized platform feedback |
 | Probe and field-test scripts | Captures timing, payload, recovery, and mission evidence | JSON, rosbag, logs, PNG/GIF derived reports |
+
+## Active v2.1.6 Contract
+
+| Item | Full-bringup value |
+|---|---:|
+| Physical GNSS / epoch | `5 Hz` / `200 ms` |
+| EKF, selected pose, Nav2 control | `20 Hz` |
+| Straight cruise | final `2.0 km/h` (`0.555556 m/s`) |
+| Body / planning boundary | `1.39160 x 1.07000 m` / `1.59160 x 1.27000 m` |
+| LiDAR raw and filtered cloud | target `10 Hz`; no preprocessor throttling |
+| Optional LiDAR cost grid | default `OFF` |
+| Recovery release budget | `12` in the `5 s` recontact window; projected-safe inward escape remains eligible at budget |
+| Radar display | `radar_status_gui.py` subscribes to seven real `/range_ros` streams; it does not publish dummy data |
+| Operator window | WebKit fullscreen default |
 
 ## Expected And Measured
 
@@ -75,8 +90,10 @@ bound to map-v16. The current synchronized OSM pair is `map_version=17`, SHA
 `8cd05c...5e021`; older results are intentionally not relabeled as current.
 The active fabrication-inclusive
 physical body is `1.39160 x 1.07000 m`, and the planning boundary is
-`1.49160 x 1.17000 m` with `0.05 m` on every side. Physical-body cost 100 is an unrecoverable hard stop;
-only margin-only contact can request a separately projected bounded escape.
+`1.59160 x 1.27000 m` with `0.10 m` on every side. Physical-body cost 100 stops
+ordinary motion; a virtual-boundary escape is eligible only while contact
+overlap decreases monotonically and the swept body plus endpoint planning
+footprint remain clear. Dynamic obstacles and interlocks remain fail-closed.
 The current map-v17 continuous-service result separately covers complete
 drop-zone parking, charging feedback, and departure to the next campsite.
 
@@ -89,9 +106,9 @@ misreported as a completed campsite mission.
 ![3 km/h command and selected pose](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
 
 The [3 km/h structured record](../docs/assets/test_result/three-kph-localization-20260806/README.md)
-keeps the active maneuver ratios, raw/final command trace, fusion inputs, bag
+keeps the historical 3 km/h maneuver ratios, raw/final command trace, fusion inputs, bag
 hash, and the explicit limitation that fake 10 Hz GNSS does not validate the
-physical 1 Hz dual-GNSS path.
+physical 5 Hz moving-base link or its epoch alignment.
 
 ![Historical reduced-boundary policy validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
@@ -149,11 +166,11 @@ evidence.
 | `bringup.launch.py sim:=true` | Full deterministic simulation | Fake sensors and raw Ranger/BMS boundaries |
 | `bringup.launch.py sim:=true rviz:=true` | Simulation plus operator visualization | Shared CAMROD RViz config |
 
-The physical operator window is a fullscreen Chromium kiosk by default. It
-waits for backend readiness and uses an isolated profile, GPU rasterization,
-zero-copy compositor, and disabled background throttling. WebKit remains
-available with `operator_ui_window_engine:=webkit`; `auto` tries Chromium and
-then WebKit. The launch-level `operator_ui_window_fullscreen:=false` override is
+The physical operator window is a fullscreen GTK/WebKit surface by default on
+the current Jetson image because its Snap Chromium cannot start in the robot
+launch context. Chromium remains selectable on hosts with a working native
+browser via `operator_ui_window_engine:=chromium`. The launch-level
+`operator_ui_window_fullscreen:=false` override is
 available for maintenance, and headless runs should set
 `enable_operator_ui_window:=false`. Actual Jetson GPU use, frame pacing, and CPU
 reduction remain field measurements.

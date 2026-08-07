@@ -22,42 +22,45 @@
     # false: do not write; read back and verify the levels below.
     # true : read first, write only mismatched registers, then require identical
     #        FC03 readback. Missing FC06 echo alone is not treated as failure.
-    # HH_260729 - Apply the requested near-field/narrow-angle physical profile.
+    # HH_260807 - Apply the requested near-field/wide-angle physical profile.
     hardware_write_on_startup: true
 
     # 0x0208 is one combined angle/sensitivity level, not independent horizontal
-    # and vertical controls. Level 1 is the narrowest available in both axes.
-    # A wide-horizontal/narrow-vertical beam requires rotating the physical
-    # asymmetric sensor face around its forward axis; software cannot do that.
-    hardware_angle_levels: [1, 1, 1, 1, 1, 1, 1]
+    # and vertical controls. Level 4 is the widest setting (dual-angle model:
+    # approximately 65 deg horizontal / 80 deg vertical), so the vertical beam
+    # also widens. The downstream 0.10 m stop gate and named self-echo bands
+    # remain responsible for rejecting distant/fixed chassis returns.
+    hardware_angle_levels: [4, 4, 4, 4, 4, 4, 4]
 
     # 0x021F range level: 1≈0.5 m, 2≈1.5 m, 3≈2.5 m,
     #                     4≈3.5 m, 5≈5.0 m.
-    # Front/side channels retain enough physical reach for their current
-    # 1.50/0.80 m software safety cutoffs; rear uses the 0.50 m near-field level.
-    hardware_range_levels: [2, 2, 2, 2, 2, 2, 1]
+    # HH_260807 - Use the shortest physical range on every channel to reduce
+    # distant floor/chassis multipath. Stop distance is applied downstream so
+    # raw measurements remain visible for self-echo diagnosis.
+    hardware_range_levels: [1, 1, 1, 1, 1, 1, 1]
 
     # =========================================================================
     # 3. SOFTWARE ACCEPTANCE  [STARTUP-ONLY]
     # =========================================================================
     # false disables exactly one channel: no port open; its range and _ros
     # topics publish max_range+0.001 m with dummy_active=true at the rate above.
-    # HH_260731 - Field-test quarantine requested by the operator: LEFT2 and
-    # RIGHT2 publish explicit dummy heartbeats until their recurring returns
-    # can be separated from real obstacles. The other five channels stay live.
-    sensor_enabled: [true, true, true, false, true, false, true]
+    # HH_260807 - Re-enable all seven physical channels for the live radar
+    # visualization/audit. No channel uses the disabled-sensor dummy path.
+    sensor_enabled: [true, true, true, true, true, true, true]
 
     software_min_range_m: 0.02
-    software_default_max_range_m: 4.50
-    # Exact per-channel cutoff. Longer replies become no-target heartbeats.
-    software_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
+    software_default_max_range_m: 0.50
+    # HH_260807 - Preserve the complete level-1 observation window. The
+    # independent cost-grid stop_candidate_max_ranges_m policy controls which
+    # per-channel measurements can stop motion while raw chassis echoes remain.
+    software_max_ranges_m: [0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50]
 
     # =========================================================================
     # 4. ROS OUTPUT
     # =========================================================================
     # Visualization metadata only; it does not change the physical beam and is
     # not used by radar_cost_grid.
-    range_message_field_of_view_rad: 0.26
+    range_message_field_of_view_rad: 1.134464
     radar_status_topic: "status"
     publish_radar_status: false   # DYNAMIC: aggregate AvgSensingRadar output
     log_status: false             # DYNAMIC: per-port console status rows
@@ -68,13 +71,13 @@
     # Every list below uses exactly this index order.
     #
     # idx  sensor   port  enabled  angle  HW range  SW max
-    #  0   FRONT1   USB0    yes      1       2      1.50 m
-    #  1   FRONT2   USB1    yes      1       2      1.50 m
-    #  2   LEFT1    USB4    yes      1       2      0.80 m
-    #  3   LEFT2    USB5    yes      1       2      0.80 m
-    #  4   RIGHT1   USB2    yes      1       2      0.80 m
-    #  5   RIGHT2   USB3    yes      1       2      0.80 m
-    #  6   REAR     USB6    yes      1       1      0.50 m
+    #  0   FRONT1   USB0    yes      4       1      0.50 m
+    #  1   FRONT2   USB1    yes      4       1      0.50 m
+    #  2   LEFT1    USB4    yes      4       1      0.50 m
+    #  3   LEFT2    USB5    yes      4       1      0.50 m
+    #  4   RIGHT1   USB2    yes      4       1      0.50 m
+    #  5   RIGHT2   USB3    yes      4       1      0.50 m
+    #  6   REAR     USB6    yes      4       1      0.50 m
     #
     # HH_260702 - LEFT/RIGHT USB numbers reflect the crossed field harness.
     sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]

@@ -68,7 +68,7 @@ def test_invalid_publish_rate_is_rejected(invalid_rate):
 def test_gnss_dummy_is_explicitly_not_a_fix():
     message = SENSING_DUMMY.make_gnss_fix(_stamp())
 
-    assert message.header.frame_id == "gps"
+    assert message.header.frame_id == "gnss_link"
     assert message.status.status == SENSING_DUMMY.NavSatStatus.STATUS_NO_FIX
     assert message.status.service == SENSING_DUMMY.NavSatStatus.SERVICE_GPS
     assert math.isnan(message.latitude)
@@ -96,7 +96,7 @@ def test_gnss_dummy_is_explicitly_not_a_fix():
 def test_gnss_heading_cannot_be_accepted_as_precise():
     message = SENSING_DUMMY.make_gnss_heading(_stamp())
 
-    assert message.header.frame_id == "gps"
+    assert message.header.frame_id == "gnss_link"
     assert message.orientation.w == 1.0
     assert message.orientation_covariance[0] == (
         SENSING_DUMMY.HIGH_UNCERTAINTY

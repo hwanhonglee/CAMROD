@@ -43,8 +43,10 @@
     # during stable fixes. 0.3 caused repeated false GNSS_BAD transitions.
     gnss_cov_trace_fail: 1.0
     gnss_jump_fail_m: 1.0
-    # HH_260511: GPS at ~1Hz; lower from 2.0 to 0.8 so gnss_rate_ok passes at 1Hz.
-    gnss_min_hz: 0.8
+    # HH_260807 - A 2 s unique-epoch average tolerates transient loss/jitter in
+    # the nominal 5 Hz stream while 3 Hz still rejects the former 1 Hz profile.
+    gnss_min_hz: 3.0
+    gnss_rate_window_s: 2.0
 
     # =========================================================================
     # 5. STATUS OUTPUT

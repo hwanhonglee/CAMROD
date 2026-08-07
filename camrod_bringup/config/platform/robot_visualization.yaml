@@ -8,7 +8,7 @@
     map_frame_id: "map"                          # Global frame used to publish all robot markers.
     base_frame_id: "robot_center_link"           # Axle-midpoint body frame used by localization and planning.
     marker_topic: "/platform/robot/markers"      # MarkerArray output topic containing body/sensor/axes/ring markers.
-    boundary_topic: "/platform/robot/planning_boundary"  # PolygonStamped output used as planning safety boundary.
+    boundary_topic: "/platform/robot/planning_boundary"  # robot_center_link-local planning safety polygon.
 
     # =========================================================================
     # 2. POSE SOURCES
@@ -41,8 +41,8 @@
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
-    # HH_260805 - Match the four-sided 0.05 m planning footprint contract.
-    # HH_260806 - Apply clearance around the fabrication-inclusive body.
-    planning_boundary_margin: 0.05               # Front/rear margin beyond body [m].
-    planning_boundary_lateral_margin: 0.05       # Left/right margin beyond body [m].
+    # HH_260807 - Apply a four-sided 0.10 m recoverable planning clearance
+    # around the unchanged fabrication-inclusive physical body.
+    planning_boundary_margin: 0.10               # Front/rear margin beyond body [m].
+    planning_boundary_lateral_margin: 0.10       # Left/right margin beyond body [m].
     range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

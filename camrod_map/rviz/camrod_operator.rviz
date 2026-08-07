@@ -256,6 +256,8 @@ Visualization Manager:
         - Class: rviz_common/Group
           Displays:
             - Class: rviz_default_plugins/Image
+              # HH_260807 - Show the live physical front camera by default.
+              # The previous /sensing/camera/image_raw name has no publisher.
               Enabled: false
               Max Value: 1
               Median window: 5
@@ -266,8 +268,8 @@ Visualization Manager:
                 Depth: 5
                 Durability Policy: Volatile
                 History Policy: Keep Last
-                Reliability Policy: Reliable
-                Value: /sensing/camera/image_raw
+                Reliability Policy: Best Effort
+                Value: /sensing/camera/econ_front/image_raw
               Value: false
           Enabled: true
           Name: Camera
@@ -860,8 +862,10 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /perception/camera_lidar/image
+        # HH_260807 - This is the visible RViz Image dock. Point it directly
+        # at the physical front camera with matching SensorDataQoS.
+        Reliability Policy: Best Effort
+        Value: /sensing/camera/econ_front/image_raw
       Value: true
   Enabled: true
   Global Options:

@@ -65,8 +65,8 @@ revision, primitive counts, and SHA in the same reviewed change.
 
 | Rule | Current behavior |
 |---|---|
-| Physical-body boundary | Cost `100` or unknown hard-stops with no automatic recovery |
-| Planning-margin boundary | Ordinary command stops; only a projected bounded escape may run while the body remains clear |
+| Physical-body boundary | Cost `100` or unknown stops ordinary motion; only monotonic-overlap-reducing, swept-body-clear escape is eligible |
+| Planning-margin boundary | Ordinary command stops; projected escape also requires endpoint planning clearance |
 | Soft mapped edge | Cost `98` biases planning but remains traversable |
 | Lane change | `lane_change=yes` can clear configured crossing cells |
 | Grid placement | Both are robot-centered; the safety grid recenters only near its local-window edge |

@@ -88,7 +88,9 @@
     # =========================================================================
     # Runtime
     # HH_260702 - Keep LiDAR/perception objects alive through brief CPU-load
-    # stalls so the grid does not flicker empty between 6 Hz filtered frames.
+    # stalls so the grid does not flicker empty between filtered frames.
+    # HH_260807 - Filtered LiDAR is a 10 Hz end-to-end contract; this age
+    # tolerance covers transient scheduling jitter, not a reduced input rate.
     max_message_age_s: 1.50
     publish_rate_hz: 10.0
     # HH_260707: Keep the 10 Hz output fresh, but reuse the last built grid

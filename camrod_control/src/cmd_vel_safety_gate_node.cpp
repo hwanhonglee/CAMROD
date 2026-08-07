@@ -85,8 +85,8 @@ std::optional<std::string> routeRecoveryConfigError(
   {
     return "route_safety_recovery_clear_required_s must be in [0.1, 30.0]";
   }
-  if (config.max_automatic_releases < 0 || config.max_automatic_releases > 10) {
-    return "route_safety_recovery_max_auto_releases must be in [0, 10]";
+  if (config.max_automatic_releases < 0 || config.max_automatic_releases > 15) {
+    return "route_safety_recovery_max_auto_releases must be in [0, 15]";
   }
   if (!std::isfinite(config.rapid_recontact_window_s) ||
     config.rapid_recontact_window_s < 0.5 || config.rapid_recontact_window_s > 60.0)
@@ -341,15 +341,15 @@ private:
       "cost_source_debug_max_age_s", 1.0);
     cost_source_topics_ = declare_parameter<std::vector<std::string>>(
       "cost_source_debug_topics",
-      {"/map/cost_grid/lanelet", "/sensing/cost_grid/lidar", "/sensing/cost_grid/radar",
+      {"/map/cost_grid/lanelet_safety", "/sensing/cost_grid/radar",
         "/planning/cost_grid/global_path"});
     cost_source_labels_ = declare_parameter<std::vector<std::string>>(
-      "cost_source_debug_labels", {"lanelet", "lidar", "radar", "global_path"});
+      "cost_source_debug_labels", {"lanelet", "radar", "global_path"});
     motion_cost_stop_config_.require_dynamic_source = declare_parameter<bool>(
       "cost_stop_require_dynamic_source", true);
     motion_cost_stop_config_.dynamic_source_labels = parseLabelSet(
-      declare_parameter<std::string>("cost_stop_dynamic_source_labels", "lidar,radar"),
-      {"lidar", "radar"});
+      declare_parameter<std::string>("cost_stop_dynamic_source_labels", "radar"),
+      {"radar"});
     // HH_260729 - The radar grid is intentionally kept as one lightweight
     // occupancy grid. Receive its parallel diagnostic provenance so stop logs
     // can identify the exact channel without changing any stop decision.
@@ -441,8 +441,8 @@ private:
       85);
     motion_cost_stop_config_.lanelet_current_threshold = declare_parameter<int>(
       "lanelet_safety_current_threshold", 85);
-    // HH_260806 - Keep the fabrication-inclusive body as a non-recoverable
-    // inner boundary; only its planning margin may invoke bounded recovery.
+    // HH_260807 - Keep the fabrication-inclusive body as the authoritative
+    // hard stop. Only a monotonic, projected-clear inward escape may recover it.
     motion_cost_stop_config_.lanelet_body_hard_stop_enabled = declare_parameter<bool>(
       "lanelet_safety_body_hard_stop_enable", true);
     motion_cost_stop_config_.lanelet_body_hard_stop_threshold = declare_parameter<int>(
@@ -461,16 +461,16 @@ private:
       "lanelet_safety_footprint_threshold", 100);
     planning_boundary_topic_ = declare_parameter<std::string>(
       "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
-    // HH_260806 - Match the fabrication-inclusive body plus four-sided 5 cm
-    // planning envelope published by sensor-kit and Nav2.
+    // HH_260807 - Match the fabrication-inclusive body plus four-sided 10 cm
+    // recoverable planning envelope published by sensor-kit and Nav2.
     motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
-      "lanelet_safety_footprint_front_m", 0.75837);
+      "lanelet_safety_footprint_front_m", 0.80837);
     motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
-      "lanelet_safety_footprint_rear_m", 0.73323);
+      "lanelet_safety_footprint_rear_m", 0.78323);
     motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
-      "lanelet_safety_footprint_left_m", 0.58505);
+      "lanelet_safety_footprint_left_m", 0.63505);
     motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
-      "lanelet_safety_footprint_right_m", 0.58495);
+      "lanelet_safety_footprint_right_m", 0.63495);
     motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
     motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(
@@ -506,7 +506,7 @@ private:
     route_safety_recovery_config_.clear_required_s = declare_parameter<double>(
       "route_safety_recovery_clear_required_s", 1.5);
     route_safety_recovery_config_.max_automatic_releases = declare_parameter<int>(
-      "route_safety_recovery_max_auto_releases", 1);
+      "route_safety_recovery_max_auto_releases", 12);
     route_safety_recovery_config_.rapid_recontact_window_s = declare_parameter<double>(
       "route_safety_recovery_recontact_window_s", 5.0);
     route_safety_recovery_config_.allow_opposite_recovery_command = declare_parameter<bool>(
@@ -562,7 +562,7 @@ private:
       declare_parameter<std::string>(
         "drop_zone_maneuver_controller_lanelet_bypass_phases",
         // HH_260807 - The bounded station exit starts outside road lanelets;
-        // dynamic LiDAR/radar checks are still evaluated before publication.
+        // dynamic radar checks are still evaluated before publication.
         "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
       {"exit_straight", "align_exit_yaw"});
     campsite_status_topic_ = declare_parameter<std::string>(
@@ -816,13 +816,22 @@ private:
           create_subscription<avg_msgs::msg::AvgPolygonStamped>(
           planning_boundary_topic_, cost_qos,
           [this](const avg_msgs::msg::AvgPolygonStamped::SharedPtr message) {
-            refreshMotionCostStopPose();
+            // HH_260807 - The publisher and gate now share an explicit local
+            // frame contract.  Never infer local collision geometry by pairing
+            // a map-frame polygon with a different, latest localization pose.
+            if (message->header.frame_id != robot_base_frame_) {
+              RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 5000,
+                "ignoring planning boundary in frame '%s'; expected local frame '%s'",
+                message->header.frame_id.c_str(), robot_base_frame_.c_str());
+              return;
+            }
             std::vector<std::pair<double, double>> polygon;
             polygon.reserve(message->polygon.points.size());
             for (const auto & point : message->polygon.points) {
               polygon.emplace_back(point.x, point.y);
             }
-            motion_cost_stop_.setFootprintPolygonWorld(polygon);
+            motion_cost_stop_.setFootprintPolygonLocal(polygon);
           });
       }
       if (cost_source_debug_enable_ || motion_cost_stop_config_.require_dynamic_source) {
@@ -981,7 +990,7 @@ private:
         RCLCPP_ERROR(
           get_logger(),
           "rapid route recontact latched after %d automatic release(s); "
-          "operator stop/replan required",
+          "same-direction Nav2 resume blocked, projected-safe inward escape remains available",
           route_safety_recovery_.automaticReleasesInWindow());
       }
     }
@@ -1091,7 +1100,8 @@ private:
       route_safety_retry_latched_logged_ = true;
       RCLCPP_ERROR(
         get_logger(),
-        "rapid route recontact remains latched; operator stop/replan required");
+        "rapid route recontact remains latched; same-direction Nav2 resume blocked, "
+        "projected-safe inward escape remains available");
     }
   }
 
@@ -1101,14 +1111,33 @@ private:
       return;
     }
     last_route_safety_log_sec_ = now_sec;
-    RCLCPP_WARN(
-      get_logger(),
-      "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
-      "projected_recovery_candidate_only=true auto_release_blocked=%s",
-      route_safety_recovery_.triggerReason().c_str(),
-      route_safety_recovery_.latestReason().c_str(),
-      route_safety_recovery_.clearElapsed(now_sec),
-      route_safety_recovery_.automaticReleaseBlocked() ? "true" : "false");
+    const auto & latest = route_safety_recovery_.latestDecision();
+    if (latest.lanelet_contact_valid) {
+      RCLCPP_WARN(
+        get_logger(),
+        "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
+        "projected_recovery_candidate_only=true auto_release_blocked=%s "
+        "pose=(x=%.3f,y=%.3f,yaw=%.1fdeg) "
+        "lanelet_hit=(world_x=%.3f,world_y=%.3f,body_x=%.3f,body_y=%.3f,cost=%d)",
+        route_safety_recovery_.triggerReason().c_str(),
+        route_safety_recovery_.latestReason().c_str(),
+        route_safety_recovery_.clearElapsed(now_sec),
+        route_safety_recovery_.automaticReleaseBlocked() ? "true" : "false",
+        latest.lanelet_pose_x, latest.lanelet_pose_y,
+        latest.lanelet_pose_yaw * 180.0 / kPi,
+        latest.lanelet_hit_world_x, latest.lanelet_hit_world_y,
+        latest.lanelet_hit_body_x, latest.lanelet_hit_body_y,
+        latest.lanelet_hit_cost);
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
+        "projected_recovery_candidate_only=true auto_release_blocked=%s",
+        route_safety_recovery_.triggerReason().c_str(),
+        route_safety_recovery_.latestReason().c_str(),
+        route_safety_recovery_.clearElapsed(now_sec),
+        route_safety_recovery_.automaticReleaseBlocked() ? "true" : "false");
+    }
   }
 
   void onMissionRequest(const avg_msgs::msg::PlanningMissionKey::SharedPtr message)
@@ -1233,8 +1262,7 @@ private:
 
   bool effectiveEnabledConsideringRouteRecovery(const double now_sec)
   {
-    if (route_safety_recovery_.active() && route_safety_triggered_by_navigation_ &&
-      !route_safety_recovery_.automaticReleaseBlocked())
+    if (route_safety_recovery_.active() && route_safety_triggered_by_navigation_)
     {
       return effectiveEnabledForRouteRecovery(now_sec);
     }
@@ -1309,6 +1337,15 @@ private:
       std::string(route_safety_recovery_.recoveryMotionObserved() ? "true" : "false") +
       " recovery_candidate=" + routeRecoveryCandidateName(recovery_candidate.kind) +
       " recovery_reason=" + recovery_candidate.reason;
+    const auto & route_contact = route_safety_recovery_.latestDecision();
+    if (route_safety_recovery_.active() && route_contact.lanelet_contact_valid) {
+      status.message +=
+        " route_hit_world=" + fixed(route_contact.lanelet_hit_world_x, 3) + "," +
+        fixed(route_contact.lanelet_hit_world_y, 3) +
+        " route_hit_body=" + fixed(route_contact.lanelet_hit_body_x, 3) + "," +
+        fixed(route_contact.lanelet_hit_body_y, 3) +
+        " route_hit_cost=" + std::to_string(route_contact.lanelet_hit_cost);
+    }
     status.operating_state = operating_state;
     status_publisher_->publish(status);
   }
@@ -1318,7 +1355,8 @@ private:
     RouteRecoveryCandidate selected;
     if (route_safety_auto_candidate_enabled_ && route_safety_recovery_.active() &&
       route_safety_triggered_by_navigation_ &&
-      !route_safety_recovery_.automaticReleaseBlocked())
+      (!route_safety_recovery_.automaticReleaseBlocked() ||
+      route_safety_recovery_.latestDecision().blocked))
     {
       const auto & trigger = route_safety_recovery_.triggerCommand();
       const auto left_command = routeRecoveryDirection(
@@ -1367,7 +1405,7 @@ private:
       }
     } else {
       selected.reason = route_safety_recovery_.automaticReleaseBlocked() ?
-        "rapid_recontact_latched" :
+        "rapid_recontact_latched_clear_waiting_replan" :
         route_safety_recovery_.active() ? "non_navigation_trigger" : "route_hold_inactive";
     }
     route_safety_candidate_publisher_->publish(selected.command);

@@ -148,7 +148,7 @@ topics:
       component_id: "radar.left2"
       location: "left_rear"
       frame_id: "radar_left2_link"
-      mount_xyz_m: "-0.28334,0.41005,0.29013"
+      mount_xyz_m: "-0.38,0.53,0.29013"
       mount_rpy_deg: "0.0,0.0,90.0"
       pose_verified: "true"
 
@@ -159,7 +159,7 @@ topics:
       component_id: "radar.left1"
       location: "left_front"
       frame_id: "radar_left1_link"
-      mount_xyz_m: "0.29188,0.41005,0.29013"
+      mount_xyz_m: "0.38,0.53,0.29013"
       mount_rpy_deg: "0.0,0.0,90.0"
       pose_verified: "true"
 
@@ -170,7 +170,7 @@ topics:
       component_id: "radar.right2"
       location: "right_rear"
       frame_id: "radar_right2_link"
-      mount_xyz_m: "-0.28334,-0.41005,0.29013"
+      mount_xyz_m: "-0.38,-0.53,0.29013"
       mount_rpy_deg: "0.0,0.0,-90.0"
       pose_verified: "true"
 
@@ -181,7 +181,7 @@ topics:
       component_id: "radar.right1"
       location: "right_front"
       frame_id: "radar_right1_link"
-      mount_xyz_m: "0.29188,-0.41005,0.29013"
+      mount_xyz_m: "0.38,-0.53,0.29013"
       mount_rpy_deg: "0.0,0.0,-90.0"
       pose_verified: "true"
 

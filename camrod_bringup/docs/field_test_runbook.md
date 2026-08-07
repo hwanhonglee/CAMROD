@@ -193,8 +193,9 @@ in the JSON `errors` list.
 Run this probe once with RViz/Chromium/Brave and development builds stopped.
 Measure CPU over the same window with `field_test_tool.sh profile 60
 pose_latency_baseline`. Interpret the chain using
-`pose_latency_diagnosis.md`; do not raise the dual-GNSS 1 Hz runtime rate based
-on this stationary test alone.
+`pose_latency_diagnosis.md`. HH_260807 configures dual GNSS at 5 Hz; do not
+accept that contract from this stationary localization test alone. Also verify
+200 ms PVT/RELPOSNED `iTOW`, carrier/heading flags, and link loss counters.
 
 For the front camera and YOLO path specifically:
 
@@ -444,8 +445,8 @@ Run these in order and take a `snapshot` after any failure.
    - Re-enter the safe corridor and keep pose/grid fresh. Require 1.5 s
      continuous clear, then `ENABLED`. If Nav2 had reported `ABORTED`, require
      the same goal/source to be reissued after 0.5 s without site reselection.
-     Verify no more than two reissues and no automatic restart after operator
-     cancel.
+     Verify releases/reissues do not exceed the configured 12-release budget in
+     the 5-second recontact window, and no automatic restart follows operator cancel.
 
 6. Camping site mission
    - Select a camping site in UI.
@@ -494,10 +495,13 @@ only the first destination leg. -->
      without reselecting the campsite.
    - In one margin-only contact, require a projected crab/reverse/reverse-yaw
      escape, observed owner motion, 1.5 s fresh-clear proof, and continuation of
-     the original service. A physical-body contact must produce no recovery motion.
-   - Fail the run on any retry latch followed by nonzero motion, automatic RETURN
-     before unload wait, missing state, duplicate motion owner, process restart,
-     or residual process after shutdown.
+     the original service. For a virtual physical-body overlap, require ordinary
+     output zero and allow only an overlap-reducing candidate whose swept body and
+     endpoint planning footprint are clear; an actual obstacle/interlock stays stopped.
+   - At retry-budget exhaustion, fail on any same-direction Nav2 output or on a
+     candidate lacking monotonic-overlap and swept/endpoint proof. A separately
+     proven inward escape may remain nonzero. Also fail on automatic RETURN before
+     unload wait, missing state, duplicate owner, restart, or residual process.
 
 10. Persistent obstacle and wide-lane bypass
    - Keep one obstacle continuously present for 20 s. Before bypass is allowed,
@@ -523,9 +527,12 @@ Change only one layer at a time:
 - Radar side mismatch: check radar launch order, TF link, and radar cost-grid inputs.
 - GNSS recovery holds: check `/localization/mode`, GNSS topic freshness, covariance,
   and internet/NTRIP status before changing offsets.
-- GNSS publishes but mode is `DR_ONLY`: check XY covariance trace first. The
-  current monitor requires `covariance[0] + covariance[7] <= 1.0`, GNSS rate
-  >= 0.8 Hz, jump <= 1.0 m, and age <= 4.0 s. A live `/fix` alone is not enough.
+- GNSS publishes but mode is `DR_ONLY`: check the corrected localization GNSS
+  topic and heading validity, not `/fix` alone. The monitor requires
+  `covariance[0] + covariance[7] <= 1.0`, a 2 s unique-epoch average
+  `>= 3.0 Hz`, jump `<= 1.0 m`, and age `<= 4.0 s`. A heading gap can use only
+  the GNSS-anchored, time-aligned lever-arm fallback for at most 3 s; after that
+  the adapter intentionally withholds center-referenced GNSS.
 - High CPU: take `snapshot` first, then compare after changing component container,
   DDS/QoS, marker rate, or debug image settings.
 - HH_260805 - Keep `enable_dds_shared_memory:=false` for full field bringup on

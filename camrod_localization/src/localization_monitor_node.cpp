@@ -21,6 +21,8 @@
 #include <avg_msgs/msg/avg_localization_status.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 
+#include "camrod_localization/gnss_rate_window.hpp"
+
 namespace camrod::localization
 {
 namespace
@@ -63,9 +65,11 @@ public:
 
     gnss_innov_warn_ = declare_parameter<double>("gnss_innovation_warn", 3.0);
     gnss_innov_fail_ = declare_parameter<double>("gnss_innovation_fail", 6.0);
-    gnss_cov_trace_fail_ = declare_parameter<double>("gnss_cov_trace_fail", 0.3);
+    gnss_cov_trace_fail_ = declare_parameter<double>("gnss_cov_trace_fail", 1.0);
     gnss_jump_fail_m_ = declare_parameter<double>("gnss_jump_fail_m", 1.0);
-    gnss_min_hz_ = declare_parameter<double>("gnss_min_hz", 2.0);
+    gnss_min_hz_ = declare_parameter<double>("gnss_min_hz", 3.0);
+    gnss_rate_window_s_ = declare_parameter<double>("gnss_rate_window_s", 2.0);
+    gnss_rate_window_.setWindowSeconds(gnss_rate_window_s_);
 
     // HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
     // 0 disables each check independently.
@@ -144,45 +148,45 @@ public:
 private:
   void onGnssPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
-    last_gnss_pose_time_ = rclcpp::Time(msg->header.stamp);
-
     const rclcpp::Time stamp(msg->header.stamp);
-    if (has_prev_gnss_) {
-      const double dx = msg->pose.position.x - last_gnss_x_;
-      const double dy = msg->pose.position.y - last_gnss_y_;
-      last_gnss_jump_m_ = std::sqrt(dx * dx + dy * dy);
-      const double dt = (stamp - prev_gnss_time_).seconds();
-      if (dt > 1e-3) {
-        last_gnss_hz_ = 1.0 / dt;
-      }
+    if (stamp > last_gnss_pose_time_) {
+      last_gnss_pose_time_ = stamp;
     }
-
-    last_gnss_x_ = msg->pose.position.x;
-    last_gnss_y_ = msg->pose.position.y;
-    prev_gnss_time_ = stamp;
-    has_prev_gnss_ = true;
+    recordGnssEpoch(
+      stamp, msg->pose.position.x, msg->pose.position.y);
   }
 
   void onGnssPoseCov(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
-    last_gnss_cov_time_ = rclcpp::Time(msg->header.stamp);
-    last_gnss_cov_trace_ = msg->pose.covariance[0] + msg->pose.covariance[7];
-
     const rclcpp::Time stamp(msg->header.stamp);
-    if (has_prev_gnss_) {
-      const double dx = msg->pose.pose.position.x - last_gnss_x_;
-      const double dy = msg->pose.pose.position.y - last_gnss_y_;
-      last_gnss_jump_m_ = std::sqrt(dx * dx + dy * dy);
-      const double dt = (stamp - prev_gnss_time_).seconds();
-      if (dt > 1e-3) {
-        last_gnss_hz_ = 1.0 / dt;
-      }
+    if (stamp > last_gnss_cov_time_) {
+      last_gnss_cov_time_ = stamp;
+      last_gnss_cov_trace_ = msg->pose.covariance[0] + msg->pose.covariance[7];
     }
 
-    last_gnss_x_ = msg->pose.pose.position.x;
-    last_gnss_y_ = msg->pose.pose.position.y;
-    prev_gnss_time_ = stamp;
+    recordGnssEpoch(
+      stamp, msg->pose.pose.position.x, msg->pose.pose.position.y);
+  }
+
+  void recordGnssEpoch(const rclcpp::Time & stamp, double x, double y)
+  {
+    // HH_260807 - Both monitor inputs are mirrors of one fix and carry the same
+    // stamp. Count and compare that epoch once so the covariance callback cannot
+    // erase a real position jump or distort the measured cadence.
+    if (!gnss_rate_window_.record(stamp.nanoseconds())) {
+      return;
+    }
+
+    if (has_prev_gnss_) {
+      const double dx = x - last_gnss_x_;
+      const double dy = y - last_gnss_y_;
+      last_gnss_jump_m_ = std::sqrt(dx * dx + dy * dy);
+    }
+
+    last_gnss_x_ = x;
+    last_gnss_y_ = y;
     has_prev_gnss_ = true;
+    last_gnss_hz_ = gnss_rate_window_.rateHz();
   }
 
   void onImu(const avg_msgs::msg::AvgImu::ConstSharedPtr msg)
@@ -223,8 +227,12 @@ private:
       (gnss_cov_trace_fail_ <= 0.0) || (last_gnss_cov_trace_ <= gnss_cov_trace_fail_);
     const bool gnss_jump_ok =
       !has_prev_gnss_ || (gnss_jump_fail_m_ <= 0.0) || (last_gnss_jump_m_ <= gnss_jump_fail_m_);
+    // HH_260807 - Before three unique epochs exist, freshness is the only rate
+    // evidence. Afterwards use the rolling average so one missed epoch does not
+    // immediately force DR_ONLY under full-bringup CPU load.
     const bool gnss_rate_ok =
-      !has_prev_gnss_ || (gnss_min_hz_ <= 0.0) || (last_gnss_hz_ >= gnss_min_hz_);
+      !gnss_rate_window_.ready() || (gnss_min_hz_ <= 0.0) ||
+      (last_gnss_hz_ >= gnss_min_hz_);
 
     const bool diag_available =
       (filter_status_mode_ == "stream") && (last_diag_time_.nanoseconds() > 0);
@@ -437,9 +445,11 @@ private:
 
   double gnss_innov_warn_{3.0};
   double gnss_innov_fail_{6.0};
-  double gnss_cov_trace_fail_{0.3};
+  double gnss_cov_trace_fail_{1.0};
   double gnss_jump_fail_m_{1.0};
-  double gnss_min_hz_{2.0};
+  double gnss_min_hz_{3.0};
+  double gnss_rate_window_s_{2.0};
+  camrod_localization::GnssRateWindow gnss_rate_window_{2.0};
 
   // HH_260507: DR timeout — 0 = disabled.
   double dr_max_duration_s_{0.0};
@@ -483,17 +493,15 @@ private:
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_wheel_time_{0, 0, RCL_ROS_TIME};
 
-  // HH_260422: has_prev_gnss_ becomes true after the first GNSS pose message is received.
-  //   While false: jump distance and rate calculations are skipped (no previous position to compare against).
-  //   Once true: last_gnss_jump_m_ and last_gnss_hz_ are updated and feed into gnss_jump_ok / gnss_rate_ok.
+  // HH_260807 - Only a new monotonically increasing GNSS epoch updates position,
+  // jump, and rolling rate state. Duplicate mirrors and late callbacks cannot
+  // rewind this state.
   bool has_prev_gnss_{false};
   double last_gnss_x_{0.0};
   double last_gnss_y_{0.0};
   double last_gnss_jump_m_{0.0};
   double last_gnss_cov_trace_{0.0};
   double last_gnss_hz_{0.0};
-  rclcpp::Time prev_gnss_time_{0, 0, RCL_ROS_TIME};
-
   avg_msgs::msg::AvgLocalizationStatusStream last_diag_;
   rclcpp::Time last_diag_time_{0, 0, RCL_ROS_TIME};
 };

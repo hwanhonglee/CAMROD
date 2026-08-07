@@ -57,7 +57,9 @@ DUMMY_ACTIVE_TOPICS = {
     "rear_camera": "/sensing/camera/econ_rear/dummy_active",
 }
 
-GNSS_FRAME_ID = "gps"
+# HH_260807 - Match the physical receiver contract: raw GNSS samples describe
+# the antenna at gnss_link, while localization alone corrects to robot center.
+GNSS_FRAME_ID = "gnss_link"
 IMU_FRAME_ID = "imu_link"
 LIDAR_FRAME_ID = "lidar_link"
 FRONT_CAMERA_FRAME_ID = "camera_front"

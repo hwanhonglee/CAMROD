@@ -1,7 +1,7 @@
 # camrod_ui
 
-<!-- HH_260805 - Make the documented renderer match the Chromium production
-default while retaining the tested WebKit maintenance path. -->
+<!-- HH_260807 - Make the documented renderer match the WebKit field default
+while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
@@ -30,7 +30,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Hard stop authority | control gate at `<= 20%`, not the UI |
 | Guest disconnect lock grace | `60 s` |
 | Guest heartbeat / stale close | `10 s` / `45 s` |
-| Local operator window | fullscreen Chromium kiosk by default; WebKit explicit fallback |
+| Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
 
 ## Destination Dispatch
 
@@ -87,7 +87,7 @@ running ROS backend, not generated UI mockups.
 | Current production bundle | At 1280x800, destination screen appeared in 1.1 ms and the 40-key verification keypad in 17.6 ms; queued same-frame `B`+`6` remained `B6`, cancel sent zero frames, and confirmation sent one frame |
 | WebKit fallback smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
 | Historical renderer sample | Before static status cues, forced WebKit was near 97% of one workstation CPU; a later Chromium sample was 0.5% combined |
-| Current Chromium launch contract | Private kiosk profile, GPU rasterization, zero-copy compositor, backend readiness wait, and process-group shutdown are unit-tested |
+| Chromium alternative contract | Private kiosk profile, GPU rasterization, zero-copy compositor, backend readiness wait, and process-group shutdown are unit-tested |
 | Robot/Guest backend shutdown | Full-graph SIGINT smoke: both backends exited cleanly, with no traceback, failed process, or remaining child |
 | Charging recall | Active charger contact no longer overwrites `DEPARTING_CHARGER`; B2/B3 departure completed in the three-cycle service soak |
 | Duplicate destination | A repeated WebSocket destination while station exit is pending is idempotent; one maneuver owner and state transition remain |
@@ -164,8 +164,8 @@ run. Only `operator_ui_window_engine` changed.
 On this workstation WebKit is clearly lighter. Chromium's full stack reached
 `[SYSTEM] OK` sooner on average, but this is not a browser first-paint/load
 measurement. Host GPU utilization is not used because `nvidia-smi` also
-included the desktop and personal browser. The selected Chromium default is
-unchanged; the Jetson
+included the desktop and personal browser. The field default is WebKit because
+the robot image's Snap Chromium does not start; the Jetson
 same-scene frame-pacing/GPU/rate comparison remains TODO 8/14. Exact runs are
 in [`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
 
@@ -189,22 +189,22 @@ curl http://127.0.0.1:8010/ui/state
 Regenerate that tree before colcon whenever frontend sources or public assets
 change. Set `enable_operator_ui_window:=false` on headless hosts, or use
 `operator_ui_window_fullscreen:=false` for a resizable maintenance window.
-Chromium is selected explicitly by default and uses an isolated kiosk profile,
-GPU rasterization, zero-copy compositor, and disabled background throttling.
-The launcher waits for the backend before opening the first page.
+WebKit is the standalone and full-bringup default because the robot's Snap
+Chromium currently exits in `snap-confine` before opening a window. The launcher
+waits for the backend before opening the first page.
 
-Use `operator_ui_window_engine:=webkit` for the GTK/WebKit fallback. WebKit
-retains readiness probing, static React caching, smooth touch scrolling, and
-its acceleration request. `auto` tries Chromium first and then WebKit; the
-launcher searches Chromium, Chrome, and Brave-compatible names, while
-`CAMROD_UI_BROWSER` overrides only that executable selection. Actual Jetson
-renderer utilization and frame pacing remain field measurements.
+Use `operator_ui_window_engine:=chromium` only on a host where Chromium can
+start normally. That mode retains its isolated kiosk profile, GPU rasterization,
+zero-copy compositor, and disabled background throttling. `auto` tries Chromium
+first and then WebKit; `CAMROD_UI_BROWSER` overrides Chromium executable
+selection. Actual Jetson renderer utilization and frame pacing remain field
+measurements.
 
 ## Network Boundary
 
-Full bringup binds ports 8010 and 8012 to all interfaces for robot-network
-access. The current backend has no authentication and permissive CORS. Do not
-expose either port to a public or untrusted network; use localhost, a trusted
+Standalone UI and full bringup bind ports 8010 and 8012 to all interfaces for
+robot-network access. The current backend has no authentication and permissive
+CORS. Do not expose either port to a public or untrusted network; use a trusted
 robot LAN, firewalling, or an authenticated tunnel.
 
 Evidence JSON: [`guest-mission-lifecycle.json`](../docs/evidence/v2.1.3/ui/guest-mission-lifecycle.json).

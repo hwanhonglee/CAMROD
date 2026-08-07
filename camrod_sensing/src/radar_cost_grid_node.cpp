@@ -28,6 +28,7 @@
 
 #include "camrod_sensing/radar_dummy_contract.hpp"
 #include "camrod_sensing/radar_self_echo_filter.hpp"
+#include "camrod_sensing/radar_stop_range_filter.hpp"
 #include "camrod_sensing/route_lanelet_cost_filter.hpp"
 
 namespace camrod::sensing
@@ -74,6 +75,16 @@ public:
     unknown_value_ = declare_startup("unknown_value", -1);
     min_cost_ = declare_startup("min_cost", 85);
     max_cost_ = declare_startup("max_cost", 100);
+    // HH_260807 - Keep the driver's complete level-1 observation window for
+    // diagnostics, but admit only true near-proximity hits into stop costs.
+    stop_candidate_max_range_m_ =
+      declare_startup("stop_candidate_max_range_m", 0.10);
+    // HH_260807 - Front/rear radars first see the vehicle body. Allow a
+    // per-channel sensor-face cutoff so each body-return ceiling can be
+    // excluded and the following 0.10 m can still stop motion. An empty array
+    // intentionally falls back to the scalar parameter above.
+    stop_candidate_max_ranges_m_ = declare_startup(
+      "stop_candidate_max_ranges_m", std::vector<double>{});
     cost_near_distance_m_ = declare_startup("cost_near_distance_m", 0.3);
     // HH_260422 - Radar is near-field only; the per-sensor Range max also
     // rejects detections before they reach this cost-mapping stage.
@@ -149,6 +160,24 @@ public:
         "/sensing/radar/right1/range",
         "/sensing/radar/right2/range",
         "/sensing/radar/rear/range"});
+    if (!std::isfinite(stop_candidate_max_range_m_) ||
+      stop_candidate_max_range_m_ <= 0.0)
+    {
+      throw std::runtime_error(
+              "stop_candidate_max_range_m must be finite and positive");
+    }
+    if (!stop_candidate_max_ranges_m_.empty() &&
+      stop_candidate_max_ranges_m_.size() != input_topics_.size())
+    {
+      throw std::runtime_error(
+              "stop_candidate_max_ranges_m must be empty or match input_topics size");
+    }
+    for (const double maximum_m : stop_candidate_max_ranges_m_) {
+      if (!std::isfinite(maximum_m) || maximum_m <= 0.0) {
+        throw std::runtime_error(
+                "stop_candidate_max_ranges_m values must be finite and positive");
+      }
+    }
     if (!std::isfinite(dummy_active_timeout_s_) ||
       dummy_active_timeout_s_ <= 0.0)
     {
@@ -525,6 +554,14 @@ private:
     return std::max(0.0, startup_return_default_max_range_m_);
   }
 
+  double stopCandidateMaxRangeForIndex(const std::size_t idx) const
+  {
+    if (idx < stop_candidate_max_ranges_m_.size()) {
+      return stop_candidate_max_ranges_m_[idx];
+    }
+    return stop_candidate_max_range_m_;
+  }
+
   void configureFixedReturnFilter()
   {
     fixed_return_exclusion_bands_.clear();
@@ -863,6 +900,12 @@ private:
       if ((now_time - sample.recv_time).seconds() > max_message_age_s_) {
         continue;
       }
+      if (!radar_stop_range_filter::isStopCandidate(
+          sample.msg.range, sample.msg.min_range, sample.msg.max_range,
+          stopCandidateMaxRangeForIndex(i)))
+      {
+        continue;
+      }
       if (fixed_return_filter_enable_ &&
         radar_self_echo_filter::matches(
           i, sample.msg.range, fixed_return_exclusion_bands_))
@@ -990,6 +1033,8 @@ private:
   int unknown_value_{0};
   int min_cost_{85};
   int max_cost_{100};
+  double stop_candidate_max_range_m_{0.10};
+  std::vector<double> stop_candidate_max_ranges_m_;
   double cost_near_distance_m_{0.3};
   bool fixed_return_filter_enable_{true};
   std::vector<std::string> fixed_return_band_specs_;

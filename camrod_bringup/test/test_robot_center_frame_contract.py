@@ -35,7 +35,9 @@ MEASURED_BODY_EXTENTS_M = {
 }
 
 # HH_260803 - These are the deployed rear-axle-relative X values before the
-# frame migration. Keeping the source values here makes every conversion auditable.
+# frame migration. Keeping the unchanged mounts here makes their conversion auditable.
+# HH_260807 - The four side radars were remeasured directly from robot_center_link,
+# so they are locked separately below instead of preserving their superseded X values.
 LEGACY_SENSOR_X_M = {
     ("imu",): 1.131,
     ("lidar",): 1.20636,
@@ -43,11 +45,14 @@ LEGACY_SENSOR_X_M = {
     ("camera", "rear"): -0.17633,
     ("radar", "front1"): 1.07087,
     ("radar", "front2"): 1.07087,
-    ("radar", "left1"): 0.73488,
-    ("radar", "left2"): 0.15966,
-    ("radar", "right1"): 0.73488,
-    ("radar", "right2"): 0.15966,
     ("radar", "rear"): -0.17433,
+}
+
+REMEASURED_SIDE_RADAR_XY_M = {
+    "left1": (0.38, 0.53),
+    "left2": (-0.38, 0.53),
+    "right1": (0.38, -0.53),
+    "right2": (-0.38, -0.53),
 }
 
 
@@ -89,19 +94,19 @@ def test_center_offset_and_measured_body_are_auditable() -> None:
     ) == pytest.approx(robot["width"])
 
 
-def test_planning_margin_is_five_centimeters_on_every_side() -> None:
-    """The planning envelope adds 5 cm around the measured body."""
+def test_planning_margin_is_ten_centimeters_on_every_side() -> None:
+    """The recoverable planning envelope adds 10 cm around the measured body."""
     extents = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]["body_extents"]
 
-    assert extents["planning_margin"] == pytest.approx(0.05)
-    assert extents["planning_lateral_margin"] == pytest.approx(0.05)
-    assert extents["front"] + extents["planning_margin"] == pytest.approx(0.75837)
-    assert extents["rear"] + extents["planning_margin"] == pytest.approx(0.73323)
+    assert extents["planning_margin"] == pytest.approx(0.10)
+    assert extents["planning_lateral_margin"] == pytest.approx(0.10)
+    assert extents["front"] + extents["planning_margin"] == pytest.approx(0.80837)
+    assert extents["rear"] + extents["planning_margin"] == pytest.approx(0.78323)
     assert extents["left"] + extents["planning_lateral_margin"] == pytest.approx(
-        0.58505
+        0.63505
     )
     assert extents["right"] + extents["planning_lateral_margin"] == pytest.approx(
-        0.58495
+        0.63495
     )
 
 
@@ -116,6 +121,17 @@ def test_sensor_x_shift_preserves_physical_mount(
     assert pose["x"] == pytest.approx(legacy_x - CENTER_OFFSET_M)
 
 
+@pytest.mark.parametrize("sensor,expected_xy", REMEASURED_SIDE_RADAR_XY_M.items())
+def test_remeasured_side_radar_mounts_use_robot_center(
+    sensor: str, expected_xy: tuple[float, float]
+) -> None:
+    """The field-measured side mounts are expressed directly in robot_center_link."""
+    pose = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["radar"][sensor]
+
+    assert (pose["x"], pose["y"]) == pytest.approx(expected_xy)
+    assert pose["z"] == pytest.approx(0.29013)
+
+
 def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     """TF exposes the left antenna while localization publishes robot center."""
     gnss = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["gnss"]
@@ -128,6 +144,11 @@ def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     assert localization["gnss_antenna_offset_x_m"] == pytest.approx(gnss["x"])
     assert localization["gnss_antenna_offset_y_m"] == pytest.approx(gnss["y"])
     assert localization["gnss_lever_arm_require_fresh_heading"] is True
+    assert localization["enable_gnss_lever_arm_ekf_heading_fallback"] is True
+    assert localization["gnss_lever_arm_fallback_anchor_max_age_s"] == pytest.approx(3.0)
+    assert localization["gnss_lever_arm_fallback_history_s"] == pytest.approx(5.0)
+    assert localization["gnss_lever_arm_fallback_match_tolerance_s"] == pytest.approx(0.2)
+    assert localization["gnss_lever_arm_fallback_max_ekf_yaw_covariance"] == pytest.approx(1.0)
     assert PACKAGE_LOCALIZATION_CONFIG.read_bytes() == (
         BRINGUP_LOCALIZATION_CONFIG.read_bytes()
     )
@@ -176,10 +197,10 @@ def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     """Planning and final command authorization must use one occupied boundary."""
     expected = [
-        [0.75837, 0.58505],
-        [0.75837, -0.58495],
-        [-0.73323, -0.58495],
-        [-0.73323, 0.58505],
+        [0.80837, 0.63505],
+        [0.80837, -0.63495],
+        [-0.78323, -0.63495],
+        [-0.78323, 0.63505],
     ]
     nav2 = _yaml(
         SRC_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml"
@@ -189,6 +210,9 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     gate = _yaml(
         SRC_ROOT / "camrod_control" / "config" / "cmd_vel_safety_gate.yaml"
     )["/**"]["ros__parameters"]
+    launch_control = _yaml(
+        SRC_ROOT / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
+    )["bringup"]["control"]
 
     assert ast.literal_eval(local_costmap["footprint"]) == expected
     assert ast.literal_eval(global_costmap["footprint"]) == expected
@@ -199,14 +223,23 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert gate["lanelet_safety_body_rear_m"] == pytest.approx(0.68323)
     assert gate["lanelet_safety_body_left_m"] == pytest.approx(0.53505)
     assert gate["lanelet_safety_body_right_m"] == pytest.approx(0.53495)
-    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.75837)
-    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.73323)
-    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.58505)
-    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.58495)
+    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.80837)
+    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.78323)
+    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.63505)
+    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.63495)
+    for side, extent in {
+        "front": 0.80837,
+        "rear": 0.78323,
+        "left": 0.63505,
+        "right": 0.63495,
+    }.items():
+        assert launch_control[
+            f"cmd_vel_gate_lanelet_safety_footprint_{side}_m"
+        ] == pytest.approx(extent)
 
 
-def test_visual_boundary_uses_five_centimeter_margins() -> None:
-    """Verify RViz and the gate polygon share the four-sided margin contract."""
+def test_visual_boundary_uses_ten_centimeter_margins() -> None:
+    """Verify RViz and the gate share one robot-center-local boundary contract."""
     package_path = SRC_ROOT / "camrod_platform" / "config" / "robot_visualization.yaml"
     bringup_path = (
         SRC_ROOT
@@ -218,8 +251,23 @@ def test_visual_boundary_uses_five_centimeter_margins() -> None:
 
     assert package_path.read_bytes() == bringup_path.read_bytes()
     parameters = _yaml(package_path)["/platform/robot_visualization"]["ros__parameters"]
-    assert parameters["planning_boundary_margin"] == pytest.approx(0.05)
-    assert parameters["planning_boundary_lateral_margin"] == pytest.approx(0.05)
+    assert parameters["base_frame_id"] == "robot_center_link"
+    assert parameters["planning_boundary_margin"] == pytest.approx(0.10)
+    assert parameters["planning_boundary_lateral_margin"] == pytest.approx(0.10)
+
+    visualizer_source = (
+        SRC_ROOT / "camrod_platform" / "src" / "robot_visualization_node.cpp"
+    ).read_text()
+    gate_source = (
+        SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+    ).read_text()
+    motion_source = (
+        SRC_ROOT / "camrod_control" / "src" / "motion_cost_stop.cpp"
+    ).read_text()
+    assert "polygon_msg.header.frame_id = base_frame_id_;" in visualizer_source
+    assert "message->header.frame_id != robot_base_frame_" in gate_source
+    assert "setFootprintPolygonLocal(polygon)" in gate_source
+    assert "setFootprintPolygonWorld" not in motion_source
 
 
 def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None:
@@ -237,7 +285,7 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
 
     assert package_path.read_bytes() == bringup_path.read_bytes()
     parameters = _yaml(package_path)["/**"]["ros__parameters"]
-    assert parameters["route_safety_recovery_max_auto_releases"] == 1
+    assert parameters["route_safety_recovery_max_auto_releases"] == 12
     assert parameters["route_safety_recovery_recontact_window_s"] == pytest.approx(5.0)
 
 
@@ -394,10 +442,10 @@ def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None
         "lidar.filtered": "0.76336,0.00000,0.59538",
         "radar.front1": "0.62787,-0.11005,0.33378",
         "radar.front2": "0.62787,0.11005,0.33378",
-        "radar.left1": "0.29188,0.41005,0.29013",
-        "radar.left2": "-0.28334,0.41005,0.29013",
-        "radar.right1": "0.29188,-0.41005,0.29013",
-        "radar.right2": "-0.28334,-0.41005,0.29013",
+        "radar.left1": "0.38,0.53,0.29013",
+        "radar.left2": "-0.38,0.53,0.29013",
+        "radar.right1": "0.38,-0.53,0.29013",
+        "radar.right2": "-0.38,-0.53,0.29013",
         "radar.rear": "-0.61733,0.00000,0.33978",
         "camera.econ_front": "0.76337,0.00000,0.49568",
         "camera.econ_rear": "-0.61933,0.00000,0.30013",

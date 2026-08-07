@@ -228,6 +228,7 @@ REQUIRED_SYS_PKGS=(
   ros-humble-rtcm-msgs              # ublox GNSS RTK (camrod_sensing)
   ros-humble-test-msgs              # ROS 2 test message dependency.
   python3-serial                    # ublox/radar serial communication.
+  python3-tk                        # HH_260807 - Live radar/platform Tk dashboards.
   python3-yaml                      # HH_260720 - camrod_control/camrod_bringup YAML config parsing
   python3-setuptools                # HH_260720 - Python node installation for control/ui
   can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.

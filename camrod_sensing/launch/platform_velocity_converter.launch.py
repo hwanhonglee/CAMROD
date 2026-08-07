@@ -37,7 +37,8 @@ def generate_launch_description():
     )
     declare_namespace = DeclareLaunchArgument(
         "module_namespace",
-        default_value="imu",
+        # HH_260807 - Match direct imu.launch.py and canonical downstream topics.
+        default_value="sensing/imu",
         description="Namespace for platform velocity converter standalone launch",
     )
     declare_velocity_topic = DeclareLaunchArgument(

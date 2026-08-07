@@ -153,16 +153,16 @@ the concise raw excerpt are in
 
 | Contact geometry | Allowed action |
 |---|---|
-| Physical body touches cost 100/unknown | Hard stop with `lanelet_physical_body_cost`; no automatic candidate |
-| Only the outer 5 cm planning margin touches | Ordinary command remains zero; continue only with a separately projected bounded candidate |
+| Physical body touches virtual cost 100/unknown | Ordinary command stays zero; permit only monotonic-overlap-reducing escape with swept body and endpoint planning clearance |
+| Only the outer 10 cm planning margin touches | Ordinary command remains zero; use the same separately projected bounded-candidate proof |
 | Exactly one lateral candidate clear | Pure crab away from contact |
 | Lateral candidates blocked and reverse clear | Reverse to create room |
 | Reverse active; one yaw arc clear | Switch to that projected reverse-yaw arc |
 | Both yaw arcs clear and RPP requests a turn | Use the RPP turn sign at `<= 0.10 rad/s` |
 | Active crab becomes blocked | Reposition with projected straight reverse, then reevaluate |
 | No projected candidate clear | Remain stopped |
-| Fresh saved route clear for `1.0 s` | Release hold; retained RPP resumes yaw |
-| Same route recontacts within `5.0 s` after one release | Latch hold, publish zero, require operator stop/replan |
+| Fresh saved route clear for `1.5 s` after observed recovery motion | Release hold; retained RPP resumes yaw |
+| 12 releases reached inside the `5.0 s` recontact window | Block same-direction Nav2 resume; keep projected-safe inward escape eligible |
 
 Dynamic-obstacle handling is a separate contract. The command safety gate
 stops immediately on valid obstacle evidence. A planner change from
@@ -259,7 +259,7 @@ camrod_bringup/scripts/field_test_tool.sh record-recovery
 
 Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
 commit, duration, and pass criteria. The active planning rectangle is
-`1.49160 x 1.17000 m`; sensor housings and swept clearance still require field
+`1.59160 x 1.27000 m`; sensor housings and swept clearance still require field
 verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
 the complete simulated lifecycle through parking/charging is recorded separately.
 B11-B13 return geometry and all physical parking/charging acceptance remain

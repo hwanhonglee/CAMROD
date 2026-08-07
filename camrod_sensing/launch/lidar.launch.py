@@ -12,8 +12,14 @@ def generate_launch_description():
     default_cost_grid_param = os.path.join(
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
+    default_preprocessor_param = os.path.join(
+        sensing_share, "config", "lidar", "preprocessor.yaml"
+    )
 
     ground_seg_param_file    = LaunchConfiguration("ground_seg_param_file")
+    lidar_preprocessor_param_file = LaunchConfiguration(
+        "lidar_preprocessor_param_file"
+    )
     enable_lidar_driver      = LaunchConfiguration("enable_lidar_driver")
     enable_lidar_cost_grid   = LaunchConfiguration("enable_lidar_cost_grid")
     use_lidar_processing_container = LaunchConfiguration("use_lidar_processing_container")
@@ -36,6 +42,10 @@ def generate_launch_description():
             default_value=os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
         ),
         DeclareLaunchArgument(
+            "lidar_preprocessor_param_file",
+            default_value=default_preprocessor_param,
+        ),
+        DeclareLaunchArgument(
             "lidar_cost_grid_param_file",
             default_value=default_cost_grid_param,
         ),
@@ -55,7 +65,9 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument("enable_vanjee_static_tf",  default_value="false"),
-        DeclareLaunchArgument("module_namespace",         default_value="lidar"),
+        # HH_260807 - Direct launch uses the canonical /sensing/lidar scope;
+        # sensing.launch.py explicitly passes relative `lidar` under /sensing.
+        DeclareLaunchArgument("module_namespace",         default_value="sensing/lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace",  default_value="vanjee"),
         DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
         DeclareLaunchArgument("preprocessor_output_topic", default_value="filtered_cloud"),
@@ -65,6 +77,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(lidar_driver_launch),
             launch_arguments={
                 "ground_seg_param_file":    ground_seg_param_file,
+                "lidar_preprocessor_param_file": lidar_preprocessor_param_file,
                 "enable_lidar_driver":      enable_lidar_driver,
                 "enable_lidar_cost_grid":   enable_lidar_cost_grid,
                 "use_lidar_processing_container": use_lidar_processing_container,

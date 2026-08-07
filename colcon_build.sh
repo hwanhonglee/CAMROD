@@ -37,10 +37,77 @@
 # HH_260708: field_test_tool.sh and field_test_runbook.md are installed through
 # this wrapper so outdoor tests can collect config-sync, diagnostics, Hz, CPU,
 # and gate-state evidence from the same installed package graph.
+# HH_260807: single-config CMake packages now default to Release so compute-heavy
+# sensor components use compiler optimization in normal robot builds. An explicit
+# -DCMAKE_BUILD_TYPE override remains authoritative for debugging/profiling.
 
 set -euo pipefail
 
 log() { echo "[colcon_build] $*"; }
+
+_has_explicit_cmake_build_type() {
+  local arg
+  local definition_follows=0
+  for arg in "$@"; do
+    if [[ "${definition_follows}" -eq 1 ]]; then
+      case "${arg}" in
+        CMAKE_BUILD_TYPE=*|CMAKE_BUILD_TYPE:*=*) return 0 ;;
+      esac
+      definition_follows=0
+    fi
+
+    case "${arg}" in
+      -DCMAKE_BUILD_TYPE=*|-DCMAKE_BUILD_TYPE:*=*|\
+      --cmake-args=-DCMAKE_BUILD_TYPE=*|--cmake-args=-DCMAKE_BUILD_TYPE:*=*)
+        return 0
+        ;;
+      -D|--cmake-args=-D)
+        # CMake also accepts the split spelling: -D CMAKE_BUILD_TYPE=Debug.
+        definition_follows=1
+        ;;
+    esac
+  done
+  return 1
+}
+
+_prepare_colcon_build_args() {
+  COLCON_BUILD_ARGS=("$@")
+  COLCON_BUILD_TYPE_SOURCE="user"
+  _has_explicit_cmake_build_type "$@" && return 0
+
+  local release_arg="-DCMAKE_BUILD_TYPE=Release"
+  local last_cmake_args_index=-1
+  local index inline_value
+  for ((index = 0; index < ${#COLCON_BUILD_ARGS[@]}; index++)); do
+    case "${COLCON_BUILD_ARGS[index]}" in
+      --cmake-args|--cmake-args=*) last_cmake_args_index="${index}" ;;
+    esac
+  done
+
+  if [[ "${last_cmake_args_index}" -lt 0 ]]; then
+    COLCON_BUILD_ARGS+=(--cmake-args "${release_arg}")
+  elif [[ "${COLCON_BUILD_ARGS[last_cmake_args_index]}" == "--cmake-args" ]]; then
+    # Keep the default in the user's effective (last) --cmake-args group. A
+    # second group would replace, rather than extend, the first in argparse.
+    COLCON_BUILD_ARGS=(
+      "${COLCON_BUILD_ARGS[@]:0:last_cmake_args_index + 1}"
+      "${release_arg}"
+      "${COLCON_BUILD_ARGS[@]:last_cmake_args_index + 1}"
+    )
+  else
+    # Normalize --cmake-args=-DFOO so Release and the inline value remain in
+    # the same group instead of allowing one argparse occurrence to win.
+    inline_value="${COLCON_BUILD_ARGS[last_cmake_args_index]#--cmake-args=}"
+    COLCON_BUILD_ARGS=(
+      "${COLCON_BUILD_ARGS[@]:0:last_cmake_args_index}"
+      --cmake-args
+      "${inline_value}"
+      "${release_arg}"
+      "${COLCON_BUILD_ARGS[@]:last_cmake_args_index + 1}"
+    )
+  fi
+  COLCON_BUILD_TYPE_SOURCE="default-release"
+}
 
 resolve_ws_root() {
   local probe="$1"
@@ -267,6 +334,13 @@ if [[ -d "${_TIER4}" ]]; then
 fi
 unset _TIER4 _ARCH
 
+_prepare_colcon_build_args "$@"
+if [[ "${COLCON_BUILD_TYPE_SOURCE}" == "default-release" ]]; then
+  log "CMake build type: Release (default; override with --cmake-args -DCMAKE_BUILD_TYPE=<type>)"
+else
+  log "CMake build type: explicit user override"
+fi
+
 log "colcon build  base-paths: ${BASE_PATHS[*]}"
 colcon --log-base "${WS_ROOT}/log" build \
   --symlink-install \
@@ -274,6 +348,6 @@ colcon --log-base "${WS_ROOT}/log" build \
   --build-base  "${WS_ROOT}/build" \
   --install-base "${WS_ROOT}/install" \
   "${BUILD_SKIP_ARGS[@]}" \
-  "$@"
+  "${COLCON_BUILD_ARGS[@]}"
 
 log "done.  source ${WS_ROOT}/install/setup.bash"

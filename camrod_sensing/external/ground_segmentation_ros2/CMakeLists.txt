@@ -62,6 +62,10 @@ rclcpp_components_register_node(
   ground_segmentation_ros2_component
   PLUGIN "GroundSegmentationNode"
   EXECUTABLE ground_segmentation_ros2_node
+  # HH_260807 - The standalone executable must service the TF callback group
+  # while a cloud callback performs a bounded lookupTransform wait. Production
+  # composition already uses the scoped multi-threaded LiDAR container.
+  EXECUTOR MultiThreadedExecutor
 )
 
 install(
