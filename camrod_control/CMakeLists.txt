@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(avg_msgs REQUIRED)
+find_package(camrod_sensor_kit REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -33,6 +34,7 @@ ament_target_dependencies(cmd_vel_safety_gate_node
   rclcpp
   rcl_interfaces
   avg_msgs
+  camrod_sensor_kit
   # HH_260721 - Resolve shared control diagnostics included by boundary helpers.
   diagnostic_msgs
   geometry_msgs
@@ -139,7 +141,7 @@ if(BUILD_TESTING)
     src/motion_cost_stop.cpp
   )
   target_include_directories(test_control_policies PRIVATE include)
-  ament_target_dependencies(test_control_policies avg_msgs)
+  ament_target_dependencies(test_control_policies avg_msgs camrod_sensor_kit)
 
   ament_add_gtest(test_reverse_parking_axis test/test_reverse_parking_axis.cpp)
   target_include_directories(test_reverse_parking_axis PRIVATE include)

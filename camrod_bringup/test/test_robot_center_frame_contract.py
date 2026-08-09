@@ -33,6 +33,12 @@ MEASURED_BODY_EXTENTS_M = {
     "left": 0.53505,
     "right": 0.53495,
 }
+BOUNDARY_SHAPE_M = {
+    "front_taper": 0.12,
+    "front_shoulder_depth": 0.12,
+    "corner_radius": 0.05,
+    "corner_samples": 4,
+}
 
 # HH_260803 - These are the deployed rear-axle-relative X values before the
 # frame migration. Keeping the unchanged mounts here makes their conversion auditable.
@@ -196,11 +202,24 @@ def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
 
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     """Planning and final command authorization must use one occupied boundary."""
+    # HH_260809 - This is the generated 10 cm offset of the canonical tapered,
+    # rounded physical body, rounded to the six decimals stored in Nav2 YAML.
     expected = [
-        [0.80837, 0.63505],
-        [0.80837, -0.63495],
-        [-0.78323, -0.63495],
-        [-0.78323, 0.63505],
+        [0.764436, 0.500405], [0.783090, 0.477675],
+        [0.796952, 0.451742], [0.805488, 0.423603],
+        [0.808370, 0.394339], [0.808370, -0.394239],
+        [0.805488, -0.423503], [0.796952, -0.451642],
+        [0.783090, -0.477575], [0.764436, -0.500305],
+        [0.673725, -0.591016], [0.650995, -0.609670],
+        [0.625062, -0.623532], [0.596923, -0.632068],
+        [0.567659, -0.634950], [-0.633230, -0.634950],
+        [-0.690633, -0.623532], [-0.739296, -0.591016],
+        [-0.771812, -0.542353], [-0.783230, -0.484950],
+        [-0.783230, 0.485050], [-0.771812, 0.542453],
+        [-0.739296, 0.591116], [-0.690633, 0.623632],
+        [-0.633230, 0.635050], [0.567659, 0.635050],
+        [0.596923, 0.632168], [0.625062, 0.623632],
+        [0.650995, 0.609770], [0.673725, 0.591116],
     ]
     nav2 = _yaml(
         SRC_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml"
@@ -216,6 +235,9 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
 
     assert ast.literal_eval(local_costmap["footprint"]) == expected
     assert ast.literal_eval(global_costmap["footprint"]) == expected
+    extents = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]["body_extents"]
+    for key, value in BOUNDARY_SHAPE_M.items():
+        assert extents[key] == pytest.approx(value)
     assert gate["robot_base_frame"] == "robot_center_link"
     assert gate["lanelet_safety_body_hard_stop_enable"] is True
     assert gate["lanelet_safety_body_hard_stop_threshold"] == 100
@@ -223,6 +245,13 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert gate["lanelet_safety_body_rear_m"] == pytest.approx(0.68323)
     assert gate["lanelet_safety_body_left_m"] == pytest.approx(0.53505)
     assert gate["lanelet_safety_body_right_m"] == pytest.approx(0.53495)
+    assert gate["lanelet_safety_tapered_rounded_boundary_enable"] is True
+    assert gate["lanelet_safety_boundary_front_taper_m"] == pytest.approx(0.12)
+    assert gate["lanelet_safety_boundary_front_shoulder_depth_m"] == pytest.approx(
+        0.12
+    )
+    assert gate["lanelet_safety_boundary_corner_radius_m"] == pytest.approx(0.05)
+    assert gate["lanelet_safety_boundary_corner_samples"] == 4
     assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.80837)
     assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.78323)
     assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.63505)
@@ -236,6 +265,19 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
         assert launch_control[
             f"cmd_vel_gate_lanelet_safety_footprint_{side}_m"
         ] == pytest.approx(extent)
+    assert launch_control[
+        "cmd_vel_gate_lanelet_safety_tapered_rounded_boundary_enable"
+    ] is True
+    assert launch_control[
+        "cmd_vel_gate_lanelet_safety_boundary_front_taper_m"
+    ] == pytest.approx(0.12)
+    assert launch_control[
+        "cmd_vel_gate_lanelet_safety_boundary_front_shoulder_depth_m"
+    ] == pytest.approx(0.12)
+    assert launch_control[
+        "cmd_vel_gate_lanelet_safety_boundary_corner_radius_m"
+    ] == pytest.approx(0.05)
+    assert launch_control["cmd_vel_gate_lanelet_safety_boundary_corner_samples"] == 4
 
 
 def test_visual_boundary_uses_ten_centimeter_margins() -> None:

@@ -99,6 +99,31 @@ class UiStatePolicyTest(unittest.TestCase):
         self.assertEqual(policy.mission_source, "none")
         self.assertEqual(policy.mission_phase, UiStatePolicy.READY)
 
+    def test_engage_before_last_prerequisite_does_not_block_initialization(self):
+        policy = UiStatePolicy(REQUIRED_MODULES)
+        policy.update_system(healthy_modules())
+        policy.update_planning(
+            state="WAIT_DZ",
+            scenario="WAIT_DROP_ZONE",
+            active_mission_key="",
+            active_goal_source="none",
+        )
+        policy.update_action_server(True)
+        policy.update_localization(0)
+        policy.update_tf(True)
+        policy.update_platform(estop=False, error_code=0)
+        policy.update_engaged(True)
+
+        # HH_260810 - The gate may be the final startup callback after manual
+        # engage.  Healthy active control is ready even though no goal exists.
+        policy.update_gate(level=0, operating_state="ENABLED", message="")
+
+        self.assertTrue(policy.initialized_once)
+        self.assertTrue(policy.ready)
+        self.assertFalse(policy.goal_received)
+        self.assertEqual(policy.mission_source, "none")
+        self.assertEqual(policy.mission_phase, UiStatePolicy.READY)
+
     def test_dummy_warn_is_degraded_ready_but_error_is_not(self):
         policy = make_initialized_policy()
         policy.update_system(degraded_modules())

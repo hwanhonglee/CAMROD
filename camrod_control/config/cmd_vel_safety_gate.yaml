@@ -120,6 +120,14 @@
     lanelet_safety_body_rear_m: 0.68323
     lanelet_safety_body_left_m: 0.53505
     lanelet_safety_body_right_m: 0.53495
+    # HH_260809 - Match the short front face and tapered fabricated shoulders;
+    # all six transitions use a 0.05 m physical fillet. The planning polygon is
+    # generated as the same contour offset 0.10 m outward.
+    lanelet_safety_tapered_rounded_boundary_enable: true
+    lanelet_safety_boundary_front_taper_m: 0.12
+    lanelet_safety_boundary_front_shoulder_depth_m: 0.12
+    lanelet_safety_boundary_corner_radius_m: 0.05
+    lanelet_safety_boundary_corner_samples: 4
     # HH_260803 - Check the complete axle-midpoint planning boundary.
     lanelet_safety_footprint_enable: true
     # HH_260727 - 98 is the soft/rasterized lane edge; 100 is truly off-lane.

@@ -28,6 +28,12 @@
         # the measured physical-body hard-stop envelope remains unchanged.
         planning_margin: 0.10          # Front/rear planning clearance [m].
         planning_lateral_margin: 0.10  # Left/right planning clearance [m].
+        # HH_260809 - Keep the measured bounding dimensions while replacing the
+        # rectangular nose with a short front face, tapered shoulders, and fillets.
+        front_taper: 0.12              # Inset from each side to the short front face [m].
+        front_shoulder_depth: 0.12     # Axial length of each tapered front shoulder [m].
+        corner_radius: 0.05            # Physical-body fillet radius; outer boundary adds its 0.10 m offset [m].
+        corner_samples: 4              # Line segments per rounded corner for ROS/Nav2 polygons.
       # HH_260623 - Updated from measured wheel radius 152.75 mm.
       wheel_radius: 0.15275   # Effective rolling radius used by kinematic helpers [m].
       encoder_resolution: 2048  # Encoder ticks per wheel revolution.

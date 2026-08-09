@@ -1081,6 +1081,53 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_body_right_m', 0.53495),
             'Physical body right extent (m)',
         ),
+        # HH_260809 - Keep bringup overrides synchronized with the canonical
+        # tapered-front, rounded-corner collision polygon.
+        (
+            'control_cmd_vel_gate_lanelet_safety_tapered_rounded_boundary_enable',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_tapered_rounded_boundary_enable',
+                True,
+            ),
+            'Enable tapered-front rounded robot boundaries',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_boundary_front_taper_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_boundary_front_taper_m',
+                0.12,
+            ),
+            'Per-side front-face taper (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_boundary_front_shoulder_depth_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_boundary_front_shoulder_depth_m',
+                0.12,
+            ),
+            'Longitudinal tapered-shoulder depth (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_boundary_corner_radius_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_boundary_corner_radius_m',
+                0.05,
+            ),
+            'Physical collision-boundary corner radius (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_boundary_corner_samples',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_lanelet_safety_boundary_corner_samples',
+                4,
+            ),
+            'Line segments per rounded collision-boundary corner',
+        ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_enable',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_enable', True),

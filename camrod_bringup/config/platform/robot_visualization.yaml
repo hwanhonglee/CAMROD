@@ -41,8 +41,8 @@
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
-    # HH_260807 - Apply a four-sided 0.10 m recoverable planning clearance
-    # around the unchanged fabrication-inclusive physical body.
+    # HH_260809 - Offset the sensor-kit tapered/rounded physical polygon by
+    # 0.10 m; front taper and corner radius are owned by robot_params.yaml.
     planning_boundary_margin: 0.10               # Front/rear margin beyond body [m].
     planning_boundary_lateral_margin: 0.10       # Left/right margin beyond body [m].
     range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

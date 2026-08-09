@@ -42,6 +42,12 @@ struct RobotParams
   double planning_margin{0.10};
   // HH_260805 - Lateral clearance is independent so width can change without shortening the robot.
   double planning_lateral_margin{0.10};
+  // HH_260809 - Preserve measured maximum extents while matching the tapered
+  // front fabrication and rounded corners in every collision consumer.
+  double boundary_front_taper{0.12};
+  double boundary_front_shoulder_depth{0.12};
+  double boundary_corner_radius{0.05};
+  int boundary_corner_samples{4};
 
   // HH_260623 - Default wheel radius updated from measured 152.75 mm.
   double wheel_radius{0.15275};

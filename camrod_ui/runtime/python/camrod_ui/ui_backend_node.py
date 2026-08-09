@@ -985,7 +985,12 @@ class UiBackendNode(Node):
 
     # ── ROS2 subscription callbacks ─────────────────────────────────────────
 
-    def _update_runtime_state(self, update: Any) -> None:
+    def _update_runtime_state(
+        self,
+        update: Any,
+        *,
+        force_broadcast: bool = False,
+    ) -> None:
         with self._lock:
             previous = (
                 self._state.ready,
@@ -1018,7 +1023,7 @@ class UiBackendNode(Node):
                 self._state.mission_phase,
                 self._state.mission_source,
             )
-        if current != previous:
+        if force_broadcast or current != previous:
             self._schedule_broadcast(
                 {
                     "ready": current[0],
@@ -1047,7 +1052,10 @@ class UiBackendNode(Node):
                 self._navigate_action_client.server_is_ready()
             )
 
-        self._update_runtime_state(update)
+        # HH_260810 - Send an authoritative readiness heartbeat.  The first
+        # WebSocket snapshot can otherwise race the ROS readiness transition
+        # and leave a stale INITIALIZING frame visible until a goal event.
+        self._update_runtime_state(update, force_broadcast=True)
 
     def _on_system_status(self, msg: SystemStatus) -> None:
         modules = {
