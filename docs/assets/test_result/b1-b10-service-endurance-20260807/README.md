@@ -59,7 +59,7 @@ ROS_DOMAIN_ID=153 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p service_soak_obstacle_cycle:=5 \
   -p service_soak_cycle_timeout_s:=300.0
 
-python3 camrod_bringup/scripts/render_v2_1_5_service_results.py \
+python3 camrod_bringup/scripts/visualization/render_v2_1_5_service_results.py \
   --endurance-report \
   docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.json
 ```

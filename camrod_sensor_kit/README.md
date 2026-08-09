@@ -39,14 +39,19 @@ navigation/control reference.
 
 ## Robot Geometry
 
+<!-- HH_260809 - Define the tapered-front rounded boundary at the sensor-kit
+geometry source so every runtime consumer uses the same contour. -->
+
 | Value | Current |
 |---|---:|
 | Wheelbase | `0.886 m` |
 | Rear axle to center | `0.443 m` |
 | Physical body boundary | `1.39160 x 1.07000 x 1.09463 m` |
 | Body extents from center | front `0.70837`, rear `0.68323`, left `0.53505`, right `0.53495 m` |
+| Front contour | side inset `0.12 m`, shoulder depth `0.12 m` |
+| Physical corner radius | `0.05 m`, 4 arc segments per corner |
 | Planning margin | front/rear/left/right `0.10 m` |
-| Planning rectangle | `1.59160 x 1.27000 m` |
+| Planning contour | `1.59160 x 1.27000 m` bounding extents, `R0.15 m` |
 | Wheel radius | `0.15275 m` |
 
 The base chassis and active collision envelopes remain separately identified:
@@ -55,23 +60,48 @@ The base chassis and active collision envelopes remain separately identified:
 |---|---:|---:|---:|
 | Base platform | `1.19160 m` | `0.87000 m` | Chassis-only reference |
 | Active fabrication-inclusive body | `1.39160 m` | `1.07000 m` | Ordinary-motion stop and swept-body recovery envelope |
-| Active planning rectangle | `1.59160 m` | `1.27000 m` | Body plus `0.10 m` on every side |
+| Active planning contour | `1.59160 m` | `1.27000 m` | Exact `0.10 m` parallel offset of the tapered, rounded body |
 
-Height remains `1.09463 m`. The configured front/rear and left/right split
-preserves the existing `robot_center_link` asymmetry while matching the measured
-totals. A controlled four-side check must still verify wheels, sensor housings,
-brackets, cables, and payload before `FIELD-PASS`; notably the configured front
-LiDAR/camera origins remain slightly ahead of the body-front value.
+![Current tapered rounded body and planning contour](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Boundary motion about robot center](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+<!-- HH_260810 - The source-derived animation documents the shared local
+geometry transform; it is not runtime collision or vehicle-motion evidence. -->
+The [regenerable visual record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+contains all 30 physical/planning points and source hashes. Forward, curved,
+crab, and zero-turn frames keep both contours rigidly attached to
+`robot_center_link`.
+
+![Current sensor-kit contour on measured road poses](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Current contour drive contact recovery and completion](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+<!-- HH_260810 - Confirm that the runtime overlay consumes this exact geometry
+while retaining a separate field-measurement requirement. -->
+The [measured ROS road replay](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+validates the current map, source hashes, frame, taper, radii, margins, and all
+30 points before rendering. It does not validate the fabricated body dimensions
+or physical clearances.
+
+Height remains `1.09463 m`. Viewed from above, the front face is shorter than the
+rear face: each side tapers inward by `0.12 m` across a `0.12 m` shoulder, and all
+six transitions are rounded. The configured front/rear and left/right extrema
+remain unchanged, preserving the existing `robot_center_link` asymmetry and
+measured totals. A controlled four-side check must still verify wheels, sensor
+housings, brackets, cables, and payload before `FIELD-PASS`; notably the
+configured front LiDAR/camera origins remain slightly ahead of the body-front
+value.
 
 The previous envelopes and the exact old/new conversion
 are retained in the [2026-08-06 boundary adjustment record](../docs/assets/test_result/robot-boundary-adjustment-20260806/README.md).
 That record's reduced `1.29160 x 0.87000 m` candidate is historical and is no
 longer deployed.
 
-The two rectangles have different runtime meanings. A cost-100 cell inside
-the physical body stops ordinary motion. A virtual-boundary escape is admitted
-only if it monotonically reduces current overlap and its swept physical body
-plus endpoint planning rectangle are clear. Contact only in the outer `0.10 m`
+The two contours have different runtime meanings. A cost-100 cell inside the
+physical body stops ordinary motion. A virtual-boundary escape is admitted only
+if it monotonically reduces current overlap and its swept physical body plus
+endpoint planning contour are clear. Contact only in the outer `0.10 m`
 margin uses the same projected speed/distance/time bounds. The [fresh simulation summary](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 shows the earlier no-body-recovery behavior; current geometry/policy remains
 field-pending.

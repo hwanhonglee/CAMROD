@@ -81,7 +81,7 @@ and selected `obstacle_replan_expect_safe_hold:=true`.
 Regenerate the visuals with:
 
 ```bash
-python3 camrod_bringup/scripts/render_v2_1_5_service_results.py \
+python3 camrod_bringup/scripts/visualization/render_v2_1_5_service_results.py \
   --evidence-dir docs/assets/test_result/v2-1-5-service-validation-20260807
 ```
 

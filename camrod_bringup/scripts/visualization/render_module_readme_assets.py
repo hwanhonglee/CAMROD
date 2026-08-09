@@ -75,6 +75,9 @@ MODULE_THEMES = {
     "platform": (
         "#37474f", "#e8edef", "#0e7490", "#e1f1f5", "#c88a00", "#fff3d7", "#f5f7f7"
     ),
+    "runtime": (
+        "#5d4777", "#eee9f4", "#287271", "#e2f1ef", "#b06b16", "#fff0dd", "#f7f5f8"
+    ),
     "sensing": (
         "#007c91", "#e0f2f5", "#2f855a", "#e6f3eb", "#c05621", "#fcecdf", "#f4f8f8"
     ),
@@ -158,7 +161,10 @@ def setup_figure(title: str, subtitle: str, size=(16, 9), module: str | None = N
     axis.add_patch(Rectangle((0.0, 0.986), 0.76, 0.014, color=theme["primary"], zorder=10))
     axis.add_patch(Rectangle((0.76, 0.986), 0.24, 0.014, color=theme["secondary"], zorder=10))
     figure.text(0.045, 0.95, title, color=theme["ink"], fontsize=22, fontweight="bold", va="top")
-    figure.text(0.045, 0.905, subtitle, color=theme["muted"], fontsize=10.5, va="top")
+    # HH_260810 - Compact GIF canvases need more title/subtitle separation than
+    # the 16:9 PNG pages; keep both lines readable without moving panel tracks.
+    subtitle_y = 0.865 if size[1] <= 5.0 else 0.905
+    figure.text(0.045, subtitle_y, subtitle, color=theme["muted"], fontsize=10.5, va="top")
     return figure, axis
 
 
@@ -2508,6 +2514,464 @@ def render_platform(repo_root: Path, output_root: Path):
     save_figure(figure, output_root / "platform" / "ranger-command-and-status.png")
 
 
+# HH_260810 - Make the process-lifetime package visible using its source-owned
+# cleanup order and measured full-simulation shutdown record.
+def render_runtime(repo_root: Path, output_root: Path):
+    """Render scoped component ownership and measured shutdown containment."""
+    source_path = repo_root / "camrod_runtime/src/scoped_component_container.cpp"
+    source = source_path.read_text(encoding="utf-8")
+    required_tokens = (
+        "std::make_shared<rclcpp::Context>()",
+        "rclcpp::uninstall_signal_handlers()",
+        "detach_components_and_release_loaders()",
+        "executor_options.context.reset()",
+        "std::_Exit(exit_code)",
+    )
+    missing = [token for token in required_tokens if token not in source]
+    if missing:
+        raise ValueError(f"camrod_runtime cleanup contract is stale: {missing}")
+
+    evidence_path = (
+        repo_root
+        / "docs/evidence/v2.1.5/runtime-topology/"
+        "amd64-scoped-container-shutdown-20260805.json"
+    )
+    evidence = load_json(evidence_path)
+    final_runs = evidence["final_runs"]
+    clean_runs = sum(
+        run["system_ok"]
+        and run["clean_component_containers"] == 6
+        and run["process_failures"] == 0
+        for run in final_runs
+    )
+    default_run = evidence["default_argument_run"]
+    release_run = evidence["release_candidate_run"]
+
+    figure, axis = setup_figure(
+        "Scoped ROS component-container lifetime",
+        "Explicit context ownership, ordered teardown, and measured AMD64 full-simulation containment",
+        module="runtime",
+    )
+    stages = (
+        ("1. Context", "one explicit ROS context"),
+        ("2. Components", "manager + plugin loaders"),
+        ("3. Spin", "shared executor context"),
+        ("4. Signal join", "finish deferred handler"),
+        ("5. Detach", "callback groups + nodes"),
+        ("6. Cleanup", "executor + context refs"),
+        ("7. Exit", "flush then _Exit"),
+    )
+    for index, (title, description) in enumerate(stages):
+        x = 0.035 + index * 0.137
+        draw_box(
+            axis,
+            x,
+            0.61,
+            0.116,
+            0.17,
+            title,
+            (description,),
+            face=BLUE_BG if index < 3 else GREEN_BG,
+            edge=BLUE if index < 3 else GREEN,
+            title_color=BLUE if index < 3 else GREEN,
+            title_size=8.8,
+            body_size=7.1,
+        )
+        if index < len(stages) - 1:
+            draw_arrow(axis, (x + 0.116, 0.695), (x + 0.134, 0.695))
+
+    draw_box(
+        axis,
+        0.045,
+        0.32,
+        0.42,
+        0.19,
+        "Measured AMD64 simulation",
+        (
+            f"final topology runs: {clean_runs}/{len(final_runs)} SYSTEM OK + clean 6-container exit",
+            f"default-argument run: {default_run['containers_cleanly_finished']}/{default_run['containers_started']} clean",
+            f"release-candidate run: exit {release_run['top_level_exit_code']}, failures {release_run['process_failures']}",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.495,
+        0.32,
+        0.46,
+        0.19,
+        "Composition scope",
+        (
+            "single-threaded: checker and system-core fault domains",
+            "multi-threaded: Nav2 planner/controller and sensor hot paths",
+            "public ROS callbacks, mission states, and commands are unchanged",
+        ),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+    )
+    draw_box(
+        axis,
+        0.045,
+        0.105,
+        0.91,
+        0.12,
+        "Evidence boundary",
+        (
+            "Process teardown containment is measured on AMD64 full simulation. Jetson CPU/PSS/GPU and physical sensor/CAN behavior remain field-pending.",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(
+        figure,
+        "SOURCE + MEASURED AMD64 SIM: docs/evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json",
+    )
+    save_figure(figure, output_root / "runtime" / "scoped-component-lifecycle.png")
+    render_runtime_lifecycle_gif(stages, clean_runs, len(final_runs), output_root / "runtime" / "scoped-component-lifecycle.gif")
+
+
+def render_runtime_lifecycle_gif(stages, clean_runs: int, run_count: int, output: Path):
+    """Animate the source-owned teardown order with its measured verdict."""
+    frames = []
+    for active_index, _ in enumerate(stages):
+        figure, axis = setup_figure(
+            "Scoped component lifecycle",
+            "SOURCE ORDER + MEASURED AMD64 SIM VERDICT",
+            size=(12, 4.8),
+            module="runtime",
+        )
+        for index, (title, description) in enumerate(stages):
+            x = 0.035 + index * 0.137
+            active = index == active_index
+            draw_box(
+                axis,
+                x,
+                0.48,
+                0.116,
+                0.22,
+                title,
+                (description,),
+                face=GREEN_BG if active else WHITE,
+                edge=GREEN if active else "#9aaab2",
+                title_color=GREEN if active else INK,
+                linewidth=2.6 if active else 1.0,
+                title_size=8.3,
+                body_size=6.8,
+            )
+            if index < len(stages) - 1:
+                draw_arrow(axis, (x + 0.116, 0.59), (x + 0.134, 0.59))
+        draw_box(
+            axis,
+            0.20,
+            0.18,
+            0.60,
+            0.13,
+            "Measured shutdown verdict",
+            (
+                f"{clean_runs}/{run_count} final AMD64 simulation runs: SYSTEM OK, six clean containers, zero process failures",
+            ),
+            face=BLUE_BG,
+            edge=BLUE,
+            title_color=BLUE,
+            title_size=9.2,
+            body_size=7.5,
+        )
+        footer(
+            figure,
+            f"Cleanup stage {active_index + 1}/{len(stages)} | Jetson and physical behavior remain field-pending.",
+        )
+        buffer = BytesIO()
+        figure.savefig(buffer, format="png", dpi=100, facecolor=figure.get_facecolor())
+        plt.close(figure)
+        buffer.seek(0)
+        frames.append(Image.open(buffer).convert("P", palette=Image.Palette.ADAPTIVE))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frames[0].save(
+        output,
+        save_all=True,
+        append_images=frames[1:],
+        duration=800,
+        loop=0,
+        optimize=True,
+    )
+
+
+def package_evidence_records(repo_root: Path):
+    """Build package-level claims from current source and committed evidence."""
+    road = load_json(
+        repo_root
+        / "docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/"
+        "road-sim-summary.json"
+    )
+    localization = load_json(
+        repo_root
+        / "docs/evidence/module-guides/localization/pose-chain-sim-20260804.json"
+    )
+    runtime = load_json(
+        repo_root
+        / "docs/evidence/v2.1.5/runtime-topology/"
+        "amd64-scoped-container-shutdown-20260805.json"
+    )
+    service = load_json(
+        repo_root
+        / "docs/assets/test_result/v2-1-5-service-validation-20260807/"
+        "repeated-service-soak.json"
+    )
+    selected_pose = next(
+        topic for topic in localization["topics"] if topic["name"] == "selected_pose"
+    )
+    service_soak = next(
+        check for check in service["checks"] if check["name"] == "repeated_service_soak"
+    )
+    message_count = len(tuple((repo_root / "camrod_common/avg_msgs/msg").glob("*.msg")))
+    service_count = len(tuple((repo_root / "camrod_common/avg_msgs/srv").glob("*.srv")))
+    clean_runtime_runs = sum(
+        run["system_ok"]
+        and run["clean_component_containers"] == 6
+        and run["process_failures"] == 0
+        for run in runtime["final_runs"]
+    )
+
+    if road["field_claim"] or not road["mission_completed"]:
+        raise ValueError("current road evidence classification is invalid")
+    if localization["status"] != "OK" or selected_pose["status"] != "OK":
+        raise ValueError("localization simulation evidence is not OK")
+    if not service["overall_pass"] or not service_soak["success"]:
+        raise ValueError("service simulation evidence is not a PASS")
+
+    return (
+        {
+            "module": "bringup",
+            "package": "camrod_bringup",
+            "technology": "Full-stack service orchestration",
+            "label": "MEASURED ROS SIM",
+            "observed": "map-v17 B2 route completed after bounded recovery",
+            "remaining": "physical full-service acceptance",
+        },
+        {
+            "module": "common",
+            "package": "avg_msgs",
+            "technology": "Shared typed ROS contracts",
+            "label": "SOURCE INVENTORY",
+            "observed": f"{message_count} messages, {service_count} services, generated runtime types",
+            "remaining": "simulation is not an interface-definition proof",
+        },
+        {
+            "module": "control",
+            "package": "camrod_control",
+            "technology": "Final authorization + boundary recovery",
+            "label": "MEASURED ROS SIM",
+            "observed": "body clear, planning cost 100, reverse-yaw, route complete",
+            "remaining": "physical traction and clearance",
+        },
+        {
+            "module": "localization",
+            "package": "camrod_localization",
+            "technology": "GNSS/IMU/wheel EKF pose chain",
+            "label": "MEASURED ROS SIM",
+            "observed": f"selected pose {selected_pose['rate_hz']:.3f} Hz, p95 age {selected_pose['header_age_ms']['p95']:.2f} ms",
+            "remaining": "moving RTK accuracy and vibration",
+        },
+        {
+            "module": "map",
+            "package": "camrod_map",
+            "technology": "Lanelet2 route and safety cost",
+            "label": "MEASURED ROS SIM",
+            "observed": "map-v17 route 2751->2720->2744->2690 executed",
+            "remaining": "site road-width survey; map unchanged here",
+        },
+        {
+            "module": "perception",
+            "package": "camrod_perception",
+            "technology": "LiDAR obstacles + YOLO/fusion/AprilTag",
+            "label": "SIM RUNTIME CAPTURE",
+            "observed": "LiDAR obstacle/bbox surface observed in full simulation",
+            "remaining": "physical TensorRT YOLO, fusion, tag accuracy",
+        },
+        {
+            "module": "planning",
+            "package": "camrod_planning",
+            "technology": "LaneletRoute + Nav2 RPP ownership",
+            "label": "MEASURED ROS SIM",
+            "observed": "retained route resumed and reached goal after hold",
+            "remaining": "new-site map width and field tracking",
+        },
+        {
+            "module": "platform",
+            "package": "camrod_platform",
+            "technology": "Dual-Ackermann status + geometry",
+            "label": "MEASURED ROS SIM",
+            "observed": "normalized fake status and current contour poses observed",
+            "remaining": "CAN steering/drive/BMS timing",
+        },
+        {
+            "module": "runtime",
+            "package": "camrod_runtime",
+            "technology": "Scoped component process lifetime",
+            "label": "MEASURED AMD64 SIM",
+            "observed": f"{clean_runtime_runs}/{len(runtime['final_runs'])} runs: six clean containers, zero failures",
+            "remaining": "Jetson CPU/PSS/GPU lifecycle",
+        },
+        {
+            "module": "sensing",
+            "package": "camrod_sensing",
+            "technology": "Sensor preprocessing + cost fusion",
+            "label": "SIM RUNTIME CAPTURE",
+            "observed": "fake LiDAR/radar/GNSS/IMU outputs and cost layers observed",
+            "remaining": "physical radar noise and sensor rates",
+        },
+        {
+            "module": "sensor-kit",
+            "package": "camrod_sensor_kit",
+            "technology": "Robot-center TF + exact body contour",
+            "label": "SOURCE + MEASURED SIM",
+            "observed": "30-point body/planning contours replayed over 511 poses",
+            "remaining": "fabrication and sensor-mount survey",
+        },
+        {
+            "module": "system",
+            "package": "camrod_system",
+            "technology": "Graph readiness + diagnostic severity",
+            "label": "MEASURED AMD64 SIM",
+            "observed": f"SYSTEM OK and clean shutdown in {clean_runtime_runs}/{len(runtime['final_runs'])} final runs",
+            "remaining": "Jetson load and physical checker thresholds",
+        },
+        {
+            "module": "ui",
+            "package": "camrod_ui",
+            "technology": "Robot/Guest mission-state surfaces",
+            "label": "MEASURED ROS SIM",
+            "observed": f"service lifecycle {service_soak['metrics']['cycles_completed']}/{service_soak['metrics']['cycles_requested']} cycles without restart",
+            "remaining": "Jetson renderer frame pacing",
+        },
+        {
+            "module": "voice",
+            "package": "camrod_voice",
+            "technology": "State-event priority audio queue",
+            "label": "SIM RUNTIME CAPTURE",
+            "observed": "event adapter and playback surface observed",
+            "remaining": "speaker loudness, Bluetooth delay, audibility",
+        },
+    )
+
+
+def render_package_evidence_matrix(repo_root: Path, output_root: Path):
+    """Render one honest package-by-package technology evidence summary."""
+    records = package_evidence_records(repo_root)
+    figure, axis = setup_figure(
+        "Package technology evidence matrix",
+        "What simulation/source evidence proves today, and what still requires the robot or site",
+        module="bringup",
+    )
+    for index, record in enumerate(records):
+        column = index // 7
+        row = index % 7
+        x = 0.045 + column * 0.475
+        y = 0.765 - row * 0.104
+        theme = module_theme(record["module"])
+        draw_box(
+            axis,
+            x,
+            y,
+            0.435,
+            0.087,
+            f"{record['package']} | {record['label']}",
+            (
+                record["technology"],
+                f"observed: {record['observed']}",
+                f"pending: {record['remaining']}",
+            ),
+            face=theme["primary_bg"],
+            edge=theme["primary"],
+            title_color=theme["primary"],
+            linewidth=1.45,
+            title_size=8.6,
+            body_size=6.8,
+        )
+    footer(
+        figure,
+        "CURRENT SOURCE + COMMITTED SIM EVIDENCE. Package-level observation is not physical-site acceptance; map width remains user-owned follow-up.",
+    )
+    save_figure(figure, output_root / "bringup" / "package-technology-evidence.png")
+    render_package_evidence_gif(records, output_root / "bringup" / "package-technology-evidence.gif")
+
+
+def render_package_evidence_gif(records, output: Path):
+    """Show each package claim and evidence limit in a readable GIF frame."""
+    frames = []
+    for index, record in enumerate(records):
+        figure, axis = setup_figure(
+            f"{record['package']}: simulation evidence",
+            f"PACKAGE {index + 1}/{len(records)} | {record['label']}",
+            size=(12, 7.2),
+            module=record["module"],
+        )
+        draw_box(
+            axis,
+            0.09,
+            0.60,
+            0.82,
+            0.15,
+            "Technology",
+            (record["technology"],),
+            face=BLUE_BG,
+            edge=BLUE,
+            title_color=BLUE,
+            title_size=11,
+            body_size=9.5,
+        )
+        draw_box(
+            axis,
+            0.09,
+            0.36,
+            0.82,
+            0.15,
+            "Observed evidence",
+            (record["observed"],),
+            face=GREEN_BG,
+            edge=GREEN,
+            title_color=GREEN,
+            title_size=11,
+            body_size=9.5,
+        )
+        draw_box(
+            axis,
+            0.09,
+            0.12,
+            0.82,
+            0.15,
+            "Not proven by this evidence",
+            (record["remaining"],),
+            face=AMBER_BG,
+            edge=AMBER,
+            title_color=AMBER,
+            title_size=11,
+            body_size=9.5,
+        )
+        footer(
+            figure,
+            "Evidence labels stay narrow: simulation/runtime presence never substitutes for physical accuracy or safety acceptance.",
+        )
+        buffer = BytesIO()
+        figure.savefig(buffer, format="png", dpi=100, facecolor=figure.get_facecolor())
+        plt.close(figure)
+        buffer.seek(0)
+        frames.append(Image.open(buffer).convert("P", palette=Image.Palette.ADAPTIVE))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frames[0].save(
+        output,
+        save_all=True,
+        append_images=frames[1:],
+        duration=1100,
+        loop=0,
+        optimize=True,
+    )
+
+
 def render_system(repo_root: Path, output_root: Path):
     """Render graph checks, diagnostic aggregation, and severity semantics."""
     checker = ros_params(repo_root / "camrod_system/config/system_checker.yaml", "/system/system_checker")
@@ -2707,7 +3171,7 @@ def render_voice(repo_root: Path, output_root: Path):
 
 def main():
     """Render every module guide from configs and committed evidence."""
-    default_root = Path(__file__).resolve().parents[2]
+    default_root = Path(__file__).resolve().parents[3]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=default_root)
     parser.add_argument("--output-root", type=Path)
@@ -2726,6 +3190,7 @@ def main():
             "planning",
             "perception",
             "platform",
+            "runtime",
             "sensing",
             "sensor-kit",
             "system",
@@ -2763,6 +3228,7 @@ def main():
             "planning",
             "perception",
             "platform",
+            "runtime",
             "sensing",
             "sensor-kit",
             "system",
@@ -2774,6 +3240,7 @@ def main():
         render_bringup_contract(repo_root, output_root)
         render_bringup_evidence(repo_root, bringup_report, output_root)
         render_field_stationary_report(field_report, output_root)
+        render_package_evidence_matrix(repo_root, output_root)
     if "common" in selected_modules:
         render_common(repo_root, output_root)
     if "control" in selected_modules:
@@ -2788,6 +3255,8 @@ def main():
         render_perception(repo_root, output_root)
     if "platform" in selected_modules:
         render_platform(repo_root, output_root)
+    if "runtime" in selected_modules:
+        render_runtime(repo_root, output_root)
     if "sensing" in selected_modules:
         render_sensing(repo_root, output_root)
     if "sensor-kit" in selected_modules:

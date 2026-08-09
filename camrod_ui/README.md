@@ -58,11 +58,19 @@ while users may be unloading.
 | Health | System OK, warning, error | `/system/status` and aggregated diagnostics |
 | Battery | Ready/block/charging and SOC | `/platform/status` |
 
-Manual engage uses the same command-gate state and therefore displays driving
-even when no campsite destination was selected. Operator stop publishes
-`OPERATOR_STOPPED`; a previous planning warning is not the operation label.
-The active campsite ID is retained separately from the transient destination
-ack, so arrival notifications still identify the selected site after departure.
+<!-- HH_260810 - Separate boot readiness from every mission/goal source. -->
+`INITIALIZING -> READY` requires healthy configured modules, a usable planning
+action server/state, normal localization with `map -> robot_center_link`, a
+healthy command gate, and platform feedback. It does **not** require an RViz
+goal, campsite destination, path, or `/service/state` mission transition. A
+`0.5 s` authoritative WebSocket heartbeat repairs startup snapshot ordering, so
+the UI cannot remain stale until the next goal event. Manual RViz goals and
+campsite goals enter the same post-ready mission-phase policy.
+
+Operator stop publishes `OPERATOR_STOPPED`; a previous planning warning is not
+the operation label. The active campsite ID is retained separately from the
+transient destination ack, so arrival notifications still identify the
+selected site after departure.
 
 ## Actual Browser Runtime
 
@@ -78,6 +86,7 @@ running ROS backend, not generated UI mockups.
 | Integration check | Result |
 |---|---|
 | Initial state | `80%` SOC, ready, 13 sites |
+| Goal-independent startup | No RViz/UI goal published; planning `WAIT_DZ`, UI `ready=true`, `mission_phase=READY` |
 | Destination | Mission key and departure/moving state observed |
 | Return | Return state and `MotionOperation.RETURN` observed |
 | Safety | `ROUTE_SAFETY_HOLD` overlay observed |

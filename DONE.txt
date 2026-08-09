@@ -1,8 +1,8 @@
 CAMROD 구현·검증 완료 기록
-작업 기준 버전: v2.1.5
-정리일: 2026-08-06 (Asia/Seoul)
+작업 기준 버전: v2.1.7
+정리일: 2026-08-10 (Asia/Seoul)
 
-# HH_260730 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
+# HH_260810 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
 # 보존한다. 실차 PASS가 아닌 결과를 실차 완료로 오해하지 않도록 증거
 # 수준을 명시한다.
@@ -27,7 +27,7 @@ CAMROD 구현·검증 완료 기록
   해석하지 않는다.
 
 릴리스 기준점
-- branch/tag: develop / v2.1.5
+- branch/tag: develop / v2.1.7
 - 이전 v2.1.4 tag commit: f83975d5e
 - v2.1.5 tag: 이 문서, 코드, 설정, 테스트 및 생성 자산을 포함하는 최종
   release commit을 가리킨다.
@@ -46,6 +46,28 @@ CAMROD 구현·검증 완료 기록
   - b0e10814 feat(platform): publish steering transition evidence
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
+
+0D. HH_260810 v2.1.7 경계·UI·증거 도구 정리 [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- 하나의 sensor-kit 생성기가 전방 짧은 면, `0.12 m` 사선 shoulder와
+  `R0.05 m` 모서리를 가진 30점 physical contour를 만들고, exact `0.10 m`
+  offset planning contour를 platform marker/topic, control hard stop/fallback,
+  Nav2 local/global footprint에 동일하게 공급하도록 동기화했다.
+- map-v17 B2 ROS simulation 511 pose/`29.700 s`에서 physical cost-100 접촉 0,
+  planning 접촉 1, `REVERSE_YAW_RIGHT`, `0.0972 m` 이동, `-4.545 deg` yaw,
+  재접촉 hold 0, 원 route 완료와 final zero를 구조화 JSON/PNG/GIF로 확인했다.
+- UI 초기화는 goal 유무가 아니라 sensor/localization/planning/control/platform
+  준비 상태로 결정한다. goal을 보내지 않은 final full graph에서
+  `[SYSTEM] OK`, `ready=true`, `mission_phase=READY`, 진단 error 0과 clean SIGINT를
+  확인했다.
+- 14개 패키지의 기술 주장을 measured ROS/AMD64 SIM, runtime capture,
+  source inventory, field-pending으로 구분한 PNG/GIF를 추가했다. cross-package
+  offline renderer 9개는 `camrod_bringup/scripts/visualization/`에 모으고 live
+  path/radar/speed 도구는 소유 패키지에 유지했다. `util/`, copy, external,
+  disabled 파일은 변경하지 않았다.
+- canonical `colcon_build.sh`로 7개 영향 패키지를 빌드했다. bringup 26,
+  planning 10, platform 3, control 2, runtime 1의 CTest target과 UI 32/32가
+  error/failure 0으로 통과했다. 지도 폭 실측/수정과 Jetson/실차 검증은
+  TODOLIST에 남겼다.
 
 0C. HH_260806 map-v16 campsite 명령 순서 [DONE-CODE, DONE-SIM, FIELD-PENDING]
 - B1-B10은 `turnaround`, B11-B13은 `roadside_stop`으로 planning package와

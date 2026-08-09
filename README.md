@@ -9,9 +9,11 @@ left-antenna lever arm and heading-aware center correction. -->
 1.1 m preview/route-snap return acceptance. -->
 <!-- HH_260807 - Synchronize the v2.1.6 field contract: GNSS 5 Hz, localization
 20 Hz, LiDAR 10 Hz, 2 km/h cruise, 10 cm boundary, and bounded recovery retries. -->
+<!-- HH_260810 - Publish the v2.1.7 shared tapered/rounded boundary,
+goal-independent UI readiness, reproducible package evidence, and tool layout. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.6`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.1.7`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
 
@@ -33,14 +35,17 @@ paths. This is not a generated diagram or a real-robot field claim.
 
 ## Current Values
 
+<!-- HH_260809 - Record the shared tapered-front, rounded-corner boundary
+contract used by visualization, Nav2, and the final command safety gate. -->
+
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
 | GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most 3 s without making GNSS yaw valid |
 | GNSS receiver cadence | `5 Hz` (`200 ms` epoch) | Rover is configured on launch; moving-base epoch/link acceptance remains a physical test |
 | Localization pose cadence | `20 Hz` | EKF predicts between GNSS corrections; this is not a claim that GNSS itself publishes at 20 Hz |
-| Physical body boundary | `1.39160 x 1.07000 m` | Cost-100 overlap stops ordinary motion; only a monotonic inward, swept-body-clear escape may be projected |
-| Planning boundary | `1.59160 x 1.27000 m` | Physical body plus `0.10 m` on all four sides; endpoint planning clearance remains mandatory for escape |
+| Physical body boundary | `1.39160 x 1.07000 m` bounding extents | Tapered front (`0.12 m` side inset over `0.12 m` depth), six rounded corners (`R0.05 m`); cost-100 overlap stops ordinary motion |
+| Planning boundary | `1.59160 x 1.27000 m` bounding extents | Exact `0.10 m` parallel offset of the body contour (`R0.15 m`); endpoint planning clearance remains mandatory for escape |
 | Base platform dimensions | `1.19160 x 0.87000 m` | Chassis-only value retained separately from the fabrication-inclusive collision envelope |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
 | Hard safety stop | `<= 20%` | Final command output is stopped |
@@ -65,15 +70,46 @@ paths. This is not a generated diagram or a real-robot field claim.
 Configured values are not performance measurements. Package tables below mark
 runtime evidence separately.
 
+## Current Boundary Visual
+
+<!-- HH_260810 - Show the active source-derived contour and its rigid-body
+motion separately from historical rectangular runtime evidence. -->
+
+![Current tapered rounded boundary](docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Current boundary forward curve crab and zero-turn motion](docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+The PNG is generated from `camrod_sensor_kit/config/robot_params.yaml` and must
+match both Nav2 footprints. The GIF shows rigid transforms around
+`robot_center_link`; it is not a ROS collision/recovery or physical-drive PASS.
+See the [source-derived record](docs/assets/test_result/tapered-rounded-boundary-20260810/README.md).
+
+### Measured Road Simulation
+
+<!-- HH_260810 - Show the same current contour on a measured ROS road run while
+keeping physical-road acceptance explicitly out of scope. -->
+
+![Current boundary on measured map-v17 road simulation](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Drive contact recovery and completion timeline](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+The [measured ROS simulation record](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+contains 511 poses from a `29.700 s` B2 run. The physical body remained clear,
+the planning contour reached cost 100, bounded `REVERSE_YAW_RIGHT` moved
+`0.0972 m` with `-4.545 deg` yaw change, and the original route completed with
+no second hold. This is not physical-road evidence.
+
 ## Latest Evidence
 
 | Check | Result | Scope |
 |---|---|---|
+| Current tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| Final changed-package build/tests | **PASS** | Canonical wrapper rebuilt 5 packages; 37 CTest targets and 303 package-report cases passed with 0 errors/failures, 8 planning cppcheck skips; direct UI 30/30 |
+| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 7 packages; 42 registered CTest targets passed with 0 errors/failures; direct UI 32/32 |
+| Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
 | Current map-v17 contract | **PASS** | Active/copy OSM SHA synchronized; 55 lanelets, 14 areas, 1,652 nodes |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
@@ -91,6 +127,19 @@ runtime evidence separately.
 | B1-B10 turnaround | **SIM PASS (10/10)** | All ten map-derived lateral entries (`1.79-5.31 m`) completed full round trips with maneuver-exclusive command ownership |
 | B11-B13 roadside | **ARRIVAL SIM PASS; RETURN UNRESOLVED** | Each site stopped at `WAIT_RETURN` after a capped `0.60 m` crab; no RETURN was issued |
 | Physical Ranger/sensors/audio | **FIELD PENDING** | Jetson and real-robot measurements are still required |
+
+### Package Technology Proof
+
+<!-- HH_260810 - Summarize package claims by evidence class so simulation
+presence is not confused with physical accuracy or field safety acceptance. -->
+
+![Package technology evidence matrix](docs/assets/module-guides/bringup/package-technology-evidence.png)
+
+![Package-by-package simulation evidence](docs/assets/module-guides/bringup/package-technology-evidence.gif)
+
+The matrix separates `MEASURED ROS SIM`, `MEASURED AMD64 SIM`, runtime capture,
+source inventory, and field-pending claims for all 14 CAMROD packages. The map
+width remains intentionally unchanged for the later site survey/update.
 
 ![Measured full-bringup result](docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
 
@@ -128,6 +177,7 @@ runtime evidence separately.
 | [`camrod_planning`](camrod_planning/README.md) | Nav2, Lanelet routing, goal snapping, and mission state | Servers, selectors, and ownership handoffs |
 | [`camrod_control`](camrod_control/README.md) | Final command gate, local maneuvers, parking, and recovery | Footprint safety and measured recovery |
 | [`camrod_platform`](camrod_platform/README.md) | Ranger command/feedback and normalized platform status | Steering transition and CAN/BMS bridge |
+| [`camrod_runtime`](camrod_runtime/README.md) | Scoped ROS component contexts and deterministic process teardown | Source cleanup order and measured AMD64 simulation shutdown |
 | [`camrod_system`](camrod_system/README.md) | Diagnostics, graph readiness, and health summary | Severity and operator-state separation |
 | [`camrod_ui`](camrod_ui/README.md) | Robot/Guest HTTP backends and browser interfaces | Shared mission/state contract |
 | [`camrod_voice`](camrod_voice/README.md) | Event-to-audio policy and priority playback | Event and priority flow |
@@ -162,10 +212,10 @@ pending, and `DROP_ZONE_WAIT` when parked without charge feedback.
 ## Build And Run
 
 ```bash
-cd ~/camrod_ws
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
-source install/setup.bash
+cd ~/camrod_ws/src
+./setup_camrod.sh       # first host setup or dependency refresh
+./colcon_build.sh       # canonical Release build and install synchronization
+source ../install/setup.bash
 
 # Simulation with the operator RViz profile
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
@@ -182,7 +232,9 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
-| [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Current sensor cadence, motion/boundary policy, visualization, and remaining field acceptance |
+| [Current tapered/rounded road simulation](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
+| [v2.1.7 release notes](docs/V2_1_7_RELEASE_NOTES.md) | Current boundary, UI readiness, package evidence, tool ownership, build, and verification |
+| [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Previous sensor cadence, motion/boundary policy, visualization, and field acceptance baseline |
 | [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Previous baseline and its exact historical evidence |
 | [v2.1.5 field handoff](camrod_bringup/docs/v2_1_5_field_handoff_20260808.md) | Other-PC start, TODO crosswalk, and physical test order |
 | [v2.1.5 service evidence](docs/assets/test_result/v2-1-5-service-validation-20260807/README.md) | Repeated service, obstacle, boundary JSON/log/PNG/GIF and limits |

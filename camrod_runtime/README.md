@@ -3,6 +3,20 @@
 `camrod_runtime` contains process-level helpers shared by composed CAMROD
 modules. It does not implement robot behavior.
 
+<!-- HH_260810 - Expose the package's process-lifetime technology with a
+source-bound diagram and measured AMD64 simulation shutdown record. -->
+
+![Scoped component-container lifetime](../docs/assets/module-guides/runtime/scoped-component-lifecycle.png)
+
+![Scoped component cleanup order](../docs/assets/module-guides/runtime/scoped-component-lifecycle.gif)
+
+| Evidence | Result |
+|---|---|
+| Source contract | One explicit context, joined signal handler, detached callback groups, retained loaders, explicit executor/context cleanup, process-exit containment |
+| Final AMD64 simulation runs | `3/3` reached `SYSTEM OK`; all six component containers exited cleanly; process failures `0` |
+| Default-argument simulation | `6/6` containers exited cleanly; process failures `0` |
+| Physical/Jetson claim | Not measured; CPU/PSS/GPU and sensor/CAN behavior remain field-pending |
+
 ## Scoped component containers
 
 | Executable | Executor | Intended use |

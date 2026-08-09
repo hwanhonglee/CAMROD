@@ -34,19 +34,43 @@ physical drive. The orange path is the dispatched B6 route.
 | Fake sensor/platform publishers | Exercises message, state, planner, control, and UI contracts | Deterministic simulation topics and normalized platform feedback |
 | Probe and field-test scripts | Captures timing, payload, recovery, and mission evidence | JSON, rosbag, logs, PNG/GIF derived reports |
 
-## Active v2.1.6 Contract
+## Active v2.1.7 Contract
+
+<!-- HH_260809 - Synchronize the full-bringup contract with the shared
+tapered-front rounded body and exact planning offset. -->
 
 | Item | Full-bringup value |
 |---|---:|
 | Physical GNSS / epoch | `5 Hz` / `200 ms` |
 | EKF, selected pose, Nav2 control | `20 Hz` |
 | Straight cruise | final `2.0 km/h` (`0.555556 m/s`) |
-| Body / planning boundary | `1.39160 x 1.07000 m` / `1.59160 x 1.27000 m` |
+| Body / planning boundary | tapered rounded `1.39160 x 1.07000 m` / exact `0.10 m` offset `1.59160 x 1.27000 m` |
 | LiDAR raw and filtered cloud | target `10 Hz`; no preprocessor throttling |
 | Optional LiDAR cost grid | default `OFF` |
 | Recovery release budget | `12` in the `5 s` recontact window; projected-safe inward escape remains eligible at budget |
 | Radar display | `radar_status_gui.py` subscribes to seven real `/range_ros` streams; it does not publish dummy data |
 | Operator window | WebKit fullscreen default |
+
+![Current full-stack body and planning contours](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Full-stack boundary rigid motion](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+<!-- HH_260810 - Expose the active contour and frame motion without presenting
+the source-derived GIF as full-stack runtime recovery evidence. -->
+The [boundary visual record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+is regenerated from package-owned geometry and checked against deployed Nav2
+footprints. Runtime lanelet contact, candidate selection, and release still
+require the separate simulation/field evidence below.
+
+![Measured map-v17 road run with current contours](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Measured road drive contact recovery and completion](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+<!-- HH_260810 - Bind current boundary documentation to one full ROS road run,
+without converting workstation simulation into a physical-road claim. -->
+The [current road-simulation record](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+uses 511 live ROS pose samples over `29.700 s`: physical body clear, planning
+margin cost 100, `REVERSE_YAW_RIGHT`, hold release, and original-route goal.
 
 ## Expected And Measured
 
@@ -60,7 +84,9 @@ The latest full-bringup runtime result is shown separately.
 
 | Check | Result | Measured value |
 |---|---|---:|
+| Current tapered/rounded B2 road run | PASS (MEASURED ROS SIM) | body cost-100 contact no; planning contact yes; `0.0972 m`, `-4.545 deg`; no second hold; route complete |
 | Stack startup | PASS | Fresh isolated map-v17 graph reached `[SYSTEM] OK` |
+| Goal-independent UI startup | PASS | Zero RViz/UI goals; planning `WAIT_DZ`, UI `READY`; 5 authoritative READY frames in 2.2 s |
 | B1 -> B2 -> B3 continuous service | PASS (3/3) | 677.237 s, zero restart; full site/RETURN/drop-zone/parking/charging/next-site lifecycle |
 | B1-B10 service endurance | PASS (10/10) | `2210.611 s`, restart 0; cycle 1 seeded site handoff, cycles 2-10 full charger departure/outbound/RETURN/park/charge |
 | Fixed-lookahead source profile | PASS (2/2) | B1/B2 in 422.848 s, zero restart; obstacle stop/resume, margin recovery, RETURN, park and charge |
@@ -88,14 +114,25 @@ The 2026-08-04 captures are historical map-v14 evidence, the staged map-v15
 records are bound to the v2.1.4 release SHA, and the campsite policy media are
 bound to map-v16. The current synchronized OSM pair is `map_version=17`, SHA
 `8cd05c...5e021`; older results are intentionally not relabeled as current.
-The active fabrication-inclusive
-physical body is `1.39160 x 1.07000 m`, and the planning boundary is
-`1.59160 x 1.27000 m` with `0.10 m` on every side. Physical-body cost 100 stops
+The active fabrication-inclusive physical body has `1.39160 x 1.07000 m`
+bounding extents, a `0.12 m` tapered front shoulder, and `R0.05 m` corners. The
+planning boundary is its exact `0.10 m` parallel offset, with
+`1.59160 x 1.27000 m` extrema and `R0.15 m` corners. Physical-body cost 100 stops
 ordinary motion; a virtual-boundary escape is eligible only while contact
 overlap decreases monotonically and the swept body plus endpoint planning
 footprint remain clear. Dynamic obstacles and interlocks remain fail-closed.
 The current map-v17 continuous-service result separately covers complete
 drop-zone parking, charging feedback, and departure to the next campsite.
+
+![Package technology evidence matrix](../docs/assets/module-guides/bringup/package-technology-evidence.png)
+
+![Package simulation/source evidence limits](../docs/assets/module-guides/bringup/package-technology-evidence.gif)
+
+<!-- HH_260810 - Keep the cross-package evidence verdict beside the full-stack
+runner while retaining package-specific figures in each package README. -->
+The matrix records which package technologies have measured simulation output
+and which remain source-only or field-pending. It does not change the map or
+promote fake sensors into physical acceptance.
 
 ![B7 stop-go diagnosis](../docs/assets/test_result/cmd-vel-stop-go-20260806/b7-stop-go-diagnosis.png)
 
@@ -257,13 +294,19 @@ deployment copies and are covered by synchronization tests.
 | `automatic_route_recovery_probe.py` | Production gate/controller crab, reverse, retry, latch, and final command timeline |
 | `render_automatic_recovery_results.py` | Map-version-checked PNG/GIF from the three recovery timelines |
 | `render_robot_boundary_validation.py` | Consolidated normal-route, margin, and physical-body simulation PNG |
+| `render_tapered_rounded_boundary.py` | Current source-derived body/planning PNG, rigid-motion GIF, coordinates, and SHA manifest |
+| `render_tapered_rounded_road_sim.py` | Current map-v17 ROS poses, gate states, exact contours, recovery result, and PNG/GIF |
 | `render_camping_site_sequence_results.py` | Structured B1-B10 turnaround and B11-B13 roadside-arrival PNG/GIF |
 | `render_v2_1_5_service_results.py` | Repeated-service, obstacle, and B2 recovery JSON -> PNG/GIF |
 | `render_rpp_service_ab.py` | Fixed-versus-scaled RPP service decision JSON -> PNG |
 
 ```bash
-python3 camrod_bringup/scripts/render_module_readme_assets.py
+python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py
+python3 camrod_bringup/scripts/visualization/render_tapered_rounded_boundary.py
+python3 camrod_bringup/scripts/visualization/render_tapered_rounded_road_sim.py
 pytest -q camrod_bringup/test/test_module_readme_assets.py
+python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_boundary_assets.py
+python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 ```
 
 ## Evidence
@@ -276,6 +319,8 @@ pytest -q camrod_bringup/test/test_module_readme_assets.py
 | Released v2.1.3 evidence | `docs/evidence/v2.1.3/` |
 | Map-v14 recovery rerun | [`map-v14-boundary-recovery/`](../docs/evidence/v2.1.3/map-v14-boundary-recovery/) |
 | Map-v15 staged recovery | [`map-v15-boundary-recovery/`](../docs/evidence/v2.1.4/map-v15-boundary-recovery/) |
+| Current boundary geometry/motion | [`tapered-rounded-boundary-20260810/`](../docs/assets/test_result/tapered-rounded-boundary-20260810/) |
+| Current boundary measured road simulation | [`tapered-rounded-boundary-road-sim-20260810/`](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/) |
 | Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/test_result/robot-boundary-adjustment-20260806/) |
 | Current campsite sequencing tests | [`camping-site-sequencing-20260806/`](../docs/assets/test_result/camping-site-sequencing-20260806/) |
 | Current RPP curve-tracking tests | [`rpp-curve-tracking-20260806/`](../docs/assets/test_result/rpp-curve-tracking-20260806/) |

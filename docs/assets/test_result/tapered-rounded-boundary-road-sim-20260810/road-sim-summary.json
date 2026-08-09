@@ -1,0 +1,108 @@
+{
+  "animation": {
+    "frame_count": 80,
+    "frame_duration_ms": 120,
+    "sampling": "32 drive + 20 dense recovery + 28 resumed route"
+  },
+  "automatic_recovery_motion": "REVERSE_YAW_RIGHT",
+  "captured_at_utc": "2026-08-09T17:21:54.062368+00:00",
+  "classification": "MEASURED ROS SIM",
+  "field_claim": false,
+  "final_output": {
+    "angular_z": 0.0,
+    "linear_x": 0.0,
+    "linear_y": 0.0
+  },
+  "first_hold_boundary_classification": {
+    "physical_body": {
+      "available": true,
+      "cost_100_contact": false,
+      "extent_front_rear_left_right_m": [
+        0.70837,
+        0.68323,
+        0.53505,
+        0.53495
+      ],
+      "maximum_cost": 0,
+      "sampled_cells": 648
+    },
+    "planning_boundary": {
+      "available": true,
+      "cost_100_contact": true,
+      "extent_front_rear_left_right_m": [
+        0.80837,
+        0.78323,
+        0.63505,
+        0.63495
+      ],
+      "maximum_cost": 100,
+      "sampled_cells": 873
+    }
+  },
+  "geometry": {
+    "boundary_shape": {
+      "corner_samples": 4,
+      "front_shoulder_depth_m": 0.12,
+      "front_taper_m": 0.12,
+      "physical_corner_radius_m": 0.05,
+      "physical_point_count": 30,
+      "planning_corner_radius_m": 0.15,
+      "planning_point_count": 30
+    },
+    "frame": "robot_center_link",
+    "physical_body_extents_m": {
+      "front": 0.70837,
+      "left": 0.53505,
+      "rear": 0.68323,
+      "right": 0.53495
+    },
+    "planning_boundary_extents_m": {
+      "front": 0.80837,
+      "left": 0.63505,
+      "rear": 0.78323,
+      "right": 0.63495
+    },
+    "planning_margin_m": {
+      "front": 0.1,
+      "left": 0.1,
+      "rear": 0.1,
+      "right": 0.1
+    }
+  },
+  "geometry_source_sha256": {
+    "camrod_planning/config/nav2_vehicle.yaml": "62501c5b9989fd937865e4911e4e5104ec978374155ce10744a703dfceda896d",
+    "camrod_sensor_kit/config/robot_params.yaml": "8022426ce1168442bb87f98af22e2178d5d52042c6db96d29ec9e08e02394c91"
+  },
+  "launch_command": "ROS_DOMAIN_ID=47 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false clean_before_launch:=false",
+  "map": {
+    "map_version": 17,
+    "sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+    "source_file": "lanelet2_maps.osm"
+  },
+  "map_source_sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+  "maximum_recovery_abs_angular_z_radps": 0.05,
+  "maximum_recovery_output_mps": 0.05,
+  "measured_duration_s": 29.7,
+  "milestones_s": {
+    "automatic_recovery_started": 18.109,
+    "first_hold": 18.057,
+    "hold_released": 19.8,
+    "route_completed_after_recovery": 29.357
+  },
+  "mission_completed": true,
+  "pose_samples": 511,
+  "probe_command": "automatic_route_recovery_probe.py --scenario b2_recontact --map lanelet2_maps.osm",
+  "rapid_recontact_latched": false,
+  "recovery_displacement_m": 0.0972,
+  "recovery_yaw_delta_deg": -4.545,
+  "route_lanelet_ids": [
+    2751,
+    2720,
+    2744,
+    2690
+  ],
+  "runtime_record_sha256": "08f7ee19c5832032fd8ef6153f98487f4e1cecee5881ea50ed465547bce42b06",
+  "scenario": "b2_recontact",
+  "schema_version": 1,
+  "second_hold": null
+}
