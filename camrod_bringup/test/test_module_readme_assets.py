@@ -13,12 +13,17 @@ from PIL import Image
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = (
-    SRC_ROOT / "camrod_bringup" / "scripts" / "render_module_readme_assets.py"
+    SRC_ROOT
+    / "camrod_bringup"
+    / "scripts"
+    / "visualization"
+    / "render_module_readme_assets.py"
 )
 AUTOMATIC_RECOVERY_RENDERER = (
     SRC_ROOT
     / "camrod_bringup"
     / "scripts"
+    / "visualization"
     / "render_automatic_recovery_results.py"
 )
 LOCALIZATION_EVIDENCE = (
@@ -95,6 +100,7 @@ CAMROD_READMES = (
     SRC_ROOT / "camrod_perception" / "README.md",
     SRC_ROOT / "camrod_planning" / "README.md",
     SRC_ROOT / "camrod_platform" / "README.md",
+    SRC_ROOT / "camrod_runtime" / "README.md",
     SRC_ROOT / "camrod_sensing" / "README.md",
     SRC_ROOT / "camrod_sensor_kit" / "README.md",
     SRC_ROOT / "camrod_system" / "README.md",
@@ -146,6 +152,10 @@ README_RUNTIME_ASSETS = {
     SRC_ROOT / "camrod_perception" / "README.md": (RUNTIME_CAPTURE_ASSETS[6],),
     SRC_ROOT / "camrod_planning" / "README.md": (RUNTIME_CAPTURE_ASSETS[7],),
     SRC_ROOT / "camrod_platform" / "README.md": RUNTIME_CAPTURE_ASSETS[8:10],
+    SRC_ROOT / "camrod_runtime" / "README.md": (
+        "runtime/scoped-component-lifecycle.png",
+        "runtime/scoped-component-lifecycle.gif",
+    ),
     SRC_ROOT / "camrod_sensing" / "README.md": (RUNTIME_CAPTURE_ASSETS[10],),
     SRC_ROOT / "camrod_sensor_kit" / "README.md": (
         RUNTIME_CAPTURE_ASSETS[11],
@@ -187,6 +197,7 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
     expected_pngs = (
         "bringup/full-stack-mission-contract.png",
         "bringup/field-stationary-report-20260731.png",
+        "bringup/package-technology-evidence.png",
         "bringup/simulation-evidence-20260804.png",
         "common/interface-contract-and-dependencies.png",
         "control/command-safety-and-recovery.png",
@@ -195,6 +206,7 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         "planning/nav2-servers-and-mission-states.png",
         "perception/yolo-lidar-and-parking-pipelines.png",
         "platform/ranger-command-and-status.png",
+        "runtime/scoped-component-lifecycle.png",
         "sensing/sensor-processing-and-cost-fusion.png",
         "sensing/ground-segmentation-schematic.png",
         "sensor-kit/reference-frame-before-after.png",
@@ -221,6 +233,7 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         "perception/yolo-lidar-and-parking-pipelines.png",
         "planning/nav2-servers-and-mission-states.png",
         "platform/ranger-command-and-status.png",
+        "runtime/scoped-component-lifecycle.png",
         "sensing/sensor-processing-and-cost-fusion.png",
         "sensor-kit/reference-frame-before-after.png",
         "system/diagnostic-severity-and-surfaces.png",
@@ -243,6 +256,18 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
     ) as animation:
         assert animation.size == (1200, 480)
         assert animation.n_frames == 10
+        assert animation.format == "GIF"
+    with Image.open(
+        tmp_path / "bringup" / "package-technology-evidence.gif"
+    ) as animation:
+        assert animation.size == (1200, 720)
+        assert animation.n_frames == 14
+        assert animation.format == "GIF"
+    with Image.open(
+        tmp_path / "runtime" / "scoped-component-lifecycle.gif"
+    ) as animation:
+        assert animation.size == (1200, 480)
+        assert animation.n_frames == 7
         assert animation.format == "GIF"
 
 
@@ -274,6 +299,38 @@ def test_renderer_can_target_one_package(tmp_path: Path) -> None:
         "sensing/ground-segmentation-schematic.png",
         "sensing/sensor-processing-and-cost-fusion.png",
     ]
+
+
+def test_visualization_tool_ownership_is_explicit() -> None:
+    """Offline renderers are central while operational tools remain local."""
+    scripts = SRC_ROOT / "camrod_bringup" / "scripts"
+    visualization = scripts / "visualization"
+    assert list(scripts.glob("render_*.py")) == []
+
+    expected = {
+        "render_automatic_recovery_results.py",
+        "render_boundary_recovery_results.py",
+        "render_camping_site_sequence_results.py",
+        "render_module_readme_assets.py",
+        "render_robot_boundary_validation.py",
+        "render_rpp_service_ab.py",
+        "render_tapered_rounded_boundary.py",
+        "render_tapered_rounded_road_sim.py",
+        "render_v2_1_5_service_results.py",
+    }
+    assert {path.name for path in visualization.glob("render_*.py")} == expected
+
+    cmake = (SRC_ROOT / "camrod_bringup" / "CMakeLists.txt").read_text()
+    for filename in expected:
+        assert f"scripts/visualization/{filename}" in cmake
+
+    assert (SRC_ROOT / "camrod_planning/scripts/path_visualizer_node.py").is_file()
+    assert (SRC_ROOT / "camrod_sensing/scripts/radar_status_gui.py").is_file()
+    assert (SRC_ROOT / "camrod_platform/scripts/velocity_kph_gui.py").is_file()
+
+    ownership = (visualization / "README.md").read_text(encoding="utf-8")
+    assert "Files under repository `util/`" in ownership
+    assert "ros2 run camrod_bringup" in ownership
 
 
 def test_renderer_can_target_sensor_kit_without_runtime_evidence(
@@ -438,8 +495,8 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
 
     all_visuals = tuple(asset_root.rglob("*"))
     # HH_260806 - Include the source-derived GNSS left-antenna lever-arm view.
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 46
-    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 8
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 48
+    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 10
 
 
 def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:

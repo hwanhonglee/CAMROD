@@ -35,10 +35,15 @@ RENDERER = (
     SRC_ROOT
     / "camrod_bringup"
     / "scripts"
+    / "visualization"
     / "render_v2_1_5_service_results.py"
 )
 RPP_RENDERER = (
-    SRC_ROOT / "camrod_bringup" / "scripts" / "render_rpp_service_ab.py"
+    SRC_ROOT
+    / "camrod_bringup"
+    / "scripts"
+    / "visualization"
+    / "render_rpp_service_ab.py"
 )
 MAP_SHA256 = "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021"
 

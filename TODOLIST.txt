@@ -1,7 +1,7 @@
-CAMROD v2.1.6 미완료 실차 확인 목록
-갱신일: 2026-08-07 (Asia/Seoul)
+CAMROD v2.1.7 미완료 실차 확인 목록
+갱신일: 2026-08-10 (Asia/Seoul)
 
-# HH_260807 - Keep only unresolved field acceptance here. Move completed
+# HH_260810 - Keep only unresolved v2.1.7 field acceptance here. Move completed
 # implementation, simulation, and measurements to DONE.txt in the same change.
 
 문서 구분
@@ -10,12 +10,14 @@ CAMROD v2.1.6 미완료 실차 확인 목록
 - 다른 PC 인계와 다음 현장 순서:
   camrod_bringup/docs/v2_1_5_field_handoff_20260808.md
 - 실행 명령과 안전 절차: camrod_bringup/docs/field_test_runbook.md
-- 현재 변경과 검증 한계: docs/V2_1_6_RELEASE_NOTES.md
+- 현재 변경과 검증 한계: docs/V2_1_7_RELEASE_NOTES.md
 
 현재 소프트웨어 기준
 - 주행 기준 frame: `robot_center_link`
-- physical body: `1.39160 x 1.07000 m`
-- planning boundary: `1.59160 x 1.27000 m` (사방 `0.10 m`)
+- physical body: tapered front, rounded corner `1.39160 x 1.07000 m`
+  (`front_taper=0.12 m`, `shoulder_depth=0.12 m`, `R0.05 m`)
+- planning boundary: physical contour의 정확한 사방 `0.10 m` offset,
+  `1.59160 x 1.27000 m`, `R0.15 m`
 - 일반 순항: 최종 `2.0 km/h`
 - real EKF/Nav2/local-path: `20 Hz`
 - physical dual-GNSS: launch 설정 `5 Hz` (200 ms epoch, 실차 합격 대기)

@@ -65,7 +65,7 @@ with `run_camping:=true`. Use `camping_stop_at_wait_return:=true` only for
 B11-B13 arrival checks. Regenerate the visual files with:
 
 ```bash
-python3 camrod_bringup/scripts/render_camping_site_sequence_results.py \
+python3 camrod_bringup/scripts/visualization/render_camping_site_sequence_results.py \
   --result-dir docs/assets/test_result/camping-site-sequencing-20260806 \
   --camping-sites camrod_planning/config/camping_sites.yaml
 ```

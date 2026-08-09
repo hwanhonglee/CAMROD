@@ -230,6 +230,10 @@ REQUIRED_SYS_PKGS=(
   python3-serial                    # ublox/radar serial communication.
   python3-tk                        # HH_260807 - Live radar/platform Tk dashboards.
   python3-yaml                      # HH_260720 - camrod_control/camrod_bringup YAML config parsing
+  # HH_260810 - Installed cross-package PNG/GIF evidence renderers.
+  python3-numpy
+  python3-matplotlib
+  python3-pil
   python3-setuptools                # HH_260720 - Python node installation for control/ui
   can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.
   iproute2                          # HH_260629: Provides `ip link` for setup_can0.sh.

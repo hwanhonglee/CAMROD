@@ -37,6 +37,9 @@ recovery candidates, and published an all-zero final command.
 
 ## Active Safety Values
 
+<!-- HH_260809 - Tie hard-stop and planning-margin checks to the same
+tapered-front rounded geometry published by camrod_platform. -->
+
 | Policy | Value | Result |
 |---|---:|---|
 | New campsite mission | `SOC >= 35%` | Departure admitted |
@@ -44,8 +47,10 @@ recovery candidates, and published an all-zero final command.
 | Command timeout | `0.35 s` | Stale command becomes zero |
 | Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; only projected monotonic inward escape on cost 100 |
 | Physical body | left/right `0.53505/0.53495 m` | Fabrication-inclusive `1.07000 m` hard-stop width |
+| Boundary contour | taper/depth `0.12/0.12 m`, physical `R0.05 m` | Short front face, sloped shoulders, rounded six-corner hard-stop polygon |
 | Planning footprint | front/rear `0.80837/0.78323 m` | Body plus `0.10 m` X margin |
 | Planning footprint | left/right `0.63505/0.63495 m` | Body plus `0.10 m` Y margin |
+| Planning contour | exact `0.10 m` offset, `R0.15 m` | Published polygon and pre-topic fallback use identical geometry |
 | Planning polygon frame | `robot_center_link` | Gate consumes local points directly; map-pose callback timing cannot shift the collision envelope |
 | Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
@@ -59,6 +64,16 @@ recovery candidates, and published an all-zero final command.
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
 | Maneuver release hold | `0.5 s` | Final output remains zero before Nav2 may resume |
 | Normal Nav2 rotation/translation | Continuous owner | RotationShim/RPP mode changes do not create an artificial zero handoff |
+
+![Physical hard-stop and planning recovery contours](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Forward curve crab and zero-turn contour motion](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+<!-- HH_260810 - Keep contour transform documentation separate from the gate's
+measured boundary-contact and automatic-recovery evidence below. -->
+Both envelopes follow `robot_center_link` rigidly during forward, curved, crab,
+and zero-turn motion. Candidate collision checks and actual release decisions
+remain runtime control behavior; see the [source-derived geometry record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md).
 
 ## Active Linear-Speed Profile
 
@@ -176,6 +191,20 @@ The [structured result](../docs/assets/test_result/camping-site-sequencing-20260
 keeps the unresolved B11-B13 return geometry explicitly field-pending.
 
 ## Boundary Evidence
+
+<!-- HH_260810 - Put the current tapered/rounded contour on its measured ROS
+gate/recovery timeline instead of relying on older rectangular illustrations. -->
+
+![Current tapered rounded boundary road result](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Current gate hold reverse-yaw release and route completion](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+In this [current measured ROS simulation](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md),
+the physical body sampled 648 clear cells with maximum cost `0`, while the
+873-cell planning contour reached cost `100`. The gate held ordinary output,
+issued bounded `REVERSE_YAW_RIGHT` at no more than `0.05 m/s` and `0.05 rad/s`,
+released after `0.0972 m` of observed motion, and completed the retained route.
+There was no second hold or retry latch; physical-road behavior is unverified.
 
 ![Current B2 recovery repeatability](../docs/assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 

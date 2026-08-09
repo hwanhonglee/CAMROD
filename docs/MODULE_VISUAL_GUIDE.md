@@ -6,6 +6,10 @@ separately, including scoped runtime and the unverified GNSS center contract. --
 simulation and retain its provisional-geometry field caveat. -->
 <!-- HH_260807 - Index the final B1-B10 lifecycle and fixed-preview A/B assets
 with their exact simulation scope and current-map avoidance limitation. -->
+<!-- HH_260810 - Index the active source-derived tapered/rounded geometry and
+rigid-motion media separately from historical rectangular runtime evidence. -->
+<!-- HH_260810 - Add the matching measured map-v17 ROS road replay and preserve
+the distinction between simulation behavior and physical-road acceptance. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -16,7 +20,7 @@ come from ROS topics, controller state, diagnostics, and safety gates.
 |---|---|---|
 | `SOURCE-DERIVED` | Checked-in YAML, messages, launch defaults, and code constants | Topology and displayed values match the repository |
 | `SOURCE INVENTORY` | Files and package manifests | Interface/file/dependency counts match source |
-| `MEASURED SIM` | Committed JSON or raw ROS logs from a running simulation | Listed rates, events, displacement, and state changes were observed in that run |
+| `MEASURED ROS SIM` | Committed JSON or raw ROS logs from a running simulation | Listed rates, events, displacement, and state changes were observed in that run |
 | `MEASURED WORKSTATION` | Repeated process-tree samples on the recorded amd64 host | Relative CPU/PSS/process/rate effects apply to that host and method, not Jetson acceptance |
 | `SIM RUNTIME CAPTURE` | RViz, ROS CLI, or browser connected to a live `sim:=true` graph | The displayed topics/layers/states existed in that run; no physical performance claim |
 | `FIELD REPORT / RAW LOG EXTERNAL` | Committed normalized summary backed by a report that references Jetson-only raw paths | Listed stationary values were reported; the repository cannot independently replay the raw capture |
@@ -47,6 +51,8 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
 | `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
+| `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test_result/tapered-rounded-boundary-20260810/` PNG/GIF | Current sensor-kit geometry, exact C++-equivalent contour generation, and Nav2 local/global footprint match | Shape and rigid transforms are source-derived; runtime collision and field clearance are not claimed |
+| `camrod_bringup` / `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test_result/tapered-rounded-boundary-road-sim-20260810/` PNG/GIF | Raw map-v17 ROS pose/command/gate timeline, current map SHA, exact 30-point contours, summary, and manifest | Physical body clear, planning-only contact, bounded reverse-yaw, same-route completion; physical road pending |
 | `camrod_control` / `camrod_planning` | `test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png` | Five organized raw JSON records plus consolidated result | Fresh current-map normal route, margin stop/crab, and physical no-motion policy pass; field envelope pending |
 | `camrod_control` / `camrod_planning` | `test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png` | Source-profile JSON/logs and SHA manifest | Fixed `1.1 m` completed B1/B2 2/2; scaled preview recontacted in `0.850 s` |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
@@ -54,6 +60,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML + rear-container ownership | LiDAR sim path available; physical YOLO/fusion/tag pending |
 | `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, scoped planner/controller default, state contracts, and footprint sweep | Hybrid Nav2 stopped cleanly 3/3; narrow corridor remains invalid |
 | `camrod_platform` | `ranger-command-and-status.png` | Ranger/visualization YAML | Hardware boundary documented; CAN/actuator timing pending |
+| `camrod_runtime` | `scoped-component-lifecycle.png`, `scoped-component-lifecycle.gif` | Runtime C++ cleanup contract + three final/default AMD64 full-simulation shutdown records | Six-container clean shutdown measured; Jetson resources and physical behavior pending |
 | `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; LiDAR grid is default OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
@@ -64,9 +71,23 @@ Unreferenced raw logs are intentionally excluded from source control.
 
 Package-guide files are under `docs/assets/module-guides/`; structured release
 results are under `docs/assets/test_result/`. The checked-in inventory contains
-**46 PNGs and eight GIFs** under `module-guides`, plus **14 PNGs and three GIFs**
-under `test_result`, for **60 PNGs and 11 GIFs** total. Generated evidence keeps
+**48 PNGs and ten GIFs** under `module-guides`, plus **16 PNGs and five GIFs**
+under `test_result`, for **64 PNGs and 15 GIFs** total. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.
+
+## Package Technology Proof
+
+![Package technology evidence matrix](assets/module-guides/bringup/package-technology-evidence.png)
+
+![Package-by-package evidence scope](assets/module-guides/bringup/package-technology-evidence.gif)
+
+<!-- HH_260810 - Make every package verdict visible without converting source
+inventory, fake sensors, or runtime topic presence into a physical PASS. -->
+The 14-frame GIF gives each package one technology, one observed claim, and one
+explicitly unproven item. `camrod_common/avg_msgs` stays `SOURCE INVENTORY`
+because simulation cannot prove an interface definition; perception, sensing,
+voice, Jetson resources, physical motion, and surveyed road width keep their
+field limits.
 
 ## Historical Runtime Screen Index
 
@@ -118,6 +139,27 @@ the concise raw excerpt are in
 | Localization/system | Physical stationary report | Final pose `14.99 Hz`; CPU `99.26%` | Header-age p95 `352.5 ms`; CPU saturated |
 
 ## Boundary Contact And Recovery
+
+![Current tapered rounded boundary geometry](assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Current boundary rigid motion](assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+The [2026-08-10 visual record](assets/test_result/tapered-rounded-boundary-20260810/README.md)
+is the current shape reference: physical `1.39160 x 1.07000 m`, exact `0.10 m`
+planning offset `1.59160 x 1.27000 m`, and 30 points per contour. Its forward,
+curve, crab, and zero-turn GIF is a source-derived rigid transform, not a ROS
+collision or recovery run. The measured assets below retain their original map,
+geometry, and runtime labels.
+
+![Current tapered rounded map-v17 road simulation](assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Current road drive contact recovery and completion](assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+The [measured map-v17 ROS record](assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+is the current runtime companion to the source-derived shape. Across 511 poses,
+only the planning contour reached cost 100; bounded `REVERSE_YAW_RIGHT` moved
+`0.0972 m`, changed yaw `-4.545 deg`, released the hold, and completed the same
+route. The record explicitly carries `field_claim=false`.
 
 | First complete-footprint contact | Current narrow-route risk |
 |---|---|
@@ -206,14 +248,16 @@ Run from the repository root after changing referenced YAML, messages, code
 constants, or evidence JSON:
 
 ```bash
-python3 camrod_bringup/scripts/render_module_readme_assets.py
+python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py
+python3 camrod_bringup/scripts/visualization/render_tapered_rounded_boundary.py
+python3 camrod_bringup/scripts/visualization/render_tapered_rounded_road_sim.py
 ```
 
 Render one package or a subset:
 
 ```bash
-python3 camrod_bringup/scripts/render_module_readme_assets.py --module control
-python3 camrod_bringup/scripts/render_module_readme_assets.py \
+python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py --module control
+python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py \
   --module sensing --module perception --module ui
 ```
 
@@ -229,6 +273,8 @@ dimensions plus the 10 GIF frames:
 
 ```bash
 pytest -q camrod_bringup/test/test_module_readme_assets.py
+pytest -q camrod_bringup/test/test_tapered_rounded_boundary_assets.py
+pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 ```
 
 The renderer recreates source-derived diagrams only. `SIM RUNTIME CAPTURE`
@@ -258,9 +304,10 @@ camrod_bringup/scripts/field_test_tool.sh record-recovery
 ```
 
 Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
-commit, duration, and pass criteria. The active planning rectangle is
-`1.59160 x 1.27000 m`; sensor housings and swept clearance still require field
-verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
+commit, duration, and pass criteria. The active tapered-front, rounded planning
+polygon has `1.59160 x 1.27000 m` bounding extents and is an exact `0.10 m`
+offset from the body contour; sensor housings and swept clearance still require
+field verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
 the complete simulated lifecycle through parking/charging is recorded separately.
 B11-B13 return geometry and all physical parking/charging acceptance remain
 field-pending.

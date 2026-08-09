@@ -29,7 +29,7 @@ ros2 run camrod_bringup automatic_route_recovery_probe.py \
 Render the committed runs:
 
 ```bash
-python3 camrod_bringup/scripts/render_automatic_recovery_results.py \
+python3 camrod_bringup/scripts/visualization/render_automatic_recovery_results.py \
   --map lanelet2_maps.osm \
   --route docs/evidence/v2.1.4/map-v15-boundary-recovery/route-retry.json \
   --reverse docs/evidence/v2.1.4/map-v15-boundary-recovery/static-reverse-retry.json \

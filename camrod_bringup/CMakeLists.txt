@@ -16,17 +16,24 @@ install(
   PROGRAMS
     # HH_260803 / TODOLIST 12 - Reproduce production-owned boundary recovery.
     scripts/automatic_route_recovery_probe.py
-    scripts/render_automatic_recovery_results.py
+    scripts/visualization/render_automatic_recovery_results.py
     # HH_260806 - Render the body-hard-stop and recoverable-margin runtime proof.
-    scripts/render_robot_boundary_validation.py
+    scripts/visualization/render_robot_boundary_validation.py
+    # HH_260810 - Render the active source-derived tapered/rounded contour and motion.
+    scripts/visualization/render_tapered_rounded_boundary.py
+    # HH_260810 - Overlay that contour on the measured map-v17 ROS road run.
+    scripts/visualization/render_tapered_rounded_road_sim.py
     # HH_260806 - Render B1-B10 turnaround and B11-B13 roadside arrival evidence.
-    scripts/render_camping_site_sequence_results.py
+    scripts/visualization/render_camping_site_sequence_results.py
     # HH_260807 - Render the v2.1.5 repeated-service and safety test reports.
-    scripts/render_v2_1_5_service_results.py
+    scripts/visualization/render_v2_1_5_service_results.py
     # HH_260807 - Render the 3 km/h RPP lookahead full-service A/B decision.
-    scripts/render_rpp_service_ab.py
+    scripts/visualization/render_rpp_service_ab.py
     # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
-    scripts/render_boundary_recovery_results.py
+    scripts/visualization/render_boundary_recovery_results.py
+    # HH_260810 - Install the central package-documentation renderer too;
+    # direct source and ros2-run workflows share one tool inventory.
+    scripts/visualization/render_module_readme_assets.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
@@ -124,6 +131,20 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260810 - Keep dependency setup/build wrappers and maintained shell
+  # entrypoints parseable without executing host, CAN, Docker, or robot actions.
+  ament_add_pytest_test(
+    test_colcon_build_policy
+    test/test_colcon_build_policy.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  ament_add_pytest_test(
+    test_workspace_shell_tools
+    test/test_workspace_shell_tools.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260807 - Every standalone package owns its default config.  Full
   # bringup carries byte-identical deployment mirrors; reject any future file,
   # comment, or value drift across the complete mirrored trees.
@@ -163,6 +184,22 @@ if(BUILD_TESTING)
     test_robot_center_frame_contract
     test/test_robot_center_frame_contract.py
     TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260810 - Keep the source-derived tapered/rounded PNG/GIF synchronized
+  # with sensor-kit geometry and both deployed Nav2 footprints.
+  ament_add_pytest_test(
+    test_tapered_rounded_boundary_assets
+    test/test_tapered_rounded_boundary_assets.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260810 - Keep the map-v17 measured road PNG/GIF synchronized with its
+  # raw ROS timeline and reject accidental physical-road evidence claims.
+  ament_add_pytest_test(
+    test_tapered_rounded_road_sim_assets
+    test/test_tapered_rounded_road_sim_assets.py
+    TIMEOUT 120
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
   # HH_260806 - Prevent the fake WGS84 inverse from masking GNSS lever-arm

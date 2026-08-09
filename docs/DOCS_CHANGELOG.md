@@ -1,5 +1,91 @@
 # Documentation Changelog
 
+<!-- HH_260810 - Publish v2.1.7 after rebuilding the affected packages and
+rerunning source, evidence, shell, UI, and no-goal full-graph verification. -->
+## [v2.1.7-boundary-ui-evidence-release] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Released behavior and verification |
+|---|---|
+| Shared boundary | Uses one 30-point tapered/rounded physical contour and its exact 10 cm offset in sensor-kit, platform, control, and both Nav2 costmaps |
+| Runtime proof | Records 511 map-v17 ROS poses, planning-only contact, `REVERSE_YAW_RIGHT`, `0.0972 m` / `-4.545 deg`, no second hold, route completion, and final zero |
+| UI readiness | Reaches READY from system prerequisites without a manual or campsite goal and re-broadcasts the authoritative state every 0.5 s |
+| Package evidence | Adds a 14-package evidence matrix/GIF and scoped runtime lifecycle PNG/GIF with explicit simulation/source/field labels |
+| Tool ownership | Moves nine offline cross-package renderers under `camrod_bringup/scripts/visualization/`; package-local live tools stay with their runtime owner |
+| Build/setup | Installs renderer dependencies, validates maintained shell entrypoints, rebuilds seven packages, and verifies all nine installed renderer commands |
+| Regression | Passes 42 affected-package CTest targets, direct UI 32/32, evidence pytest 27/27, and a no-goal full graph through clean SIGINT |
+| Map boundary | Leaves `lanelet2_maps.osm`, copy files, and road width unchanged; physical width survey/update remains operator-owned follow-up |
+
+---
+
+<!-- HH_260810 - Record a live ROS map-v17 road replay for the current contour
+without promoting workstation simulation to physical-road evidence. -->
+## [v2.1.7-tapered-rounded-road-sim-visuals] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Measured PNG | Overlays the exact current 30-point body/planning contours on the complete B2 map-v17 ROS route and summarizes contact, recovery, and completion |
+| Measured GIF | Replays 80 frames across drive, planning-margin hold, `REVERSE_YAW_RIGHT`, release, resumed route, and zero-command goal completion |
+| Runtime result | Records 511 poses over `29.700 s`; physical cost-100 contact no, planning contact yes, recovery `0.0972 m` / `-4.545 deg`, no second hold |
+| Provenance | Preserves the raw ROS timeline, map v17 SHA, geometry source hashes, stable summary, and SHA-256 manifest beside the media |
+| Evidence label | Marks the record `MEASURED ROS SIM` with `field_claim=false`; physical clearance and actuator behavior remain field-pending |
+| Regression | Re-renders into a temporary directory and checks current map/geometry, image dimensions, 80 GIF frames, measured values, documentation links, and hashes |
+
+---
+
+<!-- HH_260810 - Record reproducible current-boundary geometry and motion
+visuals without promoting source-derived transforms to simulation evidence. -->
+## [v2.1.7-tapered-rounded-boundary-visuals] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Geometry PNG | Renders the physical `1.39160 x 1.07000 m` `R0.05 m` body and exact `0.10 m` offset `1.59160 x 1.27000 m` `R0.15 m` planning contour |
+| Motion GIF | Shows forward, curved, crab-right, and zero-turn rigid transforms about `robot_center_link` in 48 frames |
+| Provenance | Reads canonical sensor-kit YAML, mirrors `robot_boundary.hpp`, and refuses to render unless generated points match both Nav2 footprints at six decimals |
+| Evidence label | Marks both visuals `SOURCE-DERIVED`; no ROS collision, recovery, or physical-drive PASS is claimed |
+| Documentation | Links the shared PNG/GIF from root, bringup, sensor-kit, platform, planning, control, and the module visual guide |
+| Regression | Regenerates assets in a temporary directory and checks dimensions, frames, geometry metadata, committed-source synchronization, and SHA-256 integrity |
+
+---
+
+<!-- HH_260810 - Record goal-independent UI initialization and the runtime
+snapshot-ordering regression coverage. -->
+## [v2.1.7-goal-independent-ui-readiness] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Initialization ownership | Uses module health, planning availability, localization/TF, command gate, and platform feedback; no manual or campsite goal is required |
+| Callback ordering | Allows readiness to latch when engage/mission callbacks arrive before the final healthy prerequisite instead of requiring a prior idle interval |
+| UI synchronization | Re-broadcasts the authoritative readiness/mission phase every `0.5 s`, repairing an initial WebSocket snapshot race without a goal event |
+| Regression verification | Direct UI suite passes `32/32`; no-goal full bringup reports planning `WAIT_DZ`, UI `ready=true`, and `mission_phase=READY` |
+| Nav2 boundary parse | Keeps the rounded tapered polygon as a single-line string accepted by the Humble footprint parser; package/bringup copies remain identical |
+
+---
+
+<!-- HH_260809 - Record the shared tapered-front rounded boundary and its
+cross-package runtime verification without relabeling historical evidence. -->
+## [v2.1.7-tapered-rounded-boundary] - 2026-08-09 (HH_260809)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Geometry source | Adds one sensor-kit generator for a short front face, `0.12 m` sloped shoulders, and six `R0.05 m` rounded physical corners |
+| Planning offset | Generates the yellow boundary as an exact `0.10 m` parallel offset (`R0.15 m`) while retaining the configured front/rear/left/right extrema |
+| Runtime synchronization | Uses the same contour in platform markers/topic, control hard-stop and pre-topic fallback checks, and Nav2 local/global footprints |
+| Safety meaning | Keeps the cyan physical contour as the hard body limit and the yellow planning-only margin as the projected-recovery limit |
+| Verification | Five selected packages build; native control policy tests pass `71/71`; bringup contract suite passes `172/172` with one pre-existing Matplotlib warning |
+| Evidence boundary | Labels older rectangular screenshots as historical; full ROS simulation and physical four-side clearance remain pending |
+
+---
+
 <!-- HH_260807 - Publish the v2.1.6 active contract while preserving every
 older measurement under its original release and evidence label. -->
 ## [v2.1.6-field-contract-sync] - 2026-08-07 (HH_260807)

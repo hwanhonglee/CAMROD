@@ -39,6 +39,11 @@
   <!-- HH_260730 / TODOLIST 2 - Field probe decodes NvJPEG output independently. -->
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
+  <!-- HH_260810 - Installed documentation/evidence renderers must also run on
+       a fresh sourced workspace, not only inside BUILD_TESTING. -->
+  <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <!-- Launch-time dependencies for fused localization and sensing pipeline. -->
   <exec_depend>camrod_sensor_kit</exec_depend>
   <exec_depend>camrod_runtime</exec_depend>
@@ -58,11 +63,8 @@
   <test_depend>ament_lint_common</test_depend>
   <!-- HH_260722 - Test GNSS launch-default and configuration-mirror synchronization. -->
   <test_depend>ament_cmake_pytest</test_depend>
-  <!-- HH_260729 - Radar/GNSS default synchronization tests parse YAML. -->
-  <test_depend>python3-yaml</test_depend>
-  <!-- HH_260804 - Rebuild and inspect package-level PNG/GIF documentation. -->
-  <test_depend>python3-matplotlib</test_depend>
-  <test_depend>python3-pil</test_depend>
+  <!-- HH_260804 - Runtime dependencies above also rebuild and inspect the
+       package-level PNG/GIF documentation during tests. -->
 
   <export>
     <build_type>ament_cmake</build_type>

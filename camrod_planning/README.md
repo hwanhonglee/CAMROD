@@ -49,14 +49,35 @@ map-v17 continuous-service evidence are shown separately below.
 | Manual RotationShim child lookahead | fixed `2.0 m`; longer field anti-oscillation preview |
 | RPP reverse / rotate-to-heading | disabled / disabled during continuous tracking |
 | Gross start alignment | final gate `75 deg` enter / `5 deg` release; zero linear speed |
-| Physical body boundary | `1.39160 x 1.07000 m` |
-| Nav2 planning footprint | `1.59160 x 1.27000 m` (body plus `0.10 m` each side) |
+| Physical body boundary | `1.39160 x 1.07000 m` extents; `0.12 m` tapered front, `R0.05 m` corners |
+| Nav2 planning footprint | `1.59160 x 1.27000 m` extents; exact `0.10 m` contour offset, `R0.15 m` corners |
 | Obstacle fallback | Width gate, then `ComputePathToPose(SmacLattice)`; preempt only when a safe path exists |
 
 Normal missions construct only policy-reachable planner/controller instances.
 Definitions for every implementation remain in `nav2_base.yaml`; the
 development-only `nav2_{planner,controller}_profiles/all.yaml` files load every
 option when comparison work is needed.
+
+![Current Nav2 tapered rounded footprint](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+
+![Planning footprint motion with robot center](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+
+<!-- HH_260810 - Link the generated contour only after its six-decimal points
+match both local and global Nav2 footprints. -->
+This [source-derived record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+shows the exact 30-point local/global costmap polygon. The motion is a rigid
+transform explanation, not proof that a route or recovery candidate is clear.
+
+![Current contour on the measured map-v17 route](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+
+![Measured planning-margin hold recovery and route resume](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+
+<!-- HH_260810 - Document one current-map Nav2 route with measured ROS poses,
+while leaving physical road clearance as field-pending. -->
+The [road-simulation record](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+shows lanelets `2751 -> 2720 -> 2744 -> 2690`. A planning-only contact paused
+the route, bounded reverse-yaw created clearance, and the same retained route
+reached its goal without a second hold.
 
 ## Nav2 Process Boundary
 
@@ -142,6 +163,7 @@ in explicit `OPERATOR_STOPPED` state.
 
 | Check | Result |
 |---|---|
+| Current tapered/rounded map-v17 road run | 511 ROS poses in `29.700 s`; planning-only contact, `REVERSE_YAW_RIGHT`, hold release, same-route completion; field pending |
 | Nav2 server/plugin topology | Source-derived and test-covered |
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
@@ -207,9 +229,13 @@ centered-obstacle bypass with the current `1.27 m` planning footprint and inflat
 That positive avoidance case remains field-pending; the release result proves
 safe no-path handling and recovery after obstacle removal.
 
-Nav2 uses the larger planning polygon for both local and global footprint
-checks. `camrod_control` independently samples the physical body first:
-body contact cannot be reclassified as a recoverable planning-margin contact.
+<!-- HH_260809 - Document the synchronized non-rectangular Nav2 and safety-gate
+footprints without changing the physical-vs-margin stop policy. -->
+Nav2 uses the larger tapered, rounded planning polygon for both local and global
+footprint checks. `camrod_control` independently samples the matching physical
+body first: body contact cannot be reclassified as a recoverable planning-margin
+contact. The former rectangular front-corner regions are no longer occupied,
+while the configured front, rear, left, and right extrema remain unchanged.
 
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 
