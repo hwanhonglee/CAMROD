@@ -14,6 +14,8 @@
   <!-- HH_260721 - Launch files resolve package shares through ament index at runtime. -->
   <exec_depend>ament_index_python</exec_depend>
   <depend>avg_msgs</depend>
+  <!-- HH_260809 - Reuse the canonical tapered/rounded robot boundary generator. -->
+  <depend>camrod_sensor_kit</depend>
   <depend>diagnostic_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>

@@ -97,6 +97,13 @@ struct MotionCostStopConfig
   double body_rear_m{0.68323};
   double body_left_m{0.53505};
   double body_right_m{0.53495};
+  // HH_260809 - Match the fabricated tapered nose and rounded corners instead
+  // of treating the measured maximum extents as a solid rectangle.
+  bool tapered_rounded_boundary_enabled{true};
+  double boundary_front_taper_m{0.12};
+  double boundary_front_shoulder_depth_m{0.12};
+  double boundary_corner_radius_m{0.05};
+  int boundary_corner_samples{4};
   // HH_260727 - Check the complete configured planning footprint against raw
   // lanelet cost, not only the robot_center_link cell. A separate lethal
   // threshold lets narrow lanes retain their soft 98 boundary penalty.
@@ -374,6 +381,7 @@ private:
     int grid_y);
   static double messageStampSec(const avg_msgs::msg::AvgOccupancyGrid & grid);
   static double yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid);
+  void rebuildBoundaryPolygons();
 
   MotionCostStopConfig config_;
   TimedGrid merged_grid_;
@@ -383,6 +391,8 @@ private:
   // HH_260727 - Stored in robot_center_link coordinates and transformed with the freshest
   // localization pose for every safety evaluation.
   std::vector<std::pair<double, double>> footprint_polygon_local_;
+  std::vector<std::pair<double, double>> fallback_footprint_polygon_local_;
+  std::vector<std::pair<double, double>> physical_body_polygon_local_;
   std::optional<avg_msgs::msg::AvgPath> local_path_;
   double forward_speed_mps_{0.0};
   std::string drop_zone_phase_;

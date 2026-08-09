@@ -8,6 +8,8 @@
 #include <queue>
 #include <set>
 
+#include "camrod_sensor_kit/robot_boundary.hpp"
+
 namespace camrod_control
 {
 
@@ -50,14 +52,55 @@ bool pointInPolygon(
 MotionCostStop::MotionCostStop(MotionCostStopConfig config)
 : config_(std::move(config))
 {
+  rebuildBoundaryPolygons();
 }
 
 void MotionCostStop::setConfig(const MotionCostStopConfig & config)
 {
   config_ = config;
+  rebuildBoundaryPolygons();
   if (!config_.latch_enabled) {
     clearLatch();
   }
+}
+
+void MotionCostStop::rebuildBoundaryPolygons()
+{
+  if (!config_.tapered_rounded_boundary_enabled) {
+    physical_body_polygon_local_ = {
+      {config_.body_front_m, config_.body_left_m},
+      {config_.body_front_m, -config_.body_right_m},
+      {-config_.body_rear_m, -config_.body_right_m},
+      {-config_.body_rear_m, config_.body_left_m}};
+    fallback_footprint_polygon_local_ = {
+      {config_.footprint_front_m, config_.footprint_left_m},
+      {config_.footprint_front_m, -config_.footprint_right_m},
+      {-config_.footprint_rear_m, -config_.footprint_right_m},
+      {-config_.footprint_rear_m, config_.footprint_left_m}};
+    return;
+  }
+
+  // HH_260809 - The physical hard stop and startup planning fallback share the
+  // exact same tapered body. The latter is a geometric outward offset, not an
+  // independently tuned rectangle.
+  const camrod::RobotBoundaryShape body_shape{
+    {
+      config_.body_front_m, config_.body_rear_m,
+      config_.body_left_m, config_.body_right_m},
+    config_.boundary_front_taper_m,
+    config_.boundary_front_shoulder_depth_m,
+    config_.boundary_corner_radius_m,
+    config_.boundary_corner_samples};
+  physical_body_polygon_local_ = camrod::asBoundaryPairs(
+    camrod::makeRobotBoundary(body_shape));
+  fallback_footprint_polygon_local_ = camrod::asBoundaryPairs(
+    camrod::makeExpandedRobotBoundary(
+      body_shape,
+      {
+        std::max(0.0, config_.footprint_front_m - config_.body_front_m),
+        std::max(0.0, config_.footprint_rear_m - config_.body_rear_m),
+        std::max(0.0, config_.footprint_left_m - config_.body_left_m),
+        std::max(0.0, config_.footprint_right_m - config_.body_right_m)}));
 }
 
 const MotionCostStopConfig & MotionCostStop::config() const
@@ -1230,11 +1273,7 @@ MotionCostStop::GridHit MotionCostStop::sampleFootprint(
 {
   std::vector<std::pair<double, double>> local = footprint_polygon_local_;
   if (local.size() < 3) {
-    local = {
-      {config_.footprint_front_m, config_.footprint_left_m},
-      {config_.footprint_front_m, -config_.footprint_right_m},
-      {-config_.footprint_rear_m, -config_.footprint_right_m},
-      {-config_.footprint_rear_m, config_.footprint_left_m}};
+    local = fallback_footprint_polygon_local_;
   }
   // HH_260806 - The planning margin is recoverable and must not inherit a
   // half-cell outward dilation from raster edge lookup. Lethal cell centers
@@ -1247,14 +1286,10 @@ MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
   const int threshold,
   const bool stop_on_unknown) const
 {
-  const std::vector<std::pair<double, double>> local{
-    {config_.body_front_m, config_.body_left_m},
-    {config_.body_front_m, -config_.body_right_m},
-    {-config_.body_rear_m, -config_.body_right_m},
-    {-config_.body_rear_m, config_.body_left_m}};
   // HH_260807 - Any lethal raster cell touched by a body edge is an ordinary
   // hard stop and contributes to the monotonic bounded-escape overlap proof.
-  return samplePolygonFootprint(grid, threshold, stop_on_unknown, local, true);
+  return samplePolygonFootprint(
+    grid, threshold, stop_on_unknown, physical_body_polygon_local_, true);
 }
 
 MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(

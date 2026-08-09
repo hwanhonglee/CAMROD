@@ -281,9 +281,13 @@ class UiStatePolicy:
         return self.READY
 
     def _latch_initialization(self) -> None:
+        # HH_260810 - Readiness belongs to sensors, localization, planning,
+        # control, and platform health.  Do not require an idle interval: an
+        # engage or campsite request may arrive before the final prerequisite,
+        # and no goal event should be needed to release INITIALIZING.
         if (
             not self.initialized_once
-            and not self.readiness_reasons(require_idle=True)
+            and not self.readiness_reasons(require_idle=False)
         ):
             self.initialized_once = True
 

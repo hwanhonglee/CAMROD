@@ -1,7 +1,10 @@
 // HH_260721 - Verify command gating, charging mission override, and all-direction cost stopping.
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +20,7 @@
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
+#include "camrod_sensor_kit/robot_boundary.hpp"
 #include "gtest/gtest.h"
 
 namespace camrod_control
@@ -150,6 +154,9 @@ MotionCostStopConfig baseCostConfig()
   config.rear_lookahead_m = 0.8;
   config.body_near_enabled = false;
   config.dynamic_front_use_local_path = false;
+  // Most legacy fixtures isolate rectangular raster behavior. Dedicated tests
+  // below enable and verify the production tapered/rounded geometry explicitly.
+  config.tapered_rounded_boundary_enabled = false;
   return config;
 }
 
@@ -170,6 +177,90 @@ avg_msgs::msg::AvgTwist command(const double x, const double y = 0.0, const doub
 }
 
 }  // namespace
+
+TEST(RobotBoundaryGeometry, TaperedRoundedBodyAndOffsetPreserveMeasuredExtents)
+{
+  const camrod::RobotBoundaryShape body{
+    {0.70837, 0.68323, 0.53505, 0.53495}, 0.12, 0.12, 0.05, 4};
+  const auto physical = camrod::makeRobotBoundary(body);
+  const auto planning = camrod::makeExpandedRobotBoundary(
+    body, {0.10, 0.10, 0.10, 0.10});
+
+  ASSERT_EQ(physical.size(), 30U);
+  ASSERT_EQ(planning.size(), 30U);
+  const auto extrema = [](const auto & polygon) {
+      double max_x = -std::numeric_limits<double>::infinity();
+      double min_x = std::numeric_limits<double>::infinity();
+      double max_y = -std::numeric_limits<double>::infinity();
+      double min_y = std::numeric_limits<double>::infinity();
+      for (const auto & point : polygon) {
+        max_x = std::max(max_x, point.x);
+        min_x = std::min(min_x, point.x);
+        max_y = std::max(max_y, point.y);
+        min_y = std::min(min_y, point.y);
+      }
+      return std::array<double, 4>{max_x, min_x, max_y, min_y};
+    };
+  const auto physical_extrema = extrema(physical);
+  const auto planning_extrema = extrema(planning);
+  EXPECT_NEAR(physical_extrema[0], 0.70837, 1.0e-9);
+  EXPECT_NEAR(physical_extrema[1], -0.68323, 1.0e-9);
+  EXPECT_NEAR(physical_extrema[2], 0.53505, 1.0e-9);
+  EXPECT_NEAR(physical_extrema[3], -0.53495, 1.0e-9);
+  EXPECT_NEAR(planning_extrema[0], 0.80837, 1.0e-9);
+  EXPECT_NEAR(planning_extrema[1], -0.78323, 1.0e-9);
+  EXPECT_NEAR(planning_extrema[2], 0.63505, 1.0e-9);
+  EXPECT_NEAR(planning_extrema[3], -0.63495, 1.0e-9);
+
+  // HH_260809 - The old rectangular front-left corner is intentionally absent;
+  // the short front face transitions through a rounded tapered shoulder.
+  EXPECT_LT(physical.front().x, body.extents.front);
+  EXPECT_LT(physical.front().y, body.extents.left);
+}
+
+TEST(MotionCostStop, TaperedFrontExcludesOldRectangleCornerButKeepsBodyHardStop)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_body_hard_stop_threshold = 100;
+  config.lanelet_footprint_enabled = false;
+  config.tapered_rounded_boundary_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+
+  // This cell was inside the old front-left rectangle but lies outside the
+  // fabricated tapered shoulder, so it must no longer cause a body hard stop.
+  cost_stop.setLaneletGrid(makeGrid({{0.675, 0.500, 100}}, 0.01), 1.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.1), 1.0).blocked);
+
+  cost_stop.setLaneletGrid(makeGrid({{0.600, 0.480, 100}}, 0.01), 1.1);
+  const auto inside_body = cost_stop.evaluate(command(0.0, 0.0, 0.1), 1.1);
+  EXPECT_TRUE(inside_body.blocked);
+  EXPECT_EQ(inside_body.reason, "lanelet_physical_body_cost");
+}
+
+TEST(MotionCostStop, RoundedPlanningFallbackUsesTheSameTaperedOffset)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = false;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.tapered_rounded_boundary_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+
+  cost_stop.setLaneletGrid(makeGrid({{0.780, 0.600, 100}}, 0.01), 1.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.1), 1.0).blocked);
+
+  cost_stop.setLaneletGrid(makeGrid({{0.700, 0.550, 100}}, 0.01), 1.1);
+  const auto inside_planning = cost_stop.evaluate(command(0.0, 0.0, 0.1), 1.1);
+  EXPECT_TRUE(inside_planning.blocked);
+  EXPECT_EQ(inside_planning.reason, "lanelet_footprint_cost");
+}
 
 TEST(CmdVelGatePolicy, RequiresEngageOperatorArmAndHealthyCan)
 {

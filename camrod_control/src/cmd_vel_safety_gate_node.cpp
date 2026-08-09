@@ -455,6 +455,18 @@ private:
       "lanelet_safety_body_left_m", 0.53505);
     motion_cost_stop_config_.body_right_m = declare_parameter<double>(
       "lanelet_safety_body_right_m", 0.53495);
+    // HH_260809 - Use the same short-front, tapered-shoulder, rounded polygon
+    // as platform visualization and Nav2 while preserving maximum extents.
+    motion_cost_stop_config_.tapered_rounded_boundary_enabled = declare_parameter<bool>(
+      "lanelet_safety_tapered_rounded_boundary_enable", true);
+    motion_cost_stop_config_.boundary_front_taper_m = declare_parameter<double>(
+      "lanelet_safety_boundary_front_taper_m", 0.12);
+    motion_cost_stop_config_.boundary_front_shoulder_depth_m = declare_parameter<double>(
+      "lanelet_safety_boundary_front_shoulder_depth_m", 0.12);
+    motion_cost_stop_config_.boundary_corner_radius_m = declare_parameter<double>(
+      "lanelet_safety_boundary_corner_radius_m", 0.05);
+    motion_cost_stop_config_.boundary_corner_samples = declare_parameter<int>(
+      "lanelet_safety_boundary_corner_samples", 4);
     motion_cost_stop_config_.lanelet_footprint_enabled = declare_parameter<bool>(
       "lanelet_safety_footprint_enable", true);
     motion_cost_stop_config_.lanelet_footprint_threshold = declare_parameter<int>(

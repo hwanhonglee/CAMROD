@@ -39,6 +39,16 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   // while preserving the configured physical body dimensions.
   params.planning_lateral_margin = node->declare_parameter<double>(
     "robot.body_extents.planning_lateral_margin", params.planning_lateral_margin);
+  // HH_260809 - Load the canonical tapered/rounded 2D collision contour once
+  // so platform markers and planning-boundary publication cannot diverge.
+  params.boundary_front_taper = node->declare_parameter<double>(
+    "robot.body_extents.front_taper", params.boundary_front_taper);
+  params.boundary_front_shoulder_depth = node->declare_parameter<double>(
+    "robot.body_extents.front_shoulder_depth", params.boundary_front_shoulder_depth);
+  params.boundary_corner_radius = node->declare_parameter<double>(
+    "robot.body_extents.corner_radius", params.boundary_corner_radius);
+  params.boundary_corner_samples = node->declare_parameter<int>(
+    "robot.body_extents.corner_samples", params.boundary_corner_samples);
 
   // HH_260623 - Default wheel radius updated from measured 152.75 mm.
   params.wheel_radius = node->declare_parameter<double>("robot.wheel_radius", 0.15275);

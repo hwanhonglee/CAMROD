@@ -36,10 +36,19 @@ ROUTE_IDS = (754, 2751, 2720)
 # for a complete campsite/return/parking cycle. This still drives the production
 # RPP, safety gate and bounded recovery owner through their ROS interfaces.
 B2_RECONTACT_ROUTE_IDS = (2751, 2720, 2744, 2690)
-# HH_260806 - Keep the runtime probe explicit about the measured physical
-# and planning rectangles being evaluated against the live lanelet raster.
+# HH_260810 - Keep the runtime probe explicit about the active tapered/rounded
+# physical and planning contours evaluated against the live lanelet raster.
 BODY_EXTENTS = (0.70837, 0.68323, 0.53505, 0.53495)
 PLANNING_EXTENTS = (0.80837, 0.78323, 0.63505, 0.63495)
+BOUNDARY_SHAPE = {
+    "front_taper_m": 0.12,
+    "front_shoulder_depth_m": 0.12,
+    "physical_corner_radius_m": 0.05,
+    "planning_corner_radius_m": 0.15,
+    "corner_samples": 4,
+    "physical_point_count": 30,
+    "planning_point_count": 30,
+}
 # HH_260806 - Scan the live raster around this recorded route pose instead of
 # assuming a cached bag's cell alignment is identical to the running grid.
 STATIC_CONTACT_BASE_POSE = (
@@ -65,6 +74,8 @@ def geometry_contract():
             name: round(planning - body, 5)
             for name, planning, body in zip(names, PLANNING_EXTENTS, BODY_EXTENTS)
         },
+        "boundary_shape": BOUNDARY_SHAPE,
+        "frame": "robot_center_link",
     }
 
 

@@ -99,6 +99,43 @@ class _FakeBackend:
 
 class UiBackendStopTest(unittest.TestCase):
 
+    def test_readiness_timer_can_rebroadcast_unchanged_authoritative_state(self) -> None:
+        broadcasts = []
+        state = SimpleNamespace(
+            ready=True,
+            ready_message="ready",
+            engaged=False,
+            operation_mode="STOP",
+            mission_phase="READY",
+            mission_source="none",
+        )
+        policy = SimpleNamespace(
+            ready=True,
+            engaged=False,
+            mission_phase="READY",
+            mission_source="none",
+            readiness_reasons=lambda **_kwargs: (),
+        )
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _state=state,
+            _runtime_policy=policy,
+            _compute_operation_mode=lambda _engaged, _ready: "STOP",
+            _schedule_broadcast=broadcasts.append,
+        )
+
+        # HH_260810 - A periodic snapshot repairs an initial WebSocket/ROS
+        # ordering race without waiting for a manual or campsite goal event.
+        UiBackendNode._update_runtime_state(
+            backend,
+            lambda: None,
+            force_broadcast=True,
+        )
+
+        self.assertEqual(len(broadcasts), 1)
+        self.assertTrue(broadcasts[0]["ready"])
+        self.assertEqual(broadcasts[0]["mission_phase"], "READY")
+
     def test_charging_contact_does_not_cancel_active_station_departure(self) -> None:
         published_states = []
         logger = _FakeLogger()

@@ -364,6 +364,12 @@ bringup:
     cmd_vel_gate_lanelet_safety_body_rear_m: 0.68323
     cmd_vel_gate_lanelet_safety_body_left_m: 0.53505
     cmd_vel_gate_lanelet_safety_body_right_m: 0.53495
+    # HH_260809 - Canonical tapered-front and rounded-corner boundary contract.
+    cmd_vel_gate_lanelet_safety_tapered_rounded_boundary_enable: true
+    cmd_vel_gate_lanelet_safety_boundary_front_taper_m: 0.12
+    cmd_vel_gate_lanelet_safety_boundary_front_shoulder_depth_m: 0.12
+    cmd_vel_gate_lanelet_safety_boundary_corner_radius_m: 0.05
+    cmd_vel_gate_lanelet_safety_boundary_corner_samples: 4
     cmd_vel_gate_lanelet_safety_footprint_enable: true
     # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
     cmd_vel_gate_lanelet_safety_footprint_threshold: 100

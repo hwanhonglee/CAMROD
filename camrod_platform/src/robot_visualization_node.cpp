@@ -24,6 +24,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include "camrod_sensor_kit/robot_boundary.hpp"
 #include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 renamed package
 #include <visualization_msgs/msg/marker.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
@@ -396,6 +397,21 @@ private:
     base_label.text = base_frame_id_;
     markers.markers.emplace_back(base_label);
 
+    // HH_260809 - Build the physical and planning outlines from one tapered,
+    // rounded body definition. Maximum measured extents remain unchanged.
+    const RobotBoundaryShape body_boundary_shape{
+      {body_front, body_rear, body_left, body_right},
+      params_.boundary_front_taper * body_scale_factor_,
+      params_.boundary_front_shoulder_depth * body_scale_factor_,
+      params_.boundary_corner_radius * body_scale_factor_,
+      params_.boundary_corner_samples};
+    const auto body_boundary_points = makeRobotBoundary(body_boundary_shape);
+    const auto planning_boundary_points = makeExpandedRobotBoundary(
+      body_boundary_shape,
+      {
+        planning_boundary_margin_, planning_boundary_margin_,
+        planning_boundary_lateral_margin_, planning_boundary_lateral_margin_});
+
     // Footprint outline at z = 0
     visualization_msgs::msg::Marker footprint_marker;
     footprint_marker.header.frame_id = map_frame_id_;
@@ -408,11 +424,13 @@ private:
     footprint_marker.color = makeColor(0.15f, 0.8f, 0.9f, 0.8f);
     footprint_marker.pose.position = base_translation;
     footprint_marker.pose.orientation = base_orientation;
-    footprint_marker.points.push_back(makePoint(body_front, body_left, 0.0));
-    footprint_marker.points.push_back(makePoint(body_front, -body_right, 0.0));
-    footprint_marker.points.push_back(makePoint(-body_rear, -body_right, 0.0));
-    footprint_marker.points.push_back(makePoint(-body_rear, body_left, 0.0));
-    footprint_marker.points.push_back(makePoint(body_front, body_left, 0.0));
+    for (const auto & point : body_boundary_points) {
+      footprint_marker.points.push_back(makePoint(point.x, point.y, 0.0));
+    }
+    if (!body_boundary_points.empty()) {
+      footprint_marker.points.push_back(
+        makePoint(body_boundary_points.front().x, body_boundary_points.front().y, 0.0));
+    }
     markers.markers.emplace_back(footprint_marker);
 
     visualization_msgs::msg::Marker boundary_marker;
@@ -426,17 +444,16 @@ private:
     boundary_marker.color = makeColor(1.0f, 0.85f, 0.0f, 0.95f);
     boundary_marker.pose.position = base_translation;
     boundary_marker.pose.orientation = base_orientation;
-    const double boundary_front = body_front + planning_boundary_margin_;
-    const double boundary_rear = body_rear + planning_boundary_margin_;
-    const double boundary_left = body_left + planning_boundary_lateral_margin_;
-    const double boundary_right = body_right + planning_boundary_lateral_margin_;
-    std::vector<geometry_msgs::msg::Point> boundary_local_points{
-      makePoint(boundary_front, boundary_left, 0.0),
-      makePoint(boundary_front, -boundary_right, 0.0),
-      makePoint(-boundary_rear, -boundary_right, 0.0),
-      makePoint(-boundary_rear, boundary_left, 0.0),
-      makePoint(boundary_front, boundary_left, 0.0)};
-    boundary_marker.points = boundary_local_points;
+    for (const auto & point : planning_boundary_points) {
+      boundary_marker.points.push_back(makePoint(point.x, point.y, 0.0));
+    }
+    if (!planning_boundary_points.empty()) {
+      boundary_marker.points.push_back(
+        makePoint(
+          planning_boundary_points.front().x,
+          planning_boundary_points.front().y,
+          0.0));
+    }
     markers.markers.emplace_back(boundary_marker);
 
     avg_msgs::msg::AvgPolygonStamped polygon_msg;
@@ -445,10 +462,10 @@ private:
     // without an asynchronous map-pose inverse that can shift the footprint.
     polygon_msg.header.frame_id = base_frame_id_;
     polygon_msg.header.stamp = now;
-    for (size_t i = 0; i < 4; ++i) {
+    for (const auto & point : planning_boundary_points) {
       avg_msgs::msg::AvgPoint32 p32;
-      p32.x = boundary_local_points[i].x;
-      p32.y = boundary_local_points[i].y;
+      p32.x = point.x;
+      p32.y = point.y;
       p32.z = 0.0;
       polygon_msg.polygon.points.emplace_back(p32);
     }
