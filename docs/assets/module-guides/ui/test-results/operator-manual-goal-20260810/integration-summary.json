@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-08-10T16:07:00+09:00",
+  "evidence_class": "MEASURED_AMD64_ROS_SIM",
+  "field_claim": false,
+  "environment": {
+    "architecture": "amd64",
+    "ros_distribution": "humble",
+    "ros_domain_id": 87,
+    "api_port": 18110,
+    "simulation": true
+  },
+  "launch": {
+    "entrypoint": "camrod_bringup bringup.launch.py",
+    "rviz_argument_supplied": false,
+    "resolved_rviz": false,
+    "rviz_process_count": 0,
+    "operator_window_enabled": false,
+    "guest_ui_enabled": false
+  },
+  "precondition": {
+    "system_health": "OK",
+    "ui_ready": true,
+    "mission_phase": "READY",
+    "battery_percentage": 80
+  },
+  "manual_goal_request": {
+    "frame_id": "map",
+    "x_m": -18.27565,
+    "y_m": 43.558984,
+    "yaw_deg": -15.039
+  },
+  "observed_topics": {
+    "/goal_pose": {
+      "received": true,
+      "frame_id": "map",
+      "x_m": -18.27565,
+      "y_m": 43.558984,
+      "orientation_z": -0.1308636122091301,
+      "orientation_w": 0.9914003807743763
+    },
+    "/platform/drive_enable": true,
+    "/planning/engage": true
+  },
+  "planning_result": {
+    "source": "manual",
+    "mission_phase": "DRIVING",
+    "goal_snapper_source": "manual_ros",
+    "global_path_points_bounded": 500,
+    "global_path_points_raw": 1024,
+    "local_path_points_bounded": 154,
+    "local_path_points_raw": 154,
+    "active_speed_kph": 2.0,
+    "goal_succeeded": true,
+    "system_health_after_goal": "OK"
+  },
+  "browser_result": {
+    "viewport_width_px": 1600,
+    "viewport_height_px": 857,
+    "map_polylines_visible_in_goal_mode": 357,
+    "captured_draft": {
+      "x_m": 124.535,
+      "y_m": -23.426,
+      "yaw_deg": 12.3
+    },
+    "goal_marker_visible": true,
+    "confirmation_visible": true,
+    "horizontal_overflow_px": 0,
+    "vertical_overflow_px": 0,
+    "screenshot": "../../evidence/ui-captures/operator-manual-goal-20260810.png"
+  },
+  "operator_stop": {
+    "http_success": true,
+    "owners_released": true
+  },
+  "limitations": [
+    "No physical steering or braking acceptance",
+    "No surveyed map or GNSS alignment acceptance",
+    "No Jetson resource or frame-pacing acceptance",
+    "No physical touchscreen calibration acceptance"
+  ]
+}

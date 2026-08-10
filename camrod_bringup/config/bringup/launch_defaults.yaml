@@ -13,7 +13,9 @@ bringup:
     sim: false
     # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
     sim_platform_status_enable: false
-    rviz: true
+    # HH_260810 - The managed operator UI now provides live map, paths,
+    # footprints, perception, and confirmed manual Goal Pose. Keep RViz opt-in.
+    rviz: false
     # Stagger module startup to reduce bringup burst load.
     module_launch_gap_s: 1.0
     # HH_260805 - Keep physical-LiDAR CycloneDDS/iceoryx opt-in on Humble. The

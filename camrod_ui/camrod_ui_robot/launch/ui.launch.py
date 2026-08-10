@@ -256,9 +256,10 @@ def generate_launch_description():
             'site_arrival_pose_timeout_s': 2.0,
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
-            # HH_260727 - UI site goals use the regulated goal-snapper input;
-            # RViz keeps /goal_pose as an independent manual planning input.
+            # HH_260810 - Site missions retain the regulated input while the
+            # operator-map tool replaces RViz on the independent manual input.
             'planning_goal_pose_topic': '/planning/site_goal_pose_ros',
+            'manual_goal_pose_topic': '/goal_pose',
             'publish_mission_key': True,
             'publish_goal_pose': True,
             # HH_260630 - Destination/camping-site buttons use the mission latch,

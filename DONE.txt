@@ -47,6 +47,29 @@ CAMROD 구현·검증 완료 기록
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
+0F. HH_260810 UI manual Goal Pose and RViz default OFF
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- The operator diagnostics trajectory map now selects manual `map` x/y by
+  click and arrival yaw by drag. Selection alone never starts motion; exact
+  coordinates are shown and a separate confirmation is required.
+- The backend validates finite coordinates, system readiness, active service
+  ownership, charger contact, and the existing `>=35%` mission-start SOC rule.
+  It publishes `/goal_pose` first and then enables platform drive and manual
+  engage. Campsite goals remain separate on `/planning/site_goal_pose_ros`.
+- Full bringup now resolves RViz to OFF when the launch argument is omitted.
+  `rviz:=true` remains available for engineering inspection and does not change
+  the goal topic contract.
+- In isolated AMD64 simulation, the default launch contained no RViz process.
+  The exact selected pose, `/planning/engage=true`,
+  `/platform/drive_enable=true`, manual `DRIVING`, global path 500 bounded/1024
+  raw points, local path 154 points, and Nav2 goal success were observed.
+- The actual 1600x857 browser pass displayed the full map, goal marker, and
+  confirmation with horizontal/vertical overflow 0. Direct UI tests passed 52/52, the React
+  production bundle built, scoped bringup results passed 249/249, and the
+  canonical wrapper rebuilt `camrod_ui` and `camrod_bringup`.
+- Physical touchscreen coordinate accuracy, Jetson frame pacing/resources,
+  GNSS-map alignment, and real-platform stop/steering remain P1-F/G field work.
+
 0E. HH_260810 운영 telemetry·카메라 계약·Nav2 종료 안정화
     [DONE-CODE, DONE-SIM, MEASURED-AMD64, FIELD-PENDING]
 - Robot UI 관리자 진단에 GNSS/IMU, 7채널 radar/LiDAR, front/rear camera,

@@ -658,7 +658,9 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'runtime/sim_platform_status_enable', False),
             'Require simulated normalized platform status at the command gate',
         ),
-        ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
+        # HH_260810 - UI telemetry/manual-goal is the production surface; RViz
+        # remains an explicit engineering override for deep visualization only.
+        ('rviz', cfg_get(launch_cfg, 'runtime/rviz', False), 'Enable RViz'),
         # Stagger module includes to reduce startup CPU/memory spikes.
         ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
         # HH_260805 - Keep CycloneDDS/iceoryx explicitly opt-in and scope it to

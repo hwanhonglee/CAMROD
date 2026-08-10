@@ -9,6 +9,8 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 <!-- HH_260807 - Preflight persistent-obstacle paths before Nav2 mission preemption. -->
 <!-- HH_260807 - Fix the 3 km/h RPP preview at the selected 1.1 m A/B result. -->
 <!-- HH_260807 - Reduce the active cruise to 2 km/h without changing controller geometry. -->
+<!-- HH_260810 - Route confirmed operator-map goals through the existing
+manual goal-snapper and RotationShim contract. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -26,6 +28,8 @@ the active user-authored runtime map is map v15.
 
 ![Current route trace and tracking telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-trajectory-20260810.png)
 
+![Operator-map manual Goal Pose](../docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
+
 `SIM BROWSER CAPTURE`: the operator UI reads global/local/maneuver paths,
 driven trace, selected pose, speed, and tracking error under a bounded lease.
 
@@ -34,7 +38,7 @@ driven trace, selected pose, speed, and tracking error under a bounded lease.
 | Uses | Function | Main outputs |
 |---|---|---|
 | Nav2 planner/controller/BT/smoother servers | Plans and follows map-constrained routes | `/planning/global_path`, `/control/nav2_cmd_vel_ros` |
-| Lanelet2 route graph and goal snapper | Converts UI/RViz goals to reachable lanelet routes | Route lanelet IDs and snapped goals |
+| Lanelet2 route graph and goal snapper | Converts campsite, operator-map, or maintenance RViz goals to reachable lanelet routes | Route lanelet IDs and snapped goals |
 | Planning state machine | Coordinates Nav2, local maneuvers, return, and parking | `/planning/state`, `/service/state` handoffs |
 
 ## Active Selection
@@ -92,6 +96,25 @@ The [road-simulation record](../docs/assets/module-guides/control/test-results/t
 shows lanelets `2751 -> 2720 -> 2744 -> 2690`. A planning-only contact paused
 the route, bounded reverse-yaw created clearance, and the same retained route
 reached its goal without a second hold.
+
+## Manual Goal Input
+
+The managed UI now owns the normal manual-goal interaction while preserving
+the existing planning contract. Campsite service remains separate and cannot
+be replaced by a map click while its maneuver owner is active.
+
+| Input | Topic | Planning behavior |
+|---|---|---|
+| Campsite selection | `/planning/site_goal_pose_ros` | Regulated site goal with mission key and campsite maneuver policy |
+| Operator-map confirmation | `/goal_pose` | Manual position snap with requested arrival yaw preserved |
+| Maintenance RViz 2D Goal Pose | `/goal_pose` | Same manual path; available only when bringup uses `rviz:=true` |
+| Snapped route output | `/planning/goal_pose_snapped_ros` | Sole Nav2 `NavigateToPose` remap target |
+
+In the isolated AMD64 run, the default launch started without RViz. The
+operator-map goal selected the manual scenario and RotationShim profile, then
+produced a `1024`-point LaneletRoute path (`500` points in the bounded UI
+payload), a `154`-point local path, and Nav2 goal success. This proves topic and
+planner integration, not physical steering or clearance.
 
 ## Nav2 Process Boundary
 

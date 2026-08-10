@@ -2828,6 +2828,7 @@ h1 {
 .legend-local { background: #f09c3e !important; }
 .legend-maneuver { background: #db61b0 !important; }
 .legend-trace { background: #70d17d !important; }
+.legend-manual-goal { background: #f3cf4f !important; }
 
 .telemetry-radar-table-section {
   display: flex;
@@ -3111,6 +3112,35 @@ h1 {
 .trajectory-robot { fill: #f3f5f3; stroke: #df5b51; stroke-width: 5; }
 .trajectory-heading { stroke: #df5b51; stroke-width: 6; stroke-linecap: round; }
 
+/* HH_260810 - Operator-map Goal Pose replaces the normal RViz 2D Goal tool. */
+.trajectory-plot-goal-active {
+  cursor: crosshair;
+  touch-action: none;
+  border-color: #d5ae25;
+  box-shadow: inset 0 0 0 2px rgba(243, 207, 79, 0.2);
+}
+
+.manual-goal-marker circle {
+  fill: rgba(243, 207, 79, 0.16);
+  stroke: #f3cf4f;
+  stroke-width: 4;
+}
+
+.manual-goal-marker > line:not(.manual-goal-heading) {
+  stroke: #f3cf4f;
+  stroke-width: 3;
+}
+
+.manual-goal-heading {
+  stroke: #f3cf4f;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.manual-goal-arrow-head {
+  fill: #f3cf4f;
+}
+
 .telemetry-route-metrics {
   display: flex;
   flex-direction: column;
@@ -3168,6 +3198,144 @@ h1 {
   color: #243c2b;
   font-family: 'Consolas', 'Menlo', monospace;
   font-size: 0.82rem;
+}
+
+.manual-goal-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.48rem;
+  padding-top: 0.72rem;
+  margin-top: 0.72rem;
+  border-top: 1px solid #ccd5ce;
+}
+
+.manual-goal-control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #2c4433;
+  font-size: 0.78rem;
+}
+
+.manual-goal-control-header span {
+  padding: 0.12rem 0.3rem;
+  border: 1px solid #b8c3bb;
+  border-radius: 3px;
+  color: #67716a;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.64rem;
+}
+
+.manual-goal-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.65fr);
+  gap: 0.38rem;
+}
+
+.manual-goal-tool,
+.manual-goal-dispatch,
+.manual-goal-confirm button {
+  min-height: 2.35rem;
+  border: 1px solid #aeb9b1;
+  border-radius: 4px;
+  background: #f4f6f4;
+  color: #334239;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.manual-goal-tool span,
+.manual-goal-dispatch span {
+  margin-right: 0.28rem;
+  font-size: 1rem;
+}
+
+.manual-goal-tool.active {
+  border-color: #b58d12;
+  background: #fff5c9;
+  color: #66500d;
+}
+
+.manual-goal-tool:disabled,
+.manual-goal-dispatch:disabled,
+.manual-goal-confirm button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.manual-goal-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.manual-goal-readout span {
+  min-width: 0;
+  padding: 0.34rem;
+  background: #eef1ef;
+  color: #707871;
+  font-size: 0.62rem;
+}
+
+.manual-goal-readout b {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #27372d;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.72rem;
+}
+
+.manual-goal-dispatch {
+  border-color: #317e4a;
+  background: #397f4c;
+  color: #fff;
+}
+
+.manual-goal-confirm {
+  padding: 0.48rem;
+  border-left: 4px solid #d09a34;
+  background: #fff7e7;
+}
+
+.manual-goal-confirm strong {
+  display: block;
+  color: #654b1d;
+  font-size: 0.7rem;
+}
+
+.manual-goal-confirm > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.42rem;
+}
+
+.manual-goal-confirm .manual-goal-start {
+  border-color: #317e4a;
+  background: #397f4c;
+  color: #fff;
+}
+
+.manual-goal-status {
+  padding: 0.36rem 0.42rem;
+  border-left: 3px solid #4a9a61;
+  background: #edf7ef;
+  color: #2f6c40;
+  font-size: 0.66rem;
+  overflow-wrap: anywhere;
+}
+
+.manual-goal-status.warn {
+  border-left-color: #d09a34;
+  background: #fff7e8;
+  color: #805b1d;
+}
+
+.manual-goal-status.error {
+  border-left-color: #d84f48;
+  background: #fff0ef;
+  color: #983b36;
 }
 
 .safety-gate-banner {

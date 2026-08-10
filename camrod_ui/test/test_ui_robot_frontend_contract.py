@@ -74,6 +74,21 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("view=${view}", self.telemetry_source)
         self.assertIn("keepalive: true", self.telemetry_source)
 
+    def test_operator_map_can_publish_a_confirmed_manual_goal(self) -> None:
+        # HH_260810 - The production UI must retain the RViz 2D Goal semantics:
+        # pointer position selects x/y, drag selects yaw, confirmation calls API.
+        for token in (
+            "onPointerDown={beginGoalSelection}",
+            "onPointerMove={updateGoalHeading}",
+            "manual-goal-marker",
+            "goalSelectionMapPoints",
+            "/ui/manual_goal?${query.toString()}",
+            "선택한 목표로 출발하시겠습니까?",
+        ):
+            self.assertIn(token, self.telemetry_source)
+        self.assertIn("trajectory-plot-goal-active", self.css)
+        self.assertIn("manual-goal-confirm", self.css)
+
 
 if __name__ == "__main__":
     unittest.main()

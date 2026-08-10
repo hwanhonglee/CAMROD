@@ -109,7 +109,7 @@ use current generated sensor-kit figures for exact mount coordinates. -->
 | `camrod_sensing` | `sensing/runtime-lidar-radar-costs-20260804.png` | Filtered LiDAR, radar sectors, dynamic costs |
 | `camrod_sensor_kit` | `sensor-kit/runtime-sensor-tf-20260804.png` | Loaded camera/GNSS/IMU/LiDAR/radar TF geometry |
 | `camrod_system` | `system/runtime-health-terminal-20260804.png` | `SystemStatus`, UI state, live graph count |
-| `camrod_ui` | `ui/robot-ui-site-verification-keypad.png`, `guest-mission-dispatch-ready.png`, `guest-route-safety-hold.png` | Robot site verification, Guest mission dispatch, and safety overlay |
+| `camrod_ui` | `ui/robot-ui-site-verification-keypad.png`, `operator-manual-goal-20260810.png`, `guest-mission-dispatch-ready.png`, `guest-route-safety-hold.png` | Robot site verification, operator-map Goal Pose, Guest mission dispatch, and safety overlay |
 | `camrod_voice` | `voice/runtime-event-terminal-20260804.png` | Live `system.startup` request and adapter graph |
 
 Capture metadata, exact launch command, event times, operator stop result, and
@@ -123,10 +123,16 @@ Current UI captures are
 [`radar/LiDAR/boundaries`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-proximity-20260810.png),
 [`camera`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-camera-20260810.png),
 [`map/path/trace`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-trajectory-20260810.png),
+[`confirmed manual Goal Pose`](assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png),
 [`map/perception`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png),
 and [`safety/control`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-safety-20260810.png).
 They were recorded from the running simulation graph through the same FastAPI
 backend served to the robot display, not from an offline illustration script.
+The manual-goal capture adds a command surface: pointer selection remains a
+draft until the separate confirmation action, after which the backend publishes
+the established `/goal_pose` planning input. The adjacent
+[integration record](assets/module-guides/ui/test-results/operator-manual-goal-20260810/README.md)
+separates browser rendering, ROS topic observations, and remaining field work.
 
 ![Operator telemetry AMD64 resource profile](assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
 

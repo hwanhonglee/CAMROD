@@ -15,7 +15,8 @@ sys.path.insert(
 )
 
 from geometry_msgs.msg import Quaternion  # noqa: E402
-from avg_msgs.msg import AvgOccupancyGrid  # noqa: E402
+from builtin_interfaces.msg import Time as RosTime  # noqa: E402
+from avg_msgs.msg import AvgOccupancyGrid, AvgServiceState  # noqa: E402
 from sensor_msgs.msg import Image, PointCloud2, PointField  # noqa: E402
 from visualization_msgs.msg import Marker, MarkerArray  # noqa: E402
 
@@ -33,6 +34,102 @@ from camrod_ui.ui_backend_node import (  # noqa: E402
 
 
 class OperatorTelemetryTest(unittest.TestCase):
+
+    def test_manual_goal_validation_normalizes_yaw_and_rejects_nonfinite(self) -> None:
+        goal = UiBackendNode._normalize_manual_goal("12.5", -3, 450)
+        self.assertEqual(goal, (12.5, -3.0, 90.0))
+        with self.assertRaisesRegex(ValueError, "finite"):
+            UiBackendNode._normalize_manual_goal(float("nan"), 0, 0)
+
+    def test_manual_goal_gate_enforces_readiness_service_and_battery(self) -> None:
+        state = SimpleNamespace(
+            ready=True,
+            ready_message="ready",
+            battery_percentage=80,
+            service_state=AvgServiceState.DROP_ZONE_WAIT,
+        )
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _state=state,
+            _latest_platform_is_charging=False,
+            require_battery_for_mission_dispatch=True,
+            minimum_mission_dispatch_battery_percent=35,
+        )
+        self.assertIsNone(UiBackendNode._manual_goal_dispatch_block(backend))
+
+        state.service_state = AvgServiceState.MOVING_TO_SITE
+        blocked = UiBackendNode._manual_goal_dispatch_block(backend)
+        self.assertEqual(blocked["error"], "service_state_busy")
+
+        state.service_state = AvgServiceState.OPERATOR_STOPPED
+        state.battery_percentage = 20
+        blocked = UiBackendNode._manual_goal_dispatch_block(backend)
+        self.assertEqual(blocked["error"], "battery_below_mission_minimum")
+
+        state.battery_percentage = 80
+        state.ready = False
+        blocked = UiBackendNode._manual_goal_dispatch_block(backend)
+        self.assertEqual(blocked["error"], "system_not_ready")
+
+    def test_manual_goal_publishes_raw_pose_before_manual_engage(self) -> None:
+        events = []
+
+        class Publisher:
+            def publish(self, message) -> None:
+                events.append(("goal", message))
+
+        class Clock:
+            @staticmethod
+            def now():
+                return SimpleNamespace(to_msg=lambda: RosTime(sec=1, nanosec=2))
+
+        class Logger:
+            @staticmethod
+            def info(_message: str) -> None:
+                return None
+
+        policy = SimpleNamespace(
+            update_goal_received=lambda source: events.append(("policy", source))
+        )
+        backend = SimpleNamespace(
+            _normalize_manual_goal=UiBackendNode._normalize_manual_goal,
+            _manual_goal_dispatch_block=lambda: None,
+            _yaw_deg_to_quaternion=lambda yaw: UiBackendNode._yaw_deg_to_quaternion(
+                None, yaw
+            ),
+            _lock=threading.Lock(),
+            _active_mission_site="B6",
+            _state=SimpleNamespace(
+                ws_site_states={"B6": True},
+                destination={"site": "B6", "run": True},
+            ),
+            site_names=["B1", "B6"],
+            default_goal_frame_id="map",
+            manual_goal_pose_topic="/goal_pose",
+            pub_manual_goal_pose=Publisher(),
+            _runtime_policy=policy,
+            _update_runtime_state=lambda update: update(),
+            _publish_engage=lambda enabled, source: events.append(
+                ("engage", enabled, source)
+            ),
+            _schedule_broadcast=lambda payload: events.append(("broadcast", payload)),
+            get_clock=lambda: Clock(),
+            get_logger=lambda: Logger(),
+        )
+
+        result = UiBackendNode.set_manual_goal(backend, 4.25, -2.5, 90.0)
+
+        self.assertTrue(result["success"])
+        goal_index = next(index for index, event in enumerate(events) if event[0] == "goal")
+        engage_index = next(index for index, event in enumerate(events) if event[0] == "engage")
+        self.assertLess(goal_index, engage_index)
+        pose = events[goal_index][1]
+        self.assertEqual(pose.header.frame_id, "map")
+        self.assertAlmostEqual(pose.pose.position.x, 4.25)
+        self.assertAlmostEqual(pose.pose.position.y, -2.5)
+        self.assertAlmostEqual(pose.pose.orientation.z, math.sqrt(0.5), places=6)
+        self.assertEqual(backend._active_mission_site, "")
+        self.assertEqual(backend._state.destination, {"site": "", "run": False})
 
     def test_default_topics_match_public_runtime_contracts(self) -> None:
         # HH_260810 - Fail in CI before an ARM deployment opens a blank operator

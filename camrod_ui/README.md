@@ -4,6 +4,7 @@
 while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
 <!-- HH_260810 - Consolidate live module viewers into an on-demand operator telemetry workspace. -->
+<!-- HH_260810 - Add confirmed operator-map manual goals and make RViz opt-in. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -14,7 +15,7 @@ bridge, diagnostics display, and managed local kiosk.
 
 | Surface | User actions | Shared feedback |
 |---|---|---|
-| Robot UI | Manual engage/stop, campsite dispatch, return, tuning, diagnostics | Service state, command gate, battery, health |
+| Robot UI | Manual engage/stop, map-selected Goal Pose, campsite dispatch, return, tuning, diagnostics | Service state, command gate, battery, health |
 | Guest UI | Campsite selection and return request | Same service state, SOC admission, and safety overlay |
 | Backend | Resolves mission key/goal and publishes typed ROS commands | WebSocket state snapshots and arrival events |
 
@@ -41,7 +42,7 @@ site B<N>
   -> mission key camping_site_<N>
   -> service/operational goal from camping_sites.yaml
   -> /ui/selected_destination
-  -> /planning/mission_key + /goal_pose
+  -> /planning/mission_key + /planning/site_goal_pose_ros
   -> /platform/drive_enable + /planning/mission_engage
   -> /service/state = MOVING_TO_SITE
 ```
@@ -66,8 +67,9 @@ action server/state, normal localization with `map -> robot_center_link`, a
 healthy command gate, and platform feedback. It does **not** require an RViz
 goal, campsite destination, path, or `/service/state` mission transition. A
 `0.5 s` authoritative WebSocket heartbeat repairs startup snapshot ordering, so
-the UI cannot remain stale until the next goal event. Manual RViz goals and
-campsite goals enter the same post-ready mission-phase policy.
+the UI cannot remain stale until the next goal event. Operator-map `/goal_pose`,
+maintenance RViz goals, and campsite goals enter the same post-ready
+mission-phase policy while retaining separate manual/site input topics.
 
 Operator stop publishes `OPERATOR_STOPPED`; a previous planning warning is not
 the operation label. The active campsite ID is retained separately from the
@@ -79,7 +81,8 @@ selected site after departure.
 The administrator diagnostics modal now contains `System` plus six live views:
 `GNSS · IMU`, `Radar · LiDAR`, `Camera`, `Driving trajectory`,
 `Map · Perception`, and `Safety · Control`. These views consume the same ROS messages used by the
-standalone tools and RViz; they do not publish motion commands or change sensor
+standalone tools and RViz. Five views are read-only. The trajectory view can
+publish a manual goal only after explicit confirmation; no view changes sensor
 authority.
 
 | Previous live tool / RViz display | UI replacement |
@@ -92,6 +95,35 @@ authority.
 | RViz map/perception layers | Lanelet polylines, four cost layers, obstacle cloud/boxes, body, and planning contour |
 | RViz diagnostics and controller markers | Safety-gate reason, service state, maneuver owners, radar evidence, and obstacle replan status |
 | Camera payload probe | Front/rear compressed frames, source rate, age, format, and payload size |
+
+## Manual Goal Pose
+
+![Operator-map manual Goal Pose](../docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
+
+Open `Diagnostics -> Driving trajectory`, select `Goal`, then click the map for
+`x/y` or drag from that point to set yaw. The goal remains a local draft until
+the separate confirmation panel's departure command is pressed. A plain click
+uses the current robot yaw. Tracking mode stays route-focused; selecting `Goal`
+fits the complete available Lanelet map so an idle robot can choose a remote
+destination.
+
+| Stage | Contract |
+|---|---|
+| Browser | Converts the SVG pointer through the live view transform into finite `map` x/y/yaw values |
+| Confirmation | Displays the selected coordinates and requires a second action; selection alone cannot move the robot |
+| Admission | Requires UI `ready`, known SOC `>=35%`, no charging contact, and no campsite/return/parking/charger owner |
+| Dispatch order | Publishes raw `PoseStamped` on `/goal_pose`, then `/platform/drive_enable=true` and `/planning/engage=true` |
+| Planning | `goal_snapper` preserves requested yaw, snaps position to a reachable lanelet, and selects the manual RotationShim profile |
+| Stop | Existing operator stop cancels Nav2/local owners and disables engage/drive-enable |
+
+The isolated AMD64 simulation omitted the `rviz` argument and started no RViz
+process. A reachable goal at `(-18.275650, 43.558984, -15.039 deg)` was selected
+and confirmed with real browser pointer/button events, then observed on
+`/goal_pose`. Both authorization topics, manual `DRIVING`, a bounded `500`-point
+global path (`1024` raw), a `154`-point local path, and final Nav2 goal success
+followed.
+The detailed non-physical record is in the
+[operator-map integration result](../docs/assets/module-guides/ui/test-results/operator-manual-goal-20260810/README.md).
 
 Offline renderers under `camrod_bringup/scripts/visualization/` still generate
 versioned documentation evidence; they are not live runtime viewers and were
@@ -183,6 +215,7 @@ running ROS backend, not generated UI mockups.
 |---|---|
 | Initial state | `80%` SOC, ready, 13 sites |
 | Goal-independent startup | No RViz/UI goal published; planning `WAIT_DZ`, UI `ready=true`, `mission_phase=READY` |
+| Operator-map goal | No RViz process; click/drag marker and confirmation rendered with overflow `0`; `/goal_pose`, engage, drive-enable, manual `DRIVING`, and global/local paths observed |
 | Destination | Mission key and departure/moving state observed |
 | Return | Return state and `MotionOperation.RETURN` observed |
 | Safety | `ROUTE_SAFETY_HOLD` overlay observed |
@@ -204,7 +237,7 @@ Jetson CPU/GPU use; a production Jetson profile is still required.
 ![Three-cycle UI/service integration](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
 The historical map-v17 simulation completed charging recall and next-site departure twice
-after the initial cycle. Current `camrod_ui` regression tests pass `48/48`; actual
+after the initial cycle. Current `camrod_ui` regression tests pass `52/52`; actual
 CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
 
 <!-- HH_260807 - Record the Humble shutdown-only conversion race separately
@@ -226,7 +259,8 @@ accepted the next campsite without duplicating the destination or motion owner.
 |---|---|---|
 | Publish | `/ui/selected_destination` | Typed destination command |
 | Publish | `/planning/mission_key` | Semantic mission selection |
-| Publish | `/goal_pose` | Site operational goal |
+| Publish | `/goal_pose` | Confirmed operator-map or maintenance RViz manual goal |
+| Publish | `/planning/site_goal_pose_ros` | Regulated campsite operational goal |
 | Publish | `/planning/mission_engage` | Mission motion authorization request |
 | Publish | `/platform/drive_enable` | Platform drive-enable request |
 | Publish | `/ui/camping_site_operation_request` | Return/adopt operation request |
@@ -248,6 +282,7 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |
 | `GET /api/camera/front`, `/api/camera/rear` | Latest compressed frame without re-encoding |
 | `POST /ui/destination?site=B6&run=true` | Select and dispatch a campsite |
+| `POST /ui/manual_goal?x=<m>&y=<m>&yaw_deg=<deg>` | Validate and dispatch a confirmed operator-map goal |
 | `POST /ui/engage?value=true|false` | Manual engage/disengage |
 | `POST /ui/stop` | Operator stop |
 | `WS /ws` | Real-time state updates |

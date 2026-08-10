@@ -12,6 +12,8 @@ arrival-only validation for constrained roadside sites. -->
 <!-- HH_260807 - Configure the current final 2 km/h production motion profile. -->
 <!-- HH_260807 - Record the final B1-B10 no-restart lifecycle, route-snap
 return handoff, diagnostic audit, and reproducible endurance media. -->
+<!-- HH_260810 - Keep RViz opt-in after the operator UI gained a confirmed
+manual Goal Pose workflow. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -51,6 +53,13 @@ tapered-front rounded body and exact planning offset. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Radar display | `radar_status_gui.py` subscribes to seven real `/range_ros` streams; it does not publish dummy data |
 | Operator window | WebKit fullscreen default |
+| Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
+
+![Managed operator-map manual goal](../docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
+
+The [manual-goal integration record](../docs/assets/module-guides/ui/test-results/operator-manual-goal-20260810/README.md)
+shows the default no-RViz graph, exact goal and authorization topics, generated
+paths, browser geometry, and remaining physical acceptance separately.
 
 ![Current Park semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
 
@@ -97,6 +106,7 @@ The latest full-bringup runtime result is shown separately.
 | Stack startup | PASS | Fresh isolated active map-v15 graph reached `[SYSTEM] OK` |
 | Goal-independent UI startup | PASS | Zero RViz/UI goals; planning `WAIT_DZ`, UI `READY`; 5 authoritative READY frames in 2.2 s |
 | Operator telemetry workspace | PASS (AMD64 SIM) | Six leased views, `4-11` subscriptions per view, 1600x1000 overflow `0`, GNSS/IMU `10.01 Hz`, pose `20.02 Hz` after view reopen |
+| Operator-map manual goal | PASS (AMD64 SIM) | Default `rviz=false`; confirmed `/goal_pose`; engage/drive-enable true; manual `DRIVING`; global/local path `500/154` bounded points |
 | Controlled full-graph shutdown | PASS (3/3) | Every component and standalone process, including Nav2 lifecycle manager and Robot/Guest UI, exited cleanly; `-11/-9/forced kill` 0 |
 | Post-fix no-goal shutdown | PASS (1/1) | READY/SYSTEM OK; parent-only SIGINT; 44/44 clean process exits; failure/forced kill/descendant 0 |
 | B1 -> B2 -> B3 continuous service | PASS (3/3) | 677.237 s, zero restart; full site/RETURN/drop-zone/parking/charging/next-site lifecycle |
@@ -214,8 +224,8 @@ evidence.
 | Launch | Purpose | Default profile |
 |---|---|---|
 | `bringup.launch.py` | Physical Jetson/Ranger stack | Hardware drivers enabled by defaults |
-| `bringup.launch.py sim:=true` | Full deterministic simulation | Fake sensors and raw Ranger/BMS boundaries |
-| `bringup.launch.py sim:=true rviz:=true` | Simulation plus operator visualization | Shared CAMROD RViz config |
+| `bringup.launch.py sim:=true` | Full deterministic simulation with managed operator UI | Fake sensors and raw Ranger/BMS boundaries; RViz off |
+| `bringup.launch.py sim:=true rviz:=true` | Engineering visualization override | Adds shared CAMROD RViz config |
 
 The physical operator window is a fullscreen GTK/WebKit surface by default on
 the current Jetson image because its Snap Chromium cannot start in the robot
@@ -234,6 +244,10 @@ next run.
 ```bash
 source ~/camrod_ws/install/setup.bash
 
+# Normal simulation and operator-map workflow
+ros2 launch camrod_bringup bringup.launch.py sim:=true
+
+# Optional RViz maintenance profile
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 ros2 launch camrod_bringup bringup.launch.py
 ```
