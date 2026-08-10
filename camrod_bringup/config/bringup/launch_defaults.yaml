@@ -598,6 +598,9 @@ bringup:
     # HH_260810 - Enable leased sensor/map views; heavy subscriptions remain
     # inactive until an administrator opens the matching diagnostics tab.
     enable_operator_telemetry: true
+    # HH_260810 - Selected-view latest-value stream ceiling. Ten Hz follows the
+    # camera target while remaining bounded for the 8-core ARM64 deployment.
+    operator_telemetry_stream_rate_hz: 10.0
     # HH_260803 - Serve the guest workflow with the same scenario backend.
     enable_guest_ui: true
     guest_ui_host: 0.0.0.0

@@ -259,15 +259,18 @@ function DiagnosticsMonitor() {
   const steeringTuningTimerRef = useRef(null);
 
   useEffect(() => {
+    if (activeTab !== 'system') return undefined;
     const fetch_ = () =>
       fetch('/api/diagnostics')
         .then(r => r.json())
         .then(j => setItems(j.status || []))
         .catch(() => {});
     fetch_();
-    const t = setInterval(fetch_, 2000);
+    // HH_260810 - System diagnostics remain a small HTTP payload, but refresh
+    // promptly only while visible; sensor-heavy tabs use their dedicated WS.
+    const t = setInterval(fetch_, 500);
     return () => clearInterval(t);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     fetch('/ui/platform_tuning')
@@ -1369,8 +1372,10 @@ function App() {
 
   useEffect(() => {
     if (showWaiting) {
-      setActiveModal(null);
-      setShowLoginModal(false);
+      // HH_260810 - Keep an authenticated diagnostic session mounted while the
+      // service UI moves between waiting, driving, arrival, and return screens.
+      // Informational overlays still close when the public waiting screen wins.
+      setActiveModal(current => current === 'settings' ? current : null);
       setLoginError('');
     }
   }, [showWaiting]);
@@ -1467,9 +1472,111 @@ function App() {
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
+  const adminEntryZone = (
+    <div
+      className="diag-secret-zone diag-secret-zone-global"
+      onMouseDown={handleDiagPressStart}
+      onMouseUp={handleDiagPressEnd}
+      onMouseLeave={handleDiagPressEnd}
+      onTouchStart={handleDiagPressStart}
+      onTouchEnd={handleDiagPressEnd}
+      onTouchCancel={handleDiagPressEnd}
+    >
+      {diagPressProgress > 0 && (
+        <div className="diag-press-progress-wrap">
+          <div
+            className="diag-press-bar"
+            style={{ transform: `scaleY(${diagPressProgress / 100})` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  // HH_260810 - Admin diagnostics are a top-level operator surface. Keeping
+  // this branch independent of showWaiting prevents arrival/service updates
+  // from tearing down telemetry subscriptions while an operator is observing.
+  if (showLoginModal || activeModal === 'settings') {
+    return (
+      <div className="admin-runtime-shell">
+        {showLoginModal ? (
+          <div className="modal-overlay">
+            <div className="modal-box login-modal-box" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <span className="modal-title">진단 관리자 인증</span>
+                <button className="modal-back-btn" onClick={() => setShowLoginModal(false)}>뒤로가기</button>
+              </div>
+              <div className="modal-body login-modal-body">
+                <div className="login-fields-row">
+                  <div className="login-field">
+                    <label>아이디</label>
+                    <input
+                      type="text"
+                      value={loginId}
+                      onChange={e => setLoginId(e.target.value)}
+                      onFocus={() => setActiveField('id')}
+                      onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
+                      placeholder="아이디를 입력하세요"
+                    />
+                  </div>
+                  <div className="login-field">
+                    <label>비밀번호</label>
+                    <input
+                      id="login-pw-input"
+                      type="password"
+                      value={loginPw}
+                      onChange={e => setLoginPw(e.target.value)}
+                      onFocus={() => setActiveField('pw')}
+                      onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
+                      placeholder="비밀번호를 입력하세요"
+                    />
+                  </div>
+                </div>
+                <button className="login-submit-btn" onClick={handleLogin}>확인</button>
+                {loginError && <p className="login-error">{loginError}</p>}
+                <div className="vkb-wrap">
+                  <div className="vkb-field-tabs">
+                    <button className={`vkb-tab${activeField === 'id' ? ' active' : ''}`} onClick={() => setActiveField('id')}>아이디</button>
+                    <button className={`vkb-tab${activeField === 'pw' ? ' active' : ''}`} onClick={() => setActiveField('pw')}>비밀번호</button>
+                  </div>
+                  {KB_ROWS.map((row, ri) => (
+                    <div key={ri} className="vkb-row">
+                      {row.map(key => (
+                        <button
+                          key={key + ri}
+                          className={`vkb-key${key === '⌫' ? ' vkb-wide' : ''}${key === '⇧' ? ' vkb-wide' + (kbCaps ? ' vkb-caps-on' : '') : ''}`}
+                          onClick={() => handleVirtualKey(key)}
+                        >
+                          {key === '⇧' ? (kbCaps ? '⇧ ON' : '⇧') : key}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  <div className="vkb-row">
+                    <button className="vkb-key vkb-space" onClick={() => handleVirtualKey('SPACE')}>SPACE</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-overlay">
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <span className="modal-title">{modalData?.title || '진단'}</span>
+                <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+              </div>
+              <div className="modal-body">{modalData?.content || <DiagnosticsMonitor />}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
-    const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
     return (
       <div className="waiting-screen">
         {/* ── 상단 헤더 배너 ── */}
@@ -1565,100 +1672,13 @@ function App() {
             </button>
           ))}
 
-          {/* ── 숨겨진 진단 진입 영역 (우측 끝 3초 장누르기) ── */}
-          <div
-            className="diag-secret-zone"
-            onMouseDown={handleDiagPressStart}
-            onMouseUp={handleDiagPressEnd}
-            onMouseLeave={handleDiagPressEnd}
-            onTouchStart={handleDiagPressStart}
-            onTouchEnd={handleDiagPressEnd}
-            onTouchCancel={handleDiagPressEnd}
-          >
-            {diagPressProgress > 0 && (
-              <div className="diag-press-progress-wrap">
-                <div
-                  className="diag-press-bar"
-                  style={{ transform: `scaleY(${diagPressProgress / 100})` }}
-                />
-              </div>
-            )}
-          </div>
+          {/* ── 숨겨진 진단 진입 영역 (모든 서비스 화면 공통) ── */}
+          {adminEntryZone}
 
         </div>
 
-        {/* ── 진단 로그인 모달 ── */}
-        {showLoginModal && (
-          <div className="modal-overlay">
-            <div className="modal-box login-modal-box" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <span className="modal-title">진단 관리자 인증</span>
-                <button className="modal-back-btn" onClick={() => setShowLoginModal(false)}>뒤로가기</button>
-              </div>
-              <div className="modal-body login-modal-body">
-                <div className="login-fields-row">
-                  <div className="login-field">
-                    <label>아이디</label>
-                    <input
-                      type="text"
-                      value={loginId}
-                      onChange={e => setLoginId(e.target.value)}
-                      onFocus={() => setActiveField('id')}
-                      onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
-                      placeholder="아이디를 입력하세요"
-                    />
-                  </div>
-                  <div className="login-field">
-                    <label>비밀번호</label>
-                    <input
-                      id="login-pw-input"
-                      type="password"
-                      value={loginPw}
-                      onChange={e => setLoginPw(e.target.value)}
-                      onFocus={() => setActiveField('pw')}
-                      onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
-                      placeholder="비밀번호를 입력하세요"
-                    />
-                  </div>
-                </div>
-                <button
-                  className="login-submit-btn"
-                  onClick={handleLogin}
-                >
-                  확인
-                </button>
-                {loginError && <p className="login-error">{loginError}</p>}
-
-                {/* ── 가상 키보드 ── */}
-                <div className="vkb-wrap">
-                  <div className="vkb-field-tabs">
-                    <button className={`vkb-tab${activeField === 'id' ? ' active' : ''}`} onClick={() => setActiveField('id')}>아이디</button>
-                    <button className={`vkb-tab${activeField === 'pw' ? ' active' : ''}`} onClick={() => setActiveField('pw')}>비밀번호</button>
-                  </div>
-                  {KB_ROWS.map((row, ri) => (
-                    <div key={ri} className="vkb-row">
-                      {row.map(key => (
-                        <button
-                          key={key + ri}
-                          className={`vkb-key${key === '⌫' ? ' vkb-wide' : ''}${key === '⇧' ? ' vkb-wide' + (kbCaps ? ' vkb-caps-on' : '') : ''}`}
-                          onClick={() => handleVirtualKey(key)}
-                        >
-                          {key === '⇧' ? (kbCaps ? '⇧ ON' : '⇧') : key}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                  <div className="vkb-row">
-                    <button className="vkb-key vkb-space" onClick={() => handleVirtualKey('SPACE')}>SPACE</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── 모달 오버레이 ── */}
-        {activeModal && modalData && (
+        {activeModal && activeModal !== 'settings' && modalData && (
           <div className="modal-overlay">
             <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
@@ -1707,6 +1727,7 @@ function App() {
 
   return (
     <div className="main-layout" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+      {adminEntryZone}
 
       {/* ── 상단 헤더 배너 ── */}
       <div className="control-header">

@@ -1,5 +1,6 @@
 """Regression coverage for the on-demand operator telemetry bridge."""
 
+import asyncio
 import math
 from pathlib import Path
 import struct
@@ -23,6 +24,7 @@ from visualization_msgs.msg import Marker, MarkerArray  # noqa: E402
 from camrod_ui.ui_backend_node import (  # noqa: E402
     TELEMETRY_TOPIC_DEFAULTS,
     UiBackendNode,
+    _bounded_telemetry_rate_hz,
     _decimate_xy,
     _encode_raw_image_jpeg,
     _finite_or_none,
@@ -30,10 +32,40 @@ from camrod_ui.ui_backend_node import (  # noqa: E402
     _quaternion_yaw_deg,
     _sample_occupancy_grid,
     _sample_pointcloud_xy,
+    _wait_for_websocket_disconnect,
 )
 
 
 class OperatorTelemetryTest(unittest.TestCase):
+
+    def test_telemetry_stream_rate_is_bounded_for_arm_runtime(self) -> None:
+        self.assertEqual(_bounded_telemetry_rate_hz(10.0), 10.0)
+        self.assertEqual(_bounded_telemetry_rate_hz(0.0), 1.0)
+        self.assertEqual(_bounded_telemetry_rate_hz(100.0), 20.0)
+        self.assertEqual(_bounded_telemetry_rate_hz(float("nan")), 10.0)
+
+    def test_websocket_disconnect_watcher_consumes_asgi_close_event(self) -> None:
+        class FakeWebSocket:
+            def __init__(self) -> None:
+                self.events = [
+                    {"type": "websocket.receive", "text": "ignored"},
+                    {"type": "websocket.disconnect", "code": 1000},
+                ]
+                self.receive_count = 0
+
+            async def receive(self):
+                self.receive_count += 1
+                return self.events.pop(0)
+
+        socket = FakeWebSocket()
+        heartbeats = []
+        asyncio.run(
+            _wait_for_websocket_disconnect(
+                socket, lambda: heartbeats.append("lease")
+            )
+        )
+        self.assertEqual(socket.receive_count, 2)
+        self.assertEqual(heartbeats, ["lease"])
 
     def test_manual_goal_validation_normalizes_yaw_and_rejects_nonfinite(self) -> None:
         goal = UiBackendNode._normalize_manual_goal("12.5", -3, 450)
@@ -332,6 +364,7 @@ class OperatorTelemetryTest(unittest.TestCase):
             "motion", "paths", "footprint", "perception", "safety", "mission",
         ):
             self.assertIn(key, snapshot)
+        self.assertIn("stream_rate_hz", snapshot)
         self.assertFalse(snapshot["session_active"])
 
     def test_tab_payload_prunes_unrelated_high_volume_sections(self) -> None:

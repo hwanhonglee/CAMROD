@@ -84,6 +84,7 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert defaults["sensing"]["enable_lidar_cost_grid"] is False
     assert defaults["system"]["operator_ui_window_engine"] == "webkit"
     assert defaults["system"]["enable_operator_telemetry"] is True
+    assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 10.0
 
     bringup_source = BRINGUP_IMPL.read_text(encoding="utf-8")
     lidar_source = LIDAR_LAUNCH.read_text(encoding="utf-8")
@@ -96,6 +97,10 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert "GroupAction([" in lidar_source
     assert "iox-roudi" in bringup_source
     assert "'enable_operator_telemetry': lc['enable_operator_telemetry']" in bringup_source
+    assert (
+        "'operator_telemetry_stream_rate_hz': "
+        "lc['operator_telemetry_stream_rate_hz']"
+    ) in bringup_source
     assert "cfg_get(launch_cfg, 'runtime/rviz', False)" in bringup_source
 
 

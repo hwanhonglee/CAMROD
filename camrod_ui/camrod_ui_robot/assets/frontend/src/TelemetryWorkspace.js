@@ -12,6 +12,7 @@ export const TELEMETRY_TABS = [
 ];
 
 const EMPTY_TELEMETRY = {
+  stream_rate_hz: 10,
   session_active: false,
   sources: {},
   gnss: { fix: {}, navpvt: {}, covariance: {}, relative_heading: {} },
@@ -361,7 +362,7 @@ function ProximityView({ telemetry }) {
   );
 }
 
-function CameraFeed({ telemetry, camera, label, tick }) {
+function CameraFeed({ telemetry, camera, label }) {
   const data = telemetry.cameras?.[camera] || {};
   const source = sourceState(telemetry, `camera.${camera}`, 3);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -373,7 +374,7 @@ function CameraFeed({ telemetry, camera, label, tick }) {
       <div className={`camera-frame camera-frame-${source.state}`}>
         {canDisplay ? (
           <img
-            src={`/api/camera/${camera}?frame=${data.sequence || tick}`}
+            src={`/api/camera/${camera}?frame=${data.sequence}`}
             alt={`${label} live ROS camera`}
             onError={() => setLoadFailed(true)}
           />
@@ -398,7 +399,7 @@ function CameraFeed({ telemetry, camera, label, tick }) {
   );
 }
 
-function CameraView({ telemetry, tick }) {
+function CameraView({ telemetry }) {
   return (
     <div className="telemetry-view telemetry-camera-view">
       <div className="telemetry-source-row">
@@ -406,8 +407,8 @@ function CameraView({ telemetry, tick }) {
         <SourcePill telemetry={telemetry} source="camera.rear" label="Rear · target 10 Hz" staleAfter={3} />
       </div>
       <div className="camera-grid">
-        <CameraFeed telemetry={telemetry} camera="front" label="Front camera" tick={tick} />
-        <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" tick={tick} />
+        <CameraFeed telemetry={telemetry} camera="front" label="Front camera" />
+        <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" />
       </div>
     </div>
   );
@@ -979,43 +980,107 @@ export default function TelemetryWorkspace({ activeTab }) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
   const [connectionError, setConnectionError] = useState('');
-  const [cameraTick, setCameraTick] = useState(0);
+  const [transport, setTransport] = useState('connecting');
 
   useEffect(() => {
     let mounted = true;
+    let socket = null;
+    let fallbackPollTimer = null;
+    let reconnectTimer = null;
     let requestInFlight = false;
+    const view = encodeURIComponent(activeTab);
+
+    const applySnapshot = body => {
+      if (!mounted) return;
+      setTelemetry({ ...EMPTY_TELEMETRY, ...body });
+      setConnectionError('');
+    };
+
+    const renewLease = () => fetch(
+      `/api/telemetry/session?active=true&view=${view}`,
+      { method: 'POST' }
+    ).catch(() => {});
+
     const poll = async () => {
       if (requestInFlight) return;
       requestInFlight = true;
       try {
+        renewLease();
         const response = await fetch('/api/telemetry', { cache: 'no-store' });
         if (!response.ok) throw new Error(`telemetry HTTP ${response.status}`);
-        const body = await response.json();
-        if (mounted) {
-          setTelemetry({ ...EMPTY_TELEMETRY, ...body });
-          setConnectionError('');
-        }
+        applySnapshot(await response.json());
       } catch (error) {
         if (mounted) setConnectionError(error.message || 'telemetry unavailable');
       } finally {
         requestInFlight = false;
       }
     };
-    poll();
-    const pollTimer = setInterval(poll, 500);
+
+    const stopFallback = () => {
+      if (fallbackPollTimer) clearInterval(fallbackPollTimer);
+      fallbackPollTimer = null;
+    };
+
+    const startFallback = () => {
+      if (!mounted || fallbackPollTimer) return;
+      setTransport('http-fallback');
+      poll();
+      fallbackPollTimer = setInterval(poll, 1000);
+    };
+
+    const connect = () => {
+      if (!mounted) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const host = window.location.host || 'localhost:8010';
+      let currentSocket;
+      try {
+        currentSocket = new WebSocket(`${protocol}://${host}/ws/telemetry?view=${view}`);
+        socket = currentSocket;
+      } catch (error) {
+        setConnectionError(error.message || 'telemetry WebSocket unavailable');
+        startFallback();
+        reconnectTimer = setTimeout(connect, 2000);
+        return;
+      }
+      currentSocket.onopen = () => {
+        if (!mounted) return;
+        stopFallback();
+        setTransport('websocket');
+        setConnectionError('');
+        // HH_260810 - Client-owned lease heartbeats let the backend release
+        // high-bandwidth ROS subscriptions after a silent ARM kiosk/network
+        // loss; successful server writes alone do not prove the UI is alive.
+        currentSocket.send('lease');
+        currentSocket.leaseTimer = setInterval(() => {
+          if (currentSocket.readyState === WebSocket.OPEN) currentSocket.send('lease');
+        }, 4000);
+      };
+      currentSocket.onmessage = event => {
+        try {
+          applySnapshot(JSON.parse(event.data));
+        } catch (error) {
+          if (mounted) setConnectionError(error.message || 'invalid telemetry frame');
+        }
+      };
+      currentSocket.onerror = () => currentSocket.close();
+      currentSocket.onclose = () => {
+        if (currentSocket.leaseTimer) clearInterval(currentSocket.leaseTimer);
+        if (socket === currentSocket) socket = null;
+        if (!mounted) return;
+        startFallback();
+        reconnectTimer = setTimeout(connect, 2000);
+      };
+    };
+
+    connect();
     return () => {
       mounted = false;
-      clearInterval(pollTimer);
-    };
-  }, []);
-
-  useEffect(() => {
-    const view = encodeURIComponent(activeTab);
-    const renew = () => fetch(`/api/telemetry/session?active=true&view=${view}`, { method: 'POST' }).catch(() => {});
-    renew();
-    const leaseTimer = setInterval(renew, 4000);
-    return () => {
-      clearInterval(leaseTimer);
+      stopFallback();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) {
+        if (socket.leaseTimer) clearInterval(socket.leaseTimer);
+        socket.close();
+      }
       fetch(`/api/telemetry/session?active=false&view=${view}`, { method: 'POST', keepalive: true }).catch(() => {});
     };
   }, [activeTab]);
@@ -1023,30 +1088,33 @@ export default function TelemetryWorkspace({ activeTab }) {
   useEffect(() => {
     if (!['trajectory', 'perception'].includes(activeTab)) return undefined;
     let mounted = true;
+    let timer = null;
     const fetchMap = () => fetch('/api/telemetry/map', { cache: 'no-store' })
       .then(response => response.json())
-      .then(body => { if (mounted) setMapData(body); })
-      .catch(() => {});
+      .then(body => {
+        if (!mounted) return;
+        setMapData(body);
+        // HH_260810 - Acquire late transient-local map data quickly, then treat
+        // the lanelet geometry as static to avoid repeated ARM64 JSON redraws.
+        const retryMs = body.polylines?.length > 0 ? 15000 : 250;
+        timer = setTimeout(fetchMap, retryMs);
+      })
+      .catch(() => {
+        if (mounted) timer = setTimeout(fetchMap, 1000);
+      });
     fetchMap();
-    const timer = setInterval(fetchMap, 3000);
-    return () => { mounted = false; clearInterval(timer); };
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab !== 'camera') return undefined;
-    const timer = setInterval(() => setCameraTick(value => value + 1), 500);
-    return () => clearInterval(timer);
+    return () => { mounted = false; if (timer) clearTimeout(timer); };
   }, [activeTab]);
 
   const view = useMemo(() => {
     if (activeTab === 'gnss') return <GnssImuView telemetry={telemetry} />;
     if (activeTab === 'proximity') return <ProximityView telemetry={telemetry} />;
-    if (activeTab === 'camera') return <CameraView telemetry={telemetry} tick={cameraTick} />;
+    if (activeTab === 'camera') return <CameraView telemetry={telemetry} />;
     if (activeTab === 'trajectory') return <TrajectoryView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
     return null;
-  }, [activeTab, telemetry, mapData, cameraTick]);
+  }, [activeTab, telemetry, mapData]);
 
   return (
     <div className="telemetry-workspace">
@@ -1054,6 +1122,9 @@ export default function TelemetryWorkspace({ activeTab }) {
         <span className={`telemetry-session-light ${telemetry.session_active ? 'active' : ''}`} />
         <strong>{telemetry.session_active ? 'OPERATOR TELEMETRY ACTIVE' : 'STARTING TELEMETRY SESSION'}</strong>
         <span>View {telemetry.active_view || activeTab}</span>
+        <span>{transport === 'websocket'
+          ? `LIVE ${numberText(telemetry.stream_rate_hz, 1)} HZ`
+          : 'HTTP FALLBACK 1 HZ'}</span>
         <span>Schema v{telemetry.schema_version || 1}</span>
         {connectionError && <em>{connectionError}</em>}
       </div>

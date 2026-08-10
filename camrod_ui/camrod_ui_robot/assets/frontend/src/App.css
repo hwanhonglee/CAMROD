@@ -568,6 +568,19 @@ body {
   user-select: none;
 }
 
+/* HH_260810 - Keep the authenticated diagnostics entry reachable above
+   arrival/return overlays, while the login and admin surfaces remain higher. */
+.diag-secret-zone-global {
+  position: fixed;
+  z-index: 900;
+}
+
+.admin-runtime-shell {
+  position: fixed;
+  inset: 0;
+  background: #f0f2f5;
+}
+
 .diag-press-progress-wrap {
   position: absolute;
   right: 8px;
