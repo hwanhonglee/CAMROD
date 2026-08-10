@@ -16,6 +16,7 @@ artifacts.
 | `render_*recovery*.py` | Map-bound recovery JSON | Contact, candidate, release, retry, and completion PNG/GIF |
 | `render_camping_site_sequence_results.py` | Site geometry and simulation records | Turnaround/roadside state-sequence PNG/GIF |
 | `render_v2_1_5_service_results.py`, `render_rpp_service_ab.py` | Service-run JSON/logs | Repeated-service and controller A/B reports |
+| `render_operator_transport_handoff_results.py` | AMD64 UI measurement JSON + system policy cases | Measured transport and source/unit-policy PNG/GIF with explicit field limits |
 
 Operational visualization remains package-local:
 

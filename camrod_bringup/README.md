@@ -14,6 +14,8 @@ arrival-only validation for constrained roadside sites. -->
 return handoff, diagnostic audit, and reproducible endurance media. -->
 <!-- HH_260810 - Keep RViz opt-in after the operator UI gained a confirmed
 manual Goal Pose workflow. -->
+<!-- HH_260810 - Synchronize the 10 Hz client-leased operator stream and
+return-handoff diagnostic grace for the ARM64 deployment boundary. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -54,6 +56,7 @@ tapered-front rounded body and exact planning offset. -->
 | Radar display | `radar_status_gui.py` subscribes to seven real `/range_ros` streams; it does not publish dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
+| Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
 
 ![Managed operator-map manual goal](../docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
 
@@ -100,12 +103,33 @@ The latest full-bringup runtime result is shown separately.
 
 ![Full-bringup simulation evidence](../docs/assets/module-guides/bringup/test-results/campsite-smoke-20260804/simulation-evidence-20260804.png)
 
+### Current UI And Diagnostic Follow-up
+
+![Measured AMD64 operator telemetry transport](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.png)
+
+![Operator telemetry transport and lease summary](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.gif)
+
+![Return handoff Nav status policy](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.png)
+
+![Return handoff Nav status regression cases](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.gif)
+
+<!-- HH_260810 - Keep the new representative media beside the full-stack
+verdict while preserving their AMD64-standalone and source/unit scopes. -->
+The [UI transport record](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/README.md)
+contains the measured x86_64 values. The
+[system handoff record](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/README.md)
+contains source/config/unit-policy cases. Neither is ARM64 or physical-road
+acceptance.
+
 | Check | Result | Measured value |
 |---|---|---:|
 | Historical tapered/rounded B2 road run | PASS (MEASURED ROS SIM) | map-v17; body cost-100 contact no; planning contact yes; `0.0972 m`, `-4.545 deg`; no second hold; route complete |
 | Stack startup | PASS | Fresh isolated active map-v15 graph reached `[SYSTEM] OK` |
 | Goal-independent UI startup | PASS | Zero RViz/UI goals; planning `WAIT_DZ`, UI `READY`; 5 authoritative READY frames in 2.2 s |
 | Operator telemetry workspace | PASS (AMD64 SIM) | Six leased views, `4-11` subscriptions per view, 1600x1000 overflow `0`, GNSS/IMU `10.01 Hz`, pose `20.02 Hz` after view reopen |
+| Operator telemetry transport | PASS (AMD64 STANDALONE) | `201` frames at `9.938 Hz`, p95 `100.792 ms`; CPU `1.00 -> 1.12%`, RSS `76,696 -> 77,592 KiB`; close `83.3 ms`, silent lease `12.078 s` |
+| Admin service-screen continuity | PASS (source/build regression) | Login/diagnostics are top-level and remain mounted across waiting, driving, arrival, return, parking, and charging renders |
+| Return handoff diagnostics | PASS (policy regression) | Only pre-transition goal UUIDs receive the `3.0 s` handoff grace; a new return-goal abort remains visible |
 | Operator-map manual goal | PASS (AMD64 SIM) | Default `rviz=false`; confirmed `/goal_pose`; engage/drive-enable true; manual `DRIVING`; global/local path `500/154` bounded points |
 | Controlled full-graph shutdown | PASS (3/3) | Every component and standalone process, including Nav2 lifecycle manager and Robot/Guest UI, exited cleanly; `-11/-9/forced kill` 0 |
 | Post-fix no-goal shutdown | PASS (1/1) | READY/SYSTEM OK; parent-only SIGINT; 44/44 clean process exits; failure/forced kill/descendant 0 |
@@ -331,12 +355,15 @@ deployment copies and are covered by synchronization tests.
 | `render_camping_site_sequence_results.py` | Structured B1-B10 turnaround and B11-B13 roadside-arrival PNG/GIF |
 | `render_v2_1_5_service_results.py` | Repeated-service, obstacle, and B2 recovery JSON -> PNG/GIF |
 | `render_rpp_service_ab.py` | Fixed-versus-scaled RPP service decision JSON -> PNG |
+| `render_operator_transport_handoff_results.py` | UI measurement and return-handoff policy JSON -> package-owned PNG/GIF |
 
 ```bash
 python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py
 python3 camrod_bringup/scripts/visualization/render_tapered_rounded_boundary.py
 python3 camrod_bringup/scripts/visualization/render_tapered_rounded_road_sim.py
+python3 camrod_bringup/scripts/visualization/render_operator_transport_handoff_results.py
 pytest -q camrod_bringup/test/test_module_readme_assets.py
+python3 -m pytest -q camrod_bringup/test/test_operator_transport_handoff_assets.py
 python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_boundary_assets.py
 python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 ```
@@ -361,4 +388,6 @@ python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 | Historical 3 km/h RPP service A/B | [`rpp-lookahead-service-ab-20260807/`](../docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/) |
 | Final B1-B10 service endurance | [`b1-b10-service-endurance-20260807/`](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/) |
 | Post-fix Nav2/full-graph shutdown | [`nav2-lifecycle-shutdown-20260810/`](../docs/assets/module-guides/runtime/test-results/nav2-lifecycle-shutdown-20260810/) |
+| AMD64 operator telemetry transport | [`operator-telemetry-websocket-amd64-20260810/`](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/) |
+| Return-handoff Nav status policy | [`return-handoff-nav-status-20260810/`](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/) |
 | Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |

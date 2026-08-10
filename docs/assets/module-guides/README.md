@@ -38,3 +38,7 @@ the current contour; it must not be presented as a new runtime measurement.
 Experiment directories should include a concise `README.md`, machine-readable
 JSON when measurements exist, and hashes for external or generated inputs.
 Large rosbags remain external; record their path and SHA-256 in the result.
+
+Summary animations must identify themselves when raw frame/event samples were
+not recorded. They may animate measured aggregates or unit-tested decisions,
+but must not be labelled as runtime or field captures.

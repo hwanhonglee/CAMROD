@@ -158,6 +158,10 @@ CAMROD v2.1.7 미완료 실차 확인 목록
   safety 순으로 30분 반복 전환한다. backend CPU/PSS, 전체 GPU, JSON payload,
   카메라 frame pacing, 각 view의 `4-11`개 동적 subscription 해제, 메모리 증가와
   재진입 직후 Hz 표시를 기록한다.
+- production default `10 Hz` stream과 `4 s` client heartbeat에서 normal close
+  후 subscription release `<=1 s`, 브라우저/network silent loss 후 `<=13 s`,
+  30분 종료 뒤 지속 RSS 증가 `<=20 MiB`인지 확인한다. AMD64 standalone 기준
+  `9.938 Hz`, CPU `1.00 -> 1.12%`, RSS `+896 KiB`는 비교 시작점일 뿐이다.
 - 합격: crash/-11/-9/forced kill/잔여 process 0, 필수 topic rate 유지, 자원
   절감 수치와 fallback 조건이 기록된다.
 

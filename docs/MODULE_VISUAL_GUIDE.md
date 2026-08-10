@@ -22,6 +22,7 @@ come from ROS topics, controller state, diagnostics, and safety gates.
 | `SOURCE INVENTORY` | Files and package manifests | Interface/file/dependency counts match source |
 | `MEASURED ROS SIM` | Committed JSON or raw ROS logs from a running simulation | Listed rates, events, displacement, and state changes were observed in that run |
 | `MEASURED WORKSTATION` | Repeated process-tree samples on the recorded amd64 host | Relative CPU/PSS/process/rate effects apply to that host and method, not Jetson acceptance |
+| `POLICY REGRESSION` | Structured cases bound to current source, config, and unit tests | The decision table is verified; no live ROS or physical mission is claimed |
 | `SIM RUNTIME CAPTURE` | RViz, ROS CLI, or browser connected to a live `sim:=true` graph | The displayed topics/layers/states existed in that run; no physical performance claim |
 | `FIELD REPORT / RAW LOG EXTERNAL` | Committed normalized summary backed by a report that references Jetson-only raw paths | Listed stationary values were reported; the repository cannot independently replay the raw capture |
 | `ALGORITHM SCHEMATIC` | Seeded synthetic data + active thresholds | Processing concept is reproducible; the points are not sensor evidence |
@@ -67,12 +68,14 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png`, `gnss-left-antenna-lever-arm.png` | Geometry/localization YAML | Exact non-GNSS conversion and measured GNSS Y correction; remaining survey is pending |
 | `camrod_system` | `diagnostic-severity-and-surfaces.png`, `runtime-topology-amd64-ab-20260805.png` | Manifests plus 3-run system-core and 2-run LiDAR amd64 A/B JSON | Core container saves 3 processes/19.7 MiB PSS; LiDAR saves 17.5% CPU but adds 44.0 MiB PSS; Jetson pending |
+| `camrod_system` | `test-results/return-handoff-nav-status-20260810/` PNG/GIF | Deployed `3.0 s` config, UUID-aware policy source, and unit regression cases | Outgoing goal suppressed only inside grace; new/late return abort stays visible; field mission pending |
 | `camrod_ui` | Mission guide, Robot/Guest captures, six operator-telemetry captures, workspace GIF, and resource PNG | UI policy + live sensor/map/path/safety APIs + backend profile JSON + renderer A/B | Six live views render without overflow; camera publishers and ARM64 frame pacing remain field-pending |
+| `camrod_ui` | `test-results/operator-telemetry-websocket-amd64-20260810/` PNG/GIF | Standalone x86_64 measurement JSON | `9.938 Hz`, p95 `100.792 ms`, close `83.3 ms`, silent lease `12.078 s`; sensor/ARM64 cost pending |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 Package-guide files and structured release results are under
 `docs/assets/module-guides/<package>/{guide,evidence,test-results}/`. The
-checked-in inventory contains **70 PNGs and 14 GIFs** under `module-guides`; the former top-level
+checked-in inventory contains **73 PNGs and 16 GIFs** under `module-guides`; the former top-level
 `test_result` content is organized under each package's `test-results/`
 directory. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.

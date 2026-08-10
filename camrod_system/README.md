@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Document scoped checker fault domains and the remaining
 Jetson acceptance work. -->
+<!-- HH_260810 - Distinguish the outgoing Nav2 goal at return handoff from a
+new return-route failure instead of suppressing the whole service state. -->
 
 Graph readiness, dedicated sensor/planning/platform/hardware diagnostics,
 metadata-preserving aggregation, and operator health summaries.
@@ -169,15 +171,29 @@ Jetson. It is a diagnostic report, not a production driving benchmark.
 
 ## Expected Planning Handoffs
 
+![Return handoff Nav status policy](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.png)
+
+![Return handoff Nav status regression cases](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.gif)
+
+<!-- HH_260810 - Show the goal-identity policy regression separately from live
+system captures so a source/unit result is not mistaken for field evidence. -->
+The [structured handoff result](../docs/assets/module-guides/system/test-results/return-handoff-nav-status-20260810/README.md)
+binds the three cases below to the deployed `3.0 s` parameter and unit test.
+It is not a physical return-mission capture.
+
 | Service phase | Nav2 abort/cancel interpretation |
 |---|---|
-| `MOVING_TO_SITE` or route travel | Unexpected abort remains WARN/ERROR |
-| `SITE_ENTRY`, unload/wait, return maneuver, parking | Local controller owns motion; expected Nav2 cancel is suppressed |
+| `MOVING_TO_SITE` or established return route | Unexpected abort remains WARN/ERROR |
+| `SITE_ENTRY`, unload/wait, local return maneuver, parking | Local controller owns motion; expected Nav2 cancel is suppressed |
+| First `3.0 s` of `RETURNING_TO_DROP_ZONE` | Only a goal UUID already observed before the state transition is treated as the outgoing handoff |
+| New return goal, including within the first `3.0 s` | `ABORTED` remains visible; a real route failure is not hidden by the handoff grace |
 | `OPERATOR_STOPPED` | Operator cancellation is explicit state, not a stale planning warning |
 
 A single `ABORTED` result may be WARN when genuinely unexpected. The checker
-uses current service context and recent status; a successful/cancelled terminal
-transition can restore health.
+uses current service context, transition age, and Nav2 goal UUID. The outgoing
+goal remains ignored if Nav2 retains its terminal entry, while a later return
+goal contributes normally to the rolling abort count. A successful/cancelled
+terminal transition can restore health.
 
 The local-path checker follows the same ownership rule. During stationary or
 local-controller states (`SITE_ENTRY`, parking, charging and charger/drop-zone

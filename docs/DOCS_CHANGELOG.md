@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+<!-- HH_260810 - Keep administrator diagnostics alive across service screens,
+move selected telemetry to a bounded client-leased stream, and narrow return
+handoff warning suppression to the outgoing Nav2 goal. -->
+## [admin-telemetry-return-handoff] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Admin continuity | Makes the hidden entry and authenticated diagnostics a top-level Robot UI surface, so waiting/driving/arrival/return/parking/charging renders do not close it |
+| Telemetry transport | Uses a dedicated selected-view latest-value WebSocket at configurable `1-20 Hz` (`10 Hz` default), with command/state traffic retained on `/ws` and `1 Hz` REST fallback |
+| ARM resource policy | Subscribes only to the visible view, reloads camera images only when sequence changes, retries static map acquisition quickly and then refreshes it every 15 s |
+| Lease cleanup | Uses a client `4 s` heartbeat, server disconnect receive task, and `12 s` timeout; AMD64 normal close was observed at `83.3 ms` and silent expiration at `12.078 s` |
+| AMD64 transport | `201` frames in `20.126 s`, `9.938 Hz`, p95 `100.792 ms`; standalone backend CPU `1.00 -> 1.12%`, RSS `76,696 -> 77,592 KiB` with no sensor publishers |
+| Return diagnostic | Applies the `3.0 s` transition grace only to Nav2 goal UUIDs observed before `RETURNING_TO_DROP_ZONE`; a newly created return goal remains diagnosable immediately |
+| Representative media | Adds package-owned UI measured-summary and system policy-regression PNG/GIF, a central renderer, and a regeneration/config-link test; neither animation is labelled as a raw runtime capture |
+| Renderer maintenance | Installs all `12/12` central renderers as executable entrypoints, fixes the missing source execute bit on the historical-summary tool, and checks executable mode plus the exact `73 PNG / 16 GIF` inventory |
+| Verification boundary | React production build, UI `55/55`, system `5/5`, and bringup `28/28` targets (`255` xUnit cases) pass; live sensor and whole-stack ARM64 8-core/16-GB acceptance remains in `TODOLIST.txt` |
+
+---
+
 <!-- HH_260810 - Make the browser operator map the normal manual-goal surface
 and retain RViz only as an explicit maintenance profile. -->
 ## [operator-map-manual-goal] - 2026-08-10 (HH_260810)
@@ -14,7 +35,7 @@ and retain RViz only as an explicit maintenance profile. -->
 | ROS contract | Confirmed goals publish `/goal_pose` before drive-enable and engage; campsite goals remain isolated on `/planning/site_goal_pose_ros` |
 | AMD64 simulation | No RViz process; exact raw goal, drive-enable, engage, manual `DRIVING`, bounded `500/154` global/local path points, and Nav2 goal success observed |
 | Browser verification | Actual `1600x857` full-map capture contains target marker and confirmation with horizontal/vertical overflow `0`; pointer and departure button events drove the ROS trial |
-| Regression | React production bundle succeeds; direct `camrod_ui` suite passes `52/52`; current scoped bringup result passes `249/249`; canonical wrapper rebuilds both packages |
+| Regression | React production bundle succeeds; direct `camrod_ui` suite passes `55/55`; current scoped bringup result passes `255/255`; canonical wrapper rebuilds both packages |
 
 ---
 

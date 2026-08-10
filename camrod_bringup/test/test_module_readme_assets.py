@@ -132,6 +132,9 @@ VISUAL_DOCS = CAMROD_READMES + (
     SRC_ROOT / "docs" / "V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md",
     SRC_ROOT / "docs" / "V2_1_3_ROBOT_CENTER_MIGRATION.md",
     SRC_ROOT / "docs" / "V2_1_5_RELEASE_NOTES.md",
+    # HH_260810 - The post-tag transport/handoff figures are owned by module
+    # result folders and must remain resolvable from the current release notes.
+    SRC_ROOT / "docs" / "V2_1_7_RELEASE_NOTES.md",
 )
 
 MODULE_OWNED_RELEASE_ASSETS = (
@@ -347,6 +350,7 @@ def test_visualization_tool_ownership_is_explicit() -> None:
         "render_camping_site_sequence_results.py",
         "render_historical_boundary_summaries.py",
         "render_module_readme_assets.py",
+        "render_operator_transport_handoff_results.py",
         "render_park_operating_points.py",
         "render_robot_boundary_validation.py",
         "render_rpp_service_ab.py",
@@ -354,7 +358,11 @@ def test_visualization_tool_ownership_is_explicit() -> None:
         "render_tapered_rounded_road_sim.py",
         "render_v2_1_5_service_results.py",
     }
-    assert {path.name for path in visualization.glob("render_*.py")} == expected
+    renderers = tuple(visualization.glob("render_*.py"))
+    assert {path.name for path in renderers} == expected
+    # HH_260810 - Symlink installs inherit source mode; a non-executable source
+    # silently produces a listed but unusable ros2-run entrypoint.
+    assert all(path.stat().st_mode & 0o111 for path in renderers)
 
     cmake = (SRC_ROOT / "camrod_bringup" / "CMakeLists.txt").read_text()
     for filename in expected:
@@ -526,8 +534,18 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     all_visuals = tuple(asset_root.rglob("*"))
     # HH_260810 - Package-owned test results may grow without invalidating the
     # runtime-capture contract. Keep the established inventory as a floor.
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) >= 48
-    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) >= 10
+    png_count = sum(path.suffix.lower() == ".png" for path in all_visuals)
+    gif_count = sum(path.suffix.lower() == ".gif" for path in all_visuals)
+    assert png_count >= 48
+    assert gif_count >= 10
+
+    # HH_260810 - Keep the human-readable inventory exact as package-owned
+    # test-result media grows; stale totals make an otherwise valid index hard
+    # to audit from another workstation.
+    visual_guide = (SRC_ROOT / "docs" / "MODULE_VISUAL_GUIDE.md").read_text(
+        encoding="utf-8"
+    )
+    assert f"**{png_count} PNGs and {gif_count} GIFs**" in visual_guide
 
 
 def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
