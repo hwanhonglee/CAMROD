@@ -47,6 +47,41 @@ CAMROD 구현·검증 완료 기록
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
+0G. HH_260810 관리자 화면 유지·10 Hz telemetry·복귀 경고 분리
+    [DONE-CODE, MEASURED-AMD64, FIELD-PENDING]
+- Robot UI의 관리자 진입, 로그인, diagnostics workspace를 public service
+  화면 분기 밖으로 이동했다. waiting, manual/campsite driving, arrival, return,
+  parking, charging 중 state가 바뀌어도 인증된 화면과 선택 탭이 unmount되지
+  않는다. system HTTP 진단은 system 탭을 볼 때만 0.5초로 갱신한다.
+- 선택 telemetry는 command `/ws`와 분리된 `/ws/telemetry?view=<name>`에서
+  최신 snapshot만 기본 10 Hz로 보낸다. 범위는 1-20 Hz이며 bringup canonical
+  default와 UI package launch가 `10.0`으로 동기화됐다. HTTP fallback은 1 Hz다.
+- 브라우저가 4초마다 lease heartbeat를 보내며, 서버 receive task가 normal
+  close를 감지한다. heartbeat가 끊기면 12초 timeout으로 high-bandwidth ROS
+  subscription을 해제한다. send-only socket이 구독을 영구 유지하던 실측 중
+  발견 문제를 수정했다.
+- x86_64 standalone backend/no-sensor 측정에서 201 frame/20.126초,
+  `9.938 Hz`, interval p95 `100.792 ms`, max `101.295 ms`였다. CPU는 idle
+  `1.00%`에서 active `1.12%`, RSS는 `76,696 -> 77,592 KiB`; normal close
+  release는 `83.3 ms`, heartbeat 없는 lease는 `12.078 s`에 해제됐다.
+- planning nav checker는 RETURNING_TO_DROP_ZONE 전체를 정상으로 숨기지 않는다.
+  전환 전 관측된 Nav2 goal UUID만 3초 handoff 대상으로 보존하며, 새 return
+  goal의 ABORTED는 3초 안이어도 WARN 대상이다. 따라서 사용자 로그의 이전
+  goal terminal entry는 지우되 실제 복귀 경로 실패는 계속 표시한다.
+- UI 측정 JSON과 system handoff 정책 JSON에서 대표 PNG/GIF를 재생성하는
+  중앙 renderer를 추가했다. UI 이미지는 AMD64 standalone 측정 요약, system
+  이미지는 source/config/unit `POLICY REGRESSION`으로 표시하며 raw runtime이나
+  실차 capture로 오인할 수 없게 각 이미지와 README에 제한을 명시했다.
+- 중앙 offline renderer `12/12`를 실행 가능한 설치 entrypoint로 확인했다.
+  기존 historical-summary renderer의 빠진 source execute bit를 수정했고,
+  README 자산 링크와 현재 `73 PNG / 16 GIF` 인벤토리를 회귀 시험으로 고정했다.
+- Release build 후 system `5/5`, UI `55/55`, bringup `28/28` test target과
+  bringup xUnit `255/255`가 통과했다. React production bundle은 JS
+  `70.57 kB`, CSS `11.14 kB` gzip으로 생성됐다.
+- 이 수치는 AMD64 transport baseline이다. ARM64 8-core/16 GB에서 실제
+  camera/LiDAR/radar/DDS/WebKit과 함께 30분 view cycle 및 전체 resource를
+  측정하는 P1-F/G는 미완료다.
+
 0F. HH_260810 UI manual Goal Pose and RViz default OFF
     [DONE-CODE, DONE-SIM, FIELD-PENDING]
 - The operator diagnostics trajectory map now selects manual `map` x/y by
@@ -65,7 +100,7 @@ CAMROD 구현·검증 완료 기록
   raw points, local path 154 points, and Nav2 goal success were observed.
 - The actual 1600x857 browser pass displayed the full map, goal marker, and
   confirmation with horizontal/vertical overflow 0. Direct UI tests passed 52/52, the React
-  production bundle built, scoped bringup results passed 249/249, and the
+  production bundle built, scoped bringup results passed 255/255, and the
   canonical wrapper rebuilt `camrod_ui` and `camrod_bringup`.
 - Physical touchscreen coordinate accuracy, Jetson frame pacing/resources,
   GNSS-map alignment, and real-platform stop/steering remain P1-F/G field work.
@@ -122,7 +157,7 @@ CAMROD 구현·검증 완료 기록
   확인했다.
 - 14개 패키지의 기술 주장을 measured ROS/AMD64 SIM, runtime capture,
   source inventory, field-pending으로 구분한 PNG/GIF를 추가했다. cross-package
-  offline renderer 9개는 `camrod_bringup/scripts/visualization/`에 모으고 live
+  offline renderer 12개는 `camrod_bringup/scripts/visualization/`에 모으고 live
   path/radar/speed 도구는 소유 패키지에 유지했다. `util/`, copy, external,
   disabled 파일은 변경하지 않았다.
 - canonical `colcon_build.sh`로 7개 영향 패키지를 빌드했다. bringup 26,

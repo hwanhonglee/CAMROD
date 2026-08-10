@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "classification": "POLICY_REGRESSION",
+  "date": "2026-08-10",
+  "field_claim": false,
+  "service_state": "RETURNING_TO_DROP_ZONE",
+  "transition_grace_s": 3.0,
+  "config_source": "camrod_system/config/diagnostics/default/planning/planning_nav_status_checker.yaml",
+  "implementation_source": "camrod_system/src/diagnostics/planning_nav_status_policy.hpp",
+  "test_source": "camrod_system/test/test_planning_nav_status_tracker.cpp",
+  "cases": [
+    {
+      "id": "outgoing_goal_inside_grace",
+      "status": "ABORTED",
+      "transition_age_s": 0.5,
+      "goal_observed_before_transition": true,
+      "expected": "SUPPRESSED_HANDOFF",
+      "operator_surface": "System OK for expected handoff",
+      "reason": "The terminal UUID belongs to the outgoing site-route goal."
+    },
+    {
+      "id": "new_return_goal_inside_grace",
+      "status": "ABORTED",
+      "transition_age_s": 0.5,
+      "goal_observed_before_transition": false,
+      "expected": "VISIBLE_ABORT",
+      "operator_surface": "WARN/ERROR remains visible",
+      "reason": "A return-route UUID created after transition is not a handoff."
+    },
+    {
+      "id": "return_goal_after_grace",
+      "status": "ABORTED",
+      "transition_age_s": 3.01,
+      "goal_observed_before_transition": true,
+      "expected": "VISIBLE_ABORT",
+      "operator_surface": "WARN/ERROR remains visible",
+      "reason": "The bounded 3.0-second transition grace has expired."
+    }
+  ],
+  "limitations": [
+    "This is source and unit-test policy evidence, not a live ROS mission capture.",
+    "Physical return-route and operator UI acceptance remain separate field tests."
+  ]
+}

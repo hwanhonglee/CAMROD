@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "classification": "MEASURED_AMD64_STANDALONE",
+  "date": "2026-08-10",
+  "target_runtime": {
+    "architecture": "arm64",
+    "cpu_cores": 8,
+    "ram_gib": 16,
+    "accepted_by_this_measurement": false
+  },
+  "measurement_host": {
+    "architecture": "x86_64",
+    "logical_cpus": 12
+  },
+  "scope": {
+    "process": "ui_backend_node",
+    "view": "trajectory",
+    "sensor_publishers": false,
+    "stream_rate_parameter_hz": 10.0,
+    "client_heartbeat_period_s": 4.0,
+    "lease_timeout_s": 12.0
+  },
+  "websocket": {
+    "frames": 201,
+    "duration_s": 20.126,
+    "effective_rate_hz": 9.938,
+    "interval_ms": {
+      "mean": 100.628,
+      "p50": 100.624,
+      "p95": 100.792,
+      "p99": 101.121,
+      "max": 101.295
+    },
+    "payload_bytes": {
+      "mean": 1192.8,
+      "max": 1193
+    }
+  },
+  "process_resources": {
+    "cpu_one_logical_core_percent": {
+      "idle_mean": 1.00,
+      "active_mean": 1.12
+    },
+    "rss_kib": {
+      "idle": 76696,
+      "active": 77592,
+      "delta": 896
+    }
+  },
+  "lease_cleanup": {
+    "normal_close_detected_ms": 83.3,
+    "silent_client_active_seen_s": 0.101,
+    "silent_client_expired_s": 12.078
+  },
+  "limitations": [
+    "No sensor publishers were active, so camera encode/decode, point-cloud sampling, DDS traffic, and browser GPU frame pacing are not measured.",
+    "AMD64 resource values are implementation baselines and are not Jetson ARM64 acceptance values."
+  ]
+}

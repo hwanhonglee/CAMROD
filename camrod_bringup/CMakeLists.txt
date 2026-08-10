@@ -39,6 +39,9 @@ install(
     # HH_260810 - Install the central package-documentation renderer too;
     # direct source and ros2-run workflows share one tool inventory.
     scripts/visualization/render_module_readme_assets.py
+    # HH_260810 - Reproduce the measured UI transport and UUID-aware return
+    # handoff summary media from their package-owned structured records.
+    scripts/visualization/render_operator_transport_handoff_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
@@ -228,6 +231,14 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_module_readme_assets
     test/test_module_readme_assets.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260810 - Keep the post-v2.1.7 UI transport and system handoff media
+  # tied to exact AMD64 measurements, config mirrors, and claim boundaries.
+  ament_add_pytest_test(
+    test_operator_transport_handoff_assets
+    test/test_operator_transport_handoff_assets.py
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

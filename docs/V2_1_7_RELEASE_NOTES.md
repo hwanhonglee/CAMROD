@@ -29,7 +29,7 @@ offline renderers remain evidence generators. Each view creates only its own
 
 This release also makes package evidence reproducible. Fourteen CAMROD packages
 are classified by measured ROS simulation, measured AMD64 simulation, runtime
-capture, source inventory, or remaining field work. Nine offline cross-package
+capture, source inventory, or remaining field work. Twelve offline cross-package
 renderers now have one owner directory; live operational visualization remains
 inside the package that publishes or consumes the relevant ROS data.
 
@@ -52,6 +52,53 @@ a `154`-point local path, and Nav2 goal success from the confirmed UI goal. The 
 capture is `docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png`;
 the structured result is under
 `docs/assets/module-guides/ui/test-results/operator-manual-goal-20260810/`.
+
+## Develop Follow-up: Admin Runtime And Telemetry Transport
+
+<!-- HH_260810 - Record post-tag UI responsiveness and diagnostic-handoff work
+without changing the released v2.1.7 acceptance boundary. -->
+
+Administrator login and diagnostics are now independent of the public service
+screen. An operator can enter or remain in diagnostics during manual/campsite
+driving, arrival, return, parking, and charging instead of losing the workspace
+when `showWaiting` or `/service/state` changes.
+
+Selected telemetry uses a dedicated latest-value WebSocket at a configurable
+`1-20 Hz`, with a production default of `10 Hz`; mission command/state frames
+remain on `/ws`, and HTTP falls back to `1 Hz`. The browser sends a lease
+heartbeat every `4 s`. The server consumes disconnect events and stops the
+view-specific ROS subscriptions immediately on a normal close; absent heartbeat,
+the `12 s` lease expires even if the transport remains half-open.
+
+| AMD64 standalone transport check | Result |
+|---|---:|
+| Frames / effective rate | `201 / 9.938 Hz` |
+| Mean / p95 / max interval | `100.628 / 100.792 / 101.295 ms` |
+| Idle -> active backend CPU | `1.00 -> 1.12%` |
+| Idle -> active backend RSS | `76,696 -> 77,592 KiB` |
+| Normal close / silent timeout | `83.3 ms / 12.078 s` |
+
+This standalone check had no sensor publishers and is not ARM64 acceptance.
+Jetson 8-core/16-GB live camera/LiDAR/radar frame pacing, whole-stack resources,
+and a 30-minute six-view cycle remain field work.
+
+![Measured AMD64 operator telemetry transport](assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.png)
+
+![Operator telemetry transport and lease summary](assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.gif)
+
+The planning status checker also distinguishes the outgoing goal from a new
+return route. For the first `3.0 s` of `RETURNING_TO_DROP_ZONE`, only UUIDs seen
+before the service transition are treated as an expected handoff. A new return
+goal that aborts in that window remains visible, and a retained old terminal
+entry no longer pins the UI/terminal at `System warning`.
+
+![Return handoff Nav status policy](assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.png)
+
+![Return handoff Nav status regression cases](assets/module-guides/system/test-results/return-handoff-nav-status-20260810/return-handoff-nav-status.gif)
+
+Both animations are reproducible summaries. The UI GIF animates measured
+aggregates rather than unrecorded packet samples; the system GIF animates unit
+policy cases rather than a live return mission.
 
 ## Active Boundary Contract
 
@@ -159,12 +206,12 @@ planning, platform, sensing, sensor-kit, system, UI, and bringup.
 |---|---:|
 | Affected package CTest targets | `88/88` passed |
 | Aggregate package xUnit records | `683`, errors/failures `0`, static-analysis skips `24` |
-| Current direct Robot/Guest UI policy/transport/telemetry/manual-goal tests | `52/52` passed |
-| Bringup source/config/map/evidence cases | `249`, errors/failures `0` |
+| Current direct Robot/Guest UI policy/transport/telemetry/manual-goal tests | `55/55` passed |
+| Bringup source/config/map/evidence cases | `255`, errors/failures `0` |
 | Control policies | `77/77` passed |
 | Isolated Nav2 lifecycle/bond/lint CTest | `10/10` passed |
 | Maintained shell syntax/setup contract | passed |
-| Installed offline renderers | `9/9`, executable |
+| Installed offline renderers | `12/12`, executable |
 | Final isolated full graph | Recorded `3/3`, plus post-fix `1/1`: SYSTEM OK/READY, 44/44 clean exits, lifecycle exit `0` |
 
 The UI frontend built successfully. npm reports existing dependency audit

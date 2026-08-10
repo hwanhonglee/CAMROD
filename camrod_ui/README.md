@@ -5,6 +5,8 @@ while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
 <!-- HH_260810 - Consolidate live module viewers into an on-demand operator telemetry workspace. -->
 <!-- HH_260810 - Add confirmed operator-map manual goals and make RViz opt-in. -->
+<!-- HH_260810 - Keep admin diagnostics mounted across service screens and use
+a bounded client-leased telemetry WebSocket for the ARM64 deployment target. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -33,7 +35,8 @@ bridge, diagnostics display, and managed local kiosk.
 | Guest disconnect lock grace | `60 s` |
 | Guest heartbeat / stale close | `10 s` / `45 s` |
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
-| Operator telemetry lease | `12 s`; renewed every `4 s` only while a telemetry tab is open |
+| Operator telemetry transport | latest-value WebSocket `10 Hz`; REST fallback `1 Hz` |
+| Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
 
 ## Destination Dispatch
 
@@ -75,6 +78,11 @@ Operator stop publishes `OPERATOR_STOPPED`; a previous planning warning is not
 the operation label. The active campsite ID is retained separately from the
 transient destination ack, so arrival notifications still identify the
 selected site after departure.
+
+The administrator long-press entry and authenticated workspace are top-level
+UI surfaces. They remain available during waiting, manual/campsite driving,
+arrival, unload wait, return, parking, and charging; a service-state render
+change no longer closes the diagnostics view or its telemetry lease.
 
 ## Operator Telemetry Workspace
 
@@ -140,8 +148,12 @@ not moved into the browser.
 | Current simulated cameras | no publisher by launch policy; UI correctly reports `NO FRAME` and both target rates as `10 Hz` |
 
 Camera, LiDAR, map, path, and auxiliary sensor subscriptions exist only during
-an active telemetry lease. Closing the telemetry view sends an explicit release;
-if a browser disappears, the backend releases the subscriptions after 12 seconds.
+an active telemetry lease. A dedicated WebSocket carries only the selected
+view's latest bounded snapshot at up to `10 Hz`; command/state traffic remains
+on `/ws`. Closing the view is detected by the server receive path and releases
+the subscriptions immediately. A `4 s` browser heartbeat renews the lease, so
+a silent client loss stops renewal and releases subscriptions after `12 s`.
+REST polling remains a `1 Hz` compatibility fallback.
 Compressed camera bytes are forwarded without decode/re-encode. Point clouds,
 paths, driven traces, and map lines are bounded before JSON serialization.
 
@@ -176,11 +188,39 @@ instead of retaining the idle gap and temporarily displaying `0.1 Hz`.
 
 ![Six-view operator telemetry workspace](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
 
-### Measured AMD64 Telemetry Cost
+### Measured AMD64 10 Hz Transport
+
+<!-- HH_260810 - Keep transport timing separate from the earlier full-sim
+per-view profile; this standalone measurement has no sensor publishers. -->
+
+`MEASURED WORKSTATION`: Release-installed standalone UI backend on x86_64,
+trajectory view, no camera/LiDAR/GNSS publishers. CPU is one-logical-core basis.
+This verifies scheduling, bounded payload, and lease cleanup, not sensor decode
+cost or ARM64 acceptance.
+
+![Measured AMD64 operator telemetry transport](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.png)
+
+![Operator telemetry transport and lease summary](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.gif)
+
+| Check | Observed result |
+|---|---:|
+| WebSocket frames / duration | `201 / 20.126 s` |
+| Effective stream rate | `9.938 Hz` |
+| Frame interval mean / p95 / max | `100.628 / 100.792 / 101.295 ms` |
+| Mean / max JSON payload | `1192.8 / 1193 bytes` |
+| Backend idle -> active CPU | `1.00% -> 1.12%` |
+| Backend idle -> active RSS | `76,696 -> 77,592 KiB` |
+| Normal close release detection | `83.3 ms` in the recorded run |
+| Silent client lease expiration | `12.078 s` with no heartbeat |
+
+The reproducible command and structured values are in
+[`operator-telemetry-websocket-amd64-20260810`](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/README.md).
+
+### Historical AMD64 Per-View Cost
 
 ![Operator telemetry CPU, PSS, and payload profile](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
 
-`MEASURED WORKSTATION`: UI backend process only, 2 Hz API polling, six samples
+`HISTORICAL MEASURED WORKSTATION`: UI backend process only, 2 Hz API polling, six samples
 per view on an i5-12400F host. CPU is one-logical-core basis; these values are a
 relative implementation check, not an ARM64 acceptance result.
 
@@ -237,7 +277,7 @@ Jetson CPU/GPU use; a production Jetson profile is still required.
 ![Three-cycle UI/service integration](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
 The historical map-v17 simulation completed charging recall and next-site departure twice
-after the initial cycle. Current `camrod_ui` regression tests pass `52/52`; actual
+after the initial cycle. Current `camrod_ui` regression tests pass `55/55`; actual
 CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
 
 <!-- HH_260807 - Record the Humble shutdown-only conversion race separately
@@ -281,6 +321,7 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /api/telemetry` | Sensor, localization, route, and safety snapshot |
 | `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |
 | `GET /api/camera/front`, `/api/camera/rear` | Latest compressed frame without re-encoding |
+| `WS /ws/telemetry?view=<name>` | Selected-view latest snapshot at configured `1-20 Hz`; production default `10 Hz` |
 | `POST /ui/destination?site=B6&run=true` | Select and dispatch a campsite |
 | `POST /ui/manual_goal?x=<m>&y=<m>&yaw_deg=<deg>` | Validate and dispatch a confirmed operator-map goal |
 | `POST /ui/engage?value=true|false` | Manual engage/disengage |
