@@ -69,13 +69,13 @@ Source reports live under `docs/assets/test_result/`. Do not reinterpret these
 as Jetson or physical-robot acceptance.
 
 The final release-candidate set is grouped at
-[`docs/assets/test_result/v2-1-5-service-validation-20260807/`](../../docs/assets/test_result/v2-1-5-service-validation-20260807/README.md),
+[`docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/`](../../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/README.md),
 including raw JSON/log, SHA manifest, PNG, and GIF.
 The final RPP source-profile decision is separately grouped at
-[`rpp-lookahead-service-ab-20260807/`](../../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md).
+[`rpp-lookahead-service-ab-20260807/`](../../docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/README.md).
 The no-restart B1-B10 lifecycle, exact seeded/full-route scope, route-snap
 geometry and shutdown audit are grouped at
-[`b1-b10-service-endurance-20260807/`](../../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md).
+[`b1-b10-service-endurance-20260807/`](../../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md).
 
 ## Previous TODO Crosswalk
 

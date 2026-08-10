@@ -6,11 +6,18 @@ inventory and a compact ownership contract. -->
 Shared ROS 2 interface workspace. Runtime interfaces are implemented by the
 `avg_msgs` package; this directory does not own motion algorithms.
 
-![Shared interface contract](../docs/assets/module-guides/common/interface-contract-and-dependencies.png)
+<!-- HH_260810 - Keep message-only consumers independent from executable
+container lifetime dependencies on the constrained ARM64 deployment. -->
+Process/executor/signal ownership belongs to `camrod_runtime`, not this package.
+Keeping that package separate means an `avg_msgs` consumer generates and links
+only interface/typesupport code; it does not pull component loaders, executor
+implementations, or runtime shutdown policy into every package.
+
+![Shared interface contract](../docs/assets/module-guides/common/guide/interface-contract-and-dependencies.png)
 
 ## Actual Simulation Runtime
 
-![Live generated interface contract](../docs/assets/module-guides/common/runtime-interface-terminal-20260804.png)
+![Live generated interface contract](../docs/assets/module-guides/common/evidence/runtime-capture-20260804/runtime-interface-terminal-20260804.png)
 
 `SIM RUNTIME CAPTURE`: the live `/system/status` topic resolves to
 `avg_msgs/msg/SystemStatus`; the same screen shows its generated fields and

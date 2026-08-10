@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import sys
 import xml.etree.ElementTree as ET
 
 import lanelet2
@@ -16,15 +17,26 @@ from lanelet2.io import Origin
 from lanelet2.projection import LocalCartesianProjector
 from matplotlib.patches import FancyArrowPatch, Polygon as PolygonPatch
 
+# HH_260810 - Keep sibling imports valid for direct ros2 execution and for
+# importlib-based contract tests without making camrod_bringup a Python package.
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from render_tapered_rounded_boundary import (  # noqa: E402
+    load_contract,
+    transform_points,
+)
+
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
 CRAB_LANELET_ID = 4677
-# HH_260807 - These defaults reproduce historical map-v14 evidence. New probe
-# output carries its exact geometry contract; metadata-free release evidence
-# uses the version-specific fallback in evidence_planning_extents().
-FRONT, REAR = 0.85837, 0.83323
-LEFT, RIGHT = 0.58505, 0.58495
+# HH_260810 - Historical motion/events stay immutable, while every derived
+# visual now replays the active tapered/rounded planning contour. Recorded
+# rectangular extents remain available only as provenance text/JSON.
+BOUNDARY_POINTS = ()
+FRONT = REAR = LEFT = RIGHT = 0.0
+RECORDED_EXTENTS = ()
 FPS = 8
 
 
@@ -113,16 +125,9 @@ def lane_polygon(lanelet):
 
 
 def footprint(x, y, yaw):
-    cosine, sine = math.cos(yaw), math.sin(yaw)
-    return [
-        (x + cosine * px - sine * py, y + sine * px + cosine * py)
-        for px, py in (
-            (FRONT, LEFT),
-            (FRONT, -RIGHT),
-            (-REAR, -RIGHT),
-            (-REAR, LEFT),
-        )
-    ]
+    if not BOUNDARY_POINTS:
+        raise RuntimeError("rounded boundary contract has not been loaded")
+    return transform_points(BOUNDARY_POINTS, x, y, yaw)
 
 
 def milestone(run, name):
@@ -221,10 +226,11 @@ def arrow_body(ax, start, yaw, body_x, body_y, color, label):
         end[1],
         label,
         color=color,
-        fontsize=8.5,
+        fontsize=7.8,
         fontweight="bold",
         ha="center",
         va="bottom",
+        linespacing=0.92,
         zorder=12,
     )
 
@@ -297,12 +303,12 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         -0.72,
         0.0,
         "#16864b",
-        "AUTO " + reverse_motion.replace("_", " "),
+        "AUTO\n" + reverse_motion.replace("_", " "),
     )
     axes[1].set_title(
-        f"2. Both crab sides blocked: {reverse_motion}, -0.05 m/s",
+        f"2. Both crab sides blocked\n{reverse_motion} at <= 0.05 m/s",
         loc="left",
-        fontsize=11,
+        fontsize=10.3,
         fontweight="bold",
     )
 
@@ -325,7 +331,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         0.0,
         0.72,
         "#16864b",
-        "AUTO CRAB LEFT",
+        "AUTO\nCRAB LEFT",
     )
     axes[2].set_title(
         "3. One-sided contact: crab 0.05 m/s, yaw held",
@@ -375,6 +381,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
     )
     summary = [
         ("Map source", f"v{version}"),
+        ("Geometry overlay", "current rounded"),
         ("One-side contact", "CRAB_LEFT"),
         ("Crab displacement", f"{crab['recovery_displacement_m']:.3f} m"),
         ("Both sides blocked", reverse_motion),
@@ -426,7 +433,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         bbox={"boxstyle": "round,pad=0.55", "facecolor": "#edf4ef", "edgecolor": "#8aab94"},
     )
     fig.suptitle(
-        f"CAMROD map v{version} automatic boundary recovery - full bringup simulation",
+        f"CAMROD map v{version} recovery - current rounded-contour replay",
         fontsize=18,
         fontweight="bold",
         y=0.985,
@@ -483,7 +490,7 @@ def render_policy(output, version):
     ax.text(
         0.03,
         0.90,
-        f"Every candidate uses the projected complete {FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m footprint and live obstacle interlocks.",
+        f"Displayed candidates use the current {len(BOUNDARY_POINTS)}-point rounded contour ({FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m).",
         fontsize=11,
         color="#455a64",
     )
@@ -507,7 +514,7 @@ def render_policy(output, version):
     )
     ax.text(
         0.03,
-        0.08,
+        0.095,
         (
             "Reverse-yaw is bounded to 0.10 rad/s and 12 deg. RPP resumes after 1.0 s of fresh full-footprint clearance."
             if version >= 15 else
@@ -516,6 +523,20 @@ def render_policy(output, version):
         fontsize=10.5,
         color="#37474f",
     )
+    if RECORDED_EXTENTS:
+        ax.text(
+            0.03,
+            0.045,
+            (
+                "Recorded motion/events are unchanged; the historical envelope was "
+                f"{RECORDED_EXTENTS[0] + RECORDED_EXTENTS[1]:.4f} x "
+                f"{RECORDED_EXTENTS[2] + RECORDED_EXTENTS[3]:.4f} m. "
+                "This visual is a current-contour replay, not a historical geometry claim."
+            ),
+            fontsize=9.3,
+            color="#7a4d00",
+            fontweight="bold",
+        )
     fig.savefig(output, dpi=130, bbox_inches="tight")
     plt.close(fig)
 
@@ -621,7 +642,7 @@ def render_gif(output, lanelet_map, route, reverse, crab, version):
         return trails + robots + statuses
 
     fig.suptitle(
-        f"CAMROD map v{version} production-owned boundary recovery",
+        f"CAMROD map v{version} motion with current rounded contour",
         fontsize=18,
         fontweight="bold",
     )
@@ -638,13 +659,19 @@ def render_gif(output, lanelet_map, route, reverse, crab, version):
 
 
 def main():
-    global FRONT, REAR, LEFT, RIGHT
+    global BOUNDARY_POINTS, FRONT, REAR, LEFT, RIGHT, RECORDED_EXTENTS
     parser = argparse.ArgumentParser()
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--route", required=True, type=Path)
     parser.add_argument("--reverse", required=True, type=Path)
     parser.add_argument("--crab", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[3],
+        help="repository root containing the active robot/Nav2 geometry contract",
+    )
     parser.add_argument(
         "--artifact-prefix",
         default="",
@@ -662,9 +689,15 @@ def main():
         map_version(args.map),
         hashlib.sha256(args.map.read_bytes()).hexdigest(),
     )
-    FRONT, REAR, LEFT, RIGHT = evidence_planning_extents(
+    RECORDED_EXTENTS = evidence_planning_extents(
         (route, reverse, crab), version
     )
+    contract = load_contract(args.repo_root.resolve())
+    BOUNDARY_POINTS = contract.planning
+    FRONT = max(point[0] for point in BOUNDARY_POINTS)
+    REAR = -min(point[0] for point in BOUNDARY_POINTS)
+    LEFT = max(point[1] for point in BOUNDARY_POINTS)
+    RIGHT = -min(point[1] for point in BOUNDARY_POINTS)
     if args.artifact_prefix:
         contact = args.output_dir / f"{args.artifact_prefix}-contact-sheet.png"
         policy = args.output_dir / f"{args.artifact_prefix}-policy.png"

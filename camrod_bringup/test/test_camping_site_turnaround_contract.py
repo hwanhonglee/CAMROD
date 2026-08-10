@@ -11,21 +11,13 @@ PACKAGE_CONFIG = SRC_ROOT / "camrod_planning" / "config" / "camping_sites.yaml"
 BRINGUP_CONFIG = (
     SRC_ROOT / "camrod_bringup" / "config" / "planning" / "camping_sites.yaml"
 )
-PACKAGE_COPY_CONFIG = (
-    SRC_ROOT / "camrod_planning" / "config" / "camping_sites (copy_park_moved).yaml"
-)
-BRINGUP_COPY_CONFIG = (
-    SRC_ROOT
-    / "camrod_bringup"
-    / "config"
-    / "planning"
-    / "camping_sites (copy_park_moved).yaml"
-)
 EVIDENCE_SUMMARY = (
     SRC_ROOT
     / "docs"
     / "assets"
-    / "test_result"
+    / "module-guides"
+    / "bringup"
+    / "test-results"
     / "camping-site-sequencing-20260806"
     / "campsite-policy-summary.json"
 )
@@ -39,10 +31,8 @@ def test_active_campsite_config_is_byte_synchronized() -> None:
     """Standalone planning and full bringup must select the same maneuver policy."""
     expected = PACKAGE_CONFIG.read_bytes()
     assert BRINGUP_CONFIG.read_bytes() == expected
-    # HH_260806 - A manually selected named copy must not restore the unsafe
-    # former B12/B13 turnaround/service-pose policy.
-    assert PACKAGE_COPY_CONFIG.read_bytes() == expected
-    assert BRINGUP_COPY_CONFIG.read_bytes() == expected
+    # HH_260810 - User-maintained named copies are historical references, not
+    # runtime mirrors. Only the two active paths form the deployment contract.
 
 
 def test_drive_in_sites_turn_and_constrained_sites_skip_zero_turn() -> None:

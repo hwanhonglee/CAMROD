@@ -164,12 +164,16 @@
     # HH_260807 - Map-v17 B2 A/B: 1.0 s recontacted in 0.58 s; 1.5 s
     # completed the same RPP goal in 3/3 runs after real recovery motion.
     route_safety_recovery_clear_required_s: 1.5
-    # HH_260807 - Permit 12 bounded clear/release cycles during long autonomous
-    # runs. Exhaustion blocks same-direction Nav2 resume but never suppresses a
-    # separately projected-safe inward escape from the active boundary contact.
-    # Runtime updates outside [0, 15] are rejected.
-    route_safety_recovery_max_auto_releases: 12
+    # HH_260810 - A snapped manual goal may need repeated projected escape and
+    # yaw-fit cycles. Permit at most 50 releases in one contact region; body
+    # contact, dynamic obstacles, and platform interlocks remain hard blocks.
+    # Runtime updates outside [0, 100] are rejected.
+    route_safety_recovery_max_auto_releases: 50
     route_safety_recovery_recontact_window_s: 5.0
+    # Reset that regional budget only after signed forward progress carries the
+    # robot beyond the original contact. The time window is fallback-only when
+    # a historical decision has no valid map pose.
+    route_safety_recovery_progress_reset_distance_m: 0.75
     # Runtime updates outside [0.1, 60.0] s are rejected.
     route_safety_recovery_log_interval_s: 1.0
     # HH_260731 - Admit the saved trigger's opposite translation and a pure

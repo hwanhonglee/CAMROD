@@ -1,0 +1,659 @@
+{
+  "route_ids": [
+    754,
+    2751,
+    2720
+  ],
+  "samples": [
+    {
+      "xy": [
+        -0.9854,
+        44.8898
+      ],
+      "yaw_deg": 5.191,
+      "lane_width_m": 2.195,
+      "clearance_m": 0.4529,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.8215,
+        44.9028
+      ],
+      "yaw_deg": 4.522,
+      "lane_width_m": 2.191,
+      "clearance_m": 0.4558,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.6575,
+        44.9157
+      ],
+      "yaw_deg": 4.618,
+      "lane_width_m": 2.188,
+      "clearance_m": 0.4557,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.493,
+        44.9293
+      ],
+      "yaw_deg": 4.809,
+      "lane_width_m": 2.186,
+      "clearance_m": 0.457,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.3279,
+        44.9435
+      ],
+      "yaw_deg": 4.903,
+      "lane_width_m": 2.188,
+      "clearance_m": 0.4578,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.1628,
+        44.9576
+      ],
+      "yaw_deg": 5.244,
+      "lane_width_m": 2.19,
+      "clearance_m": 0.4553,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.0009,
+        44.9736
+      ],
+      "yaw_deg": 5.586,
+      "lane_width_m": 2.192,
+      "clearance_m": 0.4526,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.1645,
+        44.9897
+      ],
+      "yaw_deg": 5.258,
+      "lane_width_m": 2.194,
+      "clearance_m": 0.4568,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.329,
+        45.0038
+      ],
+      "yaw_deg": 4.604,
+      "lane_width_m": 2.196,
+      "clearance_m": 0.4535,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.4942,
+        45.0162
+      ],
+      "yaw_deg": 4.279,
+      "lane_width_m": 2.197,
+      "clearance_m": 0.4538,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.6595,
+        45.0286
+      ],
+      "yaw_deg": 4.374,
+      "lane_width_m": 2.197,
+      "clearance_m": 0.4586,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.8233,
+        45.0414
+      ],
+      "yaw_deg": 4.469,
+      "lane_width_m": 2.198,
+      "clearance_m": 0.4574,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.9871,
+        45.0542
+      ],
+      "yaw_deg": 4.153,
+      "lane_width_m": 2.198,
+      "clearance_m": 0.4568,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.151,
+        45.0652
+      ],
+      "yaw_deg": 3.522,
+      "lane_width_m": 2.198,
+      "clearance_m": 0.4557,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.315,
+        45.0744
+      ],
+      "yaw_deg": 3.206,
+      "lane_width_m": 2.197,
+      "clearance_m": 0.4559,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.4789,
+        45.0835
+      ],
+      "yaw_deg": 3.466,
+      "lane_width_m": 2.195,
+      "clearance_m": 0.4587,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.6443,
+        45.0943
+      ],
+      "yaw_deg": 3.724,
+      "lane_width_m": 2.194,
+      "clearance_m": 0.4545,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.8097,
+        45.1051
+      ],
+      "yaw_deg": 3.459,
+      "lane_width_m": 2.192,
+      "clearance_m": 0.454,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.9745,
+        45.1143
+      ],
+      "yaw_deg": 2.926,
+      "lane_width_m": 2.19,
+      "clearance_m": 0.4536,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.1387,
+        45.1219
+      ],
+      "yaw_deg": 2.657,
+      "lane_width_m": 2.188,
+      "clearance_m": 0.4485,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.303,
+        45.1295
+      ],
+      "yaw_deg": 3.089,
+      "lane_width_m": 2.185,
+      "clearance_m": 0.4507,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.4676,
+        45.1396
+      ],
+      "yaw_deg": 3.519,
+      "lane_width_m": 2.183,
+      "clearance_m": 0.4473,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.6322,
+        45.1498
+      ],
+      "yaw_deg": 3.214,
+      "lane_width_m": 2.18,
+      "clearance_m": 0.4467,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.7967,
+        45.1581
+      ],
+      "yaw_deg": 2.601,
+      "lane_width_m": 2.177,
+      "clearance_m": 0.4454,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.9609,
+        45.1647
+      ],
+      "yaw_deg": 2.295,
+      "lane_width_m": 2.174,
+      "clearance_m": 0.4255,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.1252,
+        45.1713
+      ],
+      "yaw_deg": 2.833,
+      "lane_width_m": 2.171,
+      "clearance_m": 0.3777,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.2889,
+        45.1809
+      ],
+      "yaw_deg": 3.373,
+      "lane_width_m": 2.168,
+      "clearance_m": 0.3259,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.4525,
+        45.1906
+      ],
+      "yaw_deg": -1.018,
+      "lane_width_m": 2.166,
+      "clearance_m": 0.3082,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.6176,
+        45.1751
+      ],
+      "yaw_deg": -9.602,
+      "lane_width_m": 2.12,
+      "clearance_m": 0.304,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.7842,
+        45.1345
+      ],
+      "yaw_deg": -13.705,
+      "lane_width_m": 2.085,
+      "clearance_m": 0.2232,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.9507,
+        45.0938
+      ],
+      "yaw_deg": -4.737,
+      "lane_width_m": 2.01,
+      "clearance_m": 0.2412,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.1331,
+        45.1056
+      ],
+      "yaw_deg": 3.673,
+      "lane_width_m": 1.979,
+      "clearance_m": 0.1,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.3154,
+        45.1173
+      ],
+      "yaw_deg": -3.524,
+      "lane_width_m": 1.885,
+      "clearance_m": 0.0206,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.4823,
+        45.084
+      ],
+      "yaw_deg": -19.277,
+      "lane_width_m": 1.817,
+      "clearance_m": 0.0944,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.6338,
+        45.0059
+      ],
+      "yaw_deg": -27.287,
+      "lane_width_m": 1.754,
+      "clearance_m": -0.0634,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.1,
+        20
+      ]
+    },
+    {
+      "xy": [
+        4.7852,
+        44.9278
+      ],
+      "yaw_deg": -13.058,
+      "lane_width_m": 1.592,
+      "clearance_m": -0.0521,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.1,
+        14
+      ]
+    },
+    {
+      "xy": [
+        4.9373,
+        44.9355
+      ],
+      "yaw_deg": -3.477,
+      "lane_width_m": 1.531,
+      "clearance_m": -0.0871,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.1,
+        6
+      ]
+    },
+    {
+      "xy": [
+        5.0781,
+        44.91
+      ],
+      "yaw_deg": -17.33,
+      "lane_width_m": 1.448,
+      "clearance_m": -0.1411,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.05,
+        16
+      ]
+    },
+    {
+      "xy": [
+        5.2075,
+        44.8512
+      ],
+      "yaw_deg": -11.512,
+      "lane_width_m": 1.374,
+      "clearance_m": -0.1917,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.3597,
+        44.8526
+      ],
+      "yaw_deg": 1.329,
+      "lane_width_m": 1.346,
+      "clearance_m": -0.0514,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.5108,
+        44.8582
+      ],
+      "yaw_deg": 2.921,
+      "lane_width_m": 1.295,
+      "clearance_m": -0.0993,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.6609,
+        44.868
+      ],
+      "yaw_deg": 0.854,
+      "lane_width_m": 1.278,
+      "clearance_m": -0.1243,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.7971,
+        44.8625
+      ],
+      "yaw_deg": 0.158,
+      "lane_width_m": 1.264,
+      "clearance_m": -0.1563,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.9384,
+        44.8688
+      ],
+      "yaw_deg": 4.826,
+      "lane_width_m": 1.25,
+      "clearance_m": -0.1888,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.085,
+        44.8868
+      ],
+      "yaw_deg": 4.877,
+      "lane_width_m": 1.238,
+      "clearance_m": -0.204,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.2237,
+        44.8931
+      ],
+      "yaw_deg": 3.815,
+      "lane_width_m": 1.228,
+      "clearance_m": -0.228,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.3663,
+        44.9056
+      ],
+      "yaw_deg": 6.137,
+      "lane_width_m": 1.217,
+      "clearance_m": -0.2597,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.5126,
+        44.9242
+      ],
+      "yaw_deg": 5.458,
+      "lane_width_m": 1.208,
+      "clearance_m": -0.2814,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.6545,
+        44.9331
+      ],
+      "yaw_deg": 3.104,
+      "lane_width_m": 1.199,
+      "clearance_m": -0.3041,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.8025,
+        44.9399
+      ],
+      "yaw_deg": 2.164,
+      "lane_width_m": 1.19,
+      "clearance_m": -0.3181,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.9567,
+        44.9445
+      ],
+      "yaw_deg": 3.567,
+      "lane_width_m": 1.18,
+      "clearance_m": -0.323,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.1102,
+        44.9591
+      ],
+      "yaw_deg": 5.383,
+      "lane_width_m": 1.17,
+      "clearance_m": -0.3249,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.2637,
+        44.9735
+      ],
+      "yaw_deg": 5.324,
+      "lane_width_m": 1.172,
+      "clearance_m": -0.3301,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.4174,
+        44.9877
+      ],
+      "yaw_deg": 8.85,
+      "lane_width_m": 1.188,
+      "clearance_m": -0.3269,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.5702,
+        45.0212
+      ],
+      "yaw_deg": 12.133,
+      "lane_width_m": 1.208,
+      "clearance_m": -0.3134,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.7338,
+        45.0557
+      ],
+      "yaw_deg": 11.727,
+      "lane_width_m": 1.211,
+      "clearance_m": -0.2894,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.9082,
+        45.0913
+      ],
+      "yaw_deg": 12.224,
+      "lane_width_m": 1.22,
+      "clearance_m": -0.2582,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        8.0727,
+        45.1292
+      ],
+      "yaw_deg": 13.704,
+      "lane_width_m": 1.229,
+      "clearance_m": -0.2213,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    }
+  ]
+}

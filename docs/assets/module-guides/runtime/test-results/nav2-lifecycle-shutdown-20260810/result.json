@@ -1,0 +1,51 @@
+{
+  "schema": "camrod.runtime.full_graph_shutdown.v1",
+  "recorded_at": "2026-08-10T14:55:39+09:00",
+  "operator": "HH_260810",
+  "platform": {
+    "architecture": "amd64",
+    "acceptance_scope": "functional_and_shutdown_regression_only",
+    "arm64_8core_16gb_accepted": false
+  },
+  "source": {
+    "base_commit": "80f2accc30be6dc3340d0d64555197c8de292aff",
+    "map_version": 15,
+    "map_sha256": "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39"
+  },
+  "launch": {
+    "ros_domain_id": 79,
+    "command": "ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false clean_before_launch:=false clean_on_shutdown:=false enable_operator_ui_window:=false enable_guest_ui:=false",
+    "goal_dispatched": false,
+    "stop_signal": "SIGINT_to_launch_parent_only"
+  },
+  "startup": {
+    "system_ok": true,
+    "ui_ready": true,
+    "mission_phase": "READY",
+    "diagnostic_error_count": 0,
+    "nav2_managed_nodes_active": true
+  },
+  "shutdown": {
+    "processes_started": 44,
+    "processes_cleanly_finished": 44,
+    "nonzero_or_signal_failures": 0,
+    "forced_kills": 0,
+    "remaining_descendants": 0,
+    "lifecycle_manager_clean_exit": true
+  },
+  "isolated_nav2_lifecycle_ctest": {
+    "targets": 10,
+    "passed": 10,
+    "failed": 0,
+    "ros_domain_id": 78
+  },
+  "raw_log": {
+    "path": "full-graph-controlled-stop.log",
+    "sha256": "fc924ff3f3f7fd90abc2703f131e829decb47f6a19643d870ed4a1dee3baad50"
+  },
+  "limitations": [
+    "No physical sensors, CAN charging, steering actuator, or road motion was exercised.",
+    "No ARM64 CPU, memory, GPU, thermal, or frame-pacing acceptance was performed.",
+    "Startup WARN/ERROR lines during configured grace periods are retained in the raw log; the final authoritative state was SYSTEM OK."
+  ]
+}

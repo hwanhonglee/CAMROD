@@ -955,7 +955,9 @@ def main():
             repo_root
             / "docs"
             / "assets"
-            / "test_result"
+            / "module-guides"
+            / "sensor-kit"
+            / "test-results"
             / "tapered-rounded-boundary-20260810"
         )
     output_dir = output_dir.resolve()

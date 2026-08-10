@@ -13,6 +13,7 @@ APP_SOURCE = (
     / "App.js"
 )
 APP_CSS = APP_SOURCE.with_name("App.css")
+TELEMETRY_SOURCE = APP_SOURCE.with_name("TelemetryWorkspace.js")
 PUBLIC_ASSETS = APP_SOURCE.parents[1] / "public"
 
 
@@ -21,6 +22,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = APP_SOURCE.read_text(encoding="utf-8")
         cls.css = APP_CSS.read_text(encoding="utf-8")
+        cls.telemetry_source = TELEMETRY_SOURCE.read_text(encoding="utf-8")
 
     def test_site_verification_owns_virtual_keyboard_input(self) -> None:
         self.assertIn(": setMoveVerifyInput;", self.source)
@@ -56,6 +58,21 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertTrue(asset.is_file())
             self.assertEqual(asset.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
             self.assertIn(f"/{filename}", self.source)
+
+    def test_operator_telemetry_tabs_cover_rviz_runtime_surfaces(self) -> None:
+        for label in (
+            "GNSS · IMU", "레이더 · LiDAR", "카메라", "주행 궤적",
+            "지도 · 인지", "안전 · 제어",
+        ):
+            self.assertIn(label, self.telemetry_source)
+        self.assertIn("TelemetryWorkspace", self.source)
+        self.assertIn("diag-tab-bar", self.css)
+
+    def test_operator_telemetry_lease_is_closed_on_unmount(self) -> None:
+        self.assertIn("/api/telemetry/session?active=true", self.telemetry_source)
+        self.assertIn("/api/telemetry/session?active=false", self.telemetry_source)
+        self.assertIn("view=${view}", self.telemetry_source)
+        self.assertIn("keepalive: true", self.telemetry_source)
 
 
 if __name__ == "__main__":

@@ -813,22 +813,24 @@ def write_manifest(output_dir, run_path):
 def main():
     """Validate and render one current measured road-simulation record."""
     repo_root_default = Path(__file__).resolve().parents[3]
-    default_output = (
-        repo_root_default
-        / "docs"
-        / "assets"
-        / "test_result"
-        / "tapered-rounded-boundary-road-sim-20260810"
-    )
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=repo_root_default)
     parser.add_argument("--map", type=Path)
     parser.add_argument("--run", type=Path)
-    parser.add_argument("--output-dir", type=Path, default=default_output)
+    parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
-    output_dir = args.output_dir.resolve()
+    default_output = (
+        repo_root
+        / "docs"
+        / "assets"
+        / "module-guides"
+        / "control"
+        / "test-results"
+        / "tapered-rounded-boundary-road-sim-20260810"
+    )
+    output_dir = (args.output_dir or default_output).resolve()
     map_path = (args.map or (repo_root / "lanelet2_maps.osm")).resolve()
     run_path = (args.run or (default_output / RUN_NAME)).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

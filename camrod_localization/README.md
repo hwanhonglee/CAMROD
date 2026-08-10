@@ -9,15 +9,22 @@ heading requirement used to publish the robot-center position. -->
 GNSS, dual-GNSS heading, IMU, and Ranger wheel-velocity fusion for the
 canonical `robot_center_link` pose and localization-health state.
 
-![Localization pose generation](../docs/assets/module-guides/localization/pose-generation-and-timing.png)
+![Localization pose generation](../docs/assets/module-guides/localization/guide/pose-generation-and-timing.png)
 
 ## Actual Simulation Runtime
 
-![Live pose and TF runtime](../docs/assets/module-guides/localization/runtime-pose-tf-20260804.png)
+![Live pose and TF runtime](../docs/assets/module-guides/localization/evidence/runtime-capture-20260804/runtime-pose-tf-20260804.png)
 
 `SIM RUNTIME CAPTURE`: the running RViz graph overlays selected localization
 poses, GNSS, and the `map -> odom -> robot_center_link -> robot_base_link` TF
 chain. It does not measure physical GNSS accuracy.
+
+![Current GNSS IMU and localization telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-gnss-20260810.png)
+
+`SIM BROWSER CAPTURE`: the current operator UI consumes the normalized GNSS,
+IMU, localization pose/status, velocity, and gate topics. View re-entry reports
+GNSS/IMU about 10 Hz and the selected simulation pose about 20 Hz; this is not
+a physical 5 Hz moving-base acceptance result.
 
 ## At A Glance
 
@@ -121,11 +128,11 @@ prove moving field accuracy, multipath rejection, or oscillation reduction.
 
 This isolated AMD64 ROS test verifies transform direction and simulation
 projection, not physical GNSS accuracy. Exact scope and the intermediate
-projection diagnosis are in the [test record](../docs/assets/test_result/gnss-lever-arm-20260806/README.md).
+projection diagnosis are in the [test record](../docs/assets/module-guides/localization/test-results/gnss-lever-arm-20260806/README.md).
 
 ### 3 km/h Kinematic Smoke Test
 
-![3 km/h command and selected pose](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
+![3 km/h command and selected pose](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/three-kph-command-pose.png)
 
 | Metric | AMD64 result |
 |---|---:|
@@ -140,11 +147,11 @@ This smoke test uses fake GNSS, IMU, and wheel inputs at `10 Hz` and the
 simulation EKF at `20 Hz`; its fake input cadence does not reproduce the
 physical `5 Hz` moving-base link, real-stack Jetson load, wheel scale, or IMU
 bias. See the
-[structured test record](../docs/assets/test_result/three-kph-localization-20260806/README.md).
+[structured test record](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/README.md).
 
 ## Reported Physical Stationary Performance
 
-![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+![Physical stationary field report](../docs/assets/module-guides/bringup/test-results/field-stationary-20260731/field-stationary-report-20260731.png)
 
 | 60-second field metric | Result |
 |---|---:|
@@ -204,4 +211,4 @@ ros2 run tf2_ros tf2_echo odom robot_center_link
 | `config/reference/map_helper.yaml` | Lanelet/drop-zone matching |
 | `config/source/input_adapter.yaml` | GNSS lever arm, heading validity, covariance, and input adapters |
 
-Evidence JSON: [`pose-chain-sim-20260804.json`](../docs/evidence/module-guides/localization/pose-chain-sim-20260804.json).
+Evidence JSON: [`pose-chain-sim-20260804.json`](../docs/assets/module-guides/localization/evidence/pose-chain-20260804/pose-chain-sim-20260804.json).

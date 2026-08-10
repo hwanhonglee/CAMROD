@@ -1,0 +1,528 @@
+{
+  "generated_for": "2026-08-10 current Park coordinate synchronization",
+  "field_claim": false,
+  "map": {
+    "source_file": "lanelet2_maps.osm",
+    "map_version": 15,
+    "sha256": "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39",
+    "node_count": 1592,
+    "lanelet_count": 55,
+    "semantic_area_count": 14
+  },
+  "origin": {
+    "latitude": 36.8435737,
+    "longitude": 128.0925646,
+    "altitude": 0.0,
+    "yaw_offset_deg": 0.0
+  },
+  "inputs": {
+    "map_info": "map_info.yaml",
+    "camping_sites": "camping_sites.yaml",
+    "drop_zones": "drop_zones.yaml"
+  },
+  "camping_sites": [
+    {
+      "id": "dz_area_1353",
+      "type": "camping_site_1",
+      "source": "area",
+      "x": 25.8687,
+      "y": -5.13869,
+      "z": 0,
+      "yaw_deg": 23.7451,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 29.4618,
+          "y": -6.36441,
+          "z": 0
+        },
+        {
+          "x": 24.5625,
+          "y": -8.68603,
+          "z": 0
+        },
+        {
+          "x": 22.2576,
+          "y": -3.84142,
+          "z": 0
+        },
+        {
+          "x": 27.2436,
+          "y": -1.64805,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1281",
+      "type": "camping_site_2",
+      "source": "area",
+      "x": 19.566,
+      "y": -8.55747,
+      "z": 0,
+      "yaw_deg": -66.1577,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 16.0066,
+          "y": -6.14863,
+          "z": 0
+        },
+        {
+          "x": 20.1219,
+          "y": -4.37933,
+          "z": 0
+        },
+        {
+          "x": 23.083,
+          "y": -11.0796,
+          "z": 0
+        },
+        {
+          "x": 19.0699,
+          "y": -12.7059,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1341",
+      "type": "camping_site_3",
+      "source": "area",
+      "x": 23.3585,
+      "y": 0.427582,
+      "z": 0,
+      "yaw_deg": -66.2705,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 26.9457,
+          "y": -1.0213,
+          "z": 0
+        },
+        {
+          "x": 21.9403,
+          "y": -3.18876,
+          "z": 0
+        },
+        {
+          "x": 19.7778,
+          "y": 1.89835,
+          "z": 0
+        },
+        {
+          "x": 24.7762,
+          "y": 4.03189,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1272",
+      "type": "camping_site_4",
+      "source": "area",
+      "x": 16.4276,
+      "y": -1.34999,
+      "z": 0,
+      "yaw_deg": -67.9122,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 13.167,
+          "y": 0.658661,
+          "z": 0
+        },
+        {
+          "x": 17.3449,
+          "y": 2.42916,
+          "z": 0
+        },
+        {
+          "x": 19.7001,
+          "y": -3.37463,
+          "z": 0
+        },
+        {
+          "x": 15.4838,
+          "y": -5.10842,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1329",
+      "type": "camping_site_5",
+      "source": "area",
+      "x": 20.9591,
+      "y": 5.86183,
+      "z": 0,
+      "yaw_deg": 21.9275,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 24.4783,
+          "y": 4.61882,
+          "z": 0
+        },
+        {
+          "x": 19.4233,
+          "y": 2.5192,
+          "z": 0
+        },
+        {
+          "x": 17.4095,
+          "y": 7.11341,
+          "z": 0
+        },
+        {
+          "x": 22.5544,
+          "y": 9.18453,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1263",
+      "type": "camping_site_6",
+      "source": "area",
+      "x": 13.9518,
+      "y": 4.47866,
+      "z": 0,
+      "yaw_deg": 113.262,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 10.7783,
+          "y": 6.16804,
+          "z": 0
+        },
+        {
+          "x": 15.0229,
+          "y": 7.78668,
+          "z": 0
+        },
+        {
+          "x": 17.1338,
+          "y": 2.87214,
+          "z": 0
+        },
+        {
+          "x": 12.8995,
+          "y": 1.11724,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1317",
+      "type": "camping_site_7",
+      "source": "area",
+      "x": 18.6442,
+      "y": 11.1853,
+      "z": 0,
+      "yaw_deg": 20.5798,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 22.2505,
+          "y": 9.71884,
+          "z": 0
+        },
+        {
+          "x": 17.1029,
+          "y": 7.73115,
+          "z": 0
+        },
+        {
+          "x": 14.9867,
+          "y": 12.6393,
+          "z": 0
+        },
+        {
+          "x": 20.2688,
+          "y": 14.6226,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1254",
+      "type": "camping_site_8",
+      "source": "area",
+      "x": 11.3705,
+      "y": 10.645,
+      "z": 0,
+      "yaw_deg": 111.259,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 8.28707,
+          "y": 12.3859,
+          "z": 0
+        },
+        {
+          "x": 12.4504,
+          "y": 14.0559,
+          "z": 0
+        },
+        {
+          "x": 14.4905,
+          "y": 8.94653,
+          "z": 0
+        },
+        {
+          "x": 10.2432,
+          "y": 7.22896,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1305",
+      "type": "camping_site_9",
+      "source": "area",
+      "x": 16.3636,
+      "y": 17.1396,
+      "z": 0,
+      "yaw_deg": -169.793,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 19.9674,
+          "y": 15.2775,
+          "z": 0
+        },
+        {
+          "x": 14.3985,
+          "y": 14.2748,
+          "z": 0
+        },
+        {
+          "x": 12.7786,
+          "y": 19.0187,
+          "z": 0
+        },
+        {
+          "x": 18.3113,
+          "y": 19.9999,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1245",
+      "type": "camping_site_10",
+      "source": "area",
+      "x": 9.02731,
+      "y": 16.6389,
+      "z": 0,
+      "yaw_deg": 111.253,
+      "service_mode": "turnaround",
+      "corners": [
+        {
+          "x": 5.96796,
+          "y": 18.3865,
+          "z": 0
+        },
+        {
+          "x": 10.082,
+          "y": 20.0459,
+          "z": 0
+        },
+        {
+          "x": 12.1231,
+          "y": 14.9341,
+          "z": 0
+        },
+        {
+          "x": 7.92523,
+          "y": 13.2269,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1293",
+      "type": "camping_site_11",
+      "source": "area",
+      "x": 14.8445,
+      "y": 22.0782,
+      "z": 0,
+      "yaw_deg": 5.68406,
+      "service_mode": "roadside_stop",
+      "corners": [
+        {
+          "x": 18.1985,
+          "y": 20.4525,
+          "z": 0
+        },
+        {
+          "x": 12.6512,
+          "y": 19.5665,
+          "z": 0
+        },
+        {
+          "x": 11.3613,
+          "y": 23.8177,
+          "z": 0
+        },
+        {
+          "x": 17.3457,
+          "y": 24.4133,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1233",
+      "type": "camping_site_12",
+      "source": "area",
+      "x": 6.85414,
+      "y": 22.4291,
+      "z": 0,
+      "yaw_deg": -69.3089,
+      "service_mode": "roadside_stop",
+      "corners": [
+        {
+          "x": 3.82271,
+          "y": 23.7658,
+          "z": 0
+        },
+        {
+          "x": 8.07069,
+          "y": 25.671,
+          "z": 0
+        },
+        {
+          "x": 9.83849,
+          "y": 20.9905,
+          "z": 0
+        },
+        {
+          "x": 5.67284,
+          "y": 19.2327,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "dz_area_1219",
+      "type": "camping_site_13",
+      "source": "area",
+      "x": 0.610449,
+      "y": 27.604,
+      "z": 0,
+      "yaw_deg": 110.877,
+      "service_mode": "roadside_stop",
+      "corners": [
+        {
+          "x": -2.83132,
+          "y": 30.8406,
+          "z": 0
+        },
+        {
+          "x": 1.16906,
+          "y": 32.204,
+          "z": 0
+        },
+        {
+          "x": 4.00488,
+          "y": 24.4552,
+          "z": 0
+        },
+        {
+          "x": 0.152961,
+          "y": 22.8878,
+          "z": 0
+        }
+      ]
+    }
+  ],
+  "drop_zones": [
+    {
+      "id": "dz_area_2320",
+      "type": "drop_zone",
+      "source": "area",
+      "x": -14.2347,
+      "y": 39.7863,
+      "z": 0,
+      "yaw_deg": -82.2127,
+      "corners": [
+        {
+          "x": -15.3642,
+          "y": 37.608,
+          "z": 0
+        },
+        {
+          "x": -15.8144,
+          "y": 41.6643,
+          "z": 0
+        },
+        {
+          "x": -13.1156,
+          "y": 41.9521,
+          "z": 0
+        },
+        {
+          "x": -12.638,
+          "y": 37.9376,
+          "z": 0
+        }
+      ]
+    }
+  ],
+  "parking_lots": [
+    {
+      "id": 1146,
+      "type": "parking_lot",
+      "center": {
+        "x": -4.7252,
+        "y": 40.5737
+      },
+      "area_m2": 97.44,
+      "bounds": {
+        "min_x": -15.766,
+        "min_y": 36.779,
+        "max_x": 6.539,
+        "max_y": 44.022
+      }
+    },
+    {
+      "id": 1378,
+      "type": "parking_lot",
+      "center": {
+        "x": -7.7024,
+        "y": 50.498
+      },
+      "area_m2": 101.78,
+      "bounds": {
+        "min_x": -20.531,
+        "min_y": 46.939,
+        "max_x": 4.907,
+        "max_y": 53.909
+      }
+    },
+    {
+      "id": 1615,
+      "type": "parking_lot",
+      "center": {
+        "x": -1.1414,
+        "y": 7.2652
+      },
+      "area_m2": 383.54,
+      "bounds": {
+        "min_x": -16.154,
+        "min_y": -18.791,
+        "max_x": 15.26,
+        "max_y": 32.541
+      }
+    }
+  ],
+  "validation": {
+    "camping_site_count": 13,
+    "drop_zone_count": 1,
+    "parking_lot_count": 3,
+    "service_modes_preserved": true,
+    "runtime_test_required": true
+  }
+}

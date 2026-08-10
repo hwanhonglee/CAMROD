@@ -2,6 +2,7 @@
 
 import math
 from pathlib import Path
+import re
 
 import yaml
 
@@ -421,6 +422,12 @@ def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
         CONTROL_CONFIG / "control.yaml",
         "/control/drop_zone_maneuver_controller",
     )
+    # HH_260810 - A single tolerance crossing must not start translation while
+    # the zero-turn or drop-zone alignment is still moving.
+    assert campsite["rotate_settle_hold_s"] == 0.8
+    assert campsite["rotate_settle_max_rate_degps"] == 3.0
+    assert drop_zone["yaw_settle_hold_s"] == 1.0
+    assert drop_zone["yaw_settle_max_rate_degps"] == 3.0
     recovery = _node_parameters(
         CONTROL_CONFIG / "control.yaml",
         "/control/route_safety_recovery_controller",
@@ -538,7 +545,9 @@ def test_campsite_return_uses_the_explicit_route_goal_anchor() -> None:
     assert 'return_anchor_source_ = "route_goal_snap";' in source
     assert "captureReturnAnchor(" in source
     assert "distanceTo(return_anchor_x_, return_anchor_y_)" in source
-    assert "return_anchor_x_, return_anchor_y_, return_speed" in source
+    assert re.search(
+        r"return_anchor_x_,\s*return_anchor_y_,\s*return_speed", source
+    )
     assert campsite["return_position_tolerance_m"] == 0.04
     assert campsite["return_translation_kp"] == 4.0
 

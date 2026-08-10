@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-10",
+  "scope": "ui_backend process during full sim bringup",
+  "host": {
+    "architecture": "x86_64",
+    "cpu": "Intel Core i5-12400F",
+    "logical_cpus": 12,
+    "ram_gib": 31
+  },
+  "deployment_target": {
+    "architecture": "arm64",
+    "cpu_cores": 8,
+    "ram_gib": 16,
+    "accepted": false,
+    "reason": "AMD64 measurements cannot qualify Jetson frame pacing or utilization"
+  },
+  "method": {
+    "api_poll_hz": 2.0,
+    "samples_per_view": 6,
+    "window_seconds": 3.0,
+    "cpu_unit": "percent of one logical CPU",
+    "memory_unit": "MiB",
+    "payload_unit": "KiB",
+    "camera_publishers_enabled": false
+  },
+  "previous_dynamic_subscription_count": 32,
+  "views": [
+    {
+      "view": "idle",
+      "dynamic_subscriptions": 0,
+      "cpu_mean_pct": 7.581,
+      "pss_mean_mib": 79.321,
+      "pss_max_mib": 79.321,
+      "rss_mean_mib": 103.984,
+      "payload_mean_kib": 2.533
+    },
+    {
+      "view": "gnss",
+      "dynamic_subscriptions": 6,
+      "cpu_mean_pct": 9.558,
+      "pss_mean_mib": 79.341,
+      "pss_max_mib": 79.341,
+      "rss_mean_mib": 104.005,
+      "payload_mean_kib": 3.191
+    },
+    {
+      "view": "proximity",
+      "dynamic_subscriptions": 11,
+      "cpu_mean_pct": 11.855,
+      "pss_mean_mib": 79.201,
+      "pss_max_mib": 79.201,
+      "rss_mean_mib": 103.865,
+      "payload_mean_kib": 5.616
+    },
+    {
+      "view": "camera",
+      "dynamic_subscriptions": 4,
+      "cpu_mean_pct": 7.911,
+      "pss_mean_mib": 78.769,
+      "pss_max_mib": 78.769,
+      "rss_mean_mib": 103.432,
+      "payload_mean_kib": 2.519
+    },
+    {
+      "view": "trajectory",
+      "dynamic_subscriptions": 7,
+      "cpu_mean_pct": 10.875,
+      "pss_mean_mib": 79.026,
+      "pss_max_mib": 79.026,
+      "rss_mean_mib": 103.689,
+      "payload_mean_kib": 7.733
+    },
+    {
+      "view": "perception",
+      "dynamic_subscriptions": 9,
+      "cpu_mean_pct": 14.446,
+      "pss_mean_mib": 80.001,
+      "pss_max_mib": 81.231,
+      "rss_mean_mib": 104.661,
+      "payload_mean_kib": 36.141
+    },
+    {
+      "view": "safety",
+      "dynamic_subscriptions": 7,
+      "cpu_mean_pct": 10.156,
+      "pss_mean_mib": 81.269,
+      "pss_max_mib": 81.269,
+      "rss_mean_mib": 105.932,
+      "payload_mean_kib": 3.354
+    },
+    {
+      "view": "idle_end",
+      "dynamic_subscriptions": 0,
+      "cpu_mean_pct": 7.581,
+      "pss_mean_mib": 81.294,
+      "pss_max_mib": 81.294,
+      "rss_mean_mib": 105.957,
+      "payload_mean_kib": 2.517
+    }
+  ],
+  "browser_validation": {
+    "viewport_width": 1280,
+    "measured_content_height": 657,
+    "views_checked": 6,
+    "horizontal_overflow_count": 0,
+    "text_overflow_count": 0,
+    "http_or_console_error_count": 0
+  }
+}

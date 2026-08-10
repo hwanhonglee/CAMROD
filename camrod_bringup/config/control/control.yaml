@@ -57,7 +57,7 @@
     # HH_260807 - Preserve 60% of the 2.0 km/h cruise reference after the 0.5 gate.
     crab_speed_mps: 0.666667
     entry_position_tolerance_m: 0.15
-    # HH_260807 - Map-v17 B4 has only about 0.136 m lateral clearance per side;
+    # HH_260807 - The narrow B4 lane has limited lateral clearance;
     # finish within 0.04 m of the route snap before handing control back to Nav2.
     return_position_tolerance_m: 0.04
     return_translation_kp: 4.0
@@ -71,6 +71,9 @@
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
     rotate_yaw_tolerance_deg: 4.0
+    # HH_260810 - Hold zero until fresh poses prove the turn has settled.
+    rotate_settle_hold_s: 0.8
+    rotate_settle_max_rate_degps: 3.0
     site_rotate_direction_policy: "site_index_lanelet_side"
     right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
     left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
@@ -157,6 +160,9 @@
     yaw_tolerance_deg: 5.0
     yaw_proportional_gain: 1.2
     maximum_angular_speed_radps: 0.35
+    # HH_260810 - Keep the platform stationary before reverse-parking handoff.
+    yaw_settle_hold_s: 1.0
+    yaw_settle_max_rate_degps: 3.0
     exit_distance_m: 1.2
     # HH_260807 - Preserve 40% of the cruise reference: 0.80 km/h final.
     exit_speed_mps: 0.444444

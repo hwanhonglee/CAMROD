@@ -3,11 +3,12 @@
 <!-- HH_260807 - Make the documented renderer match the WebKit field default
 while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
+<!-- HH_260810 - Consolidate live module viewers into an on-demand operator telemetry workspace. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
 
-![Robot and Guest mission/state contract](../docs/assets/module-guides/ui/robot-and-guest-mission-state.png)
+![Robot and Guest mission/state contract](../docs/assets/module-guides/ui/guide/robot-and-guest-mission-state.png)
 
 ## At A Glance
 
@@ -31,6 +32,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Guest disconnect lock grace | `60 s` |
 | Guest heartbeat / stale close | `10 s` / `45 s` |
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
+| Operator telemetry lease | `12 s`; renewed every `4 s` only while a telemetry tab is open |
 
 ## Destination Dispatch
 
@@ -72,13 +74,107 @@ the operation label. The active campsite ID is retained separately from the
 transient destination ack, so arrival notifications still identify the
 selected site after departure.
 
+## Operator Telemetry Workspace
+
+The administrator diagnostics modal now contains `System` plus six live views:
+`GNSS · IMU`, `Radar · LiDAR`, `Camera`, `Driving trajectory`,
+`Map · Perception`, and `Safety · Control`. These views consume the same ROS messages used by the
+standalone tools and RViz; they do not publish motion commands or change sensor
+authority.
+
+| Previous live tool / RViz display | UI replacement |
+|---|---|
+| `util/gnss_status_gui.py` | Fix, RTK carrier, satellites, accuracy, baseline, and heading |
+| `util/gnss_imu_direction_check.py` | GNSS/IMU/localization heading comparison and EKF input health |
+| `camrod_sensing/scripts/radar_status_gui.py` | Seven range channels, real mounts, rounded body, planning boundary, and LiDAR samples |
+| `camrod_platform/scripts/velocity_kph_gui.py` | Speed, yaw rate, motion mode, and pose readout |
+| `camrod_planning/scripts/path_visualizer_node.py` | Lanelet map, global/local/maneuver paths, driven trace, and tracking error |
+| RViz map/perception layers | Lanelet polylines, four cost layers, obstacle cloud/boxes, body, and planning contour |
+| RViz diagnostics and controller markers | Safety-gate reason, service state, maneuver owners, radar evidence, and obstacle replan status |
+| Camera payload probe | Front/rear compressed frames, source rate, age, format, and payload size |
+
+Offline renderers under `camrod_bringup/scripts/visualization/` still generate
+versioned documentation evidence; they are not live runtime viewers and were
+not moved into the browser.
+
+| Live sim check, 2026-08-10 | Observed result |
+|---|---:|
+| Localization pose | `20.0 Hz` |
+| NavSatFix / IMU / seven radar channels | about `10.0 Hz` each |
+| LiDAR browser decode | about `1.8 Hz`, capped at `2 Hz` and `480` samples |
+| Lanelet browser geometry | `2,831` points in `357` bounded polylines |
+| Physical / planning outline | `31 / 31` rounded points from runtime topics |
+| Browser layout | no page overflow at `1600x1000` |
+| Current simulated cameras | no publisher by launch policy; UI correctly reports `NO FRAME` and both target rates as `10 Hz` |
+
+Camera, LiDAR, map, path, and auxiliary sensor subscriptions exist only during
+an active telemetry lease. Closing the telemetry view sends an explicit release;
+if a browser disappears, the backend releases the subscriptions after 12 seconds.
+Compressed camera bytes are forwarded without decode/re-encode. Point clouds,
+paths, driven traces, and map lines are bounded before JSON serialization.
+
+<!-- HH_260810 - Quantify the per-view lease instead of describing the ARM64
+load reduction as an unmeasured optimization. -->
+
+| Telemetry view | Dynamic subscriptions | Reduction from former 32 always-on subscriptions |
+|---|---:|---:|
+| GNSS / IMU | `6` | `81.25%` |
+| Radar / LiDAR | `11` | `65.63%` |
+| Camera | `4` | `87.50%` |
+| Trajectory | `7` | `78.13%` |
+| Map / perception | `9` | `71.88%` |
+| Safety / control | `7` | `78.13%` |
+
+Every view change clears the previous lease's receive timestamps before new
+samples are counted. A live GNSS -> proximity -> GNSS switch therefore reported
+GNSS `10.01 Hz`, IMU `10.01 Hz`, and selected pose `20.02 Hz` after one second,
+instead of retaining the idle gap and temporarily displaying `0.1 Hz`.
+
+| GNSS and localization | Radar, LiDAR, and runtime boundaries |
+|---|---|
+| ![Operator GNSS and IMU telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-gnss-20260810.png) | ![Operator radar and LiDAR telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-proximity-20260810.png) |
+
+| Front/rear camera contract | Route and driven trace |
+|---|---|
+| ![Operator camera telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-camera-20260810.png) | ![Operator route and driven trace](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-trajectory-20260810.png) |
+
+| Map and perception | Safety and command ownership |
+|---|---|
+| ![Operator map and perception telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png) | ![Operator safety and control telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-safety-20260810.png) |
+
+![Six-view operator telemetry workspace](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+
+### Measured AMD64 Telemetry Cost
+
+![Operator telemetry CPU, PSS, and payload profile](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
+
+`MEASURED WORKSTATION`: UI backend process only, 2 Hz API polling, six samples
+per view on an i5-12400F host. CPU is one-logical-core basis; these values are a
+relative implementation check, not an ARM64 acceptance result.
+
+| View | Mean CPU | Mean PSS | Mean JSON payload |
+|---|---:|---:|---:|
+| Idle | `7.58%` | `79.32 MiB` | `2.53 KiB` |
+| GNSS / IMU | `9.56%` | `79.34 MiB` | `3.19 KiB` |
+| Radar / LiDAR | `11.86%` | `79.20 MiB` | `5.62 KiB` |
+| Camera, no sim publishers | `7.91%` | `78.77 MiB` | `2.52 KiB` |
+| Trajectory | `10.88%` | `79.03 MiB` | `7.73 KiB` |
+| Map / perception | `14.45%` | `80.00 MiB` | `36.14 KiB` |
+| Safety / control | `10.16%` | `81.27 MiB` | `3.35 KiB` |
+
+All six actual browser captures used a `1600x1000` content viewport and had
+document/workspace overflow `0` plus text-control overflow `0`. The stricter
+`1280x657` headless pass also had no horizontal overflow, HTTP failure, or
+console error. ARM64 8-core/16-GB soak, live camera frame pacing, and GPU use
+remain field acceptance items.
+
 ## Actual Browser Runtime
 
-![Robot UI site verification keypad](../docs/assets/module-guides/ui/robot-ui-site-verification-keypad.png)
+![Robot UI site verification keypad](../docs/assets/module-guides/ui/evidence/ui-captures/robot-ui-site-verification-keypad.png)
 
 | Mission-ready dispatch | Route safety overlay |
 |---|---|
-| ![Guest dispatch ready](../docs/assets/module-guides/ui/guest-mission-dispatch-ready.png) | ![Guest safety hold](../docs/assets/module-guides/ui/guest-route-safety-hold.png) |
+| ![Guest dispatch ready](../docs/assets/module-guides/ui/evidence/ui-captures/guest-mission-dispatch-ready.png) | ![Guest safety hold](../docs/assets/module-guides/ui/evidence/ui-captures/guest-route-safety-hold.png) |
 
 `SIM BROWSER CAPTURE`: these are rendered Guest UI screens connected to the
 running ROS backend, not generated UI mockups.
@@ -105,10 +201,10 @@ This validates browser/backend/ROS integration. It is not a physical mission or
 collision-safety test. Neither historical renderer sample proves current
 Jetson CPU/GPU use; a production Jetson profile is still required.
 
-![Three-cycle UI/service integration](../docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
+![Three-cycle UI/service integration](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
-The map-v17 simulation completed charging recall and next-site departure twice
-after the initial cycle. Direct backend regression tests pass `30/30`; actual
+The historical map-v17 simulation completed charging recall and next-site departure twice
+after the initial cycle. Current `camrod_ui` regression tests pass `48/48`; actual
 CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
 
 <!-- HH_260807 - Record the Humble shutdown-only conversion race separately
@@ -119,7 +215,7 @@ now treat that exception as a normal shutdown only when `rclpy.ok()` is already
 false. A live `RuntimeError` is still re-raised. The full Robot+Guest UI smoke
 ended both processes with exit code 0 and left no backend process behind.
 
-The filtered [shutdown and repeated-service record](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+The filtered [shutdown and repeated-service record](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md)
 also covers nine successive charger recalls after the seeded B1 handoff. Each
 recall reached `DEPARTING_CHARGER`, disconnected simulated charge feedback, and
 accepted the next campsite without duplicating the destination or motion owner.
@@ -147,6 +243,10 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /ui/state` | Full UI state snapshot |
 | `GET /ui/destination` | Current/valid destinations |
 | `GET /ui/diagnostics` | Aggregated diagnostic detail |
+| `POST /api/telemetry/session?active=true|false&view=<name>` | Acquire/release one bounded live-view lease |
+| `GET /api/telemetry` | Sensor, localization, route, and safety snapshot |
+| `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |
+| `GET /api/camera/front`, `/api/camera/rear` | Latest compressed frame without re-encoding |
 | `POST /ui/destination?site=B6&run=true` | Select and dispatch a campsite |
 | `POST /ui/engage?value=true|false` | Manual engage/disengage |
 | `POST /ui/stop` | Operator stop |
@@ -176,7 +276,7 @@ measurement. Host GPU utilization is not used because `nvidia-smi` also
 included the desktop and personal browser. The field default is WebKit because
 the robot image's Snap Chromium does not start; the Jetson
 same-scene frame-pacing/GPU/rate comparison remains TODO 8/14. Exact runs are
-in [`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
+in [`amd64-container-ab-20260805.json`](../docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json).
 
 ## Build And Run
 
@@ -216,4 +316,4 @@ robot-network access. The current backend has no authentication and permissive
 CORS. Do not expose either port to a public or untrusted network; use a trusted
 robot LAN, firewalling, or an authenticated tunnel.
 
-Evidence JSON: [`guest-mission-lifecycle.json`](../docs/evidence/v2.1.3/ui/guest-mission-lifecycle.json).
+Evidence JSON: [`guest-mission-lifecycle.json`](../docs/assets/module-guides/ui/evidence/v2.1.3-guest-mission/guest-mission-lifecycle.json).

@@ -19,10 +19,15 @@ install(
     scripts/visualization/render_automatic_recovery_results.py
     # HH_260806 - Render the body-hard-stop and recoverable-margin runtime proof.
     scripts/visualization/render_robot_boundary_validation.py
+    # HH_260810 - Re-render historical boundary summaries with the active
+    # rounded contour while preserving the recorded metrics as provenance.
+    scripts/visualization/render_historical_boundary_summaries.py
     # HH_260810 - Render the active source-derived tapered/rounded contour and motion.
     scripts/visualization/render_tapered_rounded_boundary.py
     # HH_260810 - Overlay that contour on the measured map-v17 ROS road run.
     scripts/visualization/render_tapered_rounded_road_sim.py
+    # HH_260810 - Reproduce current Park semantic operating coordinates.
+    scripts/visualization/render_park_operating_points.py
     # HH_260806 - Render B1-B10 turnaround and B11-B13 roadside arrival evidence.
     scripts/visualization/render_camping_site_sequence_results.py
     # HH_260807 - Render the v2.1.5 repeated-service and safety test reports.
@@ -234,8 +239,16 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
-  # HH_260807 - Validate the active synchronized map-v17 pair independently
-  # from preserved historical map-v14/v15 runtime evidence.
+  # HH_260810 - Bind current Park mission coordinates and their visual report
+  # to the exact user-authored OSM and synchronized package configs.
+  ament_add_pytest_test(
+    test_park_operating_points_assets
+    test/test_park_operating_points_assets.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260810 - Validate the active Park map independently from preserved
+  # historical map-v14/v15/v17 runtime evidence.
   ament_add_pytest_test(
     test_lanelet_map_revision_sync
     test/test_lanelet_map_revision_sync.py

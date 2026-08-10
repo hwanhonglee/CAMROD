@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 #include "nav2_lifecycle_manager/lifecycle_manager.hpp"
@@ -22,7 +24,15 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<nav2_lifecycle_manager::LifecycleManager>();
   rclcpp::spin(node);
-  rclcpp::shutdown();
 
-  return 0;
+  // HH_260810 - Release ROS entities first, then bypass the Humble shutdown-only
+  // DSO/DDS static-destruction race that intermittently terminated this process.
+  node.reset();
+  if (rclcpp::ok()) {
+    rclcpp::shutdown();
+  }
+  std::fflush(nullptr);
+  std::_Exit(EXIT_SUCCESS);
+
+  return EXIT_SUCCESS;
 }

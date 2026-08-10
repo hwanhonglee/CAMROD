@@ -7,11 +7,11 @@ boundaries while keeping hardware measurements field-pending. -->
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
 
-![Sensor processing and cost fusion](../docs/assets/module-guides/sensing/sensor-processing-and-cost-fusion.png)
+![Sensor processing and cost fusion](../docs/assets/module-guides/sensing/guide/sensor-processing-and-cost-fusion.png)
 
 ## Actual Simulation Runtime
 
-![Live LiDAR, radar, and cost layers](../docs/assets/module-guides/sensing/runtime-lidar-radar-costs-20260804.png)
+![Live LiDAR, radar, and cost layers](../docs/assets/module-guides/sensing/evidence/runtime-capture-20260804/runtime-lidar-radar-costs-20260804.png)
 
 `SIM RUNTIME CAPTURE`: actual filtered LiDAR, radar range sectors, and dynamic
 LiDAR/radar cost layers from the running graph. It verifies wiring and display,
@@ -51,11 +51,11 @@ cloud and perception remain active, while `/sensing/lidar/lidar_cost_grid` and
 diagnostics. Setting the flag to `true` loads that component and restores both
 checks; no source code rebuild is required. The component-owned TF listener is
 bound to the same scoped node context/executor and uses a dedicated buffer
-thread with nonblocking lookups. A map-v17 full graph with the option ON
+thread with nonblocking lookups. A historical map-v17 full graph with the option ON
 published the 10 Hz grid, reached `[SYSTEM] OK`, and produced no null
 guard-condition or blocking TF-timeout loop.
 
-![LiDAR-backed persistent obstacle result](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+![LiDAR-backed persistent obstacle result](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
 This amd64 run validates component/topic/checker wiring and safe no-path
 behavior. It does not validate physical LiDAR calibration or obstacle shape.
@@ -99,11 +99,11 @@ The isolated component loader costs memory but reduces point-cloud processing
 CPU. Shared-library memory can amortize differently in full bringup, so the
 default remains enabled for the known CPU bottleneck while Jetson rate/PSS is
 measured separately. The normalized per-run record is
-[`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
+[`amd64-container-ab-20260805.json`](../docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json).
 
 ## LiDAR Ground Filter
 
-![Ground segmentation schematic](../docs/assets/module-guides/sensing/ground-segmentation-schematic.png)
+![Ground segmentation schematic](../docs/assets/module-guides/sensing/guide/ground-segmentation-schematic.png)
 
 | Parameter | Active value |
 |---|---:|
@@ -142,6 +142,17 @@ dummy radar source; an absent channel remains visibly absent/stale.
 
 ## Camera And GNSS Values
 
+![Operator front and rear camera contract](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-camera-20260810.png)
+
+<!-- HH_260810 - Show the deployed camera topics and target rates in the live
+operator surface without treating a no-camera simulation as sensor evidence. -->
+The UI first consumes the already-compressed front stream and the optional rear
+monitoring JPEG. If either is unavailable, it can JPEG-encode the corresponding
+raw stream at a bounded `2 Hz` browser cadence; this fallback does not reduce or
+republish the sensor's production raw topic. Ordinary `sim:=true` intentionally
+starts no camera publisher, so the current screen reports `NO FRAME` while
+retaining the exact front/rear topic names and `10 Hz` sensor targets.
+
 | Stream | Configured output | Evidence note |
 |---|---|---|
 | Front camera | `1920 x 1080`, rectified JPEG target `10 Hz` | Physical decode/rate requires Jetson probe |
@@ -164,7 +175,7 @@ accepting the 5 Hz field profile.
 
 ## Reported Physical Stationary Performance
 
-![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+![Physical stationary field report](../docs/assets/module-guides/bringup/test-results/field-stationary-20260731/field-stationary-report-20260731.png)
 
 | 2026-07-31 check | Result | Verdict |
 |---|---:|---|
@@ -178,6 +189,11 @@ The normalized values come from the committed field report, but its raw logs
 are referenced only by Jetson paths and are not in this repository. Detection
 correctness, seven-channel radar-on separation, and moving performance remain
 open.
+
+The package-owned and bringup-mirrored front/rear camera YAML files are byte
+identical. Front `9.167 Hz` is the last physical lifetime pass; rear raw
+`3.633 Hz` remains below the `10 Hz` contract. AMD64 simulation cannot close
+that gap because the capture component is ARM64-only.
 
 ## Disabled Hardware
 

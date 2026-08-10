@@ -21,13 +21,14 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 
 # Camping site 1 target pose (from camrod_bringup/config/planning/camping_sites.yaml).
-GOAL_X = -13.1858
-GOAL_Y = -93.0608
-GOAL_YAW_DEG = -179.992
+# HH_260810 - Synchronize this standalone DR probe with the current Park map export.
+GOAL_X = 25.8687
+GOAL_Y = -5.13869
+GOAL_YAW_DEG = 23.7451
 
 # Drop zone start reference (from camrod_bringup/config/map/drop_zones.yaml).
-START_X = 16.8676
-START_Y = -117.408
+START_X = -14.2347
+START_Y = 39.7863
 
 
 def _yaw_to_quat(yaw_rad: float) -> RosQuaternion:

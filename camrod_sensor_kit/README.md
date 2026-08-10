@@ -6,11 +6,11 @@ fabrication-inclusive body envelope with a four-sided 10 cm planning margin. -->
 Canonical robot geometry, URDF/xacro, static sensor TF, and the RobotParams
 library shared by localization, planning, control, platform, and diagnostics.
 
-![Reference frame before and after](../docs/assets/module-guides/sensor-kit/reference-frame-before-after.png)
+![Reference frame before and after](../docs/assets/module-guides/sensor-kit/guide/reference-frame-before-after.png)
 
 ## Actual Simulation Runtime
 
-![Live sensor TF geometry](../docs/assets/module-guides/sensor-kit/runtime-sensor-tf-20260804.png)
+![Live sensor TF geometry](../docs/assets/module-guides/sensor-kit/evidence/runtime-capture-20260804/runtime-sensor-tf-20260804.png)
 
 `2026-08-04 SIM RUNTIME CAPTURE`: the then-running 3D sensor TF graph. It is
 historical runtime evidence; it predates the measured `gnss_link Y=+0.45 m`.
@@ -62,24 +62,24 @@ The base chassis and active collision envelopes remain separately identified:
 | Active fabrication-inclusive body | `1.39160 m` | `1.07000 m` | Ordinary-motion stop and swept-body recovery envelope |
 | Active planning contour | `1.59160 m` | `1.27000 m` | Exact `0.10 m` parallel offset of the tapered, rounded body |
 
-![Current tapered rounded body and planning contour](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+![Current tapered rounded body and planning contour](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
 
-![Boundary motion about robot center](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+![Boundary motion about robot center](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
 
 <!-- HH_260810 - The source-derived animation documents the shared local
 geometry transform; it is not runtime collision or vehicle-motion evidence. -->
-The [regenerable visual record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+The [regenerable visual record](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/README.md)
 contains all 30 physical/planning points and source hashes. Forward, curved,
 crab, and zero-turn frames keep both contours rigidly attached to
 `robot_center_link`.
 
-![Current sensor-kit contour on measured road poses](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+![Current sensor-kit contour on measured road poses](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
 
-![Current contour drive contact recovery and completion](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+![Current contour drive contact recovery and completion](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
 
 <!-- HH_260810 - Confirm that the runtime overlay consumes this exact geometry
 while retaining a separate field-measurement requirement. -->
-The [measured ROS road replay](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+The [measured ROS road replay](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md)
 validates the current map, source hashes, frame, taper, radii, margins, and all
 30 points before rendering. It does not validate the fabricated body dimensions
 or physical clearances.
@@ -94,7 +94,7 @@ configured front LiDAR/camera origins remain slightly ahead of the body-front
 value.
 
 The previous envelopes and the exact old/new conversion
-are retained in the [2026-08-06 boundary adjustment record](../docs/assets/test_result/robot-boundary-adjustment-20260806/README.md).
+are retained in the [2026-08-06 boundary adjustment record](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/README.md).
 That record's reduced `1.29160 x 0.87000 m` candidate is historical and is no
 longer deployed.
 
@@ -102,13 +102,13 @@ The two contours have different runtime meanings. A cost-100 cell inside the
 physical body stops ordinary motion. A virtual-boundary escape is admitted only
 if it monotonically reduces current overlap and its swept physical body plus
 endpoint planning contour are clear. Contact only in the outer `0.10 m`
-margin uses the same projected speed/distance/time bounds. The [fresh simulation summary](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+margin uses the same projected speed/distance/time bounds. The [fresh simulation summary](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 shows the earlier no-body-recovery behavior; current geometry/policy remains
 field-pending.
 
 ## Physical Side View
 
-![Sensor mount side view](../docs/assets/module-guides/sensor-kit/sensor-mount-side-view.png)
+![Sensor mount side view](../docs/assets/module-guides/sensor-kit/guide/sensor-mount-side-view.png)
 
 ## Sensor Mounts
 
@@ -127,7 +127,7 @@ All XYZ values are metres from `sensor_kit_base_link`, coincident with
 | Radar right 1 / 2 | `+0.29188 / -0.28334` | `-0.41005` | `0.29013` | `-90 deg` |
 | Radar rear | `-0.61733` | `0.00000` | `0.33978` | `180 deg` |
 
-![Sensor X conversion table](../docs/assets/module-guides/sensor-kit/sensor-x-before-after.png)
+![Sensor X conversion table](../docs/assets/module-guides/sensor-kit/guide/sensor-x-before-after.png)
 
 The NavSatFix solution is referenced to the left antenna. Localization computes
 `p_center = p_fix - R(yaw) * [0.0, 0.45]`, so a turn rotates the correction in
@@ -136,15 +136,15 @@ heading is required before publishing the corrected position. Lateral offset is
 measured; `pose_verified=false` remains because antenna X/Z, moving-base mount,
 baseline direction, and moving residuals are not yet field accepted.
 
-![GNSS left-antenna lever arm](../docs/assets/module-guides/sensor-kit/gnss-left-antenna-lever-arm.png)
+![GNSS left-antenna lever arm](../docs/assets/module-guides/sensor-kit/guide/gnss-left-antenna-lever-arm.png)
 
 The focused ROS A/B applied exactly `0.450000 m`; center residual changed from
 `0.449995 m` without correction to `0.000071 m` with correction. See the
-[structured simulation record](../docs/assets/test_result/gnss-lever-arm-20260806/README.md).
+[structured simulation record](../docs/assets/module-guides/localization/test-results/gnss-lever-arm-20260806/README.md).
 
 ## Measured A/B Simulation
 
-![Rear-axle versus robot-center drive](../docs/assets/module-guides/sensor-kit/rear-axle-vs-robot-center-drive.gif)
+![Rear-axle versus robot-center drive](../docs/assets/module-guides/sensor-kit/test-results/reference-frame-20260803/rear-axle-vs-robot-center-drive.gif)
 
 | Common route metric | Rear-axle origin | Center origin | Delta |
 |---|---:|---:|---:|

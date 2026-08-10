@@ -5,11 +5,11 @@ of repeating every generated type and dependency diagram. -->
 
 Generated ROS 2 messages and services shared by the CAMROD runtime.
 
-![Shared interface contract](../../docs/assets/module-guides/common/interface-contract-and-dependencies.png)
+![Shared interface contract](../../docs/assets/module-guides/common/guide/interface-contract-and-dependencies.png)
 
 ## Actual Simulation Runtime
 
-![Live SystemStatus interface](../../docs/assets/module-guides/common/runtime-interface-terminal-20260804.png)
+![Live SystemStatus interface](../../docs/assets/module-guides/common/evidence/runtime-capture-20260804/runtime-interface-terminal-20260804.png)
 
 `SIM RUNTIME CAPTURE`: `ros2 interface show` and `ros2 topic info` against the
 running graph verify the generated `SystemStatus` contract used at runtime.

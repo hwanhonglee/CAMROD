@@ -14,6 +14,12 @@
   <depend>avg_msgs</depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- HH_260810 - On-demand operator telemetry consumes standard sensor,
+       route, map-marker, and u-blox status messages without republishing them. -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>ublox_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
@@ -21,6 +27,10 @@
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
+  <!-- HH_260810 - Bounded NumPy grid sampling and a low-rate raw-camera JPEG
+       fallback keep the browser bridge usable without cv_bridge/OpenCV copies. -->
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
   <!-- HH_260727 - GTK/WebKit runtime for the optional lightweight operator window. -->
   <exec_depend>python3-gi</exec_depend>
 

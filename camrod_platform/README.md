@@ -10,13 +10,13 @@ tapered-front, six-corner rounded body and planning contours. -->
 Ranger CAN command/feedback bridge, BMS charging interpretation, robot
 visualization, planning-boundary publication, and light control.
 
-![Ranger command and status](../docs/assets/module-guides/platform/ranger-command-and-status.png)
+![Ranger command and status](../docs/assets/module-guides/platform/guide/ranger-command-and-status.png)
 
 ## Actual Simulation Runtime
 
 | Robot geometry in RViz | Normalized `/platform/status` |
 |---|---|
-| ![Live robot geometry](../docs/assets/module-guides/platform/runtime-robot-geometry-20260804.png) | ![Live platform status](../docs/assets/module-guides/platform/runtime-status-terminal-20260804.png) |
+| ![Live robot geometry](../docs/assets/module-guides/platform/evidence/runtime-capture-20260804/runtime-robot-geometry-20260804.png) | ![Live platform status](../docs/assets/module-guides/platform/evidence/runtime-capture-20260804/runtime-status-terminal-20260804.png) |
 
 `SIM RUNTIME CAPTURE`: the live marker/boundary frame and simulated raw
 Ranger/BMS bridge output. CAN latency and real steering response remain field
@@ -48,23 +48,23 @@ RViz markers are generated from the sensor-kit boundary contract below.
 | Physical body | `1.39160 x 1.07000 m` bounding extents | `0.12 m` tapered front and `R0.05 m` corners; fabrication-inclusive ordinary-stop/swept-recovery envelope |
 | Published planning boundary | `1.59160 x 1.27000 m`, `robot_center_link` | Exact `0.10 m` contour offset with `R0.15 m` corners; TF aligns RViz without changing collision geometry |
 
-![Current platform body and published planning boundary](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+![Current platform body and published planning boundary](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
 
-![Published boundary rigid motion](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+![Published boundary rigid motion](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
 
 <!-- HH_260810 - Replace the historical rectangular mental model with the
 current source-derived marker/polygon contour. -->
-The [visual record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+The [visual record](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/README.md)
 shows the contour now generated for RViz and `/platform/robot/planning_boundary`.
 Its GIF explains TF motion only; it does not measure Ranger steering response.
 
-![Published contours on measured map-v17 poses](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+![Published contours on measured map-v17 poses](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
 
-![Published contour motion through measured drive and recovery](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+![Published contour motion through measured drive and recovery](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
 
 <!-- HH_260810 - Link platform visualization to recorded ROS poses without
 claiming that workstation simulation measures Ranger actuator response. -->
-The [measured ROS simulation](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+The [measured ROS simulation](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md)
 replays the exact published 30-point contours through drive, hold, bounded
 reverse-yaw, release, and completion. CAN/steering response remains field-pending.
 

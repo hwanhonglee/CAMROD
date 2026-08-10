@@ -56,6 +56,21 @@ def test_nav2_component_set_and_standalone_fallback_are_both_present() -> None:
     assert "package='camrod_control'" not in source
 
 
+def test_lifecycle_manager_standalone_exit_avoids_humble_teardown_race() -> None:
+    source = (
+        SRC_ROOT
+        / "camrod_planning"
+        / "external"
+        / "nav2_lifecycle_manager"
+        / "src"
+        / "main.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "node.reset();" in source
+    assert "std::fflush(nullptr);" in source
+    assert "std::_Exit(EXIT_SUCCESS);" in source
+
+
 def test_composed_nav2_core_uses_the_container_owned_context() -> None:
     """Embedded threads and TF callbacks must not consult the global context."""
     planning = SRC_ROOT / "camrod_planning" / "external"

@@ -1,0 +1,789 @@
+[INFO] [launch]: All log files can be found below /home/hong/.ros/log/2026-08-10-14-53-12-871461-htop-3704480
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [robot_visualization_node-1]: process started with pid [3704509]
+[INFO] [ranger_platform_bridge_node-2]: process started with pid [3704511]
+[INFO] [robot_state_publisher-3]: process started with pid [3704513]
+[INFO] [light_controller_node-4]: process started with pid [3704515]
+[light_controller_node-4] [INFO] [1786341194.586435350] [platform.light_controller]: light_controller ready: pre_distance=12.0m crab_threshold=0.05m/s rate=5.0Hz
+[ranger_platform_bridge_node-2] [INFO] [1786341194.588565497] [ranger_platform_bridge]: ranger_platform_bridge ready: odom=/odom fallback=/rmp401/odom (1.0s) actuator=/actuator_state system_state=/system_state battery=/battery_state -> odom=/platform/status/odometry vel=/platform/status/velocity wheel=/platform/status/wheel status=/platform/status frame=robot_center_link status_rate=10.0Hz
+[robot_state_publisher-3] [WARN] [1786341194.597107639] [kdl_parser]: The root link robot_center_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-3] [INFO] [1786341194.597175294] [sensor_kit.robot_state_publisher]: got segment camera_front
+[robot_state_publisher-3] [INFO] [1786341194.597201623] [sensor_kit.robot_state_publisher]: got segment camera_front_link
+[robot_state_publisher-3] [INFO] [1786341194.597208212] [sensor_kit.robot_state_publisher]: got segment camera_rear
+[robot_state_publisher-3] [INFO] [1786341194.597211833] [sensor_kit.robot_state_publisher]: got segment camera_rear_link
+[robot_state_publisher-3] [INFO] [1786341194.597220211] [sensor_kit.robot_state_publisher]: got segment gnss_link
+[robot_state_publisher-3] [INFO] [1786341194.597223851] [sensor_kit.robot_state_publisher]: got segment imu_link
+[robot_state_publisher-3] [INFO] [1786341194.597227057] [sensor_kit.robot_state_publisher]: got segment lidar_link
+[robot_state_publisher-3] [INFO] [1786341194.597230646] [sensor_kit.robot_state_publisher]: got segment radar_front1_link
+[robot_state_publisher-3] [INFO] [1786341194.597234205] [sensor_kit.robot_state_publisher]: got segment radar_front2_link
+[robot_state_publisher-3] [INFO] [1786341194.597242393] [sensor_kit.robot_state_publisher]: got segment radar_left1_link
+[robot_state_publisher-3] [INFO] [1786341194.597248055] [sensor_kit.robot_state_publisher]: got segment radar_left2_link
+[robot_state_publisher-3] [INFO] [1786341194.597251955] [sensor_kit.robot_state_publisher]: got segment radar_rear_link
+[robot_state_publisher-3] [INFO] [1786341194.597255401] [sensor_kit.robot_state_publisher]: got segment radar_right1_link
+[robot_state_publisher-3] [INFO] [1786341194.597259319] [sensor_kit.robot_state_publisher]: got segment radar_right2_link
+[robot_state_publisher-3] [INFO] [1786341194.597264567] [sensor_kit.robot_state_publisher]: got segment robot_base_link
+[robot_state_publisher-3] [INFO] [1786341194.597267905] [sensor_kit.robot_state_publisher]: got segment robot_center_link
+[robot_state_publisher-3] [INFO] [1786341194.597271079] [sensor_kit.robot_state_publisher]: got segment sensor_kit_base_link
+[INFO] [lanelet2_map_node-5]: process started with pid [3704557]
+[INFO] [lanelet_cost_grid_node-6]: process started with pid [3704559]
+[INFO] [lanelet_cost_grid_node-7]: process started with pid [3704561]
+[lanelet2_map_node-5] [INFO] [1786341195.467391648] [Lanelet2MapLoader]: Loaded Lanelet2 map: /home/hong/camrod_ws/src/lanelet2_maps.osm (origin: 36.84357370, 128.09256460, 0.00)
+[lanelet2_map_node-5] [INFO] [1786341195.467470025] [map.lanelet_map_provider]: Lanelet2 Map Stats
+[lanelet2_map_node-5]   Lanelets : 55
+[lanelet2_map_node-5]   Areas    : 14
+[lanelet2_map_node-5]   Points   : 1592
+[lanelet2_map_node-5]   Lines    : 233
+[lanelet2_map_node-5]
+[lanelet2_map_node-5] [INFO] [1786341195.467508214] [map.lanelet_map_provider]: map load timing: 5.50ms path=/home/hong/camrod_ws/src/lanelet2_maps.osm
+[lanelet_cost_grid_node-7] [INFO] [1786341195.469604558] [map.lanelet_safety_cost_grid]: lanelet_cost_grid projector=local_cartesian map=/home/hong/camrod_ws/src/lanelet2_maps.osm
+[lanelet_cost_grid_node-6] [INFO] [1786341195.469768778] [map.lanelet_boundary_cost_grid]: lanelet_cost_grid projector=local_cartesian map=/home/hong/camrod_ws/src/lanelet2_maps.osm
+[lanelet2_map_node-5] [INFO] [1786341195.471567429] [map.lanelet_map_provider]: Visualization markers (full) -> centerlines: 0, bounds: 110, areas: 14, linestrings: 0, points/text: 0
+[lanelet2_map_node-5] [INFO] [1786341195.473136037] [map.lanelet_map_provider]: map visualization timing (full): markers=358 build=0.44ms publish=1.49ms total=1.94ms
+[INFO] [fake_sensor_publisher.py-8]: process started with pid [3704607]
+[fake_sensor_publisher.py-8] [WARN] [1786341196.814017011] [bringup.fake_sensor_publisher]: Centerline stitching used 3 gap bridge(s) above 5.00m; max_gap=8.68m. Use centerline_scope:=selected_lanelet or log_centerline_stitch_details:=true for detailed map debugging.
+[fake_sensor_publisher.py-8] [WARN] [1786341196.815407625] [bringup.fake_sensor_publisher]: Centerline loop gap 28.92m exceeds close_loop_max_gap; path will wrap with a jump. Consider a loop lanelet_id.
+[INFO] [platform_velocity_converter_node-9]: process started with pid [3704648]
+[INFO] [radar_cost_grid_node-10]: process started with pid [3704650]
+[INFO] [inflation_cost_grid_node-11]: process started with pid [3704652]
+[radar_cost_grid_node-10] [INFO] [1786341199.571553175] [sensing.radar.radar_cost_grid]: radar fixed-return exclusion filter active with 11 measured bands
+[radar_cost_grid_node-10] [INFO] [1786341199.571616599] [sensing.radar.radar_cost_grid]: radar fixed-return band FRONT1:0.020..0.120 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571629454] [sensing.radar.radar_cost_grid]: radar fixed-return band FRONT1:0.120..0.220 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571636142] [sensing.radar.radar_cost_grid]: radar fixed-return band FRONT2:0.020..0.117 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571643110] [sensing.radar.radar_cost_grid]: radar fixed-return band LEFT1:0.182..0.226 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571649673] [sensing.radar.radar_cost_grid]: radar fixed-return band LEFT1:0.234..0.258 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571655054] [sensing.radar.radar_cost_grid]: radar fixed-return band LEFT2:0.045..0.068 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571661328] [sensing.radar.radar_cost_grid]: radar fixed-return band LEFT2:0.210..0.280 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571667521] [sensing.radar.radar_cost_grid]: radar fixed-return band RIGHT1:0.055..0.080 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571671816] [sensing.radar.radar_cost_grid]: radar fixed-return band RIGHT1:0.253..0.277 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571676882] [sensing.radar.radar_cost_grid]: radar fixed-return band RIGHT2:0.248..0.278 m
+[radar_cost_grid_node-10] [INFO] [1786341199.571682888] [sensing.radar.radar_cost_grid]: radar fixed-return band REAR:0.020..0.106 m
+[inflation_cost_grid_node-11] [INFO] [1786341199.583316023] [sensing.inflation_cost_grid]: inflation_cost_grid ready: 3 inputs -> /planning/cost_grid/inflation  grid=180x180 res=0.10m window=robot_frame front=8.00m rear=1.50m side=2.20m
+[radar_cost_grid_node-10] [WARN] [1786341199.725858390] [sensing.radar.radar_cost_grid]: radar_cost_grid failed to locate robot_center_link in map: Could not find a connection between 'map' and 'robot_center_link' because they are not part of the same tree.Tf has two or more unconnected trees.
+[inflation_cost_grid_node-11] [WARN] [1786341199.800740257] [sensing.inflation_cost_grid]: inflation_cost_grid: TF robot_center_link→map failed: Could not find a connection between 'map' and 'robot_center_link' because they are not part of the same tree.Tf has two or more unconnected trees.
+[INFO] [launch.user]: [perception.launch] camera pipeline disabled by config; running LiDAR-only perception.
+[INFO] [obstacle_lidar_node-12]: process started with pid [3704698]
+[obstacle_lidar_node-12] [INFO] [1786341200.455457536] [perception.obstacle_lidar]: Euclidean+BBox started. input=/sensing/lidar/points_filtered
+[robot_visualization_node-1] [INFO] [1786341200.475175049] [platform.robot_visualization]: detected lanelet ground height 0.000 m
+[INFO] [localization_input_adapter_node-13]: process started with pid [3704710]
+[INFO] [ekf_node-14]: process started with pid [3704712]
+[INFO] [localization_pose_selector_node-15]: process started with pid [3704714]
+[INFO] [localization_gnss_reattach_node-16]: process started with pid [3704716]
+[INFO] [localization_monitor_node-17]: process started with pid [3704718]
+[INFO] [localization_map_helper_node-18]: process started with pid [3704720]
+[INFO] [static_transform_publisher-19]: process started with pid [3704722]
+[localization_pose_selector_node-15] [INFO] [1786341201.459553172] [localization.pose_selector]: pose_selector started. primary-only mode enabled. output=(/localization/pose,/localization/pose_with_covariance,/localization/odometry)
+[localization_input_adapter_node-13] [INFO] [1786341201.469995195] [localization.input_adapter]: wheel bridge configured: primary=(/platform/status/odometry,avg_odom) fallback=(/rmp401/odom,nav_odom) timeout=0.70s output=/localization/input/wheel_odometry
+[static_transform_publisher-19] [INFO] [1786341201.483224312] [ekf_map_to_odom_static_tf]: Spinning until stopped - publishing transform
+[static_transform_publisher-19] translation: ('0.000000', '0.000000', '0.000000')
+[static_transform_publisher-19] rotation: ('0.000000', '0.000000', '0.000000', '1.000000')
+[static_transform_publisher-19] from 'map' to 'odom'
+[lanelet_cost_grid_node-6] [WARN] [1786341201.530668697] [map.lanelet_boundary_cost_grid]: route lanelet mask waiting for route IDs; publishing unknown placeholder grid
+[localization_input_adapter_node-13] [INFO] [1786341201.530777942] [localization.input_adapter]: wheel source switched to fallback (fallback_nav_odom) primary_seen=false fallback_seen=true
+[localization_input_adapter_node-13] [INFO] [1786341201.530898036] [localization.input_adapter]: wheel source switched to primary (primary_avg_odom) primary_seen=true fallback_seen=true
+[localization_pose_selector_node-15] [WARN] [1786341201.543710327] [localization.pose_selector]: pose selector source changed -> primary_filter
+[lanelet_cost_grid_node-6] [INFO] [1786341201.561441341] [map.lanelet_boundary_cost_grid]: build timing: topic=/map/cost_grid/lanelet mode=centerline size=960x960 res=0.25 dt=30.85ms
+[lanelet_cost_grid_node-7] [INFO] [1786341201.561551395] [map.lanelet_safety_cost_grid]: build timing: topic=/map/cost_grid/lanelet_safety mode=lanelet size=600x600 res=0.05 dt=17.73ms
+[INFO] [nav2_selector_latch_node.py-20]: process started with pid [3704829]
+[INFO] [smoother_server-21]: process started with pid [3704831]
+[INFO] [behavior_server-22]: process started with pid [3704833]
+[INFO] [bt_navigator-23]: process started with pid [3704835]
+[INFO] [lifecycle_manager-24]: process started with pid [3704837]
+[INFO] [scoped_component_container_mt-25]: process started with pid [3704839]
+[INFO] [goal_snapper_node-26]: process started with pid [3704841]
+[INFO] [centerline_snapper_node-27]: process started with pid [3704843]
+[INFO] [local_path_extractor_node-28]: process started with pid [3704845]
+[INFO] [path_tracking_error_node-29]: process started with pid [3704847]
+[INFO] [planning_state_machine_node.py-30]: process started with pid [3704849]
+[INFO] [planning_progress_node.py-31]: process started with pid [3704851]
+[INFO] [path_visualizer_node.py-32]: process started with pid [3704853]
+[INFO] [obstacle_replan_monitor_node.py-33]: process started with pid [3704855]
+[local_path_extractor_node-28] [INFO] [1786341203.075176647] [planning.local_path_extractor]: local_path_extractor: global=/planning/global_path fallback=<disabled> pose=/localization/pose output=/planning/local_path frame=map lookahead=30.0m lookbehind=0.2m
+[path_tracking_error_node-29] [INFO] [1786341203.084531412] [planning.path_tracking_error]: path_tracking_error: pose=/localization/pose local_path=/planning/local_path global_path=/planning/global_path output=/planning/tracking_error prefer_local=true
+[bt_navigator-23] [INFO] [1786341203.099986054] [planning.bt_navigator]:
+[bt_navigator-23] 	bt_navigator lifecycle node launched.
+[bt_navigator-23] 	Waiting on external lifecycle transitions to activate
+[bt_navigator-23] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[bt_navigator-23] [INFO] [1786341203.100089741] [planning.bt_navigator]: Creating
+[lifecycle_manager-24] [INFO] [1786341203.101754739] [planning.lifecycle_manager_planning]: Creating
+[behavior_server-22] [INFO] [1786341203.115154345] [planning.behavior_server]:
+[behavior_server-22] 	behavior_server lifecycle node launched.
+[behavior_server-22] 	Waiting on external lifecycle transitions to activate
+[behavior_server-22] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[lifecycle_manager-24] [INFO] [1786341203.119553409] [planning.lifecycle_manager_planning]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[smoother_server-21] [INFO] [1786341203.130770737] [planning.smoother_server]:
+[smoother_server-21] 	smoother_server lifecycle node launched.
+[smoother_server-21] 	Waiting on external lifecycle transitions to activate
+[smoother_server-21] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[goal_snapper_node-26] [INFO] [1786341203.146995464] [planning.goal_snapper]: goal_snapper ready: map=/home/hong/camrod_ws/src/lanelet2_maps.osm regulated_input=/planning/site_goal_pose_ros manual_input=/goal_pose aux_input=/planning/auto_goal_raw output(avg)=/planning/goal_pose_snapped output(ros)=/planning/goal_pose_snapped_ros source=/planning/goal_source lane_component=disabled cost_grid_component=enabled routable_only=enabled sequential_release=disabled
+[smoother_server-21] [INFO] [1786341203.165018496] [planning.smoother_server]: Creating smoother server
+[centerline_snapper_node-27] [INFO] [1786341203.168623758] [planning.centerline_snapper]: centerline_snapper ready: map=/home/hong/camrod_ws/src/lanelet2_maps.osm input=/localization/pose output=/planning/lanelet_pose output_cov=/planning/lanelet_pose_with_covariance
+[scoped_component_container_mt-25] [INFO] [1786341203.239352709] [planning.nav2_container]: Load Library: /home/hong/camrod_ws/install/nav2_planner/lib/libplanner_server_core.so
+[scoped_component_container_mt-25] [INFO] [1786341203.263062837] [planning.nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[scoped_component_container_mt-25] [INFO] [1786341203.263108456] [planning.nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[scoped_component_container_mt-25] [INFO] [1786341203.280806275] [planning.planner_server]:
+[scoped_component_container_mt-25] 	planner_server lifecycle node launched.
+[scoped_component_container_mt-25] 	Waiting on external lifecycle transitions to activate
+[scoped_component_container_mt-25] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[scoped_component_container_mt-25] [INFO] [1786341203.303071420] [planning.planner_server]: Creating
+[scoped_component_container_mt-25] [INFO] [1786341203.313103437] [planning.global_costmap.global_costmap]:
+[scoped_component_container_mt-25] 	global_costmap lifecycle node launched.
+[scoped_component_container_mt-25] 	Waiting on external lifecycle transitions to activate
+[scoped_component_container_mt-25] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[scoped_component_container_mt-25] [INFO] [1786341203.320744867] [planning.global_costmap.global_costmap]: Creating Costmap
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/planning/planner_server' in container '/planning/nav2_container'
+[scoped_component_container_mt-25] [INFO] [1786341203.334563867] [planning.nav2_container]: Load Library: /home/hong/camrod_ws/install/nav2_controller/lib/libcontroller_server_core.so
+[scoped_component_container_mt-25] [INFO] [1786341203.338619442] [planning.nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[scoped_component_container_mt-25] [INFO] [1786341203.338661648] [planning.nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[lifecycle_manager-24] [INFO] [1786341203.352346418] [planning.lifecycle_manager_planning]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-24] [INFO] [1786341203.352394077] [planning.lifecycle_manager_planning]: [34m[1mConfiguring planner_server[0m[0m
+[scoped_component_container_mt-25] [INFO] [1786341203.352613963] [planning.planner_server]: Configuring
+[scoped_component_container_mt-25] [INFO] [1786341203.352655016] [planning.global_costmap.global_costmap]: Configuring
+[scoped_component_container_mt-25] [INFO] [1786341203.352733301] [planning.controller_server]:
+[scoped_component_container_mt-25] 	controller_server lifecycle node launched.
+[scoped_component_container_mt-25] 	Waiting on external lifecycle transitions to activate
+[scoped_component_container_mt-25] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[scoped_component_container_mt-25] [INFO] [1786341203.368896297] [planning.global_costmap.global_costmap]: Using plugin "lanelet_cost_layer_base"
+[scoped_component_container_mt-25] [INFO] [1786341203.376036842] [planning.global_costmap.global_costmap]: Initialized plugin "lanelet_cost_layer_base"
+[scoped_component_container_mt-25] [INFO] [1786341203.376074678] [planning.global_costmap.global_costmap]: Using plugin "lidar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.377135919] [planning.global_costmap.global_costmap]: Initialized plugin "lidar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.377160355] [planning.global_costmap.global_costmap]: Using plugin "radar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.378074988] [planning.global_costmap.global_costmap]: Initialized plugin "radar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.378097533] [planning.global_costmap.global_costmap]: Using plugin "inflation_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.390971942] [planning.global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.413531476] [planning.planner_server]: Created global planner plugin LaneletRoute of type camrod_planning::LaneletRoutePlanner
+[scoped_component_container_mt-25] [INFO] [1786341203.423322836] [planning.planner_server]: LaneletRoutePlanner async initialization started: map=/home/hong/camrod_ws/src/lanelet2_maps.osm participant=vehicle:car wait_timeout=60.0s
+[scoped_component_container_mt-25] [INFO] [1786341203.428233003] [planning.planner_server]: Created global planner plugin SmacLattice of type nav2_smac_planner/SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341203.428941047] [planning.planner_server]: Configuring SmacLattice of type SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341203.432132305] [planning.planner_server]: LaneletRoutePlanner map load timing: 9.86ms path=/home/hong/camrod_ws/src/lanelet2_maps.osm
+[scoped_component_container_mt-25] [INFO] [1786341203.434658388] [planning.planner_server]: Even sized heuristic lookup table size set 200.000000, increasing size by 1 to make odd
+[scoped_component_container_mt-25] [INFO] [1786341203.451672397] [planning.planner_server]: LaneletRoutePlanner routing graph timing: 19.44ms participant=vehicle:car
+[scoped_component_container_mt-25] [INFO] [1786341203.451724827] [planning.planner_server]: LaneletRoutePlanner ready: map=/home/hong/camrod_ws/src/lanelet2_maps.osm frame=map lane_changes=false resolution=0.20m
+[scoped_component_container_mt-25] [INFO] [1786341203.483591214] [planning.controller_server]: Creating controller server
+[scoped_component_container_mt-25] [INFO] [1786341203.505524914] [planning.local_costmap.local_costmap]:
+[scoped_component_container_mt-25] 	local_costmap lifecycle node launched.
+[scoped_component_container_mt-25] 	Waiting on external lifecycle transitions to activate
+[scoped_component_container_mt-25] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[scoped_component_container_mt-25] [INFO] [1786341203.509506874] [planning.local_costmap.local_costmap]: Creating Costmap
+[planning_progress_node.py-31] [INFO] [1786341203.510091649] [planning.planning_progress]: planning_progress_node ready — path=/planning/global_path_avg pose=/localization/pose rate=2.0 Hz
+[INFO] [cmd_vel_safety_gate_node-34]: process started with pid [3705039]
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/planning/controller_server' in container '/planning/nav2_container'
+[scoped_component_container_mt-25] [INFO] [1786341203.570226235] [planning.planner_server]: Configured plugin SmacLattice of type SmacPlannerLattice with maximum iterations 2000000, max on approach iterations 1000, and not allowing unknown traversal. Tolerance 0.50. Using motion model: State Lattice. State lattice file: /home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/lattice_primitives/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json.
+[scoped_component_container_mt-25] [INFO] [1786341203.570993670] [planning.planner_server]: Planner Server has LaneletRoute SmacLattice  planners available.
+[scoped_component_container_mt-25] [INFO] [1786341203.571561968] [planning.planner_server]: planner costmap wait timeout: 2.50s (0.0 means wait forever)
+[nav2_selector_latch_node.py-20] [INFO] [1786341203.594010507] [planning.nav2_selector_latch]: nav2_selector_latch active: source=regulated planner=LaneletRoute controller=RPP goal_checker=goal_checker
+[cmd_vel_safety_gate_node-34] [INFO] [1786341203.606148283] [control.cmd_vel_safety_gate]: cmd_vel safety gate ready: maneuver_in=/control/cmd_vel_raw nav2_in=/control/nav2_cmd_vel_ros out=/control/cmd_vel driver_out=/control/cmd_vel_ros
+[planning_state_machine_node.py-30] [INFO] [1786341203.669274982] [planning.planning_state_machine]: selected drop-zone return keypoint: selector=drop_zone reason=configured_selector id=dz_area_2320 xy=(-14.23,39.79) yaw=-82.2deg
+[obstacle_replan_monitor_node.py-33] [INFO] [1786341203.676605741] [planning.obstacle_replan_monitor]: obstacle_replan_monitor: enabled=true grids=/sensing/cost_grid/lidar,/sensing/cost_grid/radar fallback=SmacLattice preempt=true wide_lane_min=2.50m lookahead=8.0m hold=20.0s
+[planning_state_machine_node.py-30] [INFO] [1786341203.703413319] [planning.planning_state_machine]: planning_state_machine: state=/planning/disabled_diagnostics pose=/planning/lanelet_pose return_start_vehicle_pose=/localization/pose return_start_pose_max_distance_m=1.50 goal=/planning/goal_pose_snapped goal_source=/planning/goal_source raw_goal=/planning/site_goal_pose_ros auto_goal_snapper_input=/planning/auto_goal_raw drop_zone_id=drop_zone drop_zone_goal_raw=/planning/drop_zone_goal_raw drop_zone_goal_raw_ros=/planning/drop_zone_goal_raw_ros nav_status=/planning/navigate_to_pose/_action/status maneuver_phase_state=/service/state return=/planning/state_machine/return_to_drop_zone recall=/planning/state_machine/camping_site_recall scenario_cmd=/planning/state_machine/scenario_command scenario_id=/planning/state_machine/scenario_id mission_key_topic=/planning/mission_key request_mission_service=/planning/request_mission keypoints=camping_site_1,camping_site_10,camping_site_11,camping_site_12,camping_site_13,camping_site_2,camping_site_3,camping_site_4,camping_site_5,camping_site_6,camping_site_7,camping_site_8,camping_site_9,drop_zone,drop_zone_1,dz_area_2320,garage
+[path_visualizer_node.py-32] [INFO] [1786341203.727336535] [planning.path_visualizer]: path visualizer started: global=/planning/global_path_avg local=/planning/local_path marker=/planning/path_markers
+[lifecycle_manager-24] [INFO] [1786341203.757273787] [planning.lifecycle_manager_planning]: [34m[1mConfiguring controller_server[0m[0m
+[scoped_component_container_mt-25] [INFO] [1786341203.757447752] [planning.controller_server]: Configuring controller interface
+[scoped_component_container_mt-25] [INFO] [1786341203.757607660] [planning.controller_server]: getting goal checker plugins..
+[scoped_component_container_mt-25] [INFO] [1786341203.757638677] [planning.controller_server]: Controller frequency set to 20.0000Hz
+[scoped_component_container_mt-25] [INFO] [1786341203.757663936] [planning.local_costmap.local_costmap]: Configuring
+[scoped_component_container_mt-25] [INFO] [1786341203.758599544] [planning.local_costmap.local_costmap]: Using plugin "lidar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.760345575] [planning.local_costmap.local_costmap]: Initialized plugin "lidar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.760368813] [planning.local_costmap.local_costmap]: Using plugin "radar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.761156242] [planning.local_costmap.local_costmap]: Initialized plugin "radar_cost_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.761180379] [planning.local_costmap.local_costmap]: Using plugin "inflation_layer"
+[scoped_component_container_mt-25] [INFO] [1786341203.762463574] [planning.local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[cmd_vel_safety_gate_node-34] [INFO] [1786341203.903670256] [control.cmd_vel_safety_gate]: command authorization updated: source=estop:/planning/state_machine/estop state=engage=false(manual=false,mission=false),platform_drive_enable=false
+[scoped_component_container_mt-25] [INFO] [1786341203.911640508] [planning.controller_server]: Created progress_checker : progress_checker of type camrod_planning::EngageAwareProgressChecker
+[scoped_component_container_mt-25] [INFO] [1786341203.913626517] [planning.controller_server]: Created goal checker : goal_checker of type nav2_controller::SimpleGoalChecker
+[scoped_component_container_mt-25] [INFO] [1786341203.914098697] [planning.controller_server]: Created goal checker : manual_goal_checker of type nav2_controller::SimpleGoalChecker
+[scoped_component_container_mt-25] [INFO] [1786341203.914644933] [planning.controller_server]: Controller Server has goal_checker manual_goal_checker  goal checkers available.
+[scoped_component_container_mt-25] [INFO] [1786341203.915751828] [planning.controller_server]: Created controller : RPP of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341203.930379855] [planning.controller_server]: Created controller : RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[scoped_component_container_mt-25] [INFO] [1786341203.931723896] [planning.controller_server]: Created internal controller for rotation shimming: RotationShim of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341204.054351748] [planning.controller_server]: Controller Server has RPP RotationShim  controllers available.
+[lifecycle_manager-24] [INFO] [1786341204.057022896] [planning.lifecycle_manager_planning]: [34m[1mConfiguring smoother_server[0m[0m
+[smoother_server-21] [INFO] [1786341204.057171538] [planning.smoother_server]: Configuring smoother server
+[smoother_server-21] [INFO] [1786341204.064518975] [planning.smoother_server]: Created smoother : SimpleSmoother of type nav2_smoother::SimpleSmoother
+[smoother_server-21] [INFO] [1786341204.064878436] [planning.smoother_server]: Smoother Server has SimpleSmoother  smoothers available.
+[lifecycle_manager-24] [INFO] [1786341204.068020989] [planning.lifecycle_manager_planning]: [34m[1mConfiguring behavior_server[0m[0m
+[behavior_server-22] [INFO] [1786341204.068174792] [planning.behavior_server]: Configuring
+[behavior_server-22] [INFO] [1786341204.073677301] [planning.behavior_server]: Creating behavior plugin spin of type nav2_behaviors/Spin
+[behavior_server-22] [INFO] [1786341204.075480358] [planning.behavior_server]: Configuring spin
+[behavior_server-22] [INFO] [1786341204.078760573] [planning.behavior_server]: Creating behavior plugin backup of type nav2_behaviors/BackUp
+[behavior_server-22] [INFO] [1786341204.080557969] [planning.behavior_server]: Configuring backup
+[behavior_server-22] [INFO] [1786341204.083924505] [planning.behavior_server]: Creating behavior plugin drive_on_heading of type nav2_behaviors/DriveOnHeading
+[behavior_server-22] [INFO] [1786341204.085743983] [planning.behavior_server]: Configuring drive_on_heading
+[behavior_server-22] [INFO] [1786341204.088926607] [planning.behavior_server]: Creating behavior plugin wait of type nav2_behaviors/Wait
+[behavior_server-22] [INFO] [1786341204.090801882] [planning.behavior_server]: Configuring wait
+[lifecycle_manager-24] [INFO] [1786341204.093243941] [planning.lifecycle_manager_planning]: [34m[1mConfiguring bt_navigator[0m[0m
+[bt_navigator-23] [INFO] [1786341204.093409577] [planning.bt_navigator]: Configuring
+[bt_navigator-23] [INFO] [1786341204.122634134] [planning.bt_navigator]: start pose override enabled: topic=/planning/lanelet_pose_ros timeout=1.00s bb_key=start yaw_source=current_pose
+[lifecycle_manager-24] [INFO] [1786341204.200059077] [planning.lifecycle_manager_planning]: [34m[1mActivating planner_server[0m[0m
+[scoped_component_container_mt-25] [INFO] [1786341204.200207363] [planning.planner_server]: Activating
+[scoped_component_container_mt-25] [INFO] [1786341204.200252290] [planning.global_costmap.global_costmap]: Activating
+[scoped_component_container_mt-25] [INFO] [1786341204.200262455] [planning.global_costmap.global_costmap]: Checking transform
+[scoped_component_container_mt-25] [INFO] [1786341204.200320167] [planning.global_costmap.global_costmap]: start
+[INFO] [camping_site_maneuver_controller_node-35]: process started with pid [3705102]
+[INFO] [drop_zone_maneuver_controller_node-36]: process started with pid [3705104]
+[INFO] [route_safety_recovery_controller_node-37]: process started with pid [3705106]
+[drop_zone_maneuver_controller_node-36] [INFO] [1786341204.450052597] [control.drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-14.23,39.79,-82.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[camping_site_maneuver_controller_node-35] [INFO] [1786341204.456405135] [control.camping_site_maneuver_controller]: loaded 26 campsite goal entries from /home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/config/camping_sites.yaml
+[camping_site_maneuver_controller_node-35] [INFO] [1786341204.456614681] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller ready: cmd=/control/cmd_vel_raw pose=/localization/pose lanelet_pose=/planning/lanelet_pose auto_start=true entry_mode=crab adopt_topic=/control/camping_site_maneuver_controller/adopt cancel_nav2=true
+[scoped_component_container_mt-25] [INFO] [1786341204.650423462] [planning.planner_server]: Activating plugin SmacLattice of type SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341204.651331456] [planning.planner_server]: Creating bond (planner_server) to lifecycle manager.
+[lifecycle_manager-24] [INFO] [1786341204.755070705] [planning.lifecycle_manager_planning]: Server planner_server connected with bond.
+[lifecycle_manager-24] [INFO] [1786341204.755103244] [planning.lifecycle_manager_planning]: [34m[1mActivating controller_server[0m[0m
+[scoped_component_container_mt-25] [INFO] [1786341204.755267163] [planning.controller_server]: Activating
+[scoped_component_container_mt-25] [INFO] [1786341204.755301117] [planning.local_costmap.local_costmap]: Activating
+[scoped_component_container_mt-25] [INFO] [1786341204.755309397] [planning.local_costmap.local_costmap]: Checking transform
+[scoped_component_container_mt-25] [INFO] [1786341204.755372417] [planning.local_costmap.local_costmap]: start
+[scoped_component_container_mt-25] [INFO] [1786341204.805465041] [planning.controller_server]: Activating controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[scoped_component_container_mt-25] [INFO] [1786341204.805520118] [planning.controller_server]: Activating controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341204.805535615] [planning.controller_server]: Activating controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341204.805555502] [planning.controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-24] [INFO] [1786341204.907218778] [planning.lifecycle_manager_planning]: Server controller_server connected with bond.
+[lifecycle_manager-24] [INFO] [1786341204.907253603] [planning.lifecycle_manager_planning]: [34m[1mActivating smoother_server[0m[0m
+[smoother_server-21] [INFO] [1786341204.907433111] [planning.smoother_server]: Activating
+[smoother_server-21] [INFO] [1786341204.907459546] [planning.smoother_server]: Creating bond (smoother_server) to lifecycle manager.
+[lifecycle_manager-24] [INFO] [1786341205.009696139] [planning.lifecycle_manager_planning]: Server smoother_server connected with bond.
+[lifecycle_manager-24] [INFO] [1786341205.009754722] [planning.lifecycle_manager_planning]: [34m[1mActivating behavior_server[0m[0m
+[behavior_server-22] [INFO] [1786341205.009955299] [planning.behavior_server]: Activating
+[behavior_server-22] [INFO] [1786341205.009977804] [planning.behavior_server]: Activating spin
+[behavior_server-22] [INFO] [1786341205.009986300] [planning.behavior_server]: Activating backup
+[behavior_server-22] [INFO] [1786341205.009992805] [planning.behavior_server]: Activating drive_on_heading
+[behavior_server-22] [INFO] [1786341205.009998869] [planning.behavior_server]: Activating wait
+[behavior_server-22] [INFO] [1786341205.010007104] [planning.behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[lifecycle_manager-24] [INFO] [1786341205.112125386] [planning.lifecycle_manager_planning]: Server behavior_server connected with bond.
+[lifecycle_manager-24] [INFO] [1786341205.112228816] [planning.lifecycle_manager_planning]: [34m[1mActivating bt_navigator[0m[0m
+[bt_navigator-23] [INFO] [1786341205.112436209] [planning.bt_navigator]: Activating
+[bt_navigator-23] [WARN] [1786341205.268434066] [planning.bt_navigator_navigate_to_pose_rclcpp_node]: Wait duration is negative or zero (0). Setting to positive.
+[INFO] [reverse_parking_controller_node-38]: process started with pid [3705139]
+[reverse_parking_controller_node-38] [INFO] [1786341205.448172806] [parking.reverse_parking_controller]: reverse_parking_controller ready: station=(-14.23,39.79,-82.2deg) operation=/parking/operation command=/control/cmd_vel_raw
+[bt_navigator-23] [WARN] [1786341205.461017482] [planning.bt_navigator_navigate_to_pose_rclcpp_node]: Wait duration is negative or zero (0). Setting to positive.
+[bt_navigator-23] [INFO] [1786341205.551324414] [planning.bt_navigator]: Creating bond (bt_navigator) to lifecycle manager.
+[lifecycle_manager-24] [INFO] [1786341205.654186768] [planning.lifecycle_manager_planning]: Server bt_navigator connected with bond.
+[lifecycle_manager-24] [INFO] [1786341205.654225673] [planning.lifecycle_manager_planning]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-24] [INFO] [1786341205.654255103] [planning.lifecycle_manager_planning]: [34m[1mCreating bond timer...[0m[0m
+[INFO] [launch.user]: [bringup] camrod_voice skipped: launch file not found
+[INFO] [launch.user]: [camrod_system] platform checker disabled (enable_platform:=false)
+[INFO] [scoped_component_container-39]: process started with pid [3705169]
+[INFO] [scoped_component_container-40]: process started with pid [3705171]
+[INFO] [scoped_component_container-41]: process started with pid [3705173]
+[INFO] [scoped_component_container-42]: process started with pid [3705175]
+[INFO] [scoped_component_container-43]: process started with pid [3705177]
+[scoped_component_container-39] [INFO] [1786341207.703835320] [system.hardware_sensing_checker_container]: Load Library: /home/hong/camrod_ws/install/camrod_system/lib/libcamrod_system_hardware_sensing_checkers.so
+[scoped_component_container-40] [INFO] [1786341207.708530436] [system.localization_checker_container]: Load Library: /home/hong/camrod_ws/install/camrod_system/lib/libcamrod_system_localization_checkers.so
+[scoped_component_container-41] [INFO] [1786341207.713387742] [system.autonomy_topics_checker_container]: Load Library: /home/hong/camrod_ws/install/camrod_system/lib/libcamrod_system_autonomy_checkers.so
+[scoped_component_container-40] [INFO] [1786341207.714656514] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.714683369] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.716550035] [system.planning_lifecycle_checker_container]: Load Library: /home/hong/camrod_ws/install/camrod_system/lib/libcamrod_system_autonomy_checkers.so
+[scoped_component_container-39] [INFO] [1786341207.717394628] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.717427252] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.717434580] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.717439960] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.717445044] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.717450182] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.726423563] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.726498212] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/hw_checker' in container '/system/hardware_sensing_checker_container'
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_gnss_checker' in container '/system/localization_checker_container'
+[scoped_component_container-39] [INFO] [1786341207.730944099] [system.hw_checker]: HwCheckerNode started. CPU warn=90% error=98% | MEM warn=90% error=98% | DISK(/) warn=99% error=100%
+[scoped_component_container-40] [INFO] [1786341207.734869133] [system.localization_gnss_checker]: Localization GNSS checker started: main (topic=/sensing/gnss/pose_with_covariance, cov_error=25.0, max_jump=5.0m, dummy=/sensing/gnss/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/map_cost_grid_checker' in container '/system/autonomy_topics_checker_container'
+[scoped_component_container-42] [INFO] [1786341207.735225676] [system.planning_lifecycle_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.735255011] [system.planning_lifecycle_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.735262375] [system.planning_lifecycle_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.735268502] [system.planning_lifecycle_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningLifecycleCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.735274020] [system.planning_lifecycle_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<PlanningLifecycleCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.736461304] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.736494629] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.736502037] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.736507580] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.736513076] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-43] [INFO] [1786341207.738760929] [system.system_core_container]: Load Library: /home/hong/camrod_ws/install/camrod_system/lib/libcamrod_system_core_components.so
+[scoped_component_container-41] [INFO] [1786341207.744753475] [system.map_cost_grid_checker]: Map cost grid checker started (topic=/map/cost_grid/lanelet, stale=12.0s)
+[scoped_component_container-43] [INFO] [1786341207.746419279] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<DiagnosticsAggregator>
+[scoped_component_container-43] [INFO] [1786341207.746454578] [system.system_core_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<DiagnosticsAggregator>
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/planning_lifecycle_checker' in container '/system/planning_lifecycle_checker_container'
+[scoped_component_container-40] [INFO] [1786341207.749636404] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.749672597] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.749679699] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationLaneletCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.749685294] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationModeCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.749690912] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationModeCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.753453766] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.753490028] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.753496451] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-42] [INFO] [1786341207.756915321] [system.planning_lifecycle_checker]: Planning lifecycle checker registered: /planning/planner_server
+[scoped_component_container-42] [INFO] [1786341207.757148953] [system.planning_lifecycle_checker]: Planning lifecycle checker registered: /planning/controller_server
+[scoped_component_container-42] [INFO] [1786341207.757368826] [system.planning_lifecycle_checker]: Planning lifecycle checker registered: /planning/bt_navigator
+[scoped_component_container-42] [INFO] [1786341207.757530888] [system.planning_lifecycle_checker]: Planning lifecycle checker registered: /planning/behavior_server
+[scoped_component_container-41] [INFO] [1786341207.767514312] [system.perception_obstacle_checker]: [fused_obstacles] PointCloud2 checker started (topic=/perception/obstacles, expected_hz=10.0)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/perception_obstacle_checker' in container '/system/autonomy_topics_checker_container'
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/diagnostics_agg' in container '/system/system_core_container'
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_mode_checker' in container '/system/localization_checker_container'
+[scoped_component_container-43] [INFO] [1786341207.769151143] [system.diagnostics_agg]: config loaded: /home/hong/camrod_ws/src/camrod_bringup/config/system/diagnostics/sim/aggregator/diagnostics_config.yaml
+[scoped_component_container-43] [INFO] [1786341207.769200327] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/REAR
+[scoped_component_container-43] [INFO] [1786341207.769207538] [system.diagnostics_agg]:   [ignored] perception_obstacle_checker: /perception/obstacles/camera_detections
+[scoped_component_container-43] [INFO] [1786341207.769212544] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/LEFT1
+[scoped_component_container-43] [INFO] [1786341207.769221958] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/FRONT2
+[scoped_component_container-43] [INFO] [1786341207.769226375] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/RIGHT1
+[scoped_component_container-43] [INFO] [1786341207.769230921] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/FRONT1
+[scoped_component_container-43] [INFO] [1786341207.769236401] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/RIGHT2
+[scoped_component_container-43] [INFO] [1786341207.769240383] [system.diagnostics_agg]:   [ignored] lidar_checker: /sensor/lidar/main
+[scoped_component_container-43] [INFO] [1786341207.769244637] [system.diagnostics_agg]:   [ignored] camera_checker: /sensor/camera/econ_rear
+[scoped_component_container-43] [INFO] [1786341207.769249087] [system.diagnostics_agg]:   [ignored] radar_checker: /sensor/radar/LEFT2
+[scoped_component_container-43] [INFO] [1786341207.769253661] [system.diagnostics_agg]:   [ignored] camera_checker: /sensor/camera/econ_front
+[scoped_component_container-43] [INFO] [1786341207.769258658] [system.diagnostics_agg]:   [ignored] planning_state_checker: /planning/state_machine/state
+[scoped_component_container-43] [INFO] [1786341207.769264146] [system.diagnostics_agg]:   [ignored] system/diagnostic
+[scoped_component_container-43] [INFO] [1786341207.769269853] [system.diagnostics_agg]:   [ui/manifest] system_checker/ui  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769278180] [system.diagnostics_agg]:   [platform/manifest] system_checker/platform  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769284844] [system.diagnostics_agg]:   [parking/runtime] parking/apriltag_parking_controller  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769289486] [system.diagnostics_agg]:   [parking/runtime] parking/reverse_parking_controller  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769294061] [system.diagnostics_agg]:   [hardware] hw_checker: /hardware/cpu  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769299607] [system.diagnostics_agg]:   [localization/pose] localization_pose_checker: /localization/pose  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769305301] [system.diagnostics_agg]:   [sensing/cost_grid] cost_grid_checker: /sensing/cost_grid/lidar  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769311062] [system.diagnostics_agg]:   [localization/mode] localization_mode_checker: /localization/mode  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769316136] [system.diagnostics_agg]:   [sensing/velocity] velocity_converter_checker: /sensing/velocity_converter  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769322705] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/FRONT1  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769327576] [system.diagnostics_agg]:   [sensing/cost_grid] cost_grid_checker: /sensing/cost_grid/radar  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769332253] [system.diagnostics_agg]:   [sensing/camera] camera_checker: /sensor/camera/econ_rear  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769337167] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/RIGHT2  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769342509] [system.diagnostics_agg]:   [perception/obstacles] perception_obstacle_checker: /perception/obstacles/fused_obstacles  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769347342] [system.diagnostics_agg]:   [planning/cost_grid] cost_grid_checker: /planning/cost_grid/inflation  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769352466] [system.diagnostics_agg]:   [planning/lifecycle] planning_lifecycle_checker: /planning/lifecycle/planning/controller_server  timeout=8.0s
+[scoped_component_container-43] [INFO] [1786341207.769382515] [system.diagnostics_agg]:   [planning/lifecycle] planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server  timeout=8.0s
+[scoped_component_container-43] [INFO] [1786341207.769389076] [system.diagnostics_agg]:   [hardware] hw_checker: /hardware/memory  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769393883] [system.diagnostics_agg]:   [localization/source] localization_source_checker: /localization/source  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769401250] [system.diagnostics_agg]:   [sensing/camera] camera_checker: /sensor/camera/econ_front  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769406426] [system.diagnostics_agg]:   [sensing/wheel] wheel_odometry_checker: /sensor/wheel/main  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769411439] [system.diagnostics_agg]:   [sensing/lidar] lidar_checker: /sensor/lidar/filtered  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769416114] [system.diagnostics_agg]:   [hardware] hw_checker: /hardware/disk  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769420966] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/LEFT2  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769426196] [system.diagnostics_agg]:   [planning/lifecycle] planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator  timeout=8.0s
+[scoped_component_container-43] [INFO] [1786341207.769433101] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/actuator  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769438102] [system.diagnostics_agg]:   [hardware] hw_checker: /hardware/cpu_temp  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769442809] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/LEFT1  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769447588] [system.diagnostics_agg]:   [sensing/gnss] gnss_checker: /sensor/gnss/main  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769452558] [system.diagnostics_agg]:   [control/runtime] control/camping_site_maneuver_controller  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769458210] [system.diagnostics_agg]:   [planning/costmap] planning_costmap_checker: /planning/local_costmap  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769463665] [system.diagnostics_agg]:   [planning/path] planning_path_checker: /planning/path/local_path  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769470130] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/REAR  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769475147] [system.diagnostics_agg]:   [planning/path] planning_path_checker: /planning/path/global_path  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769479843] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/battery  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769484793] [system.diagnostics_agg]:   [planning/costmap] planning_costmap_checker: /planning/global_costmap  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769490409] [system.diagnostics_agg]:   [planning/nav_status] planning_nav_status_checker: /planning/nav_status  timeout=8.0s
+[scoped_component_container-43] [INFO] [1786341207.769495787] [system.diagnostics_agg]:   [planning/lifecycle] planning_lifecycle_checker: /planning/lifecycle/planning/planner_server  timeout=8.0s
+[scoped_component_container-43] [INFO] [1786341207.769500733] [system.diagnostics_agg]:   [system/checker] system_checker/topics  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769505972] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/connection  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769513211] [system.diagnostics_agg]:   [perception/detections] perception_obstacle_checker: /perception/obstacles/camera_detections  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769518483] [system.diagnostics_agg]:   [sensing/manifest] system_checker/sensing  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769524796] [system.diagnostics_agg]:   [map/cost_grid] map_cost_grid_checker: /map/cost_grid  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769529544] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/vehicle  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769534860] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/control_mode  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769540397] [system.diagnostics_agg]:   [system/checker] system_checker/nodes  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769545651] [system.diagnostics_agg]:   [localization/lanelet] localization_lanelet_checker: /localization/lanelet  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769557493] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/error_code  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769565354] [system.diagnostics_agg]:   [planning/manifest] system_checker/planning  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769573733] [system.diagnostics_agg]:   [hardware] gpu_checker: /hardware/gpu0  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769579732] [system.diagnostics_agg]:   [platform/ranger] ranger_platform_checker: /platform/ranger/odom  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769586534] [system.diagnostics_agg]:   [sensing/imu] imu_checker: /sensor/imu/main  timeout=2.0s
+[scoped_component_container-43] [INFO] [1786341207.769593703] [system.diagnostics_agg]:   [map/manifest] system_checker/map  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769599611] [system.diagnostics_agg]:   [control/runtime] control/cmd_vel_safety_gate  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769604619] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/RIGHT1  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769609703] [system.diagnostics_agg]:   [localization/manifest] system_checker/localization  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769614810] [system.diagnostics_agg]:   [perception/manifest] system_checker/perception  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769619671] [system.diagnostics_agg]:   [localization/gnss] localization_gnss_checker: /localization/gnss/main  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769624520] [system.diagnostics_agg]:   [control/manifest] system_checker/control  timeout=5.0s
+[scoped_component_container-43] [INFO] [1786341207.769629928] [system.diagnostics_agg]:   [localization/init] localization_init_checker: /localization/init  timeout=10.0s
+[scoped_component_container-43] [INFO] [1786341207.769635870] [system.diagnostics_agg]:   [sensing/lidar] lidar_checker: /sensor/lidar/main  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769642558] [system.diagnostics_agg]:   [control/runtime] control/drop_zone_maneuver_controller  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769647647] [system.diagnostics_agg]:   [sensing/radar] radar_checker: /sensor/radar/FRONT2  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.769652919] [system.diagnostics_agg]:   [parking/manifest] system_checker/final_parking  timeout=3.0s
+[scoped_component_container-43] [INFO] [1786341207.772026305] [system.diagnostics_agg]: DiagnosticsAggregator started. monitored topics: 64, default timeout: 5.0s
+[scoped_component_container-41] [INFO] [1786341207.771843639] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.771878853] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.771885408] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.771890798] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.771899959] [system.localization_mode_checker]: Localization mode checker started (status=/localization/status, conf_warn=0.50, conf_error=0.20)
+[scoped_component_container-43] [INFO] [1786341207.778465096] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<DiagnosticsAggregator>
+[scoped_component_container-43] [INFO] [1786341207.778513971] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::DiagnosticsAggregatorNode>
+[scoped_component_container-43] [INFO] [1786341207.778756939] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::SystemCheckerNode>
+[scoped_component_container-43] [INFO] [1786341207.778763997] [system.system_core_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod_system::SystemCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780537483] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780570294] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780576847] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationLaneletCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780582317] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationModeCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780587564] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationPoseCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.780592399] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationPoseCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.790783959] [system.planning_costmap_checker]: planning costmap monitoring: global=/planning/global_costmap/costmap expected_hz=0.0 stale=3600.0s, global_updates=/planning/global_costmap/costmap_updates, local=/planning/local_costmap/costmap expected_hz=0.0 stale=3600.0s, local_updates=/planning/local_costmap/costmap_updates
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/planning_costmap_checker' in container '/system/autonomy_topics_checker_container'
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_pose_checker' in container '/system/localization_checker_container'
+[scoped_component_container-40] [INFO] [1786341207.798176720] [system.localization_pose_checker]: Localization pose checker started (topic=/localization/pose_with_covariance, max_jump=20.0m, cov_error=400.0)
+[scoped_component_container-41] [INFO] [1786341207.800653826] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.800690263] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.800697602] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.800703443] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningLifecycleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.800709044] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningNavStatusCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.800714523] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<PlanningNavStatusCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.802275919] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.802310757] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-40] [INFO] [1786341207.802317152] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-43] [INFO] [1786341207.803365670] [system.system_checker]: system checker started: diagnostic=diagnostics
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/system_checker' in container '/system/system_core_container'
+[scoped_component_container-43] [INFO] [1786341207.809046551] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<DiagnosticsAggregator>
+[scoped_component_container-43] [INFO] [1786341207.809075543] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::DiagnosticsAggregatorNode>
+[scoped_component_container-43] [INFO] [1786341207.809080304] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::SystemCheckerNode>
+[scoped_component_container-43] [INFO] [1786341207.809084108] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::SystemDiagnosticNode>
+[scoped_component_container-43] [INFO] [1786341207.809087580] [system.system_core_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod_system::SystemDiagnosticNode>
+[scoped_component_container-43] [INFO] [1786341207.818703105] [system.system_diagnostic]: system_diagnostic: diagnostic=diagnostics period=0.50s
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/system_diagnostic' in container '/system/system_core_container'
+[scoped_component_container-43] [INFO] [1786341207.821184374] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<DiagnosticsAggregator>
+[scoped_component_container-43] [INFO] [1786341207.821206917] [system.system_core_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::DiagnosticsAggregatorNode>
+[scoped_component_container-43] [INFO] [1786341207.821227744] [system.system_core_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod_system::DiagnosticsAggregatorNode>
+[scoped_component_container-39] [INFO] [1786341207.827872684] [system.gpu_checker]: GpuCheckerNode started. util warn=85% error=95% | mem warn=80% error=95% | temp warn=75 C error=85 C
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/gpu_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341207.829965599] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.829982553] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.829987264] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.829990952] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.829994710] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.829998230] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.830001601] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.830004957] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<NetworkCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.830008366] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<NetworkCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.840227503] [system.network_checker]: NetworkCheckerNode started. iface=wlan0 | RSSI warn=-70 error=-85 dBm | drop_rate warn=1.0 error=5.0 %
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/network_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341207.842593011] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.842612982] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.842617852] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341207.842622228] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.977634953] [system.planning_nav_status_checker]: Planning nav status checker started (topic=/planning/navigate_to_pose/_action/status, service_state=/service/state, stale=0.0s, terminal_stale_ok=true, suppress_service_maneuver=true, abort_warn=2, abort_error=5)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/planning_nav_status_checker' in container '/system/autonomy_topics_checker_container'
+[scoped_component_container-41] [INFO] [1786341207.980130777] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980153468] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980158255] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980161670] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningLifecycleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980165369] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningNavStatusCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980183871] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningPathCheckerNode>
+[scoped_component_container-41] [INFO] [1786341207.980187799] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<PlanningPathCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.004853170] [system.gnss_checker]: GNSS checker started: main (topic=/sensing/gnss/ublox_gps_node/fix, expected_hz=5.0, dummy=/sensing/gnss/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/gnss_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.007178530] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007200330] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007205058] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007208648] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007211952] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007222451] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.007226667] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-43] [INFO] [1786341208.015968339] [system.diagnostics_aggregator]: diagnostics_aggregator ready: source=diagnostics output=diagnostics_agg_tools stale_timeout_s=3.0
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/diagnostics_aggregator' in container '/system/system_core_container'
+[scoped_component_container-40] [INFO] [1786341208.036894317] [system.localization_init_checker]: Localization init checker started (enabled=false, grace=9999s, dist_warn=9999.0m, dist_error=9999.0m)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_init_checker' in container '/system/localization_checker_container'
+[scoped_component_container-40] [INFO] [1786341208.040413951] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040446090] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040453257] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationLaneletCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040459222] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationModeCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040465182] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationPoseCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040491389] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationSourceCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.040498382] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationSourceCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.184353987] [system.localization_source_checker]: Localization source checker started (primary=primary_filter, fallback=fallback_source, fallback_error=60s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_source_checker' in container '/system/localization_checker_container'
+[scoped_component_container-41] [INFO] [1786341208.187106658] [system.planning_path_checker]: [global_path] Path checker started (topic=/planning/global_path_avg, stale=0.0s, warn=5, error=2)
+[scoped_component_container-41] [INFO] [1786341208.188815537] [system.planning_path_checker]: [local_path] Path checker started (topic=/planning/local_path, stale=2.0s, warn=8, error=3)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/planning_path_checker' in container '/system/autonomy_topics_checker_container'
+[scoped_component_container-40] [INFO] [1786341208.189334199] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationGnssCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.189360238] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationInitCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.189365270] [system.localization_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LocalizationLaneletCheckerNode>
+[scoped_component_container-40] [INFO] [1786341208.189370028] [system.localization_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LocalizationLaneletCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193743457] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<MapCostGridCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193775625] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PerceptionObstacleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193783718] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningCostmapCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193788976] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningLifecycleCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193794099] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningNavStatusCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193804442] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<PlanningPathCheckerNode>
+[scoped_component_container-41] [INFO] [1786341208.193807813] [system.autonomy_topics_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod_system::PlanningStateChecker>
+[scoped_component_container-41] [INFO] [1786341208.193811339] [system.autonomy_topics_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod_system::PlanningStateChecker>
+[scoped_component_container-39] [INFO] [1786341208.267137955] [system.imu_checker]: IMU checker started: main (topic=/sensing/imu/data, expected_hz=10, dummy=/sensing/imu/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/imu_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.270398923] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270429167] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270434140] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270437910] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270441552] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270445187] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270448441] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.270451865] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-43] [WARN] [1786341208.318941174] [system.system_diagnostic]: [SYSTEM] WARN
+[scoped_component_container-43]   WARN:
+[scoped_component_container-43]     - control: waiting for first diagnostic
+[scoped_component_container-43]     - hardware: waiting for first diagnostic
+[scoped_component_container-43]     - localization: waiting for first diagnostic
+[scoped_component_container-43]     - map: waiting for first diagnostic
+[scoped_component_container-43]     - parking: waiting for first diagnostic
+[scoped_component_container-43]     - perception: waiting for first diagnostic
+[scoped_component_container-43]     - planning: waiting for first diagnostic
+[scoped_component_container-43]     - platform: waiting for first diagnostic
+[scoped_component_container-43]     - sensing: waiting for first diagnostic
+[scoped_component_container-43]     - system: waiting for first diagnostic
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/planning_state_checker' in container '/system/autonomy_topics_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.355645608] [system.lidar_checker]: LiDAR checker started: filtered (topic=/sensing/lidar/points_filtered, expected_hz=10.0, dummy=/sensing/lidar/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/lidar_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.359503010] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359528016] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359533178] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359536975] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359540691] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359544158] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359547365] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359550739] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<NetworkCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359554120] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<RadarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.359557521] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<RadarCheckerNode>
+[INFO] [ui_backend_node-44]: process started with pid [3705244]
+[scoped_component_container-40] [INFO] [1786341208.450024765] [system.localization_lanelet_checker]: Localization lanelet checker started (topic=/localization/centerline_pose, stale=2.0s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/localization_lanelet_checker' in container '/system/localization_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.599479655] [system.radar_checker]: Radar global dummy-state monitor: topic=/sensing/radar/dummy_active timeout=1.00s (fresh true => WARN DUMMY DATA; false/stale => physical diagnosis)
+[scoped_component_container-39] [INFO] [1786341208.600881039] [system.radar_checker]: Radar checker started: FRONT1 (location=front_right frame=radar_front1_link port=/dev/ttyCH9344USB0 topic=/sensing/radar/front1/range expected_hz=8.0 channel_dummy=/sensing/radar/front1/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.602054718] [system.radar_checker]: Radar checker started: FRONT2 (location=front_left frame=radar_front2_link port=/dev/ttyCH9344USB1 topic=/sensing/radar/front2/range expected_hz=8.0 channel_dummy=/sensing/radar/front2/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.603211149] [system.radar_checker]: Radar checker started: LEFT1 (location=left_front frame=radar_left1_link port=/dev/ttyCH9344USB4 topic=/sensing/radar/left1/range expected_hz=8.0 channel_dummy=/sensing/radar/left1/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.604030887] [system.radar_checker]: Radar checker started: LEFT2 (location=left_rear frame=radar_left2_link port=/dev/ttyCH9344USB5 topic=/sensing/radar/left2/range expected_hz=8.0 channel_dummy=/sensing/radar/left2/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.604409758] [system.radar_checker]: Radar checker started: RIGHT1 (location=right_front frame=radar_right1_link port=/dev/ttyCH9344USB2 topic=/sensing/radar/right1/range expected_hz=8.0 channel_dummy=/sensing/radar/right1/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.604762688] [system.radar_checker]: Radar checker started: RIGHT2 (location=right_rear frame=radar_right2_link port=/dev/ttyCH9344USB3 topic=/sensing/radar/right2/range expected_hz=8.0 channel_dummy=/sensing/radar/right2/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.705836392] [system.radar_checker]: Radar checker started: REAR (location=rear_center frame=radar_rear_link port=/dev/ttyCH9344USB6 topic=/sensing/radar/rear/range expected_hz=8.0 channel_dummy=/sensing/radar/rear/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/radar_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.709261192] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.709283949] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.786442469] [system.camera_checker]: Camera checker started: econ_front (image=/sensing/camera/econ_front/image_rect/compressed, type=compressed, expected_fps=10, dummy=/sensing/camera/econ_front/dummy_active timeout=1.00s)
+[scoped_component_container-39] [INFO] [1786341208.787605535] [system.camera_checker]: Camera checker started: econ_rear (image=/sensing/camera/econ_rear/image_raw, type=raw, expected_fps=10, dummy=/sensing/camera/econ_rear/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/camera_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-43] [ERROR] [1786341208.818955281] [system.system_diagnostic]: [SYSTEM] ERROR
+[scoped_component_container-43]   ERROR:
+[scoped_component_container-43]     - map: No topic messages: /map/cost_grid/lanelet (map load failed or pose/path input missing) {topic=/map/cost_grid/lanelet} [map_cost_grid_checker: /map/cost_grid]
+[scoped_component_container-43]   WARN:
+[scoped_component_container-43]     - parking: waiting for first diagnostic
+[scoped_component_container-43]     - platform: waiting for first diagnostic
+[scoped_component_container-43]     - system: waiting for first diagnostic
+[scoped_component_container-39] [INFO] [1786341208.821531955] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821552442] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821557534] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821561367] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821564832] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821568091] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821571381] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821574767] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<NetworkCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821586374] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<RadarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821590089] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<VelocityConverterCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821593519] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<WheelOdometryCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.821597166] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<WheelOdometryCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.965903722] [system.wheel_odometry_checker]: Wheel odometry checker started: main (topic=/localization/input/wheel_odometry, expected_hz=10, dummy=/platform/dummy_active timeout=1.00s)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/wheel_odometry_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341208.970908444] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.970946974] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341208.970954744] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.019376740] [system.cost_grid_checker]: cost_grid monitoring: name=radar diagnostic=/sensing/cost_grid/radar topic=/sensing/cost_grid/radar expected_hz=10.0
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/cost_grid_checker' in container '/system/hardware_sensing_checker_container'
+[scoped_component_container-39] [INFO] [1786341209.019683281] [system.cost_grid_checker]: cost_grid monitoring: name=inflation diagnostic=/planning/cost_grid/inflation topic=/planning/cost_grid/inflation expected_hz=6.0
+[scoped_component_container-39] [INFO] [1786341209.022459282] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CameraCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022483235] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<CostGridCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022488000] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GnssCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022491833] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<GpuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022495302] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<HwCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022498563] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<ImuCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022501702] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<LidarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022505053] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<NetworkCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022508529] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<RadarCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022511861] [system.hardware_sensing_checker_container]: Found class: rclcpp_components::NodeFactoryTemplate<VelocityConverterCheckerNode>
+[scoped_component_container-39] [INFO] [1786341209.022515392] [system.hardware_sensing_checker_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<VelocityConverterCheckerNode>
+[ui_backend_node-44] [INFO] [1786341209.041144872] [ui_backend]: loaded 13 camping-site keypoints from /home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/config/camping_sites.yaml
+[scoped_component_container-39] [INFO] [1786341209.237582334] [system.velocity_converter_checker]: velocity_converter checker started (vel=/platform/status/velocity, imu=/sensing/imu/data, out=/sensing/platform_velocity_converter/twist_with_covariance, platform_dummy=/platform/dummy_active, imu_dummy=/sensing/imu/dummy_active)
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/system/velocity_converter_checker' in container '/system/hardware_sensing_checker_container'
+[ui_backend_node-44] [INFO] [1786341209.308171282] [ui_backend]: ui_backend ready: host=0.0.0.0 port=8010 frontend_dir=/home/hong/camrod_ws/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build destination_topic=/ui/selected_destination engage_topic=/planning/engage mission_engage_topic=/planning/mission_engage platform_drive_enable_topic=/platform/drive_enable camping_site_maneuver_controller_operation_topic=/control/camping_site_maneuver_controller/operation camping_site_maneuver_controller_adopt_topic=/control/camping_site_maneuver_controller/adopt drop_zone_operation_topic=/control/drop_zone_maneuver_controller/operation parking_operation_topic=/parking/operation drop_zone_exit_complete_topic=/control/drop_zone/exit_complete mission_key_topic=/planning/mission_key goal_pose_topic=/planning/site_goal_pose_ros arrival_pose_topic=/localization/pose campsite_occupancy_topic=/perception/camping_sites/occupancy ranger_base_node=/ranger_base_node camping_sites_yaml=/home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/config/camping_sites.yaml
+[ui_backend_node-44] [INFO] [1786341209.308565538] [ui_backend]: ui backend fastapi listening: http://0.0.0.0:8010
+[scoped_component_container-43] [ERROR] [1786341209.819056576] [system.system_diagnostic]: [SYSTEM] ERROR
+[scoped_component_container-43]   ERROR:
+[scoped_component_container-43]     - map: No topic messages: /map/cost_grid/lanelet (map load failed or pose/path input missing) {topic=/map/cost_grid/lanelet} [map_cost_grid_checker: /map/cost_grid]
+[scoped_component_container-43]     - planning: no topic messages: /planning/global_costmap/costmap {topic=/planning/global_costmap/costmap} [planning_costmap_checker: /planning/global_costmap]
+[scoped_component_container-43]   WARN:
+[scoped_component_container-43]     - map: module graph incomplete during startup grace [system_checker/map]
+[scoped_component_container-43]     - system: missing during startup grace [system_checker/nodes]
+[scoped_component_container-43] [ERROR] [1786341211.819058866] [system.system_diagnostic]: [SYSTEM] ERROR
+[scoped_component_container-43]   ERROR:
+[scoped_component_container-43]     - map: No topic messages: /map/cost_grid/lanelet (map load failed or pose/path input missing) {topic=/map/cost_grid/lanelet} [map_cost_grid_checker: /map/cost_grid]
+[scoped_component_container-43]   WARN:
+[scoped_component_container-43]     - map: module graph incomplete during startup grace [system_checker/map]
+[scoped_component_container-43]     - system: missing during startup grace [system_checker/nodes]
+[scoped_component_container-43] [WARN] [1786341214.819104292] [system.system_diagnostic]: [SYSTEM] WARN
+[scoped_component_container-43]   WARN:
+[scoped_component_container-43]     - map: module graph incomplete during startup grace [system_checker/map]
+[scoped_component_container-43]     - system: missing during startup grace [system_checker/nodes]
+[scoped_component_container-43] [INFO] [1786341215.819117159] [system.system_diagnostic]: [SYSTEM] OK
+[scoped_component_container-43]   all modules healthy
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [ui_backend_node-44]: sending signal 'SIGINT' to process[ui_backend_node-44]
+[INFO] [scoped_component_container-43]: sending signal 'SIGINT' to process[scoped_component_container-43]
+[INFO] [scoped_component_container-42]: sending signal 'SIGINT' to process[scoped_component_container-42]
+[INFO] [scoped_component_container-41]: sending signal 'SIGINT' to process[scoped_component_container-41]
+[INFO] [scoped_component_container-40]: sending signal 'SIGINT' to process[scoped_component_container-40]
+[INFO] [scoped_component_container-39]: sending signal 'SIGINT' to process[scoped_component_container-39]
+[INFO] [reverse_parking_controller_node-38]: sending signal 'SIGINT' to process[reverse_parking_controller_node-38]
+[INFO] [route_safety_recovery_controller_node-37]: sending signal 'SIGINT' to process[route_safety_recovery_controller_node-37]
+[INFO] [drop_zone_maneuver_controller_node-36]: sending signal 'SIGINT' to process[drop_zone_maneuver_controller_node-36]
+[INFO] [camping_site_maneuver_controller_node-35]: sending signal 'SIGINT' to process[camping_site_maneuver_controller_node-35]
+[INFO] [cmd_vel_safety_gate_node-34]: sending signal 'SIGINT' to process[cmd_vel_safety_gate_node-34]
+[INFO] [obstacle_replan_monitor_node.py-33]: sending signal 'SIGINT' to process[obstacle_replan_monitor_node.py-33]
+[INFO] [path_visualizer_node.py-32]: sending signal 'SIGINT' to process[path_visualizer_node.py-32]
+[INFO] [planning_progress_node.py-31]: sending signal 'SIGINT' to process[planning_progress_node.py-31]
+[INFO] [planning_state_machine_node.py-30]: sending signal 'SIGINT' to process[planning_state_machine_node.py-30]
+[INFO] [path_tracking_error_node-29]: sending signal 'SIGINT' to process[path_tracking_error_node-29]
+[INFO] [local_path_extractor_node-28]: sending signal 'SIGINT' to process[local_path_extractor_node-28]
+[INFO] [centerline_snapper_node-27]: sending signal 'SIGINT' to process[centerline_snapper_node-27]
+[INFO] [goal_snapper_node-26]: sending signal 'SIGINT' to process[goal_snapper_node-26]
+[INFO] [scoped_component_container_mt-25]: sending signal 'SIGINT' to process[scoped_component_container_mt-25]
+[INFO] [lifecycle_manager-24]: sending signal 'SIGINT' to process[lifecycle_manager-24]
+[INFO] [bt_navigator-23]: sending signal 'SIGINT' to process[bt_navigator-23]
+[INFO] [behavior_server-22]: sending signal 'SIGINT' to process[behavior_server-22]
+[INFO] [smoother_server-21]: sending signal 'SIGINT' to process[smoother_server-21]
+[INFO] [nav2_selector_latch_node.py-20]: sending signal 'SIGINT' to process[nav2_selector_latch_node.py-20]
+[INFO] [static_transform_publisher-19]: sending signal 'SIGINT' to process[static_transform_publisher-19]
+[INFO] [localization_map_helper_node-18]: sending signal 'SIGINT' to process[localization_map_helper_node-18]
+[INFO] [localization_monitor_node-17]: sending signal 'SIGINT' to process[localization_monitor_node-17]
+[INFO] [localization_gnss_reattach_node-16]: sending signal 'SIGINT' to process[localization_gnss_reattach_node-16]
+[INFO] [localization_pose_selector_node-15]: sending signal 'SIGINT' to process[localization_pose_selector_node-15]
+[INFO] [ekf_node-14]: sending signal 'SIGINT' to process[ekf_node-14]
+[INFO] [localization_input_adapter_node-13]: sending signal 'SIGINT' to process[localization_input_adapter_node-13]
+[INFO] [obstacle_lidar_node-12]: sending signal 'SIGINT' to process[obstacle_lidar_node-12]
+[INFO] [inflation_cost_grid_node-11]: sending signal 'SIGINT' to process[inflation_cost_grid_node-11]
+[INFO] [radar_cost_grid_node-10]: sending signal 'SIGINT' to process[radar_cost_grid_node-10]
+[INFO] [platform_velocity_converter_node-9]: sending signal 'SIGINT' to process[platform_velocity_converter_node-9]
+[INFO] [fake_sensor_publisher.py-8]: sending signal 'SIGINT' to process[fake_sensor_publisher.py-8]
+[INFO] [lanelet_cost_grid_node-7]: sending signal 'SIGINT' to process[lanelet_cost_grid_node-7]
+[INFO] [lanelet_cost_grid_node-6]: sending signal 'SIGINT' to process[lanelet_cost_grid_node-6]
+[INFO] [lanelet2_map_node-5]: sending signal 'SIGINT' to process[lanelet2_map_node-5]
+[INFO] [light_controller_node-4]: sending signal 'SIGINT' to process[light_controller_node-4]
+[INFO] [robot_state_publisher-3]: sending signal 'SIGINT' to process[robot_state_publisher-3]
+[INFO] [ranger_platform_bridge_node-2]: sending signal 'SIGINT' to process[ranger_platform_bridge_node-2]
+[INFO] [robot_visualization_node-1]: sending signal 'SIGINT' to process[robot_visualization_node-1]
+[scoped_component_container-43] [INFO] [1786341242.475664936] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container-42] [INFO] [1786341242.481769124] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container-41] [INFO] [1786341242.488913092] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container-40] [INFO] [1786341242.497342983] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container-39] [INFO] [1786341242.505910484] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[reverse_parking_controller_node-38] [INFO] [1786341242.515519889] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[route_safety_recovery_controller_node-37] [INFO] [1786341242.531427659] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[drop_zone_maneuver_controller_node-36] [INFO] [1786341242.550242504] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[camping_site_maneuver_controller_node-35] [INFO] [1786341242.563311457] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[cmd_vel_safety_gate_node-34] [INFO] [1786341242.572429938] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[path_tracking_error_node-29] [INFO] [1786341242.618271566] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[local_path_extractor_node-28] [INFO] [1786341242.626862382] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[centerline_snapper_node-27] [INFO] [1786341242.637254530] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[goal_snapper_node-26] [INFO] [1786341242.644203905] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container_mt-25] [INFO] [1786341242.652527726] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container_mt-25] [INFO] [1786341242.652780831] [planning.controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[scoped_component_container_mt-25] [INFO] [1786341242.652843289] [planning.controller_server]: Deactivating
+[scoped_component_container_mt-25] [INFO] [1786341242.652859045] [planning.controller_server]: Deactivating controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[scoped_component_container_mt-25] [INFO] [1786341242.652864671] [planning.controller_server]: Deactivating controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341242.652872724] [planning.controller_server]: Deactivating controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341242.652888318] [planning.local_costmap.local_costmap]: Deactivating
+[lifecycle_manager-24] [INFO] [1786341242.659288342] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-24] [INFO] [1786341242.659346826] [planning.lifecycle_manager_planning]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_planning)
+[lifecycle_manager-24] [INFO] [1786341242.659370957] [planning.lifecycle_manager_planning]: [34m[1mTerminating bond timer...[0m[0m
+[bt_navigator-23] [INFO] [1786341242.666627447] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[bt_navigator-23] [INFO] [1786341242.666922490] [planning.bt_navigator]: Running Nav2 LifecycleNode rcl preshutdown (bt_navigator)
+[bt_navigator-23] [INFO] [1786341242.666979301] [planning.bt_navigator]: Deactivating
+[bt_navigator-23] [INFO] [1786341242.667000579] [planning.bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[behavior_server-22] [INFO] [1786341242.673916994] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[behavior_server-22] [INFO] [1786341242.673991863] [planning.behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[behavior_server-22] [INFO] [1786341242.674029411] [planning.behavior_server]: Deactivating
+[behavior_server-22] [INFO] [1786341242.674044742] [planning.behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[bt_navigator-23] [INFO] [1786341242.677241744] [planning.bt_navigator]: Cleaning up
+[smoother_server-21] [INFO] [1786341242.682830068] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[smoother_server-21] [INFO] [1786341242.682908173] [planning.smoother_server]: Running Nav2 LifecycleNode rcl preshutdown (smoother_server)
+[smoother_server-21] [INFO] [1786341242.682959821] [planning.smoother_server]: Deactivating
+[smoother_server-21] [INFO] [1786341242.682972048] [planning.smoother_server]: Destroying bond (smoother_server) to lifecycle manager.
+[behavior_server-22] [INFO] [1786341242.684771930] [planning.behavior_server]: Cleaning up
+[behavior_server-22] [INFO] [1786341242.690586013] [planning.behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[smoother_server-21] [INFO] [1786341242.693107724] [planning.smoother_server]: Cleaning up
+[static_transform_publisher-19] [INFO] [1786341242.700734942] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[localization_map_helper_node-18] [INFO] [1786341242.711078064] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[smoother_server-21] [INFO] [1786341242.712901496] [planning.smoother_server]: Destroying bond (smoother_server) to lifecycle manager.
+[localization_monitor_node-17] [INFO] [1786341242.720104474] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[localization_gnss_reattach_node-16] [INFO] [1786341242.726538330] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[localization_pose_selector_node-15] [INFO] [1786341242.736246982] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ekf_node-14] [INFO] [1786341242.743806134] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[localization_input_adapter_node-13] [INFO] [1786341242.750960899] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container_mt-25] [INFO] [1786341242.755674701] [planning.controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[scoped_component_container_mt-25] [INFO] [1786341242.755854892] [planning.controller_server]: Cleaning up
+[scoped_component_container_mt-25] [INFO] [1786341242.755867214] [planning.controller_server]: Cleaning up controller: RotationShim of type nav2_rotation_shim_controller::RotationShimController
+[scoped_component_container_mt-25] [INFO] [1786341242.755873636] [planning.controller_server]: Cleaning up controller: RotationShim of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[scoped_component_container_mt-25] [INFO] [1786341242.759411644] [planning.controller_server]: Cleaning up controller: RPP of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[obstacle_lidar_node-12] [INFO] [1786341242.757963815] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scoped_component_container_mt-25] [INFO] [1786341242.763897611] [planning.local_costmap.local_costmap]: Cleaning up
+[inflation_cost_grid_node-11] [INFO] [1786341242.765588290] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[radar_cost_grid_node-10] [INFO] [1786341242.772625440] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[platform_velocity_converter_node-9] [INFO] [1786341242.779661652] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lanelet_cost_grid_node-7] [INFO] [1786341242.794740890] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lanelet_cost_grid_node-6] [INFO] [1786341242.801872694] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lanelet2_map_node-5] [INFO] [1786341242.807586712] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[light_controller_node-4] [INFO] [1786341242.814038912] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_state_publisher-3] [INFO] [1786341242.821191286] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ranger_platform_bridge_node-2] [INFO] [1786341242.827893837] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_visualization_node-1] [INFO] [1786341242.835491927] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [scoped_component_container-41]: process has finished cleanly [pid 3705173]
+[INFO] [scoped_component_container-40]: process has finished cleanly [pid 3705171]
+[INFO] [scoped_component_container-42]: process has finished cleanly [pid 3705175]
+[INFO] [scoped_component_container-43]: process has finished cleanly [pid 3705177]
+[INFO] [reverse_parking_controller_node-38]: process has finished cleanly [pid 3705139]
+[behavior_server-22] [INFO] [1786341243.570561490] [planning.behavior_server]: Destroying
+[INFO] [route_safety_recovery_controller_node-37]: process has finished cleanly [pid 3705106]
+[INFO] [drop_zone_maneuver_controller_node-36]: process has finished cleanly [pid 3705104]
+[INFO] [cmd_vel_safety_gate_node-34]: process has finished cleanly [pid 3705039]
+[INFO] [camping_site_maneuver_controller_node-35]: process has finished cleanly [pid 3705102]
+[INFO] [obstacle_replan_monitor_node.py-33]: process has finished cleanly [pid 3704855]
+[INFO] [path_tracking_error_node-29]: process has finished cleanly [pid 3704847]
+[INFO] [path_visualizer_node.py-32]: process has finished cleanly [pid 3704853]
+[INFO] [local_path_extractor_node-28]: process has finished cleanly [pid 3704845]
+[INFO] [planning_progress_node.py-31]: process has finished cleanly [pid 3704851]
+[INFO] [goal_snapper_node-26]: process has finished cleanly [pid 3704841]
+[INFO] [planning_state_machine_node.py-30]: process has finished cleanly [pid 3704849]
+[smoother_server-21] [INFO] [1786341243.696377128] [planning.smoother_server]: Destroying
+[scoped_component_container_mt-25] [INFO] [1786341243.703756553] [planning.controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[scoped_component_container_mt-25] [INFO] [1786341243.703802267] [planning.planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[scoped_component_container_mt-25] [INFO] [1786341243.703822226] [planning.planner_server]: Deactivating
+[scoped_component_container_mt-25] [INFO] [1786341243.703849252] [planning.global_costmap.global_costmap]: Deactivating
+[INFO] [platform_velocity_converter_node-9]: process has finished cleanly [pid 3704648]
+[INFO] [static_transform_publisher-19]: process has finished cleanly [pid 3704722]
+[INFO] [lanelet2_map_node-5]: process has finished cleanly [pid 3704557]
+[INFO] [localization_gnss_reattach_node-16]: process has finished cleanly [pid 3704716]
+[INFO] [ranger_platform_bridge_node-2]: process has finished cleanly [pid 3704511]
+[INFO] [robot_visualization_node-1]: process has finished cleanly [pid 3704509]
+[INFO] [robot_state_publisher-3]: process has finished cleanly [pid 3704513]
+[INFO] [light_controller_node-4]: process has finished cleanly [pid 3704515]
+[INFO] [lanelet_cost_grid_node-7]: process has finished cleanly [pid 3704561]
+[INFO] [centerline_snapper_node-27]: process has finished cleanly [pid 3704843]
+[INFO] [obstacle_lidar_node-12]: process has finished cleanly [pid 3704698]
+[INFO] [localization_map_helper_node-18]: process has finished cleanly [pid 3704720]
+[INFO] [localization_monitor_node-17]: process has finished cleanly [pid 3704718]
+[lifecycle_manager-24] [INFO] [1786341243.730201226] [planning.lifecycle_manager_planning]: Destroying lifecycle_manager_planning
+[INFO] [nav2_selector_latch_node.py-20]: process has finished cleanly [pid 3704829]
+[INFO] [ui_backend_node-44]: process has finished cleanly [pid 3705244]
+[INFO] [fake_sensor_publisher.py-8]: process has finished cleanly [pid 3704607]
+[scoped_component_container_mt-25] [INFO] [1786341244.200462163] [planning.planner_server]: Deactivating plugin SmacLattice of type SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341244.200509350] [planning.planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[scoped_component_container_mt-25] [INFO] [1786341244.200544088] [planning.planner_server]: Cleaning up
+[INFO] [radar_cost_grid_node-10]: process has finished cleanly [pid 3704650]
+[bt_navigator-23] [INFO] [1786341244.207357586] [planning.bt_navigator]: Completed Cleaning up
+[bt_navigator-23] [INFO] [1786341244.207402666] [planning.bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[INFO] [inflation_cost_grid_node-11]: process has finished cleanly [pid 3704652]
+[scoped_component_container_mt-25] [INFO] [1786341244.213089677] [planning.global_costmap.global_costmap]: Cleaning up
+[bt_navigator-23] [INFO] [1786341244.222335207] [planning.bt_navigator]: Destroying
+[scoped_component_container_mt-25] [INFO] [1786341244.228655187] [planning.planner_server]: Cleaning up plugin SmacLattice of type SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341244.229400412] [planning.planner_server]: Destroying plugin SmacLattice of type SmacPlannerLattice
+[scoped_component_container_mt-25] [INFO] [1786341244.246946762] [planning.planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[INFO] [scoped_component_container-39]: process has finished cleanly [pid 3705169]
+[scoped_component_container_mt-25] [INFO] [1786341244.473335573] [planning.local_costmap.local_costmap]: Destroying
+[scoped_component_container_mt-25] [INFO] [1786341244.495574212] [planning.controller_server]: Destroying
+[INFO] [localization_input_adapter_node-13]: process has finished cleanly [pid 3704710]
+[scoped_component_container_mt-25] [INFO] [1786341244.517818495] [planning.global_costmap.global_costmap]: Destroying
+[INFO] [behavior_server-22]: process has finished cleanly [pid 3704833]
+[INFO] [localization_pose_selector_node-15]: process has finished cleanly [pid 3704714]
+[scoped_component_container_mt-25] [INFO] [1786341244.651039944] [planning.planner_server]: Destroying
+[INFO] [ekf_node-14]: process has finished cleanly [pid 3704712]
+[INFO] [smoother_server-21]: process has finished cleanly [pid 3704831]
+[INFO] [lifecycle_manager-24]: process has finished cleanly [pid 3704837]
+[INFO] [bt_navigator-23]: process has finished cleanly [pid 3704835]
+[INFO] [scoped_component_container_mt-25]: process has finished cleanly [pid 3704839]
+[INFO] [lanelet_cost_grid_node-6]: process has finished cleanly [pid 3704559]

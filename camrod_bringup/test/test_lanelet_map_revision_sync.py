@@ -8,17 +8,18 @@ import xml.etree.ElementTree as ET
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_MAP = SRC_ROOT / "lanelet2_maps.osm"
-PARK_MAP_COPY = SRC_ROOT / "lanelet2_maps_(copy_park_v1.0.5).osm"
 RUNTIME_REPORT = (
     SRC_ROOT
     / "docs"
-    / "evidence"
+    / "assets"
     / "module-guides"
     / "bringup"
+    / "evidence"
+    / "runtime-capture-20260804"
     / "runtime-visual-capture-20260804.json"
 )
 ACTIVE_MAP_SHA256 = (
-    "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021"
+    "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39"
 )
 
 
@@ -29,23 +30,22 @@ def _tags(element: ET.Element) -> dict[str, str]:
     }
 
 
-def test_active_and_named_park_maps_are_revision_17_and_synchronized() -> None:
-    """Deployment must not silently use a stale copy of the user map edit."""
-    # HH_260807 - Keep this user-authored pair synchronized for the current site.
-    # A different field must receive a new revision instead of silently
-    # replacing this deployed geometry under the same test contract.
-    assert ACTIVE_MAP.read_bytes() == PARK_MAP_COPY.read_bytes()
+def test_active_park_map_matches_the_current_user_revision() -> None:
+    """Deployment must bind derived configs to the current active map."""
+    # HH_260810 - lanelet2_maps.osm is the active source. Named copy files are
+    # user-owned snapshots and are intentionally not overwritten or required
+    # to match this revision.
     assert hashlib.sha256(ACTIVE_MAP.read_bytes()).hexdigest() == ACTIVE_MAP_SHA256
 
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "17"
+    assert metadata.attrib["map_version"] == "15"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
-    assert len(root.findall("node")) == 1652
+    assert len(root.findall("node")) == 1592
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

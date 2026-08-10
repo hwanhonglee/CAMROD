@@ -6,15 +6,21 @@ including the physical rear-camera parking chain. -->
 LiDAR obstacle clustering, front-camera TensorRT YOLO fusion, campsite
 occupancy, and rear-camera AprilTag parking perception.
 
-![Perception pipelines](../docs/assets/module-guides/perception/yolo-lidar-and-parking-pipelines.png)
+![Perception pipelines](../docs/assets/module-guides/perception/guide/yolo-lidar-and-parking-pipelines.png)
 
 ## Actual Simulation Runtime
 
-![Live obstacle perception](../docs/assets/module-guides/perception/runtime-obstacle-bboxes-20260804.png)
+![Live obstacle perception](../docs/assets/module-guides/perception/evidence/runtime-capture-20260804/runtime-obstacle-bboxes-20260804.png)
 
 `SIM RUNTIME CAPTURE`: actual fused obstacle points and bounding boxes over the
 filtered LiDAR stream. Simulation exercises the LiDAR path; it does not claim
 physical YOLO, camera-LiDAR calibration, or AprilTag accuracy.
+
+![Current map and perception operator overlay](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png)
+
+`SIM BROWSER CAPTURE`: obstacle points/boxes and available cost layers are
+displayed from live ROS topics. The active simulation is LiDAR-only; no YOLO or
+AprilTag field accuracy is inferred from this screen.
 
 ## At A Glance
 
@@ -56,7 +62,7 @@ for 300 seconds. Its raw log remains external to the repository, and this does
 not prove detection accuracy, fusion alignment, occupancy correctness, or
 AprilTag parking.
 
-![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+![Physical stationary field report](../docs/assets/module-guides/bringup/test-results/field-stationary-20260731/field-stationary-report-20260731.png)
 
 ## Runtime Composition
 
