@@ -41,6 +41,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
+#include "planning_nav_status_policy.hpp"
 #include "planning_nav_status_tracker.hpp"
 
 // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
@@ -66,10 +67,13 @@ struct NavStatusState
   std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
     observed_abort_goals;
   std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
+    observed_goal_ids;
+  std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
     service_suppressed_abort_goals;
 
   int32_t latest_service_state{-1};
   bool has_service_state{false};
+  rclcpp::Time service_state_change_time{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub;
   rclcpp::Subscription<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_sub;
@@ -98,6 +102,7 @@ protected:
     declare_parameter("abort_error",   5);
     declare_parameter("service_state_topic", std::string("/service/state"));
     declare_parameter("suppress_abort_during_service_maneuver", true);
+    declare_parameter("service_transition_abort_grace_s", 3.0);
   }
 
   void load_parameters_() override
@@ -111,6 +116,11 @@ protected:
     service_state_topic_ = get_parameter("service_state_topic").as_string();
     suppress_abort_during_service_maneuver_ =
       get_parameter("suppress_abort_during_service_maneuver").as_bool();
+    service_transition_abort_grace_s_ =
+      get_param<double>("service_transition_abort_grace_s", 3.0);
+    if (service_transition_abort_grace_s_ < 0.0) {
+      service_transition_abort_grace_s_ = 0.0;
+    }
   }
 
   void setup_tasks_() override
@@ -122,13 +132,24 @@ protected:
       service_state_topic_, rclcpp::QoS(10),
       [this](const avg_msgs::msg::AvgServiceState::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(state_.mtx);
+        const bool state_changed =
+          !state_.has_service_state || state_.latest_service_state != msg->state;
         state_.latest_service_state = msg->state;
         state_.has_service_state = true;
-        if (serviceManeuverSuppressActiveLocked()) {
-          state_.service_suppressed_abort_goals.insert(
-            state_.observed_abort_goals.begin(), state_.observed_abort_goals.end());
-          state_.status_tracker =
-            camrod_system::diagnostics::PlanningNavStatusTracker{};
+        if (state_changed) {
+          state_.service_state_change_time = this->now();
+          if (serviceManeuverSuppressActiveLocked(true)) {
+            // HH_260810 - At return-route handoff, retain only goal UUIDs that
+            // existed before the service transition. A newly-created return
+            // goal must remain diagnosable even if it aborts inside the grace.
+            const auto & suppressible_goals =
+              msg->state == avg_msgs::msg::AvgServiceState::RETURNING_TO_DROP_ZONE ?
+              state_.observed_goal_ids : state_.observed_abort_goals;
+            state_.service_suppressed_abort_goals.insert(
+              suppressible_goals.begin(), suppressible_goals.end());
+            state_.status_tracker =
+              camrod_system::diagnostics::PlanningNavStatusTracker{};
+          }
         }
       });
 
@@ -138,10 +159,12 @@ protected:
     RCLCPP_INFO(get_logger(),
       "Planning nav status checker started "
       "(topic=%s, service_state=%s, stale=%.1fs, terminal_stale_ok=%s, "
-      "suppress_service_maneuver=%s, abort_warn=%d, abort_error=%d)",
+      "suppress_service_maneuver=%s, transition_grace=%.1fs, "
+      "abort_warn=%d, abort_error=%d)",
       nav_status_topic_.c_str(), service_state_topic_.c_str(), stale_timeout_,
       terminal_status_stale_ok_ ? "true" : "false",
-      suppress_abort_during_service_maneuver_ ? "true" : "false", abort_warn_, abort_error_);
+      suppress_abort_during_service_maneuver_ ? "true" : "false",
+      service_transition_abort_grace_s_, abort_warn_, abort_error_);
   }
 
 private:
@@ -176,14 +199,17 @@ private:
     // HH_260727: GoalStatusArray keeps terminal entries across publications.
     // Feed every eligible UUID/state pair to the tracker, which records each
     // aborted goal once instead of incrementing once per array callback.
-    const bool service_maneuver_suppressed = serviceManeuverSuppressActiveLocked();
     bool has_aborted_status = false;
     bool has_unsuppressed_aborted_status = false;
     for (const auto & s : msg->status_list) {
+      const bool goal_existed_before_transition =
+        state_.service_suppressed_abort_goals.find(s.goal_info.goal_id.uuid) !=
+        state_.service_suppressed_abort_goals.end();
+      state_.observed_goal_ids.insert(s.goal_info.goal_id.uuid);
       if (s.status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
         has_aborted_status = true;
         state_.observed_abort_goals.insert(s.goal_info.goal_id.uuid);
-        if (service_maneuver_suppressed) {
+        if (serviceManeuverSuppressActiveLocked(goal_existed_before_transition)) {
           state_.service_suppressed_abort_goals.insert(s.goal_info.goal_id.uuid);
         }
       }
@@ -225,24 +251,20 @@ private:
     }
   }
 
-  bool serviceManeuverSuppressActiveLocked() const
+  bool serviceManeuverSuppressActiveLocked(
+    bool goal_existed_before_transition) const
   {
     if (!suppress_abort_during_service_maneuver_ || !state_.has_service_state) {
       return false;
     }
-    switch (state_.latest_service_state) {
-      case avg_msgs::msg::AvgServiceState::SITE_ENTRY:
-      case avg_msgs::msg::AvgServiceState::UNLOAD_WAIT:
-      case avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT:
-      case avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST:
-      case avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO:
-      case avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING:
-      case avg_msgs::msg::AvgServiceState::WAITING_FOR_CHARGING:
-      case avg_msgs::msg::AvgServiceState::OPERATOR_STOPPED:
-        return true;
-      default:
-        return false;
-    }
+    const double state_age_s =
+      state_.service_state_change_time.nanoseconds() > 0 ?
+      (this->now() - state_.service_state_change_time).seconds() : -1.0;
+    return camrod_system::diagnostics::shouldSuppressNavAbort(
+      state_.latest_service_state,
+      state_age_s,
+      service_transition_abort_grace_s_,
+      goal_existed_before_transition);
   }
 
   void checkNavStatus(StatusWrapper & stat)
@@ -299,7 +321,11 @@ private:
       return;
     }
 
-    const bool service_maneuver_suppressed = serviceManeuverSuppressActiveLocked();
+    // HH_260810 - Passing false keeps full local-controller states suppressed,
+    // but does not erase a newly-created return goal's abort history. The old
+    // outgoing UUID is handled separately by current_abort_suppressed.
+    const bool service_maneuver_suppressed =
+      serviceManeuverSuppressActiveLocked(false);
     int abort_count = static_cast<int>(state_.status_tracker.abortCount());
     int effective_abort_count = service_maneuver_suppressed ? 0 : abort_count;
 
@@ -352,6 +378,11 @@ private:
     stat.add(
       "current_abort_suppressed", state_.current_abort_suppressed ? "true" : "false");
     stat.add("latest_service_state", static_cast<int>(state_.latest_service_state));
+    const double service_state_age_s =
+      state_.service_state_change_time.nanoseconds() > 0 ?
+      (now - state_.service_state_change_time).seconds() : -1.0;
+    stat.add("service_state_age_s", service_state_age_s);
+    stat.add("service_transition_abort_grace_s", service_transition_abort_grace_s_);
 
     char tmp[32];
     std::snprintf(tmp, sizeof(tmp), "%d", abort_count);
@@ -370,6 +401,7 @@ private:
   bool        idle_ok_without_status_{true};
   bool        terminal_status_stale_ok_{true};
   bool        suppress_abort_during_service_maneuver_{true};
+  double      service_transition_abort_grace_s_{3.0};
   int         abort_warn_{2};
   int         abort_error_{5};
 

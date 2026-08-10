@@ -255,6 +255,7 @@ if(BUILD_TESTING)
   ament_target_dependencies(
     test_planning_nav_status_tracker
     action_msgs
+    avg_msgs
     unique_identifier_msgs
   )
   add_test(
