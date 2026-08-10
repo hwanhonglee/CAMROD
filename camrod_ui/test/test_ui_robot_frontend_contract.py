@@ -69,10 +69,24 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("diag-tab-bar", self.css)
 
     def test_operator_telemetry_lease_is_closed_on_unmount(self) -> None:
+        self.assertIn("/ws/telemetry?view=${view}", self.telemetry_source)
         self.assertIn("/api/telemetry/session?active=true", self.telemetry_source)
         self.assertIn("/api/telemetry/session?active=false", self.telemetry_source)
         self.assertIn("view=${view}", self.telemetry_source)
         self.assertIn("keepalive: true", self.telemetry_source)
+        self.assertIn("currentSocket.send('lease')", self.telemetry_source)
+        self.assertIn("}, 4000);", self.telemetry_source)
+
+    def test_admin_diagnostics_remain_available_across_service_screens(self) -> None:
+        # HH_260810 - Arrival, return, and waiting transitions must not unmount
+        # the authenticated diagnostics workspace or hide its entry gesture.
+        self.assertIn("activeModal === 'settings'", self.source)
+        self.assertIn("admin-runtime-shell", self.source)
+        self.assertIn("diag-secret-zone-global", self.source)
+        self.assertIn(
+            "setActiveModal(current => current === 'settings' ? current : null)",
+            self.source,
+        )
 
     def test_operator_map_can_publish_a_confirmed_manual_goal(self) -> None:
         # HH_260810 - The production UI must retain the RViz 2D Goal semantics:

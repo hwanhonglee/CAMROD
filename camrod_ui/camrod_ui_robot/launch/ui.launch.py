@@ -82,6 +82,11 @@ def generate_launch_description():
         default_value='true',
         description='Enable the on-demand operator sensor and trajectory workspace',
     )
+    operator_telemetry_stream_rate_hz_arg = DeclareLaunchArgument(
+        'operator_telemetry_stream_rate_hz',
+        default_value='10.0',
+        description='Maximum selected-view WebSocket refresh rate in Hz',
+    )
     enable_ui_guest_arg = DeclareLaunchArgument(
         'enable_ui_guest',
         default_value='true',
@@ -228,6 +233,12 @@ def generate_launch_description():
                 LaunchConfiguration('enable_operator_telemetry'),
                 value_type=bool,
             ),
+            # HH_260810 - Keep one bounded latest-value stream instead of
+            # high-frequency HTTP polling on the 8-core ARM64 target.
+            'telemetry_stream_rate_hz': ParameterValue(
+                LaunchConfiguration('operator_telemetry_stream_rate_hz'),
+                value_type=float,
+            ),
             # HH_260617: UI follows the system namespace for aggregated diagnostics.
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             # HH_260721 - Consume the platform-neutral operational service lifecycle.
@@ -355,6 +366,7 @@ def generate_launch_description():
         ui_host_arg,
         ui_port_arg,
         enable_operator_telemetry_arg,
+        operator_telemetry_stream_rate_hz_arg,
         enable_ui_guest_arg,
         guest_host_arg,
         guest_port_arg,

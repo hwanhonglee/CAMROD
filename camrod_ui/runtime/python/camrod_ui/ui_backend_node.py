@@ -137,6 +137,35 @@ TELEMETRY_RADAR_CHANNELS = (
     "rear",
 )
 
+
+def _bounded_telemetry_rate_hz(value: Any) -> float:
+    """Clamp a browser refresh request to the ARM64-safe runtime envelope."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = 10.0
+    if not math.isfinite(parsed):
+        parsed = 10.0
+    return min(20.0, max(1.0, parsed))
+
+
+async def _wait_for_websocket_disconnect(
+    ws: WebSocket, on_activity: Optional[Any] = None
+) -> None:
+    """Consume telemetry heartbeat events until the client disconnects."""
+    # HH_260810 - A send-only WebSocket does not reliably observe a browser or
+    # network disconnect in uvicorn. Reading the disconnect event in parallel
+    # prevents lazy ROS sensor subscriptions from remaining active indefinitely.
+    try:
+        while True:
+            message = await ws.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            if message.get("type") == "websocket.receive" and on_activity:
+                on_activity()
+    except (WebSocketDisconnect, RuntimeError, KeyError):
+        return
+
 # HH_260810 - Keep every operator-view source in one reviewable contract. The
 # per-view ROS subscriptions remain lazy, so listing a topic here does not add
 # idle CPU or DDS traffic on the 8-core ARM64 target.
@@ -734,6 +763,12 @@ class UiBackendNode(Node):
             5.0,
             float(self.declare_parameter("telemetry_session_timeout_s", 12.0).value),
         )
+        # HH_260810 - Stream only the selected bounded view at a browser-smooth
+        # rate. The 20 Hz ceiling protects the 8-core ARM64 target from a client
+        # requesting unbounded JSON serialization and React redraw work.
+        self.telemetry_stream_rate_hz = _bounded_telemetry_rate_hz(
+            self.declare_parameter("telemetry_stream_rate_hz", 10.0).value
+        )
         self.telemetry_max_path_points = max(
             50,
             int(self.declare_parameter("telemetry_max_path_points", 500).value),
@@ -767,8 +802,8 @@ class UiBackendNode(Node):
             float(self.declare_parameter("telemetry_grid_min_period_s", 1.0).value),
         )
         self.telemetry_camera_min_period_s = max(
-            0.25,
-            float(self.declare_parameter("telemetry_camera_min_period_s", 0.5).value),
+            0.1,
+            float(self.declare_parameter("telemetry_camera_min_period_s", 0.1).value),
         )
         self.telemetry_camera_fallback_max_width = max(
             320,
@@ -1053,7 +1088,9 @@ class UiBackendNode(Node):
             self.readiness_check_period_s, self._on_readiness_timer
         )
         self._telemetry_session_timer = self.create_timer(
-            0.5, self._maintain_telemetry_session
+            # HH_260810 - A newly authenticated tab should acquire its lazy ROS
+            # subscriptions within one display frame group, not after 500 ms.
+            0.1, self._maintain_telemetry_session
         )
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -1077,7 +1114,8 @@ class UiBackendNode(Node):
             f"arrival_pose_topic={self.arrival_pose_topic} "
             f"campsite_occupancy_topic={self.campsite_occupancy_topic} "
             f"ranger_base_node={self.ranger_base_node_name} "
-            f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
+            f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'} "
+            f"telemetry_stream_rate_hz={self.telemetry_stream_rate_hz:.1f}"
         )
 
     def _parse_site_mission_map(self, raw_value: object) -> Dict[str, str]:
@@ -1232,6 +1270,7 @@ class UiBackendNode(Node):
         """Create the stable browser contract before any ROS sample arrives."""
         return {
             "schema_version": TELEMETRY_SCHEMA_VERSION,
+            "stream_rate_hz": None,
             "session_active": False,
             "active_view": "",
             "sources": {},
@@ -1595,7 +1634,7 @@ class UiBackendNode(Node):
     def _prune_telemetry_snapshot(
         cls, snapshot: Dict[str, Any], active_view: str
     ) -> Dict[str, Any]:
-        """Keep each 2 Hz browser response scoped to the selected tab."""
+        """Keep each bounded browser stream scoped to the selected tab."""
         view = cls._normalize_telemetry_view(active_view) if active_view else ""
         if view == "all":
             return snapshot
@@ -1640,6 +1679,7 @@ class UiBackendNode(Node):
                     "rate_hz": round(rate_hz, 2) if rate_hz is not None else None,
                 }
             snapshot["sources"] = sources
+            snapshot["stream_rate_hz"] = self.telemetry_stream_rate_hz
             snapshot["session_active"] = self._telemetry_capture_active
             snapshot["active_view"] = self._telemetry_active_view
             snapshot["mission"] = {
@@ -3953,6 +3993,46 @@ class UiBackendNode(Node):
             finally:
                 with node._ws_clients_lock:
                     node._ws_clients.discard(ws)
+
+        # HH_260810 - Dedicated latest-value telemetry transport. Keeping this
+        # separate from the mission command socket prevents high-rate operator
+        # drawings from delaying safety/service control messages. Each socket
+        # renews exactly one lazy ROS subscription view and releases it on exit.
+        @app.websocket("/ws/telemetry")
+        async def telemetry_websocket(ws: WebSocket) -> None:
+            view = node._normalize_telemetry_view(
+                str(ws.query_params.get("view", "all"))
+            )
+            period_s = 1.0 / node.telemetry_stream_rate_hz
+            await ws.accept()
+            node._request_telemetry_session(True, view)
+            disconnect_task = asyncio.create_task(
+                _wait_for_websocket_disconnect(
+                    ws,
+                    lambda: node._request_telemetry_session(True, view),
+                )
+            )
+            try:
+                while (
+                    not node._server_stop_requested.is_set()
+                    and not disconnect_task.done()
+                ):
+                    await ws.send_json(node._snapshot_telemetry())
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(disconnect_task), timeout=period_s
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+            except (WebSocketDisconnect, RuntimeError):
+                pass
+            finally:
+                disconnect_task.cancel()
+                try:
+                    await disconnect_task
+                except asyncio.CancelledError:
+                    pass
+                node._request_telemetry_session(False, view)
 
         # ── REST API endpoints ────────────────────────────────────────────────
 

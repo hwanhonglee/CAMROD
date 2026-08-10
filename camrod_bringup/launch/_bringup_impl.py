@@ -1634,6 +1634,11 @@ def generate_launch_description():
             'Enable leased operator sensor/map telemetry views',
         ),
         (
+            'operator_telemetry_stream_rate_hz',
+            cfg_get(launch_cfg, 'system/operator_telemetry_stream_rate_hz', 10.0),
+            'Maximum selected operator telemetry stream rate in Hz',
+        ),
+        (
             'enable_guest_ui',
             cfg_get(launch_cfg, 'system/enable_guest_ui', True),
             'Enable the WiFi guest UI server',
@@ -2444,6 +2449,7 @@ def generate_launch_description():
         # HH_260810 - Keep the bounded RViz-replacement workspace explicit at
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],
+        'operator_telemetry_stream_rate_hz': lc['operator_telemetry_stream_rate_hz'],
         'enable_ui_guest': lc['enable_guest_ui'],
         'guest_host': lc['guest_ui_host'],
         'guest_port': lc['guest_ui_port'],
