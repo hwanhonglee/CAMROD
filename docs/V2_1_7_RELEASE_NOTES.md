@@ -33,6 +33,26 @@ capture, source inventory, or remaining field work. Nine offline cross-package
 renderers now have one owner directory; live operational visualization remains
 inside the package that publishes or consumes the relevant ROS data.
 
+## Develop Follow-up: Operator Map Goal
+
+<!-- HH_260810 - Record the post-tag operator-map addition without presenting
+AMD64 simulation as Jetson or physical-road acceptance. -->
+
+The managed Robot UI now covers the normal RViz `2D Goal Pose` workflow. In the
+trajectory view, a click selects map x/y, a drag selects arrival yaw, and a
+separate confirmation is required before motion authorization. The backend
+applies readiness, active-service ownership, charger-contact, and `>=35%` SOC
+checks before publishing `/goal_pose`, followed by drive-enable and engage.
+Campsite service goals remain on `/planning/site_goal_pose_ros`.
+
+The bringup default is now `rviz=false`; `rviz:=true` remains an explicit
+engineering override. An isolated AMD64 full graph started with no RViz process
+and produced manual `DRIVING`, a bounded `500`-point global path (`1024` raw),
+a `154`-point local path, and Nav2 goal success from the confirmed UI goal. The actual browser
+capture is `docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png`;
+the structured result is under
+`docs/assets/module-guides/ui/test-results/operator-manual-goal-20260810/`.
+
 ## Active Boundary Contract
 
 | Item | v2.1.7 value | Runtime meaning |
@@ -139,7 +159,7 @@ planning, platform, sensing, sensor-kit, system, UI, and bringup.
 |---|---:|
 | Affected package CTest targets | `88/88` passed |
 | Aggregate package xUnit records | `683`, errors/failures `0`, static-analysis skips `24` |
-| Direct Robot/Guest UI policy/transport/telemetry tests | `48/48` passed |
+| Current direct Robot/Guest UI policy/transport/telemetry/manual-goal tests | `52/52` passed |
 | Bringup source/config/map/evidence cases | `249`, errors/failures `0` |
 | Control policies | `77/77` passed |
 | Isolated Nav2 lifecycle/bond/lint CTest | `10/10` passed |

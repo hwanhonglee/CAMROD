@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+<!-- HH_260810 - Make the browser operator map the normal manual-goal surface
+and retain RViz only as an explicit maintenance profile. -->
+## [operator-map-manual-goal] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Runtime default | `bringup.launch.py` resolves `rviz=false`; `rviz:=true` remains available for engineering diagnosis |
+| UI interaction | The trajectory map supports click x/y, drag yaw, exact coordinate review, clear, and a separate departure confirmation |
+| Safety admission | Backend rejects manual goals unless system readiness, service ownership, charger state, and the existing `>=35%` mission battery policy permit departure |
+| ROS contract | Confirmed goals publish `/goal_pose` before drive-enable and engage; campsite goals remain isolated on `/planning/site_goal_pose_ros` |
+| AMD64 simulation | No RViz process; exact raw goal, drive-enable, engage, manual `DRIVING`, bounded `500/154` global/local path points, and Nav2 goal success observed |
+| Browser verification | Actual `1600x857` full-map capture contains target marker and confirmation with horizontal/vertical overflow `0`; pointer and departure button events drove the ROS trial |
+| Regression | React production bundle succeeds; direct `camrod_ui` suite passes `52/52`; current scoped bringup result passes `249/249`; canonical wrapper rebuilds both packages |
+
+---
+
 <!-- HH_260810 - Replace daily standalone module viewers with one leased,
 browser-native telemetry workspace while keeping offline evidence generators. -->
 ## [operator-telemetry-workspace] - 2026-08-10 (HH_260810)
@@ -15,7 +33,7 @@ browser-native telemetry workspace while keeping offline evidence generators. --
 | Live simulation | Resets rate history on every view lease; GNSS -> proximity -> GNSS re-entry reports GNSS/IMU `10.01 Hz` and pose `20.02 Hz` instead of stale `0.1 Hz` |
 | AMD64 profile | Backend-only idle is CPU `7.58%`/PSS `79.32 MiB`; perception is CPU `14.45%`/PSS `80.00 MiB`/JSON `36.14 KiB`; ARM64 acceptance remains open |
 | Evidence | Adds six current 1600x1000 browser captures, a six-view GIF, resource PNG, raw profile JSON, and method README under the UI package assets |
-| Regression | React production build succeeds; `camrod_ui` direct suite passes 48/48; all six tabs have document/workspace/text overflow 0 |
+| Regression | React production build succeeds; the then-current `camrod_ui` direct suite passed 48/48; all six tabs had document/workspace/text overflow 0 |
 
 ---
 

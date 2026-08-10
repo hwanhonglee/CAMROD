@@ -2,6 +2,8 @@
 # HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
 # HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
 #            Added /battery_percentage and /service/state sub/pub.
+# HH_260810 - Add an operator-map manual Goal Pose path so the managed UI can
+#             replace RViz for normal field operation while retaining /goal_pose.
 
 from __future__ import annotations
 
@@ -91,6 +93,26 @@ SERVICE_STATE_NAMES = {
     AvgServiceState.DEPARTING_DROP_ZONE: "DEPARTING_DROP_ZONE",
     AvgServiceState.OPERATOR_STOPPED: "OPERATOR_STOPPED",
 }
+
+# HH_260810 - A manual map click may preempt another manual Nav2 goal, but it
+# must not steal ownership from a campsite, return, parking, or charger maneuver.
+MANUAL_GOAL_BLOCKED_SERVICE_STATES = frozenset({
+    AvgServiceState.MOVING_TO_SITE,
+    AvgServiceState.SITE_ARRIVED,
+    AvgServiceState.RETURNING_TO_DROP_ZONE,
+    AvgServiceState.GUEST_RECALL_SERVICE,
+    AvgServiceState.SITE_ENTRY,
+    AvgServiceState.UNLOAD_WAIT,
+    AvgServiceState.RECALL_TO_SITE_ROAD,
+    AvgServiceState.GUEST_LOADING_WAIT,
+    AvgServiceState.RETURN_WITH_CARGO,
+    AvgServiceState.DROP_ZONE_PARKING,
+    AvgServiceState.WAITING_FOR_RETURN_REQUEST,
+    AvgServiceState.WAITING_FOR_CHARGING,
+    AvgServiceState.CHARGING,
+    AvgServiceState.DEPARTING_CHARGER,
+    AvgServiceState.DEPARTING_DROP_ZONE,
+})
 
 
 # HH_260810 - One bounded JSON contract replaces the separate Tk/RViz operator
@@ -510,6 +532,11 @@ class UiBackendNode(Node):
             self.declare_parameter(
                 "planning_goal_pose_topic", "/planning/site_goal_pose_ros"
             ).value
+        )
+        # HH_260810 - Keep arbitrary operator goals on the same raw topic that
+        # goal_snapper already treats as the manual/RViz input contract.
+        self.manual_goal_pose_topic = str(
+            self.declare_parameter("manual_goal_pose_topic", "/goal_pose").value
         )
         self.platform_status_topic = str(
             self.declare_parameter("platform_status_topic", "/platform/status").value
@@ -999,6 +1026,9 @@ class UiBackendNode(Node):
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
+        self.pub_manual_goal_pose = self.create_publisher(
+            PoseStamped, self.manual_goal_pose_topic, 10
+        )
         self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
         # HH_260727 - Runtime tuning uses the standard ROS parameter services, so the UI
         # changes the driver immediately without restarting the platform.
@@ -1043,6 +1073,7 @@ class UiBackendNode(Node):
             f"drop_zone_exit_complete_topic={self.drop_zone_exit_complete_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
+            f"manual_goal_pose_topic={self.manual_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
             f"campsite_occupancy_topic={self.campsite_occupancy_topic} "
             f"ranger_base_node={self.ranger_base_node_name} "
@@ -1178,6 +1209,20 @@ class UiBackendNode(Node):
         yaw_rad = math.radians(float(yaw_deg))
         half = yaw_rad * 0.5
         return (0.0, 0.0, math.sin(half), math.cos(half))
+
+    @staticmethod
+    def _normalize_manual_goal(
+        x: Any, y: Any, yaw_deg: Any
+    ) -> tuple[float, float, float]:
+        """Validate a browser-selected map goal and normalize its ENU yaw."""
+        try:
+            values = (float(x), float(y), float(yaw_deg))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("manual goal x, y, and yaw_deg must be numbers") from exc
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("manual goal x, y, and yaw_deg must be finite")
+        normalized_yaw = ((values[2] + 180.0) % 360.0) - 180.0
+        return values[0], values[1], normalized_yaw
 
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -2243,6 +2288,46 @@ class UiBackendNode(Node):
             "battery_percentage": battery_percentage,
             "minimum_battery_percentage": self.minimum_mission_dispatch_battery_percent,
             "message": message,
+        }
+
+    def _manual_goal_dispatch_block(self) -> Optional[Dict[str, Any]]:
+        """Return the authoritative reason a map-selected manual goal cannot start."""
+        with self._lock:
+            ready = bool(self._state.ready)
+            ready_message = str(self._state.ready_message)
+            battery_percentage = int(self._state.battery_percentage)
+            service_state = int(self._state.service_state)
+        if not ready:
+            return {
+                "error": "system_not_ready",
+                "message": ready_message or "system is not ready for a manual goal",
+            }
+        if service_state in MANUAL_GOAL_BLOCKED_SERVICE_STATES:
+            state_name = SERVICE_STATE_NAMES.get(service_state, str(service_state))
+            return {
+                "error": "service_state_busy",
+                "service_state": service_state,
+                "service_state_name": state_name,
+                "message": f"manual goal is blocked while service state is {state_name}",
+            }
+        if bool(getattr(self, "_latest_platform_is_charging", False)):
+            return {
+                "error": "charger_departure_required",
+                "message": "manual goal is blocked while charging; use a campsite departure",
+            }
+        if not self.require_battery_for_mission_dispatch:
+            return None
+        if battery_percentage >= self.minimum_mission_dispatch_battery_percent:
+            return None
+        battery_text = "unavailable" if battery_percentage < 0 else f"{battery_percentage}%"
+        return {
+            "error": "battery_below_mission_minimum",
+            "battery_percentage": battery_percentage,
+            "minimum_battery_percentage": self.minimum_mission_dispatch_battery_percent,
+            "message": (
+                f"battery {battery_text} does not satisfy manual-goal minimum "
+                f"{self.minimum_mission_dispatch_battery_percent}%"
+            ),
         }
 
     def _low_battery_mission_state(self, state: Optional[int]) -> bool:
@@ -3476,6 +3561,69 @@ class UiBackendNode(Node):
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
 
+    def set_manual_goal(self, x: Any, y: Any, yaw_deg: Any) -> Dict[str, Any]:
+        """Publish one UI-selected manual goal, then authorize manual motion."""
+        try:
+            goal_x, goal_y, goal_yaw_deg = self._normalize_manual_goal(
+                x, y, yaw_deg
+            )
+        except ValueError as exc:
+            return {
+                "success": False,
+                "error": "invalid_manual_goal",
+                "message": str(exc),
+            }
+
+        blocked = self._manual_goal_dispatch_block()
+        if blocked is not None:
+            return {"success": False, **blocked}
+
+        pose = PoseStamped()
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.header.frame_id = self.default_goal_frame_id
+        pose.pose.position.x = goal_x
+        pose.pose.position.y = goal_y
+        pose.pose.position.z = 0.0
+        qx, qy, qz, qw = self._yaw_deg_to_quaternion(goal_yaw_deg)
+        pose.pose.orientation.x = qx
+        pose.pose.orientation.y = qy
+        pose.pose.orientation.z = qz
+        pose.pose.orientation.w = qw
+
+        # HH_260810 - Clear campsite presentation before publishing the raw goal.
+        # goal_snapper remains the sole authority that accepts/snaps /goal_pose.
+        with self._lock:
+            self._active_mission_site = ""
+            self._state.ws_site_states = {site: False for site in self.site_names}
+            self._state.destination = {"site": "", "run": False}
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_goal_received("manual")
+        )
+        self.pub_manual_goal_pose.publish(pose)
+        self._publish_engage(True, source="http_manual_goal")
+        broadcast = {
+            "states": {site: False for site in self.site_names},
+            "engage": True,
+            "manual_goal": {
+                "frame_id": self.default_goal_frame_id,
+                "x": goal_x,
+                "y": goal_y,
+                "yaw_deg": goal_yaw_deg,
+            },
+        }
+        self._schedule_broadcast(broadcast)
+        self.get_logger().info(
+            "manual goal (operator_map) -> "
+            f"{self.manual_goal_pose_topic}: frame={self.default_goal_frame_id} "
+            f"xy=({goal_x:.3f},{goal_y:.3f}) yaw={goal_yaw_deg:.1f}deg engage=true"
+        )
+        return {
+            "success": True,
+            "message": "manual goal published and motion engaged",
+            "goal": broadcast["manual_goal"],
+            "engaged": True,
+        }
+
     def set_engage(self, value: bool) -> Dict[str, Any]:
         self._publish_engage(bool(value), source="http")
         self._schedule_broadcast({"engage": bool(value)})
@@ -3881,6 +4029,22 @@ class UiBackendNode(Node):
             enabled = value.lower() in {"1", "true", "yes", "on"}
             result = node.set_engage(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        # HH_260810 - This is the managed operator-map equivalent of RViz 2D
+        # Goal Pose. The backend owns validation and engage ordering; deployment
+        # still relies on the trusted robot-LAN boundary documented by camrod_ui.
+        @app.post("/ui/manual_goal")
+        def post_manual_goal(
+            x: float, y: float, yaw_deg: float = 0.0
+        ) -> JSONResponse:
+            result = node.set_manual_goal(x=x, y=y, yaw_deg=yaw_deg)
+            if result.get("success"):
+                status = 200
+            elif result.get("error") == "invalid_manual_goal":
+                status = 400
+            else:
+                status = 409
+            return JSONResponse(result, status_code=status)
 
         @app.post("/ui/headlight")
         def post_headlight(value: str = "false") -> JSONResponse:

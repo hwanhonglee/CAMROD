@@ -99,6 +99,9 @@ RUNTIME_CAPTURE_ASSETS = (
 ROBOT_UI_KEYPAD_CAPTURE = (
     "ui/evidence/ui-captures/robot-ui-site-verification-keypad.png"
 )
+OPERATOR_MANUAL_GOAL_CAPTURE = (
+    "ui/evidence/ui-captures/operator-manual-goal-20260810.png"
+)
 AMD64_TOPOLOGY_CAPTURE = (
     "runtime/test-results/amd64-runtime-topology-20260805/"
     "runtime-topology-amd64-ab-20260805.png"
@@ -145,13 +148,20 @@ MODULE_OWNED_RELEASE_ASSETS = (
     "control/test-results/pre-owner-boundary-recovery-20260803/pre-owner-robot-center-recovery.gif",
     "planning/test-results/pre-owner-boundary-feasibility-20260803/robot-center-narrow-route-risk-map.png",
     "sensor-kit/test-results/reference-frame-20260803/rear-axle-vs-robot-center-drive.gif",
+    OPERATOR_MANUAL_GOAL_CAPTURE,
     "ui/evidence/ui-captures/guest-mission-dispatch-ready.png",
     "ui/evidence/ui-captures/guest-route-safety-hold.png",
 )
 
 README_RUNTIME_ASSETS = {
-    SRC_ROOT / "README.md": (RUNTIME_CAPTURE_ASSETS[0],),
-    SRC_ROOT / "camrod_bringup" / "README.md": (RUNTIME_CAPTURE_ASSETS[0],),
+    SRC_ROOT / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[0],
+        OPERATOR_MANUAL_GOAL_CAPTURE,
+    ),
+    SRC_ROOT / "camrod_bringup" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[0],
+        OPERATOR_MANUAL_GOAL_CAPTURE,
+    ),
     SRC_ROOT / "camrod_common" / "README.md": (RUNTIME_CAPTURE_ASSETS[1],),
     SRC_ROOT / "camrod_common" / "avg_msgs" / "README.md": (
         RUNTIME_CAPTURE_ASSETS[1],
@@ -162,7 +172,10 @@ README_RUNTIME_ASSETS = {
     ),
     SRC_ROOT / "camrod_map" / "README.md": (RUNTIME_CAPTURE_ASSETS[5],),
     SRC_ROOT / "camrod_perception" / "README.md": (RUNTIME_CAPTURE_ASSETS[6],),
-    SRC_ROOT / "camrod_planning" / "README.md": (RUNTIME_CAPTURE_ASSETS[7],),
+    SRC_ROOT / "camrod_planning" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[7],
+        OPERATOR_MANUAL_GOAL_CAPTURE,
+    ),
     SRC_ROOT / "camrod_platform" / "README.md": RUNTIME_CAPTURE_ASSETS[8:10],
     SRC_ROOT / "camrod_runtime" / "README.md": (
         "runtime/guide/scoped-component-lifecycle.png",
@@ -178,6 +191,7 @@ README_RUNTIME_ASSETS = {
     ),
     SRC_ROOT / "camrod_ui" / "README.md": (
         ROBOT_UI_KEYPAD_CAPTURE,
+        OPERATOR_MANUAL_GOAL_CAPTURE,
         "ui/evidence/ui-captures/guest-mission-dispatch-ready.png",
         "ui/evidence/ui-captures/guest-route-safety-hold.png",
     ),

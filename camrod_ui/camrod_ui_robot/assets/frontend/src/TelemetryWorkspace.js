@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 // HH_260810 - These tabs consolidate the former GNSS, radar, velocity, path,
 // and RViz operator viewers without changing the underlying ROS authorities.
@@ -417,16 +417,30 @@ function pointList(path) {
   return Array.isArray(path?.points) ? path.points.filter(point => finite(point?.[0]) && finite(point?.[1])) : [];
 }
 
-function TrajectoryPlot({ telemetry, mapData }) {
+function TrajectoryPlot({ telemetry, mapData, goalDraft, goalSelectionActive, onGoalDraft }) {
+  const goalDragStartRef = useRef(null);
   const global = pointList(telemetry.paths?.global);
   const local = pointList(telemetry.paths?.local);
   const trace = Array.isArray(telemetry.localization?.trace) ? telemetry.localization.trace : [];
   const pose = telemetry.localization?.pose || {};
+  const mapPolylines = Array.isArray(mapData.polylines) ? mapData.polylines : [];
+  // HH_260810 - Normal tracking remains route-focused, but Goal Pose mode fits
+  // the whole available lanelet map so an idle robot can select a remote goal.
+  const goalSelectionMapPoints = goalSelectionActive
+    ? mapPolylines.flatMap(line => pointList(line))
+    : [];
   const maneuvers = Object.entries(telemetry.paths?.maneuvers || {})
     .map(([name, path]) => [name, pointList(path)])
     .filter(([, points]) => points.length > 0);
-  const focus = [...global, ...local, ...trace, ...maneuvers.flatMap(([, points]) => points)];
+  const focus = [
+    ...global,
+    ...local,
+    ...trace,
+    ...maneuvers.flatMap(([, points]) => points),
+    ...goalSelectionMapPoints,
+  ];
   if (finite(pose.x) && finite(pose.y)) focus.push([pose.x, pose.y]);
+  if (finite(goalDraft?.x) && finite(goalDraft?.y)) focus.push([goalDraft.x, goalDraft.y]);
   const seed = focus.length ? focus : [[-10, -7], [10, 7]];
   let minX = Math.min(...seed.map(point => point[0]));
   let maxX = Math.max(...seed.map(point => point[0]));
@@ -448,19 +462,90 @@ function TrajectoryPlot({ telemetry, mapData }) {
     height - offsetY - (point[1] - minY) * scale,
   ];
   const asText = points => points.map(point => toScreen(point).map(value => value.toFixed(1)).join(',')).join(' ');
-  const mapLines = (mapData.polylines || []).filter(line =>
+  const mapLines = mapPolylines.filter(line =>
     pointList(line).some(point => point[0] >= minX && point[0] <= maxX && point[1] >= minY && point[1] <= maxY)
   ).slice(0, 900);
   const [robotX, robotY] = finite(pose.x) && finite(pose.y) ? toScreen([pose.x, pose.y]) : [null, null];
   const yawRad = finite(pose.yaw_deg) ? pose.yaw_deg * Math.PI / 180 : 0;
   const robotHead = finite(robotX) ? [robotX + Math.cos(yawRad) * 28, robotY - Math.sin(yawRad) * 28] : [null, null];
+  const goalPoint = finite(goalDraft?.x) && finite(goalDraft?.y)
+    ? toScreen([goalDraft.x, goalDraft.y]) : [null, null];
+  const goalYawRad = finite(goalDraft?.yaw_deg) ? goalDraft.yaw_deg * Math.PI / 180 : 0;
+  const goalHead = finite(goalPoint[0])
+    ? [goalPoint[0] + Math.cos(goalYawRad) * 44, goalPoint[1] - Math.sin(goalYawRad) * 44]
+    : [null, null];
+
+  const eventToMap = event => {
+    const svg = event.currentTarget;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const screenPoint = svg.createSVGPoint();
+    screenPoint.x = event.clientX;
+    screenPoint.y = event.clientY;
+    const localPoint = screenPoint.matrixTransform(matrix.inverse());
+    if (
+      localPoint.x < offsetX || localPoint.x > offsetX + drawWidth
+      || localPoint.y < offsetY || localPoint.y > offsetY + drawHeight
+    ) return null;
+    return [
+      minX + (localPoint.x - offsetX) / scale,
+      minY + (height - offsetY - localPoint.y) / scale,
+    ];
+  };
+
+  const beginGoalSelection = event => {
+    if (!goalSelectionActive || !onGoalDraft) return;
+    const point = eventToMap(event);
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    goalDragStartRef.current = point;
+    onGoalDraft({
+      x: point[0],
+      y: point[1],
+      yaw_deg: finite(pose.yaw_deg) ? pose.yaw_deg : 0,
+    });
+  };
+
+  const updateGoalHeading = event => {
+    const start = goalDragStartRef.current;
+    if (!goalSelectionActive || !start || !onGoalDraft) return;
+    const point = eventToMap(event);
+    if (!point) return;
+    event.preventDefault();
+    const dx = point[0] - start[0];
+    const dy = point[1] - start[1];
+    const yaw = Math.hypot(dx, dy) >= 0.15
+      ? Math.atan2(dy, dx) * 180 / Math.PI
+      : (finite(pose.yaw_deg) ? pose.yaw_deg : 0);
+    onGoalDraft({ x: start[0], y: start[1], yaw_deg: yaw });
+  };
+
+  const finishGoalSelection = event => {
+    if (!goalDragStartRef.current) return;
+    updateGoalHeading(event);
+    goalDragStartRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
 
   return (
-    <svg className="trajectory-plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Lanelet route local path and driven trajectory">
+    <svg
+      className={`trajectory-plot ${goalSelectionActive ? 'trajectory-plot-goal-active' : ''}`}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Lanelet route local path driven trajectory and manual goal selector"
+      onPointerDown={beginGoalSelection}
+      onPointerMove={updateGoalHeading}
+      onPointerUp={finishGoalSelection}
+      onPointerCancel={finishGoalSelection}
+    >
       <defs>
         <pattern id="routeGrid" width="46" height="46" patternUnits="userSpaceOnUse">
           <path d="M 46 0 L 0 0 0 46" className="route-grid-line" />
         </pattern>
+        <marker id="manualGoalArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" className="manual-goal-arrow-head" />
+        </marker>
       </defs>
       <rect width={width} height={height} fill="url(#routeGrid)" />
       {mapLines.map((line, index) => <polyline key={`${line.kind}-${index}`} points={asText(pointList(line))} className="trajectory-map-line" />)}
@@ -474,15 +559,67 @@ function TrajectoryPlot({ telemetry, mapData }) {
           <line x1={robotX} y1={robotY} x2={robotHead[0]} y2={robotHead[1]} className="trajectory-heading" />
         </g>
       )}
+      {finite(goalPoint[0]) && (
+        <g className="manual-goal-marker">
+          <circle cx={goalPoint[0]} cy={goalPoint[1]} r="15" />
+          <line x1={goalPoint[0] - 21} y1={goalPoint[1]} x2={goalPoint[0] + 21} y2={goalPoint[1]} />
+          <line x1={goalPoint[0]} y1={goalPoint[1] - 21} x2={goalPoint[0]} y2={goalPoint[1] + 21} />
+          <line
+            x1={goalPoint[0]}
+            y1={goalPoint[1]}
+            x2={goalHead[0]}
+            y2={goalHead[1]}
+            className="manual-goal-heading"
+            markerEnd="url(#manualGoalArrow)"
+          />
+        </g>
+      )}
     </svg>
   );
 }
 
 function TrajectoryView({ telemetry, mapData }) {
+  const [goalDraft, setGoalDraft] = useState(null);
+  const [goalSelectionActive, setGoalSelectionActive] = useState(false);
+  const [goalConfirmOpen, setGoalConfirmOpen] = useState(false);
+  const [goalDispatching, setGoalDispatching] = useState(false);
+  const [goalStatus, setGoalStatus] = useState({ tone: '', message: '' });
   const velocity = telemetry.motion?.velocity || {};
   const error = telemetry.motion?.tracking_error || {};
+  const mission = telemetry.mission || {};
   const globalPoints = pointList(telemetry.paths?.global);
   const localPoints = pointList(telemetry.paths?.local);
+
+  const clearGoal = () => {
+    setGoalDraft(null);
+    setGoalSelectionActive(false);
+    setGoalConfirmOpen(false);
+    setGoalStatus({ tone: '', message: '' });
+  };
+
+  const dispatchManualGoal = async () => {
+    if (!goalDraft || goalDispatching) return;
+    setGoalDispatching(true);
+    setGoalStatus({ tone: '', message: '' });
+    const query = new URLSearchParams({
+      x: goalDraft.x.toFixed(6),
+      y: goalDraft.y.toFixed(6),
+      yaw_deg: goalDraft.yaw_deg.toFixed(3),
+    });
+    try {
+      const response = await fetch(`/ui/manual_goal?${query.toString()}`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok || !body.success) throw new Error(body.message || body.error || 'manual goal rejected');
+      setGoalSelectionActive(false);
+      setGoalConfirmOpen(false);
+      setGoalStatus({ tone: 'ok', message: '수동 목표가 전송되어 주행을 시작했습니다.' });
+    } catch (error) {
+      setGoalStatus({ tone: 'error', message: error.message || '수동 목표 전송 실패' });
+    } finally {
+      setGoalDispatching(false);
+    }
+  };
+
   return (
     <div className="telemetry-view telemetry-trajectory-view">
       <div className="telemetry-source-row">
@@ -496,12 +633,23 @@ function TrajectoryView({ telemetry, mapData }) {
       <div className="telemetry-trajectory-layout">
         <section className="telemetry-section telemetry-route-section">
           <SectionHeader title="Route and driven trace" meta={`${mapData.point_count || 0} map points`} />
-          <TrajectoryPlot telemetry={telemetry} mapData={mapData} />
+          <TrajectoryPlot
+            telemetry={telemetry}
+            mapData={mapData}
+            goalDraft={goalDraft}
+            goalSelectionActive={goalSelectionActive}
+            onGoalDraft={draft => {
+              setGoalDraft(draft);
+              setGoalConfirmOpen(false);
+              setGoalStatus({ tone: '', message: '' });
+            }}
+          />
           <div className="telemetry-legend-row">
             <span><i className="legend-global" />Global</span>
             <span><i className="legend-local" />Local</span>
             <span><i className="legend-maneuver" />Maneuver</span>
             <span><i className="legend-trace" />Driven trace</span>
+            <span><i className="legend-manual-goal" />Manual goal</span>
           </div>
         </section>
         <section className="telemetry-section telemetry-route-metrics">
@@ -523,6 +671,67 @@ function TrajectoryView({ telemetry, mapData }) {
             <span>X <b>{numberText(telemetry.localization?.pose?.x, 3)} m</b></span>
             <span>Y <b>{numberText(telemetry.localization?.pose?.y, 3)} m</b></span>
             <span>Yaw <b>{numberText(telemetry.localization?.pose?.yaw_deg, 1)}°</b></span>
+          </div>
+          <div className="manual-goal-control">
+            <div className="manual-goal-control-header">
+              <strong>수동 Goal Pose</strong>
+              <span>map</span>
+            </div>
+            <div className="manual-goal-toolbar">
+              <button
+                type="button"
+                className={`manual-goal-tool ${goalSelectionActive ? 'active' : ''}`}
+                onClick={() => {
+                  setGoalSelectionActive(active => !active);
+                  setGoalConfirmOpen(false);
+                  setGoalStatus({ tone: '', message: '' });
+                }}
+                aria-pressed={goalSelectionActive}
+                title="지도에서 위치를 누르고 드래그해 방향 지정"
+              >
+                <span aria-hidden="true">⌖</span>
+                목표 선택
+              </button>
+              <button
+                type="button"
+                className="manual-goal-tool manual-goal-clear"
+                onClick={clearGoal}
+                disabled={!goalDraft}
+                title="선택한 목표 지우기"
+              >
+                <span aria-hidden="true">×</span>
+                지우기
+              </button>
+            </div>
+            <div className="manual-goal-readout">
+              <span>X <b>{numberText(goalDraft?.x, 3)} m</b></span>
+              <span>Y <b>{numberText(goalDraft?.y, 3)} m</b></span>
+              <span>Yaw <b>{numberText(goalDraft?.yaw_deg, 1)}°</b></span>
+            </div>
+            {goalConfirmOpen ? (
+              <div className="manual-goal-confirm">
+                <strong>선택한 목표로 출발하시겠습니까?</strong>
+                <div>
+                  <button type="button" onClick={() => setGoalConfirmOpen(false)} disabled={goalDispatching}>취소</button>
+                  <button type="button" className="manual-goal-start" onClick={dispatchManualGoal} disabled={goalDispatching}>
+                    {goalDispatching ? '전송 중' : '출발'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="manual-goal-dispatch"
+                onClick={() => setGoalConfirmOpen(true)}
+                disabled={!goalDraft || !mission.ready}
+                title={mission.ready ? '수동 목표 확인' : '시스템 준비 완료 후 사용할 수 있습니다'}
+              >
+                <span aria-hidden="true">➤</span>
+                목표 확인
+              </button>
+            )}
+            {!mission.ready && <div className="manual-goal-status warn">시스템 준비 대기</div>}
+            {goalStatus.message && <div className={`manual-goal-status ${goalStatus.tone}`}>{goalStatus.message}</div>}
           </div>
         </section>
       </div>

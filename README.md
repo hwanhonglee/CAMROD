@@ -13,6 +13,8 @@ left-antenna lever arm and heading-aware center correction. -->
 goal-independent UI readiness, reproducible package evidence, and tool layout. -->
 <!-- HH_260810 - Re-export Park operating coordinates from the user-edited
 map-v15 source and require settled yaw before campsite/drop-zone translation. -->
+<!-- HH_260810 - Make the managed operator map the default manual-goal surface
+and keep RViz as an explicit maintenance-only launch option. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.7`**.
@@ -33,7 +35,7 @@ paths. This is not a generated diagram or a real-robot field claim.
 |---|---|---|
 | ROS 2 Humble, Nav2, Lanelet2, robot_localization | Camping-site dispatch, navigation, local maneuver, parking, and charging lifecycle | `/service/state`, `/planning/state`, `/control/cmd_vel_ros`, `/system/status` |
 | Vanjee LiDAR, 7 radars, dual GNSS, IMU, front/rear cameras | Sensor normalization, obstacle costs, localization, and perception | `/planning/cost_grid/inflation`, `/localization/pose`, `/perception/obstacles` |
-| Robot UI and Guest UI | Mission commands, lifecycle display, safety hold, and diagnostics | `/ui/selected_destination`, `/planning/mission_key`, operation requests |
+| Robot UI and Guest UI | Mission commands, map-selected manual goals, lifecycle display, safety hold, and diagnostics | `/goal_pose`, `/ui/selected_destination`, `/planning/mission_key`, operation requests |
 
 ## Current Values
 
@@ -67,6 +69,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Radar visualization | seven real `/range_ros` streams | `radar_status_gui.py` observes physical publishers and never starts a dummy publisher |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | GNSS/IMU, radar/LiDAR, cameras, trajectory, map/perception, safety/control replace daily RViz/Tk inspection |
+| RViz launch default | `OFF` | Normal operation uses the managed UI; `rviz:=true` remains an engineering override |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
 | System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
 | System checker topology | `24` checkers in `4` serialized containers | Fault domains remain separate; standalone fallback remains available |
@@ -87,6 +90,14 @@ a GNSS view reopened after proximity reported GNSS/IMU `10.01 Hz` and selected
 pose `20.02 Hz` after one second. The AMD64 backend-only profile is bounded but
 is not ARM64 acceptance: the production 8-core/16-GB Jetson still requires a
 30-minute live-camera/tab-cycle resource and frame-pacing test.
+
+![Operator-map manual Goal Pose](docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
+
+The administrator operator trajectory view now also provides the normal
+`2D Goal Pose` workflow: select a map position, drag for yaw, review the exact
+`map` coordinates, and confirm departure. The backend applies readiness,
+service-owner, charging, and `>=35%` SOC gates before publishing `/goal_pose`.
+RViz is therefore not started for normal simulation or field bringup.
 
 ## Current Boundary Visual
 
@@ -135,8 +146,9 @@ no second hold. This is not physical-road evidence.
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Historical persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 13 packages; `88/88` CTest targets and 683 xUnit records passed with 0 errors/failures (24 static-analysis skips); direct UI policy/transport/telemetry `48/48` |
+| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 13 packages; `88/88` CTest targets and 683 xUnit records passed with 0 errors/failures (24 static-analysis skips); current direct UI policy/transport/telemetry/manual-goal suite `52/52` |
 | Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
+| Operator-map manual goal | **AMD64 SIM PASS** | Default launch started no RViz; confirmed UI goal published `/goal_pose`, drive-enable and engage, then produced manual `DRIVING` plus bounded global/local paths |
 | Current map-v15 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `689c49...1b39`; 55 lanelets, 14 areas, 1,592 nodes; B1-B13/drop-zone mirrors synchronized |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Three fresh controlled runs reached Nav2 active and `[SYSTEM] OK`; every component and standalone process, including lifecycle manager and Robot/Guest UI, exited cleanly |
@@ -245,7 +257,10 @@ cd ~/camrod_ws/src
 ./colcon_build.sh       # canonical Release build and install synchronization
 source ../install/setup.bash
 
-# Simulation with the operator RViz profile
+# Normal simulation: managed UI is the operator map and RViz stays off
+ros2 launch camrod_bringup bringup.launch.py sim:=true
+
+# Optional engineering visualization
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 
 # Field profile on the configured Jetson/Ranger host

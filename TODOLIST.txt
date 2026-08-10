@@ -173,8 +173,14 @@ CAMROD v2.1.7 미완료 실차 확인 목록
   gate topic 이름과 실제 `ros2 topic info` publisher를 대조한다. 전·후방 raw
   camera는 각각 10 Hz, rear monitoring JPEG는 2 Hz 계약으로 구분하고, 화면의
   frame age/rate가 물리 probe와 일치하는지 확인한다.
+- RViz 인자 없이 운영 UI trajectory map에서 실제 터치로 x/y와 yaw를 선택한다.
+  선택만으로는 정지 상태를 유지하고, 확인 후에만 `/goal_pose`, drive-enable,
+  engage와 manual DRIVING이 순서대로 발생하는지 확인한다. campsite/return/
+  parking/charging 중이거나 SOC 35% 미만이면 409 거부와 zero final command를
+  확인한다. `rviz:=true`는 정비 비교에서만 사용한다.
 - 합격: keypad/터치 지연, 중복 WebSocket command, 중복/역순 음성, 잘못 고정된
-  system warning 없이 Robot/Guest UI가 동일한 운행 의미를 제공한다.
+  system warning, 수동 goal 좌표 오차 없이 Robot/Guest UI가 동일한 운행
+  의미를 제공한다.
 
 다른 현장 투입 시 별도 deployment 작업
 - 현장이 바뀌면 GNSS 기준점, lane 최소 폭, campsite, drop-zone/dock을 새로

@@ -74,6 +74,9 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     """The central deployment profile must select one explicit runtime policy."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))["bringup"]
 
+    # HH_260810 - The managed UI owns routine visualization and manual goals;
+    # RViz remains available only through an explicit rviz:=true override.
+    assert defaults["runtime"]["rviz"] is False
     # HH_260805 - SHM remains opt-in pending Jetson measurement and must never
     # be exported to the complete graph on Humble.
     assert defaults["runtime"]["enable_dds_shared_memory"] is False
@@ -93,6 +96,7 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert "GroupAction([" in lidar_source
     assert "iox-roudi" in bringup_source
     assert "'enable_operator_telemetry': lc['enable_operator_telemetry']" in bringup_source
+    assert "cfg_get(launch_cfg, 'runtime/rviz', False)" in bringup_source
 
 
 def test_shared_memory_profiles_enable_iceoryx_with_large_message_pools() -> None:
