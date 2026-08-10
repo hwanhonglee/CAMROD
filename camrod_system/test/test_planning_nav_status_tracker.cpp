@@ -3,7 +3,9 @@
 #include <string>
 
 #include <action_msgs/msg/goal_status.hpp>
+#include <avg_msgs/msg/avg_service_state.hpp>
 
+#include "planning_nav_status_policy.hpp"
 #include "planning_nav_status_tracker.hpp"
 
 namespace
@@ -104,6 +106,38 @@ bool testAbortWindowExpiresWithoutNewStatus()
   return ok;
 }
 
+// HH_260810 - Reproduce the field handoff: the first return transition may
+// terminate the site-route Nav2 goal, but a later return-route abort is real.
+bool testReturnTransitionGraceIsBounded()
+{
+  using avg_msgs::msg::AvgServiceState;
+  using camrod_system::diagnostics::shouldSuppressNavAbort;
+
+  bool ok = expect(
+    shouldSuppressNavAbort(
+      AvgServiceState::RETURNING_TO_DROP_ZONE, 0.5, 3.0, true),
+    "pre-transition return handoff abort inside grace must be suppressed");
+  ok &= expect(
+    shouldSuppressNavAbort(
+      AvgServiceState::RETURNING_TO_DROP_ZONE, 3.0, 3.0, true),
+    "return handoff grace includes its configured boundary");
+  ok &= expect(
+    !shouldSuppressNavAbort(
+      AvgServiceState::RETURNING_TO_DROP_ZONE, 3.01, 3.0, true),
+    "later return-route abort must remain visible");
+  ok &= expect(
+    !shouldSuppressNavAbort(
+      AvgServiceState::RETURNING_TO_DROP_ZONE, 0.5, 3.0, false),
+    "new return-route goal abort must remain visible inside handoff grace");
+  ok &= expect(
+    shouldSuppressNavAbort(AvgServiceState::SITE_ENTRY, 30.0, 3.0, false),
+    "controller-owned site entry remains suppressed");
+  ok &= expect(
+    !shouldSuppressNavAbort(AvgServiceState::MOVING_TO_SITE, 0.1, 3.0, true),
+    "normal route navigation abort must remain visible");
+  return ok;
+}
+
 }  // namespace
 
 int main()
@@ -112,7 +146,8 @@ int main()
     testRepeatedAbortedEntryCountsOnce() &&
     testDistinctAbortedGoalsAreCounted() &&
     testSameGoalCannotReenterAbortHistory() &&
-    testAbortWindowExpiresWithoutNewStatus();
+    testAbortWindowExpiresWithoutNewStatus() &&
+    testReturnTransitionGraceIsBounded();
 
   if (ok) {
     std::cout << "planning_nav_status_tracker tests passed\n";

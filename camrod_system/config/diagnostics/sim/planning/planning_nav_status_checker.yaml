@@ -15,6 +15,8 @@
     # HH_260724 - Sim site entry uses the same Nav2-to-maneuver ownership handoff as the robot.
     service_state_topic: "/service/state"
     suppress_abort_during_service_maneuver: true
+    # HH_260810 - Match the robot's bounded return-transition handoff grace.
+    service_transition_abort_grace_s: 3.0
 
     abort_warn: 2
     abort_error: 5

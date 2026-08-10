@@ -15,6 +15,9 @@ planning_nav_status_checker:
     # HH_260724 - Site maneuver phases intentionally cancel Nav2; do not raise system WARN for that handoff.
     service_state_topic: "/service/state"
     suppress_abort_during_service_maneuver: true
+    # HH_260810 - RETURNING_TO_DROP_ZONE starts with a controller-owned Nav2
+    # handoff. Suppress only that transition; later return-route failures remain WARN.
+    service_transition_abort_grace_s: 3.0
 
     abort_warn: 2
     abort_error: 5
