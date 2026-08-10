@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "classification": "AMD64 deterministic simulation",
+  "map_sha256": "8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021",
+  "acceptance": "B1-B10 10/10, 2210.611 s, restart 0; cycle 1 seeded, cycles 2-10 full outbound; B5 obstacle stop/clear/resume; nine margin recoveries; no retry latch or post-start system/path fault",
+  "files": {
+    "README.md": "835d6c550b84bbc9656b1e0137d866ad9352519fa92cdb8654e86612fa857770",
+    "b1-b10-service-endurance.gif": "07033e2ae7024059d402de4f243d60dd5ce45de75dc262ae39502815c1bacb94",
+    "b1-b10-service-endurance.json": "10c1d4822d3d5e13093778f7bcb9a949dd331e571c2c5746551a8f865307637e",
+    "b1-b10-service-endurance.png": "acfffd9f79f7fced09913edac500fbc0f50b6ef15471600d41f4d3c70513b264",
+    "b1-b4-return-anchor.json": "38d0724c0620e3c98fc1dc6de61ecc490c1586b6e777268912e8269fb35e8365",
+    "b4-return-anchor-geometry.json": "4adbb7f0fa165e7d867b23c444977110255383749359293253777fd365cdfb31",
+    "b4-return-anchor.log": "1b319060ee3da76a70c4e587162b0532fcd04a234e8ea9b82d3574dd8764f267",
+    "path-grace-smoke.log": "01fedb83611f7c50fea80ab7ee32c5a0f685bbfdd78cfc102f11b655b6bf17ab",
+    "run-scope.json": "679a5301416469cb18f09571178ca3883f0a2c55dd73a167bf39707336e0fd1e",
+    "service-events.log": "b8f028b5d7c44ab9157333a821c28f855c75750e330394bc24a743c0dcab950f",
+    "ui-clean-shutdown.log": "b901e9751894ec9850a3dffd7611c04893789f64167beaba4e6832c6789f19f2"
+  }
+}

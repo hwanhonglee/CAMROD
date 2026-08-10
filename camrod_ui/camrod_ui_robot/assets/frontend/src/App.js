@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import RobotAnimation from './RobotAnimation';
+import TelemetryWorkspace, { TELEMETRY_TABS } from './TelemetryWorkspace';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -246,6 +247,7 @@ function TrailCarousel({ title, images }) {
 
 // ── 진단 모니터 컴포넌트 ──────────────────────────────────────────────────────
 function DiagnosticsMonitor() {
+  const [activeTab, setActiveTab] = useState('system');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
@@ -331,6 +333,21 @@ function DiagnosticsMonitor() {
 
   return (
     <div className="diag-monitor-wrap">
+      <nav className="diag-tab-bar" aria-label="Operator diagnostics views">
+        {[{ id: 'system', label: '시스템' }, ...TELEMETRY_TABS].map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`diag-tab-button ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+            aria-selected={activeTab === tab.id}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+      {activeTab === 'system' ? (
+        <>
       {/* ── 상단 컨트롤 바 ── */}
       <div className="diag-control-bar">
         <span className="diag-control-label">Manual Parking</span>
@@ -455,6 +472,10 @@ function DiagnosticsMonitor() {
         )}
       </div>
     </div>
+        </>
+      ) : (
+        <TelemetryWorkspace activeTab={activeTab} />
+      )}
     </div>
   );
 }

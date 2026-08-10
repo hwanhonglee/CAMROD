@@ -84,7 +84,7 @@ while the body was already on map cost 100. The corrected gate samples the
 body first. Only margin-only contact can reach the projected crab/reverse/yaw
 selector; body contact has no automatic escape path.
 
-![Fresh boundary-policy simulation](assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Fresh boundary-policy simulation](assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
 | Fresh map-v15 scenario | Measured result |
 |---|---|
@@ -110,9 +110,9 @@ unchanged; current four-side and swept-clearance field acceptance remains open.
 
 ## Campsite Sequencing
 
-![Map-v16 campsite validation](assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Map-v16 campsite validation](assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
-![Turnaround and roadside phase order](assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+![Turnaround and roadside phase order](assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
 
 - B1-B10 are explicitly `turnaround`. All ten full site-maneuver runs observed
   `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN ->
@@ -132,13 +132,13 @@ unchanged; current four-side and swept-clearance field acceptance remains open.
   geometry is therefore field-pending, not released as a completed scenario.
 
 Structured reports and reproduction commands are in
-[`camping-site-sequencing-20260806`](assets/test_result/camping-site-sequencing-20260806/README.md).
+[`camping-site-sequencing-20260806`](assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/README.md).
 
 ## Map-v17 Continuous Service And Safety
 
-![Three-cycle service result](assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
+![Three-cycle service result](assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
-![Three-cycle service timeline](assets/test_result/v2-1-5-service-validation-20260807/repeated-service-timeline.gif)
+![Three-cycle service timeline](assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-timeline.gif)
 
 The final amd64 full graph ran B1 -> B2 -> B3 for `677.237 s` with no bringup
 restart. Every cycle completed campsite routing, `CRAB_IN`, `ROTATE_180`,
@@ -167,7 +167,7 @@ WARN and ERROR thresholds. A warning-sized but usable approach path therefore
 does not consume the later invalid-path grace or flash an arrival warning;
 freshness and persistent point-count faults remain active during route travel.
 
-![B2 boundary repeatability](assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
+![B2 boundary repeatability](assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 
 Three dedicated B2 trials selected `REVERSE_YAW_RIGHT`, completed the original
 mission, and produced no second hold or rapid-recontact latch. The route clear
@@ -175,7 +175,7 @@ proof is now `1.5 s` and starts only after the final gate has admitted a real
 recovery command. Candidate yaw arcs sample the physical body throughout the
 continuous twist, not only at the endpoint.
 
-![Persistent obstacle safe hold](assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+![Persistent obstacle safe hold](assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
 The widest measured road lanelet in map v17 is approximately `3.00 m`. A
 centered obstacle, the `1.17 m` planning footprint, and active inflation left
@@ -189,14 +189,14 @@ This is a safe no-path PASS, not a successful avoidance claim. A positive
 free-space bypass remains field-pending until a surveyed road is wide enough
 for the current footprint and inflation. JSON, log, hashes, reproduction, and
 claim limits are in the
-[`v2-1-5-service-validation-20260807`](assets/test_result/v2-1-5-service-validation-20260807/README.md)
+[`v2-1-5-service-validation-20260807`](assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/README.md)
 directory.
 
 ## Final B1-B10 Service Endurance
 
-![B1-B10 no-restart service endurance](assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+![B1-B10 no-restart service endurance](assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
-[Open the measured ten-cycle GIF](assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
+[Open the measured ten-cycle GIF](assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
 
 The final AMD64 graph completed B1-B10 `10/10` in `2210.611 s` with no
 bringup restart. Cycle 1 was deliberately seeded at the B1 route endpoint to
@@ -223,7 +223,7 @@ ten handoffs finished within `0.03-0.04 m` before Nav2 resumed.
 
 Raw reports, filtered logs, B4 geometry, path/UI shutdown smokes, SHA manifest,
 and regeneration commands are in
-[`b1-b10-service-endurance-20260807`](assets/test_result/b1-b10-service-endurance-20260807/README.md).
+[`b1-b10-service-endurance-20260807`](assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md).
 These are deterministic simulation results, not Jetson, physical boundary,
 CAN charging, or road acceptance.
 
@@ -240,7 +240,7 @@ At `(10.747, 43.654)`, the physical body still had `4.54 cm` vector clearance,
 but the configured 5 cm planning margin exceeded the lanelet by `4.55 mm`.
 That event remains a recoverable `lanelet_footprint_cost`; it is not hidden or
 relabeled as clear-road success. See the
-[structured result](assets/test_result/cmd-vel-stop-go-20260806/README.md).
+[structured result](assets/module-guides/control/test-results/cmd-vel-stop-go-20260806/README.md).
 
 ## RPP Curve Tracking
 
@@ -255,7 +255,7 @@ manual RotationShim uses `45 deg`/`5 deg` hysteresis. On the same map, the
 selected `1.1 m` B8 run traveled `59.931 m`, emitted zero raw R/T switches,
 recovered one planning-margin contact, and reached `GOAL_REACHED`. A controlled
 `1.2 m` comparison recontacted the margin `0.999 s` after release and was
-rejected. See the [structured comparison](assets/test_result/rpp-curve-tracking-20260806/README.md).
+rejected. See the [structured comparison](assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/README.md).
 
 The final source-profile service A/B then exercised the active `3.0 km/h`
 command path. Velocity-scaled preview grew to about `1.5 m`, recreated the
@@ -265,10 +265,10 @@ including obstacle stop/clear/resume, B2 `REVERSE_YAW_RIGHT`, explicit RETURN,
 parking, and charging. The final gate now evaluates and logs the same scaled
 `0.833333 m/s` command that it publishes.
 
-![RPP lookahead service A/B](assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+![RPP lookahead service A/B](assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
 
 Raw excerpts, structured inputs, and reproduction are in the
-[`rpp-lookahead-service-ab-20260807`](assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+[`rpp-lookahead-service-ab-20260807`](assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/README.md)
 directory. These are AMD64 deterministic-simulation results, not Jetson or
 physical-road acceptance.
 
@@ -309,7 +309,7 @@ The isolated AMD64 12 m smoke run reached `3.000001 km/h`, published selected
 pose at `20.024 Hz`, measured a `6.485 cm` maximum step, and recorded zero
 steps over `20 cm`. It uses fake 10 Hz GNSS and the 20 Hz simulation EKF, so it
 does not validate the physical 1 Hz dual-GNSS or Jetson moving case. See the
-[structured result](assets/test_result/three-kph-localization-20260806/README.md).
+[structured result](assets/module-guides/localization/test-results/three-kph-localization-20260806/README.md).
 
 ## GNSS Left-Antenna Correction
 
@@ -339,13 +339,13 @@ The focused AMD64 ROS A/B matched 30 timestamps. The correction displacement
 was `0.450000 m`; center residual was `0.449995 m` with correction disabled and
 `0.000071 m` mean/max with production correction enabled. The test also fixed
 an existing fake WGS84 northing inverse error. This remains simulation evidence,
-not a field GNSS PASS. [Structured result](assets/test_result/gnss-lever-arm-20260806/README.md).
+not a field GNSS PASS. [Structured result](assets/module-guides/localization/test-results/gnss-lever-arm-20260806/README.md).
 
-![Current sensor mount side view](assets/module-guides/sensor-kit/sensor-mount-side-view.png)
+![Current sensor mount side view](assets/module-guides/sensor-kit/guide/sensor-mount-side-view.png)
 
-![GNSS left-antenna lever arm](assets/module-guides/sensor-kit/gnss-left-antenna-lever-arm.png)
+![GNSS left-antenna lever arm](assets/module-guides/sensor-kit/guide/gnss-left-antenna-lever-arm.png)
 
-![Sensor X ledger](assets/module-guides/sensor-kit/sensor-x-before-after.png)
+![Sensor X ledger](assets/module-guides/sensor-kit/guide/sensor-x-before-after.png)
 
 The GNSS correction itself leaves IMU, LiDAR, camera, radar, axle, controller,
 map, parking, body, and planning coordinates unchanged. A separate boundary
@@ -375,7 +375,7 @@ pair is revision 17.
   `ExternalShutdownException` as normal launch shutdown.
 
 Native tracing and the four final simulation runs are recorded in
-[`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json).
+[`amd64-scoped-container-shutdown-20260805.json`](assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-scoped-container-shutdown-20260805.json).
 
 ## Transport And Sensor Containers
 
@@ -389,13 +389,13 @@ Native tracing and the four final simulation runs are recorded in
   topic ownership; no duplicate publishers are introduced.
 
 The measured AMD64 process/CPU/PSS comparisons remain in
-[`amd64-container-ab-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
+[`amd64-container-ab-20260805.json`](assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json).
 
 ## Measured AMD64 A/B
 
 <!-- HH_260805 - Keep workstation measurements separate from Jetson acceptance
 and report one logical CPU as 100 percent. -->
-![Measured AMD64 runtime topology A/B](assets/module-guides/system/runtime-topology-amd64-ab-20260805.png)
+![Measured AMD64 runtime topology A/B](assets/module-guides/runtime/test-results/amd64-runtime-topology-20260805/runtime-topology-amd64-ab-20260805.png)
 
 The full-simulation samples used an Intel i5-12400F, `sim:=true`, and disabled
 RViz, UI window, DDS-SHM, and LiDAR cost-grid. Values are process-tree means;
@@ -471,7 +471,7 @@ samples.
   motion before release and no retry latch. All route-snap return handoffs were
   within `0.03-0.04 m`; post-start system/path faults were zero.
 - Exact machine-readable build and run results are recorded in
-  [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json)
+  [`amd64-scoped-container-shutdown-20260805.json`](assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-scoped-container-shutdown-20260805.json)
   and summarized in `DONE.txt`.
 
 ## Field Work Still Required

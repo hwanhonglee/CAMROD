@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-08-04T17:56:18+09:00",
+  "source_baseline_commit": "e4ea7c084",
+  "environment": {
+    "mode": "ROS 2 simulation",
+    "launch_command": "ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false",
+    "rviz_profile_source": "camrod_map/rviz/camrod_operator.rviz",
+    "rviz_capture_mode": "separately attached to the same ROS graph",
+    "map_file": "lanelet2_maps.osm",
+    "map_version": 14,
+    "map_commit": "95304cfb0",
+    "map_revision_source": "user-provided revision",
+    "map_stats": {"lanelets": 55, "areas": 14, "points": 1031, "lines": 179},
+    "field_claim": false
+  },
+  "scenario": {
+    "destination": "B6",
+    "mission_key": "camping_site_6",
+    "system_ok_observed": true,
+    "full_route_completed": false,
+    "boundary_contact_pose_xy_m": [4.3687675425, 45.0582880219],
+    "blocking_reason": "lanelet_footprint_cost at the unsurveyed campsite access transition"
+  },
+  "route_retry_containment": {
+    "max_automatic_releases": 1,
+    "rapid_recontact_window_s": 5.0,
+    "map_v14_recontact_after_release_s": 0.275737362,
+    "historical_map_v13_recontact_after_release_s": [0.372417173, 0.266786558],
+    "latched_state": "ROUTE_SAFETY_HOLD",
+    "latched_reason": "route_safety_retry_latched=lanelet_footprint_cost",
+    "cmd_vel_ros_zero_observed": true,
+    "additional_release_observed_after_latch": false,
+    "operator_action_required": "stop and replan/re-engage"
+  },
+  "operator_stop": {
+    "endpoint": "POST /ui/stop",
+    "http_status": 200,
+    "response": {"success": true, "message": "stop command published"},
+    "service_state": "OPERATOR_STOPPED",
+    "safety_gate_state": "STANDBY",
+    "nav2_cancel_confirmed_by_log": true,
+    "maneuver_cancel_targets": ["camping_site", "drop_zone", "reverse_parking"]
+  },
+  "screenshots": [
+    {
+      "package": "camrod_bringup",
+      "file": "docs/assets/module-guides/bringup/evidence/runtime-capture-20260804/runtime-full-stack-b6-20260804.png",
+      "surface": "RViz",
+      "layers": ["lanelet map", "B6 route", "vehicle", "localization", "sensing", "planning"]
+    },
+    {
+      "package": "camrod_map",
+      "file": "docs/assets/module-guides/map/evidence/runtime-capture-20260804/runtime-lanelet-map-20260804.png",
+      "surface": "RViz",
+      "layers": ["lanelet map", "vehicle pose"]
+    },
+    {
+      "package": "camrod_sensing",
+      "file": "docs/assets/module-guides/sensing/evidence/runtime-capture-20260804/runtime-lidar-radar-costs-20260804.png",
+      "surface": "RViz",
+      "layers": ["filtered lidar", "radar ranges", "lidar cost", "radar cost"]
+    },
+    {
+      "package": "camrod_localization",
+      "file": "docs/assets/module-guides/localization/evidence/runtime-capture-20260804/runtime-pose-tf-20260804.png",
+      "surface": "RViz",
+      "layers": ["localization poses", "GNSS", "map-odom-robot TF"]
+    },
+    {
+      "package": "camrod_perception",
+      "file": "docs/assets/module-guides/perception/evidence/runtime-capture-20260804/runtime-obstacle-bboxes-20260804.png",
+      "surface": "RViz",
+      "layers": ["fused obstacle cloud", "obstacle boxes", "filtered lidar"]
+    },
+    {
+      "package": "camrod_planning",
+      "file": "docs/assets/module-guides/planning/evidence/runtime-capture-20260804/runtime-b6-global-local-path-20260804.png",
+      "surface": "RViz",
+      "layers": ["B6 global path", "local path", "goal", "lanelet map"]
+    },
+    {
+      "package": "camrod_control",
+      "file": "docs/assets/module-guides/control/evidence/runtime-capture-20260804/runtime-boundary-retry-latch-20260804.png",
+      "surface": "RViz",
+      "layers": ["complete footprint", "route boundary", "B6 path"]
+    },
+    {
+      "package": "camrod_control",
+      "file": "docs/assets/module-guides/control/evidence/runtime-capture-20260804/runtime-retry-latch-terminal-20260804.png",
+      "surface": "ROS CLI",
+      "layers": ["ROUTE_SAFETY_HOLD", "retry latch reason", "zero cmd_vel", "event timestamps"]
+    },
+    {
+      "package": "camrod_platform",
+      "file": "docs/assets/module-guides/platform/evidence/runtime-capture-20260804/runtime-robot-geometry-20260804.png",
+      "surface": "RViz",
+      "layers": ["robot geometry", "robot_center_link"]
+    },
+    {
+      "package": "camrod_platform",
+      "file": "docs/assets/module-guides/platform/evidence/runtime-capture-20260804/runtime-status-terminal-20260804.png",
+      "surface": "ROS CLI",
+      "layers": ["control mode", "battery", "charging", "motion mode"]
+    },
+    {
+      "package": "camrod_sensor_kit",
+      "file": "docs/assets/module-guides/sensor-kit/evidence/runtime-capture-20260804/runtime-sensor-tf-20260804.png",
+      "surface": "RViz 3D",
+      "layers": ["robot center", "sensor kit", "camera", "GNSS", "IMU", "lidar", "radar TF"]
+    },
+    {
+      "package": "camrod_system",
+      "file": "docs/assets/module-guides/system/evidence/runtime-capture-20260804/runtime-health-terminal-20260804.png",
+      "surface": "ROS CLI and UI API",
+      "layers": ["SystemStatus", "system health", "service state", "runtime node count"]
+    },
+    {
+      "package": "camrod_common/avg_msgs",
+      "file": "docs/assets/module-guides/common/evidence/runtime-capture-20260804/runtime-interface-terminal-20260804.png",
+      "surface": "ROS CLI",
+      "layers": ["SystemStatus interface", "live topic type", "publisher/subscriber count"]
+    },
+    {
+      "package": "camrod_voice",
+      "file": "docs/assets/module-guides/voice/evidence/runtime-capture-20260804/runtime-event-terminal-20260804.png",
+      "surface": "ROS CLI",
+      "layers": ["system.startup AudioRequest", "event adapter subscriptions", "voice publisher"]
+    }
+  ],
+  "raw_excerpt": "docs/assets/module-guides/bringup/evidence/runtime-capture-20260804/raw/runtime-visual-capture-20260804.log",
+  "verdict": "PASS for retry-loop containment and operator stop; full B6 mission remains blocked pending surveyed service-access geometry"
+}

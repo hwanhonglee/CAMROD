@@ -25,7 +25,9 @@ ASSET_ROOT = (
     SRC_ROOT
     / "docs"
     / "assets"
-    / "test_result"
+    / "module-guides"
+    / "control"
+    / "test-results"
     / "tapered-rounded-boundary-road-sim-20260810"
 )
 MAP_PATH = SRC_ROOT / "lanelet2_maps.osm"
@@ -52,10 +54,14 @@ def _manifest(path: Path) -> dict[str, str]:
 
 
 @pytest.fixture(scope="module")
-def rendered(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Render the production road report once for this module."""
-    output = tmp_path_factory.mktemp("tapered_road_sim")
-    subprocess.run(
+def rendered() -> Path:
+    """Return immutable map-v17 artifacts after the active map changed."""
+    return ASSET_ROOT
+
+
+def test_renderer_rejects_current_map_for_the_historical_run(tmp_path: Path) -> None:
+    """A current-map edit must not relabel the recorded map-v17 trajectory."""
+    result = subprocess.run(
         [
             sys.executable,
             str(RENDERER),
@@ -66,24 +72,27 @@ def rendered(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "--run",
             str(ASSET_ROOT / RUN_NAME),
             "--output-dir",
-            str(output),
+            str(tmp_path),
         ],
         cwd=SRC_ROOT,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
-    return output
+    assert result.returncode != 0
+    assert "runtime evidence map version does not match selected OSM" in result.stderr
 
 
-def test_renderer_replays_current_measured_run(rendered: Path) -> None:
-    """The current record must reproduce the documented PNG, GIF, and facts."""
-    assert {path.name for path in rendered.iterdir()} == {
+def test_committed_historical_measured_run_is_complete(rendered: Path) -> None:
+    """The map-v17 record must retain its documented PNG, GIF, and facts."""
+    # HH_260810 - README and immutable raw-run provenance now live beside the
+    # derived files. Require the release artifacts without rejecting provenance.
+    assert {
         PNG_NAME,
         GIF_NAME,
         SUMMARY_NAME,
         MANIFEST_NAME,
-    }
+    }.issubset({path.name for path in rendered.iterdir()})
     with Image.open(rendered / PNG_NAME) as image:
         assert image.format == "PNG"
         assert image.size == (2400, 1350)

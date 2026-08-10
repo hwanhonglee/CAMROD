@@ -6,16 +6,22 @@ Jetson acceptance work. -->
 Graph readiness, dedicated sensor/planning/platform/hardware diagnostics,
 metadata-preserving aggregation, and operator health summaries.
 
-![Diagnostic severity and surfaces](../docs/assets/module-guides/system/diagnostic-severity-and-surfaces.png)
+![Diagnostic severity and surfaces](../docs/assets/module-guides/system/guide/diagnostic-severity-and-surfaces.png)
 
 ## Actual Simulation Runtime
 
-![Live system health and service state](../docs/assets/module-guides/system/runtime-health-terminal-20260804.png)
+![Live system health and service state](../docs/assets/module-guides/system/evidence/runtime-capture-20260804/runtime-health-terminal-20260804.png)
 
 `SIM RUNTIME CAPTURE`: live `SystemStatus` reported healthy while the service
 state remained `MOVING_TO_SITE` and motion readiness was blocked by the control
 hold. This demonstrates that health, service phase, and motion authorization
 are separate surfaces.
+
+![Current operator health motion and owner surfaces](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-safety-20260810.png)
+
+`SIM BROWSER CAPTURE`: system health, service phase, command authorization, and
+motion ownership remain separate fields in the current UI rather than one
+sticky warning label.
 
 ## At A Glance
 
@@ -34,6 +40,7 @@ This package observes health. It never generates vehicle motion commands.
 | Physical GNSS and localization GNSS input | `5 Hz` | Receiver corrections; independent of EKF prediction |
 | Selected localization pose | `20 Hz` | EKF/final-pose output |
 | LiDAR raw / filtered cloud | `10 Hz` | Required physical sensing chain |
+| Front / rear camera raw stream | `10 Hz` each | Rear monitoring JPEG is a separate `2 Hz` diagnostic stream |
 | Optional LiDAR cost grid | `10 Hz` when enabled | Its node/topic are omitted when OFF; the shared checker still monitors radar + inflation |
 
 ## Runtime Composition
@@ -65,7 +72,7 @@ down cleanly.
 
 ## Measured amd64 A/B
 
-![Measured amd64 runtime topology A/B](../docs/assets/module-guides/system/runtime-topology-amd64-ab-20260805.png)
+![Measured amd64 runtime topology A/B](../docs/assets/module-guides/runtime/test-results/amd64-runtime-topology-20260805/runtime-topology-amd64-ab-20260805.png)
 
 `MEASURED WORKSTATION`: headless full simulation on an Intel i5-12400F,
 three runs per topology, 15 one-second steady-state samples per run. CPU is the
@@ -89,9 +96,9 @@ entities, not duplicate checker/status owners. The original 24-checker A/B
 showed larger resource savings but failed one shutdown; its historical values
 remain in the linked file. The scoped-container shutdown verdict is superseded
 by the later 3/3 clean regression in
-[`amd64-scoped-container-shutdown-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json).
+[`amd64-scoped-container-shutdown-20260805.json`](../docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-scoped-container-shutdown-20260805.json).
 Exact original per-run resource values are in
-[`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
+[`amd64-container-ab-20260805.json`](../docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json).
 Jetson CPU/GPU/PSS and ten-cycle restart acceptance remain in `TODOLIST.txt`.
 
 ## Optional LiDAR Grid
@@ -147,7 +154,7 @@ These are alert thresholds, not measured Jetson utilization.
 
 ## Reported Jetson Stationary Profile
 
-![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+![Physical stationary field report](../docs/assets/module-guides/bringup/test-results/field-stationary-20260731/field-stationary-report-20260731.png)
 
 | Five-minute metric | Result |
 |---|---:|
@@ -183,7 +190,7 @@ next route's invalid-path grace; route-travel states still enforce freshness
 immediately and persistent point-count limits after that grace.
 
 <!-- HH_260807 - Link the final handoff and shutdown evidence to the checker contract. -->
-The [same-goal handoff smoke and ten-cycle audit](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+The [same-goal handoff smoke and ten-cycle audit](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md)
 kept `/system` at OK through an expected `empty_route` transition and recorded
 zero post-service-start system/path fault during `2210.611 s`. Robot and Guest
 backend shutdown also left no failed or run-owned residual process.

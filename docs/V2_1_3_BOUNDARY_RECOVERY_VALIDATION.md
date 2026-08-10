@@ -29,11 +29,11 @@ dispatch is rejected below 35% SOC. Generic diagnostic WARN remains health
 information and does not overwrite a normal service phase.
 
 Result JSON:
-[guest UI integration evidence](evidence/v2.1.3/ui/guest-mission-lifecycle.json)
+[guest UI integration evidence](assets/module-guides/ui/evidence/v2.1.3-guest-mission/guest-mission-lifecycle.json)
 
-![Guest UI ready for campsite dispatch](assets/module-guides/ui/guest-mission-dispatch-ready.png)
+![Guest UI ready for campsite dispatch](assets/module-guides/ui/evidence/ui-captures/guest-mission-dispatch-ready.png)
 
-![Guest UI displaying a route safety hold](assets/module-guides/ui/guest-route-safety-hold.png)
+![Guest UI displaying a route safety hold](assets/module-guides/ui/evidence/ui-captures/guest-route-safety-hold.png)
 
 ## Recovery Policy
 
@@ -78,12 +78,11 @@ The release evidence is intentionally split by command ownership:
 | pre-owner manual candidate | `robot_center_link` | `(3.9277, 45.2451)` | 0.5008 m | center reference progressed farther, then the same narrow curve stopped the retry |
 | current automatic owner | `robot_center_link` | scenario-dependent | bounded by 0.40 m | controller publishes only the gate-selected crab/reverse command |
 
-Historical visuals:
-[fixed-yaw manual probe](assets/module-guides/control/pre-owner-manual-no-yaw.gif),
-[yaw-aware manual probe](assets/module-guides/control/pre-owner-manual-yaw-aware.gif),
-and [center-reference manual probe](assets/module-guides/control/pre-owner-robot-center-recovery.gif).
-Their source timelines are stored beside the automatic results under
-`docs/evidence/v2.1.3/boundary-recovery/`.
+The reproducible [center-reference manual probe](assets/module-guides/control/test-results/pre-owner-boundary-recovery-20260803/pre-owner-robot-center-recovery.gif)
+is replayed with the active rounded contour. Older fixed-yaw rectangular GIFs
+were removed because their complete generation inputs were not retained.
+The source timelines are stored beside the automatic results under
+`docs/assets/module-guides/control/evidence/v2.1.3-boundary-recovery/`.
 
 ## Measured Runs
 
@@ -105,25 +104,25 @@ not from the earlier B6 browser capture or hard-coded renderer labels. -->
 | lanelets `754/2751/2720`, static contact | reverse `0.0721 m` | recontact `0.362 s` | retry latched; Twist zero |
 | lanelet `4677`, one side clear | crab-left `0.3321 m` at max `0.05 m/s` | no retry requested | hold released; final Twist zero |
 
-![Map-v14 automatic recovery rerun](assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+![Map-v14 automatic recovery rerun](assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-contact-sheet.png)
 
-![Map-v14 recovery policy](assets/module-guides/control/map-v14-boundary-recovery-policy.png)
+![Map-v14 recovery policy](assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-policy.png)
 
-[Open the map-v14 reverse/retry/crab GIF](assets/module-guides/control/map-v14-boundary-recovery.gif).
+[Open the map-v14 reverse/retry/crab GIF](assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery.gif).
 
 Each JSON embeds `map_version=14` and OSM SHA-256
 `2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe`.
 This rerun confirms bounded escape and retry containment, not route completion.
 
-![Automatic recovery policy](assets/module-guides/control/automatic-owner-policy.png)
+![Automatic recovery policy](assets/module-guides/control/test-results/automatic-recovery-v2.1.3/automatic-owner-policy.png)
 
-![Automatic recovery contact sheet](assets/module-guides/control/automatic-owner-route-retry-contact-sheet.png)
+![Automatic recovery contact sheet](assets/module-guides/control/test-results/automatic-recovery-v2.1.3/automatic-owner-route-retry-contact-sheet.png)
 
-[Open the automatic recovery GIF](assets/module-guides/control/automatic-owner-route-retry.gif).
+[Open the automatic recovery GIF](assets/module-guides/control/test-results/automatic-recovery-v2.1.3/automatic-owner-route-retry.gif).
 
 | Actual RViz contact | Actual gate state and command |
 |---|---|
-| ![B6 boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Retry latch and zero Twist](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
+| ![B6 boundary retry latch](assets/module-guides/control/evidence/runtime-capture-20260804/runtime-boundary-retry-latch-20260804.png) | ![Retry latch and zero Twist](assets/module-guides/control/evidence/runtime-capture-20260804/runtime-retry-latch-terminal-20260804.png) |
 
 These `SIM RUNTIME CAPTURE` screens answer the apparent repetition in RViz:
 before the guard, clear/release/recontact could continue repeatedly. The current
@@ -177,20 +176,20 @@ ros2 run camrod_bringup render_automatic_recovery_results.py \
 # Rebuild only the earlier manual-candidate center-frame comparison.
 ros2 run camrod_bringup render_boundary_recovery_results.py \
   --map <lanelet2_maps.osm> \
-  --run docs/evidence/v2.1.3/boundary-recovery/pre-owner-robot-center-timeline.json \
+  --run docs/assets/module-guides/control/evidence/v2.1.3-boundary-recovery/pre-owner-robot-center-timeline.json \
   --output-dir docs/assets/module-guides/control \
   --planning-output-dir docs/assets/module-guides/planning \
-  --analysis-output docs/evidence/v2.1.3/boundary-geometry/robot-center-route-samples.json
+  --analysis-output docs/assets/module-guides/control/evidence/v2.1.3-boundary-geometry/robot-center-route-samples.json
 ```
 
 Current automatic-owner source evidence:
 
-- [One-sided crab JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-one-sided-crab.json)
-- [Stationary reverse JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-static-reverse-retry.json)
-- [Moving route retry JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json)
-- [Full-stack retry-latch metadata](evidence/module-guides/bringup/runtime-visual-capture-20260804.json)
-- [Full-stack concise raw excerpt](evidence/module-guides/bringup/raw/runtime-visual-capture-20260804.log)
-- [Map-v14 three-scenario rerun](evidence/v2.1.3/map-v14-boundary-recovery/)
+- [One-sided crab JSON](assets/module-guides/control/evidence/v2.1.3-boundary-recovery/automatic-owner-one-sided-crab.json)
+- [Stationary reverse JSON](assets/module-guides/control/evidence/v2.1.3-boundary-recovery/automatic-owner-static-reverse-retry.json)
+- [Moving route retry JSON](assets/module-guides/control/evidence/v2.1.3-boundary-recovery/automatic-owner-route-retry.json)
+- [Full-stack retry-latch metadata](assets/module-guides/bringup/evidence/runtime-capture-20260804/runtime-visual-capture-20260804.json)
+- [Full-stack concise raw excerpt](assets/module-guides/bringup/evidence/runtime-capture-20260804/raw/runtime-visual-capture-20260804.log)
+- [Map-v14 three-scenario rerun](assets/module-guides/control/evidence/map-v14-boundary-recovery/)
 
 ## Remaining Field Work
 

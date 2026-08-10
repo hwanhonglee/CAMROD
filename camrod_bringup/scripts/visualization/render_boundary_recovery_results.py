@@ -22,13 +22,23 @@ from matplotlib.patches import FancyArrowPatch, Polygon as PolygonPatch
 from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
+try:
+    from render_tapered_rounded_boundary import load_contract, transform_points
+except ModuleNotFoundError:
+    from camrod_bringup.scripts.visualization.render_tapered_rounded_boundary import (
+        load_contract,
+        transform_points,
+    )
+
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
-# HH_260805 - Preserve the map-v14 evidence geometry: 0.10 m longitudinal and
-# 0.05 m lateral margins. Current runtime geometry is sourced by the main renderer.
-FRONT, REAR = 0.85837, 0.83323
-LEFT, RIGHT = 0.58505, 0.58495
+# HH_260810 - Replay immutable pre-owner poses with the active rounded planning
+# contour. The original v2.1.3 rectangular dimensions stay in evidence JSON and
+# explanatory text; they are not redrawn as a current robot boundary.
+BOUNDARY_POINTS = ()
+PHYSICAL_POINTS = ()
+FRONT = REAR = LEFT = RIGHT = 0.0
 LEGACY_REAR_AXLE_X = -0.443
 FPS = 8
 
@@ -40,14 +50,9 @@ def lane_polygon(lanelet):
 
 
 def footprint_points(x, y, yaw):
-    cosine, sine = math.cos(yaw), math.sin(yaw)
-    return [
-        (x + cosine * px - sine * py, y + sine * px + cosine * py)
-        for px, py in (
-            (FRONT, LEFT), (FRONT, -RIGHT),
-            (-REAR, -RIGHT), (-REAR, LEFT),
-        )
-    ]
+    if not BOUNDARY_POINTS:
+        raise RuntimeError("rounded boundary contract has not been loaded")
+    return transform_points(BOUNDARY_POINTS, x, y, yaw)
 
 
 def body_point(x, y, yaw, px, py=0.0):
@@ -310,7 +315,10 @@ def render_contact_sheet(output, run, lanelet_map, route_samples):
     panel.text(0.0, 0.98, "Observed full-bringup result", fontsize=15, fontweight="bold", va="top")
     result_lines = [
         ("Center frame", "robot_center_link"),
-        ("Planning footprint", "1.6916 x 1.2700 m"),
+        (
+            "Displayed contour",
+            f"current rounded {FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m",
+        ),
         ("First boundary hold", f"{first_hold['yaw_deg']:+.2f} deg"),
         ("Left crab probe", "BLOCKED"),
         ("Right crab probe", "BLOCKED"),
@@ -344,7 +352,7 @@ def render_contact_sheet(output, run, lanelet_map, route_samples):
         bbox={"boxstyle": "round,pad=0.55", "facecolor": "#fff3df", "edgecolor": "#e2a64b"},
     )
     fig.suptitle(
-        "CAMROD robot-center boundary behavior - recorded 2026-08-03",
+        "Recorded 2026-08-03 motion - current rounded-contour replay",
         fontsize=18, fontweight="bold", y=0.985,
     )
     fig.savefig(output, dpi=120, bbox_inches="tight")
@@ -380,9 +388,9 @@ def render_risk_map(output, run, lanelet_map, route_samples):
     narrowest = min(route_samples, key=lambda item: item["lane_width_m"])
     panel.text(0.0, 0.98, "Risk summary", fontsize=16, fontweight="bold", va="top")
     lines = [
-        ("Planning size", "1.6916 x 1.2700 m"),
-        ("Physical size", "1.4916 x 1.0700 m"),
-        ("Margin", "0.10 m each side"),
+        ("Current planning size", f"{FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m"),
+        ("Current contour points", str(len(BOUNDARY_POINTS))),
+        ("Recorded envelope", "v2.1.3 JSON; not redrawn"),
         ("First runtime hold", f"({first_hold['x']:.2f}, {first_hold['y']:.2f})"),
         ("First center failure", f"({first_adjustable['xy'][0]:.2f}, {first_adjustable['xy'][1]:.2f})"),
         ("First no-fit sample", f"({first_no_fit['xy'][0]:.2f}, {first_no_fit['xy'][1]:.2f})"),
@@ -404,7 +412,11 @@ def render_risk_map(output, run, lanelet_map, route_samples):
         "Runtime stops use raster cost 100.\nThey can occur before vector-map overlap.",
         fontsize=9.2, color="#a31b1b", va="bottom", fontweight="bold",
     )
-    fig.suptitle("CAMROD boundary risk map - robot_center_link", fontsize=18, fontweight="bold")
+    fig.suptitle(
+        "Current rounded-contour feasibility over the recorded center poses",
+        fontsize=18,
+        fontweight="bold",
+    )
     fig.savefig(output, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
@@ -494,7 +506,8 @@ def render_gif(output, run, lanelet_map, route_samples):
     panel.text(0.0, 0.19, "Active RPP / gate", fontsize=12, fontweight="bold")
     panel.text(
         0.0, 0.145,
-        "15 Hz | lookahead 1.1 m\n0.4 m/s x gate 0.5\nfootprint 1.6916 x 1.2700 m",
+        f"15 Hz | lookahead 1.1 m\n0.4 m/s x gate 0.5\n"
+        f"current rounded contour {FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m",
         fontsize=9.3, color="#37474f", va="top",
     )
     panel.text(
@@ -550,10 +563,17 @@ def render_gif(output, run, lanelet_map, route_samples):
 
 
 def main():
+    global BOUNDARY_POINTS, PHYSICAL_POINTS, FRONT, REAR, LEFT, RIGHT
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[3],
+        help="repository root containing the active rounded boundary contract",
+    )
     parser.add_argument(
         "--planning-output-dir",
         type=Path,
@@ -571,6 +591,13 @@ def main():
         ),
     )
     args = parser.parse_args()
+    contract = load_contract(args.repo_root.resolve())
+    BOUNDARY_POINTS = contract.planning
+    PHYSICAL_POINTS = contract.physical
+    FRONT = max(point[0] for point in BOUNDARY_POINTS)
+    REAR = -min(point[0] for point in BOUNDARY_POINTS)
+    LEFT = max(point[1] for point in BOUNDARY_POINTS)
+    RIGHT = -min(point[1] for point in BOUNDARY_POINTS)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     planning_output_dir = args.planning_output_dir or args.output_dir
     planning_output_dir.mkdir(parents=True, exist_ok=True)

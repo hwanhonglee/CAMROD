@@ -6,10 +6,15 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import io
 import json
 import math
 import os
+import struct
 import threading
+import time
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -22,9 +27,15 @@ from ament_index_python.packages import PackageNotFoundError, get_package_share_
 from avg_msgs.msg import (
     AvgServiceState,
     AvgBool,
+    AvgLocalizationStatus,
     AvgLocalizationMode,
+    AvgOccupancyGrid,
+    AvgPolygonStamped,
     AvgPlatformStatus,
     AvgPoseStamped,
+    AvgString,
+    AvgTrackingError,
+    AvgTwistStamped,
     CampsiteOccupancy,
     ModuleState,
     MotionOperation,
@@ -37,8 +48,9 @@ from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 # HH_260721 - Keep only the FastAPI symbols used by the runtime backend.
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path as NavPath
 from nav2_msgs.action import NavigateToPose
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
@@ -47,8 +59,11 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
+from sensor_msgs.msg import CompressedImage, Image as RosImage, Imu, NavSatFix, PointCloud2, Range
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
+from ublox_msgs.msg import NavCOV, NavPVT, NavRELPOSNED9
+from visualization_msgs.msg import Marker, MarkerArray
 
 import uvicorn
 
@@ -76,6 +91,343 @@ SERVICE_STATE_NAMES = {
     AvgServiceState.DEPARTING_DROP_ZONE: "DEPARTING_DROP_ZONE",
     AvgServiceState.OPERATOR_STOPPED: "OPERATOR_STOPPED",
 }
+
+
+# HH_260810 - One bounded JSON contract replaces the separate Tk/RViz operator
+# viewers without changing any control or sensor-authority topic.
+TELEMETRY_SCHEMA_VERSION = 2
+TELEMETRY_VIEWS = frozenset({
+    "gnss",
+    "proximity",
+    "camera",
+    "trajectory",
+    "perception",
+    "safety",
+    "all",
+})
+TELEMETRY_RADAR_CHANNELS = (
+    "front1",
+    "front2",
+    "left1",
+    "left2",
+    "right1",
+    "right2",
+    "rear",
+)
+
+# HH_260810 - Keep every operator-view source in one reviewable contract. The
+# per-view ROS subscriptions remain lazy, so listing a topic here does not add
+# idle CPU or DDS traffic on the 8-core ARM64 target.
+TELEMETRY_TOPIC_DEFAULTS = {
+    "gnss_fix": "/sensing/gnss/ublox_gps_node/fix",
+    "gnss_navpvt": "/sensing/gnss/ublox_gps_node/navpvt",
+    "gnss_navcov": "/sensing/gnss/navcov",
+    "gnss_relpos": "/sensing/gnss/navrelposned",
+    "imu": "/sensing/imu/data_ros",
+    "localization_status": "/localization/status",
+    "tracking_error": "/planning/tracking_error",
+    "global_path": "/planning/global_path",
+    "local_path": "/planning/local_path_ros",
+    "lidar": "/sensing/lidar/points_filtered",
+    "lidar_raw": "/sensing/lidar/vanjee/points_raw",
+    "obstacle_cloud": "/perception/obstacles",
+    "obstacle_boxes": "/perception/lidar/bboxes",
+    "front_camera": "/sensing/camera/econ_front/image_rect/compressed",
+    "front_camera_raw": "/sensing/camera/econ_front/image_raw",
+    "rear_camera": "/sensing/camera/econ_rear/image_raw/compressed",
+    "rear_camera_raw": "/sensing/camera/econ_rear/image_raw",
+    "map_markers": "/map/markers",
+    "lanelet_cost_grid": "/map/cost_grid/lanelet",
+    "lidar_cost_grid": "/sensing/cost_grid/lidar",
+    "radar_cost_grid": "/sensing/cost_grid/radar",
+    "inflation_cost_grid": "/planning/cost_grid/inflation",
+    "planning_boundary": "/platform/robot/planning_boundary",
+    "robot_markers": "/platform/robot/markers",
+    "radar_evidence": "/sensing/radar/obstacle_evidence",
+    "obstacle_replan": "/planning/obstacle_replan/status",
+}
+
+
+def _finite_or_none(value: Any) -> Optional[float]:
+    """Return a JSON-safe finite float, or None for NaN/inf/unset values."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _quaternion_yaw_deg(orientation: Any) -> Optional[float]:
+    """Extract ENU yaw in degrees from either ROS or generated quaternion fields."""
+    values = [
+        _finite_or_none(getattr(orientation, axis, None))
+        for axis in ("x", "y", "z", "w")
+    ]
+    if any(value is None for value in values):
+        return None
+    x, y, z, w = values
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    if norm < 1.0e-9:
+        return None
+    x, y, z, w = (value / norm for value in (x, y, z, w))
+    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    return math.degrees(yaw)
+
+
+def _decimate_xy(points: List[tuple[float, float]], limit: int) -> List[List[float]]:
+    """Bound browser payload size while preserving both path endpoints."""
+    if not points:
+        return []
+    target = max(2, int(limit))
+    if len(points) <= target:
+        return [[float(x), float(y)] for x, y in points]
+    step = (len(points) - 1) / float(target - 1)
+    return [
+        [float(points[min(len(points) - 1, round(index * step))][0]),
+         float(points[min(len(points) - 1, round(index * step))][1])]
+        for index in range(target)
+    ]
+
+
+def _sample_pointcloud_xy(
+    message: PointCloud2,
+    *,
+    max_points: int,
+    max_abs_xy_m: float,
+    map_to_local_pose: Optional[tuple[float, float, float]] = None,
+) -> List[List[float]]:
+    """Read a bounded x/y subset without materializing the complete point cloud."""
+    fields = {field.name: field for field in message.fields}
+    if "x" not in fields or "y" not in fields or message.point_step <= 0:
+        return []
+    x_field = fields["x"]
+    y_field = fields["y"]
+    if x_field.datatype != 7 or y_field.datatype != 7:  # PointField.FLOAT32
+        return []
+
+    width = int(message.width)
+    height = max(1, int(message.height))
+    total = width * height
+    if width <= 0 or total <= 0:
+        return []
+    limit = max(1, int(max_points))
+    stride = max(1, math.ceil(total / limit))
+    endian = ">" if message.is_bigendian else "<"
+    data = memoryview(message.data)
+    samples: List[List[float]] = []
+    for flat_index in range(0, total, stride):
+        row = flat_index // width
+        column = flat_index % width
+        offset = row * int(message.row_step) + column * int(message.point_step)
+        try:
+            x = struct.unpack_from(f"{endian}f", data, offset + int(x_field.offset))[0]
+            y = struct.unpack_from(f"{endian}f", data, offset + int(y_field.offset))[0]
+        except (struct.error, ValueError):
+            continue
+        if not math.isfinite(x) or not math.isfinite(y):
+            continue
+        if map_to_local_pose is not None:
+            origin_x, origin_y, yaw_rad = map_to_local_pose
+            delta_x = x - origin_x
+            delta_y = y - origin_y
+            cos_yaw = math.cos(yaw_rad)
+            sin_yaw = math.sin(yaw_rad)
+            x = cos_yaw * delta_x + sin_yaw * delta_y
+            y = -sin_yaw * delta_x + cos_yaw * delta_y
+        if abs(x) > max_abs_xy_m or abs(y) > max_abs_xy_m:
+            continue
+        samples.append([round(float(x), 3), round(float(y), 3)])
+        if len(samples) >= limit:
+            break
+    return samples
+
+
+def _sample_occupancy_grid(
+    message: Any,
+    *,
+    max_cells: int,
+    minimum_cost: int = 1,
+) -> List[List[float]]:
+    """Extract a bounded set of occupied map cells with NumPy-backed indexing."""
+    width = int(message.info.width)
+    height = int(message.info.height)
+    resolution = float(message.info.resolution)
+    total = width * height
+    if width <= 0 or height <= 0 or resolution <= 0.0 or total <= 0:
+        return []
+
+    try:
+        import numpy as np
+
+        values = np.frombuffer(memoryview(message.data), dtype=np.int8, count=total)
+        occupied = np.flatnonzero(values >= int(minimum_cost))
+        if occupied.size == 0:
+            return []
+        limit = max(1, int(max_cells))
+        if occupied.size > limit:
+            selection = np.linspace(0, occupied.size - 1, limit, dtype=np.int64)
+            occupied = occupied[selection]
+        rows = occupied // width
+        columns = occupied % width
+        costs = values[occupied]
+    except (ImportError, TypeError, ValueError, BufferError):
+        values = list(message.data[:total])
+        occupied_list = [
+            index for index, value in enumerate(values)
+            if int(value) >= int(minimum_cost)
+        ]
+        if not occupied_list:
+            return []
+        limit = max(1, int(max_cells))
+        step = max(1, math.ceil(len(occupied_list) / limit))
+        occupied = occupied_list[::step][:limit]
+        rows = [index // width for index in occupied]
+        columns = [index % width for index in occupied]
+        costs = [values[index] for index in occupied]
+
+    origin = message.info.origin
+    yaw_deg = _quaternion_yaw_deg(origin.orientation)
+    yaw = math.radians(yaw_deg) if yaw_deg is not None else 0.0
+    cos_yaw = math.cos(yaw)
+    sin_yaw = math.sin(yaw)
+    origin_x = float(origin.position.x)
+    origin_y = float(origin.position.y)
+    samples: List[List[float]] = []
+    for row, column, cost in zip(rows, columns, costs):
+        local_x = (float(column) + 0.5) * resolution
+        local_y = (float(row) + 0.5) * resolution
+        x = origin_x + cos_yaw * local_x - sin_yaw * local_y
+        y = origin_y + sin_yaw * local_x + cos_yaw * local_y
+        samples.append([round(x, 3), round(y, 3), int(cost)])
+    return samples
+
+
+def _marker_array_geometry(
+    message: MarkerArray,
+    *,
+    max_points: int,
+) -> Dict[str, Any]:
+    """Flatten RViz marker geometry into bounded browser points and outlines."""
+    points: List[List[float]] = []
+    polylines: List[Dict[str, Any]] = []
+    frame_id = "map"
+    deleted_all = False
+    limit = max(1, int(max_points))
+
+    for marker in message.markers:
+        if marker.action == Marker.DELETEALL:
+            points = []
+            polylines = []
+            deleted_all = True
+            continue
+        if marker.action == Marker.DELETE:
+            continue
+        if marker.header.frame_id:
+            frame_id = marker.header.frame_id
+        yaw_deg = _quaternion_yaw_deg(marker.pose.orientation)
+        yaw = math.radians(yaw_deg) if yaw_deg is not None else 0.0
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        tx = float(marker.pose.position.x)
+        ty = float(marker.pose.position.y)
+
+        def transform(x: float, y: float) -> List[float]:
+            return [
+                round(tx + cos_yaw * x - sin_yaw * y, 3),
+                round(ty + sin_yaw * x + cos_yaw * y, 3),
+            ]
+
+        transformed = [
+            transform(float(point.x), float(point.y))
+            for point in marker.points
+            if math.isfinite(float(point.x)) and math.isfinite(float(point.y))
+        ]
+        if marker.type in {Marker.POINTS, Marker.SPHERE_LIST, Marker.CUBE_LIST}:
+            remaining = limit - len(points)
+            points.extend(transformed[:remaining])
+        elif marker.type == Marker.CUBE:
+            half_x = max(0.0, float(marker.scale.x)) * 0.5
+            half_y = max(0.0, float(marker.scale.y)) * 0.5
+            if half_x > 0.0 and half_y > 0.0:
+                outline = [
+                    transform(-half_x, -half_y),
+                    transform(half_x, -half_y),
+                    transform(half_x, half_y),
+                    transform(-half_x, half_y),
+                    transform(-half_x, -half_y),
+                ]
+                polylines.append({"kind": marker.ns, "points": outline})
+        elif marker.type == Marker.LINE_STRIP and len(transformed) >= 2:
+            polylines.append({
+                "kind": marker.ns,
+                "points": _decimate_xy(
+                    [(point[0], point[1]) for point in transformed],
+                    min(300, limit),
+                ),
+            })
+        elif marker.type == Marker.LINE_LIST:
+            for index in range(0, len(transformed) - 1, 2):
+                polylines.append({
+                    "kind": marker.ns,
+                    "points": [transformed[index], transformed[index + 1]],
+                })
+        if len(points) >= limit:
+            break
+
+    return {
+        "frame_id": frame_id,
+        "points": points,
+        "polylines": polylines[:limit],
+        "point_count": len(points),
+        "outline_count": len(polylines),
+        "cleared": deleted_all and not points and not polylines,
+    }
+
+
+def _encode_raw_image_jpeg(
+    message: RosImage,
+    *,
+    max_width: int,
+    quality: int,
+) -> Optional[bytes]:
+    """Encode common ROS raw image layouts only for the low-rate UI fallback."""
+    width = int(message.width)
+    height = int(message.height)
+    if width <= 0 or height <= 0 or int(message.step) <= 0:
+        return None
+    encoding = str(message.encoding).lower()
+    raw_modes = {
+        "rgb8": ("RGB", "RGB"),
+        "bgr8": ("RGB", "BGR"),
+        "rgba8": ("RGBA", "RGBA"),
+        "bgra8": ("RGBA", "BGRA"),
+        "mono8": ("L", "L"),
+    }
+    if encoding not in raw_modes:
+        return None
+    try:
+        from PIL import Image as PillowImage
+
+        mode, raw_mode = raw_modes[encoding]
+        image = PillowImage.frombuffer(
+            mode,
+            (width, height),
+            bytes(message.data),
+            "raw",
+            raw_mode,
+            int(message.step),
+            1,
+        )
+        if image.width > max_width:
+            resized_height = max(1, round(image.height * max_width / image.width))
+            image = image.resize((max_width, resized_height), PillowImage.Resampling.BILINEAR)
+        if image.mode not in {"RGB", "L"}:
+            image = image.convert("RGB")
+        output = io.BytesIO()
+        image.save(output, format="JPEG", quality=max(30, min(90, int(quality))))
+        return output.getvalue()
+    except (ImportError, OSError, ValueError):
+        return None
 
 
 @dataclass
@@ -345,6 +697,75 @@ class UiBackendNode(Node):
                 "/control/cmd_vel_safety_gate/status",
             ).value
         )
+        # HH_260810 - Operator telemetry remains dormant until the authenticated
+        # diagnostics modal sends a heartbeat. This avoids permanent camera and
+        # point-cloud subscribers on the production Jetson.
+        self.enable_operator_telemetry = bool(
+            self.declare_parameter("enable_operator_telemetry", True).value
+        )
+        self.telemetry_session_timeout_s = max(
+            5.0,
+            float(self.declare_parameter("telemetry_session_timeout_s", 12.0).value),
+        )
+        self.telemetry_max_path_points = max(
+            50,
+            int(self.declare_parameter("telemetry_max_path_points", 500).value),
+        )
+        self.telemetry_max_trace_points = max(
+            100,
+            int(self.declare_parameter("telemetry_max_trace_points", 800).value),
+        )
+        self.telemetry_max_lidar_points = max(
+            50,
+            int(self.declare_parameter("telemetry_max_lidar_points", 480).value),
+        )
+        self.telemetry_lidar_min_period_s = max(
+            0.2,
+            float(self.declare_parameter("telemetry_lidar_min_period_s", 0.5).value),
+        )
+        self.telemetry_lidar_max_abs_xy_m = max(
+            2.0,
+            float(self.declare_parameter("telemetry_lidar_max_abs_xy_m", 12.0).value),
+        )
+        self.telemetry_max_map_points = max(
+            500,
+            int(self.declare_parameter("telemetry_max_map_points", 6000).value),
+        )
+        self.telemetry_max_grid_cells = max(
+            100,
+            int(self.declare_parameter("telemetry_max_grid_cells", 800).value),
+        )
+        self.telemetry_grid_min_period_s = max(
+            0.5,
+            float(self.declare_parameter("telemetry_grid_min_period_s", 1.0).value),
+        )
+        self.telemetry_camera_min_period_s = max(
+            0.25,
+            float(self.declare_parameter("telemetry_camera_min_period_s", 0.5).value),
+        )
+        self.telemetry_camera_fallback_max_width = max(
+            320,
+            int(self.declare_parameter(
+                "telemetry_camera_fallback_max_width", 960
+            ).value),
+        )
+        self.telemetry_camera_fallback_jpeg_quality = min(
+            90,
+            max(30, int(self.declare_parameter(
+                "telemetry_camera_fallback_jpeg_quality", 72
+            ).value)),
+        )
+        self.telemetry_topics = {
+            key: str(self.declare_parameter(
+                f"telemetry_{key}_topic", default_topic
+            ).value)
+            for key, default_topic in TELEMETRY_TOPIC_DEFAULTS.items()
+        }
+        self.telemetry_radar_topic_prefix = str(
+            self.declare_parameter(
+                "telemetry_radar_topic_prefix", "/sensing/radar"
+            ).value
+        ).rstrip("/")
         self.navigate_to_pose_action = str(
             self.declare_parameter(
                 "navigate_to_pose_action", "/planning/navigate_to_pose"
@@ -394,6 +815,29 @@ class UiBackendNode(Node):
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
         )
+        self._telemetry = self._new_telemetry_snapshot()
+        self._telemetry_source_rx: Dict[str, float] = {}
+        self._telemetry_source_history: Dict[str, deque[float]] = defaultdict(
+            lambda: deque(maxlen=20)
+        )
+        self._telemetry_images: Dict[str, Dict[str, Any]] = {
+            "front": {"data": b"", "media_type": "image/jpeg", "sequence": 0},
+            "rear": {"data": b"", "media_type": "image/jpeg", "sequence": 0},
+        }
+        self._telemetry_map: Dict[str, Any] = {
+            "frame_id": "map",
+            "polylines": [],
+            "point_count": 0,
+        }
+        self._telemetry_session_deadline = 0.0
+        self._telemetry_requested_view = "all"
+        self._telemetry_active_view = ""
+        self._telemetry_capture_active = False
+        self._telemetry_subscriptions: List[Any] = []
+        self._telemetry_last_cloud_decode: Dict[str, float] = defaultdict(float)
+        self._telemetry_last_grid_decode: Dict[str, float] = defaultdict(float)
+        self._telemetry_last_camera_encode: Dict[str, float] = defaultdict(float)
+        self._telemetry_last_trace_sample = 0.0
         self._latest_arrival_pose: Optional[AvgPoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
@@ -578,6 +1022,9 @@ class UiBackendNode(Node):
         self._readiness_timer = self.create_timer(
             self.readiness_check_period_s, self._on_readiness_timer
         )
+        self._telemetry_session_timer = self.create_timer(
+            0.5, self._maintain_telemetry_session
+        )
         if self.enable_http_server:
             self._start_fastapi_server()
 
@@ -734,6 +1181,992 @@ class UiBackendNode(Node):
 
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    @staticmethod
+    def _new_telemetry_snapshot() -> Dict[str, Any]:
+        """Create the stable browser contract before any ROS sample arrives."""
+        return {
+            "schema_version": TELEMETRY_SCHEMA_VERSION,
+            "session_active": False,
+            "active_view": "",
+            "sources": {},
+            "gnss": {
+                "fix": {},
+                "navpvt": {},
+                "covariance": {},
+                "relative_heading": {},
+            },
+            "imu": {},
+            "radar": {"channels": {}},
+            "lidar": {
+                "frame_id": "",
+                "points": [],
+                "point_count": 0,
+                "streams": {"filtered": {}, "raw": {}, "obstacles": {}},
+            },
+            "cameras": {
+                "front": {"available": False, "sequence": 0},
+                "rear": {"available": False, "sequence": 0},
+            },
+            "localization": {"pose": {}, "status": {}, "trace": []},
+            "motion": {"velocity": {}, "tracking_error": {}},
+            "paths": {"global": {}, "local": {}, "maneuvers": {}},
+            "footprint": {
+                "frame_id": "",
+                "points": [],
+                "physical_points": [],
+                "planning_points": [],
+            },
+            "perception": {
+                "obstacle_cloud": {},
+                "obstacle_boxes": {},
+                "cost_layers": {
+                    "lanelet": {},
+                    "lidar": {},
+                    "radar": {},
+                    "inflation": {},
+                },
+            },
+            "safety": {
+                "gate": {},
+                "controllers": {},
+                "radar_evidence": "",
+                "obstacle_replan": "",
+            },
+            "mission": {},
+        }
+
+    def _touch_telemetry_locked(self, source: str, now: Optional[float] = None) -> None:
+        received = time.monotonic() if now is None else float(now)
+        self._telemetry_source_rx[source] = received
+        self._telemetry_source_history[source].append(received)
+
+    def _reset_telemetry_source_timing_locked(self) -> None:
+        """Start each leased view with a fresh receive-rate window."""
+        # HH_260810 - Do not count time spent unsubscribed as a sensor period;
+        # that made healthy 10 Hz streams appear near 0.1 Hz after reopening.
+        self._telemetry_source_rx.clear()
+        self._telemetry_source_history.clear()
+
+    @staticmethod
+    def _normalize_telemetry_view(view: str) -> str:
+        normalized = str(view or "all").strip().lower()
+        return normalized if normalized in TELEMETRY_VIEWS else "all"
+
+    def _request_telemetry_session(
+        self, active: bool, view: str = "all"
+    ) -> Dict[str, Any]:
+        """Refresh or close the bounded operator telemetry lease."""
+        now = time.monotonic()
+        requested_view = self._normalize_telemetry_view(view)
+        with self._lock:
+            if active and self.enable_operator_telemetry:
+                self._telemetry_session_deadline = now + self.telemetry_session_timeout_s
+                self._telemetry_requested_view = requested_view
+            elif (
+                requested_view == "all"
+                or requested_view == self._telemetry_requested_view
+            ):
+                # HH_260810 - Ignore a delayed release from the previous tab
+                # after a newer tab has already acquired the lease.
+                self._telemetry_session_deadline = 0.0
+            session_active = self._telemetry_capture_active
+            active_view = self._telemetry_active_view
+        return {
+            "enabled": self.enable_operator_telemetry,
+            "requested": bool(active),
+            "requested_view": requested_view,
+            "active_view": active_view,
+            "session_active": session_active,
+            "timeout_s": self.telemetry_session_timeout_s,
+        }
+
+    def _maintain_telemetry_session(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            should_be_active = (
+                self.enable_operator_telemetry
+                and self._telemetry_session_deadline > now
+            )
+            is_active = self._telemetry_capture_active
+            requested_view = self._telemetry_requested_view
+            active_view = self._telemetry_active_view
+        if should_be_active and is_active and requested_view != active_view:
+            self._stop_telemetry_subscriptions()
+            self._start_telemetry_subscriptions(requested_view)
+            return
+        if should_be_active == is_active:
+            return
+        if should_be_active:
+            self._start_telemetry_subscriptions(requested_view)
+        else:
+            self._stop_telemetry_subscriptions()
+
+    def _start_telemetry_subscriptions(self, view: str = "all") -> None:
+        if self._telemetry_subscriptions:
+            return
+        active_view = self._normalize_telemetry_view(view)
+        with self._lock:
+            self._telemetry_capture_active = True
+            self._telemetry_active_view = active_view
+            self._telemetry["session_active"] = True
+            self._telemetry["active_view"] = active_view
+            self._reset_telemetry_source_timing_locked()
+
+        sensor_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        transient_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+
+        subscriptions: List[Any] = []
+
+        def wants(*views: str) -> bool:
+            return active_view == "all" or active_view in views
+
+        if wants("gnss"):
+            subscriptions.extend([
+                self.create_subscription(
+                    NavSatFix, self.telemetry_topics["gnss_fix"],
+                    self._on_telemetry_gnss_fix, sensor_qos,
+                ),
+                self.create_subscription(
+                    NavPVT, self.telemetry_topics["gnss_navpvt"],
+                    self._on_telemetry_navpvt, sensor_qos,
+                ),
+                self.create_subscription(
+                    NavCOV, self.telemetry_topics["gnss_navcov"],
+                    self._on_telemetry_navcov, sensor_qos,
+                ),
+                self.create_subscription(
+                    NavRELPOSNED9, self.telemetry_topics["gnss_relpos"],
+                    self._on_telemetry_relpos, sensor_qos,
+                ),
+                self.create_subscription(
+                    Imu, self.telemetry_topics["imu"],
+                    self._on_telemetry_imu, sensor_qos,
+                ),
+                self.create_subscription(
+                    AvgLocalizationStatus,
+                    self.telemetry_topics["localization_status"],
+                    self._on_telemetry_localization_status, 10,
+                ),
+            ])
+
+        if wants("proximity"):
+            subscriptions.extend([
+                self.create_subscription(
+                    PointCloud2, self.telemetry_topics["lidar"],
+                    lambda message: self._on_telemetry_cloud("filtered", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    PointCloud2, self.telemetry_topics["lidar_raw"],
+                    lambda message: self._on_telemetry_cloud("raw", message),
+                    sensor_qos,
+                ),
+            ])
+            for channel in TELEMETRY_RADAR_CHANNELS:
+                topic = f"{self.telemetry_radar_topic_prefix}/{channel}/range_ros"
+                subscriptions.append(self.create_subscription(
+                    Range,
+                    topic,
+                    lambda message, name=channel: self._on_telemetry_radar(
+                        name, message
+                    ),
+                    sensor_qos,
+                ))
+
+        if wants("camera"):
+            subscriptions.extend([
+                self.create_subscription(
+                    CompressedImage, self.telemetry_topics["front_camera"],
+                    lambda message: self._on_telemetry_camera("front", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    CompressedImage, self.telemetry_topics["rear_camera"],
+                    lambda message: self._on_telemetry_camera("rear", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    RosImage, self.telemetry_topics["front_camera_raw"],
+                    lambda message: self._on_telemetry_raw_camera("front", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    RosImage, self.telemetry_topics["rear_camera_raw"],
+                    lambda message: self._on_telemetry_raw_camera("rear", message),
+                    sensor_qos,
+                ),
+            ])
+
+        if wants("trajectory", "perception"):
+            subscriptions.append(self.create_subscription(
+                MarkerArray, self.telemetry_topics["map_markers"],
+                self._on_telemetry_map, transient_qos,
+            ))
+
+        if wants("proximity", "perception"):
+            subscriptions.extend([
+                self.create_subscription(
+                    AvgPolygonStamped, self.telemetry_topics["planning_boundary"],
+                    self._on_telemetry_footprint, transient_qos,
+                ),
+                self.create_subscription(
+                    MarkerArray, self.telemetry_topics["robot_markers"],
+                    self._on_telemetry_robot_markers, transient_qos,
+                ),
+            ])
+
+        if wants("trajectory"):
+            subscriptions.extend([
+                self.create_subscription(
+                    AvgTrackingError, self.telemetry_topics["tracking_error"],
+                    self._on_telemetry_tracking_error, 10,
+                ),
+                self.create_subscription(
+                    NavPath, self.telemetry_topics["global_path"],
+                    lambda message: self._on_telemetry_path("global", message),
+                    transient_qos,
+                ),
+                self.create_subscription(
+                    NavPath, self.telemetry_topics["local_path"],
+                    lambda message: self._on_telemetry_path("local", message), 10,
+                ),
+            ])
+
+        if wants("perception"):
+            subscriptions.extend([
+                self.create_subscription(
+                    PointCloud2, self.telemetry_topics["obstacle_cloud"],
+                    lambda message: self._on_telemetry_cloud("obstacles", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    MarkerArray, self.telemetry_topics["obstacle_boxes"],
+                    self._on_telemetry_obstacle_boxes, sensor_qos,
+                ),
+            ])
+            for layer_name in ("lanelet", "lidar", "radar", "inflation"):
+                subscriptions.append(self.create_subscription(
+                    AvgOccupancyGrid,
+                    self.telemetry_topics[f"{layer_name}_cost_grid"],
+                    lambda message, name=layer_name: self._on_telemetry_cost_grid(
+                        name, message
+                    ),
+                    sensor_qos,
+                ))
+
+        if wants("safety"):
+            subscriptions.extend([
+                self.create_subscription(
+                    AvgString, self.telemetry_topics["radar_evidence"],
+                    lambda message: self._on_telemetry_text(
+                        "radar_evidence", message.data
+                    ), 10,
+                ),
+                self.create_subscription(
+                    AvgString, self.telemetry_topics["obstacle_replan"],
+                    lambda message: self._on_telemetry_text(
+                        "obstacle_replan", message.data
+                    ), 10,
+                ),
+            ])
+
+        maneuver_topics = {
+            "camping_site": "/control/camping_site_maneuver_controller/path_ros",
+            "drop_zone_exit": "/control/drop_zone_maneuver_controller/exit_path_ros",
+            "reverse_parking": "/parking/reverse_parking_controller/path_ros",
+        }
+        if wants("trajectory"):
+            for name, topic in maneuver_topics.items():
+                subscriptions.append(
+                    self.create_subscription(
+                        NavPath,
+                        topic,
+                        lambda message, path_name=name: self._on_telemetry_path(
+                            path_name, message
+                        ),
+                        10,
+                    )
+                )
+
+        controller_topics = {
+            "camping_site": "/control/camping_site_maneuver_controller/status",
+            "drop_zone": "/control/drop_zone_maneuver_controller/status",
+            "route_recovery": "/control/route_safety_recovery_controller/status",
+            "reverse_parking": "/parking/reverse_parking_controller/status",
+            "apriltag_parking": "/parking/apriltag_parking_controller/status",
+        }
+        if wants("safety"):
+            for name, topic in controller_topics.items():
+                subscriptions.append(
+                    self.create_subscription(
+                        ModuleState,
+                        topic,
+                        lambda message, controller=name: self._on_telemetry_controller(
+                            controller, message
+                        ),
+                        10,
+                    )
+                )
+
+        self._telemetry_subscriptions = subscriptions
+        self.get_logger().info(
+            f"operator telemetry session active: view={active_view} "
+            f"dynamic_subscriptions={len(subscriptions)}"
+        )
+
+    def _stop_telemetry_subscriptions(self) -> None:
+        subscriptions = self._telemetry_subscriptions
+        self._telemetry_subscriptions = []
+        for subscription in subscriptions:
+            try:
+                self.destroy_subscription(subscription)
+            except Exception as exc:  # noqa: BLE001
+                self.get_logger().debug(
+                    f"operator telemetry subscription cleanup ignored: {exc}"
+                )
+        with self._lock:
+            was_active = self._telemetry_capture_active
+            self._telemetry_capture_active = False
+            self._telemetry_active_view = ""
+            self._telemetry["session_active"] = False
+            self._telemetry["active_view"] = ""
+        if was_active:
+            self.get_logger().info(
+                "operator telemetry session idle: high-bandwidth subscriptions released"
+            )
+
+    @classmethod
+    def _prune_telemetry_snapshot(
+        cls, snapshot: Dict[str, Any], active_view: str
+    ) -> Dict[str, Any]:
+        """Keep each 2 Hz browser response scoped to the selected tab."""
+        view = cls._normalize_telemetry_view(active_view) if active_view else ""
+        if view == "all":
+            return snapshot
+
+        # HH_260810 - Cost grids, traces, and point clouds are bounded at their
+        # callbacks, then omitted entirely from unrelated tabs. This avoids
+        # repeatedly serializing stale high-volume data on an 8-core ARM host.
+        allowed_sections = {
+            "gnss": {"gnss", "imu", "localization"},
+            "proximity": {"radar", "lidar", "footprint"},
+            "camera": {"cameras"},
+            "trajectory": {"localization", "motion", "paths", "footprint"},
+            "perception": {"localization", "perception", "footprint"},
+            "safety": {"safety"},
+        }.get(view, set())
+        template = cls._new_telemetry_snapshot()
+        for section in (
+            "gnss", "imu", "radar", "lidar", "cameras", "localization",
+            "motion", "paths", "footprint", "perception", "safety",
+        ):
+            if section not in allowed_sections:
+                snapshot[section] = template[section]
+
+        # Only the trajectory tab draws history. GNSS and perception require
+        # the latest localization pose but not the accumulated trace array.
+        if "localization" in allowed_sections and view != "trajectory":
+            snapshot["localization"]["trace"] = []
+        return snapshot
+
+    def _snapshot_telemetry(self) -> Dict[str, Any]:
+        now = time.monotonic()
+        with self._lock:
+            snapshot = copy.deepcopy(self._telemetry)
+            sources: Dict[str, Dict[str, Any]] = {}
+            for source, received in self._telemetry_source_rx.items():
+                stamps = self._telemetry_source_history.get(source, ())
+                rate_hz = None
+                if len(stamps) >= 2 and stamps[-1] > stamps[0]:
+                    rate_hz = (len(stamps) - 1) / (stamps[-1] - stamps[0])
+                sources[source] = {
+                    "age_s": round(max(0.0, now - received), 3),
+                    "rate_hz": round(rate_hz, 2) if rate_hz is not None else None,
+                }
+            snapshot["sources"] = sources
+            snapshot["session_active"] = self._telemetry_capture_active
+            snapshot["active_view"] = self._telemetry_active_view
+            snapshot["mission"] = {
+                "phase": self._state.mission_phase,
+                "source": self._state.mission_source,
+                "service_state": self._state.service_state,
+                "service_state_name": self._state.service_state_name,
+                "service_state_description": self._state.service_state_description,
+                "engaged": self._state.engaged,
+                "ready": self._state.ready,
+                "system_health": self._state.system_health,
+            }
+        snapshot = self._prune_telemetry_snapshot(
+            snapshot, snapshot.get("active_view", "")
+        )
+        snapshot["generated_unix_s"] = round(time.time(), 3)
+        return snapshot
+
+    def _snapshot_telemetry_map(self) -> Dict[str, Any]:
+        with self._lock:
+            return copy.deepcopy(self._telemetry_map)
+
+    def _telemetry_camera_response(self, camera: str) -> Response:
+        with self._lock:
+            image = dict(self._telemetry_images.get(camera, {}))
+            received = self._telemetry_source_rx.get(f"camera.{camera}")
+        data = image.get("data", b"")
+        if not data:
+            return Response(status_code=204, headers={"Cache-Control": "no-store"})
+        age_s = max(0.0, time.monotonic() - received) if received is not None else -1.0
+        return Response(
+            content=data,
+            media_type=str(image.get("media_type", "image/jpeg")),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "X-Camrod-Frame-Age": f"{age_s:.3f}",
+                "X-Camrod-Frame-Sequence": str(image.get("sequence", 0)),
+            },
+        )
+
+    def _on_telemetry_gnss_fix(self, message: NavSatFix) -> None:
+        covariance = list(message.position_covariance)
+        east_std = math.sqrt(max(0.0, covariance[0])) if len(covariance) >= 1 else None
+        north_std = math.sqrt(max(0.0, covariance[4])) if len(covariance) >= 5 else None
+        up_std = math.sqrt(max(0.0, covariance[8])) if len(covariance) >= 9 else None
+        with self._lock:
+            self._telemetry["gnss"]["fix"] = {
+                "frame_id": message.header.frame_id,
+                "status": int(message.status.status),
+                "service": int(message.status.service),
+                "latitude": _finite_or_none(message.latitude),
+                "longitude": _finite_or_none(message.longitude),
+                "altitude_m": _finite_or_none(message.altitude),
+                "east_std_m": _finite_or_none(east_std),
+                "north_std_m": _finite_or_none(north_std),
+                "up_std_m": _finite_or_none(up_std),
+                "covariance_type": int(message.position_covariance_type),
+            }
+            self._touch_telemetry_locked("gnss.fix")
+
+    def _on_telemetry_navpvt(self, message: NavPVT) -> None:
+        carrier_bits = int(message.flags) & int(NavPVT.FLAGS_CARRIER_PHASE_MASK)
+        carrier = {
+            int(NavPVT.CARRIER_PHASE_NO_SOLUTION): "NONE",
+            int(NavPVT.CARRIER_PHASE_FLOAT): "FLOAT",
+            int(NavPVT.CARRIER_PHASE_FIXED): "FIXED",
+        }.get(carrier_bits, "UNKNOWN")
+        fix_name = {
+            int(NavPVT.FIX_TYPE_NO_FIX): "NO_FIX",
+            int(NavPVT.FIX_TYPE_DEAD_RECKONING_ONLY): "DR_ONLY",
+            int(NavPVT.FIX_TYPE_2D): "2D",
+            int(NavPVT.FIX_TYPE_3D): "3D",
+            int(NavPVT.FIX_TYPE_GNSS_DEAD_RECKONING_COMBINED): "GNSS_DR",
+            int(NavPVT.FIX_TYPE_TIME_ONLY): "TIME_ONLY",
+        }.get(int(message.fix_type), "UNKNOWN")
+        with self._lock:
+            self._telemetry["gnss"]["navpvt"] = {
+                "fix_type": int(message.fix_type),
+                "fix_name": fix_name,
+                "gnss_fix_ok": bool(int(message.flags) & int(NavPVT.FLAGS_GNSS_FIX_OK)),
+                "carrier_solution": carrier,
+                "satellites": int(message.num_sv),
+                "latitude": float(message.lat) * 1.0e-7,
+                "longitude": float(message.lon) * 1.0e-7,
+                "height_m": float(message.height) * 1.0e-3,
+                "horizontal_accuracy_m": float(message.h_acc) * 1.0e-3,
+                "vertical_accuracy_m": float(message.v_acc) * 1.0e-3,
+                "ground_speed_mps": float(message.g_speed) * 1.0e-3,
+                "motion_heading_deg": float(message.heading) * 1.0e-5,
+                "vehicle_heading_deg": float(message.head_veh) * 1.0e-5,
+                "heading_accuracy_deg": float(message.head_acc) * 1.0e-5,
+                "position_dop": float(message.p_dop) * 0.01,
+            }
+            self._touch_telemetry_locked("gnss.navpvt")
+
+    def _on_telemetry_navcov(self, message: NavCOV) -> None:
+        with self._lock:
+            self._telemetry["gnss"]["covariance"] = {
+                "position_valid": bool(message.pos_cov_valid),
+                "velocity_valid": bool(message.vel_cov_valid),
+                "north_std_m": math.sqrt(max(0.0, float(message.pos_cov_nn))),
+                "east_std_m": math.sqrt(max(0.0, float(message.pos_cov_ee))),
+                "down_std_m": math.sqrt(max(0.0, float(message.pos_cov_dd))),
+                "velocity_north_std_mps": math.sqrt(max(0.0, float(message.vel_cov_nn))),
+                "velocity_east_std_mps": math.sqrt(max(0.0, float(message.vel_cov_ee))),
+            }
+            self._touch_telemetry_locked("gnss.navcov")
+
+    def _on_telemetry_relpos(self, message: NavRELPOSNED9) -> None:
+        flags = int(message.flags)
+        carrier_bits = flags & int(NavRELPOSNED9.FLAGS_CARR_SOLN_MASK)
+        carrier = {
+            int(NavRELPOSNED9.FLAGS_CARR_SOLN_NONE): "NONE",
+            int(NavRELPOSNED9.FLAGS_CARR_SOLN_FLOAT): "FLOAT",
+            int(NavRELPOSNED9.FLAGS_CARR_SOLN_FIXED): "FIXED",
+        }.get(carrier_bits, "UNKNOWN")
+        with self._lock:
+            self._telemetry["gnss"]["relative_heading"] = {
+                "valid": bool(flags & int(NavRELPOSNED9.FLAGS_REL_POS_VALID)),
+                "heading_valid": bool(
+                    flags & int(NavRELPOSNED9.FLAGS_REL_POS_HEAD_VALID)
+                ),
+                "moving": bool(flags & int(NavRELPOSNED9.FLAGS_IS_MOVING)),
+                "carrier_solution": carrier,
+                "heading_deg": float(message.rel_pos_heading) * 1.0e-5,
+                "heading_accuracy_deg": float(message.acc_heading) * 1.0e-5,
+                "baseline_m": (
+                    float(message.rel_pos_length)
+                    + float(message.rel_pos_hp_length) * 0.01
+                ) * 0.01,
+            }
+            self._touch_telemetry_locked("gnss.relpos")
+
+    def _on_telemetry_imu(self, message: Imu) -> None:
+        with self._lock:
+            self._telemetry["imu"] = {
+                "frame_id": message.header.frame_id,
+                "yaw_deg": _quaternion_yaw_deg(message.orientation),
+                "angular_velocity_rps": {
+                    "x": _finite_or_none(message.angular_velocity.x),
+                    "y": _finite_or_none(message.angular_velocity.y),
+                    "z": _finite_or_none(message.angular_velocity.z),
+                },
+                "linear_acceleration_mps2": {
+                    "x": _finite_or_none(message.linear_acceleration.x),
+                    "y": _finite_or_none(message.linear_acceleration.y),
+                    "z": _finite_or_none(message.linear_acceleration.z),
+                },
+                "orientation_covariance": [
+                    _finite_or_none(value) for value in message.orientation_covariance
+                ],
+            }
+            self._touch_telemetry_locked("imu")
+
+    def _on_telemetry_localization_status(
+        self, message: AvgLocalizationStatus
+    ) -> None:
+        with self._lock:
+            self._telemetry["localization"]["status"] = {
+                "mode": int(message.mode.value),
+                "mode_label": message.mode.label,
+                "confidence": _finite_or_none(message.confidence),
+                "gnss_ok": bool(message.gnss_ok),
+                "imu_ok": bool(message.imu_ok),
+                "wheel_ok": bool(message.wheel_ok),
+                "gnss_innovation_norm": _finite_or_none(
+                    message.gnss_innovation_norm
+                ),
+                "wheel_innovation_norm": _finite_or_none(
+                    message.wheel_innovation_norm
+                ),
+            }
+            self._touch_telemetry_locked("localization.status")
+
+    def _on_telemetry_tracking_error(self, message: AvgTrackingError) -> None:
+        with self._lock:
+            self._telemetry["motion"]["tracking_error"] = {
+                "local_valid": bool(message.local_valid),
+                "local_lateral_m": _finite_or_none(message.local_lateral_deviation),
+                "local_heading_deg": _finite_or_none(
+                    math.degrees(float(message.local_heading_error))
+                ),
+                "local_distance_m": _finite_or_none(message.local_distance_to_path),
+                "global_valid": bool(message.global_valid),
+                "global_lateral_m": _finite_or_none(message.global_lateral_deviation),
+                "global_heading_deg": _finite_or_none(
+                    math.degrees(float(message.global_heading_error))
+                ),
+                "active_path_source": message.active_path_source,
+                "active_lateral_m": _finite_or_none(message.active_lateral_deviation),
+                "active_heading_deg": _finite_or_none(
+                    math.degrees(float(message.active_heading_error))
+                ),
+                "active_distance_m": _finite_or_none(message.active_distance_to_path),
+            }
+            self._touch_telemetry_locked("planning.tracking_error")
+
+    def _on_telemetry_radar(self, channel: str, message: Range) -> None:
+        measured = _finite_or_none(message.range)
+        no_target = (
+            math.isinf(float(message.range)) and float(message.range) > 0.0
+        ) or (
+            measured is not None
+            and math.isfinite(float(message.max_range))
+            and measured > float(message.max_range)
+        )
+        with self._lock:
+            self._telemetry["radar"]["channels"][channel] = {
+                "frame_id": message.header.frame_id,
+                "range_m": measured,
+                "no_target": no_target,
+                "min_range_m": _finite_or_none(message.min_range),
+                "max_range_m": _finite_or_none(message.max_range),
+                "field_of_view_rad": _finite_or_none(message.field_of_view),
+            }
+            self._touch_telemetry_locked(f"radar.{channel}")
+
+    def _on_telemetry_lidar(self, message: PointCloud2) -> None:
+        """Compatibility callback for callers using the original filtered name."""
+        self._on_telemetry_cloud("filtered", message)
+
+    def _on_telemetry_cloud(self, stream: str, message: PointCloud2) -> None:
+        now = time.monotonic()
+        if (
+            now - self._telemetry_last_cloud_decode[stream]
+            < self.telemetry_lidar_min_period_s
+        ):
+            return
+        self._telemetry_last_cloud_decode[stream] = now
+        map_to_local_pose = None
+        with self._lock:
+            current_pose = dict(self._telemetry["localization"]["pose"])
+        if stream != "obstacles" and message.header.frame_id == "map":
+            pose_x = _finite_or_none(current_pose.get("x"))
+            pose_y = _finite_or_none(current_pose.get("y"))
+            pose_yaw = _finite_or_none(current_pose.get("yaw_deg"))
+            if pose_x is not None and pose_y is not None and pose_yaw is not None:
+                map_to_local_pose = (pose_x, pose_y, math.radians(pose_yaw))
+        points = _sample_pointcloud_xy(
+            message,
+            max_points=self.telemetry_max_lidar_points,
+            max_abs_xy_m=self.telemetry_lidar_max_abs_xy_m,
+            map_to_local_pose=map_to_local_pose,
+        )
+        payload = {
+            "frame_id": (
+                "robot_center_link" if map_to_local_pose is not None
+                else message.header.frame_id
+            ),
+            "source_frame_id": message.header.frame_id,
+            "points": points,
+            "point_count": int(message.width) * max(1, int(message.height)),
+            "sample_count": len(points),
+        }
+        with self._lock:
+            self._telemetry["lidar"]["streams"][stream] = payload
+            if stream == "filtered":
+                self._telemetry["lidar"].update(payload)
+                self._touch_telemetry_locked("lidar", now)
+                self._touch_telemetry_locked("lidar.filtered", now)
+            elif stream == "raw":
+                self._touch_telemetry_locked("lidar.raw", now)
+            else:
+                self._telemetry["perception"]["obstacle_cloud"] = payload
+                self._touch_telemetry_locked("perception.obstacles", now)
+
+    def _on_telemetry_camera(
+        self, camera: str, message: CompressedImage
+    ) -> None:
+        format_name = str(message.format).lower()
+        media_type = "image/png" if "png" in format_name else "image/jpeg"
+        with self._lock:
+            current = self._telemetry_images[camera]
+            sequence = int(current.get("sequence", 0)) + 1
+            self._telemetry_images[camera] = {
+                "data": bytes(message.data),
+                "media_type": media_type,
+                "sequence": sequence,
+                "source": "compressed",
+                "received": time.monotonic(),
+            }
+            self._telemetry["cameras"][camera] = {
+                "available": bool(message.data),
+                "format": message.format,
+                "frame_id": message.header.frame_id,
+                "bytes": len(message.data),
+                "sequence": sequence,
+                "source": "compressed",
+                "endpoint": f"/api/camera/{camera}",
+            }
+            self._touch_telemetry_locked(f"camera.{camera}")
+
+    def _on_telemetry_raw_camera(self, camera: str, message: RosImage) -> None:
+        now = time.monotonic()
+        if (
+            now - self._telemetry_last_camera_encode[camera]
+            < self.telemetry_camera_min_period_s
+        ):
+            return
+        with self._lock:
+            current = dict(self._telemetry_images.get(camera, {}))
+        compressed_received = float(current.get("received", 0.0))
+        if current.get("source") == "compressed" and now - compressed_received < 1.5:
+            return
+        self._telemetry_last_camera_encode[camera] = now
+        encoded = _encode_raw_image_jpeg(
+            message,
+            max_width=self.telemetry_camera_fallback_max_width,
+            quality=self.telemetry_camera_fallback_jpeg_quality,
+        )
+        if not encoded:
+            with self._lock:
+                self._touch_telemetry_locked(f"camera.{camera}.raw_unsupported", now)
+            return
+        with self._lock:
+            current = self._telemetry_images[camera]
+            sequence = int(current.get("sequence", 0)) + 1
+            self._telemetry_images[camera] = {
+                "data": encoded,
+                "media_type": "image/jpeg",
+                "sequence": sequence,
+                "source": "raw_fallback",
+                "received": now,
+            }
+            self._telemetry["cameras"][camera] = {
+                "available": True,
+                "format": f"jpeg fallback from {message.encoding}",
+                "frame_id": message.header.frame_id,
+                "width": int(message.width),
+                "height": int(message.height),
+                "bytes": len(encoded),
+                "sequence": sequence,
+                "source": "raw_fallback",
+                "endpoint": f"/api/camera/{camera}",
+            }
+            self._touch_telemetry_locked(f"camera.{camera}", now)
+            self._touch_telemetry_locked(f"camera.{camera}.raw", now)
+
+    def _on_telemetry_obstacle_boxes(self, message: MarkerArray) -> None:
+        geometry = _marker_array_geometry(
+            message,
+            max_points=self.telemetry_max_grid_cells,
+        )
+        with self._lock:
+            self._telemetry["perception"]["obstacle_boxes"] = geometry
+            self._touch_telemetry_locked("perception.boxes")
+
+    def _on_telemetry_cost_grid(
+        self, layer: str, message: AvgOccupancyGrid
+    ) -> None:
+        now = time.monotonic()
+        if (
+            now - self._telemetry_last_grid_decode[layer]
+            < self.telemetry_grid_min_period_s
+        ):
+            return
+        self._telemetry_last_grid_decode[layer] = now
+        cells = _sample_occupancy_grid(
+            message,
+            max_cells=self.telemetry_max_grid_cells,
+        )
+        payload = {
+            "frame_id": message.header.frame_id,
+            "resolution_m": _finite_or_none(message.info.resolution),
+            "width": int(message.info.width),
+            "height": int(message.info.height),
+            "occupied_samples": cells,
+            "sample_count": len(cells),
+        }
+        with self._lock:
+            self._telemetry["perception"]["cost_layers"][layer] = payload
+            self._touch_telemetry_locked(f"cost.{layer}", now)
+
+    def _on_telemetry_path(self, name: str, message: NavPath) -> None:
+        raw_points = [
+            (float(pose.pose.position.x), float(pose.pose.position.y))
+            for pose in message.poses
+            if math.isfinite(float(pose.pose.position.x))
+            and math.isfinite(float(pose.pose.position.y))
+        ]
+        payload = {
+            "frame_id": message.header.frame_id,
+            "points": _decimate_xy(raw_points, self.telemetry_max_path_points),
+            "raw_point_count": len(raw_points),
+        }
+        with self._lock:
+            if name in {"global", "local"}:
+                self._telemetry["paths"][name] = payload
+            else:
+                self._telemetry["paths"]["maneuvers"][name] = payload
+            self._touch_telemetry_locked(f"path.{name}")
+
+    def _on_telemetry_footprint(self, message: AvgPolygonStamped) -> None:
+        points = [
+            [round(float(point.x), 4), round(float(point.y), 4)]
+            for point in message.polygon.points
+            if math.isfinite(float(point.x)) and math.isfinite(float(point.y))
+        ]
+        with self._lock:
+            footprint = self._telemetry["footprint"]
+            footprint["frame_id"] = message.header.frame_id
+            footprint["points"] = points
+            footprint["planning_points"] = points
+            self._touch_telemetry_locked("platform.planning_boundary")
+
+    def _on_telemetry_robot_markers(self, message: MarkerArray) -> None:
+        physical_points: List[List[float]] = []
+        planning_points: List[List[float]] = []
+        for marker in message.markers:
+            if marker.type != Marker.LINE_STRIP or "chassis" not in marker.ns:
+                continue
+            points = [
+                [round(float(point.x), 4), round(float(point.y), 4)]
+                for point in marker.points
+                if math.isfinite(float(point.x)) and math.isfinite(float(point.y))
+            ]
+            if len(points) < 3:
+                continue
+            if float(marker.color.r) > 0.8 and float(marker.color.g) > 0.65:
+                planning_points = points
+            elif float(marker.color.b) > 0.65:
+                physical_points = points
+        if not physical_points and not planning_points:
+            return
+        with self._lock:
+            footprint = self._telemetry["footprint"]
+            if physical_points:
+                footprint["physical_points"] = physical_points
+            if planning_points:
+                footprint["planning_points"] = planning_points
+            self._touch_telemetry_locked("platform.robot_markers")
+
+    def _on_telemetry_controller(
+        self, controller: str, message: ModuleState
+    ) -> None:
+        with self._lock:
+            self._telemetry["safety"]["controllers"][controller] = {
+                "level": int(message.level),
+                "operating_state": message.operating_state,
+                "message": message.message,
+            }
+            self._touch_telemetry_locked(f"controller.{controller}")
+
+    def _on_telemetry_text(self, key: str, value: str) -> None:
+        with self._lock:
+            self._telemetry["safety"][key] = str(value)
+            self._touch_telemetry_locked(f"safety.{key}")
+
+    def _on_telemetry_map(self, message: MarkerArray) -> None:
+        polylines: List[Dict[str, Any]] = []
+        point_count = 0
+        frame_id = "map"
+        for marker in message.markers:
+            if marker.action == Marker.DELETEALL:
+                polylines = []
+                point_count = 0
+                continue
+            if marker.action == Marker.DELETE or marker.type not in {
+                Marker.LINE_STRIP,
+                Marker.LINE_LIST,
+            }:
+                continue
+            if marker.header.frame_id:
+                frame_id = marker.header.frame_id
+            yaw = _quaternion_yaw_deg(marker.pose.orientation)
+            yaw_rad = math.radians(yaw) if yaw is not None else 0.0
+            cos_yaw = math.cos(yaw_rad)
+            sin_yaw = math.sin(yaw_rad)
+            tx = float(marker.pose.position.x)
+            ty = float(marker.pose.position.y)
+            transformed = [
+                (
+                    tx + cos_yaw * float(point.x) - sin_yaw * float(point.y),
+                    ty + sin_yaw * float(point.x) + cos_yaw * float(point.y),
+                )
+                for point in marker.points
+                if math.isfinite(float(point.x)) and math.isfinite(float(point.y))
+            ]
+            if marker.type == Marker.LINE_STRIP:
+                remaining = self.telemetry_max_map_points - point_count
+                if remaining < 2:
+                    break
+                line = _decimate_xy(transformed, min(remaining, 300))
+                if len(line) >= 2:
+                    polylines.append({"kind": marker.ns, "points": line})
+                    point_count += len(line)
+            else:
+                for index in range(0, len(transformed) - 1, 2):
+                    if point_count + 2 > self.telemetry_max_map_points:
+                        break
+                    first, second = transformed[index], transformed[index + 1]
+                    polylines.append({
+                        "kind": marker.ns,
+                        "points": [
+                            [float(first[0]), float(first[1])],
+                            [float(second[0]), float(second[1])],
+                        ],
+                    })
+                    point_count += 2
+            if point_count >= self.telemetry_max_map_points:
+                break
+        with self._lock:
+            self._telemetry_map = {
+                "frame_id": frame_id,
+                "polylines": polylines,
+                "point_count": point_count,
+            }
+            self._touch_telemetry_locked("map.markers")
+
+    def _record_telemetry_pose(self, message: AvgPoseStamped) -> None:
+        if not self._telemetry_capture_active:
+            return
+        now = time.monotonic()
+        x = float(message.pose.position.x)
+        y = float(message.pose.position.y)
+        if not math.isfinite(x) or not math.isfinite(y):
+            return
+        pose = {
+            "frame_id": message.header.frame_id,
+            "x": x,
+            "y": y,
+            "z": _finite_or_none(message.pose.position.z),
+            "yaw_deg": _quaternion_yaw_deg(message.pose.orientation),
+        }
+        with self._lock:
+            self._telemetry["localization"]["pose"] = pose
+            self._touch_telemetry_locked("localization.pose", now)
+            if now - self._telemetry_last_trace_sample >= 0.25:
+                trace = self._telemetry["localization"]["trace"]
+                trace.append([round(x, 3), round(y, 3)])
+                if len(trace) > self.telemetry_max_trace_points:
+                    del trace[:len(trace) - self.telemetry_max_trace_points]
+                self._telemetry_last_trace_sample = now
+
+    def _record_telemetry_platform(self, message: AvgPlatformStatus) -> None:
+        if not self._telemetry_capture_active:
+            return
+        vx = float(message.velocity.twist.linear.x)
+        vy = float(message.velocity.twist.linear.y)
+        speed_mps = math.hypot(vx, vy)
+        with self._lock:
+            self._telemetry["motion"]["velocity"] = {
+                "frame_id": message.velocity.header.frame_id,
+                "vx_mps": _finite_or_none(vx),
+                "vy_mps": _finite_or_none(vy),
+                "speed_mps": _finite_or_none(speed_mps),
+                "speed_kph": _finite_or_none(speed_mps * 3.6),
+                "yaw_rate_rps": _finite_or_none(message.velocity.twist.angular.z),
+                "motion_mode": int(message.motion_mode),
+                "control_mode": int(message.control_mode),
+                "vehicle_state": int(message.vehicle_state),
+                "estop": bool(message.estop),
+                "is_charging": bool(message.is_charging),
+                "battery_percentage": (
+                    _finite_or_none(float(message.battery_percentage) * 100.0)
+                    if message.battery_state_available else None
+                ),
+            }
+            self._touch_telemetry_locked("platform.velocity")
+
+    def _record_telemetry_gate(self, message: ModuleState) -> None:
+        if not self._telemetry_capture_active:
+            return
+        with self._lock:
+            self._telemetry["safety"]["gate"] = {
+                "level": int(message.level),
+                "operating_state": message.operating_state,
+                "message": message.message,
+                "missing_nodes": list(message.missing_nodes),
+                "missing_topics": list(message.missing_topics),
+            }
+            self._touch_telemetry_locked("control.safety_gate")
 
     @staticmethod
     def _point_in_polygon(x: float, y: float, polygon: List[tuple[float, float]]) -> bool:
@@ -1125,6 +2558,8 @@ class UiBackendNode(Node):
                 message=msg.message,
             )
         )
+        if getattr(self, "_telemetry_capture_active", False):
+            UiBackendNode._record_telemetry_gate(self, msg)
 
     def _on_diagnostics_agg(self, msg: DiagnosticArray) -> None:
         diagnostics: List[Dict[str, Any]] = []
@@ -1201,6 +2636,8 @@ class UiBackendNode(Node):
                 error_code=int(msg.error_code),
             )
         )
+        if getattr(self, "_telemetry_capture_active", False):
+            UiBackendNode._record_telemetry_platform(self, msg)
         charging = bool(msg.is_charging)
         charging_changed = charging != self._latest_platform_is_charging
         self._latest_platform_is_charging = charging
@@ -1249,6 +2686,8 @@ class UiBackendNode(Node):
     def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_arrival_pose = msg
         self._latest_arrival_pose_time_s = self._now_s()
+        if getattr(self, "_telemetry_capture_active", False):
+            UiBackendNode._record_telemetry_pose(self, msg)
 
     # HH_260721 - Release the pending Nav2 site goal only after vertical exit and yaw alignment.
     def _on_drop_zone_exit_complete(self, msg: AvgBool) -> None:
@@ -2396,10 +3835,36 @@ class UiBackendNode(Node):
                 diags = list(node._state.diagnostics)
             return JSONResponse({"status": diags})
 
+        # HH_260810 - The browser renews this lease only while the administrator
+        # telemetry modal is open. The ROS timer owns subscription creation and
+        # teardown so FastAPI never mutates the node graph from its server thread.
+        @app.post("/api/telemetry/session")
+        def post_telemetry_session(
+            active: bool = True, view: str = "all"
+        ) -> JSONResponse:
+            return JSONResponse(node._request_telemetry_session(active, view))
+
+        @app.get("/api/telemetry")
+        def get_telemetry() -> JSONResponse:
+            return JSONResponse(node._snapshot_telemetry())
+
+        @app.get("/api/telemetry/map")
+        def get_telemetry_map() -> JSONResponse:
+            return JSONResponse(node._snapshot_telemetry_map())
+
+        @app.get("/api/camera/front")
+        def get_front_camera() -> Response:
+            return node._telemetry_camera_response("front")
+
+        @app.get("/api/camera/rear")
+        def get_rear_camera() -> Response:
+            return node._telemetry_camera_response("rear")
+
         @app.get("/ui/platform_tuning")
         async def get_platform_tuning() -> JSONResponse:
             result = await node.get_platform_tuning()
-            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+            # HH_260810 - Driver absence is an expected read state in simulation, not an HTTP failure.
+            return JSONResponse(result, status_code=200)
 
         @app.post("/ui/platform_tuning")
         async def post_platform_tuning(

@@ -445,8 +445,9 @@ Run these in order and take a `snapshot` after any failure.
    - Re-enter the safe corridor and keep pose/grid fresh. Require 1.5 s
      continuous clear, then `ENABLED`. If Nav2 had reported `ABORTED`, require
      the same goal/source to be reissued after 0.5 s without site reselection.
-     Verify releases/reissues do not exceed the configured 12-release budget in
-     the 5-second recontact window, and no automatic restart follows operator cancel.
+     Verify releases/reissues do not exceed 50 in one contact region. Confirm
+     lateral/backward oscillation does not reset the count, signed forward
+     progress beyond 0.75 m does reset it, and operator cancel never restarts.
 
 6. Camping site mission
    - Select a camping site in UI.

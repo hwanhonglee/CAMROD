@@ -10,7 +10,14 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Polygon, Rectangle
+
+try:
+    from render_tapered_rounded_boundary import load_contract
+except ModuleNotFoundError:
+    from camrod_bringup.scripts.visualization.render_tapered_rounded_boundary import (
+        load_contract,
+    )
 
 
 RESULT_FILES = {
@@ -46,7 +53,7 @@ def add_result_row(axis, y, color, title, detail):
     )
 
 
-def render(results, output):
+def render(results, contract, output):
     route = results["route"]
     margin_stop = results["margin_stop"]
     margin_recovery = results["margin_recovery"]
@@ -77,7 +84,7 @@ def render(results, output):
     figure.text(
         0.055,
         0.93,
-        "Robot boundary policy: fresh simulation validation",
+        "Boundary policy record with current rounded contours",
         fontsize=25,
         fontweight="bold",
         color="#15262d",
@@ -85,7 +92,7 @@ def render(results, output):
     figure.text(
         0.055,
         0.885,
-        "Physical body contact is motionless; planning-margin contact permits only a projected, bounded escape.",
+        "Current contours are source-derived; policy rows retain the 2026-08-06 measured simulation values.",
         fontsize=13,
         color="#51646d",
     )
@@ -130,24 +137,24 @@ def render(results, output):
 
     geometry_axis.set_title("Two independent safety envelopes", loc="left", fontweight="bold")
     geometry_axis.set_aspect("equal")
-    planning = Rectangle(
-        (-0.73323, -0.58495),
-        1.49160,
-        1.17000,
+    planning = Polygon(
+        contract.planning,
+        closed=True,
         facecolor="#f4c864",
         edgecolor="#aa7000",
         linewidth=2.5,
         alpha=0.50,
+        joinstyle="round",
         label="planning boundary",
     )
-    body = Rectangle(
-        (-0.68323, -0.53495),
-        1.39160,
-        1.07000,
+    body = Polygon(
+        contract.physical,
+        closed=True,
         facecolor="#55bfd0",
         edgecolor="#137587",
         linewidth=2.5,
         alpha=0.72,
+        joinstyle="round",
         label="physical body",
     )
     geometry_axis.add_patch(planning)
@@ -163,7 +170,10 @@ def render(results, output):
     geometry_axis.text(
         -0.72,
         0.67,
-        "Planning: 1.49160 x 1.17000 m\n5 cm margin, recoverable only after projection",
+        (
+            "Planning: 1.59160 x 1.27000 m (30 points)\n"
+            "10 cm margin, recoverable only after projection"
+        ),
         color="#805400",
         fontsize=11,
         fontweight="bold",
@@ -171,7 +181,7 @@ def render(results, output):
     geometry_axis.text(
         -0.66,
         -0.76,
-        "Physical: 1.39160 x 1.07000 m\ncontact => hard stop, no recovery command",
+        "Physical: 1.39160 x 1.07000 m (30 points)\ncontact => hard stop, no recovery command",
         color="#0d6575",
         fontsize=11,
         fontweight="bold",
@@ -235,9 +245,9 @@ def render(results, output):
         0.055,
         0.035,
         (
-            f"AMD64 SIM ONLY | map v{map_info['map_version']} "
+            f"AMD64 SIM RECORD | map v{map_info['map_version']} "
             f"SHA {map_info['sha256'][:12]}...{map_info['sha256'][-4:]} | "
-            "FIELD PASS: FALSE - complete hardware-envelope survey remains required"
+            "CURRENT CONTOUR REPLAY; measured historical geometry remains in JSON | FIELD PASS: FALSE"
         ),
         fontsize=10.5,
         color="#6a3d3d",
@@ -252,8 +262,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[3],
+    )
     args = parser.parse_args()
-    render(load_results(args.input_dir), args.output)
+    render(load_results(args.input_dir), load_contract(args.repo_root.resolve()), args.output)
 
 
 if __name__ == "__main__":

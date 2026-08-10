@@ -12,6 +12,7 @@ artifacts.
 |---|---|---|
 | `render_module_readme_assets.py` | Package YAML, messages, committed reports | Package architecture and explicitly labelled measured/source-derived figures |
 | `render_tapered_rounded_*.py` | Current geometry, map-v17 ROS timeline | Current contour contract and measured ROS road replay |
+| `render_park_operating_points.py` | Current OSM, Park origin, semantic YAML | Hash-bound B1-B13, drop-zone, and parking-lot coordinate overview |
 | `render_*recovery*.py` | Map-bound recovery JSON | Contact, candidate, release, retry, and completion PNG/GIF |
 | `render_camping_site_sequence_results.py` | Site geometry and simulation records | Turnaround/roadside state-sequence PNG/GIF |
 | `render_v2_1_5_service_results.py`, `render_rpp_service_ab.py` | Service-run JSON/logs | Repeated-service and controller A/B reports |

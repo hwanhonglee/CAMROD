@@ -327,8 +327,11 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
 
     assert package_path.read_bytes() == bringup_path.read_bytes()
     parameters = _yaml(package_path)["/**"]["ros__parameters"]
-    assert parameters["route_safety_recovery_max_auto_releases"] == 12
+    assert parameters["route_safety_recovery_max_auto_releases"] == 50
     assert parameters["route_safety_recovery_recontact_window_s"] == pytest.approx(5.0)
+    assert parameters[
+        "route_safety_recovery_progress_reset_distance_m"
+    ] == pytest.approx(0.75)
 
 
 def test_high_resolution_lanelet_safety_grid_and_nav2_owner_contract() -> None:

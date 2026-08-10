@@ -6,19 +6,27 @@ older hash-bound recovery evidence from the active deployment geometry. -->
 off-lane campsite service-area motion. -->
 <!-- HH_260806 - Add a bounded high-resolution lanelet raster dedicated to the final command gate. -->
 <!-- HH_260807 - Record the synchronized user-authored map-v17 deployment pair. -->
+<!-- HH_260810 - Rebind runtime coordinates and map identity to the current
+user-authored map-v15 file without rewriting independent snapshot copies. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
 
-![Lanelet map and cost grids](../docs/assets/module-guides/map/lanelet-map-and-cost-grids.png)
+![Lanelet map and cost grids](../docs/assets/module-guides/map/guide/lanelet-map-and-cost-grids.png)
 
 ## Actual Simulation Runtime
 
-![Live lanelet map](../docs/assets/module-guides/map/runtime-lanelet-map-20260804.png)
+![Live lanelet map](../docs/assets/module-guides/map/evidence/runtime-capture-20260804/runtime-lanelet-map-20260804.png)
 
 `SIM RUNTIME CAPTURE`: the actual `/map/markers` lanelet geometry and live robot
 pose in RViz. The source-derived diagram below remains the numerical grid
 reference.
+
+![Current map and perception operator overlay](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png)
+
+`SIM BROWSER CAPTURE`: the browser receives bounded `/map/markers` geometry and
+runtime lanelet/radar/inflation layers through the leased telemetry API. It does
+not replace the surveyed-width acceptance required for the user-authored map.
 
 ## At A Glance
 
@@ -35,9 +43,9 @@ reference.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=17` (user-provided geometry revision) |
-| Active SHA-256 | `8cd05c66f846cae8718b5af148d123718f403a086f2e7d16165da89fb625e021` |
-| Loaded primitives | 55 lanelets, 14 areas, 1,652 nodes, 233 ways |
+| Active source revision | `map_version=15` (user-provided geometry revision) |
+| Active SHA-256 | `689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39` |
+| Loaded primitives | 55 lanelets, 14 areas, 1,592 nodes, 236 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -46,14 +54,27 @@ reference.
 
 The absolute map path is a Jetson deployment path. Workstation testing may
 override it, but must not rewrite the production path solely for local use.
-`lanelet2_maps_(copy_park_v1.0.5).osm` is byte-identical to the active file.
-This pair is synchronized for the current site; a different field requires a
-new survey and map revision.
+Named `lanelet2_maps_(copy_park_*.osm)` files are user-owned snapshots, not
+runtime mirrors. They are intentionally not overwritten or required to be
+byte-identical to the active file. A different field requires a new survey and
+an explicit runtime map revision.
 
 The SHA value is a file fingerprint, not a read-only lock and not a map edit.
 The regression test fails when geometry changes unexpectedly. After an
-intentional survey/edit, synchronize the two OSM files and update the expected
-revision, primitive counts, and SHA in the same reviewed change.
+intentional survey/edit, re-export runtime coordinates and update the expected
+revision, primitive counts, and SHA in the same reviewed change. Snapshot-copy
+maintenance remains a separate user decision.
+
+## Current Park Operating Coordinates
+
+![Current Park semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
+
+The [source-derived coordinate record](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
+loads the active OSM with the shared `LocalCartesianProjector`. It exports one
+drop zone at `(-14.2347, 39.7863)` and B1-B13 into package-owned runtime YAML,
+while preserving B1-B10 `turnaround` and B11-B13 `roadside_stop` as operating
+policy outside the OSM. Three `parking_lot` Areas are reported separately and
+are not substituted for the drop-zone command point.
 
 ## Cost Grids
 
@@ -75,15 +96,15 @@ revision, primitive counts, and SHA in the same reviewed change.
 
 ## Boundary Evidence
 
-![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
+![Robot-center narrow-route risk](../docs/assets/module-guides/planning/test-results/pre-owner-boundary-feasibility-20260803/robot-center-narrow-route-risk-map.png)
 
-![Map-v14 measured boundary recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+![Map-v14 measured boundary recovery](../docs/assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-contact-sheet.png)
 
-![Historical reduced-boundary validation](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary validation](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Historical map-v16 campsite validation](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Historical map-v16 campsite validation](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
-![Current map-v17 B2 recovery](../docs/assets/test_result/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
+![Historical map-v17 B2 recovery](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 
 The historical map-v14 B6 run contacted the mapped boundary at approximately
 `(4.3688, 45.0583)`. Campsite Areas remain semantic service geometry outside
@@ -96,7 +117,7 @@ It is retained as v14 evidence and is not presented as a map-v15 rerun.
 The v2.1.4 map-v15 recovery media are likewise bound to release SHA
 `e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
 They demonstrate the staged controller on that release map, not a run on the
-current map-v17 SHA shown above.
+historical map-v17 SHA `8cd05c...5e021`, not the active map-v15 SHA above.
 
 On the prior map-v15 SHA `d7b730...213f`, a controlled route traveled `10.0403 m` with no
 route hold. A `+0.19 m` placement touched only the planning margin and admitted
@@ -104,8 +125,9 @@ bounded `CRAB_RIGHT`; a `+0.27 m` physical-body placement retained a no-motion
 hold. The map raster and threshold did not change for this test. Only the
 reduced candidate polygons and control interpretation changed; this evidence
 is historical. Map-v16 B1-B10 site maneuvers (10/10) and B11-B13 arrival-only
-checks remain historical policy evidence. Fresh map-v17 B1/B2/B3 continuous
-service and B2 recovery 3/3 passed; B11-B13 return geometry remains field-pending.
+checks remain historical policy evidence. The map-v17 B1/B2/B3 continuous
+service and B2 recovery 3/3 also remain historical after the active map edit;
+the active map-v15 service cycle and B11-B13 return geometry require reruns.
 
 ## Nodes And Products
 

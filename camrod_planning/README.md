@@ -13,15 +13,21 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
 
-![Planning runtime](../docs/assets/module-guides/planning/nav2-servers-and-mission-states.png)
+![Planning runtime](../docs/assets/module-guides/planning/guide/nav2-servers-and-mission-states.png)
 
 ## Actual Simulation Runtime
 
-![Live B6 global and local paths](../docs/assets/module-guides/planning/runtime-b6-global-local-path-20260804.png)
+![Live B6 global and local paths](../docs/assets/module-guides/planning/evidence/runtime-capture-20260804/runtime-b6-global-local-path-20260804.png)
 
 `SIM RUNTIME CAPTURE`: historical 2026-08-04 B6 goal, LaneletRoute global path,
-local path, and robot pose. Historical map-v16 campsite sequencing and current
-map-v17 continuous-service evidence are shown separately below.
+local path, and robot pose. Historical map-v16 campsite sequencing and
+historical map-v17 continuous-service evidence are shown separately below;
+the active user-authored runtime map is map v15.
+
+![Current route trace and tracking telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-trajectory-20260810.png)
+
+`SIM BROWSER CAPTURE`: the operator UI reads global/local/maneuver paths,
+driven trace, selected pose, speed, and tracking error under a bounded lease.
 
 ## At A Glance
 
@@ -53,28 +59,36 @@ map-v17 continuous-service evidence are shown separately below.
 | Nav2 planning footprint | `1.59160 x 1.27000 m` extents; exact `0.10 m` contour offset, `R0.15 m` corners |
 | Obstacle fallback | Width gate, then `ComputePathToPose(SmacLattice)`; preempt only when a safe path exists |
 
+![Current Park semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
+
+<!-- HH_260810 - Use the current user-authored OSM export as the coordinate
+source for campsite goals while retaining planning-owned service modes. -->
+The [source-derived coordinate record](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
+binds B1-B13 and the drop zone to the current map SHA. It is a configuration
+contract; route clearance and physical approach remain field-pending.
+
 Normal missions construct only policy-reachable planner/controller instances.
 Definitions for every implementation remain in `nav2_base.yaml`; the
 development-only `nav2_{planner,controller}_profiles/all.yaml` files load every
 option when comparison work is needed.
 
-![Current Nav2 tapered rounded footprint](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+![Current Nav2 tapered rounded footprint](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
 
-![Planning footprint motion with robot center](../docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+![Planning footprint motion with robot center](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
 
 <!-- HH_260810 - Link the generated contour only after its six-decimal points
 match both local and global Nav2 footprints. -->
-This [source-derived record](../docs/assets/test_result/tapered-rounded-boundary-20260810/README.md)
+This [source-derived record](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/README.md)
 shows the exact 30-point local/global costmap polygon. The motion is a rigid
 transform explanation, not proof that a route or recovery candidate is clear.
 
-![Current contour on the measured map-v17 route](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+![Current contour on the historical map-v17 route](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
 
-![Measured planning-margin hold recovery and route resume](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+![Measured planning-margin hold recovery and route resume](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
 
-<!-- HH_260810 - Document one current-map Nav2 route with measured ROS poses,
-while leaving physical road clearance as field-pending. -->
-The [road-simulation record](../docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+<!-- HH_260810 - Preserve the measured map-v17 Nav2 route under its original
+map hash while the active user-authored map remains a separate contract. -->
+The [road-simulation record](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md)
 shows lanelets `2751 -> 2720 -> 2744 -> 2690`. A planning-only contact paused
 the route, bounded reverse-yaw created clearance, and the same retained route
 reached its goal without a second hold.
@@ -87,9 +101,19 @@ navigator, and lifecycle manager remain standalone because their Humble vendor
 binaries own private default-context executors. Transient-local Nav2 publishers
 use DDS rather than unsupported Humble intra-process transport.
 
+<!-- HH_260810 - Retain lifecycle fault isolation and contain only its
+shutdown-only Humble DSO/DDS race. -->
+Composing the lifecycle manager was rejected after its bond client failed to
+activate all managed nodes from the scoped context. The standalone executable
+now releases its node and completes ROS cleanup before process-exit containment;
+shutdown observes each managed node before selecting deactivate, cleanup, or
+finalize, and operator startup/reset/shutdown cancels an obsolete bond-respawn
+timer. Isolated lifecycle/bond and lint CTest passes `10/10` without the former
+invalid-transition timeout or next-run active-state race.
+
 The scoped path reached all managed nodes active, used `robot_center_link`,
-reached `[SYSTEM] OK`, and cleanly stopped the Nav2 plus five system containers
-in 3/3 final amd64 runs. `use_nav2_container:=false` remains the field-isolation
+reached `[SYSTEM] OK`, and cleanly stopped every component and standalone Nav2
+process in 3/3 controlled amd64 runs. `use_nav2_container:=false` remains the field-isolation
 fallback. Jetson still requires ten mission/cancel/restart cycles and resource
 measurement; amd64 lifecycle success is not a physical navigation claim.
 
@@ -163,12 +187,12 @@ in explicit `OPERATOR_STOPPED` state.
 
 | Check | Result |
 |---|---|
-| Current tapered/rounded map-v17 road run | 511 ROS poses in `29.700 s`; planning-only contact, `REVERSE_YAW_RIGHT`, hold release, same-route completion; field pending |
+| Historical tapered/rounded map-v17 road run | 511 ROS poses in `29.700 s`; planning-only contact, `REVERSE_YAW_RIGHT`, hold release, same-route completion; field pending |
 | Nav2 server/plugin topology | Source-derived and test-covered |
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
-| Active map-v17 source | Synchronized SHA `8cd05c...5e021`; 55 lanelets/14 areas/1652 nodes; LaneletRoute contracts pass |
+| Active user-authored map-v15 source | SHA `689c49...1b39`; 55 lanelets/14 areas/1592 points; LaneletRoute and exported operating-point contracts pass |
 | Persistent centered obstacle at mapped 3.00 m road | Immediate stop; one Smac no-path preflight; no selector/ABORT loop; original mission resumed `0.242 m` after clear |
 | Continuous service route ownership | B1/B2/B3 completed site, explicit RETURN, drop-zone, parking, charge, and next departure without bringup restart |
 | Reduced-boundary route evidence | Historical `1.29160 x 0.87000 m` run: `10.0403 m`, goal error `0.2932 m`, bounded margin recovery, physical hard stop |
@@ -185,44 +209,44 @@ The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
 for the compared route. It does not prove every lane width or physical vehicle
 behavior.
 
-![RPP curve-tracking comparison](../docs/assets/test_result/rpp-curve-tracking-20260806/rpp-curve-tracking-comparison.png)
+![RPP curve-tracking comparison](../docs/assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/rpp-curve-tracking-comparison.png)
 
-The [curve-tracking test record](../docs/assets/test_result/rpp-curve-tracking-20260806/README.md)
+The [curve-tracking test record](../docs/assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/README.md)
 shows why the former 2-degree RPP rotate mode appeared as right oversteer and
 stop-turn-forward motion. Gross initial yaw is now completed once by the gate;
 ordinary curves retain simultaneous linear and angular commands. A same-map
 `1.2 m` lookahead comparison was worse, so the selected floor remains `1.1 m`.
 
-![3 km/h RPP service A/B](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+![3 km/h RPP service A/B](../docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
 
-The [service A/B record](../docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md)
+The [service A/B record](../docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/README.md)
 tested the then-active `3.0 km/h` profile rather than only a controller unit path.
 The rejected velocity-scaled run recreated the same margin contact `0.850 s`
 after release. The fixed `1.1 m` source profile completed B1 and B2 through
 explicit RETURN, drop-zone parking, charging, and next departure. This is an
 AMD64 deterministic-simulation selection, not a physical-road claim.
 
-![B1-B10 planning and service endurance](../docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+![B1-B10 planning and service endurance](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
-The [ten-cycle report](../docs/assets/test_result/b1-b10-service-endurance-20260807/README.md)
+The [ten-cycle report](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md)
 records nine full charger-departure routes after the seeded B1 handoff, ten
 explicit RETURN paths, and zero post-start planning/path fault. The B5 obstacle
 case proves stop, clear, and same-mission resume. A successful detour is not
 claimed because the active map has no surveyed lane wide enough for it.
 
-![3 km/h command and pose smoke test](../docs/assets/test_result/three-kph-localization-20260806/three-kph-command-pose.png)
+![3 km/h command and pose smoke test](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/three-kph-command-pose.png)
 
-The [3 km/h test record](../docs/assets/test_result/three-kph-localization-20260806/README.md)
+The [3 km/h test record](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/README.md)
 lists every active linear-speed ratio. It is an AMD64 kinematic command/path
 check; physical 5 Hz moving-base GNSS and 20 Hz Jetson localization remain pending.
 
-![Historical reduced-boundary policy](../docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-boundary policy](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Current campsite sequencing policy](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite sequencing policy](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
-![Current campsite phase order](../docs/assets/test_result/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+![Current campsite phase order](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
 
-![Persistent-obstacle no-path result](../docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+![Persistent-obstacle no-path result](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
 The active map has no surveyed road lanelet wide enough to claim a successful
 centered-obstacle bypass with the current `1.27 m` planning footprint and inflation.
@@ -237,7 +261,7 @@ body first: body contact cannot be reclassified as a recoverable planning-margin
 contact. The former rectangular front-corner regions are no longer occupied,
 while the configured front, rear, left, and right extrema remain unchanged.
 
-![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
+![Robot-center narrow-route risk](../docs/assets/module-guides/planning/test-results/pre-owner-boundary-feasibility-20260803/robot-center-narrow-route-risk-map.png)
 
 The highlighted samples are planning-footprint failures on the current map.
 Control recovery can release an individual contact, but it cannot make an

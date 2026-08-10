@@ -47,12 +47,50 @@ CAMROD 구현·검증 완료 기록
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
+0E. HH_260810 운영 telemetry·카메라 계약·Nav2 종료 안정화
+    [DONE-CODE, DONE-SIM, MEASURED-AMD64, FIELD-PENDING]
+- Robot UI 관리자 진단에 GNSS/IMU, 7채널 radar/LiDAR, front/rear camera,
+  route/trace, map/perception, safety/control의 6개 live view를 추가했다.
+  기존 상시 32 subscription 대신 view별 6/11/4/7/9/7개만 12초 lease 동안
+  만들고, 닫기/timeout에서 해제한다. point/path/map/trace/JSON 크기도 제한했다.
+- view를 다시 열 때 이전 idle 구간의 rate history를 지운다. live sim의
+  GNSS -> proximity -> GNSS 전환 후 1초 표본에서 GNSS/IMU `10.01 Hz`, selected
+  pose `20.02 Hz`였고 과거 `0.1 Hz` 표시를 재현하지 않았다.
+- 1600x1000 실제 browser capture 6종에서 document/workspace overflow와
+  text-control overflow가 모두 0이었다. camera pipeline을 끈 sim은 정확한
+  front/rear topic과 10 Hz target을 유지하면서 `NO FRAME`으로 표시했다.
+- i5-12400F AMD64에서 backend-only 2 Hz API polling을 측정했다. idle은
+  CPU `7.58%`, PSS `79.32 MiB`; 가장 큰 perception view는 CPU `14.45%`,
+  PSS `80.00 MiB`, JSON `36.14 KiB`였다. 이는 ARM64 8-core/16 GB 합격값이
+  아니며 Jetson 30분 view-cycle/frame-pacing 시험을 TODO P1-F/G에 남겼다.
+- front/rear package config와 bringup mirror는 byte-identical 10 Hz 계약이다.
+  rear monitoring JPEG만 2 Hz로 분리한다. 마지막 물리 실측 front `9.167 Hz`
+  PASS와 rear raw `3.633 Hz` FAIL은 그대로 유지한다.
+- Nav2 lifecycle manager를 scoped container에 넣는 시도는 default-context
+  bond가 planner activation을 20초에 실패해 폐기했다. standalone fault
+  domain을 유지하면서 node/ROS cleanup 뒤 Humble DSO/DDS static teardown만
+  건너뛰도록 종료 main을 보강했다. fresh full graph controlled stop 3/3이
+  `[SYSTEM] OK` 후 모든 process clean exit했고 `-11/-9/forced kill`은 0이었다.
+- reset 뒤 shutdown은 각 노드의 실제 active/inactive/unconfigured 상태에
+  필요한 전이만 발행하고, 수동 startup/reset/shutdown은 이전 broken-bond의
+  respawn timer를 취소한다. 격리 ROS domain에서 vendored lifecycle CTest
+  `10/10`이 통과해 기존 invalid-transition timeout과 다음 실행 active race를
+  재현하지 않았다.
+- 수정 후 no-goal full graph를 ROS domain 79에서 다시 실행했다. `[SYSTEM] OK`,
+  UI `ready=true`, `mission_phase=READY`, 진단 error 0 뒤 launch parent에만
+  SIGINT를 보냈고 44/44 process가 clean exit했다. 원본 로그와 구조화 결과는
+  `docs/assets/module-guides/runtime/test-results/nav2-lifecycle-shutdown-20260810/`
+  에 보존했다.
+- UI direct regression `48/48`, lifecycle/telemetry focused regression `17/17`,
+  affected package CTest `88/88` 및 xUnit 683건(error/failure 0, 정적분석
+  skip 24), React production build와 중앙 module asset renderer가 통과했다.
+
 0D. HH_260810 v2.1.7 경계·UI·증거 도구 정리 [DONE-CODE, DONE-SIM, FIELD-PENDING]
 - 하나의 sensor-kit 생성기가 전방 짧은 면, `0.12 m` 사선 shoulder와
   `R0.05 m` 모서리를 가진 30점 physical contour를 만들고, exact `0.10 m`
   offset planning contour를 platform marker/topic, control hard stop/fallback,
   Nav2 local/global footprint에 동일하게 공급하도록 동기화했다.
-- map-v17 B2 ROS simulation 511 pose/`29.700 s`에서 physical cost-100 접촉 0,
+- historical map-v17 B2 ROS simulation 511 pose/`29.700 s`에서 physical cost-100 접촉 0,
   planning 접촉 1, `REVERSE_YAW_RIGHT`, `0.0972 m` 이동, `-4.545 deg` yaw,
   재접촉 hold 0, 원 route 완료와 final zero를 구조화 JSON/PNG/GIF로 확인했다.
 - UI 초기화는 goal 유무가 아니라 sensor/localization/planning/control/platform
@@ -94,7 +132,7 @@ CAMROD 구현·검증 완료 기록
 - active OSM 두 파일은 map revision 16, SHA-256
   `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf`로
   byte 동기화했다. campsite 구조화 JSON/PNG/GIF와 재현 스크립트는
-  `docs/assets/test_result/camping-site-sequencing-20260806/`에 보존했다.
+  `docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/`에 보존했다.
 - canonical `colcon_build.sh`로 control, sensor-kit, planning, platform,
   localization, system, bringup 7개 패키지를 빌드했다. 총 49/49 CTest
   target과 361개 xUnit record가 error/failure 0으로 통과했고,
@@ -127,7 +165,7 @@ CAMROD 구현·검증 완료 기록
   fabrication-inclusive 값을 active hard-stop body로, 사방 `0.05 m`를 더한
   `1.49160 x 1.17000 m`를 planning boundary로 동기화했다.
 - 구조화 결과와 범위는
-  `docs/assets/test_result/gnss-lever-arm-20260806/`에 보존했다.
+  `docs/assets/module-guides/localization/test-results/gnss-lever-arm-20260806/`에 보존했다.
 
 0A. v2.1.5 임시 경계와 body/margin 정책 [DONE-CODE, DONE-SIM, HISTORICAL]
 - HH_260806 - 기존 body `1.49160 x 1.07000 m`에서 앞/뒤/좌/우를 각각
@@ -152,7 +190,7 @@ CAMROD 구현·검증 완료 기록
   통과했다. xUnit 통합 레코드는 334건, error/failure 0, 알려진 cppcheck
   2.7 비활성 skip 8건이며 sensor-kit에는 등록된 test target이 없다.
 - 원본 JSON, 통합 JSON, old/new replay와 결과 PNG는
-  `docs/assets/test_result/robot-boundary-adjustment-20260806/`에 보존했다.
+  `docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/`에 보존했다.
   실제 휠·센서·브래킷·케이블·payload가 후보 경계 안에 있다는 의미는 아니며
   외곽 실측과 실차 반복 시험은 TODOLIST P0에 남겼다.
 
@@ -682,7 +720,7 @@ CAMROD 구현·검증 완료 기록
   변경 때 revision/count/SHA 계약을 함께 갱신한다.
 - six-package fresh xUnit 423건은 error/failure 0, 기존 slow-cppcheck skip
   12건이었고 direct bringup pytest 134/134가 통과했다. 측정 원본과 제한은
-  `docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json` 및
+  `docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json` 및
   `docs/V2_1_5_RELEASE_NOTES.md`에 보존했다.
 
 23. HH_260805: scoped component 종료 오류 및 DDS-SHM 전역 용량 오류 제거
@@ -715,7 +753,7 @@ CAMROD 구현·검증 완료 기록
   변경 6개 package가 빌드됐고 shutdown/launch/transport 계약 pytest 22건이
   통과했다. Jetson 자원과 mission/cancel/restart 10회는 TODOLIST 14에 남겼다.
 - 상세 재현, pre-fix Context reference 수, 실행별 판정은
-  `docs/evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json`에
+  `docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-scoped-container-shutdown-20260805.json`에
   보존했다.
 
 24. HH_260805: GNSS position 기준을 robot center 가정과 일치
@@ -770,7 +808,7 @@ CAMROD 구현·검증 완료 기록
   Jetson CPU, wheel scale, IMU bias 또는 moving localization을 합격시키지
   않는다. `TODOLIST.txt` P0 13에 `1/2/3 km/h` 단계 실차 절차를 남겼고
   구조화 JSON/PNG/bag hash는
-  `docs/assets/test_result/three-kph-localization-20260806/`에 보존했다.
+  `docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/`에 보존했다.
 - HH_260806 20 Hz 후속 검증에서 local-path/tracking heartbeat와 C++ fallback
   기본값도 20 Hz로 동기화했다. cadence/frame/GNSS 계약 73건과 README asset
   13건이 통과했고, 별도 ROS domain의 설치 runtime에서 EKF/local-path/
@@ -813,7 +851,7 @@ CAMROD 구현·검증 완료 기록
 - map v17 B2 동일 조건 3회 모두 `REVERSE_YAW_RIGHT`, mission complete,
   second hold 없음, rapid retry latch 없음이었다. 회복 변위는 0.0202/0.0742/
   0.0715 m, recovery max는 0.05 m/s였다. 구조화 결과와 PNG는
-  `docs/assets/test_result/v2-1-5-service-validation-20260807/`에 보존했다.
+  `docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/`에 보존했다.
 
 29. HH_260807: 3회 연속 왕복 서비스 및 charger departure
     [DONE-CODE, DONE-SIM, FIELD-PENDING]
@@ -828,7 +866,7 @@ CAMROD 구현·검증 완료 기록
   같은 destination의 중복 WebSocket command는 exit 대기 중 idempotent하게
   무시한다. UI 회귀 30건과 3회 service soak가 통과했다.
 - JSON/log/PNG/GIF와 재현 명령은
-  `docs/assets/test_result/v2-1-5-service-validation-20260807/`에 보존했다.
+  `docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/`에 보존했다.
 - 후속 검증에서 validation runner와 `ranger_platform_bridge`가 동시에
   `/platform/status`를 발행해 `CHARGING`/`DROP_ZONE_WAIT`가 교차하는 simulation
   ownership 오류를 재현했다. runner의 normalized publisher를 제거하고 fake
@@ -886,7 +924,7 @@ CAMROD 구현·검증 완료 기록
   status/log와 output에 동일하게 사용한다.
 - package/bringup nav2 YAML 및 planning-path checker YAML을 byte-identical하게
   동기화하고 회귀 계약을 추가했다. JSON, source log와 PNG는
-  `docs/assets/test_result/rpp-lookahead-service-ab-20260807/`에 보존했다.
+  `docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/`에 보존했다.
 - 이 판정은 AMD64 deterministic simulation이다. Jetson 3 km/h localization,
   실측 도로 폭, physical margin/body 접촉과 성공 wide-lane 우회는 TODO에 남는다.
 
@@ -915,7 +953,7 @@ CAMROD 구현·검증 완료 기록
   UI backend도 Humble shutdown race를 context-down일 때만 정상 종료로 처리하며
   full-graph SIGINT에서 두 process 모두 clean exit했다.
 - raw JSON, filtered logs, scope/geometry JSON, SHA manifest와 재생성 가능한 PNG/GIF는
-  `docs/assets/test_result/b1-b10-service-endurance-20260807/`에 보존했다. 이 결과는
+  `docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/`에 보존했다. 이 결과는
   AMD64 deterministic simulation이며 실차 CAN/도로/충전/우회 합격은 TODO에 남는다.
 - canonical wrapper로 변경된 control/planning/system/ui/bringup 5개 package를
   재빌드했다. scoped test는 CTest target 37/37과 package report 303건

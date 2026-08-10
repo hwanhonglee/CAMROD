@@ -15,10 +15,22 @@ warnings.filterwarnings("ignore", message="Unable to import Axes3D.*")
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle  # noqa: E402
+from matplotlib.patches import (  # noqa: E402
+    FancyArrowPatch,
+    FancyBboxPatch,
+    Polygon,
+    Rectangle,
+)
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 import yaml  # noqa: E402
+
+try:  # Direct source/install execution keeps the renderer helper beside this file.
+    from render_tapered_rounded_boundary import make_boundaries
+except ModuleNotFoundError:  # Imported as a repository namespace module in tests.
+    from camrod_bringup.scripts.visualization.render_tapered_rounded_boundary import (
+        make_boundaries,
+    )
 
 
 BG = "#f4f7f8"
@@ -145,6 +157,36 @@ def load_json(path: Path) -> dict:
 def ros_params(path: Path, node_name: str) -> dict:
     """Return a ROS parameter mapping from a package config."""
     return load_yaml(path)[node_name]["ros__parameters"]
+
+
+def robot_boundary_points(robot: dict) -> tuple[tuple, tuple]:
+    """Return the canonical rounded physical and planning top-view contours."""
+    extents = robot["body_extents"]
+    body = {
+        key: float(extents[key]) for key in ("front", "rear", "left", "right")
+    }
+    longitudinal = float(extents["planning_margin"])
+    lateral = float(extents.get("planning_lateral_margin", longitudinal))
+    margins = {
+        "front": longitudinal,
+        "rear": longitudinal,
+        "left": lateral,
+        "right": lateral,
+    }
+    _, physical, _, planning = make_boundaries(
+        body,
+        margins,
+        float(extents["front_taper"]),
+        float(extents["front_shoulder_depth"]),
+        float(extents["corner_radius"]),
+        int(extents["corner_samples"]),
+    )
+    return physical, planning
+
+
+def shifted_boundary(points: tuple, x_offset: float) -> tuple:
+    """Translate a center-frame contour for a historical reference-frame panel."""
+    return tuple((point[0] + x_offset, point[1]) for point in points)
 
 
 def setup_figure(title: str, subtitle: str, size=(16, 9), module: str | None = None):
@@ -428,8 +470,14 @@ def render_bringup_contract(repo_root: Path, output_root: Path):
         figure,
         "SOURCE-DERIVED CONTRACT. The adjacent simulation-evidence image is the runtime verdict; this diagram is not a PASS claim.",
     )
-    save_figure(figure, output_root / "bringup" / "full-stack-mission-contract.png")
-    render_lifecycle_gif(lifecycle, descriptions, output_root / "bringup" / "mission-lifecycle-contract.gif")
+    save_figure(
+        figure, output_root / "bringup" / "guide" / "full-stack-mission-contract.png"
+    )
+    render_lifecycle_gif(
+        lifecycle,
+        descriptions,
+        output_root / "bringup" / "guide" / "mission-lifecycle-contract.gif",
+    )
 
 
 def render_lifecycle_gif(states: list[str], descriptions: dict, output: Path):
@@ -613,7 +661,14 @@ def render_bringup_evidence(repo_root: Path, report_path: Path, output_root: Pat
         figure,
         f"RUNTIME EVIDENCE: {evidence_label} | Failure is retained as a release-blocking result, not hidden.",
     )
-    save_figure(figure, output_root / "bringup" / "simulation-evidence-20260804.png")
+    save_figure(
+        figure,
+        output_root
+        / "bringup"
+        / "test-results"
+        / "campsite-smoke-20260804"
+        / "simulation-evidence-20260804.png",
+    )
 
 
 def render_field_stationary_report(report_path: Path, output_root: Path):
@@ -748,7 +803,11 @@ def render_field_stationary_report(report_path: Path, output_root: Path):
     footer(figure, "FIELD REPORT / RAW LOG EXTERNAL. Re-run and commit raw evidence before release-grade physical performance claims.")
     save_figure(
         figure,
-        output_root / "bringup" / "field-stationary-report-20260731.png",
+        output_root
+        / "bringup"
+        / "test-results"
+        / "field-stationary-20260731"
+        / "field-stationary-report-20260731.png",
     )
 
 
@@ -852,7 +911,10 @@ def render_localization(repo_root: Path, report_path: Path, output_root: Path):
         figure,
         "MEASURED SIM EVIDENCE: output cadence doubled from 10 Hz inputs to 20 Hz selected pose. Stationary noiseless sim does not prove field accuracy or jitter reduction.",
     )
-    save_figure(figure, output_root / "localization" / "pose-generation-and-timing.png")
+    save_figure(
+        figure,
+        output_root / "localization" / "guide" / "pose-generation-and-timing.png",
+    )
 
 
 def render_planning(repo_root: Path, output_root: Path):
@@ -1021,7 +1083,10 @@ def render_planning(repo_root: Path, output_root: Path):
         "SOURCE-DERIVED: Nav2 base + production planner/controller profiles, "
         "bringup defaults, and planning/UI state contracts.",
     )
-    save_figure(figure, output_root / "planning" / "nav2-servers-and-mission-states.png")
+    save_figure(
+        figure,
+        output_root / "planning" / "guide" / "nav2-servers-and-mission-states.png",
+    )
 
 
 def render_perception(repo_root: Path, output_root: Path):
@@ -1124,7 +1189,13 @@ def render_perception(repo_root: Path, output_root: Path):
         body_size=7.8,
     )
     footer(figure, "SOURCE-DERIVED + FIELD PENDING. No synthetic detection boxes are presented as real YOLO output.")
-    save_figure(figure, output_root / "perception" / "yolo-lidar-and-parking-pipelines.png")
+    save_figure(
+        figure,
+        output_root
+        / "perception"
+        / "guide"
+        / "yolo-lidar-and-parking-pipelines.png",
+    )
 
 
 # HH_260804 - Compare the former rear-axle origin with the current axle-midpoint
@@ -1169,27 +1240,30 @@ def draw_reference_vehicle(axis, robot: dict, rear_axle_origin: bool) -> None:
     front_axle = wheelbase if rear_axle_origin else offset
     reference_x = rear_axle if rear_axle_origin else midpoint
     longitudinal_margin = extents["planning_margin"]
-    lateral_margin = extents.get("planning_lateral_margin", longitudinal_margin)
 
+    physical, planning = robot_boundary_points(robot)
+    if rear_axle_origin:
+        physical = shifted_boundary(physical, offset)
+        planning = shifted_boundary(planning, offset)
     axis.add_patch(
-        Rectangle(
-            (body_rear - longitudinal_margin, -extents["right"] - lateral_margin),
-            body_front - body_rear + 2 * longitudinal_margin,
-            extents["left"] + extents["right"] + 2 * lateral_margin,
+        Polygon(
+            planning,
+            closed=True,
             fill=False,
             edgecolor=RED,
             linewidth=1.3,
             linestyle="--",
+            joinstyle="round",
         )
     )
     axis.add_patch(
-        Rectangle(
-            (body_rear, -extents["right"]),
-            body_front - body_rear,
-            extents["left"] + extents["right"],
+        Polygon(
+            physical,
+            closed=True,
             facecolor=GRAY_BG,
             edgecolor=INK,
             linewidth=1.5,
+            joinstyle="round",
         )
     )
 
@@ -1300,9 +1374,11 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
     evidence = load_json(
         repo_root
         / "docs"
+        / "assets"
+        / "module-guides"
+        / "sensor-kit"
         / "evidence"
-        / "v2.1.3"
-        / "reference-frame"
+        / "v2.1.3-reference-frame"
         / "rear-axle-vs-robot-center-summary.json"
     )
     robot = params["robot"]
@@ -1423,23 +1499,23 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
     )
     save_figure(
         figure,
-        output_root / "sensor-kit" / "reference-frame-before-after.png",
+        output_root / "sensor-kit" / "guide" / "reference-frame-before-after.png",
     )
 
     mounts = sensor_kit_mounts(params)
     render_sensor_mount_side_view(
         params,
         mounts,
-        output_root / "sensor-kit" / "sensor-mount-side-view.png",
+        output_root / "sensor-kit" / "guide" / "sensor-mount-side-view.png",
     )
     render_sensor_x_before_after(
         offset,
         mounts,
-        output_root / "sensor-kit" / "sensor-x-before-after.png",
+        output_root / "sensor-kit" / "guide" / "sensor-x-before-after.png",
     )
     render_gnss_lever_arm(
         params,
-        output_root / "sensor-kit" / "gnss-left-antenna-lever-arm.png",
+        output_root / "sensor-kit" / "guide" / "gnss-left-antenna-lever-arm.png",
     )
 
 
@@ -1721,7 +1797,6 @@ def render_sensor_mount_side_view(
 def render_gnss_lever_arm(params: dict, output: Path) -> None:
     """Render the measured left antenna and yaw-aware center conversion."""
     robot = params["robot"]
-    extents = robot["body_extents"]
     gnss = params["gnss"]
     figure, _ = setup_figure(
         "GNSS left-antenna lever arm",
@@ -1731,25 +1806,23 @@ def render_gnss_lever_arm(params: dict, output: Path) -> None:
     )
 
     plot = figure.add_axes((0.055, 0.12, 0.54, 0.70), facecolor=WHITE)
-    planning = Rectangle(
-        (
-            -extents["rear"] - extents["planning_margin"],
-            -extents["right"] - extents["planning_lateral_margin"],
-        ),
-        extents["front"] + extents["rear"] + 2.0 * extents["planning_margin"],
-        extents["left"] + extents["right"] + 2.0 * extents["planning_lateral_margin"],
+    physical_points, planning_points = robot_boundary_points(robot)
+    planning = Polygon(
+        planning_points,
+        closed=True,
         facecolor=AMBER_BG,
         edgecolor=AMBER,
         linewidth=2.0,
+        joinstyle="round",
         label="planning boundary",
     )
-    body = Rectangle(
-        (-extents["rear"], -extents["right"]),
-        extents["front"] + extents["rear"],
-        extents["left"] + extents["right"],
+    body = Polygon(
+        physical_points,
+        closed=True,
         facecolor=BLUE_BG,
         edgecolor=BLUE,
         linewidth=2.2,
+        joinstyle="round",
         label="active body",
     )
     plot.add_patch(planning)
@@ -1948,8 +2021,14 @@ def render_sensing(repo_root: Path, output_root: Path):
         body_size=7.5,
     )
     footer(figure, "SOURCE-DERIVED. Front/YOLO, rear/AprilTag, and LiDAR processing have bounded containers; the LiDAR rasterizer is default OFF. Hardware quality still requires field logs.")
-    save_figure(figure, output_root / "sensing" / "sensor-processing-and-cost-fusion.png")
-    render_ground_segmentation_schematic(lidar, output_root / "sensing" / "ground-segmentation-schematic.png")
+    save_figure(
+        figure,
+        output_root / "sensing" / "guide" / "sensor-processing-and-cost-fusion.png",
+    )
+    render_ground_segmentation_schematic(
+        lidar,
+        output_root / "sensing" / "guide" / "ground-segmentation-schematic.png",
+    )
 
 
 def render_ground_segmentation_schematic(params: dict, output: Path):
@@ -2161,7 +2240,10 @@ def render_common(repo_root: Path, output_root: Path):
         figure,
         "SOURCE INVENTORY: camrod_common/avg_msgs/msg, srv, package.xml, and dependent package manifests.",
     )
-    save_figure(figure, output_root / "common" / "interface-contract-and-dependencies.png")
+    save_figure(
+        figure,
+        output_root / "common" / "guide" / "interface-contract-and-dependencies.png",
+    )
 
 
 def render_control(repo_root: Path, output_root: Path):
@@ -2176,11 +2258,11 @@ def render_control(repo_root: Path, output_root: Path):
     )
     crab = load_json(
         repo_root
-        / "docs/evidence/v2.1.3/boundary-recovery/automatic-owner-one-sided-crab.json"
+        / "docs/assets/module-guides/control/evidence/v2.1.3-boundary-recovery/automatic-owner-one-sided-crab.json"
     )
     retry = load_json(
         repo_root
-        / "docs/evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json"
+        / "docs/assets/module-guides/control/evidence/v2.1.3-boundary-recovery/automatic-owner-route-retry.json"
     )
 
     figure, axis = setup_figure(
@@ -2301,7 +2383,10 @@ def render_control(repo_root: Path, output_root: Path):
         figure,
         "CURRENT CONFIG + MEASURED SIM. Map-v15 staged yaw/crab runtime evidence is published separately; real-robot acceptance remains pending.",
     )
-    save_figure(figure, output_root / "control" / "command-safety-and-recovery.png")
+    save_figure(
+        figure,
+        output_root / "control" / "guide" / "command-safety-and-recovery.png",
+    )
 
 
 def render_map(repo_root: Path, output_root: Path):
@@ -2423,7 +2508,9 @@ def render_map(repo_root: Path, output_root: Path):
         title_color=AMBER,
     )
     footer(figure, "SOURCE-DERIVED + KNOWN SIM LIMIT. Grid dimensions are configuration, not build-time performance.")
-    save_figure(figure, output_root / "map" / "lanelet-map-and-cost-grids.png")
+    save_figure(
+        figure, output_root / "map" / "guide" / "lanelet-map-and-cost-grids.png"
+    )
 
 
 def render_platform(repo_root: Path, output_root: Path):
@@ -2511,7 +2598,10 @@ def render_platform(repo_root: Path, output_root: Path):
         body_size=7.8,
     )
     footer(figure, "SOURCE-DERIVED; PHYSICAL RANGER PERFORMANCE PENDING. Simulation verifies interfaces, not CAN or actuator timing.")
-    save_figure(figure, output_root / "platform" / "ranger-command-and-status.png")
+    save_figure(
+        figure,
+        output_root / "platform" / "guide" / "ranger-command-and-status.png",
+    )
 
 
 # HH_260810 - Make the process-lifetime package visible using its source-owned
@@ -2533,7 +2623,7 @@ def render_runtime(repo_root: Path, output_root: Path):
 
     evidence_path = (
         repo_root
-        / "docs/evidence/v2.1.5/runtime-topology/"
+        / "docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/"
         "amd64-scoped-container-shutdown-20260805.json"
     )
     evidence = load_json(evidence_path)
@@ -2628,10 +2718,18 @@ def render_runtime(repo_root: Path, output_root: Path):
     )
     footer(
         figure,
-        "SOURCE + MEASURED AMD64 SIM: docs/evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json",
+        "SOURCE + MEASURED AMD64 SIM: runtime/evidence/amd64-runtime-topology-20260805",
     )
-    save_figure(figure, output_root / "runtime" / "scoped-component-lifecycle.png")
-    render_runtime_lifecycle_gif(stages, clean_runs, len(final_runs), output_root / "runtime" / "scoped-component-lifecycle.gif")
+    save_figure(
+        figure,
+        output_root / "runtime" / "guide" / "scoped-component-lifecycle.png",
+    )
+    render_runtime_lifecycle_gif(
+        stages,
+        clean_runs,
+        len(final_runs),
+        output_root / "runtime" / "guide" / "scoped-component-lifecycle.gif",
+    )
 
 
 def render_runtime_lifecycle_gif(stages, clean_runs: int, run_count: int, output: Path):
@@ -2704,21 +2802,21 @@ def package_evidence_records(repo_root: Path):
     """Build package-level claims from current source and committed evidence."""
     road = load_json(
         repo_root
-        / "docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/"
+        / "docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/"
         "road-sim-summary.json"
     )
     localization = load_json(
         repo_root
-        / "docs/evidence/module-guides/localization/pose-chain-sim-20260804.json"
+        / "docs/assets/module-guides/localization/evidence/pose-chain-20260804/pose-chain-sim-20260804.json"
     )
     runtime = load_json(
         repo_root
-        / "docs/evidence/v2.1.5/runtime-topology/"
+        / "docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/"
         "amd64-scoped-container-shutdown-20260805.json"
     )
     service = load_json(
         repo_root
-        / "docs/assets/test_result/v2-1-5-service-validation-20260807/"
+        / "docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/"
         "repeated-service-soak.json"
     )
     selected_pose = next(
@@ -2896,8 +2994,14 @@ def render_package_evidence_matrix(repo_root: Path, output_root: Path):
         figure,
         "CURRENT SOURCE + COMMITTED SIM EVIDENCE. Package-level observation is not physical-site acceptance; map width remains user-owned follow-up.",
     )
-    save_figure(figure, output_root / "bringup" / "package-technology-evidence.png")
-    render_package_evidence_gif(records, output_root / "bringup" / "package-technology-evidence.gif")
+    save_figure(
+        figure,
+        output_root / "bringup" / "guide" / "package-technology-evidence.png",
+    )
+    render_package_evidence_gif(
+        records,
+        output_root / "bringup" / "guide" / "package-technology-evidence.gif",
+    )
 
 
 def render_package_evidence_gif(records, output: Path):
@@ -3035,12 +3139,18 @@ def render_system(repo_root: Path, output_root: Path):
         edge="#72848d",
     )
     footer(figure, "SOURCE-DERIVED. The four-node core and four checker containers are default ON; standalone fallbacks remain available. Thresholds are policy, not measured Jetson utilization.")
-    save_figure(figure, output_root / "system" / "diagnostic-severity-and-surfaces.png")
+    save_figure(
+        figure,
+        output_root / "system" / "guide" / "diagnostic-severity-and-surfaces.png",
+    )
 
 
 def render_ui(repo_root: Path, output_root: Path):
     """Render Robot/Guest UI parity and the committed lifecycle probe."""
-    evidence = load_json(repo_root / "docs/evidence/v2.1.3/ui/guest-mission-lifecycle.json")
+    evidence = load_json(
+        repo_root
+        / "docs/assets/module-guides/ui/evidence/v2.1.3-guest-mission/guest-mission-lifecycle.json"
+    )
     service_states = parse_message_constants(
         repo_root / "camrod_common/avg_msgs/msg/AvgServiceState.msg"
     )
@@ -3097,7 +3207,121 @@ def render_ui(repo_root: Path, output_root: Path):
         title_color=AMBER,
     )
     footer(figure, "MEASURED UI/ROS INTEGRATION EVIDENCE + SOURCE POLICY. This is not a physical mission PASS.")
-    save_figure(figure, output_root / "ui" / "robot-and-guest-mission-state.png")
+    save_figure(
+        figure, output_root / "ui" / "guide" / "robot-and-guest-mission-state.png"
+    )
+
+    # HH_260810 - Keep workstation resource evidence reproducible while making
+    # its AMD64-only scope impossible to confuse with ARM64 acceptance.
+    profile_root = (
+        repo_root
+        / "docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810"
+    )
+    profile = load_json(profile_root / "resource-profile.json")
+    views = [item for item in profile["views"] if item["view"] != "idle_end"]
+    labels = [item["view"] for item in views]
+    y_positions = np.arange(len(views))[::-1]
+    theme = module_theme("ui")
+    figure, canvas = setup_figure(
+        "Operator telemetry resource profile",
+        "AMD64 development comparison; tab leases bound ROS fan-in and response payloads",
+        module="ui",
+    )
+    panels = (
+        (0.055, "Dynamic ROS subscriptions", "count", "dynamic_subscriptions", theme["primary"]),
+        (0.365, "UI backend CPU", "% of one logical CPU", "cpu_mean_pct", theme["secondary"]),
+        (0.675, "Telemetry API payload", "KiB at 2 Hz polling", "payload_mean_kib", theme["accent"]),
+    )
+    for left, title, xlabel, key, color in panels:
+        plot = figure.add_axes((left, 0.17, 0.27, 0.62), facecolor=theme["surface"])
+        values = [float(item[key]) for item in views]
+        plot.barh(y_positions, values, height=0.58, color=color, alpha=0.88)
+        plot.set_yticks(y_positions)
+        plot.set_yticklabels(labels if left == panels[0][0] else [])
+        plot.set_title(title, color=theme["ink"], fontsize=11, fontweight="bold", pad=10)
+        plot.set_xlabel(xlabel, color=theme["muted"], fontsize=8.5)
+        plot.grid(axis="x", color="#d7dfdb", linewidth=0.7, alpha=0.9)
+        plot.set_axisbelow(True)
+        plot.tick_params(axis="both", colors=theme["muted"], labelsize=8.5)
+        for spine in plot.spines.values():
+            spine.set_color("#ccd6d0")
+        upper = max(values) * 1.18 if max(values) else 1.0
+        if key == "dynamic_subscriptions":
+            baseline = float(profile["previous_dynamic_subscription_count"])
+            upper = max(upper, baseline * 1.06)
+            plot.axvline(baseline, color=RED, linestyle="--", linewidth=1.4)
+            plot.text(
+                baseline,
+                y_positions[0] + 0.48,
+                f"previous always-on {baseline:.0f}",
+                color=RED,
+                fontsize=7.5,
+                ha="right",
+            )
+        plot.set_xlim(0, upper)
+        for y, value in zip(y_positions, values):
+            suffix = "%" if key == "cpu_mean_pct" else ""
+            plot.text(
+                value + upper * 0.012,
+                y,
+                f"{value:.1f}{suffix}",
+                va="center",
+                color=theme["ink"],
+                fontsize=8,
+                fontweight="bold",
+            )
+    pss_values = [float(item["pss_mean_mib"]) for item in views]
+    canvas.text(
+        0.055,
+        0.105,
+        (
+            f"PSS mean range {min(pss_values):.1f}-{max(pss_values):.1f} MiB  |  "
+            f"1280 px tab checks {profile['browser_validation']['views_checked']}  |  "
+            f"overflow {profile['browser_validation']['horizontal_overflow_count']}  |  "
+            f"HTTP/console errors {profile['browser_validation']['http_or_console_error_count']}"
+        ),
+        color=theme["ink"],
+        fontsize=9.5,
+        fontweight="bold",
+    )
+    footer(
+        figure,
+        "MEASURED ON AMD64. Camera publishers were OFF. Repeat a 30-minute live-camera soak on the 8-core/16-GiB ARM64 target before acceptance.",
+    )
+    save_figure(
+        figure,
+        output_root
+        / "ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png",
+    )
+
+    capture_root = repo_root / "docs/assets/module-guides/ui/evidence/ui-captures"
+    capture_names = (
+        "operator-telemetry-gnss-20260810.png",
+        "operator-telemetry-proximity-20260810.png",
+        "operator-telemetry-camera-20260810.png",
+        "operator-telemetry-trajectory-20260810.png",
+        "operator-telemetry-perception-20260810.png",
+        "operator-telemetry-safety-20260810.png",
+    )
+    frames = [
+        Image.open(capture_root / name).convert("RGB").resize(
+            (1280, 800), Image.Resampling.LANCZOS
+        )
+        for name in capture_names
+    ]
+    animation_path = (
+        output_root
+        / "ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif"
+    )
+    animation_path.parent.mkdir(parents=True, exist_ok=True)
+    frames[0].save(
+        animation_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=1400,
+        loop=0,
+        optimize=True,
+    )
 
 
 def render_voice(repo_root: Path, output_root: Path):
@@ -3166,7 +3390,9 @@ def render_voice(repo_root: Path, output_root: Path):
         title_color=AMBER,
     )
     footer(figure, "SOURCE-DERIVED POLICY; PHYSICAL AUDIO PERFORMANCE PENDING.")
-    save_figure(figure, output_root / "voice" / "voice-events-and-priority.png")
+    save_figure(
+        figure, output_root / "voice" / "guide" / "voice-events-and-priority.png"
+    )
 
 
 def main():
@@ -3205,16 +3431,18 @@ def main():
     output_root = (args.output_root or repo_root / "docs" / "assets" / "module-guides").resolve()
     localization_report = (
         args.localization_report
-        or repo_root / "docs" / "evidence" / "module-guides" / "localization" / "pose-chain-sim-20260804.json"
+        or repo_root
+        / "docs/assets/module-guides/localization/evidence/pose-chain-20260804/pose-chain-sim-20260804.json"
     ).resolve()
     bringup_report = (
         args.bringup_report
-        or repo_root / "docs" / "evidence" / "module-guides" / "bringup" / "campsite-smoke-20260804.json"
+        or repo_root
+        / "docs/assets/module-guides/bringup/evidence/campsite-smoke-20260804/campsite-smoke-20260804.json"
     ).resolve()
     field_report = (
         args.field_report
         or repo_root
-        / "docs/evidence/module-guides/bringup/field-stationary-20260731.json"
+        / "docs/assets/module-guides/bringup/evidence/field-stationary-20260731/field-stationary-20260731.json"
     ).resolve()
 
     selected_modules = set(

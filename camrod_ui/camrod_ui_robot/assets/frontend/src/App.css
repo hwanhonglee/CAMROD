@@ -2099,7 +2099,8 @@ h1 {
 /* ── 진단 모니터 (DiagnosticsMonitor) ───────────────────────────────────── */
 .diag-monitor {
   display: flex;
-  height: 100%;
+  flex: 1;
+  height: auto;
   min-height: 0;
   font-family: 'Consolas', 'Menlo', 'Noto Sans KR', monospace;
   font-size: 1.15rem;
@@ -2292,6 +2293,1057 @@ h1 {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+/* HH_260810 - One operator workspace replaces separate Tk and RViz windows. */
+.diag-tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 3.2rem;
+  padding: 0 0.7rem;
+  overflow-x: auto;
+  background: #171a18;
+  border-bottom: 1px solid #343a36;
+  flex-shrink: 0;
+}
+
+.diag-tab-button {
+  min-width: max-content;
+  padding: 0.65rem 1.15rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #b7bdb9;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.diag-tab-button:hover {
+  color: #fff;
+  background: #232824;
+}
+
+.diag-tab-button.active {
+  color: #fff;
+  border-bottom-color: #5fc17a;
+  background: #242a26;
+}
+
+.telemetry-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #e8ece9;
+  color: #202522;
+  font-family: 'Noto Sans KR', Arial, sans-serif;
+}
+
+.telemetry-session-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.15rem;
+  padding: 0.35rem 1rem;
+  background: #f7f8f7;
+  border-bottom: 1px solid #cfd5d1;
+  color: #59615c;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.telemetry-session-strip strong {
+  color: #303732;
+}
+
+.telemetry-session-strip em {
+  margin-left: auto;
+  color: #b33b35;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.telemetry-session-light {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #c7973f;
+}
+
+.telemetry-session-light.active {
+  background: #42aa62;
+  box-shadow: 0 0 0 3px rgba(66, 170, 98, 0.15);
+}
+
+.telemetry-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem;
+  overflow: auto;
+}
+
+.telemetry-source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 2rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.telemetry-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: max-content;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #cfd5d1;
+  border-radius: 4px;
+  background: #f8f9f8;
+  color: #656d68;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.67rem;
+  letter-spacing: 0;
+}
+
+.telemetry-source strong {
+  color: #303632;
+  font-size: 0.72rem;
+}
+
+.telemetry-source-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #959d98;
+}
+
+.telemetry-source-live {
+  border-color: #9dcbaa;
+  background: #eef8f1;
+  color: #317046;
+}
+
+.telemetry-source-live .telemetry-source-dot {
+  background: #42aa62;
+}
+
+.telemetry-source-stale {
+  border-color: #dbbd7f;
+  background: #fff8e9;
+  color: #8a6421;
+}
+
+.telemetry-source-stale .telemetry-source-dot {
+  background: #d09a34;
+}
+
+.telemetry-two-column,
+.telemetry-proximity-layout,
+.telemetry-trajectory-layout,
+.telemetry-perception-layout,
+.telemetry-safety-layout,
+.camera-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.7rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.telemetry-two-column-heading {
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+}
+
+.telemetry-section {
+  min-width: 0;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  border: 1px solid #cbd2cd;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.telemetry-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 2rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 2px solid #3a704c;
+}
+
+.telemetry-section-header h3 {
+  margin: 0;
+  color: #203e2a;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.telemetry-section-header span {
+  color: #68726c;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.telemetry-metric-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.telemetry-metric-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.telemetry-metric-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.telemetry-metric-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.telemetry-metric {
+  display: flex;
+  min-height: 3.6rem;
+  padding: 0.45rem 0.55rem;
+  flex-direction: column;
+  justify-content: space-between;
+  border-left: 3px solid #8d9991;
+  background: #f2f4f2;
+}
+
+.telemetry-metric-ok {
+  border-left-color: #42a65f;
+  background: #eff8f1;
+}
+
+.telemetry-metric-warn {
+  border-left-color: #cf9530;
+  background: #fff7e8;
+}
+
+.telemetry-metric-label {
+  color: #707872;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.telemetry-metric-value {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #202521;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.telemetry-metric-value small {
+  margin-left: 0.25rem;
+  color: #778079;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.telemetry-subsection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem;
+  margin-top: 0.7rem;
+  border-top: 1px solid #d7ddd9;
+  color: #5f6862;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.telemetry-inline-values {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.telemetry-inline-values b {
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  background: #ecefec;
+  color: #303632;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.7rem;
+}
+
+.telemetry-heading-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading-plot {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(100px, 0.5fr);
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.heading-plot svg {
+  width: 100%;
+  max-height: 310px;
+}
+
+.heading-plot text {
+  fill: #778079;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 10px;
+}
+
+.heading-ring,
+.heading-ring-inner {
+  fill: #f7f8f7;
+  stroke: #aeb7b1;
+  stroke-width: 1.5;
+}
+
+.heading-ring-inner {
+  fill: none;
+  stroke-dasharray: 4 5;
+}
+
+.heading-axis {
+  stroke: #d0d6d2;
+  stroke-width: 1;
+}
+
+.heading-ray {
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.heading-center {
+  fill: #333a35;
+}
+
+.heading-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.heading-legend div {
+  display: grid;
+  grid-template-columns: 0.6rem 1fr;
+  gap: 0.12rem 0.4rem;
+  align-items: center;
+}
+
+.heading-legend span {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  grid-row: 1 / span 2;
+}
+
+.heading-legend strong,
+.heading-legend em {
+  font-size: 0.72rem;
+  letter-spacing: 0;
+}
+
+.heading-legend em {
+  color: #59615c;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-style: normal;
+}
+
+.telemetry-health-flags {
+  display: flex;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+}
+
+.telemetry-health-flags span {
+  flex: 1;
+  padding: 0.35rem;
+  border: 1px solid #d8b975;
+  border-radius: 3px;
+  background: #fff7e5;
+  color: #8a641f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.telemetry-health-flags span.ok {
+  border-color: #9cc8a8;
+  background: #eef8f1;
+  color: #317046;
+}
+
+.telemetry-proximity-layout {
+  grid-template-columns: minmax(500px, 1.25fr) minmax(400px, 0.75fr);
+}
+
+.telemetry-plot-section,
+.telemetry-route-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.proximity-plot,
+.trajectory-plot {
+  width: 100%;
+  min-height: 340px;
+  flex: 1;
+  border: 1px solid #343a36;
+  border-radius: 3px;
+  background: #171a18;
+}
+
+.sensor-grid-line,
+.route-grid-line {
+  fill: none;
+  stroke: #2a2f2b;
+  stroke-width: 1;
+}
+
+.sensor-range-ring {
+  fill: none;
+  stroke: #3d4540;
+  stroke-width: 1;
+  stroke-dasharray: 5 6;
+}
+
+.lidar-point {
+  fill: #62cfe2;
+  opacity: 0.76;
+}
+
+.lidar-raw-point {
+  fill: #a9b2ad;
+  opacity: 0.38;
+}
+
+.radar-arc {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.radar-mount {
+  stroke: #171a18;
+  stroke-width: 2;
+}
+
+.radar-arc-hit {
+  stroke: #ef665f;
+  fill: #ef665f;
+}
+
+.radar-arc-clear {
+  stroke: #62bf76;
+  fill: #62bf76;
+}
+
+.radar-arc-stale {
+  stroke: #d39d40;
+  fill: #d39d40;
+  stroke-dasharray: 5 5;
+}
+
+.physical-footprint {
+  fill: rgba(71, 143, 190, 0.2);
+  stroke: #55a9db;
+  stroke-width: 4;
+}
+
+.planning-footprint {
+  fill: rgba(237, 186, 57, 0.06);
+  stroke: #edba39;
+  stroke-width: 3;
+  stroke-dasharray: 8 5;
+}
+
+.robot-forward-axis {
+  stroke: #70d17d;
+  stroke-width: 5;
+  marker-end: none;
+}
+
+.robot-center-point {
+  fill: #f3f5f3;
+  stroke: #70d17d;
+  stroke-width: 3;
+}
+
+.sensor-plot-label {
+  fill: #d9dfda;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 12px;
+}
+
+.telemetry-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding-top: 0.45rem;
+  color: #5c655f;
+  font-size: 0.68rem;
+}
+
+.telemetry-legend-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.telemetry-legend-row i {
+  width: 1rem;
+  height: 0.22rem;
+  background: #777;
+}
+
+.legend-lidar { background: #62cfe2 !important; }
+.legend-lidar-raw { background: #a9b2ad !important; }
+.legend-radar-hit { background: #ef665f !important; }
+.legend-body { background: #55a9db !important; }
+.legend-margin { background: #edba39 !important; }
+.legend-global { background: #419ee8 !important; }
+.legend-local { background: #f09c3e !important; }
+.legend-maneuver { background: #db61b0 !important; }
+.legend-trace { background: #70d17d !important; }
+
+.telemetry-radar-table-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.telemetry-table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+
+.telemetry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.telemetry-table th,
+.telemetry-table td {
+  padding: 0.48rem 0.42rem;
+  border-bottom: 1px solid #dfe4e0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.telemetry-table th {
+  position: sticky;
+  top: 0;
+  background: #eef1ef;
+  color: #4c554f;
+  font-size: 0.68rem;
+}
+
+.telemetry-table td:nth-child(n+2) {
+  font-family: 'Consolas', 'Menlo', monospace;
+}
+
+.table-state {
+  padding: 0.2rem 0.35rem;
+  border-radius: 3px;
+  background: #ecefec;
+  color: #59615c;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.table-state-return { background: #fdeceb; color: #ad3d38; }
+.table-state-clear { background: #eaf7ee; color: #317247; }
+.table-state-stale { background: #fff3dc; color: #906621; }
+
+.camera-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.camera-feed {
+  display: flex;
+  flex-direction: column;
+}
+
+.camera-frame {
+  position: relative;
+  display: flex;
+  min-height: 340px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #303631;
+  border-radius: 3px;
+  background: #171a18;
+}
+
+.camera-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.camera-frame-stale::after {
+  content: 'STALE';
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 3px;
+  background: #d09a34;
+  color: #171a18;
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+
+.camera-empty {
+  display: flex;
+  max-width: 90%;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: #aeb5b0;
+  text-align: center;
+}
+
+.camera-empty strong {
+  color: #e0e4e1;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 1.4rem;
+}
+
+.camera-empty span {
+  overflow-wrap: anywhere;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.7rem;
+}
+
+.camera-metadata {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+}
+
+.camera-metadata span {
+  padding: 0.3rem;
+  background: #f0f2f0;
+  color: #69716c;
+  font-size: 0.65rem;
+}
+
+.camera-metadata b {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #2e3530;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.68rem;
+}
+
+.telemetry-trajectory-layout {
+  grid-template-columns: minmax(560px, 1.45fr) minmax(320px, 0.55fr);
+}
+
+.telemetry-perception-layout {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.45fr) minmax(320px, 0.55fr);
+  gap: 0.7rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.telemetry-perception-map-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.perception-map-plot {
+  width: 100%;
+  min-height: 340px;
+  flex: 1;
+  border: 1px solid #343a36;
+  border-radius: 3px;
+  background: #171a18;
+}
+
+.perception-map-line {
+  fill: none;
+  stroke: #68726c;
+  stroke-width: 2;
+  opacity: 0.75;
+}
+
+.cost-layer { opacity: 0.56; }
+.cost-layer-lanelet { opacity: 0.42; }
+.cost-layer-lidar { opacity: 0.78; }
+.cost-layer-radar { opacity: 0.75; }
+.cost-layer-inflation { opacity: 0.34; }
+
+.perception-obstacle-point {
+  fill: #f06b5f;
+  stroke: #351b19;
+  stroke-width: 0.5;
+}
+
+.perception-obstacle-box {
+  fill: rgba(240, 107, 95, 0.08);
+  stroke: #ff796d;
+  stroke-width: 3;
+}
+
+.perception-physical-footprint {
+  fill: rgba(85, 169, 219, 0.25);
+  stroke: #55a9db;
+  stroke-width: 3;
+}
+
+.perception-planning-footprint {
+  fill: rgba(237, 186, 57, 0.05);
+  stroke: #edba39;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.perception-legend i {
+  height: 0.55rem;
+}
+
+.legend-obstacle {
+  width: 0.55rem !important;
+  border-radius: 50%;
+  background: #f06b5f !important;
+}
+
+.legend-box {
+  height: 0.55rem !important;
+  border: 2px solid #ff796d;
+  background: transparent !important;
+}
+
+.telemetry-perception-metrics {
+  display: flex;
+  flex-direction: column;
+}
+
+.perception-layer-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.perception-layer-row {
+  display: grid;
+  grid-template-columns: 0.65rem minmax(100px, 1fr) minmax(75px, 0.7fr) minmax(52px, 0.4fr);
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.7rem;
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px solid #dce1dd;
+}
+
+.perception-layer-row > span {
+  width: 0.62rem;
+  height: 0.62rem;
+}
+
+.perception-layer-row strong,
+.perception-layer-row b,
+.perception-layer-row em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.69rem;
+  letter-spacing: 0;
+}
+
+.perception-layer-row b,
+.perception-layer-row em {
+  color: #55605a;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-style: normal;
+}
+
+.perception-count-grid {
+  margin-top: 0.7rem;
+}
+
+.trajectory-map-line {
+  fill: none;
+  stroke: #6e7771;
+  stroke-width: 2;
+  opacity: 0.7;
+}
+
+.trajectory-global,
+.trajectory-local,
+.trajectory-maneuver,
+.trajectory-trace {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trajectory-global { stroke: #419ee8; stroke-width: 7; opacity: 0.86; }
+.trajectory-local { stroke: #f09c3e; stroke-width: 6; }
+.trajectory-maneuver { stroke: #db61b0; stroke-width: 6; stroke-dasharray: 10 5; }
+.trajectory-trace { stroke: #70d17d; stroke-width: 3; opacity: 0.86; }
+.trajectory-robot { fill: #f3f5f3; stroke: #df5b51; stroke-width: 5; }
+.trajectory-heading { stroke: #df5b51; stroke-width: 6; stroke-linecap: round; }
+
+.telemetry-route-metrics {
+  display: flex;
+  flex-direction: column;
+}
+
+.telemetry-path-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+}
+
+.telemetry-path-counts div {
+  display: flex;
+  min-height: 4.5rem;
+  padding: 0.45rem;
+  flex-direction: column;
+  background: #f0f2f0;
+}
+
+.telemetry-path-counts span,
+.telemetry-path-counts em {
+  color: #717a74;
+  font-size: 0.65rem;
+  font-style: normal;
+}
+
+.telemetry-path-counts b {
+  margin: auto 0;
+  color: #2d4935;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 1.25rem;
+}
+
+.telemetry-pose-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.7rem;
+  margin-top: auto;
+}
+
+.telemetry-pose-readout span {
+  flex: 1;
+  min-width: 90px;
+  padding: 0.42rem;
+  border-top: 2px solid #4e9e67;
+  background: #eef5f0;
+  color: #5d665f;
+  font-size: 0.67rem;
+}
+
+.telemetry-pose-readout b {
+  display: block;
+  color: #243c2b;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.82rem;
+}
+
+.safety-gate-banner {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.35fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 6px solid #4ca866;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.safety-gate-banner div {
+  display: flex;
+  flex-direction: column;
+}
+
+.safety-gate-banner span {
+  color: #6a736d;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.safety-gate-banner strong {
+  overflow-wrap: anywhere;
+  color: #24412d;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 1.05rem;
+}
+
+.safety-gate-banner p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #3e4641;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.76rem;
+}
+
+.safety-gate-warn { border-left-color: #d09a34; background: #fff9ed; }
+.safety-gate-error { border-left-color: #d84f48; background: #fff0ef; }
+
+.controller-status-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.controller-status-row {
+  display: grid;
+  grid-template-columns: 0.6rem minmax(110px, 0.6fr) minmax(110px, 0.7fr) minmax(0, 1.7fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.15rem;
+  padding: 0.45rem;
+  border-bottom: 1px solid #dce1dd;
+}
+
+.controller-status-row strong,
+.controller-status-row b,
+.controller-status-row em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+}
+
+.controller-status-row b {
+  color: #2b5739;
+  font-family: 'Consolas', 'Menlo', monospace;
+}
+
+.controller-status-row em {
+  color: #68716b;
+  font-style: normal;
+}
+
+.controller-level {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: #49aa63;
+}
+
+.controller-level-warn { background: #d09a34; }
+.controller-level-error { background: #d84f48; }
+
+.safety-evidence-block {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  margin-top: 0.55rem;
+  background: #f1f3f1;
+}
+
+.safety-evidence-block span {
+  color: #606963;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.safety-evidence-block code,
+.safety-missing-list code {
+  overflow-wrap: anywhere;
+  color: #2f3932;
+  font-size: 0.68rem;
+  white-space: pre-wrap;
+}
+
+.safety-missing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding-top: 0.55rem;
+}
+
+.safety-missing-list code {
+  padding: 0.25rem 0.35rem;
+  border: 1px solid #dfaca8;
+  border-radius: 3px;
+  background: #fff0ef;
+  color: #9c3934;
+}
+
+@media (max-width: 1100px) {
+  .telemetry-two-column,
+  .telemetry-two-column-heading,
+  .telemetry-proximity-layout,
+  .telemetry-trajectory-layout,
+  .telemetry-perception-layout,
+  .telemetry-safety-layout,
+  .camera-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .telemetry-metric-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .camera-frame,
+  .proximity-plot,
+  .trajectory-plot {
+    min-height: 320px;
+  }
+
+  .perception-map-plot {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 700px) {
+  .diag-tab-button {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.78rem;
+  }
+
+  .telemetry-view {
+    padding: 0.45rem;
+  }
+
+  .telemetry-metric-grid-4,
+  .telemetry-metric-grid-3,
+  .telemetry-metric-grid-2,
+  .camera-metadata,
+  .telemetry-path-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .controller-status-row {
+    grid-template-columns: 0.6rem minmax(90px, 0.7fr) minmax(0, 1fr);
+  }
+
+  .controller-status-row em {
+    grid-column: 2 / -1;
+  }
 }
 
 /* ── 상단 컨트롤 바 ── */

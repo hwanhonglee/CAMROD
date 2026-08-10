@@ -1,5 +1,24 @@
 # Documentation Changelog
 
+<!-- HH_260810 - Replace daily standalone module viewers with one leased,
+browser-native telemetry workspace while keeping offline evidence generators. -->
+## [operator-telemetry-workspace] - 2026-08-10 (HH_260810)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| UI views | Adds System plus GNSS/IMU, radar/LiDAR, camera, trajectory, map/perception, and safety/control tabs to the existing administrator modal |
+| Runtime ownership | Replaces 32 always-on subscriptions with 6/11/4/7/9/7 view-specific subscriptions during a 12-second browser lease; close/timeout releases them |
+| Data handling | Forwards compressed frames unchanged, converts map-frame LiDAR samples to `robot_center_link`, and bounds cloud/path/map/trace payloads |
+| Geometry | Displays the runtime 31-point rounded physical and planning outlines rather than a stale rectangular UI approximation |
+| Live simulation | Resets rate history on every view lease; GNSS -> proximity -> GNSS re-entry reports GNSS/IMU `10.01 Hz` and pose `20.02 Hz` instead of stale `0.1 Hz` |
+| AMD64 profile | Backend-only idle is CPU `7.58%`/PSS `79.32 MiB`; perception is CPU `14.45%`/PSS `80.00 MiB`/JSON `36.14 KiB`; ARM64 acceptance remains open |
+| Evidence | Adds six current 1600x1000 browser captures, a six-view GIF, resource PNG, raw profile JSON, and method README under the UI package assets |
+| Regression | React production build succeeds; `camrod_ui` direct suite passes 48/48; all six tabs have document/workspace/text overflow 0 |
+
+---
+
 <!-- HH_260810 - Publish v2.1.7 after rebuilding the affected packages and
 rerunning source, evidence, shell, UI, and no-goal full-graph verification. -->
 ## [v2.1.7-boundary-ui-evidence-release] - 2026-08-10 (HH_260810)
@@ -9,13 +28,14 @@ rerunning source, evidence, shell, UI, and no-goal full-graph verification. -->
 | Area | Released behavior and verification |
 |---|---|
 | Shared boundary | Uses one 30-point tapered/rounded physical contour and its exact 10 cm offset in sensor-kit, platform, control, and both Nav2 costmaps |
-| Runtime proof | Records 511 map-v17 ROS poses, planning-only contact, `REVERSE_YAW_RIGHT`, `0.0972 m` / `-4.545 deg`, no second hold, route completion, and final zero |
+| Runtime proof | Preserves 511 historical map-v17 ROS poses, planning-only contact, `REVERSE_YAW_RIGHT`, `0.0972 m` / `-4.545 deg`, no second hold, route completion, and final zero |
 | UI readiness | Reaches READY from system prerequisites without a manual or campsite goal and re-broadcasts the authoritative state every 0.5 s |
 | Package evidence | Adds a 14-package evidence matrix/GIF and scoped runtime lifecycle PNG/GIF with explicit simulation/source/field labels |
-| Tool ownership | Moves nine offline cross-package renderers under `camrod_bringup/scripts/visualization/`; package-local live tools stay with their runtime owner |
-| Build/setup | Installs renderer dependencies, validates maintained shell entrypoints, rebuilds seven packages, and verifies all nine installed renderer commands |
-| Regression | Passes 42 affected-package CTest targets, direct UI 32/32, evidence pytest 27/27, and a no-goal full graph through clean SIGINT |
-| Map boundary | Leaves `lanelet2_maps.osm`, copy files, and road width unchanged; physical width survey/update remains operator-owned follow-up |
+| Tool ownership | Keeps offline cross-package renderers under `camrod_bringup/scripts/visualization/`; package-local live tools stay with their runtime owner |
+| Build/setup | Installs renderer dependencies, validates maintained shell entrypoints, and rebuilds the affected packages through `colcon_build.sh` |
+| Regression | Direct UI passes 48/48; 88/88 affected CTest targets and 683 xUnit records have 0 errors/failures; three recorded plus one post-fix full graph cleanly stop every process |
+| Runtime shutdown | Keeps Nav2 lifecycle standalone, selects only state-valid shutdown transitions, cancels stale bond-respawn timers, passes isolated CTest 10/10, and adds a post-fix 44/44 clean-exit raw log |
+| Map boundary | Uses the user-authored active map-v15 SHA `689c49...1b39`; copy maps remain operator snapshots and physical width survey/update remains follow-up |
 
 ---
 
@@ -143,7 +163,7 @@ state ownership, path diagnostics, and clean UI shutdown. -->
 | Planning handoff diagnostic | Suppresses expected empty local paths in service-owned phases and adds bounded 3.0 s WARN/ERROR callback-order grace without disabling route-travel checks |
 | Persistent obstacle | Adds `ComputePathToPose` preflight, one-shot no-path latch, no repeated Nav2 ABORT, and original-route resume after obstacle clear |
 | Optional LiDAR grid | Records scoped-context TF listener correction and an ON full graph reaching `[SYSTEM] OK` |
-| Evidence | Adds raw JSON/log, SHA manifest, reproducible PNG/GIF renderer, tests, and package README links under `docs/assets/test_result/v2-1-5-service-validation-20260807/` |
+| Evidence | Adds raw JSON/log, SHA manifest, reproducible PNG/GIF renderer, tests, and package README links under `docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/` |
 | Fresh verification | Canonical 11-package build passed; CAMROD completed 58/58 CTest targets and 523 xUnit cases with zero errors/failures, UI 30/30, and Ranger policy GTest 1/1 |
 | Claim boundary | Marks wide-lane successful bypass, Jetson resources, physical contact, sensors, and real CAN mission lifetime as field-pending |
 
@@ -165,7 +185,7 @@ state ownership, path diagnostics, and clean UI shutdown. -->
 | Delayed data | Extends real EKF history `0.3 -> 1.0 s` to cover the observed `747.6 ms` stationary delay |
 | AMD64 simulation | `11.74 m`, final `3.000001 km/h`, pose `20.024 Hz`, max step `6.485 cm`, no step over `20 cm` |
 | Claim boundary | Fake GNSS is 10 Hz and sim EKF is 20 Hz; physical 1 Hz dual-GNSS/Jetson moving acceptance remains open |
-| Evidence | Adds structured JSON, PNG, bag/map hashes, and package-guide links under `docs/assets/test_result/three-kph-localization-20260806/` |
+| Evidence | Adds structured JSON, PNG, bag/map hashes, and package-guide links under `docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/` |
 
 ---
 
@@ -181,7 +201,7 @@ state ownership, path diagnostics, and clean UI shutdown. -->
 | Alignment hysteresis | Route gate `75/5 deg`; manual RotationShim `45/5 deg` |
 | Selected simulation | `1.1 m` lookahead, B8 `59.931 m`, zero raw R/T switches, one recovered margin contact, `GOAL_REACHED` |
 | Rejected comparison | `1.2 m` lookahead released one margin contact but recontacted in `0.999 s` and latched safely |
-| Evidence | Adds JSON, PNG, bag hashes, scope limits, and package-guide links under `docs/assets/test_result/rpp-curve-tracking-20260806/` |
+| Evidence | Adds JSON, PNG, bag hashes, scope limits, and package-guide links under `docs/assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/` |
 
 ---
 
@@ -198,7 +218,7 @@ state ownership, path diagnostics, and clean UI shutdown. -->
 | Lanelet raster | Adds an independent `600 x 600 @ 0.05 m` local safety grid while retaining the `0.25 m` Nav2 planning grid |
 | Raster semantics | Planning margin uses covered lethal cell centers; physical-body edge contact remains fail-closed |
 | Exact geometry | First remaining B7 hold is margin-only: body clearance `4.54 cm`, planning overrun `4.55 mm`; full-route PASS is not claimed |
-| Evidence | Adds JSON, PNG, reproduction commands, raw bag/log hashes, and package-guide links under `docs/assets/test_result/cmd-vel-stop-go-20260806/` |
+| Evidence | Adds JSON, PNG, reproduction commands, raw bag/log hashes, and package-guide links under `docs/assets/module-guides/control/test-results/cmd-vel-stop-go-20260806/` |
 
 ---
 
@@ -216,7 +236,7 @@ the fabrication-inclusive active collision envelope. -->
 | Active geometry | Uses fabrication-inclusive body `1.39160 x 1.07000 m` and planning boundary `1.49160 x 1.17000 m`; the reduced candidate is retained as historical evidence |
 | Active map | Synchronizes both OSM files at map revision 16 and SHA `fd9c1855573784e4e4e952f931c87e3b2c2858fa20f9c8ae5c2ad9adfc32d0cf` |
 | Simulation | B1-B10 full site maneuvers (10/10) and B11/B12/B13 arrival-only scenarios passed on an isolated map-v16 graph with `[SYSTEM] OK` |
-| Visual evidence | Adds structured JSON, aggregate JSON, one PNG, one GIF, a reproducible renderer, and package-guide links under `docs/assets/test_result/camping-site-sequencing-20260806/` |
+| Visual evidence | Adds structured JSON, aggregate JSON, one PNG, one GIF, a reproducible renderer, and package-guide links under `docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/` |
 | Deferred safety decision | B11-B13 return geometry remains field-pending; the arrival-only tests issue no RETURN and make no return/parking claim |
 | Final verification | Canonical build selected 7 packages; 49/49 CTest targets and 361 xUnit records passed with zero errors/failures and 13 known static-analysis skips |
 
@@ -341,7 +361,7 @@ the initial topology A/B so the failed pre-fix runs remain auditable. -->
 - Rebuilt the six affected packages and passed 22 focused shutdown, launch,
   transport, and UI contracts.
 - The superseding machine-readable record is
-  [`amd64-scoped-container-shutdown-20260805.json`](evidence/v2.1.5/runtime-topology/amd64-scoped-container-shutdown-20260805.json).
+  [`amd64-scoped-container-shutdown-20260805.json`](assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-scoped-container-shutdown-20260805.json).
 
 ---
 
@@ -567,7 +587,7 @@ value, performance, and evidence tables without changing runtime behavior. -->
 | control, map, platform, system, UI, and voice READMEs | Added source-derived package diagrams; control and UI diagrams also consume committed simulation/browser evidence |
 | sensing, perception, localization, planning, sensor-kit, and bringup READMEs | Retained existing visuals but converted long descriptions into compact numerical and validation tables |
 | `docs/assets/module-guides/*` | Expanded the main renderer from ten to 18 PNGs, retained its 10-frame GIF, added an explicitly raw-external physical report, and moved seven release PNGs plus five release GIFs under their owning modules |
-| `docs/evidence/module-guides/bringup/field-stationary-20260731.json` | Normalized existing radar, camera, GNSS/IMU, localization, and Jetson resource values while preserving `raw_files_committed=false` and external raw roots |
+| `docs/assets/module-guides/bringup/evidence/field-stationary-20260731/field-stationary-20260731.json` | Normalized existing radar, camera, GNSS/IMU, localization, and Jetson resource values while preserving `raw_files_committed=false` and external raw roots |
 | `docs/MODULE_VISUAL_GUIDE.md` | Indexed every package, separated configuration from performance, retained boundary/yaw recovery comparisons, and listed missing physical evidence |
 | visual renderer and test | Added package-target generation for `common`, `control`, `map`, `platform`, `system`, `ui`, and `voice`; full regeneration now checks every asset |
 

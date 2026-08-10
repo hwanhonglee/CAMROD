@@ -106,7 +106,7 @@ LifecycleManager::LifecycleManager(const rclcpp::NodeOptions & options)
       rclcpp::ExecutorOptions executor_options;
       executor_options.context = get_node_base_interface()->get_context();
       auto executor =
-        std::make_shared<rclcpp::executors::SingleThreadedExecutor>(executor_options);
+      std::make_shared<rclcpp::executors::SingleThreadedExecutor>(executor_options);
       executor->add_callback_group(callback_group_, get_node_base_interface());
       service_thread_ = std::make_unique<nav2_util::NodeThread>(executor);
     });
@@ -297,14 +297,41 @@ void
 LifecycleManager::shutdownAllNodes()
 {
   message("Deactivate, cleanup, and shutdown nodes");
-  changeStateForAllNodes(Transition::TRANSITION_DEACTIVATE);
-  changeStateForAllNodes(Transition::TRANSITION_CLEANUP);
-  changeStateForAllNodes(Transition::TRANSITION_UNCONFIGURED_SHUTDOWN);
+  // HH_260810 - A RESET followed by SHUTDOWN leaves nodes unconfigured. Send
+  // only transitions valid for each observed state so shutdown cannot wait on
+  // an impossible deactivate transition on slower ARM64 deployments.
+  for (auto rit = node_names_.rbegin(); rit != node_names_.rend(); ++rit) {
+    try {
+      auto state = node_map_[*rit]->get_state();
+      if (state == State::PRIMARY_STATE_ACTIVE) {
+        if (!changeStateForNode(*rit, Transition::TRANSITION_DEACTIVATE)) {
+          continue;
+        }
+        state = State::PRIMARY_STATE_INACTIVE;
+      }
+      if (state == State::PRIMARY_STATE_INACTIVE) {
+        if (!changeStateForNode(*rit, Transition::TRANSITION_CLEANUP)) {
+          continue;
+        }
+        state = State::PRIMARY_STATE_UNCONFIGURED;
+      }
+      if (state == State::PRIMARY_STATE_UNCONFIGURED) {
+        changeStateForNode(*rit, Transition::TRANSITION_UNCONFIGURED_SHUTDOWN);
+      }
+    } catch (const std::runtime_error & e) {
+      RCLCPP_ERROR(
+        get_logger(), "Failed to shut down node: %s. Exception: %s.",
+        rit->c_str(), e.what());
+    }
+  }
 }
 
 bool
 LifecycleManager::startup()
 {
+  // HH_260810 - An operator-issued restart supersedes any stale automatic
+  // respawn callback left by the previous broken bond.
+  destroyBondRespawnTimer();
   message("Starting managed nodes bringup...");
   if (!changeStateForAllNodes(Transition::TRANSITION_CONFIGURE) ||
     !changeStateForAllNodes(Transition::TRANSITION_ACTIVATE))
@@ -323,6 +350,7 @@ LifecycleManager::shutdown()
 {
   system_active_ = false;
   destroyBondTimer();
+  destroyBondRespawnTimer();
 
   message("Shutting down managed nodes...");
   shutdownAllNodes();
@@ -336,6 +364,7 @@ LifecycleManager::reset(bool hard_reset)
 {
   system_active_ = false;
   destroyBondTimer();
+  destroyBondRespawnTimer();
 
   message("Resetting managed nodes...");
   // Should transition in reverse order
@@ -405,6 +434,16 @@ LifecycleManager::destroyBondTimer()
     bond_timer_->cancel();
     bond_timer_.reset();
   }
+}
+
+void
+LifecycleManager::destroyBondRespawnTimer()
+{
+  if (bond_respawn_timer_) {
+    bond_respawn_timer_->cancel();
+    bond_respawn_timer_.reset();
+  }
+  bond_respawn_start_time_ = rclcpp::Time(0);
 }
 
 void

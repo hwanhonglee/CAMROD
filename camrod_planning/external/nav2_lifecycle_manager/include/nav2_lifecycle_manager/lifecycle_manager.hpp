@@ -155,6 +155,11 @@ protected:
    */
   void destroyBondTimer();
 
+  /**
+   * @brief Cancel a pending bond-respawn attempt and clear its time origin.
+   */
+  void destroyBondRespawnTimer();
+
   // Support function for checking on bond connections
   /**
    * @ brief Support function for checking on bond connections

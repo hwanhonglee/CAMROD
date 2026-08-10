@@ -25,7 +25,9 @@ ASSET_ROOT = (
     SRC_ROOT
     / "docs"
     / "assets"
-    / "test_result"
+    / "module-guides"
+    / "sensor-kit"
+    / "test-results"
     / "tapered-rounded-boundary-20260810"
 )
 PNG_NAME = "tapered-rounded-boundary-geometry.png"

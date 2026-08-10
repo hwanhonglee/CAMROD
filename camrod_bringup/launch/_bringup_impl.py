@@ -1246,9 +1246,18 @@ def generate_launch_description():
             cfg_get(
                 launch_cfg,
                 'control/cmd_vel_gate_route_safety_recovery_max_auto_releases',
-                12,
+                50,
             ),
-            'Bounded Nav2 route-resume attempts before same-direction retry latch',
+            'Bounded Nav2 route-resume attempts within one contact region',
+        ),
+        (
+            'control_cmd_vel_gate_route_safety_recovery_progress_reset_distance_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_route_safety_recovery_progress_reset_distance_m',
+                0.75,
+            ),
+            'Signed forward progress required to reset the regional retry budget',
         ),
         # HH_260720 - Drop-zone exit is explicit control motion; bypass only
         # static lanelet cost during its bounded phases.
@@ -1616,6 +1625,11 @@ def generate_launch_description():
             'api_ui_port',
             cfg_get(launch_cfg, 'system/api_ui_port', 8010),
             'API UI backend bind port',
+        ),
+        (
+            'enable_operator_telemetry',
+            cfg_get(launch_cfg, 'system/enable_operator_telemetry', True),
+            'Enable leased operator sensor/map telemetry views',
         ),
         (
             'enable_guest_ui',
@@ -2425,6 +2439,9 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        # HH_260810 - Keep the bounded RViz-replacement workspace explicit at
+        # the top-level deployment boundary for constrained ARM64 targets.
+        'enable_operator_telemetry': lc['enable_operator_telemetry'],
         'enable_ui_guest': lc['enable_guest_ui'],
         'guest_host': lc['guest_ui_host'],
         'guest_port': lc['guest_ui_port'],

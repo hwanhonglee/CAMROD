@@ -11,15 +11,17 @@ left-antenna lever arm and heading-aware center correction. -->
 20 Hz, LiDAR 10 Hz, 2 km/h cruise, 10 cm boundary, and bounded recovery retries. -->
 <!-- HH_260810 - Publish the v2.1.7 shared tapered/rounded boundary,
 goal-independent UI readiness, reproducible package evidence, and tool layout. -->
+<!-- HH_260810 - Re-export Park operating coordinates from the user-edited
+map-v15 source and require settled yaw before campsite/drop-zone translation. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.7`**.
 
-![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
+![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
 ## Actual Simulation Runtime
 
-![Live full-stack B6 runtime](docs/assets/module-guides/bringup/runtime-full-stack-b6-20260804.png)
+![Live full-stack B6 runtime](docs/assets/module-guides/bringup/evidence/runtime-capture-20260804/runtime-full-stack-b6-20260804.png)
 
 `SIM RUNTIME CAPTURE`: live `sim:=true rviz:=true` B6 graph showing the
 lanelet map, robot, sensing layers, localization, and global/local planning
@@ -54,14 +56,17 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Straight cruise | `2.000 km/h` (`0.555556 m/s` final) | Raw RPP `1.111111 m/s` passes through the retained `0.5` command gate |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
-| Active Lanelet map | `map_version=17`, SHA `8cd05c...5e021` | User-edited active OSM and named copy are byte-identical; SHA is a synchronization fingerprint, not a geometry lock |
+| Active Lanelet map | `map_version=15`, SHA `689c49...1b39` | User-edited runtime OSM; named copies are user snapshots and are not auto-synchronized |
 | RPP preview | UI mission `1.1 m`; manual RotationShim `2.0 m` | Both fixed; manual profile uses the longer field anti-oscillation preview |
 | Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
-| Recovery retry guard | `12 releases`, `5 s` | At budget, same-direction Nav2 resume stays blocked; separately projected inward escape remains eligible |
+| Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
+| Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
+| Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | LiDAR processing | raw/filtered target `10 Hz`; cost grid default `OFF` | Physical cloud processing remains required; only the optional raster node/topic and its graph entry are disabled |
 | Radar visualization | seven real `/range_ros` streams | `radar_status_gui.py` observes physical publishers and never starts a dummy publisher |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
+| Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | GNSS/IMU, radar/LiDAR, cameras, trajectory, map/perception, safety/control replace daily RViz/Tk inspection |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
 | System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
 | System checker topology | `24` checkers in `4` serialized containers | Fault domains remain separate; standalone fallback remains available |
@@ -70,30 +75,52 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 Configured values are not performance measurements. Package tables below mark
 runtime evidence separately.
 
+## Operator Telemetry
+
+![Six-view operator telemetry workspace](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+
+![AMD64 operator telemetry resource profile](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
+
+Six actual `1600x1000` browser views had zero document/workspace/text overflow.
+View leases reduce the former 32 always-on subscriptions to `6/11/4/7/9/7`;
+a GNSS view reopened after proximity reported GNSS/IMU `10.01 Hz` and selected
+pose `20.02 Hz` after one second. The AMD64 backend-only profile is bounded but
+is not ARM64 acceptance: the production 8-core/16-GB Jetson still requires a
+30-minute live-camera/tab-cycle resource and frame-pacing test.
+
 ## Current Boundary Visual
 
 <!-- HH_260810 - Show the active source-derived contour and its rigid-body
 motion separately from historical rectangular runtime evidence. -->
 
-![Current tapered rounded boundary](docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
+![Current tapered rounded boundary](docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
 
-![Current boundary forward curve crab and zero-turn motion](docs/assets/test_result/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
+![Current boundary forward curve crab and zero-turn motion](docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-motion.gif)
 
 The PNG is generated from `camrod_sensor_kit/config/robot_params.yaml` and must
 match both Nav2 footprints. The GIF shows rigid transforms around
 `robot_center_link`; it is not a ROS collision/recovery or physical-drive PASS.
-See the [source-derived record](docs/assets/test_result/tapered-rounded-boundary-20260810/README.md).
+See the [source-derived record](docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/README.md).
+
+### Current Park Operating Coordinates
+
+![Current Park semantic operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
+
+The [current map-derived record](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
+binds B1-B13, the drop zone, and three parking-lot Areas to active map v15 SHA
+`689c49...1b39`. Runtime YAML mirrors use the exported coordinates while the
+service policy remains B1-B10 `turnaround` and B11-B13 `roadside_stop`.
 
 ### Measured Road Simulation
 
 <!-- HH_260810 - Show the same current contour on a measured ROS road run while
 keeping physical-road acceptance explicitly out of scope. -->
 
-![Current boundary on measured map-v17 road simulation](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
+![Current boundary on historical map-v17 road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
 
-![Drive contact recovery and completion timeline](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
+![Drive contact recovery and completion timeline](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.gif)
 
-The [measured ROS simulation record](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md)
+The [historical map-v17 ROS simulation record](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md)
 contains 511 poses from a `29.700 s` B2 run. The physical body remained clear,
 the planning contour reached cost 100, bounded `REVERSE_YAW_RIGHT` moved
 `0.0972 m` with `-4.545 deg` yaw change, and the original route completed with
@@ -103,16 +130,17 @@ no second hold. This is not physical-road evidence.
 
 | Check | Result | Scope |
 |---|---|---|
-| Current tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
+| Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
-| Persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 7 packages; 42 registered CTest targets passed with 0 errors/failures; direct UI 32/32 |
+| Historical persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
+| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 13 packages; `88/88` CTest targets and 683 xUnit records passed with 0 errors/failures (24 static-analysis skips); direct UI policy/transport/telemetry `48/48` |
 | Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
-| Current map-v17 contract | **PASS** | Active/copy OSM SHA synchronized; 55 lanelets, 14 areas, 1,652 nodes |
+| Current map-v15 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `689c49...1b39`; 55 lanelets, 14 areas, 1,592 nodes; B1-B13/drop-zone mirrors synchronized |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
-| Full stack startup/shutdown | **PASS** | Final topology reached Nav2 active and `[SYSTEM] OK`; all 6 component containers exited cleanly in 3/3 runs plus one default-argument run |
+| Full stack startup/shutdown | **PASS** | Three fresh controlled runs reached Nav2 active and `[SYSTEM] OK`; every component and standalone process, including lifecycle manager and Robot/Guest UI, exited cleanly |
+| Post-fix lifecycle shutdown | **AMD64 PASS 1/1** | No-goal graph READY/SYSTEM OK; parent-only SIGINT; 44/44 processes clean, failures/forced kills/descendants 0; raw log retained |
 | amd64 runtime topology A/B | **SYSTEM CORE PASS; LIDAR TRADEOFF** | Core: 3 fewer processes, CPU -2.5 points, PSS -19.7 MiB, 3/3 controlled stop; LiDAR: CPU -17.5%, PSS +44.0 MiB, 10 Hz preserved |
 | amd64 operator renderer A/B | **WEBKIT LIGHTER; PAGE-LOAD SPEED UNRESOLVED** | Chromium vs WebKit: PSS +327.3 MiB, CPU +1.44 points; system-OK mean -1.33 s is not browser first paint; both controlled-stop 3/3 |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
@@ -133,35 +161,35 @@ no second hold. This is not physical-road evidence.
 <!-- HH_260810 - Summarize package claims by evidence class so simulation
 presence is not confused with physical accuracy or field safety acceptance. -->
 
-![Package technology evidence matrix](docs/assets/module-guides/bringup/package-technology-evidence.png)
+![Package technology evidence matrix](docs/assets/module-guides/bringup/guide/package-technology-evidence.png)
 
-![Package-by-package simulation evidence](docs/assets/module-guides/bringup/package-technology-evidence.gif)
+![Package-by-package simulation evidence](docs/assets/module-guides/bringup/guide/package-technology-evidence.gif)
 
 The matrix separates `MEASURED ROS SIM`, `MEASURED AMD64 SIM`, runtime capture,
 source inventory, and field-pending claims for all 14 CAMROD packages. The map
 width remains intentionally unchanged for the later site survey/update.
 
-![Measured full-bringup result](docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
+![Measured full-bringup result](docs/assets/module-guides/bringup/test-results/campsite-smoke-20260804/simulation-evidence-20260804.png)
 
-![Physical stationary field report](docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+![Physical stationary field report](docs/assets/module-guides/bringup/test-results/field-stationary-20260731/field-stationary-report-20260731.png)
 
-![Measured amd64 runtime topology A/B](docs/assets/module-guides/system/runtime-topology-amd64-ab-20260805.png)
+![Measured amd64 runtime topology A/B](docs/assets/module-guides/runtime/test-results/amd64-runtime-topology-20260805/runtime-topology-amd64-ab-20260805.png)
 
-![v2.1.4 release-map staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
+![v2.1.4 release-map staged boundary recovery](docs/assets/module-guides/control/test-results/map-v15-boundary-recovery/map-v15-boundary-recovery-contact-sheet.png)
 
-![Historical reduced-body and planning-margin validation](docs/assets/test_result/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
+![Historical reduced-body and planning-margin validation](docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Current campsite maneuver validation](docs/assets/test_result/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite maneuver validation](docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
-![Current map-v17 repeated service](docs/assets/test_result/v2-1-5-service-validation-20260807/repeated-service-summary.png)
+![Historical map-v17 repeated service](docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
-![B1-B10 no-restart service endurance](docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
+![B1-B10 no-restart service endurance](docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
-[Open the 10-cycle service GIF](docs/assets/test_result/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
+[Open the 10-cycle service GIF](docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.gif).
 
-![3 km/h fixed-lookahead service A/B](docs/assets/test_result/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
+![3 km/h fixed-lookahead service A/B](docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/rpp-lookahead-service-ab.png)
 
-![Current persistent-obstacle safe hold](docs/assets/test_result/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
+![Current persistent-obstacle safe hold](docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 
 ## Packages
 
@@ -232,19 +260,20 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
-| [Current tapered/rounded road simulation](docs/assets/test_result/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
+| [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
+| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v15 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
 | [v2.1.7 release notes](docs/V2_1_7_RELEASE_NOTES.md) | Current boundary, UI readiness, package evidence, tool ownership, build, and verification |
 | [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Previous sensor cadence, motion/boundary policy, visualization, and field acceptance baseline |
 | [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Previous baseline and its exact historical evidence |
 | [v2.1.5 field handoff](camrod_bringup/docs/v2_1_5_field_handoff_20260808.md) | Other-PC start, TODO crosswalk, and physical test order |
-| [v2.1.5 service evidence](docs/assets/test_result/v2-1-5-service-validation-20260807/README.md) | Repeated service, obstacle, boundary JSON/log/PNG/GIF and limits |
-| [B1-B10 endurance evidence](docs/assets/test_result/b1-b10-service-endurance-20260807/README.md) | Ten-cycle lifecycle, route-snap return, path/UI shutdown logs, PNG/GIF and hashes |
-| [RPP service A/B evidence](docs/assets/test_result/rpp-lookahead-service-ab-20260807/README.md) | Rejected scaled preview and selected fixed `1.1 m` source-profile run |
+| [v2.1.5 service evidence](docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/README.md) | Repeated service, obstacle, boundary JSON/log/PNG/GIF and limits |
+| [B1-B10 endurance evidence](docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/README.md) | Ten-cycle lifecycle, route-snap return, path/UI shutdown logs, PNG/GIF and hashes |
+| [RPP service A/B evidence](docs/assets/module-guides/planning/test-results/rpp-lookahead-service-ab-20260807/README.md) | Rejected scaled preview and selected fixed `1.1 m` source-profile run |
 | [v2.1.4 release notes](docs/V2_1_4_RELEASE_NOTES.md) | Previous map, boundary, UI, and transport baseline |
 | [v2.1.3 release notes](docs/V2_1_3_RELEASE_NOTES.md) | Released runtime scope and verification |
 | [Robot-center migration](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) | Exact before/after geometry and A/B results |
 | [Boundary recovery validation](docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md) | Crab/reverse timelines, GIFs, and limitations |
-| [Runtime capture evidence](docs/evidence/module-guides/bringup/runtime-visual-capture-20260804.json) | Live screens, retry timestamps, zero output, and operator-stop result |
-| [amd64 runtime A/B evidence](docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json) | Per-run process/CPU/RSS/PSS/rate and controlled-stop samples |
+| [Runtime capture evidence](docs/assets/module-guides/bringup/evidence/runtime-capture-20260804/runtime-visual-capture-20260804.json) | Live screens, retry timestamps, zero output, and operator-stop result |
+| [amd64 runtime A/B evidence](docs/assets/module-guides/runtime/evidence/amd64-runtime-topology-20260805/amd64-container-ab-20260805.json) | Per-run process/CPU/RSS/PSS/rate and controlled-stop samples |
 | [Documentation changelog](docs/DOCS_CHANGELOG.md) | Post-release documentation-only updates |
 | [`TODOLIST.txt`](TODOLIST.txt) | Remaining physical acceptance work |

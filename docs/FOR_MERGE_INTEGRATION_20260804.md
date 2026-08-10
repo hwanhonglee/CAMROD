@@ -74,10 +74,10 @@ selected changes, tests, and this comparison record were complete.
   Twist zero in every record.
 
 Measured JSON and reproduction details:
-[`map-v14-boundary-recovery/`](evidence/v2.1.3/map-v14-boundary-recovery/).
+[`map-v14-boundary-recovery/`](assets/module-guides/control/evidence/map-v14-boundary-recovery/).
 
-![Map-v14 recovery result](assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+![Map-v14 recovery result](assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-contact-sheet.png)
 
-[Open the recovery GIF](assets/module-guides/control/map-v14-boundary-recovery.gif).
+[Open the recovery GIF](assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery.gif).
 
-![Robot UI site verification keypad](assets/module-guides/ui/robot-ui-site-verification-keypad.png)
+![Robot UI site verification keypad](assets/module-guides/ui/evidence/ui-captures/robot-ui-site-verification-keypad.png)
