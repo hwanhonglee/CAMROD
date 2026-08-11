@@ -381,7 +381,7 @@ controller_server:
       forward_sampling_distance: 0.5
       # HH_260731 - Conservative heading transition for the outdoor recovery test.
       # The final gate limits this to 0.20 rad/s.
-      rotate_to_heading_angular_vel: 0.4
+      rotate_to_heading_angular_vel: 0.35
       max_angular_accel: 0.8
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: True
@@ -391,7 +391,7 @@ controller_server:
       # HH_260807 - Manual/clicked-yaw driving uses the longer preview selected
       # after the field oscillation report. UI mission RPP remains fixed at
       # 1.1 m in nav2_vehicle.yaml; this child profile is intentionally 2.0 m.
-      lookahead_dist: 2.0
+      lookahead_dist: 1.2
       min_lookahead_dist: 1.5
       max_lookahead_dist: 4.5
       lookahead_time: 1.8
