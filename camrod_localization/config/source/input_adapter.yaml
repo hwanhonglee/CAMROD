@@ -30,7 +30,7 @@
     # yaw delta only to rotate the antenna lever arm. Fallback requires a prior
     # valid dual-GNSS anchor, expires after 3 s, and never makes GNSS yaw valid.
     enable_gnss_lever_arm_ekf_heading_fallback: true
-    gnss_lever_arm_fallback_anchor_max_age_s: 3.0
+    gnss_lever_arm_fallback_anchor_max_age_s: 0.5
     gnss_lever_arm_fallback_history_s: 5.0
     gnss_lever_arm_fallback_match_tolerance_s: 0.2
     gnss_lever_arm_fallback_max_ekf_yaw_covariance: 1.0

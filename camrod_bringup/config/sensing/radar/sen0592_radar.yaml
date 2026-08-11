@@ -46,7 +46,7 @@
     # topics publish max_range+0.001 m with dummy_active=true at the rate above.
     # HH_260807 - Re-enable all seven physical channels for the live radar
     # visualization/audit. No channel uses the disabled-sensor dummy path.
-    sensor_enabled: [true, true, true, true, true, true, true]
+    sensor_enabled: [true, true, true, true, true, true, false]
 
     software_min_range_m: 0.02
     software_default_max_range_m: 0.50
