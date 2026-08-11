@@ -22,7 +22,9 @@ static inline void cuda_check(cudaError_t status)
 {
     if (status != 0)
     {
-        std::runtime_error(cudaGetErrorString(status));
+        // HH_260811 - The error object used to be constructed and discarded, so every
+        // CUDA failure passed silently.
+        throw std::runtime_error(cudaGetErrorString(status));
     }
 }
 
@@ -122,12 +124,31 @@ YOLOV9MIT_TensorRT::YOLOV9MIT_TensorRT(const std::string& engine_path, const int
 
     cuda_check(cudaStreamCreate(&stream_));
 
-    assert(context_->setInputShape(input_name, input_dims));
-    assert(context_->allInputDimensionsSpecified());
+    // HH_260811 - These calls used to sit inside assert(), so the canonical Release
+    // build (-DNDEBUG) stripped them along with their side effects. enqueueV3() then
+    // ran with unbound tensor addresses and every frame failed inference.
+    if (!context_->setInputShape(input_name, input_dims))
+    {
+        std::cerr << "setInputShape() rejected " << input_name
+                  << "; falling back to the engine's static input shape" << std::endl;
+    }
+    if (!context_->allInputDimensionsSpecified())
+    {
+        throw std::runtime_error("input dimensions are not fully specified");
+    }
 
-    assert(context_->setTensorAddress(input_name, inference_buffers_[0]));
-    assert(context_->setTensorAddress(output0_name, inference_buffers_[1]));
-    assert(context_->setTensorAddress(output1_name, inference_buffers_[2]));
+    if (!context_->setTensorAddress(input_name, inference_buffers_[this->input_index_]))
+    {
+        throw std::runtime_error(std::string("setTensorAddress failed for ") + input_name);
+    }
+    if (!context_->setTensorAddress(output0_name, inference_buffers_[this->output0_index_]))
+    {
+        throw std::runtime_error(std::string("setTensorAddress failed for ") + output0_name);
+    }
+    if (!context_->setTensorAddress(output1_name, inference_buffers_[this->output1_index_]))
+    {
+        throw std::runtime_error(std::string("setTensorAddress failed for ") + output1_name);
+    }
 }
 
 YOLOV9MIT_TensorRT::~YOLOV9MIT_TensorRT()
