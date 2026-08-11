@@ -64,12 +64,12 @@ controller_server:
       # selected 1.1 m as the balance between 1.0 m tracking error and 1.2 m
       # steering variation. Keep the 2.0 m cap; HH_260806 later synchronized
       # the real pose and controller loops at 20 Hz.
-      lookahead_dist: 1.1
+      lookahead_dist: 2.0
       min_lookahead_dist: 1.1
       max_lookahead_dist: 2.0
       lookahead_time: 1.8
       # Final default after the command gate: 0.20 rad/s.
-      rotate_to_heading_angular_vel: 0.4
+      rotate_to_heading_angular_vel: 0.35
       # Align controller TF tolerance with Nav2 server tolerance.
       transform_tolerance: 0.5
       # HH_260527: RPP toggle options (all boolean):
