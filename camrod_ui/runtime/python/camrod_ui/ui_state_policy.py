@@ -253,14 +253,19 @@ class UiStatePolicy:
             reasons = self.readiness_reasons(require_idle=False)
             if (
                 self.initialized_once
-                and self._valid_goal()
                 and reasons
                 and all(
                     reason.startswith("control_gate_state:")
                     for reason in reasons
                 )
             ):
-                return self.PATH_PREPARING
+                # HH_260812 - A command gate that is merely holding is not an
+                # uninitialized robot.  Picking a destination is intent, not
+                # motion, so an already-initialized stack stays selectable and
+                # the gate release alone decides when the robot actually moves.
+                if self._valid_goal():
+                    return self.PATH_PREPARING
+                return self.READY
             return self.INITIALIZING
         if self.planning_state == "GOAL_REACHED" and self._valid_goal():
             return self.ARRIVED

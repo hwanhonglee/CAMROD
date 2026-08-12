@@ -210,6 +210,31 @@ class UiStatePolicyTest(unittest.TestCase):
         self._assert_goal_sequence("manual", "")
         self._assert_goal_sequence("regulated", "camping_site_3")
 
+    def test_holding_gate_alone_keeps_destination_selection_available(self):
+        policy = make_initialized_policy()
+        self.assertEqual(policy.mission_phase, UiStatePolicy.READY)
+
+        # A parked robot with something close by holds the command gate. That
+        # is not an uninitialized stack, so the destination list stays usable
+        # without first arming a goal.
+        policy.update_gate(
+            level=1,
+            operating_state="SAFETY_HOLD",
+            message="reasons=cost_stop_latched",
+        )
+        self.assertFalse(policy.ready)
+        self.assertEqual(
+            policy.readiness_reasons(),
+            ("control_gate_state:safety_hold",),
+        )
+        self.assertEqual(policy.mission_phase, UiStatePolicy.READY)
+
+        # A real prerequisite loss still falls back to initialization.
+        policy.update_localization(2)
+        self.assertEqual(
+            policy.mission_phase, UiStatePolicy.INITIALIZING
+        )
+
     def test_localization_reacquisition_returns_to_initialization(self):
         policy = make_initialized_policy()
         policy.update_planning(
