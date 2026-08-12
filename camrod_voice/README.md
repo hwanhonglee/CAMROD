@@ -31,9 +31,9 @@ motion condition.
 
 | Priority | Meaning | Example |
 |---:|---|---|
-| `0` | Info | Ordinary informational cue |
-| `1` | Notice | Startup, ready, mission, arrival, charging, low battery |
-| `2` | Warning | Obstacle hold, critical battery |
+| `0` | Info | Repeated travel reminders under the music bed |
+| `1` | Notice | Startup, ready, mission, arrival, resume, charging, low battery |
+| `2` | Warning | Obstacle hold |
 | `3` | Critical | Estop/release; may interrupt when requested |
 
 ## Event Mapping
@@ -42,18 +42,47 @@ motion condition.
 |---|---|---:|
 | Startup delay expires | `system.startup` | 1 |
 | First complete readiness | `system.ready` | 1 |
-| Engaged route to site | `navigation.to_campsite` | 1 |
-| Engaged return route | `navigation.return_to_dropzone` | 1 |
+| Announcer node shuts down | `system.shutdown` | — |
+| Engaged departure to site | `navigation.to_campsite` | 1 |
+| Engaged departure to drop zone | `navigation.to_dropzone` | 1 |
+| Trip to site under way, every period | `system.announce1` + `system.announce2` | 0 |
+| Trip to drop zone under way, every period | `navigation.return_to_dropzone` | 0 |
 | Site/manual goal reached | `navigation.arrived_campsite` | 1 |
 | Engaged cost/route hold | `safety.obstacle` | 2 |
+| Hold still blocking, every period | `navigation.please_step_aside` | 1 |
+| Announced hold clears | `safety.thankyou` | 1 |
 | Estop asserted / released | `safety.estop` / `safety.estop_released` | 3 |
 | Battery `<= 20%` | `battery.low` | 1 |
-| Battery `<= 10%` | `battery.critical` | 2 |
 | Charging starts | `battery.charging` | 1 |
+| Charging and `>= 99%`, every period | `battery.full` | 1 |
 
 `WAIT_DZ` intentionally has no navigation announcement. Generic planning
 recovery does not trigger obstacle speech; the final command gate's actual
 cost/route hold does.
+
+## Background Music
+
+`system.bgm` is a looping bed on the SDL2_mixer music stream while speech plays
+on a reserved chunk channel, so the two sound together. The adapter latches
+`voice_announcer/bgm` for the whole trip; the announcer starts the bed only
+once the queue is idle, which puts it after the departure cue, and ducks it for
+every cue that follows. A safety hold keeps the bed running — arrival, ending
+the trip, or disengaging releases it.
+
+`system.shutdown` is not an adapter event. The announcer plays it from its own
+destructor after `SIGINT`, bounded by `shutdown_timeout_s` so it stays inside
+the launch `SIGTERM` window.
+
+## Repeated Cues
+
+Three cues repeat instead of firing once, all polled at `1 Hz` and all ended by
+the condition itself rather than a counter:
+
+| Cue | Runs while | Ends on |
+|---|---|---|
+| `system.announce1` + `announce2` / `return_to_dropzone` | Trip under way | Arrival or disengage |
+| `navigation.please_step_aside` | Announced hold still blocking | Hold clears (then `safety.thankyou`) |
+| `battery.full` | Charging and `>= battery_full_threshold` | Charger removed or level drops |
 
 ## Active Values
 
@@ -64,7 +93,12 @@ cost/route hold does.
 | Required readiness modules | 7 (`map`, `sensing`, `localization`, `planning`, `control`, `platform`, `system`) |
 | Required frame | `map -> robot_center_link` |
 | Maximum ready localization mode | `NORMAL (0)` |
-| Low / critical battery cue | `20 / 10%` |
+| Low battery cue | `20%` |
+| First travel reminder / repeat period | `30 s` / `90 s` |
+| Blocked-route explanation period | `20 s` |
+| Charge-complete cue period | `60 s` |
+| Bed level, ducked level | `0.55` / `0.12` |
+| Shutdown cue budget | `4.5 s` |
 
 `system.ready` is announced once after required modules are non-error, Nav2 is
 available, planning is idle, localization is normal, TF exists, the gate is
@@ -75,6 +109,7 @@ standby/charging, platform estop is released, and engage is false.
 | Direction | Topic | Purpose |
 |---|---|---|
 | Publish | `/voice/voice_announcer/say` | Audio request queue input |
+| Publish | `/voice/voice_announcer/bgm` | Latched music-bed request |
 | Publish | `/voice/voice_announcer/state` | Playback state |
 | Subscribe | `/platform/status` | Estop, SOC, charging |
 | Subscribe | `/system/status` | Module readiness/health |

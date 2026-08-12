@@ -12,8 +12,19 @@
     # HH_260720 - Announce charging from the unified /platform/status message.
     enable_charging_audio: true
 
+    # HH_260812 - Music bed runs for the whole trip; speech ducks it.
+    enable_bgm: true
+    enable_travel_announce: true
+    # First reminder well after the departure cue, then once per period.
+    travel_announce_initial_delay_s: 30.0
+    travel_announce_period_s: 90.0
+    # Standing explanation repeated while a hold keeps the route blocked.
+    obstacle_repeat_period_s: 20.0
+
     battery_low_threshold: 0.20
-    battery_critical_threshold: 0.10
+    # Charge-complete cue repeats until the charger is removed.
+    battery_full_threshold: 0.99
+    battery_full_repeat_period_s: 60.0
 
     # =========================================================================
     # 2. TOPICS

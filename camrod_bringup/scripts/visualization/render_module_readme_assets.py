@@ -3351,7 +3351,7 @@ def render_voice(repo_root: Path, output_root: Path):
     priorities = [
         (0.045, "0 INFO", "ordinary cue", GRAY_BG, "#72848d"),
         (0.275, "1 NOTICE", "mission / charging", BLUE_BG, BLUE),
-        (0.505, "2 WARNING", "obstacle / battery critical", AMBER_BG, AMBER),
+        (0.505, "2 WARNING", "obstacle hold", AMBER_BG, AMBER),
         (0.735, "3 CRITICAL", "ESTOP; may interrupt", RED_BG, RED),
     ]
     for x, title, line, face, color in priorities:
@@ -3363,11 +3363,12 @@ def render_voice(repo_root: Path, output_root: Path):
         0.17,
         0.43,
         0.17,
-        "Readiness and battery",
+        "Readiness, travel, battery",
         (
             f"startup delay {params['startup_delay_s']:.1f} s",
             f"ready check every {params['readiness_check_period_s']:.1f} s / {len(params['readiness_required_modules'])} modules",
-            f"battery low <= {params['battery_low_threshold'] * 100:.0f}%; critical <= {params['battery_critical_threshold'] * 100:.0f}%",
+            f"travel reminder every {params['travel_announce_period_s']:.0f} s over the music bed",
+            f"battery low <= {params['battery_low_threshold'] * 100:.0f}%",
         ),
         face=GREEN_BG,
         edge=GREEN,

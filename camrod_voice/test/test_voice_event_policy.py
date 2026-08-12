@@ -265,6 +265,7 @@ def test_return_audio_requires_a_released_drop_zone_goal():
         return_requested=True,
     )
     assert pending == []
+    assert not policy.travel_active
 
     released = policy.update_planning(
         state="RETURNING",
@@ -273,7 +274,128 @@ def test_return_audio_requires_a_released_drop_zone_goal():
         active_goal_source="auto_snapper:drop_zone",
         return_requested=False,
     )
-    assert event_keys(released) == ["navigation.return_to_dropzone"]
+    assert event_keys(released) == ["navigation.to_dropzone"]
+    assert policy.travel_context() == "drop_zone"
+    assert policy.travel_active
+
+
+def test_travel_reminders_follow_the_trip_direction():
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert policy.travel_announce_events() == []
+
+    policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(policy.travel_announce_events()) == [
+        "system.announce1",
+        "system.announce2",
+    ]
+
+    policy.update_planning(
+        state="RETURNING",
+        scenario="RETURN_WITH_CARGO",
+        active_mission_key="drop_zone",
+        active_goal_source="auto_snapper:drop_zone",
+        return_requested=False,
+    )
+    assert event_keys(policy.travel_announce_events()) == [
+        "navigation.return_to_dropzone",
+    ]
+
+
+def test_music_bed_waits_for_departure_and_ends_with_the_trip():
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert not policy.travel_active
+
+    departure = policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(departure) == ["navigation.to_campsite"]
+    assert policy.travel_active
+
+    # A safety hold keeps the bed running; only the trip ending stops it.
+    policy.update_gate(
+        level=1,
+        operating_state="SAFETY_HOLD",
+        message="reasons=cost_stop_latched",
+    )
+    assert policy.travel_active
+
+    policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert not policy.travel_active
+    assert policy.travel_announce_events() == []
+
+
+def test_blocked_route_keeps_a_standing_explanation_available():
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert policy.obstacle_repeat_events() == []
+
+    policy.update_gate(
+        level=1,
+        operating_state="ROUTE_SAFETY_HOLD",
+        message="reasons=cost_hold=1",
+    )
+    assert policy.obstacle_hold_announced
+    assert event_keys(policy.obstacle_repeat_events()) == [
+        "navigation.please_step_aside",
+    ]
+
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert not policy.obstacle_hold_announced
+    assert policy.obstacle_repeat_events() == []
+
+
+def test_cleared_obstacle_thanks_before_the_robot_resumes():
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+
+    held = policy.update_gate(
+        level=1,
+        operating_state="ROUTE_SAFETY_HOLD",
+        message="reasons=cost_hold=1",
+    )
+    assert event_keys(held) == ["safety.obstacle"]
+
+    cleared = policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert event_keys(cleared) == ["safety.thankyou"]
+
+    # Nothing was held, so a second clear stays silent.
+    assert policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    ) == []
 
 
 def test_generic_warn_does_not_claim_obstacle_but_gate_cost_hold_does():
