@@ -1,0 +1,30 @@
+# HH_260812 - Playback-side mix: speech channel, looping music bed, and the
+# farewell cue played while the node tears down.
+/voice/voice_announcer:
+  ros__parameters:
+    locale: "ko-KR"
+
+    # =========================================================================
+    # 1. MIX LEVELS (0.0 .. 1.0)
+    # =========================================================================
+    voice_volume: 1.0
+    bgm_volume: 0.55
+    # Speech must stay intelligible over the bed, so duck deep rather than a little.
+    bgm_duck_volume: 0.12
+
+    # =========================================================================
+    # 2. BACKGROUND MUSIC
+    # =========================================================================
+    enable_bgm: true
+    bgm_key: "system.bgm"
+    bgm_fade_in_ms: 1500
+    bgm_fade_out_ms: 1000
+    bgm_duck_fade_ms: 200
+
+    # =========================================================================
+    # 3. SHUTDOWN CUE
+    # =========================================================================
+    enable_shutdown_audio: true
+    shutdown_key: "system.shutdown"
+    # Launch escalates SIGINT to SIGTERM after 5 s; stay inside that window.
+    shutdown_timeout_s: 4.5

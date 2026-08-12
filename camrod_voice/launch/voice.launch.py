@@ -41,7 +41,8 @@ def generate_launch_description():
                 executable='voice_announcer_node',
                 name='voice_announcer',
                 output='screen',
-                parameters=[{'locale': locale}],
+                # The launch argument wins over the file default for locale.
+                parameters=[cfg('voice_announcer.yaml'), {'locale': locale}],
             ),
 
             Node(

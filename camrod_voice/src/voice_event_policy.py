@@ -33,6 +33,22 @@ class VoiceEventPolicy:
     _ROUTE_TO_SITE_SCENARIOS = frozenset(
         {"DELIVERY_TO_SITE", "RECALL_TO_SITE", "RECALL_TO_SITE_ROAD"}
     )
+    # HH_260812 - Every drop-zone-bound phase shares one voice context so the
+    # bed and the periodic reminder survive the return handoffs.
+    _ROUTE_TO_DROP_ZONE_SCENARIOS = frozenset(
+        {"RETURN_TO_DROP_ZONE", "RETURN_WITH_CARGO", "DROP_ZONE_PARKING"}
+    )
+    _TRAVEL_STATES = frozenset({"RUNNING", "RETURNING"})
+    # Departure cue per travel context, played once when motion begins.
+    _DEPARTURE_KEYS = {
+        "site": "navigation.to_campsite",
+        "drop_zone": "navigation.to_dropzone",
+    }
+    # Reminders repeated over the music bed while the trip is under way.
+    _TRAVEL_ANNOUNCE_KEYS = {
+        "site": ("system.announce1", "system.announce2"),
+        "drop_zone": ("navigation.return_to_dropzone",),
+    }
     _SITE_ARRIVAL_SCENARIOS = frozenset(
         {
             "DELIVERY_TO_SITE",
@@ -103,6 +119,7 @@ class VoiceEventPolicy:
         self._announced_motion_signatures: set[tuple[object, ...]] = set()
         self._motion_started_route_epochs: set[int] = set()
         self._announced_arrival_signatures: set[tuple[object, ...]] = set()
+        self._obstacle_announced = False
 
     def announce_startup(self) -> list[VoiceEvent]:
         if self.startup_announced:
@@ -183,7 +200,14 @@ class VoiceEventPolicy:
             and self.engaged
             and self.ready_announced
         ):
+            self._obstacle_announced = True
             events.append(VoiceEvent("safety.obstacle", priority=2))
+        elif not obstacle_is_active and self._obstacle_announced:
+            # HH_260812 - The hold that was announced has cleared, so the robot
+            # is moving again; thank whoever stepped out of the way.
+            self._obstacle_announced = False
+            if self.engaged and self.ready_announced:
+                events.append(VoiceEvent("safety.thankyou", priority=1))
         events.extend(self._events_after_update())
         return events
 
@@ -302,6 +326,69 @@ class VoiceEventPolicy:
         source = self.active_goal_source.strip().lower()
         return bool(source) and source not in {"none", "startup", "unknown"}
 
+    def travel_context(self) -> str:
+        """Return ``"site"``, ``"drop_zone"`` or ``""`` for the current trip."""
+
+        if not self._valid_goal():
+            return ""
+        if self.planning_state not in self._TRAVEL_STATES:
+            return ""
+        if self.planning_scenario in self._ROUTE_TO_DROP_ZONE_SCENARIOS:
+            # A return that is still only requested has no released goal yet.
+            if (
+                self.active_mission_key != self.return_mission_key
+                or self.return_requested
+            ):
+                return ""
+            return "drop_zone"
+        if (
+            self.planning_state == "RUNNING"
+            and self.planning_scenario in self._ROUTE_TO_SITE_SCENARIOS
+        ):
+            return "site"
+        return ""
+
+    @property
+    def travel_active(self) -> bool:
+        """True while a departure was announced and the trip is still running.
+
+        This drives the music bed, so it deliberately survives a safety hold:
+        the bed ducks under the obstacle cue instead of restarting.
+        """
+
+        return (
+            self.ready_announced
+            and self.engaged
+            and bool(self.travel_context())
+            and self._route_epoch in self._motion_started_route_epochs
+        )
+
+    def travel_announce_events(self) -> list[VoiceEvent]:
+        """Reminders to repeat over the bed, empty when no trip is running."""
+
+        if not self.travel_active:
+            return []
+        keys = self._TRAVEL_ANNOUNCE_KEYS.get(self.travel_context(), ())
+        return [VoiceEvent(key, priority=0) for key in keys]
+
+    @property
+    def obstacle_hold_announced(self) -> bool:
+        """True while the announced hold is still blocking the robot."""
+
+        return (
+            self._obstacle_announced
+            and self._obstacle_hold_active()
+            and self.engaged
+            and self.ready_announced
+        )
+
+    def obstacle_repeat_events(self) -> list[VoiceEvent]:
+        """Standing explanation while the robot waits out a blocked route."""
+
+        if not self.obstacle_hold_announced:
+            return []
+        return [VoiceEvent("navigation.please_step_aside", priority=1)]
+
     def _motion_event(self) -> Optional[VoiceEvent]:
         if (
             not self.ready_announced
@@ -309,22 +396,8 @@ class VoiceEventPolicy:
             or not self.engaged
         ):
             return None
-        if not self._valid_goal():
-            return None
 
-        key = ""
-        if (
-            self.planning_state == "RETURNING"
-            and self.planning_scenario == "RETURN_TO_DROP_ZONE"
-            and self.active_mission_key == self.return_mission_key
-            and not self.return_requested
-        ):
-            key = "navigation.return_to_dropzone"
-        elif (
-            self.planning_state == "RUNNING"
-            and self.planning_scenario in self._ROUTE_TO_SITE_SCENARIOS
-        ):
-            key = "navigation.to_campsite"
+        key = self._DEPARTURE_KEYS.get(self.travel_context(), "")
         if not key:
             return None
 
