@@ -23,14 +23,25 @@
     # =========================================================================
     # HH_260731 - Conservative outdoor recovery default. 0.25 rad/s turns
     # 0→90 deg in about 6.3 s; the diagnostics UI can still tune it at runtime.
-    steering_transition_rate_radps: 0.25
+    # HJ_0812 - Steering lag is the dominant phase delay during lateral path
+    # re-entry. A 0.63 rad return angle needs 2.5 s at 0.25 rad/s against a
+    # 1.40 s tracking time constant, which collapses the nominal pure-pursuit
+    # damping of 0.707. Track the bringup override at 1.5 rad/s so the
+    # package default no longer drives an unusable transition rate.
+    # The diagnostics UI accepts [0.05, 2.0].
+    steering_transition_rate_radps: 1.0 # 0.25
 
     # HH_260729 - A rate-limited steering angle is delayed geometry. Hold
     # translation for large lag and restore full speed only near the new angle,
     # so an old wheel direction cannot carry the robot across the centerline.
     steering_transition_velocity_scale_enabled: true
     steering_transition_full_speed_error_rad: 0.05
-    steering_transition_stop_error_rad: 0.35
+    # HJ_0812 - A 0.35 rad threshold fired on every ordinary path re-entry: a
+    # 0.3 m lateral offset already needs 0.415 rad. With min_velocity_scale at
+    # 0.0 the package default stops translation outright, then resumes with the
+    # wheels already committed to the arc, which is the overshoot step itself.
+    # 0.7 rad keeps the hold for genuine large-lag transitions only.
+    steering_transition_stop_error_rad: 0.7
     steering_transition_min_velocity_scale: 0.0
 
     # HH_260731 - Wheel velocity is measured, not mathematically exact. Never

@@ -355,7 +355,8 @@ def test_manual_rotation_shim_keeps_shared_limits_with_longer_preview() -> None:
     # oscillation report; velocity scaling remains disabled for both profiles.
     assert direct_rpp["lookahead_dist"] == 1.1
     assert manual_rpp["lookahead_dist"] == 2.0
-    assert manual_rpp["min_lookahead_dist"] == 1.5
+    # HJ_0812 - Re-entry preview raised above the 1.59 m footprint length.
+    assert manual_rpp["min_lookahead_dist"] == 1.8
     assert manual_rpp["max_lookahead_dist"] == 4.5
     assert manual_rpp["use_velocity_scaled_lookahead_dist"] is False
 
@@ -383,7 +384,8 @@ def test_two_kph_rpp_keeps_fixed_validated_preview() -> None:
     # lowering the cruise to 2 km/h must not silently retune its geometry.
     assert rpp["use_velocity_scaled_lookahead_dist"] is False
     assert rpp["lookahead_dist"] == 1.1
-    assert rpp["min_lookahead_dist"] == 1.1
+    # HJ_0812 - Re-entry preview raised above the 1.59 m footprint length.
+    assert rpp["min_lookahead_dist"] == 1.8
     assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
 
 
@@ -446,7 +448,9 @@ def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
 
     expected_kph = {
         "cruise": (rpp["desired_linear_vel"], 2.0),
-        "curve_floor": (rpp["regulated_linear_scaling_min_speed"], 1.0),
+        # HJ_0812 - Curve floor lowered from 50% to 30% of the cruise
+        # reference so the widened regulation trigger has range to act.
+        "curve_floor": (rpp["regulated_linear_scaling_min_speed"], 0.6),
         "final_approach": (rpp["min_approach_linear_velocity"], 0.5),
         "campsite_crab": (campsite["crab_speed_mps"], 1.2),
         "campsite_reverse": (campsite["reverse_entry_speed_mps"], 0.8),
