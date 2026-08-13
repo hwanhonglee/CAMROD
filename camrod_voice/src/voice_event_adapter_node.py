@@ -47,6 +47,8 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter('enable_nav_audio',         True)
         self.declare_parameter('enable_estop_audio',       True)
         self.declare_parameter('enable_battery_audio',     True)
+        # HH_260813 - Drop-zone docking start and outcome.
+        self.declare_parameter('enable_docking_audio',     True)
         # HH_260720 - Announce the canonical platform charging state directly.
         self.declare_parameter('enable_charging_audio',    True)
         # HH_260812 - Music bed and repeated travel reminders.
@@ -73,6 +75,12 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter(
             'navigate_to_pose_action',
             '/planning/navigate_to_pose')
+        # HH_260813 - Only the selected parking controller publishes, so both
+        # candidates can be subscribed unconditionally.
+        self.declare_parameter(
+            'parking_status_topics',
+            ['/parking/reverse_parking_controller/status',
+             '/parking/apriltag_parking_controller/status'])
         self.declare_parameter(
             'readiness_required_modules',
             ['map', 'sensing', 'localization', 'planning',
@@ -88,6 +96,7 @@ class VoiceEventAdapterNode(Node):
         self._en_nav = p('enable_nav_audio').value
         self._en_estop = p('enable_estop_audio').value
         self._en_battery = p('enable_battery_audio').value
+        self._en_docking = bool(p('enable_docking_audio').value)
         self._en_charging = p('enable_charging_audio').value
         self._en_bgm = bool(p('enable_bgm').value)
         self._en_travel_announce = bool(p('enable_travel_announce').value)
@@ -108,6 +117,11 @@ class VoiceEventAdapterNode(Node):
         control_gate_status_topic = str(p('control_gate_status_topic').value)
         planning_engaged_topic = str(p('planning_engaged_topic').value)
         navigate_to_pose_action = str(p('navigate_to_pose_action').value)
+        parking_status_topics = [
+            str(topic).strip()
+            for topic in (p('parking_status_topics').value or [])
+            if str(topic).strip()
+        ]
         self._readiness_map_frame = str(p('readiness_map_frame').value)
         self._readiness_base_frame = str(p('readiness_base_frame').value)
         readiness_check_period_s = max(
@@ -172,6 +186,9 @@ class VoiceEventAdapterNode(Node):
         self.create_subscription(
             AvgBool, planning_engaged_topic,
             self._on_planning_engaged, latched_qos)
+        for topic in parking_status_topics:
+            self.create_subscription(
+                ModuleState, topic, self._on_parking_status, 10)
 
         # 시작 음성 (딜레이 후 1회)
         self._startup_timer = self.create_timer(
@@ -190,7 +207,7 @@ class VoiceEventAdapterNode(Node):
             f'VoiceEventAdapter started '
             f'(nav={self._en_nav}, estop={self._en_estop}, '
             f'battery={self._en_battery}, charging={self._en_charging}, '
-            f'bgm={self._en_bgm}, '
+            f'docking={self._en_docking}, bgm={self._en_bgm}, '
             f'announce={self._en_travel_announce}@{self._announce_period:.0f}s, '
             f'readiness_modules={",".join(required_modules)}, '
             f'tf={self._readiness_map_frame}<-{self._readiness_base_frame})')
@@ -307,6 +324,12 @@ class VoiceEventAdapterNode(Node):
 
     def _on_planning_engaged(self, msg: AvgBool):
         self._emit_policy_events(self._policy.update_engaged(bool(msg.data)))
+
+    def _on_parking_status(self, msg: ModuleState):
+        if not self._en_docking:
+            return
+        self._emit_policy_events(
+            self._policy.update_docking(msg.operating_state))
 
     def _on_platform_status(self, msg: AvgPlatformStatus):
         self._on_estop(bool(msg.estop))
