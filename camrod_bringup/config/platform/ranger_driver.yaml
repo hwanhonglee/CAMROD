@@ -63,6 +63,10 @@
     charging_current_threshold_a: 0.3                  # Current above threshold means charging by default.
     charging_current_positive_is_charging: true        # Flip to false if measured BMS current is negative while charging.
     charging_min_consecutive_samples: 2                # Debounce BMS current spikes.
+    # HH_260813 - Regenerative braking drove current positive for up to 7 s per
+    # deceleration, which announced charging while the robot was simply driving.
+    charging_confirm_s: 10.0                           # Charger contact must hold this long.
+    charging_release_s: 3.0                            # Unplugging is reported quickly.
 
     status_frame_id: "robot_center_link"       # Frame id used in /platform/status header.
     actuator_state_topic: "/actuator_state"     # Actuator state topic from ranger_base (CAN 0x281/0x271).
