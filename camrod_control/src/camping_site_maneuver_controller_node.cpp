@@ -872,6 +872,21 @@ private:
       return;
     }
     if (!routeGoalReachedForAutoStart()) {
+      // HH_260813 - This gate used to reject an arrival without a trace, which
+      // made a missing crab entry indistinguishable from a missing mission key.
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "campsite auto-entry waiting at GOAL_REACHED: key=%s "
+          "route_goal=%s pose=%s lanelet=%s limit=%.2fm",
+          automatic_key.c_str(),
+          route_goal_.has_value() ? "yes" : "missing",
+          route_goal_.has_value() && poseIsFresh()
+              ? fixed(poseDistance(*last_pose_, *route_goal_)).c_str()
+              : "stale",
+          route_goal_.has_value() && lanelet_pose_.has_value()
+              ? fixed(poseDistance(*lanelet_pose_, *route_goal_)).c_str()
+              : "stale",
+          route_goal_reached_distance_m_);
       return;
     }
     const auto result = startSequence("planning_state:" + automatic_key);
@@ -1150,8 +1165,21 @@ private:
   }
 
   bool routeGoalReachedForAutoStart() const {
-    return route_goal_.has_value() && poseIsFresh() &&
-           poseDistance(*last_pose_, *route_goal_) <=
+    if (!route_goal_.has_value()) {
+      return false;
+    }
+    // HH_260813 - Planning declares GOAL_REACHED from the lanelet snap while
+    // this controller holds the raw vehicle pose. A body stopped off the
+    // centerline is at the route goal by one measure and away from it by the
+    // other; either confirmation is enough to adopt the campsite entry.
+    if (poseIsFresh() &&
+        poseDistance(*last_pose_, *route_goal_) <=
+            route_goal_reached_distance_m_) {
+      return true;
+    }
+    return lanelet_pose_.has_value() &&
+           (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_ &&
+           poseDistance(*lanelet_pose_, *route_goal_) <=
                route_goal_reached_distance_m_;
   }
 

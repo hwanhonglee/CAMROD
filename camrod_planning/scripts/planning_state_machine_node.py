@@ -1453,13 +1453,29 @@ class PlanningStateMachineNode(Node):
             response.message = f"route_goal publish throttled for mission_key: {key_name}"
         return response
 
-    def _active_goal_distance(self) -> Optional[float]:
-        if self.last_pose is None or self.active_goal is None:
+    def _goal_distance_from(self, pose: Optional[AvgPoseStamped]) -> Optional[float]:
+        if pose is None or self.active_goal is None:
             return None
-        if self.last_pose.header.frame_id and self.active_goal.header.frame_id:
-            if self.last_pose.header.frame_id != self.active_goal.header.frame_id:
+        if pose.header.frame_id and self.active_goal.header.frame_id:
+            if pose.header.frame_id != self.active_goal.header.frame_id:
                 return None
-        return self._dist_xy(self.last_pose, self.active_goal)
+        return self._dist_xy(pose, self.active_goal)
+
+    def _active_goal_distance(self) -> Optional[float]:
+        # HH_260813 - Nav2 measures arrival from the raw vehicle pose while this
+        # node tracks the lanelet snap. A vehicle stopped off the centerline is
+        # far from the snapped goal by one measure and at it by the other, which
+        # left GOAL_REACHED unreachable and blocked the campsite entry handoff.
+        # Whichever reference confirms arrival is enough.
+        distances = [
+            distance
+            for distance in (
+                self._goal_distance_from(self.last_pose),
+                self._goal_distance_from(self.last_return_start_vehicle_pose),
+            )
+            if distance is not None
+        ]
+        return min(distances) if distances else None
 
     def _goal_reached(self, distance_m: Optional[float] = None) -> bool:
         distance = self._active_goal_distance()

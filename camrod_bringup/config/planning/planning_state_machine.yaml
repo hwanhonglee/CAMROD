@@ -184,13 +184,18 @@
     min_goal_publish_interval_s: 1.0
     # HH_260803 - State handoff follows robot_center_link arrival, not
     # the front-footprint early stop that occurred with the old 0.8 m latch.
-    goal_reached_distance_m: 0.2
+    # HH_260813 - Nav2's goal checker succeeds at 0.30 m, so a 0.20 m gate here
+    # could reject an arrival Nav2 had already completed and the campsite entry
+    # handoff never ran. Stay just outside the Nav2 tolerance.
+    goal_reached_distance_m: 0.35
     # HH_260622 - GOAL_REACHED is a parking handoff signal, so require Nav2
     # NavigateToPose terminal SUCCEEDED in addition to geometric distance.
     require_nav2_success_for_goal_reached: true
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
     nav_status_goal_match_tolerance_s: 0.5
-    nav_success_latch_s: 3.0
+    # HH_260813 - GOAL_REACHED is the only window in which control can adopt the
+    # campsite entry. Three seconds was one or two state ticks wide.
+    nav_success_latch_s: 15.0
     # HH_260623 - Keep return handoff slightly wider than generic arrival for
     # lanelet-snap/drop-zone geometry, but still center-based.
     return_goal_reached_distance_m: 0.3
