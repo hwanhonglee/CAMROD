@@ -390,19 +390,25 @@ public:
             });
     // HH_260723 - Reject duplicate campsite entry from the transient semantic
     // occupancy state and stop an approach if the target becomes occupied.
-    campsite_occupancy_subscription_ =
-        create_subscription<avg_msgs::msg::CampsiteOccupancy>(
-            campsite_occupancy_topic_,
-            rclcpp::QoS(1).transient_local().reliable(),
-            [this](const avg_msgs::msg::CampsiteOccupancy::SharedPtr message) {
-              occupied_mission_keys_.clear();
-              occupied_mission_keys_.insert(
-                  message->occupied_mission_keys.begin(),
-                  message->occupied_mission_keys.end());
-              if (isEntryPhase() && isSiteOccupied(site_goal_key_)) {
-                setError("occupied campsite entry blocked: " + site_goal_key_);
-              }
-            });
+    // HH_260813 - DISABLED. A delivery target legitimately holds the guest's
+    // tent, and the robot only sees that tent up close once it has crabbed in,
+    // so this aborted the entry mid-CRAB_IN/ROTATE_180 and the run never
+    // reached UNLOAD_WAIT -> WAIT_RETURN, which is where the operator return
+    // prompt lives. Leaving occupied_mission_keys_ empty keeps every
+    // isSiteOccupied() gate in this node inert; restore this block to re-enable.
+    // campsite_occupancy_subscription_ =
+    //     create_subscription<avg_msgs::msg::CampsiteOccupancy>(
+    //         campsite_occupancy_topic_,
+    //         rclcpp::QoS(1).transient_local().reliable(),
+    //         [this](const avg_msgs::msg::CampsiteOccupancy::SharedPtr message) {
+    //           occupied_mission_keys_.clear();
+    //           occupied_mission_keys_.insert(
+    //               message->occupied_mission_keys.begin(),
+    //               message->occupied_mission_keys.end());
+    //           if (isEntryPhase() && isSiteOccupied(site_goal_key_)) {
+    //             setError("occupied campsite entry blocked: " + site_goal_key_);
+    //           }
+    //         });
     operation_service_ = create_service<avg_msgs::srv::RequestMotionOperation>(
         "/control/camping_site_maneuver_controller/request_operation",
         [this](const std::shared_ptr<
@@ -460,6 +466,8 @@ private:
            phase_ == CampingSiteManeuverPhase::kRotate180;
   }
 
+  // HH_260813 - Always false while the occupancy subscription above stays
+  // commented out, so every campsite-occupied gate in this node is inert.
   bool isSiteOccupied(const std::string &mission_key) const {
     return !mission_key.empty() &&
            occupied_mission_keys_.count(mission_key) > 0U;
