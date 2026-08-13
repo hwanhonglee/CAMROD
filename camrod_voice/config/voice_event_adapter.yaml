@@ -11,6 +11,8 @@
     enable_battery_audio: true
     # HH_260720 - Announce charging from the unified /platform/status message.
     enable_charging_audio: true
+    # HH_260813 - Announce the drop-zone docking run and its outcome.
+    enable_docking_audio: true
 
     # HH_260812 - Music bed runs for the whole trip; speech ducks it.
     enable_bgm: true
@@ -35,6 +37,10 @@
     control_gate_status_topic: "/control/cmd_vel_safety_gate/status"
     planning_engaged_topic: "/control/planning_engaged"
     navigate_to_pose_action: "/planning/navigate_to_pose"
+    # Only the parking controller selected by the control launch publishes here.
+    parking_status_topics:
+      - "/parking/reverse_parking_controller/status"
+      - "/parking/apriltag_parking_controller/status"
 
     # =========================================================================
     # 3. READINESS AND MISSION

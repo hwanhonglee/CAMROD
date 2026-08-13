@@ -51,6 +51,9 @@ motion condition.
 | Engaged cost/route hold | `safety.obstacle` | 2 |
 | Hold still blocking, every period | `navigation.please_step_aside` | 1 |
 | Announced hold clears | `safety.thankyou` | 1 |
+| Parking controller leaves idle | `docking.started` | 1 |
+| Parking controller reports `PARKED` | `docking.succeeded` | 1 |
+| Parking controller reports `ERROR` | `docking.failed` | 2 |
 | Estop asserted / released | `safety.estop` / `safety.estop_released` | 3 |
 | Battery `<= 20%` | `battery.low` | 1 |
 | Charging starts | `battery.charging` | 1 |
@@ -59,6 +62,13 @@ motion condition.
 `WAIT_DZ` intentionally has no navigation announcement. Generic planning
 recovery does not trigger obstacle speech; the final command gate's actual
 cost/route hold does.
+
+A trip is one latched identity — travel context, mission key, and goal source —
+held from the departure cue until arrival, a mission change, or disengage. It
+deliberately survives a `WARN_RECOVERY` tick, because a single low-rate sensor
+sample flips that state while the robot keeps driving the same route: without
+the latch every blip replayed the departure cue, restarted the bed, and reset
+the reminder schedule before it could come due.
 
 ## Background Music
 
@@ -116,6 +126,7 @@ standby/charging, platform estop is released, and engage is false.
 | Subscribe | `/localization/mode` | Localization admission |
 | Subscribe | `/control/cmd_vel_safety_gate/status` | Actual obstacle/safety state |
 | Subscribe | `/control/planning_engaged` | Manual-or-mission engage |
+| Subscribe | `/parking/*_parking_controller/status` | Docking phase |
 | Action check | `/planning/navigate_to_pose` | Nav2 readiness |
 
 ## Build And Run

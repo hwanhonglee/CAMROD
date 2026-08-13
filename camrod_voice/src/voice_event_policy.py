@@ -39,6 +39,24 @@ class VoiceEventPolicy:
         {"RETURN_TO_DROP_ZONE", "RETURN_WITH_CARGO", "DROP_ZONE_PARKING"}
     )
     _TRAVEL_STATES = frozenset({"RUNNING", "RETURNING"})
+    # HH_260813 - A single low-rate GNSS sample flips planning to WARN_RECOVERY
+    # for one tick while the robot keeps driving the same route. The trip has to
+    # ride through that: otherwise every blip replays the departure cue, restarts
+    # the music bed, and resets the reminder schedule so it never comes due.
+    _TRAVEL_HOLD_STATES = frozenset({"WARN_RECOVERY", "RECALLED"})
+    # Parking-controller phases, shared by the reverse and AprilTag controllers.
+    _DOCKING_ACTIVE_PHASES = frozenset(
+        {
+            "REVERSE_APPROACH",
+            "WAIT_FOR_CHARGING",
+            "WAITING_FOR_TAG",
+            "TAG_GUIDED_REVERSE",
+            "FINAL_REVERSE_INSERTION",
+            "RETRY_FORWARD_EXIT",
+        }
+    )
+    _DOCKING_SUCCESS_PHASES = frozenset({"PARKED"})
+    _DOCKING_FAILURE_PHASES = frozenset({"ERROR"})
     # Departure cue per travel context, played once when motion begins.
     _DEPARTURE_KEYS = {
         "site": "navigation.to_campsite",
@@ -111,15 +129,19 @@ class VoiceEventPolicy:
         self.engage_received = False
         self.engaged = False
 
+        self.docking_phase = ""
+
         self.startup_announced = False
         self.ready_announced = False
         self._engage_epoch = 0
-        self._route_epoch = 0
-        self._last_route_identity: Optional[tuple[str, str, str, str]] = None
+        # One trip identity per route: context, mission key, and goal source. It
+        # is latched so a transient planning state cannot end the trip early.
+        self._trip_identity: Optional[tuple[str, str, str]] = None
+        self._departed_trips: set[tuple[str, str, str]] = set()
         self._announced_motion_signatures: set[tuple[object, ...]] = set()
-        self._motion_started_route_epochs: set[int] = set()
         self._announced_arrival_signatures: set[tuple[object, ...]] = set()
         self._obstacle_announced = False
+        self._docking_active = False
 
     def announce_startup(self) -> list[VoiceEvent]:
         if self.startup_announced:
@@ -148,27 +170,40 @@ class VoiceEventPolicy:
         active_goal_source: str,
         return_requested: bool,
     ) -> list[VoiceEvent]:
-        state = str(state).strip().upper()
-        scenario = str(scenario).strip().upper()
-        mission_key = str(active_mission_key).strip()
-        goal_source = str(active_goal_source).strip()
-        route_identity = (state, scenario, mission_key, goal_source)
-        if (
-            state in {"RUNNING", "RETURNING"}
-            and route_identity != self._last_route_identity
-        ):
-            self._route_epoch += 1
-            self._last_route_identity = route_identity
-        elif state not in {"RUNNING", "RETURNING"}:
-            self._last_route_identity = None
-
         self.planning_received = True
-        self.planning_state = state
-        self.planning_scenario = scenario
-        self.active_mission_key = mission_key
-        self.active_goal_source = goal_source
+        self.planning_state = str(state).strip().upper()
+        self.planning_scenario = str(scenario).strip().upper()
+        self.active_mission_key = str(active_mission_key).strip()
+        self.active_goal_source = str(active_goal_source).strip()
         self.return_requested = bool(return_requested)
+        self._sync_trip()
         return self._events_after_update()
+
+    def update_docking(self, phase: str) -> list[VoiceEvent]:
+        """Map parking-controller phases onto the docking cues."""
+
+        phase = str(phase).strip().upper()
+        if phase == self.docking_phase:
+            return []
+        self.docking_phase = phase
+
+        was_active = self._docking_active
+        self._docking_active = phase in self._DOCKING_ACTIVE_PHASES
+        if not self.ready_announced:
+            return []
+        if self._docking_active:
+            if was_active:
+                return []
+            return [VoiceEvent("docking.started", priority=1)]
+        if not was_active:
+            # A controller that reports PARKED or ERROR without ever starting a
+            # docking run is reporting stale state, not this robot's outcome.
+            return []
+        if phase in self._DOCKING_SUCCESS_PHASES:
+            return [VoiceEvent("docking.succeeded", priority=1)]
+        if phase in self._DOCKING_FAILURE_PHASES:
+            return [VoiceEvent("docking.failed", priority=2)]
+        return []
 
     def update_action_server(self, ready: bool) -> list[VoiceEvent]:
         self.action_server_ready = bool(ready)
@@ -326,8 +361,32 @@ class VoiceEventPolicy:
         source = self.active_goal_source.strip().lower()
         return bool(source) and source not in {"none", "startup", "unknown"}
 
+    def _sync_trip(self) -> None:
+        """Open, keep, or close the latched trip after a planning update."""
+
+        context = self._live_travel_context()
+        if context:
+            self._trip_identity = (
+                context,
+                self.active_mission_key,
+                self.active_goal_source,
+            )
+            return
+        if (
+            self._trip_identity is not None
+            and self.planning_state in self._TRAVEL_HOLD_STATES
+        ):
+            # Recovery is a hiccup inside the same route, not the end of it.
+            return
+        self._trip_identity = None
+
     def travel_context(self) -> str:
         """Return ``"site"``, ``"drop_zone"`` or ``""`` for the current trip."""
+
+        return self._trip_identity[0] if self._trip_identity else ""
+
+    def _live_travel_context(self) -> str:
+        """Travel context implied by the planning state as published."""
 
         if not self._valid_goal():
             return ""
@@ -359,8 +418,8 @@ class VoiceEventPolicy:
         return (
             self.ready_announced
             and self.engaged
-            and bool(self.travel_context())
-            and self._route_epoch in self._motion_started_route_epochs
+            and self._trip_identity is not None
+            and self._trip_identity in self._departed_trips
         )
 
     def travel_announce_events(self) -> list[VoiceEvent]:
@@ -397,21 +456,20 @@ class VoiceEventPolicy:
         ):
             return None
 
-        key = self._DEPARTURE_KEYS.get(self.travel_context(), "")
+        identity = self._trip_identity
+        if identity is None:
+            return None
+        key = self._DEPARTURE_KEYS.get(identity[0], "")
         if not key:
             return None
 
-        signature = (
-            self._engage_epoch,
-            self._route_epoch,
-            key,
-            self.active_goal_source,
-            self.active_mission_key,
-        )
+        # The trip identity is stable for the whole route, so the cue survives
+        # the planning-state churn that used to replay it every few seconds.
+        signature = (self._engage_epoch, identity)
         if signature in self._announced_motion_signatures:
             return None
         self._announced_motion_signatures.add(signature)
-        self._motion_started_route_epochs.add(self._route_epoch)
+        self._departed_trips.add(identity)
         return VoiceEvent(key, priority=1)
 
     def _arrival_event(self) -> Optional[VoiceEvent]:
@@ -421,14 +479,15 @@ class VoiceEventPolicy:
             return None
         if self.planning_scenario not in self._SITE_ARRIVAL_SCENARIOS:
             return None
-        if self._route_epoch not in self._motion_started_route_epochs:
+        departed = (
+            "site",
+            self.active_mission_key,
+            self.active_goal_source,
+        )
+        if departed not in self._departed_trips:
             return None
 
-        signature = (
-            self._route_epoch,
-            self.active_goal_source,
-            self.active_mission_key,
-        )
+        signature = (self.active_goal_source, self.active_mission_key)
         if signature in self._announced_arrival_signatures:
             return None
         self._announced_arrival_signatures.add(signature)

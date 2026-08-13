@@ -348,6 +348,78 @@ def test_music_bed_waits_for_departure_and_ends_with_the_trip():
     assert policy.travel_announce_events() == []
 
 
+def test_transient_recovery_state_does_not_replay_the_departure_cue():
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+
+    def running():
+        return policy.update_planning(
+            state="RUNNING",
+            scenario="DELIVERY_TO_SITE",
+            active_mission_key="camping_site_2",
+            active_goal_source="regulated",
+            return_requested=False,
+        )
+
+    assert event_keys(running()) == ["navigation.to_campsite"]
+    assert policy.travel_active
+
+    # A one-tick sensor rate warning must not end the trip or restart the bed.
+    assert (
+        policy.update_planning(
+            state="WARN_RECOVERY",
+            scenario="DELIVERY_TO_SITE",
+            active_mission_key="camping_site_2",
+            active_goal_source="regulated",
+            return_requested=False,
+        )
+        == []
+    )
+    assert policy.travel_context() == "site"
+    assert policy.travel_active
+
+    assert running() == []
+    assert policy.travel_active
+
+    arrival = policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(arrival) == ["navigation.arrived_campsite"]
+    assert not policy.travel_active
+
+
+def test_docking_announces_start_then_one_outcome():
+    policy, _ = make_ready_policy()
+
+    assert policy.update_docking("IDLE") == []
+    assert event_keys(policy.update_docking("REVERSE_APPROACH")) == [
+        "docking.started",
+    ]
+    # Waiting for charger contact is still the same docking run.
+    assert policy.update_docking("WAIT_FOR_CHARGING") == []
+    assert event_keys(policy.update_docking("PARKED")) == ["docking.succeeded"]
+    assert policy.update_docking("PARKED") == []
+
+    assert event_keys(policy.update_docking("REVERSE_APPROACH")) == [
+        "docking.started",
+    ]
+    assert event_keys(policy.update_docking("ERROR")) == ["docking.failed"]
+
+
+def test_docking_outcome_without_a_started_run_stays_silent():
+    policy, _ = make_ready_policy()
+
+    assert policy.update_docking("PARKED") == []
+    assert policy.update_docking("ERROR") == []
+
+
 def test_blocked_route_keeps_a_standing_explanation_available():
     policy, _ = make_ready_policy()
     policy.update_engaged(True)
