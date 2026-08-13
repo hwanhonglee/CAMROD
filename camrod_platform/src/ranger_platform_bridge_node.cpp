@@ -74,6 +74,14 @@ public:
       "charging_current_positive_is_charging", true);
     charging_min_consecutive_samples_ = declare_parameter<int>(
       "charging_min_consecutive_samples", 2);
+    // HH_260813 - Regenerative braking pushes BMS current positive for a few
+    // seconds every time the platform decelerates, which a sample counter cannot
+    // tell apart from charger contact. Charging lasts minutes, so require the
+    // rising edge to hold; release stays quick so unplugging is seen at once.
+    charging_confirm_s_ = std::max(
+      0.0, declare_parameter<double>("charging_confirm_s", 10.0));
+    charging_release_s_ = std::max(
+      0.0, declare_parameter<double>("charging_release_s", 3.0));
     // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic",  "/platform/status");
@@ -362,26 +370,35 @@ private:
   {
     // HH_260617: Debounce BMS current spikes before declaring charger contact.
     const int required = std::max(1, charging_min_consecutive_samples_);
+    const rclcpp::Time sample_time = now();
     if (charging_sample == charging_debounced_) {
       charging_candidate_count_ = 0;
       charging_candidate_ = charging_sample;
+      charging_candidate_since_ = sample_time;
       return;
     }
     if (charging_sample != charging_candidate_) {
       charging_candidate_ = charging_sample;
       charging_candidate_count_ = 1;
+      charging_candidate_since_ = sample_time;
     } else {
       ++charging_candidate_count_;
     }
-    if (charging_candidate_count_ >= required) {
+    // HH_260813: A deceleration regen burst satisfies the sample counter within
+    // milliseconds, so the candidate must also survive its own hold window.
+    const double hold_s = charging_sample ? charging_confirm_s_ : charging_release_s_;
+    const double held_s = (sample_time - charging_candidate_since_).seconds();
+    if (charging_candidate_count_ >= required && held_s >= hold_s) {
       charging_debounced_ = charging_sample;
       charging_state_changed_ = true;
       charging_candidate_count_ = 0;
       RCLCPP_INFO(
-        get_logger(), "charging status -> %s (threshold=%.2f A, positive_is_charging=%s)",
+        get_logger(),
+        "charging status -> %s (threshold=%.2f A, positive_is_charging=%s, held=%.1fs)",
         charging_debounced_ ? "true" : "false",
         charging_current_threshold_a_,
-        charging_current_positive_is_charging_ ? "true" : "false");
+        charging_current_positive_is_charging_ ? "true" : "false",
+        held_s);
     }
   }
 
@@ -513,6 +530,9 @@ private:
   bool         charging_current_positive_is_charging_{true};
   double       charging_current_threshold_a_{0.3};
   int          charging_min_consecutive_samples_{2};
+  double       charging_confirm_s_{10.0};
+  double       charging_release_s_{3.0};
+  rclcpp::Time charging_candidate_since_{0, 0, RCL_ROS_TIME};
   bool         charging_debounced_{false};
   bool         charging_candidate_{false};
   int          charging_candidate_count_{0};

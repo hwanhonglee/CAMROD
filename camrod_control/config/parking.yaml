@@ -57,7 +57,9 @@
     stop_when_charging: true
     # HH_260721 - Complete reverse parking only after normalized CAN confirms charging.
     complete_without_charging: false
-    charging_wait_timeout_s: 20.0
+    # HH_260813 - The platform now confirms charger contact over 10 s instead of
+    # two BMS samples, so the parked wait must outlast that confirmation.
+    charging_wait_timeout_s: 45.0
 
     # =========================================================================
     # 5. TIMING AND RATES
