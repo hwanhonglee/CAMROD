@@ -115,6 +115,25 @@ MANUAL_GOAL_BLOCKED_SERVICE_STATES = frozenset({
 })
 
 
+# HH_260813 - The occupancy guard exists to stop a dispatch *before* the robot
+# enters an occupied campsite. Once entry has begun it must stay quiet: the
+# delivery target legitimately holds the guest's tent, and the robot only sees
+# that tent up close after it has crabbed in and turned around. Cancelling there
+# ended the run at the exact moment the operator was being asked to send it home.
+# Currently unused: the whole occupancy guard is disabled in
+# _on_campsite_occupancy. Kept here as the contract to restore it with.
+OCCUPANCY_CANCEL_BLOCKED_SERVICE_STATES = frozenset({
+    AvgServiceState.SITE_ENTRY,
+    AvgServiceState.SITE_ARRIVED,
+    AvgServiceState.UNLOAD_WAIT,
+    AvgServiceState.WAITING_FOR_RETURN_REQUEST,
+    AvgServiceState.GUEST_LOADING_WAIT,
+    AvgServiceState.RETURNING_TO_DROP_ZONE,
+    AvgServiceState.RETURN_WITH_CARGO,
+    AvgServiceState.DROP_ZONE_PARKING,
+})
+
+
 # HH_260810 - One bounded JSON contract replaces the separate Tk/RViz operator
 # viewers without changing any control or sensor-authority topic.
 TELEMETRY_SCHEMA_VERSION = 2
@@ -3031,43 +3050,56 @@ class UiBackendNode(Node):
     def _on_campsite_occupancy(self, msg: CampsiteOccupancy) -> None:
         # HH_260723 - Disable occupied destinations and cancel an active
         # dispatch before the controller can enter the confirmed campsite.
-        occupied_keys = {str(key).strip() for key in msg.occupied_mission_keys if key}
-        occupied_sites = sorted(
-            site
-            for site in self.site_names
-            if (self._resolve_mission_key_for_site(site) or "") in occupied_keys
-        )
-        active_occupied_site = ""
-        with self._lock:
-            occupancy_changed = self._state.occupied_sites != occupied_sites
-            self._state.occupied_sites = occupied_sites
-            for site in occupied_sites:
-                self._state.ws_site_states[site] = False
-            active_site = str(self._state.destination.get("site", "")).strip()
-            active_run = bool(self._state.destination.get("run", False))
-            if active_run and active_site in occupied_sites:
-                active_occupied_site = active_site
-                self._state.destination = {"site": active_site, "run": False}
-
-        if occupancy_changed:
-            self._schedule_broadcast({"occupied_sites": occupied_sites})
-        if active_occupied_site:
-            self.get_logger().warn(
-                f"active campsite became occupied; stopping dispatch: {active_occupied_site}"
-            )
-            self._apply_destination_command(
-                site=active_occupied_site,
-                run=False,
-                source="perception_occupancy",
-            )
-            self._schedule_broadcast(
-                {
-                    "states": {s: False for s in self.site_names},
-                    "engage": False,
-                    "error": "campsite_occupied",
-                    "site": active_occupied_site,
-                }
-            )
+        # HH_260813 - DISABLED. Every delivery target legitimately holds the
+        # guest's tent, so a confirmed tent disabled the very destination the
+        # operator needed. Leaving _state.occupied_sites empty keeps
+        # _is_site_occupied() false everywhere and broadcasts an empty list, so
+        # the frontend toggles stay enabled. Restore this body to re-enable.
+        return
+        # occupied_keys = {str(key).strip() for key in msg.occupied_mission_keys if key}
+        # occupied_sites = sorted(
+        #     site
+        #     for site in self.site_names
+        #     if (self._resolve_mission_key_for_site(site) or "") in occupied_keys
+        # )
+        # active_occupied_site = ""
+        # with self._lock:
+        #     occupancy_changed = self._state.occupied_sites != occupied_sites
+        #     self._state.occupied_sites = occupied_sites
+        #     active_site = str(self._state.destination.get("site", "")).strip()
+        #     active_run = bool(self._state.destination.get("run", False))
+        #     # The site being serviced right now keeps its selection: the robot
+        #     # is already inside it, so deselecting it only hides an active
+        #     # mission.
+        #     service_state = int(self._state.service_state)
+        #     committed = service_state in OCCUPANCY_CANCEL_BLOCKED_SERVICE_STATES
+        #     protected_site = active_site if (active_run and committed) else ""
+        #     for site in occupied_sites:
+        #         if site != protected_site:
+        #             self._state.ws_site_states[site] = False
+        #     if active_run and active_site in occupied_sites and not committed:
+        #         active_occupied_site = active_site
+        #         self._state.destination = {"site": active_site, "run": False}
+        #
+        # if occupancy_changed:
+        #     self._schedule_broadcast({"occupied_sites": occupied_sites})
+        # if active_occupied_site:
+        #     self.get_logger().warn(
+        #         f"active campsite became occupied; stopping dispatch: {active_occupied_site}"
+        #     )
+        #     self._apply_destination_command(
+        #         site=active_occupied_site,
+        #         run=False,
+        #         source="perception_occupancy",
+        #     )
+        #     self._schedule_broadcast(
+        #         {
+        #             "states": {s: False for s in self.site_names},
+        #             "engage": False,
+        #             "error": "campsite_occupied",
+        #             "site": active_occupied_site,
+        #         }
+        #     )
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
@@ -3246,6 +3278,8 @@ class UiBackendNode(Node):
         return None
 
     def _is_site_occupied(self, site: str) -> bool:
+        # HH_260813 - Always false while _on_campsite_occupancy stays disabled,
+        # so every campsite-occupied gate below it is inert.
         mission_key = self._resolve_mission_key_for_site(site) or ""
         with self._lock:
             occupied_sites = set(self._state.occupied_sites)

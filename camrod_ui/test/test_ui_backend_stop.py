@@ -12,7 +12,12 @@ sys.path.insert(
     str(Path(__file__).resolve().parents[1] / "runtime" / "python"),
 )
 
-from avg_msgs.msg import AvgPlatformStatus, AvgServiceState, MotionOperation  # noqa: E402
+from avg_msgs.msg import (  # noqa: E402
+    AvgPlatformStatus,
+    AvgServiceState,
+    CampsiteOccupancy,
+    MotionOperation,
+)
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
@@ -299,6 +304,69 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertTrue(result["blocked"])
         self.assertEqual(backend._active_mission_site, "B4")
+
+    @staticmethod
+    def _occupancy_backend(service_state: int):
+        state = SimpleNamespace(
+            occupied_sites=[],
+            ws_site_states={"B3": True},
+            destination={"site": "B3", "run": True},
+            service_state=int(service_state),
+        )
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _state=state,
+            site_names=["B3"],
+            broadcasts=[],
+            stops=[],
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = lambda site: f"camping_site_{site[1:]}"
+        backend._schedule_broadcast = backend.broadcasts.append
+        backend._apply_destination_command = (
+            lambda site, run, source: backend.stops.append((site, run, source))
+        )
+        return backend
+
+    @staticmethod
+    def _occupancy_message(mission_key: str):
+        message = CampsiteOccupancy()
+        message.occupied_mission_keys = [mission_key]
+        return message
+
+    def test_campsite_occupancy_guard_is_disabled_end_to_end(self) -> None:
+        # HH_260813 - The tent-occupancy guard is intentionally switched off:
+        # every delivery target legitimately holds the guest's tent, so a
+        # confirmed tent disabled the very destination the operator needed and
+        # aborted the entry before it could reach the return prompt. This locks
+        # the disable in; re-enabling means restoring the commented body in
+        # _on_campsite_occupancy and rewriting this test around it.
+        for service_state in (
+            AvgServiceState.MOVING_TO_SITE,
+            AvgServiceState.SITE_ENTRY,
+            AvgServiceState.UNLOAD_WAIT,
+            AvgServiceState.WAITING_FOR_RETURN_REQUEST,
+        ):
+            with self.subTest(service_state=int(service_state)):
+                backend = self._occupancy_backend(service_state)
+
+                UiBackendNode._on_campsite_occupancy(
+                    backend, self._occupancy_message("camping_site_3")
+                )
+
+                # No dispatch cancelled, no toggle cleared, nothing broadcast.
+                self.assertEqual(backend.stops, [])
+                self.assertTrue(backend._state.destination["run"])
+                self.assertTrue(backend._state.ws_site_states["B3"])
+                self.assertEqual(backend._state.occupied_sites, [])
+                self.assertEqual(backend.broadcasts, [])
+
+    def test_site_occupancy_lookup_never_reports_occupied(self) -> None:
+        # _state.occupied_sites can no longer be populated, so every downstream
+        # campsite-occupied gate (destination command, HTTP, WebSocket) is inert.
+        backend = self._occupancy_backend(AvgServiceState.MOVING_TO_SITE)
+
+        self.assertFalse(UiBackendNode._is_site_occupied(backend, "B3"))
 
 
 if __name__ == "__main__":
