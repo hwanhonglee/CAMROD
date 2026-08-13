@@ -92,10 +92,10 @@ class GnssStatusNode(Node):
     def __init__(self):
         super().__init__("gnss_status_gui")
 
-        self.declare_parameter("navpvt_topic", "/gnss/ublox_gps_node/navpvt")
-        self.declare_parameter("navcov_topic", "/gnss/navcov")
-        self.declare_parameter("navrelposned_topic", "/gnss/navrelposned")
-        self.declare_parameter("navsatfix_topic", "/gnss/ublox_gps_node/fix")
+        self.declare_parameter("navpvt_topic", "/sensing/gnss/ublox_gps_node/navpvt")
+        self.declare_parameter("navcov_topic", "/sensing/gnss/navcov")
+        self.declare_parameter("navrelposned_topic", "/sensing/gnss/navrelposned")
+        self.declare_parameter("navsatfix_topic", "/sensing/gnss/ublox_gps_node/fix")
 
         navpvt_topic = self.get_parameter("navpvt_topic").value
         navcov_topic = self.get_parameter("navcov_topic").value
