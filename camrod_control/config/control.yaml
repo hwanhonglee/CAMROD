@@ -45,7 +45,10 @@
     max_lateral_offset_m: 7.0
     # HH_260806 - B11-B13 stop only 0.60 m off the lane and never enter for a zero-turn.
     roadside_max_lateral_offset_m: 0.60
-    route_goal_reached_distance_m: 0.3
+    # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
+    # lanelet snap or the raw pose is closer; stay wider than that so the entry
+    # handoff is never rejected for an arrival planning already accepted.
+    route_goal_reached_distance_m: 0.6
     adopt_site_arrival_distance_m: 3.0
     goal_pair_max_age_s: 0.0
     default_lateral_direction: "left"
