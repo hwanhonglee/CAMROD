@@ -357,6 +357,23 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertIsNotNone(encoded)
         self.assertEqual(encoded[:2], b"\xff\xd8")
 
+    def test_raw_camera_fallback_downscales_oversized_frame(self) -> None:
+        # HH_260814 - Every real camera frame is wider than the fallback
+        # max_width, so the resize branch is the only one the robot ever runs.
+        # Exercising it here pins the Pillow 9.0.1 filter-constant location:
+        # Image.Resampling arrived in 9.1, and the AttributeError from looking
+        # it up escaped the subscription callback and killed the UI backend.
+        width, height = 1920, 1080
+        image = Image()
+        image.width = width
+        image.height = height
+        image.encoding = "bgr8"
+        image.step = width * 3
+        image.data = bytes(width * height * 3)
+        encoded = _encode_raw_image_jpeg(image, max_width=960, quality=72)
+        self.assertIsNotNone(encoded)
+        self.assertEqual(encoded[:2], b"\xff\xd8")
+
     def test_initial_contract_contains_every_operator_surface(self) -> None:
         snapshot = UiBackendNode._new_telemetry_snapshot()
         for key in (
