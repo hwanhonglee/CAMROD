@@ -2090,6 +2090,11 @@ def generate_launch_description():
     ])
     camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
 
+    # HH_260814 - AprilTag parking needs the physical rear camera, which
+    # fake_sensors does not synthesize. Simulation therefore keeps the
+    # pose-driven reverse controller that sim_validation_runner exercises.
+    parking_method_resolved = sim_switch(lc['sim'], 'reverse', lc['parking_method'])
+
     # HH_260805 - Resolve rear-camera ownership independently from the front
     # camera. The container is hardware-only and exists only for AprilTag parking.
     rear_camera_apriltag_container_active_expression = PythonExpression([
@@ -2105,7 +2110,7 @@ def generate_launch_description():
         "').lower() in ['1', 'true', 'yes', 'on'] and str('",
         lc['enable_parking'],
         "').lower() in ['1', 'true', 'yes', 'on'] and str('",
-        lc['parking_method'],
+        parking_method_resolved,
         "').strip().lower() == 'apriltag' else 'false'",
     ])
     resolve_rear_camera_apriltag_container_active = SetLaunchConfiguration(
@@ -2427,7 +2432,7 @@ def generate_launch_description():
     # HH_260720 - Parking launch selects reverse or AprilTag implementation internally.
     parking_args = {
         'parking_namespace': lc['parking_namespace'],
-        'parking_method': lc['parking_method'],
+        'parking_method': parking_method_resolved,
         'command_topic': lc['control_cmd_vel_raw_topic'],
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
