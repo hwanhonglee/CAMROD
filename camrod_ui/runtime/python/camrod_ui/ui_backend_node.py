@@ -490,13 +490,23 @@ def _encode_raw_image_jpeg(
         )
         if image.width > max_width:
             resized_height = max(1, round(image.height * max_width / image.width))
-            image = image.resize((max_width, resized_height), PillowImage.Resampling.BILINEAR)
+            # HH_260814 - Image.Resampling only exists from Pillow 9.1; the
+            # Ubuntu 22.04 python3-pil exec_depend resolves to 9.0.1, where the
+            # filter constants live on the module itself. Every camera frame is
+            # wider than max_width, so the enum lookup raised AttributeError on
+            # the first raw frame and killed the whole operator backend.
+            resampling = getattr(PillowImage, "Resampling", PillowImage)
+            image = image.resize((max_width, resized_height), resampling.BILINEAR)
         if image.mode not in {"RGB", "L"}:
             image = image.convert("RGB")
         output = io.BytesIO()
         image.save(output, format="JPEG", quality=max(30, min(90, int(quality))))
         return output.getvalue()
-    except (ImportError, OSError, ValueError):
+    # HH_260814 - This runs inside a subscription callback, so an escaping
+    # exception terminates rclpy.spin and takes readiness, destination
+    # dispatch, and voice events down with it. A frame the fallback cannot
+    # encode must degrade to "no preview", never to a dead backend.
+    except (ImportError, AttributeError, OSError, ValueError):
         return None
 
 
@@ -919,6 +929,7 @@ class UiBackendNode(Node):
         self._telemetry_last_grid_decode: Dict[str, float] = defaultdict(float)
         self._telemetry_last_camera_encode: Dict[str, float] = defaultdict(float)
         self._telemetry_last_trace_sample = 0.0
+        self._readiness_log_last_sec = 0.0
         self._latest_arrival_pose: Optional[AvgPoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
@@ -1588,6 +1599,9 @@ class UiBackendNode(Node):
             "camping_site": "/control/camping_site_maneuver_controller/path_ros",
             "drop_zone_exit": "/control/drop_zone_maneuver_controller/exit_path_ros",
             "reverse_parking": "/parking/reverse_parking_controller/path_ros",
+            # HH_260814 - Only the selected parking controller publishes, so both
+            # entries can stay subscribed without drawing two parking paths.
+            "apriltag_parking": "/parking/apriltag_parking_controller/path_ros",
         }
         if wants("trajectory"):
             for name, topic in maneuver_topics.items():
@@ -2600,6 +2614,13 @@ class UiBackendNode(Node):
                 self._state.mission_phase,
                 self._state.mission_source,
             )
+        if current[:2] != previous[:2]:
+            # HH_260814 - The blocking reasons previously reached the operator
+            # only over the telemetry WebSocket, so a console-only session had
+            # no way to see why the mission display stayed in INITIALIZING.
+            # Throttle it: a flapping sensor rate can rewrite the reason set
+            # several times per second.
+            self._log_readiness_transition(current[0], current[1])
         if force_broadcast or current != previous:
             self._schedule_broadcast(
                 {
@@ -2611,6 +2632,18 @@ class UiBackendNode(Node):
                     "mission_source": current[5],
                 }
             )
+
+    def _log_readiness_transition(self, ready: bool, message: str) -> None:
+        """Surface readiness blockers on the console, at most once per second."""
+        now = time.monotonic()
+        if ready:
+            self.get_logger().info("UI readiness: ready")
+            self._readiness_log_last_sec = now
+            return
+        if now - self._readiness_log_last_sec < 1.0:
+            return
+        self._readiness_log_last_sec = now
+        self.get_logger().warning(f"UI readiness blocked by: {message}")
 
     def _on_readiness_timer(self) -> None:
         try:
