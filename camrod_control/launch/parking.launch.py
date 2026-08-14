@@ -40,6 +40,9 @@ def generate_launch_description():
         DeclareLaunchArgument("drop_zones_yaml", default_value=default_drop_zones_yaml),
         # HH_260720 - AprilTag parking starts its perception input only when selected.
         DeclareLaunchArgument("launch_apriltag_detector", default_value="true"),
+        # HH_260814 - The rear camera node publishes image_rect, so the image_proc
+        # fallback stays off unless a raw-only source is being replayed.
+        DeclareLaunchArgument("apriltag_launch_rectify", default_value="false"),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(package_path(
@@ -48,6 +51,7 @@ def generate_launch_description():
             )),
             launch_arguments={
                 "parameter_file": LaunchConfiguration("apriltag_parameter_file"),
+                "launch_rectify": LaunchConfiguration("apriltag_launch_rectify"),
             }.items(),
             condition=IfCondition(PythonExpression([
                 "'", LaunchConfiguration("parking_method"),

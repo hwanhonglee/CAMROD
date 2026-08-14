@@ -9,6 +9,13 @@
 #   /sensing/camera/econ_rear/image_raw
 #   /sensing/camera/econ_rear/image_raw/compressed
 #   /sensing/camera/econ_rear/camera_info
+#   /sensing/camera/econ_rear/image_rect
+#
+# HH_260814 - camera_rear_publisher_node rectifies internally, so image_rect exists
+# for every consumer instead of only while AprilTag parking is selected. It replaces
+# an image_proc::RectifyNode that segfaulted here: a workspace image_geometry built
+# against opencv4_vendor and an apt librectify.so built against the distribution
+# OpenCV ended up in one process. Keep rectification with the capture node.
 #
 # Parameters:
 #   config/camera/camera_params.yaml        — ROS2 node params (intrinsics, device path, etc.)
@@ -171,6 +178,8 @@ def generate_launch_description():
                 ('~/image_raw',            'image_raw'),
                 ('~/image_raw/compressed', 'image_raw/compressed'),
                 ('~/camera_info',          'camera_info'),
+                ('~/image_rect',           'image_rect'),
             ],
         ),
+
     ])

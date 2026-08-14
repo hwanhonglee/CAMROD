@@ -264,8 +264,13 @@ private:
           std::max(reproj_errs[best], 1e-9);
         if (ratio < 1.5 && has_prev_rvec_) {
           // HH_260720 - Prefer the candidate nearest the previous frame rotation.
-          double d0 = cv::norm(rvecs[0] - prev_rvec_);
-          double d1 = (n_sol >= 2) ? cv::norm(rvecs[1] - prev_rvec_) : 1e9;
+          // HH_260814 - Use the two-argument norm. `cv::norm(a - b)` builds a
+          // cv::MatExpr, and converting a non-identity expression to InputArray
+          // trips an OpenCV assertion that aborts the process. This branch needs
+          // two similar planar candidates plus a previous detection, so it fired
+          // only once the tag was tracked across frames - exactly during docking.
+          const double d0 = cv::norm(rvecs[0], prev_rvec_);
+          const double d1 = cv::norm(rvecs[1], prev_rvec_);
           best = (d1 < d0) ? 1 : 0;
         }
       }

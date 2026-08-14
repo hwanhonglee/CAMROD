@@ -539,7 +539,10 @@ bringup:
   # =========================================================================
   parking:
     # HH_260720 - Select one final parking controller implemented by camrod_control.
-    method: reverse
+    # HH_260814 - Dock against the rear-camera AprilTag so the final pose comes from
+    # the observed charger tag instead of the map drop-zone yaw. Simulation is forced
+    # back to `reverse` in _bringup_impl because fake_sensors has no rear camera.
+    method: apriltag
     enable_parking: true
     param_file: __module_default__
 

@@ -60,21 +60,15 @@ def generate_launch_description():
                         ("~/image_raw", "image_raw"),
                         ("~/image_raw/compressed", "image_raw/compressed"),
                         ("~/camera_info", "camera_info"),
+                        ("~/image_rect", "image_rect"),
                     ],
                     extra_arguments=[{"use_intra_process_comms": True}],
                 ),
-                ComposableNode(
-                    package="image_proc",
-                    plugin="image_proc::RectifyNode",
-                    name="econ_rear_rectify",
-                    namespace=LaunchConfiguration("rear_camera_namespace"),
-                    remappings=[
-                        ("image", "image_raw"),
-                        ("camera_info", "camera_info"),
-                        ("image_rect", "image_rect"),
-                    ],
-                    extra_arguments=[{"use_intra_process_comms": True}],
-                ),
+                # HH_260814 - image_proc::RectifyNode was removed here. It pulled a
+                # workspace image_geometry (opencv4_vendor) into a process holding
+                # the apt OpenCV and segfaulted inside initUndistortRectifyMap, so
+                # image_rect never reached the detector. camera_rear_publisher_node
+                # now rectifies with the same CameraInfo it publishes.
                 ComposableNode(
                     package="camrod_perception",
                     plugin="camrod::perception::AprilTagParkingDetectorNode",

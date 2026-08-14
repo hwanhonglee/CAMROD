@@ -1,4 +1,12 @@
 # Layout: monitored interface, then connection / signal / packet-quality groups.
+#
+# HH_260814 - The robot runs on wired lan1/lan2 and WiFi stays off, so every
+# check below is disabled. While they were on, a down wlP7p1s0 held
+# /hardware/network/connection at ERROR and /hardware/network/signal at STALE
+# for the whole session, which the UI renders as a permanent "System error".
+# A disabled check registers no diagnostic task at all, so the aggregator never
+# sees the name and cannot age it into STALE either. Re-enable these together
+# with the interface if WiFi ever becomes an operational link.
 network_checker:
   ros__parameters:
 
@@ -8,7 +16,7 @@ network_checker:
 
     # ── 연결 상태 ─────────────────────────────────────────────────────────
     connection:
-      enabled: true
+      enabled: false
 
     # ── 신호 세기 ─────────────────────────────────────────────────────────
     # RSSI (dBm) 는 음수이며, 값이 낮을수록 신호가 약함
@@ -17,13 +25,13 @@ network_checker:
     #   -85 dBm ~ -70 dBm: 약함 (WARN)
     #   -85 dBm 이하       : 매우 약함 (ERROR)
     signal:
-      enabled: true
+      enabled: false
       rssi_warn:  -70.0   # dBm — 이 값보다 낮으면 WARN
       rssi_error: -85.0   # dBm — 이 값보다 낮으면 ERROR
 
     # ── 패킷 품질 ─────────────────────────────────────────────────────────
     # rx/tx drop rate = delta_drop / delta_packets × 100 (%)
     quality:
-      enabled: true
+      enabled: false
       drop_rate_warn:  1.0   # % — 이 값보다 높으면 WARN
       drop_rate_error: 5.0   # % — 이 값보다 높으면 ERROR

@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "builtin_interfaces/msg/time.hpp"
+#include <opencv2/calib3d.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
@@ -95,11 +96,21 @@ public:
     compressed_pub_ = create_publisher<sensor_msgs::msg::CompressedImage>(
                         "~/image_raw/compressed", 2);
     cinfo_pub_      = create_publisher<sensor_msgs::msg::CameraInfo>("~/camera_info", 2);
+    // HH_260814 - Rectify in this process instead of image_proc. A workspace
+    // image_geometry linked against opencv4_vendor and an apt librectify.so
+    // linked against the distribution OpenCV load together in one container and
+    // segfault inside initUndistortRectifyMap, so image_rect never appeared and
+    // AprilTag parking never received an image. Owning the maps here keeps one
+    // OpenCV per process and drops a 1920x1080 inter-process copy.
+    rect_pub_ = create_publisher<sensor_msgs::msg::Image>("~/image_rect", 2);
+    build_rectification_maps();
 
     if (!open_camera()) {
       RCLCPP_FATAL(get_logger(), "Failed to open camera %s", device_.c_str());
       return;
     }
+
+    node_context_ = get_node_base_interface()->get_context();
 
     running_ = true;
     capture_thread_ = std::thread(&CameraRearPublisherNode::capture_loop, this);
@@ -164,10 +175,20 @@ private:
     return cap_.isOpened();
   }
 
+  // HH_260814 - Argument-less rclcpp::ok() reads the global default context, which
+  // scoped_component_container_mt never initializes: it runs composed nodes on its
+  // own context. Every worker thread below therefore exited immediately inside the
+  // rear AprilTag container, so the camera published nothing there. Ask the node's
+  // own context instead so composed and standalone runs behave the same.
+  bool node_is_running() const
+  {
+    return rclcpp::ok(node_context_);
+  }
+
   void capture_loop()
   {
     cv::Mat frame;
-    while (running_ && rclcpp::ok()) {
+    while (running_ && node_is_running()) {
       if (cap_.read(frame) && !frame.empty()) {
         {
           std::lock_guard<std::mutex> lk(frame_mutex_);
@@ -181,7 +202,7 @@ private:
 
   void publish_loop()
   {
-    while (running_ && rclcpp::ok()) {
+    while (running_ && node_is_running()) {
       cv::Mat frame;
       {
         std::unique_lock<std::mutex> lk(frame_mutex_);
@@ -233,6 +254,24 @@ private:
         image_pub_->publish(std::move(unique_msg));
       }
 
+      // HH_260814 - Rectified image for AprilTag parking. Remap costs a full
+      // frame pass, so keep it subscriber-gated like the raw stream.
+      if (rect_pub_->get_subscription_count() > 0) {
+        cv::Mat rectified;
+        if (rect_maps_ready_) {
+          cv::remap(frame, rectified, rect_map1_, rect_map2_, cv::INTER_LINEAR);
+        } else {
+          // Uncalibrated fallback keeps the topic alive rather than silently empty.
+          rectified = frame;
+        }
+        auto rect_msg = cv_bridge::CvImage(
+          std_msgs::msg::Header(), "bgr8", rectified).toImageMsg();
+        rect_msg->header.stamp    = stamp;
+        rect_msg->header.frame_id = frame_id_;
+        rect_pub_->publish(
+          std::make_unique<sensor_msgs::msg::Image>(std::move(*rect_msg)));
+      }
+
       // CameraInfo
       camera_info_msg_.header.stamp = stamp;
       cinfo_pub_->publish(camera_info_msg_);
@@ -241,7 +280,7 @@ private:
 
   void compressed_loop()
   {
-    while (running_ && rclcpp::ok()) {
+    while (running_ && node_is_running()) {
       cv::Mat frame;
       builtin_interfaces::msg::Time stamp;
       {
@@ -312,6 +351,46 @@ private:
     return ci;
   }
 
+  // HH_260814 - Precompute the undistort/rectify maps from the same CameraInfo
+  // this node publishes, so image_rect pixels match CameraInfo.P exactly. The
+  // AprilTag parking detector reads P and assumes zero distortion.
+  void build_rectification_maps()
+  {
+    const auto & ci = camera_info_msg_;
+    cv::Mat k = (cv::Mat_<double>(3, 3) <<
+      ci.k[0], ci.k[1], ci.k[2],
+      ci.k[3], ci.k[4], ci.k[5],
+      ci.k[6], ci.k[7], ci.k[8]);
+    cv::Mat r = (cv::Mat_<double>(3, 3) <<
+      ci.r[0], ci.r[1], ci.r[2],
+      ci.r[3], ci.r[4], ci.r[5],
+      ci.r[6], ci.r[7], ci.r[8]);
+    cv::Mat p = (cv::Mat_<double>(3, 3) <<
+      ci.p[0], ci.p[1], ci.p[2],
+      ci.p[4], ci.p[5], ci.p[6],
+      ci.p[8], ci.p[9], ci.p[10]);
+    cv::Mat d(static_cast<int>(ci.d.size()), 1, CV_64F);
+    for (size_t i = 0; i < ci.d.size(); ++i) {
+      d.at<double>(static_cast<int>(i)) = ci.d[i];
+    }
+
+    if (k.at<double>(0, 0) <= 0.0 || p.at<double>(0, 0) <= 0.0) {
+      RCLCPP_WARN(
+        get_logger(),
+        "rear calibration has no usable focal length; image_rect will mirror image_raw");
+      return;
+    }
+
+    cv::initUndistortRectifyMap(
+      k, d, r, p, cv::Size(pub_w_, pub_h_), CV_16SC2, rect_map1_, rect_map2_);
+    rect_maps_ready_ = !rect_map1_.empty() && !rect_map2_.empty();
+    RCLCPP_INFO(
+      get_logger(),
+      "rear rectification maps ready: %dx%d fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
+      pub_w_, pub_h_, p.at<double>(0, 0), p.at<double>(1, 1),
+      p.at<double>(0, 2), p.at<double>(1, 2));
+  }
+
   void load_calibration_from_params()
   {
     auto km = get_parameter("camera_matrix").as_double_array();
@@ -373,7 +452,14 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr            image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr  compressed_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr       cinfo_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr            rect_pub_;
   sensor_msgs::msg::CameraInfo camera_info_msg_;
+
+  // HH_260814 - Rectification maps are built once and only read by capture_loop.
+  cv::Mat rect_map1_, rect_map2_;
+  bool    rect_maps_ready_{false};
+  // HH_260814 - Set before the worker threads start; see node_is_running().
+  rclcpp::Context::SharedPtr node_context_;
 
   bool calib_loaded_{false};
   int  calib_w_{1920}, calib_h_{1080};
