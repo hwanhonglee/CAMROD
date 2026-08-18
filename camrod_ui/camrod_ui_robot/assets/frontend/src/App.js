@@ -251,9 +251,8 @@ function DiagnosticsMonitor() {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
-  // HH_260818 - Manual return and parking use the same backend authority as
-  // normal service commands; local state only reports the last operator request.
-  const [parkingOn, setParkingOn] = useState(false);
+  // HH_260819 - Return is the sole operator motion command. The backend selects
+  // campsite exit, drop-zone routing, or final parking from authoritative state.
   const [motionCommandPending, setMotionCommandPending] = useState('');
   const [motionCommandStatus, setMotionCommandStatus] = useState('');
   const [steeringRate, setSteeringRate] = useState(0.5);
@@ -341,23 +340,6 @@ function DiagnosticsMonitor() {
     }
   };
 
-  const toggleManualParking = async () => {
-    const next = !parkingOn;
-    setMotionCommandPending('parking');
-    setMotionCommandStatus('');
-    try {
-      const response = await fetch(`/ui/manual_parking?value=${next}`, { method: 'POST' });
-      const body = await response.json();
-      if (!response.ok || !body.success) throw new Error(body.message || '주차 명령 실패');
-      setParkingOn(next);
-      setMotionCommandStatus(next ? '주차 시작 명령 전송됨' : '주차 취소 명령 전송됨');
-    } catch (error) {
-      setMotionCommandStatus(error.message || '주차 명령 실패');
-    } finally {
-      setMotionCommandPending('');
-    }
-  };
-
   // HH_260721 - Operator diagnostics use one unambiguous three-level health scale.
   const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR' };
   const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a' };
@@ -397,16 +379,6 @@ function DiagnosticsMonitor() {
           title="현재 서비스 상태와 관계없이 drop zone 복귀를 요청"
         >
           {motionCommandPending === 'return' ? 'Return 요청 중' : 'Return'}
-        </button>
-        <button
-          className={`parking-toggle-btn ${parkingOn ? 'on' : 'off'}`}
-          onClick={toggleManualParking}
-          disabled={Boolean(motionCommandPending)}
-        >
-          <span className="parking-toggle-knob" />
-          <span className="parking-toggle-text">
-            {parkingOn ? 'Parking ON' : 'Parking OFF'}
-          </span>
         </button>
         <span className="manual-motion-status">{motionCommandStatus || '명령 대기'}</span>
       </div>

@@ -1,0 +1,45 @@
+{
+  "classification": "amd64_ros2_isolated_full_graph",
+  "architecture": "x86_64",
+  "site": "B6",
+  "dispatch_success": true,
+  "outbound_motion_observed": {
+    "time": 353662.76627799,
+    "x": 0.5555555,
+    "y": 0.0,
+    "yaw": 0.0015787836316860646,
+    "magnitude": 0.5555577432976753
+  },
+  "outbound_displacement_before_return_m": 2.018722300754233,
+  "first_return_action": "return_preempting",
+  "second_return_action": "return_preempting",
+  "third_return_action": "return_in_progress",
+  "first_zero_delay_s": 0.005008618987631053,
+  "hold_window_s": [
+    0.1,
+    0.45
+  ],
+  "hold_window_samples": 3,
+  "hold_window_max_command": 0.0,
+  "recall_count": 1,
+  "recall_delay_s": 0.5078479759977199,
+  "recalls": [
+    {
+      "time": 353663.291962852,
+      "site": "B6",
+      "source": "http:manual_return"
+    }
+  ],
+  "service_state_sequence": [
+    "RETURNING_TO_DROP_ZONE"
+  ],
+  "return_paths": [
+    {
+      "time": 353663.415268077,
+      "poses": 12,
+      "length_m": 2.132556669637048
+    }
+  ],
+  "pass": true,
+  "limit": "AMD64 simulation only; ARM64 timing and physical braking pending"
+}

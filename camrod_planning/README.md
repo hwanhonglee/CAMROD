@@ -11,6 +11,8 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 <!-- HH_260807 - Reduce the active cruise to 2 km/h without changing controller geometry. -->
 <!-- HH_260810 - Route confirmed operator-map goals through the existing
 manual goal-snapper and RotationShim contract. -->
+<!-- HH_260819 - Document source-aware reverse-shortest versus roadside
+forward Return selection and current B1-B13 simulation evidence. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -200,7 +202,7 @@ in explicit `OPERATOR_STOPPED` state.
 | Drop-zone wait | none |
 | Route to campsite | Nav2/RPP |
 | B1-B10 site entry, zero-turn, unload wait, site exit | campsite maneuver controller |
-| B11-B13 roadside arrival and wait | campsite maneuver controller; return geometry field-pending |
+| B11-B13 roadside arrival, wait, and crab-out | campsite maneuver controller; `DONE` source selects forward one-way Return |
 | Return route | Nav2/RPP |
 | Drop-zone alignment and station exit | drop-zone maneuver controller |
 | Final parking | selected reverse or AprilTag controller |
@@ -220,8 +222,8 @@ in explicit `OPERATOR_STOPPED` state.
 | Continuous service route ownership | B1/B2/B3 completed site, explicit RETURN, drop-zone, parking, charge, and next departure without bringup restart |
 | Reduced-boundary route evidence | Historical `1.29160 x 0.87000 m` run: `10.0403 m`, goal error `0.2932 m`, bounded margin recovery, physical hard stop |
 | B1-B10 site maneuver round trip | `CRAB_IN -> ROTATE_180 -> ... -> CRAB_OUT -> DONE`; all 10/10 PASS |
-| B11-B13 roadside arrival | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; all PASS with no zero-turn and no RETURN command |
-| B11-B13 return | Physical-body lanelet stop observed during the prior on-lane alignment; field geometry decision pending |
+| B11-B13 roadside Return | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; all 3/3 PASS with no zero-turn |
+| B11 forward-loop full cycle | Source-aware one-way route `155.73 m`, drop-zone alignment, reverse parking, charging and internal `PARKED`; physical field clearance pending |
 | B8 continuous RPP route | `59.931 m`, `GOAL_REACHED`; raw rotation/translation switches `403 -> 0` |
 | Rejected B8 `1.2 m` lookahead | Margin release followed by recontact in `0.999 s`; route not completed |
 | 3 km/h preview A/B | Velocity-scaled preview reached about `1.5 m` and recontacted in `0.850 s`; fixed `1.1 m` completed B1/B2 service `2/2` with no restart |
@@ -265,9 +267,16 @@ check; physical 5 Hz moving-base GNSS and 20 Hz Jetson localization remain pendi
 
 ![Historical reduced-boundary policy](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Current campsite sequencing policy](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite sequencing policy](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
 
-![Current campsite phase order](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+![Current campsite phase order](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif)
+
+Explicit Return is source-aware. B1-B10 may use the reversed outbound shortest
+path after their on-site 180-degree turnaround. B11-B13 publish
+`done_roadside_forward` only after `CRAB_OUT -> DONE`; LaneletRoute then keeps
+one-way direction and takes the forward loop, avoiding a zero-turn in the
+narrow roadside lane. Focused planner tests lock ordinary one-way, explicit
+reverse-shortest, and roadside-forward requests as three separate cases.
 
 ![Persistent-obstacle no-path result](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 

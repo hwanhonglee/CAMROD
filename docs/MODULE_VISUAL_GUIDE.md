@@ -10,6 +10,8 @@ with their exact simulation scope and current-map avoidance limitation. -->
 rigid-motion media separately from historical rectangular runtime evidence. -->
 <!-- HH_260810 - Add the matching historical map-v17 ROS road replay and preserve
 the distinction between simulation behavior and physical-road acceptance. -->
+<!-- HH_260819 - Add current B1-B13 Return and event-driven UI scheduler
+evidence while retaining physical-road and ARM64 acceptance limits. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -52,6 +54,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
 | `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
 | `camrod_control` / `camrod_bringup` | `test-results/worak-crab-fusion-safety-20260818/` JSON | Fresh map-v22 B1 phase result, directional gate matrix, and long-return timeout | Exact site entry/exit and semantic/radar matrix pass; complete drop-zone return timed out; field pending |
+| `camrod_control` / `camrod_planning` / `camrod_bringup` | `test-results/camping-site-full-return-20260819/` JSON/PNG/GIF | Current-map B1-B13 UI Return exits plus B11 full service | Exit 13/13; B11 forward loop, parking, charging pass in AMD64 sim; physical clearance pending |
 | `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test-results/tapered-rounded-boundary-20260810/` PNG/GIF | Current sensor-kit geometry, exact C++-equivalent contour generation, and Nav2 local/global footprint match | Shape and rigid transforms are source-derived; runtime collision and field clearance are not claimed |
 | `camrod_bringup` / `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test-results/tapered-rounded-boundary-road-sim-20260810/` PNG/GIF | Raw historical map-v17 ROS pose/command/gate timeline, recorded map SHA, exact 30-point contours, summary, and manifest | Physical body clear, planning-only contact, bounded reverse-yaw, same-route completion; physical road pending |
 | `camrod_runtime` / `camrod_bringup` | `runtime/test-results/nav2-lifecycle-shutdown-20260810/` JSON/log | Post-fix no-goal SYSTEM OK, UI READY, parent-only SIGINT, and all process exits | AMD64 44/44 clean; ARM64 resources and physical operation pending |
@@ -73,11 +76,12 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_ui` | Mission guide, Robot/Guest captures, seven operator-telemetry views, workspace GIF, resource PNG, and `test-results/docking-workspace-20260819/` | UI policy + live sensor/map/path/safety/docking APIs + backend profile JSON + production screenshot | Seven lazy views render without overflow; camera publishers and ARM64 frame pacing remain field-pending |
 | `camrod_control` / `camrod_bringup` | `test-results/campsite-return-docking-20260819/` and `test-results/b8-return-docking-20260819/` PNG/GIF | Full-graph B8 JSON plus canonical control/parking YAML | Same-anchor seven-phase return reaches `DONE`; parking slowdown is source-derived; physical docking remains pending |
 | `camrod_ui` | `test-results/operator-telemetry-websocket-amd64-20260810/` PNG/GIF | Standalone x86_64 measurement JSON | `9.938 Hz`, p95 `100.792 ms`, close `83.3 ms`, silent lease `12.078 s`; sensor/ARM64 cost pending |
+| `camrod_ui` / `camrod_bringup` | `test-results/manual-return-preemption-amd64-20260819/` JSON/PNG | Production HTTP endpoint plus isolated full ROS graph after `2.019 m` outbound motion | Zero in `5.01 ms`, one recall at `0.508 s`, fresh `2.133 m` reverse path; physical ARM64 braking pending |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 Package-guide files and structured release results are under
 `docs/assets/module-guides/<package>/{guide,evidence,test-results}/`. The
-checked-in inventory contains **78 PNGs and 19 GIFs** under `module-guides`; the former top-level
+checked-in inventory contains **81 PNGs and 20 GIFs** under `module-guides`; the former top-level
 `test_result` content is organized under each package's `test-results/`
 directory. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.
@@ -131,6 +135,9 @@ Current UI captures are
 [`confirmed manual Goal Pose`](assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png),
 [`map/perception`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png),
 and [`safety/control`](assets/module-guides/ui/evidence/ui-captures/operator-telemetry-safety-20260810.png).
+The seventh [`docking/parking`](assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
+view adds tag image/pose, paths, controller phase, battery, charging, and the
+same serialized Return authority used by diagnostics.
 They were recorded from the running simulation graph through the same FastAPI
 backend served to the robot display, not from an offline illustration script.
 The manual-goal capture adds a command surface: pointer selection remains a
@@ -141,9 +148,19 @@ separates browser rendering, ROS topic observations, and remaining field work.
 
 ![Operator telemetry AMD64 resource profile](assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
 
+![Current Return and lease scheduler A/B](assets/module-guides/ui/test-results/return-resource-amd64-20260819/return-resource-profile.png)
+
+![Measured outbound Return preemption](assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/manual-return-preemption.png)
+
 The adjacent JSON records backend-only CPU/PSS and 2 Hz payload size. Its
 largest measured view was perception at `14.45%` of one logical core,
 `80.00 MiB` PSS, and `36.14 KiB`; ARM64 8-core/16-GB acceptance is still open.
+The current full-graph A/B replaces permanent 10 Hz lease polling with an
+event-triggered guard and 1 Hz expiry timer, reducing AMD64 total/UI CPU and
+summed RSS while preserving the visible 10 Hz stream. It is not Jetson
+acceptance. The live preemption run separately proves that outbound motion is
+zeroed before one fresh return route is issued; both frontend controls share
+that production endpoint.
 
 ## Key Measured Results
 
@@ -221,9 +238,16 @@ route. The record explicitly carries `field_claim=false`.
 
 ![Historical reduced-boundary simulation](assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Current campsite sequencing](assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite sequencing](assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
 
-![Current campsite phase order](assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+![Current campsite phase order](assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif)
+
+The current-map result covers all 13 UI Return exits. B1-B10 turn on site and
+may retrace the reverse shortest path. B11-B13 cap lateral movement at `0.30 m`,
+skip zero-turn, restore the lane anchor through `CRAB_OUT -> DONE`, and select
+the forward one-way loop. A complete B11 run continued through drop-zone
+alignment, reverse parking, charger contact, controller `PARKED`, and public
+`CHARGING`. This remains AMD64 simulation rather than physical-road acceptance.
 
 | Contact geometry | Allowed action |
 |---|---|
@@ -340,7 +364,7 @@ Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
 commit, duration, and pass criteria. The active tapered-front, rounded planning
 polygon has `1.59160 x 1.27000 m` bounding extents and is an exact `0.10 m`
 offset from the body contour; sensor housings and swept clearance still require
-field verification. B1-B10 site maneuver sequencing is demonstrated in sim, while
-the complete simulated lifecycle through parking/charging is recorded separately.
-B11-B13 return geometry and all physical parking/charging acceptance remain
-field-pending.
+field verification. Current AMD64 simulation demonstrates B1-B10 turnaround
+and B11-B13 roadside exit sequencing; one B11 run also completes the forward
+loop, parking, and simulated charging. Physical B11-B13 clearance and all
+physical parking/charging acceptance remain field-pending.

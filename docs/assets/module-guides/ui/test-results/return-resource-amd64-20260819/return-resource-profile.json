@@ -1,0 +1,53 @@
+{
+  "classification": "measured_amd64_full_simulation",
+  "date": "2026-08-19",
+  "host": {
+    "architecture": "amd64",
+    "logical_cpu_count": 12,
+    "target_architecture": "arm64",
+    "target_cpu_count": 8,
+    "target_ram_gib": 16
+  },
+  "method": {
+    "sample_duration_s": 30,
+    "process_count": 45,
+    "state": "CHARGING idle",
+    "rviz_enabled": false,
+    "guest_ui_enabled": false,
+    "operator_browser_enabled": false,
+    "api_ui_backend_enabled": true,
+    "cpu_definition": "sum of Linux per-process CPU percentages; 100 percent equals one fully used core",
+    "rss_definition": "sum of per-process resident set size; shared pages can be counted more than once"
+  },
+  "before": {
+    "telemetry_lease_policy": "permanent 10 Hz ROS timer polling",
+    "graph_cpu_percent_one_core_basis": 81.88,
+    "graph_cpu_percent_host_capacity": 6.823,
+    "graph_rss_mib": 1955.6,
+    "ui_backend_cpu_percent_one_core_basis": 6.93,
+    "ui_backend_rss_mib": 85.3
+  },
+  "after": {
+    "telemetry_lease_policy": "GuardCondition request wake plus 1 Hz abandoned-lease expiry",
+    "graph_cpu_percent_one_core_basis": 80.78,
+    "graph_cpu_percent_host_capacity": 6.732,
+    "graph_rss_mib": 1938.7,
+    "ui_backend_cpu_percent_one_core_basis": 6.53,
+    "ui_backend_rss_mib": 87.6
+  },
+  "delta": {
+    "graph_cpu_percent": -1.343,
+    "graph_cpu_percentage_points_one_core_basis": -1.10,
+    "graph_rss_mib": -16.9,
+    "graph_rss_percent": -0.864,
+    "ui_backend_cpu_percent": -5.772,
+    "ui_backend_rss_mib": 2.3
+  },
+  "behavior_preserved": [
+    "10 Hz visible telemetry stream",
+    "lazy sensor subscriptions by selected tab",
+    "immediate session acquisition through ROS GuardCondition",
+    "12 s abandoned-session expiry"
+  ],
+  "arm64_acceptance": "pending_on_robot"
+}

@@ -116,8 +116,8 @@ class SimValidationRunner(Node):
         self.camping_wait_drop_zone = bool(
             self.declare_parameter("camping_wait_drop_zone", False).value
         )
-        # HH_260806 - Validate constrained roadside arrival without issuing an
-        # unresolved return/turn command in a narrow real-world service area.
+        # HH_260819 - Retain an arrival-only diagnostic option, while release
+        # validation exercises the now-supported roadside exit by default.
         self.camping_stop_at_wait_return = bool(
             self.declare_parameter("camping_stop_at_wait_return", False).value
         )
@@ -1895,7 +1895,8 @@ class SimValidationRunner(Node):
                 seen_align_retrace_yaw = (
                     seen_align_retrace_yaw or "ALIGN_RETRACE_YAW" in site_msg
                 )
-                # HH_260721 - Capture the on-lane turn used by constrained roadside sites.
+                # HH_260819 - Retain this observation so the roadside contract
+                # can prove that no in-lane return rotation occurred.
                 seen_align_return_route_yaw = (
                     seen_align_return_route_yaw or "ALIGN_RETURN_ROUTE_YAW" in site_msg
                 )
@@ -2136,18 +2137,13 @@ class SimValidationRunner(Node):
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         route_reached = bool(reached_nav or seen_goal_reached_state)
-        # HH_260721 - Roadside sites rotate on-lane after exit;
-        # regular sites retain their in-site turn.
-        # HH_260806 - Arrival-only roadside validation deliberately ends before
-        # the unresolved lane-return rotation is requested.
+        # HH_260819 - Roadside sites retain their lane heading and take the
+        # forward one-way loop after exit; regular sites retain their in-site
+        # turn and reverse-shortest return.
         service_mode_ok = (
             not seen_rotate_180
             and not seen_align_retrace_yaw
-            and (
-                not seen_align_return_route_yaw
-                if self.camping_stop_at_wait_return
-                else seen_align_return_route_yaw
-            )
+            and not seen_align_return_route_yaw
             if camping_service_mode == "roadside_stop"
             else seen_rotate_180
             and seen_align_retrace_yaw
@@ -2514,19 +2510,12 @@ class SimValidationRunner(Node):
 
         site_configs = [self.load_camping_site_config(key) for key in mission_keys]
         invalid = [key for key, config in zip(mission_keys, site_configs) if config is None]
-        roadside = [
-            key
-            for key, config in zip(mission_keys, site_configs)
-            if config is not None
-            and str(config.get("service_mode", "turnaround")).strip().lower()
-            != "turnaround"
-        ]
-        if invalid or roadside:
+        if invalid:
             self.results.append(
                 CheckResult(
                     "repeated_service_soak",
                     False,
-                    f"invalid_sites={invalid} roadside_return_not_approved={roadside}",
+                    f"invalid_sites={invalid}",
                 )
             )
             return
@@ -2558,6 +2547,11 @@ class SimValidationRunner(Node):
 
         for cycle_number, mission_key in enumerate(mission_keys, start=1):
             goal_pose = self.load_camping_goal(mission_key)
+            site_config = site_configs[cycle_number - 1] or {}
+            service_mode = str(
+                site_config.get("service_mode", "turnaround")
+            ).strip().lower()
+            roadside_stop = service_mode == "roadside_stop"
             if goal_pose is None:
                 overall_ok = False
                 cycle_reports.append(
@@ -2723,12 +2717,40 @@ class SimValidationRunner(Node):
                     )
                     return_sent = True
 
-                cycle_complete = bool(
-                    return_sent
-                    and any("CRAB_IN" in event for event in site_events)
-                    and any("ROTATE_180" in event for event in site_events)
+                # HH_260819 - Turnaround bays rotate on site. B11-B13 stay
+                # parallel throughout CRAB_OUT and use the legal forward loop.
+                site_mode_sequence_complete = bool(
+                    any("CRAB_IN" in event for event in site_events)
                     and any("CRAB_OUT" in event for event in site_events)
                     and any("DONE" in event for event in site_events)
+                    and (
+                        (
+                            roadside_stop
+                            and not any(
+                                "ALIGN_RETURN_ROUTE_YAW" in event
+                                for event in site_events
+                            )
+                            and not any(
+                                "ROTATE_180" in event or "ALIGN_RETRACE_YAW" in event
+                                for event in site_events
+                            )
+                        )
+                        or (
+                            not roadside_stop
+                            and any("ROTATE_180" in event for event in site_events)
+                            and any(
+                                "ALIGN_RETRACE_YAW" in event for event in site_events
+                            )
+                            and not any(
+                                "ALIGN_RETURN_ROUTE_YAW" in event
+                                for event in site_events
+                            )
+                        )
+                    )
+                )
+                cycle_complete = bool(
+                    return_sent
+                    and site_mode_sequence_complete
                     and any("ALIGN_PARKING_YAW" in event for event in self.drop_status_events[drop_base:])
                     and any("PARKED" in event for event in parking_events)
                     and "WAITING_FOR_CHARGING" in service_events
@@ -2770,6 +2792,7 @@ class SimValidationRunner(Node):
                 {
                     "cycle": cycle_number,
                     "mission_key": mission_key,
+                    "service_mode": service_mode,
                     "success": cycle_ok,
                     "elapsed_s": round(time.monotonic() - cycle_start, 3),
                     "service_states": service_events,

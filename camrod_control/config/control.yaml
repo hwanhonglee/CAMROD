@@ -46,8 +46,9 @@
     default_lateral_offset_m: 1.2
     min_lateral_offset_m: 0.2
     max_lateral_offset_m: 7.0
-    # HH_260806 - B11-B13 stop only 0.60 m off the lane and never enter for a zero-turn.
-    roadside_max_lateral_offset_m: 0.60
+    # HH_260819 - B11-B13 remain immediately beside the narrow road: cap the
+    # lateral service offset at 0.30 m and skip the on-site zero-turn.
+    roadside_max_lateral_offset_m: 0.30
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.
@@ -65,6 +66,9 @@
     # HH_260720 - Preserve all field-tuned campsite control values during the package move.
     # HH_260807 - Preserve 60% of the 2.0 km/h cruise reference after the 0.5 gate.
     crab_speed_mps: 0.666667
+    # HH_260819 - The 0.5 command gate yields 0.10 m/s (0.36 km/h) for the
+    # constrained B11-B13 roadside entry and exit.
+    roadside_crab_speed_mps: 0.20
     entry_position_tolerance_m: 0.15
     # HH_260807 - The narrow B4 lane has limited lateral clearance;
     # finish within 0.04 m of the route snap before handing control back to Nav2.

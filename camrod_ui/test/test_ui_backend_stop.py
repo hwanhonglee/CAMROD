@@ -76,6 +76,17 @@ class _FakeThread:
         self.alive = False
 
 
+class _FakeTimer:
+
+    def __init__(self, period_s: float, callback) -> None:
+        self.period_s = period_s
+        self.callback = callback
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
 class _FakeBackend:
 
     def __init__(self) -> None:
@@ -101,6 +112,9 @@ class _FakeBackend:
 
     def _publish_parking_operation(self, operation: int, source: str) -> None:
         self._record_operation("parking", operation, source)
+
+    def _request_nav2_cancel(self, source: str):
+        return UiBackendNode._request_nav2_cancel(self, source)
 
 
 class UiBackendStopTest(unittest.TestCase):
@@ -143,6 +157,119 @@ class UiBackendStopTest(unittest.TestCase):
 
     def test_manual_return_during_normal_travel_preempts_with_planning_recall(self) -> None:
         events = []
+        timers = []
+        runtime_lock = threading.Lock()
+
+        def create_timer(period_s, callback):
+            timer = _FakeTimer(period_s, callback)
+            timers.append(timer)
+            events.append(("timer", period_s))
+            return timer
+
+        def publish_return(source):
+            # The real publisher updates runtime policy under the general lock.
+            acquired = runtime_lock.acquire(blocking=False)
+            self.assertTrue(acquired)
+            if acquired:
+                runtime_lock.release()
+            events.append(("planning", source))
+
+        backend = SimpleNamespace(
+            _active_mission_site="B8",
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _latest_platform_is_charging=False,
+            _manual_return_transition_pending=False,
+            _manual_return_transition_timer=None,
+            _manual_return_transition_source="",
+            _manual_return_transition_lock=threading.Lock(),
+            manual_return_preempt_hold_s=0.5,
+            publish_mission_engage_from_destination=True,
+            _lock=runtime_lock,
+            _request_nav2_cancel=(
+                lambda source: events.append(("cancel", source))
+            ),
+            _publish_mission_engage=(
+                lambda enabled, source: events.append(
+                    ("mission_engage", enabled, source)
+                )
+            ),
+            _publish_engage=(
+                lambda enabled, source, sync_drive_enable: events.append(
+                    ("engage", enabled, source, sync_drive_enable)
+                )
+            ),
+            _publish_platform_drive_enable=(
+                lambda enabled, source: events.append(
+                    ("platform", enabled, source)
+                )
+            ),
+            _publish_planning_return_request=publish_return,
+            create_timer=create_timer,
+            destroy_timer=lambda timer: events.append(("destroy_timer", timer)),
+            get_logger=lambda: _FakeLogger(),
+        )
+        backend._schedule_manual_return_transition = lambda source: (
+            UiBackendNode._schedule_manual_return_transition(backend, source)
+        )
+        backend._complete_manual_return_transition = lambda: (
+            UiBackendNode._complete_manual_return_transition(backend)
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:normal_travel"
+        )
+
+        self.assertEqual(action, "return_preempting")
+        self.assertEqual(
+            [event[0] for event in events],
+            ["cancel", "mission_engage", "engage", "timer"],
+        )
+        self.assertFalse(events[1][1])
+        self.assertFalse(events[2][1])
+        self.assertFalse(events[2][3])
+        self.assertEqual(timers[0].period_s, 0.5)
+        self.assertNotIn("planning", [event[0] for event in events])
+
+        # HH_260819 - Both visible Return buttons share this pending latch.
+        repeated_action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:second_button"
+        )
+        self.assertEqual(repeated_action, "return_preempting")
+        self.assertEqual(len(timers), 1)
+
+        UiBackendNode._complete_manual_return_transition(backend)
+        self.assertTrue(timers[0].cancelled)
+        self.assertEqual(events[-1], ("planning", "test:normal_travel"))
+        self.assertFalse(backend._manual_return_transition_pending)
+
+    def test_operator_stop_cancels_pending_return_before_route_publish(self) -> None:
+        events = []
+        timer = _FakeTimer(0.5, lambda: None)
+        backend = SimpleNamespace(
+            _manual_return_transition_pending=True,
+            _manual_return_transition_timer=timer,
+            _manual_return_transition_source="test:normal_travel",
+            _manual_return_transition_lock=threading.Lock(),
+            destroy_timer=lambda value: events.append(("destroy", value)),
+            _publish_planning_return_request=(
+                lambda source: events.append(("planning", source))
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        UiBackendNode._cancel_pending_manual_return_transition(
+            backend, "operator_stop"
+        )
+        UiBackendNode._complete_manual_return_transition(backend)
+
+        # HH_260819 - A delayed timer callback cannot reopen motion after the
+        # operator has won ownership with Stop.
+        self.assertTrue(timer.cancelled)
+        self.assertFalse(backend._manual_return_transition_pending)
+        self.assertNotIn("planning", [event[0] for event in events])
+
+    def test_manual_return_request_reopens_gate_before_fresh_route(self) -> None:
+        events = []
 
         class Publisher:
             @staticmethod
@@ -151,17 +278,18 @@ class UiBackendStopTest(unittest.TestCase):
 
         backend = SimpleNamespace(
             _active_mission_site="B8",
-            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
-            _latest_platform_is_charging=False,
             planning_return_to_drop_zone_topic=(
                 "/planning/state_machine/return_to_drop_zone"
             ),
             pub_planning_return_to_drop_zone=Publisher(),
-            _publish_camping_site_maneuver_controller_return=(
-                lambda source: events.append(("site_exit", source))
-            ),
+            publish_mission_engage_from_destination=True,
             _publish_service_state=(
                 lambda state, source: events.append(("state", state, source))
+            ),
+            _publish_mission_engage=(
+                lambda enabled, source: events.append(
+                    ("mission_engage", enabled, source)
+                )
             ),
             get_clock=lambda: SimpleNamespace(
                 now=lambda: SimpleNamespace(
@@ -171,15 +299,16 @@ class UiBackendStopTest(unittest.TestCase):
             get_logger=lambda: _FakeLogger(),
         )
 
-        action = UiBackendNode._request_return_to_drop_zone(
-            backend, "test:normal_travel"
-        )
+        UiBackendNode._publish_planning_return_request(backend, "test:return")
 
-        self.assertEqual(action, "return_route")
-        self.assertEqual([event[0] for event in events], ["planning", "state"])
-        self.assertEqual(events[0][1].site_name, "B8")
-        self.assertEqual(events[0][1].source, "test:normal_travel")
-        self.assertEqual(events[1][1], AvgServiceState.RETURNING_TO_DROP_ZONE)
+        self.assertEqual(
+            [event[0] for event in events],
+            ["state", "mission_engage", "planning"],
+        )
+        self.assertEqual(events[0][1], AvgServiceState.RETURNING_TO_DROP_ZONE)
+        self.assertTrue(events[1][1])
+        self.assertEqual(events[2][1].site_name, "B8")
+        self.assertEqual(events[2][1].source, "test:return")
 
     def test_manual_return_at_drop_zone_starts_alignment_without_nav_loop(self) -> None:
         operations = []
@@ -197,6 +326,19 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertEqual(action, "parking_alignment")
         self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
+
+    def test_second_return_button_does_not_restart_active_return_route(self) -> None:
+        backend = SimpleNamespace(
+            _manual_return_transition_pending=False,
+            _latest_service_state=int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+            _latest_platform_is_charging=False,
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:second_button"
+        )
+
+        self.assertEqual(action, "return_in_progress")
 
     def test_manual_return_realigns_when_charging_contact_was_lost(self) -> None:
         # HH_260818 - A stale public CHARGING state without current CAN contact
@@ -216,29 +358,6 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertEqual(action, "parking_alignment")
         self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
-
-    def test_manual_parking_uses_drop_zone_alignment_handoff(self) -> None:
-        operations = []
-        backend = SimpleNamespace(
-            _publish_drop_zone_operation=lambda operation, source: operations.append(
-                ("drop_zone", operation, source)
-            ),
-            _publish_parking_operation=lambda operation, source: operations.append(
-                ("parking", operation, source)
-            ),
-        )
-
-        result = UiBackendNode.set_manual_parking(backend, True)
-
-        self.assertTrue(result["success"])
-        self.assertEqual(
-            operations,
-            [(
-                "drop_zone",
-                MotionOperation.ALIGN_FOR_PARKING,
-                "http:manual_parking",
-            )],
-        )
 
     def test_readiness_timer_can_rebroadcast_unchanged_authoritative_state(self) -> None:
         broadcasts = []

@@ -19,6 +19,10 @@ BRINGUP = ASSETS / "bringup/test-results/b8-return-docking-20260819"
 CONTROL = ASSETS / "control/test-results/campsite-return-docking-20260819"
 PLATFORM = ASSETS / "platform/test-results/normal-crab-selection-20260819"
 UI = ASSETS / "ui/test-results/docking-workspace-20260819"
+UI_PREEMPT = (
+    ASSETS
+    / "ui/test-results/manual-return-preemption-amd64-20260819"
+)
 
 
 def verify_manifest(directory: Path) -> None:
@@ -96,6 +100,7 @@ def test_release_images_and_animations_are_renderable() -> None:
         CONTROL / "parking-slowdown-profile.png": (1600, 900),
         BRINGUP / "b8-entry-return-summary.png": (1600, 1040),
         UI / "operator-docking-workspace.png": (1600, 1000),
+        UI_PREEMPT / "manual-return-preemption.png": (1600, 920),
     }
     for path, expected_size in images.items():
         with Image.open(path) as image:
@@ -113,9 +118,29 @@ def test_release_images_and_animations_are_renderable() -> None:
 
 
 def test_asset_manifests_and_readmes_are_complete() -> None:
-    for directory in (BRINGUP, CONTROL, PLATFORM, UI):
+    for directory in (BRINGUP, CONTROL, PLATFORM, UI, UI_PREEMPT):
         assert (directory / "README.md").is_file()
         verify_manifest(directory)
+
+
+def test_live_manual_return_preemption_result_passes() -> None:
+    """The live full graph must stop before publishing one fresh recall."""
+    result = json.loads(
+        (UI_PREEMPT / "manual-return-preemption.json").read_text()
+    )
+    assert result["classification"] == "amd64_ros2_isolated_full_graph"
+    assert result["pass"] is True
+    assert result["outbound_displacement_before_return_m"] >= 2.0
+    assert result["first_return_action"] == "return_preempting"
+    assert result["second_return_action"] == "return_preempting"
+    assert result["third_return_action"] == "return_in_progress"
+    assert result["first_zero_delay_s"] <= 0.20
+    assert result["hold_window_max_command"] == 0.0
+    assert result["recall_count"] == 1
+    assert 0.45 <= result["recall_delay_s"] <= 0.75
+    assert result["service_state_sequence"] == ["RETURNING_TO_DROP_ZONE"]
+    assert result["return_paths"][0]["poses"] > 1
+    assert result["return_paths"][0]["length_m"] > 0.0
 
 
 def test_changed_config_mirrors_are_byte_identical() -> None:
@@ -160,6 +185,16 @@ def test_renderer_is_executable_installed_and_documented() -> None:
     assert "`0.30 m` remaining" in parameter_reference
     assert "`0.60 m` remaining" in parameter_reference
     assert "Charging CAN feedback immediately publishes zero" in parameter_reference
+
+    # HH_260819 - Keep the live production-endpoint probe available on AMD64
+    # and ARM64 installs; only its measured acceptance result remains host-specific.
+    probe = (
+        REPO_ROOT
+        / "camrod_bringup/scripts/manual_return_preemption_probe.py"
+    )
+    assert probe.is_file()
+    assert os.access(probe, os.X_OK)
+    assert f"scripts/{probe.name}" in cmake
 
 
 def test_sim_platform_gate_keeps_bridge_owned_status_heartbeat() -> None:

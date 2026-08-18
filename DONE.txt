@@ -1,6 +1,6 @@
 CAMROD 구현·검증 완료 기록
-작업 기준 버전: v2.1.7
-정리일: 2026-08-10 (Asia/Seoul)
+작업 기준 버전: v2.1.8
+정리일: 2026-08-19 (Asia/Seoul)
 
 # HH_260810 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
@@ -46,6 +46,38 @@ CAMROD 구현·검증 완료 기록
   - b0e10814 feat(platform): publish steering transition evidence
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
+
+0H. HH_260819 Return 선점·B11-B13 전방 순환·UI lease 경량화
+    [DONE-CODE, DONE-SIM, MEASURED-AMD64, FIELD-PENDING]
+- Robot diagnostics의 `Return`과 Docking 화면의 `즉시 복귀`를 같은
+  `/ui/manual_return` 권한으로 통합했다. 일반 outbound Nav2 주행에서는
+  cancel, mission/drive gate OFF, `0.50 s` 정지, gate ON, 단일 return recall
+  순서로 전환한다. 연속 클릭은 preempt/return latch에서 합쳐진다.
+- B1-B10은 campsite에서 180도 선회 후 reverse-shortest 복귀를 유지한다.
+  B11-B13은 `0.30 m` roadside crab 후 `CRAB_OUT -> DONE`까지 원래 heading을
+  유지하고 `done_roadside_forward` source로 전방 one-way loop를 선택한다.
+  좁은 lane에서 시도했던 zero-turn은 `lanelet_physical_body_cost` 접촉 때문에
+  제거했다. Static lanelet bypass는 명시된 campsite phase로만 제한되고 live
+  obstacle은 계속 정지한다. `DONE` 뒤 ordinary route에서는 physical-body와
+  planning-footprint lanelet stop이 다시 fail-closed로 적용된다.
+- 현재 사용자 map SHA `8fa131...e59`의 격리 AMD64 graph에서 B1-B10
+  turnaround exit 10/10, B11-B13 roadside exit 3/3이 통과했다. B11 full
+  cycle은 UI Return, `155.73 m` 전방 loop, drop-zone yaw alignment, reverse
+  parking, `WAITING_FOR_CHARGING -> CHARGING`, internal `PARKED`까지 통과했다.
+- 일반 B6 outbound가 `2.019 m` 이동한 뒤 실제 `/ui/manual_return`을 연속
+  호출했다. 출력은 `5.01 ms`에 zero, `0.10-0.45 s` hold 구간 최대 명령은
+  `0.000`, recall은 `0.508 s`에 1회만 발행됐고 `2.133 m/12 pose` reverse
+  return path가 생성됐다. 프로브와 체크섬 PNG/JSON을 함께 보존했다.
+- UI의 사용되지 않는 Parking ON/OFF 버튼/API를 제거했다. parking method는
+  drop-zone state handoff와 canonical config만 소유한다.
+- telemetry lease의 상시 10 Hz executor poll을 HTTP/WebSocket 요청이 깨우는
+  ROS GuardCondition과 1 Hz abandoned-expiry timer로 교체했다. 실제 표시
+  stream은 10 Hz를 유지한다. 동일 45-process AMD64 idle graph A/B에서 전체
+  CPU(one-core basis) `81.88 -> 80.78%`, UI CPU `6.93 -> 6.53%`, summed RSS
+  `1955.6 -> 1938.7 MiB`를 측정했다.
+- 위 결과는 AMD64 CODE/SIM/상대 측정 완료다. ARM64 8-core/16-GB 30분 tab/
+  camera soak, 물리 B11-B13 도로 clearance, 실제 steering/CAN charger는
+  TODOLIST의 FIELD-PENDING 항목이다.
 
 0G. HH_260810 관리자 화면 유지·10 Hz telemetry·복귀 경고 분리
     [DONE-CODE, MEASURED-AMD64, FIELD-PENDING]

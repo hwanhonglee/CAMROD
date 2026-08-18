@@ -314,6 +314,34 @@ class OperatorTelemetryTest(unittest.TestCase):
         UiBackendNode._request_telemetry_session(backend, False, "perception")
         self.assertEqual(backend._telemetry_session_deadline, 0.0)
 
+    def test_telemetry_lease_wakes_ros_executor_without_polling_delay(self) -> None:
+        class Guard:
+            def __init__(self) -> None:
+                self.trigger_count = 0
+
+            def trigger(self) -> None:
+                self.trigger_count += 1
+
+        guard = Guard()
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _normalize_telemetry_view=UiBackendNode._normalize_telemetry_view,
+            enable_operator_telemetry=True,
+            telemetry_session_timeout_s=12.0,
+            _telemetry_session_deadline=0.0,
+            _telemetry_requested_view="all",
+            _telemetry_active_view="",
+            _telemetry_capture_active=False,
+            _telemetry_session_guard=guard,
+        )
+
+        UiBackendNode._request_telemetry_session(backend, True, "camera")
+
+        # HH_260819 - Acquisition is event driven; the 1 Hz timer is only the
+        # abandoned-lease expiry fallback on constrained ARM64 hardware.
+        self.assertEqual(guard.trigger_count, 1)
+        self.assertEqual(backend._telemetry_requested_view, "camera")
+
     def test_new_view_resets_rate_history_from_previous_lease(self) -> None:
         backend = SimpleNamespace(
             _telemetry_source_rx={"gnss.fix": 10.0},

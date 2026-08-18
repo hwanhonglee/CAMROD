@@ -18,7 +18,7 @@ EVIDENCE_SUMMARY = (
     / "module-guides"
     / "bringup"
     / "test-results"
-    / "camping-site-sequencing-20260806"
+    / "camping-site-full-return-20260819"
     / "campsite-policy-summary.json"
 )
 
@@ -83,11 +83,26 @@ def test_checked_in_runtime_evidence_covers_all_thirteen_sites() -> None:
         assert result["rotate_180"] is True
         assert float(result["site_distance_m"]) > 0.0
 
-    roadside_sequence = ["CRAB_IN", "UNLOAD_WAIT", "WAIT_RETURN"]
+    roadside_sequence = [
+        "CRAB_IN",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "CRAB_OUT",
+        "DONE",
+    ]
     for index in range(11, 14):
         result = runtime[f"B{index}"]
         assert result["pass"] is True
         assert result["service_mode"] == "roadside_stop"
-        assert result["arrival_only"] is True
+        assert result["arrival_only"] is False
         assert result["phase_sequence"] == roadside_sequence
         assert result["rotate_180"] is False
+        assert float(result["max_final_cmd"]) <= 0.10
+
+    # HH_260819 - The constrained sites exit laterally without an on-lane
+    # zero-turn, then select the legal forward loop from the Return source.
+    assert summary["policy"]["roadside_max_lateral_offset_m"] == 0.30
+    assert (
+        summary["policy"]["roadside_return_policy"]
+        == "forward_one_way_after_crab_out"
+    )

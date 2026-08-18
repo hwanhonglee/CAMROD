@@ -2,6 +2,8 @@
 
 <!-- HH_260818 - Provide one operator-facing index for motion, safety,
 parking, sensing, localization, feature toggles, and synchronized mirrors. -->
+<!-- HH_260819 - Add source-aware roadside Return, serialized operator
+preemption, and event-driven telemetry scheduling values. -->
 
 This guide lists the parameters normally changed for vehicle behavior. It does
 not duplicate every ROS topic string or diagnostic checker threshold in the
@@ -52,6 +54,7 @@ the raw owner limit and the resulting platform limit.
 | RPP curvature floor | `regulated_linear_scaling_min_speed` | `0.333333 m/s` | `0.166667 m/s` = `0.6 km/h` |
 | RPP final goal approach | `min_approach_linear_velocity` | `0.277778 m/s` | `0.138889 m/s` = `0.5 km/h` |
 | Campsite crab | `crab_speed_mps` | `0.666667 m/s` | `0.333334 m/s` = `1.2 km/h` |
+| B11-B13 roadside crab | `roadside_crab_speed_mps` | `0.20 m/s` | `0.10 m/s` = `0.36 km/h` |
 | Campsite reverse | `reverse_entry_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
 | Drop-zone exit | `exit_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
 | Reverse parking cruise | `reverse_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
@@ -110,10 +113,13 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `rotate_settle_max_rate_degps` | `3 deg/s` | Maximum residual yaw rate during settle proof |
 | `unload_wait_s` | `5 s` | Delay before external Return becomes valid |
 | `auto_return_after_unload_wait` | `false` | Prevents automatic motion while people unload |
-| `roadside_max_lateral_offset_m` | `0.60 m` | B11-B13 roadside-only cap |
+| `roadside_max_lateral_offset_m` | `0.30 m` | B11-B13 roadside-only cap |
 
 Entry and exit now use the same `/planning/goal_pose_snapped` map anchor.
 `CRAB_IN` and `CRAB_OUT` publish `/control/camping_site_maneuver_controller/path_ros`.
+B1-B10 may retrace the reverse shortest Return after their on-site turn.
+B11-B13 publish a `roadside_forward` source only after `CRAB_OUT -> DONE`, so
+LaneletRoute follows the legal forward one-way loop without rotating in-lane.
 
 ## Boundary Recovery
 
@@ -174,18 +180,24 @@ phase, then the internal phase becomes `PARKED` and public state is `CHARGING`.
 | Item | Topic/API | Effect |
 |---|---|---|
 | Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; planning recall is deferred until `CRAB_OUT` reaches the shared snap anchor |
-| Manual Return while driving | same API | Immediately preempts ordinary Nav2 travel with the drop-zone route |
+| Manual Return while driving | same API | Cancels Nav2, closes motion authorization for `manual_return_preempt_hold_s=0.50 s`, then publishes one drop-zone route |
 | Already at drop zone | same API | Starts drop-zone yaw alignment before selected parking method |
 | Already charging | same API | Reports `already_charging`; does not move |
 | `CHARGING` state but CAN contact lost | same API | Restarts drop-zone alignment instead of creating a Nav2 loop |
-| Manual parking | `POST /ui/manual_parking?value=true|false` | Starts/cancels alignment and final parking |
 | Docking debug image | `/perception/apriltag_parking_detector/debug_image/compressed` | Lazy UI camera stream |
 | Tag data | tag pose and detected topics | Exact x/y/z/distance/yaw and presence |
 | Controller paths | reverse/AprilTag `path_ros` | UI parking trajectory |
 | Charging | `/platform/status.is_charging` | UI boolean and immediate controller stop |
 
+Both visible Return controls call the same API. Duplicate presses during the
+preemption hold or an active return are idempotent. The obsolete manual Parking
+ON/OFF endpoint is removed; final parking remains owned by the drop-zone state
+handoff and configured parking method.
+
 The docking UI uses seven dynamic subscriptions only while its administrator
-tab is open.
+tab is open. Lease changes wake ROS through a GuardCondition; a `1 Hz` timer is
+retained only for abandoned-lease expiry, while visible telemetry remains
+`10 Hz`.
 
 ## Battery Policy
 

@@ -13,6 +13,8 @@ the fixed-preview service A/B. -->
 <!-- HH_260807 - Reduce the production cruise to 2 km/h while preserving maneuver ratios. -->
 <!-- HH_260818 - Document same-anchor campsite return, heading-aware restart,
 normal/crab separation, parking slowdown, and charging-first stop behavior. -->
+<!-- HH_260819 - Document complete B11-B13 crab-out, no-zero-turn roadside
+return, and the source-selected forward loop. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -142,8 +144,8 @@ localization, or battery hold.
 | Site mode | Phase order |
 |---|---|
 | Active B1-B10 turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
-| Active B11-B13 roadside arrival | capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN`; no on-site zero-turn |
-| B11-B13 return | Field geometry decision pending; arrival-only tests do not publish RETURN |
+| Active B11-B13 roadside | `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
+| B11-B13 return | Preserve arrival heading, restore the lane anchor laterally, then request a forward one-way loop |
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
@@ -217,18 +219,20 @@ the internal controller remains `PARKED`.
 
 ## Campsite Sequencing Evidence
 
-![Map-v16 campsite policy validation](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite policy validation](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
 
-![Turnaround and roadside phase order](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif)
+![Current turnaround and roadside phase order](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif)
 
-All B1-B10 sites completed the full turnaround/return sequence with map-derived
-lateral entries from `1.79 m` to `5.31 m`. B11-B13 each stopped at
-`WAIT_RETURN` after a `0.60 m`-capped roadside crab and never entered
-`ROTATE_180`. The final gate ignores Nav2 commands while a campsite phase owns
-motion, then enforces a stationary handoff. Static road-lanelet cost is bypassed
-only for explicit campsite motion; live dynamic obstacle checks remain active.
-The [structured result](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/README.md)
-keeps the unresolved B11-B13 return geometry explicitly field-pending.
+All B1-B10 sites completed the full turnaround/return sequence. B11-B13 used
+the `0.30 m` roadside cap, accepted Return, restored the shared lane anchor with
+pure lateral `CRAB_OUT`, reached `DONE`, and never entered a rotation phase.
+The `done_roadside_forward` source selects the legal forward one-way loop
+instead of attempting a physical-body-blocked zero-turn in the narrow lane.
+The final gate ignores Nav2 commands while a campsite phase owns motion, then
+enforces a stationary handoff. Static road-lanelet cost is bypassed only for
+configured campsite motion; live obstacle checks remain active, and ordinary
+physical-body/planning-footprint checks resume at `DONE`. The [structured result](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/README.md)
+also records a complete B11 return, drop-zone parking, and charging cycle.
 
 ## Boundary Evidence
 

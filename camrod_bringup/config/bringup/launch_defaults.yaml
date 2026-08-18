@@ -604,6 +604,9 @@ bringup:
     # HH_260706 - Bind operator UI to all interfaces for robot-IP access.
     api_ui_host: 0.0.0.0
     api_ui_port: 8010
+    # HH_260819 - Stop the outbound Nav2 owner, wait beyond the 0.35 s command
+    # timeout, then publish exactly one return route for either Return button.
+    api_ui_manual_return_preempt_hold_s: 0.5
     # HH_260810 - Enable leased sensor/map views; heavy subscriptions remain
     # inactive until an administrator opens the matching diagnostics tab.
     enable_operator_telemetry: true

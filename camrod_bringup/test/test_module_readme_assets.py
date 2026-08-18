@@ -352,6 +352,9 @@ def test_visualization_tool_ownership_is_explicit() -> None:
         "render_module_readme_assets.py",
         "render_operator_transport_handoff_results.py",
         "render_park_operating_points.py",
+        # HH_260819 - Keep the measured Return/lease A/B reproducible beside
+        # the current campsite renderer instead of hand-editing its chart.
+        "render_return_resource_profile.py",
         "render_robot_boundary_validation.py",
         "render_rpp_service_ab.py",
         "render_tapered_rounded_boundary.py",

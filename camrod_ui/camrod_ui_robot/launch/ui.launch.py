@@ -177,6 +177,13 @@ def generate_launch_description():
         default_value='/planning/state_machine/return_to_drop_zone',
         description='Typed drop-zone route request published after site exit',
     )
+    manual_return_preempt_hold_s_arg = DeclareLaunchArgument(
+        'manual_return_preempt_hold_s',
+        # HH_260819 - This exceeds the 0.35 s command timeout without adding a
+        # permanent timer or polling loop on the constrained ARM64 target.
+        default_value='0.5',
+        description='Stopped hold between cancelling an active Nav2 goal and dispatching Return',
+    )
     platform_status_topic_arg = DeclareLaunchArgument(
         'platform_status_topic',
         default_value='/platform/status',
@@ -262,6 +269,10 @@ def generate_launch_description():
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
             'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
+            'manual_return_preempt_hold_s': ParameterValue(
+                LaunchConfiguration('manual_return_preempt_hold_s'),
+                value_type=float,
+            ),
             'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
             # HH_260721 - Defer site goals until the control-owned station exit completes.
             'drop_zone_maneuver_controller_operation_topic': LaunchConfiguration('drop_zone_maneuver_controller_operation_topic'),
@@ -402,6 +413,7 @@ def generate_launch_description():
         platform_drive_enable_topic_arg,
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,
+        manual_return_preempt_hold_s_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,
         drop_zone_maneuver_controller_operation_topic_arg,
