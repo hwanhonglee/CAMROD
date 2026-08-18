@@ -7,6 +7,8 @@ while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260810 - Add confirmed operator-map manual goals and make RViz opt-in. -->
 <!-- HH_260810 - Keep admin diagnostics mounted across service screens and use
 a bounded client-leased telemetry WebSocket for the ARM64 deployment target. -->
+<!-- HH_260818 - Add state-independent manual Return and a lazy docking view
+for tag image/pose, parking paths, controller phases, battery, and charging. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -37,7 +39,13 @@ bridge, diagnostics display, and managed local kiosk.
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
 | Operator telemetry transport | latest-value WebSocket `10 Hz`; REST fallback `1 Hz` |
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
+| Docking telemetry | seven lazy subscriptions: tag debug/pose/detected, two paths, two controller states |
+| Manual Return | `POST /ui/manual_return`; route return or drop-zone alignment, no motion while already charging |
 | Confirmed-tent occupancy guard | `false` by default; set `bringup.control.enable_campsite_occupancy_guard: true` to block pre-entry dispatch |
+
+See the [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
+for UI battery admission, telemetry rates, feature switches, manual Return,
+parking, and the control/sensing files behind each displayed value.
 
 ## Destination Dispatch
 
@@ -93,12 +101,12 @@ change no longer closes the diagnostics view or its telemetry lease.
 
 ## Operator Telemetry Workspace
 
-The administrator diagnostics modal now contains `System` plus six live views:
+The administrator diagnostics modal now contains `System` plus seven live views:
 `GNSS · IMU`, `Radar · LiDAR`, `Camera`, `Driving trajectory`,
-`Map · Perception`, and `Safety · Control`. These views consume the same ROS messages used by the
-standalone tools and RViz. Five views are read-only. The trajectory view can
-publish a manual goal only after explicit confirmation; no view changes sensor
-authority.
+`Map · Perception`, `Safety · Control`, and `Docking · Parking`. These views
+consume the same ROS messages used by the standalone tools and RViz. The
+trajectory view can publish a manual goal only after explicit confirmation;
+no view changes sensor authority.
 
 | Previous live tool / RViz display | UI replacement |
 |---|---|
@@ -110,6 +118,7 @@ authority.
 | RViz map/perception layers | Lanelet polylines, four cost layers, obstacle cloud/boxes, body, and planning contour |
 | RViz diagnostics and controller markers | Safety-gate reason, service state, maneuver owners, radar evidence, and obstacle replan status |
 | Camera payload probe | Front/rear compressed frames, source rate, age, format, and payload size |
+| AprilTag/parking RViz topics | Docking debug image, exact tag pose/distance, charging boolean, controller phases, and reverse/AprilTag paths |
 
 ## Manual Goal Pose
 
@@ -175,6 +184,7 @@ load reduction as an unmeasured optimization. -->
 | Trajectory | `7` | `78.13%` |
 | Map / perception | `9` | `71.88%` |
 | Safety / control | `7` | `78.13%` |
+| Docking / parking | `7` | `78.13%` |
 
 Every view change clears the previous lease's receive timestamps before new
 samples are counted. A live GNSS -> proximity -> GNSS switch therefore reported
@@ -193,7 +203,14 @@ instead of retaining the idle gap and temporarily displaying `0.1 Hz`.
 |---|---|
 | ![Operator map and perception telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png) | ![Operator safety and control telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-safety-20260810.png) |
 
-![Six-view operator telemetry workspace](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+![Historical six-view operator telemetry workspace](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+
+![Current docking and parking workspace](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
+
+The [current docking UI capture](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/README.md)
+uses the production frontend and ROS backend at schema v3 and `10 Hz`. It shows
+pending tag/charging values because the UI-only capture had no physical rear
+camera or charger; it verifies the screen and lazy transport, not tag accuracy.
 
 ### Measured AMD64 10 Hz Transport
 
@@ -241,7 +258,7 @@ relative implementation check, not an ARM64 acceptance result.
 | Map / perception | `14.45%` | `80.00 MiB` | `36.14 KiB` |
 | Safety / control | `10.16%` | `81.27 MiB` | `3.35 KiB` |
 
-All six actual browser captures used a `1600x1000` content viewport and had
+All six historical browser captures used a `1600x1000` content viewport and had
 document/workspace overflow `0` plus text-control overflow `0`. The stricter
 `1280x657` headless pass also had no horizontal overflow, HTTP failure, or
 console error. ARM64 8-core/16-GB soak, live camera frame pacing, and GPU use
@@ -283,9 +300,10 @@ Jetson CPU/GPU use; a production Jetson profile is still required.
 
 ![Three-cycle UI/service integration](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
-The historical map-v17 simulation completed charging recall and next-site departure twice
-after the initial cycle. Current `camrod_ui` regression tests pass `55/55`; actual
-CAN timing, touchscreen latency, and Jetson kiosk performance remain field work.
+The historical map-v17 simulation completed charging recall and next-site
+departure twice after the initial cycle. Current `camrod_ui` regression tests
+pass `69/69`; actual CAN timing, touchscreen latency, and Jetson kiosk
+performance remain field work.
 
 <!-- HH_260807 - Record the Humble shutdown-only conversion race separately
 from operational backend failures. -->
@@ -311,10 +329,14 @@ accepted the next campsite without duplicating the destination or motion owner.
 | Publish | `/planning/mission_engage` | Mission motion authorization request |
 | Publish | `/platform/drive_enable` | Platform drive-enable request |
 | Publish | `/ui/camping_site_operation_request` | Return/adopt operation request |
+| Publish | `/planning/state_machine/return_to_drop_zone` | State-independent planning return recall |
+| Publish | `/control/drop_zone_maneuver_controller/operation` | At-station yaw alignment before final parking |
+| Publish | `/parking/operation` | Selected reverse/AprilTag parking start or cancel |
 | Subscribe | `/service/state` | Public lifecycle |
 | Subscribe | `/control/cmd_vel_safety_gate/status` | Motion/safety overlay |
 | Subscribe | `/platform/status` | SOC, charging, and platform state |
 | Subscribe | `/system/diagnostics_agg` | Detailed health display |
+| Subscribe | AprilTag debug/pose/detected, two parking paths/statuses | Lazy docking workspace |
 
 ## HTTP And WebSocket
 
@@ -327,10 +349,12 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `POST /api/telemetry/session?active=true|false&view=<name>` | Acquire/release one bounded live-view lease |
 | `GET /api/telemetry` | Sensor, localization, route, and safety snapshot |
 | `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |
-| `GET /api/camera/front`, `/api/camera/rear` | Latest compressed frame without re-encoding |
+| `GET /api/camera/front`, `/api/camera/rear`, `/api/camera/docking` | Latest compressed frame without re-encoding |
 | `WS /ws/telemetry?view=<name>` | Selected-view latest snapshot at configured `1-20 Hz`; production default `10 Hz` |
 | `POST /ui/destination?site=B6&run=true` | Select and dispatch a campsite |
 | `POST /ui/manual_goal?x=<m>&y=<m>&yaw_deg=<deg>` | Validate and dispatch a confirmed operator-map goal |
+| `POST /ui/manual_return` | Site: latch exit then plan at the shared snap; normal travel: immediate drop-zone preemption; drop zone: align for parking; charging: no motion |
+| `POST /ui/manual_parking?value=true|false` | Start/cancel drop-zone alignment and selected final parking |
 | `POST /ui/engage?value=true|false` | Manual engage/disengage |
 | `POST /ui/stop` | Operator stop |
 | `WS /ws` | Real-time state updates |
@@ -338,6 +362,15 @@ accepted the next campsite without duplicating the destination or motion owner.
 Guest frames use one serialized writer. ROS publish work runs outside the
 uvicorn event loop, and three missed 15-second receive windows release a stale
 single-client slot. The browser heartbeat keeps a healthy idle session active.
+
+The manual Return publisher serializes physical exit and route planning.
+Inside a campsite it latches RETURN and defers the planning recall until the
+campsite controller reaches the shared snap anchor; during ordinary driving it
+preempts directly to the drop-zone route. At the drop zone it starts body-yaw
+alignment before parking. With a true charging contact it reports
+`already_charging` and publishes no motion. If the public state still says
+`CHARGING` after CAN contact is lost, it restarts parking alignment instead of
+creating a redundant Nav2 loop.
 
 ## Measured amd64 Renderer A/B
 

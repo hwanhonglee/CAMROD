@@ -171,6 +171,12 @@ def generate_launch_description():
         default_value='/control/camping_site_maneuver_controller/operation',
         description='Typed campsite operation topic used by the UI return button',
     )
+    planning_return_to_drop_zone_topic_arg = DeclareLaunchArgument(
+        'planning_return_to_drop_zone_topic',
+        # HH_260818 - Expose the deferred post-CRAB_OUT planning handoff.
+        default_value='/planning/state_machine/return_to_drop_zone',
+        description='Typed drop-zone route request published after site exit',
+    )
     platform_status_topic_arg = DeclareLaunchArgument(
         'platform_status_topic',
         default_value='/platform/status',
@@ -255,6 +261,7 @@ def generate_launch_description():
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
+            'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
             'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
             # HH_260721 - Defer site goals until the control-owned station exit completes.
             'drop_zone_maneuver_controller_operation_topic': LaunchConfiguration('drop_zone_maneuver_controller_operation_topic'),
@@ -394,6 +401,7 @@ def generate_launch_description():
         planning_mission_engage_topic_arg,
         platform_drive_enable_topic_arg,
         camping_site_maneuver_controller_operation_topic_arg,
+        planning_return_to_drop_zone_topic_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,
         drop_zone_maneuver_controller_operation_topic_arg,

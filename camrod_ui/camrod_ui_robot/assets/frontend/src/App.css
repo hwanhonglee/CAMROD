@@ -3548,6 +3548,35 @@ h1 {
   white-space: nowrap;
 }
 
+/* HH_260818 - Manual return is a direct command; parking remains a binary
+ * operation. Both controls report backend acknowledgement instead of only
+ * changing browser-local state. */
+.manual-return-btn {
+  min-width: 7rem;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #80a8cf;
+  border-radius: 4px;
+  background: #25689b;
+  color: #fff;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manual-return-btn:disabled,
+.parking-toggle-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.manual-motion-status {
+  color: #dbe8dd;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.78rem;
+}
+
 /* ── Parking 토글 버튼 ── */
 .parking-toggle-btn {
   display: flex;
@@ -3747,6 +3776,243 @@ h1 {
   background: rgba(192, 64, 64, 0.15);
   color: #e05555;
   border: 1px solid #e05555;
+}
+
+/* HH_260818 - Docking telemetry is an on-demand work surface: image, exact
+ * controller input, path, and charging contact are visible without RViz. */
+.docking-command-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.8rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #c7d0cb;
+  border-radius: 4px;
+  background: #f8faf8;
+}
+
+.docking-command-bar button {
+  min-width: 8.5rem;
+  min-height: 2.15rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.docking-command-bar button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.docking-return-command {
+  border: 1px solid #225f8e;
+  background: #2c75a9;
+}
+
+.docking-parking-command {
+  border: 1px solid #3c684b;
+  background: #4f7e5d;
+}
+
+.docking-parking-command.active {
+  border-color: #9e423e;
+  background: #b34b47;
+}
+
+.docking-command-status {
+  min-width: 13rem;
+  color: #667069;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.76rem;
+}
+
+.docking-command-status.ok {
+  color: #267143;
+}
+
+.docking-command-status.err {
+  color: #ad3733;
+}
+
+.docking-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.75fr);
+  gap: 0.7rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.docking-path-section {
+  grid-column: 1 / -1;
+}
+
+.docking-state-banner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.docking-state-banner > div {
+  display: flex;
+  min-height: 3.4rem;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #cbd2cd;
+  border-radius: 4px;
+  background: #f4f6f4;
+}
+
+.docking-state-banner span {
+  color: #6e7771;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.docking-state-banner strong {
+  margin-top: 0.15rem;
+  color: #4d5550;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.95rem;
+}
+
+.docking-state-banner .detected,
+.docking-state-banner .charging {
+  border-color: #7fbc91;
+  background: #edf8f0;
+}
+
+.docking-state-banner .detected strong,
+.docking-state-banner .charging strong {
+  color: #247043;
+}
+
+.docking-state-banner .missing {
+  border-color: #dbbc78;
+  background: #fff8e8;
+}
+
+.docking-controller-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.docking-controller-list > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(8rem, 0.45fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid #527ca8;
+  background: #f3f6f8;
+}
+
+.docking-controller-list span,
+.docking-controller-list em {
+  color: #69716d;
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.docking-controller-list strong {
+  color: #263c4d;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.76rem;
+}
+
+.docking-path-plot,
+.docking-path-empty {
+  width: 100%;
+  min-height: 260px;
+  max-height: 340px;
+  border: 1px solid #d1d7d3;
+  background: #f8faf9;
+}
+
+.docking-path-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: #737c76;
+  font-family: 'Consolas', 'Menlo', monospace;
+}
+
+.docking-path-empty span {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.docking-grid-line {
+  fill: none;
+  stroke: #e3e8e5;
+  stroke-width: 1;
+}
+
+.docking-path {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.docking-path-reverse {
+  stroke: #bd5c4f;
+}
+
+.docking-path-tag {
+  stroke: #287e89;
+}
+
+.docking-target {
+  fill: #f0ba48;
+  stroke: #7a5a1d;
+  stroke-width: 2;
+}
+
+.docking-target-cross {
+  stroke: #7a5a1d;
+  stroke-width: 2;
+}
+
+.legend-docking-reverse {
+  background: #bd5c4f;
+}
+
+.legend-docking-tag {
+  background: #287e89;
+}
+
+.legend-docking-target {
+  background: #f0ba48;
+  border: 1px solid #7a5a1d;
+}
+
+@media (max-width: 1000px) {
+  .docking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .docking-path-section {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .docking-command-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .docking-state-banner,
+  .docking-controller-list > div {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* HJ_260601: 게스트 호출 알림 팝업 */

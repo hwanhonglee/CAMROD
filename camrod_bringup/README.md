@@ -42,6 +42,8 @@ physical drive. The orange path is the dispatched B6 route.
 
 <!-- HH_260809 - Synchronize the full-bringup contract with the shared
 tapered-front rounded body and exact planning offset. -->
+<!-- HH_260818 - Synchronize normal/crab selection, campsite return anchor,
+manual Return, docking telemetry, and final parking slowdown contracts. -->
 
 | Item | Full-bringup value |
 |---|---:|
@@ -53,10 +55,18 @@ tapered-front rounded body and exact planning offset. -->
 | Front / rear camera raw contract | target `10 Hz` each; rear monitoring JPEG remains independently capped at `2 Hz` |
 | Classified camera-LiDAR raster | default `ON`; raw LiDAR cost input remains `OFF` |
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
+| Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
+| Campsite return | entry/exit share the exact snap anchor; `0.04 m` return tolerance, `90 s` crab-out envelope, live-heading restart side |
+| Final parking | reverse slowdown last `0.30 m`; AprilTag slowdown last `0.60 m`; charging feedback immediately commands zero |
 | Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
 | Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
+| Manual Return / docking UI | state-independent Return API; docking tab uses seven lazy tag/path/controller subscriptions |
+
+The [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
+indexes every operational speed, distance, timeout, sensor rate, feature toggle,
+deployment file, and synchronization rule used by this table.
 
 ![Managed operator-map manual goal](../docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
 
@@ -105,6 +115,12 @@ The latest full-bringup runtime result is shown separately.
 
 ### Current UI And Diagnostic Follow-up
 
+![Current operator docking workspace](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
+
+![Current B8 same-anchor entry and return](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-summary.png)
+
+![Current B8 phase sequence](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-sequence.gif)
+
 ![Measured AMD64 operator telemetry transport](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.png)
 
 ![Operator telemetry transport and lease summary](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.gif)
@@ -126,7 +142,7 @@ acceptance.
 | Historical tapered/rounded B2 road run | PASS (MEASURED ROS SIM) | map-v17; body cost-100 contact no; planning contact yes; `0.0972 m`, `-4.545 deg`; no second hold; route complete |
 | Stack startup | PASS | Fresh isolated historical map-v15 graph reached `[SYSTEM] OK` |
 | Goal-independent UI startup | PASS | Zero RViz/UI goals; planning `WAIT_DZ`, UI `READY`; 5 authoritative READY frames in 2.2 s |
-| Operator telemetry workspace | PASS (AMD64 SIM) | Six leased views, `4-11` subscriptions per view, 1600x1000 overflow `0`, GNSS/IMU `10.01 Hz`, pose `20.02 Hz` after view reopen |
+| Operator telemetry workspace | PASS (AMD64 SIM/UI) | Seven leased views, `4-11` subscriptions per view; docking schema v3 uses seven and rendered at 1600x1000; historical six-view overflow `0` |
 | Operator telemetry transport | PASS (AMD64 STANDALONE) | `201` frames at `9.938 Hz`, p95 `100.792 ms`; CPU `1.00 -> 1.12%`, RSS `76,696 -> 77,592 KiB`; close `83.3 ms`, silent lease `12.078 s` |
 | Admin service-screen continuity | PASS (source/build regression) | Login/diagnostics are top-level and remain mounted across waiting, driving, arrival, return, parking, and charging renders |
 | Return handoff diagnostics | PASS (policy regression) | Only pre-transition goal UUIDs receive the `3.0 s` handoff grace; a new return-goal abort remains visible |
@@ -140,6 +156,8 @@ acceptance.
 | Historical map-v17 B2 boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |
+| B8 same-anchor/restart policy | AMD64 SIM + UNIT PASS | Current graph completed seven phases through `DONE`; live heading reverses body crab sign without moving the map anchor; manual Return API returned `site_exit_then_return` and deferred route planning until campsite `DONE` |
+| Final parking slowdown/stop | SOURCE + UNIT + UI PASS | Reverse/AprilTag ramps begin at `0.30/0.60 m`; charging immediately commands zero; physical tag and charger acceptance pending |
 | Repeated boundary recovery | AMD64 SIM PARTIAL + UNIT PASS | Per attempt `0.40 m/10 s`; up to 50 attempts with `0.5 s` pauses and `1.50 m/90 s` episode caps; whichever limit is reached first ends the episode; long B1 return released three consecutive contacts before the runner timeout |
 | Classified fusion safety | GATE-MATRIX + UNIT PASS | Unknown/raw LiDAR excluded; classified fusion stopped forward (`0.00 m/s`) but passed crab/reverse (`0.08/0.09 m/s`); synthetic radar fixtures stopped all directions; both grids ran at `10 Hz` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |
@@ -157,6 +175,7 @@ acceptance.
 | Operator stop | PASS | `POST /ui/stop` returned HTTP 200; local owners and Nav2 canceled; state 16 published |
 | Drop-zone parking/charging continuation | PASS (AMD64 SIM) | All three continuous-service cycles reached `WAITING_FOR_CHARGING -> CHARGING` |
 | Platform status ownership | PASS | `/platform/status` publisher count `1`; `ranger_platform_bridge` alone converts fake raw BMS feedback |
+| Current normal route + B8 Return | PASS (AMD64 ROS SIM) | Normal Nav2 `3.73 m`, maximum `linear.y=0.000 m/s`; B8 published IN/OUT paths `2/2` and completed seven phases through `DONE`; UI action `site_exit_then_return`; no early drop-zone plan |
 | Service handoff path diagnostic | PASS | Service-owned path clear is suppressed; WARN/ERROR timers each start at their own threshold with `3.0 s` grace |
 
 The 2026-08-04 captures are historical map-v14 evidence, the staged map-v15
@@ -359,16 +378,32 @@ deployment copies and are covered by synchronization tests.
 | `render_v2_1_5_service_results.py` | Repeated-service, obstacle, and B2 recovery JSON -> PNG/GIF |
 | `render_rpp_service_ab.py` | Fixed-versus-scaled RPP service decision JSON -> PNG |
 | `render_operator_transport_handoff_results.py` | UI measurement and return-handoff policy JSON -> package-owned PNG/GIF |
+| `render_v2_1_8_return_docking_results.py` | Canonical YAML plus B8 sim JSON -> normal/crab, same-anchor return, and parking PNG/GIF/SHA assets |
 
 ```bash
 python3 camrod_bringup/scripts/visualization/render_module_readme_assets.py
 python3 camrod_bringup/scripts/visualization/render_tapered_rounded_boundary.py
 python3 camrod_bringup/scripts/visualization/render_tapered_rounded_road_sim.py
 python3 camrod_bringup/scripts/visualization/render_operator_transport_handoff_results.py
+python3 camrod_bringup/scripts/visualization/render_v2_1_8_return_docking_results.py \
+  --report docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-report.json
 pytest -q camrod_bringup/test/test_module_readme_assets.py
 python3 -m pytest -q camrod_bringup/test/test_operator_transport_handoff_assets.py
 python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_boundary_assets.py
 python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
+```
+
+The current combined normal-route/B8 record was captured with:
+
+```bash
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p run_gate_matrix:=false -p run_camping:=true \
+  -p camping_mission_key:=camping_site_8 -p camping_timeout_s:=240.0 \
+  -p camping_return_via_ui:=true \
+  -p ui_backend_base_url:=http://127.0.0.1:18122 \
+  -p expect_lidar_cost_grid:=false \
+  -p normal_drive_lateral_limit_mps:=0.02 \
+  -p report_file:=/tmp/camrod-v218-b8-entry-return.json
 ```
 
 ## Evidence
@@ -384,6 +419,9 @@ python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 | Current boundary geometry/motion | [`tapered-rounded-boundary-20260810/`](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/) |
 | Historical map-v17 boundary road simulation | [`tapered-rounded-boundary-road-sim-20260810/`](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/) |
 | Current map-v22 crab/fusion safety simulation | [`worak-crab-fusion-safety-20260818/`](../docs/assets/module-guides/control/test-results/worak-crab-fusion-safety-20260818/) |
+| Current B8 same-anchor return/docking | [`b8-return-docking-20260819/`](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/) |
+| Current normal/crab selection | [`normal-crab-selection-20260819/`](../docs/assets/module-guides/platform/test-results/normal-crab-selection-20260819/) |
+| Current docking workspace | [`docking-workspace-20260819/`](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/) |
 | Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/) |
 | Historical campsite sequencing tests | [`camping-site-sequencing-20260806/`](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/) |
 | Historical RPP curve-tracking tests | [`rpp-curve-tracking-20260806/`](../docs/assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/) |

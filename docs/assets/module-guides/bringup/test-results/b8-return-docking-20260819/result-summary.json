@@ -1,0 +1,44 @@
+{
+  "boundary_recovery_maximum_attempts": 50,
+  "camping_crab_speed_mps": 0.666667,
+  "camping_return_via_ui": true,
+  "charging_immediate_stop": true,
+  "classification": "amd64_ros2_simulation",
+  "crab_command_mode_ok": true,
+  "crab_phase_raw_components": {
+    "CRAB_IN": {
+      "angular_z_abs_max_radps": 0.0,
+      "lateral_samples": 102,
+      "linear_x_abs_max_mps": 0.0,
+      "linear_y_abs_max_mps": 0.666667,
+      "longitudinal_samples": 0,
+      "mixed_axis_samples": 0,
+      "samples": 103
+    },
+    "CRAB_OUT": {
+      "angular_z_abs_max_radps": 0.0,
+      "lateral_samples": 89,
+      "linear_x_abs_max_mps": 0.666667,
+      "linear_y_abs_max_mps": 0.666667,
+      "longitudinal_samples": 13,
+      "mixed_axis_samples": 0,
+      "samples": 103
+    }
+  },
+  "crab_return_timeout_s": 90.0,
+  "docking_slowdown_remaining_m": 0.6,
+  "drop_zone_return_before_site_done": false,
+  "field_acceptance": "required_on_arm64_robot",
+  "manual_return_action": "site_exit_then_return",
+  "manual_return_order_ok": true,
+  "normal_motion_mode_ok": true,
+  "normal_parallel_deadband_mps": 0.02,
+  "normal_route_lateral_max_mps": 0.0,
+  "normal_route_moved_m": 3.73,
+  "normal_route_pass": true,
+  "overall_pass": true,
+  "reverse_slowdown_remaining_m": 0.3,
+  "site_path_ok": true,
+  "site_path_updates": 2,
+  "site_phase_sequence": "CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE"
+}

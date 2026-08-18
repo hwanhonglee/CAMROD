@@ -17,6 +17,7 @@ artifacts.
 | `render_camping_site_sequence_results.py` | Site geometry and simulation records | Turnaround/roadside state-sequence PNG/GIF |
 | `render_v2_1_5_service_results.py`, `render_rpp_service_ab.py` | Service-run JSON/logs | Repeated-service and controller A/B reports |
 | `render_operator_transport_handoff_results.py` | AMD64 UI measurement JSON + system policy cases | Measured transport and source/unit-policy PNG/GIF with explicit field limits |
+| `render_v2_1_8_return_docking_results.py` | Canonical control/platform YAML + B8 sim JSON | Normal/crab selection, same-anchor site return, parking slowdown, release JSON copy, and SHA manifests |
 
 Operational visualization remains package-local:
 

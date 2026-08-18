@@ -62,7 +62,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_map` / `camrod_planning` / `camrod_bringup` | `park-operating-points.png` | Current OSM, Park origin, synchronized campsite/drop-zone YAML | B1-B13 and drop-zone coordinates match source; field clearance pending |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML + rear-container ownership | LiDAR sim path available; physical YOLO/fusion/tag pending |
 | `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, scoped planner/controller default, state contracts, and footprint sweep | Hybrid Nav2 stopped cleanly 3/3; narrow corridor remains invalid |
-| `camrod_platform` | `ranger-command-and-status.png` | Ranger/visualization YAML | Hardware boundary documented; CAN/actuator timing pending |
+| `camrod_platform` | `ranger-command-and-status.png` plus `test-results/normal-crab-selection-20260819/` PNG/GIF | Ranger/visualization YAML and the active lateral deadband | Ordinary commands remain Dual-Ackermann; deliberate site/recovery lateral commands select crab |
 | `camrod_runtime` | `scoped-component-lifecycle.png`, `scoped-component-lifecycle.gif` | Runtime C++ cleanup contract + three final/default AMD64 full-simulation shutdown records | Six-container clean shutdown measured; Jetson resources and physical behavior pending |
 | `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; class-associated raster ON, raw-LiDAR cost OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
@@ -70,13 +70,14 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png`, `gnss-left-antenna-lever-arm.png` | Geometry/localization YAML | Exact non-GNSS conversion and measured GNSS Y correction; remaining survey is pending |
 | `camrod_system` | `diagnostic-severity-and-surfaces.png`, `runtime-topology-amd64-ab-20260805.png` | Manifests plus 3-run system-core and 2-run LiDAR amd64 A/B JSON | Core container saves 3 processes/19.7 MiB PSS; LiDAR saves 17.5% CPU but adds 44.0 MiB PSS; Jetson pending |
 | `camrod_system` | `test-results/return-handoff-nav-status-20260810/` PNG/GIF | Deployed `3.0 s` config, UUID-aware policy source, and unit regression cases | Outgoing goal suppressed only inside grace; new/late return abort stays visible; field mission pending |
-| `camrod_ui` | Mission guide, Robot/Guest captures, six operator-telemetry captures, workspace GIF, and resource PNG | UI policy + live sensor/map/path/safety APIs + backend profile JSON + renderer A/B | Six live views render without overflow; camera publishers and ARM64 frame pacing remain field-pending |
+| `camrod_ui` | Mission guide, Robot/Guest captures, seven operator-telemetry views, workspace GIF, resource PNG, and `test-results/docking-workspace-20260819/` | UI policy + live sensor/map/path/safety/docking APIs + backend profile JSON + production screenshot | Seven lazy views render without overflow; camera publishers and ARM64 frame pacing remain field-pending |
+| `camrod_control` / `camrod_bringup` | `test-results/campsite-return-docking-20260819/` and `test-results/b8-return-docking-20260819/` PNG/GIF | Full-graph B8 JSON plus canonical control/parking YAML | Same-anchor seven-phase return reaches `DONE`; parking slowdown is source-derived; physical docking remains pending |
 | `camrod_ui` | `test-results/operator-telemetry-websocket-amd64-20260810/` PNG/GIF | Standalone x86_64 measurement JSON | `9.938 Hz`, p95 `100.792 ms`, close `83.3 ms`, silent lease `12.078 s`; sensor/ARM64 cost pending |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 Package-guide files and structured release results are under
 `docs/assets/module-guides/<package>/{guide,evidence,test-results}/`. The
-checked-in inventory contains **73 PNGs and 16 GIFs** under `module-guides`; the former top-level
+checked-in inventory contains **78 PNGs and 19 GIFs** under `module-guides`; the former top-level
 `test_result` content is organized under each package's `test-results/`
 directory. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.
@@ -149,6 +150,7 @@ largest measured view was perception at `14.45%` of one logical core,
 | Module | Measurement | Result | Limit |
 |---|---|---|---|
 | Bringup | Map-v17 B1-B10 endurance | `10/10`, `2210.611 s`, restart `0`; cycles 2-10 include full outbound/RETURN/parking/charging | Cycle 1 seeded; physical CAN/road pending |
+| Platform/bringup | Current normal-to-B8 run | Normal Nav2 `3.73 m`, maximum `linear.y=0.000 m/s`; then B8 same-anchor seven-phase `DONE`, IN/OUT path updates `2`, mixed-axis commands `0` | AMD64 simulation; physical wheel-mode acceptance pending |
 | Localization | 30-second stationary probe | Selected pose `20.000 Hz`, age p95 `1.83 ms` | No field ground truth or motion disturbance |
 | Sensor kit/planning | Common route A/B | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` | One simulated route segment |
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |

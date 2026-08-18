@@ -127,6 +127,22 @@ TEST(MotionGeometry,
   EXPECT_DOUBLE_EQ(reversed.second, 0.5);
 }
 
+TEST(MotionGeometry, RestartedTurnaroundUsesCurrentHeadingAndSameMapAnchor) {
+  avg_msgs::msg::AvgPoseStamped anchor;
+  avg_msgs::msg::AvgPoseStamped site;
+  anchor.pose.orientation.w = 1.0;
+  site.pose.position.y = -2.0;
+
+  const auto normal = relativeXyAtHeading(anchor, site, 0.0);
+  const auto reversed = relativeXyAtHeading(anchor, site, M_PI);
+  EXPECT_NEAR(normal.second, -2.0, 1.0e-9);
+  EXPECT_NEAR(reversed.second, 2.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(turnaroundDirectionForCrab(normal.second), 1.0);
+  EXPECT_DOUBLE_EQ(turnaroundDirectionForCrab(reversed.second), -1.0);
+  EXPECT_DOUBLE_EQ(anchor.pose.position.x, 0.0);
+  EXPECT_DOUBLE_EQ(anchor.pose.position.y, 0.0);
+}
+
 avg_msgs::msg::AvgOccupancyGrid makeGrid(
     const std::vector<std::tuple<double, double, int>> &occupied_cells = {},
     const double resolution = 0.1, const double origin_yaw = 0.0) {

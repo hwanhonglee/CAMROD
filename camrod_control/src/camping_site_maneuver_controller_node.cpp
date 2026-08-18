@@ -206,6 +206,8 @@ public:
         0.1, std::abs(declare_parameter<double>("return_translation_kp", 4.0)));
     crab_timeout_margin_s_ =
         std::abs(declare_parameter<double>("crab_timeout_margin_s", 3.0));
+    crab_return_timeout_s_ =
+        std::abs(declare_parameter<double>("crab_return_timeout_s", 90.0));
     reverse_return_timeout_margin_s_ = std::abs(
         declare_parameter<double>("reverse_return_timeout_margin_s", 45.0));
     reverse_return_progress_tolerance_m_ = std::abs(
@@ -233,8 +235,9 @@ public:
             rotate_yaw_tolerance_deg_, rotate_settle_hold_s_,
             rotate_settle_max_rate_degps_});
     site_rotate_direction_policy_ = declare_parameter<std::string>(
-        "site_rotate_direction_policy", "site_index_lanelet_side");
+        "site_rotate_direction_policy", "entry_crab_side");
     if (site_rotate_direction_policy_ != "site_index_lanelet_side" &&
+        site_rotate_direction_policy_ != "entry_crab_side" &&
         site_rotate_direction_policy_ != "shortest") {
       RCLCPP_WARN(get_logger(),
                   "unknown site_rotate_direction_policy='%s'; using shortest",
@@ -307,6 +310,8 @@ public:
         declare_parameter<double>("route_goal_reached_distance_m", 0.9));
     adopt_site_arrival_distance_m_ = std::abs(
         declare_parameter<double>("adopt_site_arrival_distance_m", 3.0));
+    site_pose_reached_distance_m_ = std::abs(
+        declare_parameter<double>("site_pose_reached_distance_m", 0.60));
     goal_pair_maximum_age_s_ =
         declare_parameter<double>("goal_pair_max_age_s", 0.0);
     control_rate_hz_ =
@@ -694,8 +699,13 @@ private:
       adopted_route_goal = stampPoseNow(*last_pose_);
     }
 
-    const auto relative =
-        camrod_control::relativeXy(adopted_route_goal, *adopted_site_goal);
+    // HH_260818 - Keep the route anchor in map coordinates, but infer which
+    // side it lies on from the current body heading. A robot restarted after
+    // the on-site 180-degree turn must therefore leave in the opposite body
+    // direction instead of entering its neighbouring campsite.
+    const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+    const auto relative = camrod_control::relativeXyAtHeading(
+        adopted_route_goal, *adopted_site_goal, current_yaw);
     double offset = std::abs(relative.second);
     double direction = relative.second >= 0.0 ? 1.0 : -1.0;
     std::string source_name = "goal_pair";
@@ -720,10 +730,13 @@ private:
     // already at a site.
     active_service_mode_ = serviceModeForKey(key);
     last_auto_key_ = "adopt:" + key + ":" + fixed(now().seconds(), 3);
-    start_yaw_ = camrod_control::yawFromPose(adopted_route_goal);
-    target_yaw_ = start_yaw_;
-    rotate_direction_sign_ = 0.0;
-    rotate_direction_label_ = "adopted";
+    // HH_260818 - The current pose is already the post-turn heading. Reconstruct
+    // the entry heading so ALIGN_RETRACE_YAW confirms, rather than repeats, it.
+    start_yaw_ = camrod_control::normalizeAngle(current_yaw - M_PI);
+    target_yaw_ = current_yaw;
+    rotate_direction_sign_ =
+        camrod_control::turnaroundDirectionForCrab(direction);
+    rotate_direction_label_ = "adopted_current_heading";
     crab_direction_ = direction;
     crab_offset_m_ = offset;
     crab_source_ = source_name;
@@ -805,7 +818,15 @@ private:
   }
 
   std::pair<double, std::string>
-  rotationDirectionForSource(const std::string &source) const {
+  rotationDirectionForSource(const std::string &source,
+                             const double crab_direction) const {
+    if (site_rotate_direction_policy_ == "entry_crab_side") {
+      const double direction =
+          camrod_control::turnaroundDirectionForCrab(crab_direction);
+      return {direction,
+              crab_direction >= 0.0 ? "entry_left_rotate_cw"
+                                    : "entry_right_rotate_ccw"};
+    }
     if (site_rotate_direction_policy_ != "site_index_lanelet_side") {
       return {0.0, "shortest"};
     }
@@ -917,15 +938,19 @@ private:
             "unsupported camping-site operation=" + std::to_string(operation)};
   }
 
-  std::tuple<double, double, std::string, double> resolveLateralMotion() const {
+  std::tuple<double, double, std::string, double>
+  resolveLateralMotion(const double current_yaw) const {
     double offset = default_lateral_offset_m_;
     double direction = default_lateral_direction_ == "right" ? -1.0 : 1.0;
     std::string source = "default";
     double forward = 0.0;
     if (use_goal_pair_for_lateral_offset_ && route_goal_.has_value() &&
         site_goal_.has_value() && goalPairIsFresh()) {
-      const auto relative =
-          camrod_control::relativeXy(*route_goal_, *site_goal_);
+      // HH_260818 - Site coordinates are stable, while the vehicle may restart
+      // with the opposite heading. Project with the live heading so crab and
+      // turnaround directions reverse together when the body is reversed.
+      const auto relative = camrod_control::relativeXyAtHeading(
+          *route_goal_, *site_goal_, current_yaw);
       forward = relative.first;
       if (std::abs(relative.second) >= minimum_lateral_offset_m_) {
         offset = std::abs(relative.second);
@@ -957,7 +982,18 @@ private:
     // HH_260721 - A direct/manual goal remains a normal turnaround unless a
     // mission key selects otherwise.
     active_service_mode_ = serviceModeForKey(site_goal_key_);
-    const auto motion = resolveLateralMotion();
+    const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+    if (site_goal_.has_value() &&
+        poseDistance(*last_pose_, *site_goal_) <= site_pose_reached_distance_m_) {
+      // HH_260818 - Rebooting while parked inside a campsite must restore the
+      // return wait instead of issuing a second CRAB_IN into the adjacent bay.
+      const std::string key = site_goal_key_.empty() ? last_auto_key_ : site_goal_key_;
+      if (!key.empty() &&
+          adoptWaitReturnState(key, "already_at_site:" + source)) {
+        return {true, "site arrival restored; waiting for return"};
+      }
+    }
+    const auto motion = resolveLateralMotion(current_yaw);
     const double requested_lateral_offset = std::get<0>(motion);
     const double direction = std::get<1>(motion);
     std::string source_name = std::get<2>(motion);
@@ -991,8 +1027,8 @@ private:
       return {false, "invalid lateral motion parameters"};
     }
 
-    start_yaw_ = camrod_control::yawFromPose(*last_pose_);
-    const auto rotation = rotationDirectionForSource(source);
+    start_yaw_ = current_yaw;
+    const auto rotation = rotationDirectionForSource(source, direction);
     rotate_direction_sign_ = rotation.first;
     rotate_direction_label_ = rotation.second;
     target_yaw_ = camrod_control::normalizeAngle(
@@ -1002,9 +1038,20 @@ private:
     crab_offset_m_ = lateral_offset;
     crab_source_ = source_name;
     goal_pair_forward_m_ = forward_residual;
-    entry_start_x_ = last_pose_->pose.position.x;
-    entry_start_y_ = last_pose_->pose.position.y;
+    // HH_260818 - Measure entry and exit against one map anchor. Nav2 may hand
+    // over early; using the actual handoff as CRAB_IN's origin while CRAB_OUT
+    // targeted the snap point made the two trajectories miss one another.
+    entry_start_x_ = return_anchor_x_;
+    entry_start_y_ = return_anchor_y_;
     entry_reference_yaw_ = start_yaw_;
+    entry_target_x_ = site_goal_.has_value()
+                          ? site_goal_->pose.position.x
+                          : return_anchor_x_ -
+                                std::sin(start_yaw_) * direction * lateral_offset;
+    entry_target_y_ = site_goal_.has_value()
+                          ? site_goal_->pose.position.y
+                          : return_anchor_y_ +
+                                std::cos(start_yaw_) * direction * lateral_offset;
     crab_duration_s_ =
         lateral_offset /
         std::max(0.01, crab_speed_mps_ * crab_timeout_speed_scale_);
@@ -1222,9 +1269,9 @@ private:
   }
 
   bool returnReached() const {
-    // HH_260807 - Require the explicit route anchor in both map axes. The entry
-    // start remains separate because Nav2 can accept an arrival short of the
-    // centerline target by route_goal_reached_distance_m.
+    // HH_260818 - Require the shared entry/exit route anchor in both map axes.
+    // Nav2 may hand over short of it, but CRAB_IN progress and CRAB_OUT
+    // completion are both measured from this stable map point.
     return poseIsFresh() && distanceTo(return_anchor_x_, return_anchor_y_) <=
                                 return_position_tolerance_m_;
   }
@@ -1311,6 +1358,19 @@ private:
       publishReversePath(
           return_start_x_, return_start_y_, return_anchor_x_, return_anchor_y_,
           camrod_control::normalizeAngle(entry_target_yaw_ + M_PI));
+    }
+    if (phase_ == CampingSiteManeuverPhase::kCrabIn && last_pose_.has_value()) {
+      // HH_260818 - Publish campsite entry geometry as well as reverse paths so
+      // RViz and the operator UI always show what the controller will execute.
+      publishReversePath(last_pose_->pose.position.x,
+                         last_pose_->pose.position.y, entry_target_x_,
+                         entry_target_y_, start_yaw_);
+    }
+    if (phase_ == CampingSiteManeuverPhase::kCrabOut && last_pose_.has_value()) {
+      publishReversePath(last_pose_->pose.position.x,
+                         last_pose_->pose.position.y, return_anchor_x_,
+                         return_anchor_y_,
+                         camrod_control::yawFromPose(*last_pose_));
     }
     RCLCPP_INFO(get_logger(), "camping_site_maneuver_controller %s: %s",
                 phaseName(phase_).c_str(), detail.c_str());
@@ -1650,7 +1710,7 @@ private:
                   fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m");
           publishReturnRequest("done");
         }
-      } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
+      } else if (elapsed > crab_return_timeout_s_) {
         setError("crab return timeout before reaching lanelet snap pose");
       } else {
         publishCrabReturnToAnchor();
@@ -1697,6 +1757,9 @@ private:
             {"crab_source", crab_source_},
             {"return_anchor_source", return_anchor_source_},
             {"return_anchor_offset_m", fixed(return_anchor_offset_m_)},
+            {"return_anchor_error_m",
+             fixed(distanceTo(return_anchor_x_, return_anchor_y_))},
+            {"crab_return_timeout_s", fixed(crab_return_timeout_s_)},
         }));
     last_status_publish_time_ = current_time;
   }
@@ -1732,6 +1795,7 @@ private:
   double return_position_tolerance_m_{0.04};
   double return_translation_gain_{4.0};
   double crab_timeout_margin_s_{3.0};
+  double crab_return_timeout_s_{90.0};
   double reverse_return_timeout_margin_s_{45.0};
   double reverse_return_progress_tolerance_m_{0.45};
   double reverse_return_lateral_tolerance_m_{0.40};
@@ -1767,6 +1831,7 @@ private:
   double pose_timeout_s_{2.0};
   double route_goal_reached_distance_m_{0.9};
   double adopt_site_arrival_distance_m_{3.0};
+  double site_pose_reached_distance_m_{0.60};
   double goal_pair_maximum_age_s_{0.0};
   double control_rate_hz_{10.0};
   double idle_tick_rate_hz_{1.0};

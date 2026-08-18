@@ -357,6 +357,7 @@ def test_visualization_tool_ownership_is_explicit() -> None:
         "render_tapered_rounded_boundary.py",
         "render_tapered_rounded_road_sim.py",
         "render_v2_1_5_service_results.py",
+        "render_v2_1_8_return_docking_results.py",
     }
     renderers = tuple(visualization.glob("render_*.py"))
     assert {path.name for path in renderers} == expected

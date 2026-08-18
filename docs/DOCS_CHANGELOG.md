@@ -1,5 +1,28 @@
 # Documentation Changelog
 
+<!-- HH_260818 - Record same-anchor campsite return, normal/crab selection,
+manual Return, docking telemetry, parking slowdown, and parameter ownership. -->
+## [v2.1.8-return-docking-follow-up] - 2026-08-19 (HH_260818)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Normal driving | Documents the Ranger `0.02 m/s` lateral deadband that keeps Nav2 in Dual-Ackermann and leaves explicit site/recovery commands in crab |
+| Campsite return | Uses one snap anchor for entry and exit, derives restart side from live heading, restores `WAIT_RETURN` near the site, and publishes entry/exit path geometry |
+| Normal/B8 simulation | One current full-graph run first moved `3.73 m` with maximum normal-route `linear.y=0.000 m/s`, then completed all seven B8 phases through `DONE`; localization measured `20.00 Hz`, wheel odometry `10 Hz`, site paths `2/2`, and mixed-axis campsite commands `0` |
+| Recovery | Records the 50-attempt, `1.50 m/90 s` episode and extends campsite crab-out to the same `90 s` envelope |
+| Manual Return | Adds the Robot UI command, ordering contract, drop-zone alignment path, and no-motion behavior while already charging |
+| Docking workspace | Adds production-browser capture and seven lazy subscriptions for tag debug/pose/detection, reverse/AprilTag paths, controller states, battery, and charging |
+| Final parking | Adds source-derived `0.30 m` reverse and `0.60 m` AprilTag slowdown curves and charging-immediate-stop policy |
+| Parameter ownership | Adds `RUNTIME_PARAMETER_REFERENCE.md` with precedence, active values, canonical/mirror paths, feature switches, and verification commands |
+| Evidence tooling | Installs one canonical-YAML/B8-report renderer and generates checksummed platform, control, bringup, and UI records |
+| Simulation heartbeat | Keeps fake raw BatteryState active when platform safety is enabled; `ranger_platform_bridge` remains the sole normalized `/platform/status` owner and the live gate receives its heartbeat |
+| Verification | Canonical wrapper rebuilds 5 packages; Ranger motion GTest `9/9`, control xUnit `85`, platform xUnit `36`, UI `69/69`, and bringup xUnit `265` pass; the external Ranger tree retains pre-existing nonfunctional lint debt |
+| Field boundary | Keeps class-confirmed fusion stop at `2.0 m`, tent occupancy default `false`, and marks physical tag/charger/steering/Jetson acceptance pending |
+
+---
+
 <!-- HH_260818 - Integrate worak-test and record exact crab, bounded repeated
 recovery, and semantic fusion/radar safety contracts. -->
 ## [v2.1.8-worak-crab-fusion-safety] - 2026-08-18 (HH_260818)

@@ -11,6 +11,8 @@ high-resolution local lanelet raster for final command safety. -->
 <!-- HH_260807 - Evaluate route safety with the final scaled command and record
 the fixed-preview service A/B. -->
 <!-- HH_260807 - Reduce the production cruise to 2 km/h while preserving maneuver ratios. -->
+<!-- HH_260818 - Document same-anchor campsite return, heading-aware restart,
+normal/crab separation, parking slowdown, and charging-first stop behavior. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -73,6 +75,7 @@ tapered-front rounded geometry published by camrod_platform. -->
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
 | Maneuver release hold | `0.5 s` | Final output remains zero before Nav2 may resume |
 | Normal Nav2 rotation/translation | Continuous owner | RotationShim/RPP mode changes do not create an artificial zero handoff |
+| Normal/crab selector | lateral deadband `0.02 m/s` | Normal Nav2 remains Dual-Ackermann; only intentional lateral commands select crab |
 
 ![Physical hard-stop and planning recovery contours](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/tapered-rounded-boundary-geometry.png)
 
@@ -144,19 +147,28 @@ localization, or battery hold.
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
+![B8 same-anchor campsite entry and return](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/b8-same-anchor-return.png)
+
+![B8 campsite controller phase sequence](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/b8-entry-return-sequence.gif)
+
 <!-- HH_260807 - Explain the route-snap return anchor that prevents a narrow
 lane handoff from inheriting Nav2's early goal-reached pose. -->
-For automatic B1-B10 service, the actual Nav2 arrival pose starts and measures
-site entry, while `/planning/goal_pose_snapped` is retained as a separate return
-anchor. `CRAB_OUT` first corrects body-lateral error with pure `linear.y`
+For automatic B1-B10 service, `/planning/goal_pose_snapped` is the single map
+anchor used to measure both `CRAB_IN` and `CRAB_OUT`. This removes the former
+mismatch between Nav2's early handoff pose and the return target. The live
+current heading projects the fixed anchor/site pair into the body frame, so a
+robot restarted after the on-site 180-degree turn chooses the opposite crab
+side instead of moving toward the adjacent bay. A reboot within `0.60 m` of the
+site restores `WAIT_RETURN` rather than repeating entry. `CRAB_OUT` first
+corrects body-lateral error with pure `linear.y`
 (`+/-90 deg` parallel steering), then corrects any zero-turn drift with pure
 `linear.x`; it never takes the old diagonal shortcut. Ranger holds translation
 until a longitudinal/parallel mode target is within `0.05 rad`, and control
-hands motion back only within `0.04 m`. Manual/adopt
-operation keeps the actual arrival/adopted pose as its anchor. This distinction
-matters on the current B4 lane: the observed Nav2 arrival was `0.27 m` from the
-snap, while the measured planning-margin clearance was only about `0.136 m` per
-side. A focused B1 -> B4 service run returned at `0.03/0.04 m`, completed both
+hands motion back only within `0.04 m`. Manual/adopt operation also reconstructs
+the entry heading from the current post-turn pose. This distinction matters on
+the current B4 lane: an earlier observed Nav2 arrival was `0.27 m` from the snap,
+while the measured planning-margin clearance was only about `0.136 m` per side.
+A focused B1 -> B4 service run returned at `0.03/0.04 m`, completed both
 parking/charging cycles, and produced no post-return body or margin hold.
 
 The final B1-B10 endurance kept every route-snap handoff within `0.03-0.04 m`.
@@ -166,6 +178,11 @@ motion, release, continued service, and zero retry latch.
 The [current map-v22 crab/fusion safety record](../docs/assets/module-guides/control/test-results/worak-crab-fusion-safety-20260818/README.md)
 keeps the fresh B1 entry/exit PASS, final directional gate matrix PASS, and the
 180-second full-return timeout as separate raw JSON results.
+
+The [current B8 same-anchor result](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/README.md)
+completed all seven campsite phases under the current graph. The source-derived
+restart test also verifies that adding 180 degrees to the body heading reverses
+the body-frame crab sign while preserving the same map coordinates.
 
 ![B1-B10 route-snap return and recovery endurance](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
@@ -180,6 +197,8 @@ and the normal user return request remains required.
 
 ## Parking And Charging State
 
+![Reverse and AprilTag final-approach profiles](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/parking-slowdown-profile.png)
+
 | Condition | Controller phase | Public `/service/state` |
 |---|---|---|
 | Final pose not reached | active parking phase | `DROP_ZONE_PARKING` |
@@ -188,9 +207,13 @@ and the normal user return request remains required.
 | Parked; no active charge feedback | `PARKED` | `DROP_ZONE_WAIT` |
 | New allowed mission while charging | departure override | `DEPARTING_CHARGER` |
 
-The reverse controller defaults to `complete_without_charging: false` and a
-`20 s` charging wait. `CHARGING` therefore takes precedence on the public state
-surface while the internal controller remains `PARKED`.
+Reverse parking linearly slows over the final `0.30 m`; AprilTag docking slows
+over the final `0.60 m`. Both reach `0.138889 m/s` raw before the final pose and
+subscribe to `/platform/status`. A true charging contact commands zero from any
+active parking phase before the controller reports `PARKED`. The reverse
+controller defaults to `complete_without_charging: false` and a `45 s` charging
+wait. `CHARGING` therefore takes precedence on the public state surface while
+the internal controller remains `PARKED`.
 
 ## Campsite Sequencing Evidence
 
@@ -345,6 +368,10 @@ physical-robot recovery policy remains field-pending.
 | `config/control.yaml` | Campsite, drop-zone, and recovery-owner motion values |
 | `config/parking.yaml` | Reverse and AprilTag parking values |
 | `config/yaw_alignment_zones.yaml` | Optional map yaw-lock zones; disabled by default |
+
+See the [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
+for active raw/final speeds, distances, timeouts, launch precedence, and the
+bringup mirror that must change with each package file.
 
 ## Run And Validate
 

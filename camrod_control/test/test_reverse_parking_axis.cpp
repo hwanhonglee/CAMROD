@@ -3,10 +3,21 @@
 #include <cmath>
 
 #include "camrod_control/reverse_parking_axis.hpp"
+#include "camrod_control/parking_speed_profile.hpp"
 #include "gtest/gtest.h"
 
 namespace camrod_control
 {
+
+TEST(ParkingSpeedProfile, SlowsInsideConfiguredRemainingDistance)
+{
+  // HH_260818 - Docking starts slowing at 0.60 m and reverse parking at 0.30 m.
+  EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.61, 0.60, 0.50, 0.10), 0.50);
+  EXPECT_NEAR(parkingApproachSpeed(0.30, 0.60, 0.50, 0.10), 0.30, 1.0e-9);
+  EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.0, 0.60, 0.50, 0.10), 0.10);
+  EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.31, 0.30, 0.40, 0.08), 0.40);
+  EXPECT_NEAR(parkingApproachSpeed(0.15, 0.30, 0.40, 0.08), 0.24, 1.0e-9);
+}
 
 TEST(ReverseParkingAxis, DropZoneYawProducesReverseMotionTowardStation)
 {

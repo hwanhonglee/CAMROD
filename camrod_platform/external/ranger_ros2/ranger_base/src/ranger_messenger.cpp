@@ -91,6 +91,8 @@ void RangerROSMessenger::LoadParameters() {
     "steering_mode_transition_stationary_enabled", true);
   steering_mode_transition_ready_error_rad_ = node_->declare_parameter<double>(
     "steering_mode_transition_ready_error_rad", 0.05);
+  parallel_command_lateral_deadband_mps_ = node_->declare_parameter<double>(
+    "parallel_command_lateral_deadband_mps", 0.02);
   odom_linear_velocity_stddev_mps_ = node_->declare_parameter<double>(
     "odom_linear_velocity_stddev_mps", 0.05);
   odom_angular_velocity_stddev_radps_ = node_->declare_parameter<double>(
@@ -104,6 +106,8 @@ void RangerROSMessenger::LoadParameters() {
     0.0, std::min(1.0, steering_transition_min_velocity_scale_));
   steering_mode_transition_ready_error_rad_ = std::max(
     0.0, std::min(0.35, steering_mode_transition_ready_error_rad_));
+  parallel_command_lateral_deadband_mps_ = std::max(
+    0.0, std::min(0.20, parallel_command_lateral_deadband_mps_));
   odom_linear_velocity_stddev_mps_ =
     std::max(1.0e-3, odom_linear_velocity_stddev_mps_);
   odom_angular_velocity_stddev_radps_ =
@@ -115,7 +119,8 @@ void RangerROSMessenger::LoadParameters() {
       "update_rate: %d\n odom_topic_name: %s\n "
       "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n "
       "steering_transition_velocity_scale: %d full=%.2f stop=%.2f min=%.2f\n "
-      "steering_mode_transition_stationary: %d ready_error=%.2f\n "
+      "steering_mode_transition_stationary: %d ready_error=%.2f "
+      "parallel_lateral_deadband=%.3f m/s\n "
       "odom_velocity_stddev: linear=%.3f angular=%.3f\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
@@ -126,6 +131,7 @@ void RangerROSMessenger::LoadParameters() {
       steering_transition_min_velocity_scale_,
       steering_mode_transition_stationary_enabled_,
       steering_mode_transition_ready_error_rad_,
+      parallel_command_lateral_deadband_mps_,
       odom_linear_velocity_stddev_mps_,
       odom_angular_velocity_stddev_radps_);
 
@@ -493,7 +499,11 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
   }
 
   uint8_t command_mode = MotionState::MOTION_MODE_DUAL_ACKERMAN;
-  if (msg->linear.y != 0) {
+  // HH_260818 - Parallel mode is intentional lateral motion, not any non-zero
+  // floating-point residue. Pure campsite/recovery crab commands are well
+  // above this configurable deadband and retain their exact +/-90 degree mode.
+  if (ShouldUseParallelMotion(
+      msg->linear.y, parallel_command_lateral_deadband_mps_)) {
     if (msg->linear.x == 0.0 && robot_type_ == RangerSubType::kRangerMiniV1) {
       command_mode = MotionState::MOTION_MODE_SIDE_SLIP;
       robot_->SetMotionMode(MotionState::MOTION_MODE_SIDE_SLIP);
@@ -742,6 +752,8 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
     steering_mode_transition_stationary_enabled_;
   double requested_mode_transition_ready_error =
     steering_mode_transition_ready_error_rad_;
+  double requested_parallel_lateral_deadband =
+    parallel_command_lateral_deadband_mps_;
   bool changed = false;
 
   for (const auto& parameter : parameters) {
@@ -789,6 +801,23 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
         result.successful = false;
         result.reason =
           "steering_mode_transition_ready_error_rad must be in [0, 0.35]";
+        return result;
+      }
+      changed = true;
+    } else if (name == "parallel_command_lateral_deadband_mps") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        result.successful = false;
+        result.reason = "parallel_command_lateral_deadband_mps must be a double";
+        return result;
+      }
+      requested_parallel_lateral_deadband = parameter.as_double();
+      if (!std::isfinite(requested_parallel_lateral_deadband) ||
+        requested_parallel_lateral_deadband < 0.0 ||
+        requested_parallel_lateral_deadband > 0.20)
+      {
+        result.successful = false;
+        result.reason =
+          "parallel_command_lateral_deadband_mps must be in [0, 0.20]";
         return result;
       }
       changed = true;
@@ -841,17 +870,21 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
       requested_stationary_mode_transition;
     steering_mode_transition_ready_error_rad_ =
       requested_mode_transition_ready_error;
+    parallel_command_lateral_deadband_mps_ =
+      requested_parallel_lateral_deadband;
     RCLCPP_INFO(
       node_->get_logger(),
       "steering transition updated dynamically: rate=%.2f rad/s scale=%s "
-      "full=%.2f stop=%.2f min=%.2f mode_stationary=%s ready=%.2f",
+      "full=%.2f stop=%.2f min=%.2f mode_stationary=%s ready=%.2f "
+      "parallel_deadband=%.3f m/s",
       steering_transition_rate_radps_,
       steering_transition_velocity_scale_enabled_ ? "true" : "false",
       steering_transition_full_speed_error_rad_,
       steering_transition_stop_error_rad_,
       steering_transition_min_velocity_scale_,
       steering_mode_transition_stationary_enabled_ ? "true" : "false",
-      steering_mode_transition_ready_error_rad_);
+      steering_mode_transition_ready_error_rad_,
+      parallel_command_lateral_deadband_mps_);
   }
   return result;
 }

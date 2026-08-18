@@ -17,7 +17,12 @@ sys.path.insert(
 
 from geometry_msgs.msg import Quaternion  # noqa: E402
 from builtin_interfaces.msg import Time as RosTime  # noqa: E402
-from avg_msgs.msg import AvgOccupancyGrid, AvgServiceState  # noqa: E402
+from avg_msgs.msg import (  # noqa: E402
+    AvgAprilTagPose,
+    AvgBool,
+    AvgOccupancyGrid,
+    AvgServiceState,
+)
 from sensor_msgs.msg import Image, PointCloud2, PointField  # noqa: E402
 from visualization_msgs.msg import Marker, MarkerArray  # noqa: E402
 
@@ -190,6 +195,15 @@ class OperatorTelemetryTest(unittest.TestCase):
                     "/sensing/camera/econ_rear/image_raw/compressed"
                 ),
                 "rear_camera_raw": "/sensing/camera/econ_rear/image_raw",
+                "docking_debug_camera": (
+                    "/perception/apriltag_parking_detector/debug_image/compressed"
+                ),
+                "docking_tag_pose": (
+                    "/perception/apriltag_parking_detector/tag_pose"
+                ),
+                "docking_tag_detected": (
+                    "/perception/apriltag_parking_detector/tag_detected"
+                ),
                 "map_markers": "/map/markers",
                 "lanelet_cost_grid": "/map/cost_grid/lanelet",
                 "lidar_cost_grid": "/sensing/cost_grid/lidar",
@@ -378,11 +392,56 @@ class OperatorTelemetryTest(unittest.TestCase):
         snapshot = UiBackendNode._new_telemetry_snapshot()
         for key in (
             "gnss", "imu", "radar", "lidar", "cameras", "localization",
-            "motion", "paths", "footprint", "perception", "safety", "mission",
+            "motion", "paths", "footprint", "perception", "safety", "docking",
+            "mission",
         ):
             self.assertIn(key, snapshot)
         self.assertIn("stream_rate_hz", snapshot)
         self.assertFalse(snapshot["session_active"])
+
+    def test_docking_pose_detection_and_charging_are_independent(self) -> None:
+        # HH_260818 - A last-known tag pose remains useful for diagnosis, but
+        # only tag_detected is allowed to claim the target is currently visible.
+        snapshot = UiBackendNode._new_telemetry_snapshot()
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _telemetry=snapshot,
+            _telemetry_source_rx={},
+        )
+        backend._touch_telemetry_locked = lambda source, now=None: (
+            backend._telemetry_source_rx.__setitem__(source, now or 0.0)
+        )
+
+        pose = AvgAprilTagPose()
+        pose.family = "tag36h11"
+        pose.id = 3
+        pose.tag_frame = "parking_tag_3"
+        pose.pose.header.frame_id = "camera_rear"
+        pose.pose.pose.position.x = 0.3
+        pose.pose.pose.position.y = 0.4
+        pose.pose.pose.position.z = 0.0
+        pose.pose.pose.orientation.w = 1.0
+        UiBackendNode._on_telemetry_docking_tag_pose(backend, pose)
+        UiBackendNode._on_telemetry_docking_tag_detected(
+            backend, AvgBool(data=False)
+        )
+
+        self.assertAlmostEqual(snapshot["docking"]["tag"]["distance_m"], 0.5)
+        self.assertEqual(snapshot["docking"]["tag"]["id"], 3)
+        self.assertFalse(snapshot["docking"]["tag_detected"])
+
+    def test_docking_tab_prunes_unrelated_sensor_payloads(self) -> None:
+        snapshot = UiBackendNode._new_telemetry_snapshot()
+        snapshot["active_view"] = "docking"
+        snapshot["docking"]["is_charging"] = True
+        snapshot["cameras"]["docking"] = {"available": True}
+        snapshot["lidar"]["points"] = [[1.0, 2.0]]
+
+        pruned = UiBackendNode._prune_telemetry_snapshot(snapshot, "docking")
+
+        self.assertTrue(pruned["docking"]["is_charging"])
+        self.assertTrue(pruned["cameras"]["docking"]["available"])
+        self.assertEqual(pruned["lidar"]["points"], [])
 
     def test_tab_payload_prunes_unrelated_high_volume_sections(self) -> None:
         snapshot = UiBackendNode._new_telemetry_snapshot()

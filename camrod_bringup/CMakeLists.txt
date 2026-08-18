@@ -42,6 +42,9 @@ install(
     # HH_260810 - Reproduce the measured UI transport and UUID-aware return
     # handoff summary media from their package-owned structured records.
     scripts/visualization/render_operator_transport_handoff_results.py
+    # HH_260818 - Reproduce normal/crab, same-anchor return, and final-parking
+    # release evidence from canonical YAML plus a B8 simulation report.
+    scripts/visualization/render_v2_1_8_return_docking_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
@@ -239,6 +242,14 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_operator_transport_handoff_assets
     test/test_operator_transport_handoff_assets.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260818 - Bind the v2.1.8 normal/crab, same-anchor campsite return,
+  # final-parking slowdown, UI capture, and YAML mirrors to reproducible media.
+  ament_add_pytest_test(
+    test_v2_1_8_return_docking_assets
+    test/test_v2_1_8_return_docking_assets.py
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

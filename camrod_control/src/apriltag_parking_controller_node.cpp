@@ -35,6 +35,8 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
 
+#include "camrod_control/parking_speed_profile.hpp"
+
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -76,6 +78,7 @@ public:
       "odometry_topic", "/localization/odometry");
     require_charging_for_completion_ = declare_parameter<bool>(
       "require_charging_for_completion", true);
+    stop_when_charging_ = declare_parameter<bool>("stop_when_charging", true);
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic", "/platform/status");
     operation_topic_ = declare_parameter<std::string>(
@@ -103,6 +106,8 @@ public:
       declare_parameter<double>("final_insertion_speed_mps", 0.05);
     slowdown_start_distance_m_ =
       declare_parameter<double>("slowdown_start_distance_m", 1.443);
+    slowdown_start_remaining_distance_m_ = std::abs(declare_parameter<double>(
+      "slowdown_start_remaining_distance_m", 0.60));
 
     // HH_260720 - Final insertion starts only inside the configured alignment tolerances.
     final_heading_tolerance_rad_ =
@@ -401,6 +406,18 @@ private:
 
     avg_msgs::msg::AvgTwist command;
 
+    // HH_260818 - Charger current is authoritative contact evidence. Stop in
+    // the same control tick from every active insertion phase, including tag
+    // guidance and tag waiting, instead of waiting for a distance threshold.
+    if (stop_when_charging_ && charging_detected_ && state_ != State::IDLE &&
+      state_ != State::PARKED && state_ != State::ERROR)
+    {
+      publishStop();
+      transitionTo(State::PARKED);
+      publishStatus();
+      return;
+    }
+
     switch (state_) {
       case State::IDLE:
       case State::PARKED:
@@ -466,16 +483,14 @@ private:
             }
             break;
           }
-          // HH_260720 - Slow proportionally while correcting lateral and heading errors.
-          double reverse_speed_mps = reverse_approach_speed_mps_;
-          if (distance_along_parking_axis_m_ < slowdown_start_distance_m_) {
-            reverse_speed_mps = final_insertion_speed_mps_ +
-              (reverse_approach_speed_mps_ - final_insertion_speed_mps_) *
-              (distance_along_parking_axis_m_ - final_insertion_start_distance_m_) /
-              std::max(slowdown_start_distance_m_ - final_insertion_start_distance_m_, 1e-3);
-            reverse_speed_mps = clamp(
-              reverse_speed_mps, final_insertion_speed_mps_, reverse_approach_speed_mps_);
-          }
+          const double remaining_distance_m = std::max(
+            0.0, distance_along_parking_axis_m_ - parked_distance_from_tag_m_);
+          // HH_260818 - Express docking slowdown from the actual stop point.
+          // The legacy absolute threshold remains declared for older override
+          // files, while this readable remaining-distance parameter is canonical.
+          const double reverse_speed_mps = camrod_control::parkingApproachSpeed(
+            remaining_distance_m, slowdown_start_remaining_distance_m_,
+            reverse_approach_speed_mps_, final_insertion_speed_mps_);
           double angular_speed_radps = clamp(
             heading_gain_ * normalizeAngle(heading_error_rad_ - correction_heading_rad),
             -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
@@ -749,9 +764,11 @@ private:
     char buf[128];
     snprintf(
       buf, sizeof(buf), "phase=%s distance_m=%.3f lateral_m=%.3f heading_rad=%.3f "
-      "retry=%d charging=%s",
+      "remaining_m=%.3f retry=%d charging=%s",
       stateName(state_), distance_along_parking_axis_m_, lateral_error_m_,
-      heading_error_rad_, retries_, charging_detected_ ? "true" : "false");
+      heading_error_rad_,
+      std::max(0.0, distance_along_parking_axis_m_ - parked_distance_from_tag_m_),
+      retries_, charging_detected_ ? "true" : "false");
 
     uint8_t level = avg_msgs::msg::ModuleState::OK;
     if (state_ == State::ERROR) {
@@ -796,10 +813,12 @@ private:
   std::string platform_status_topic_, operation_topic_, status_topic_;
   std::string diagnostics_topic_, service_state_topic_;
   bool require_charging_for_completion_{true};
+  bool stop_when_charging_{true};
   double heading_gain_, lateral_to_heading_gain_;
   double maximum_angular_speed_radps_, maximum_approach_angle_rad_;
   double reverse_approach_speed_mps_, final_insertion_speed_mps_;
   double slowdown_start_distance_m_;
+  double slowdown_start_remaining_distance_m_{0.60};
   bool invert_wz_in_reverse_{false};
   double final_heading_tolerance_rad_, final_lateral_tolerance_m_;
   double final_insertion_start_distance_m_, parked_distance_from_tag_m_;

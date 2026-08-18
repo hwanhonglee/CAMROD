@@ -21,6 +21,7 @@
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/drop_zone_station_pose.hpp"
 #include "camrod_control/motion_geometry.hpp"
+#include "camrod_control/parking_speed_profile.hpp"
 #include "camrod_control/reverse_parking_axis.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
@@ -105,6 +106,10 @@ public:
       "automatically_select_reverse_approach_yaw", false);
     start_yaw_tolerance_deg_ = std::abs(declare_parameter<double>("start_yaw_tolerance_deg", 7.5));
     reverse_speed_mps_ = std::abs(declare_parameter<double>("reverse_speed_mps", 0.16));
+    final_approach_speed_mps_ = std::abs(
+      declare_parameter<double>("final_approach_speed_mps", 0.05));
+    slowdown_start_remaining_distance_m_ = std::abs(declare_parameter<double>(
+      "slowdown_start_remaining_distance_m", 0.30));
     heading_proportional_gain_ = declare_parameter<double>("heading_proportional_gain", 0.8);
     lateral_proportional_gain_ = declare_parameter<double>("lateral_proportional_gain", -0.25);
     maximum_angular_speed_radps_ = std::abs(
@@ -425,7 +430,13 @@ private:
     const double heading_error = camrod_control::normalizeAngle(
       target_body_yaw_rad_ - camrod_control::yawFromPose(*last_vehicle_pose_));
     avg_msgs::msg::AvgTwist command;
-    command.linear.x = -reverse_speed_mps_;
+    // HH_260818 - Reduce reverse speed continuously for the final 0.30 m. CAN
+    // charging is checked above and still stops the command immediately.
+    const double approach_speed = camrod_control::parkingApproachSpeed(
+      std::max(0.0, station_axis_distance),
+      slowdown_start_remaining_distance_m_, reverse_speed_mps_,
+      final_approach_speed_mps_);
+    command.linear.x = -approach_speed;
     command.angular.z = camrod_control::clamp(
       heading_proportional_gain_ * heading_error +
       lateral_proportional_gain_ * stationLateralError(),
@@ -482,6 +493,8 @@ private:
       {"command_topic", command_topic_},
       {"reverse_distance_m", fixed(distanceReversed())},
       {"station_axis_distance_m", fixed(stationDistanceAlongReverseAxis())},
+      {"slowdown_start_remaining_distance_m",
+       fixed(slowdown_start_remaining_distance_m_)},
       {"target_body_yaw_deg", fixed(target_body_yaw_rad_ * 180.0 / M_PI)},
     }));
     last_status_time_ = current_time;
@@ -503,6 +516,8 @@ private:
   bool automatically_select_reverse_approach_yaw_{false};
   double start_yaw_tolerance_deg_{7.5};
   double reverse_speed_mps_{0.16};
+  double final_approach_speed_mps_{0.05};
+  double slowdown_start_remaining_distance_m_{0.30};
   double heading_proportional_gain_{0.8};
   double lateral_proportional_gain_{-0.25};
   double maximum_angular_speed_radps_{0.22};

@@ -128,6 +128,9 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   // translation. Ordinary Ackermann angle changes retain their tuned floor.
   bool steering_mode_transition_stationary_enabled_;
   double steering_mode_transition_ready_error_rad_;
+  // HH_260818 - Keep ordinary path tracking in Dual-Ackermann when linear.y
+  // contains only controller/bridge numerical residue.
+  double parallel_command_lateral_deadband_mps_;
   // HH_260731 - Never publish zero covariance for wheel velocity. A zero
   // covariance is treated as near-perfect certainty by robot_localization.
   double odom_linear_velocity_stddev_mps_;

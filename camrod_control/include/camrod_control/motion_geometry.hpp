@@ -50,6 +50,31 @@ inline std::pair<double, double> relativeXy(
     -std::sin(yaw) * dx + std::cos(yaw) * dy};
 }
 
+// HH_260818 - Project a goal pair around its stable map anchor using the
+// vehicle's current heading. This lets a restarted, 180-degree-reversed robot
+// select the opposite crab side without changing the site's map coordinates.
+inline std::pair<double, double> relativeXyAtHeading(
+  const avg_msgs::msg::AvgPoseStamped & reference,
+  const avg_msgs::msg::AvgPoseStamped & target,
+  const double current_yaw)
+{
+  const double dx = target.pose.position.x - reference.pose.position.x;
+  const double dy = target.pose.position.y - reference.pose.position.y;
+  return {
+    std::cos(current_yaw) * dx + std::sin(current_yaw) * dy,
+    -std::sin(current_yaw) * dx + std::cos(current_yaw) * dy};
+}
+
+// HH_260818 - A turnaround must rotate away from the lane side used for crab
+// entry. Reversing the vehicle heading reverses both values together.
+inline double turnaroundDirectionForCrab(const double crab_direction)
+{
+  if (std::abs(crab_direction) <= 1.0e-9) {
+    return 0.0;
+  }
+  return crab_direction > 0.0 ? -1.0 : 1.0;
+}
+
 // HH_260807 - Convert a map-frame return-anchor vector into a constant-speed
 // body-frame translation so crab mode can remove both lateral and axial drift.
 inline std::pair<double, double> bodyTranslationTowardTarget(
