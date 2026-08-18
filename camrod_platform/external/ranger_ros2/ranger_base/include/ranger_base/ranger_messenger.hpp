@@ -85,6 +85,11 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
     double translation_scale,
     double commanded_speed_mps);
   double LimitSteeringAngle(double target_angle);
+  double ApplySteeringModeTransitionVelocityScale(
+    uint8_t command_mode,
+    double target_angle_rad,
+    double limited_angle_rad,
+    double regular_scale);
   rcl_interfaces::msg::SetParametersResult OnParametersChanged(
     const std::vector<rclcpp::Parameter>& parameters);
   double CalculateSteeringAngle(geometry_msgs::msg::Twist msg, double& radius);
@@ -119,6 +124,10 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   double steering_transition_full_speed_error_rad_;
   double steering_transition_stop_error_rad_;
   double steering_transition_min_velocity_scale_;
+  // HH_260818 - Longitudinal/parallel mode changes must finish steering before
+  // translation. Ordinary Ackermann angle changes retain their tuned floor.
+  bool steering_mode_transition_stationary_enabled_;
+  double steering_mode_transition_ready_error_rad_;
   // HH_260731 - Never publish zero covariance for wheel velocity. A zero
   // covariance is treated as near-perfect certainty by robot_localization.
   double odom_linear_velocity_stddev_mps_;
@@ -131,6 +140,10 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   bool steering_command_initialized_ = false;
   double last_steering_command_rad_ = 0.0;
   rclcpp::Time last_steering_command_time_;
+  bool translational_mode_initialized_ = false;
+  uint8_t settled_translational_mode_ = 0;
+  bool steering_mode_transition_active_ = false;
+  uint8_t steering_mode_transition_target_ = 0;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr
     parameter_callback_handle_;
 

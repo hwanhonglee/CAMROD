@@ -357,22 +357,23 @@ def test_rear_apriltag_container_has_one_physical_owner(
 
 
 def test_rear_apriltag_container_keeps_the_complete_intra_process_chain():
-    """Capture, rectification, and detection must share one owner/process."""
+    """Capture/rectification and detection must share one owner/process."""
     source = (
         SRC_ROOT / "camrod_bringup" / "launch" /
         "rear_camera_apriltag_container.launch.py"
     ).read_text(encoding="utf-8")
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
 
-    # HH_260805 - Lock all three high-bandwidth stages and prevent a future
-    # fallback edit from silently reintroducing a duplicate rear publisher.
+    # HH_260818 - Rectification is owned by CameraRearPublisherNode after the
+    # image_proc/OpenCV ABI failure fix. Keep both active component stages in
+    # one process and prevent a duplicate rectifier from returning.
     for plugin in (
         "camrod::sensing::CameraRearPublisherNode",
-        "image_proc::RectifyNode",
         "camrod::perception::AprilTagParkingDetectorNode",
     ):
         assert f'plugin="{plugin}"' in source
-    assert source.count('"use_intra_process_comms": True') == 3
+    assert 'plugin="image_proc::RectifyNode"' not in source
+    assert source.count('"use_intra_process_comms": True') == 2
     assert 'package="camrod_runtime"' in source
     assert 'executable="scoped_component_container_mt"' in source
     assert defaults["bringup"]["perception"][

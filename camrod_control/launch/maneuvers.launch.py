@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def package_path(package_name: str, relative_path: str) -> str:
@@ -30,6 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument("control_namespace", default_value="control"),
         DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
         DeclareLaunchArgument("enable_camping_site_maneuver_controller", default_value="true"),
+        DeclareLaunchArgument("enable_campsite_occupancy_guard", default_value="false"),
         DeclareLaunchArgument("enable_drop_zone_maneuver_controller", default_value="true"),
         DeclareLaunchArgument("enable_route_safety_recovery_controller", default_value="true"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
@@ -50,6 +52,12 @@ def generate_launch_description():
                     "cmd_vel_topic": LaunchConfiguration("command_topic"),
                     "pose_topic": LaunchConfiguration("vehicle_pose_topic"),
                     "camping_sites_yaml": LaunchConfiguration("camping_sites_yaml"),
+                    # HH_260818 - Share the same semantic occupancy policy with
+                    # UI mission admission in full bringup.
+                    "enable_campsite_occupancy_guard": ParameterValue(
+                        LaunchConfiguration("enable_campsite_occupancy_guard"),
+                        value_type=bool,
+                    ),
                 },
             ],
             condition=IfCondition(LaunchConfiguration("enable_camping_site_maneuver_controller")),

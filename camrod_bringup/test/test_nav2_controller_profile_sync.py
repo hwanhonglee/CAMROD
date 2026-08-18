@@ -54,12 +54,44 @@ def _final_kph(raw_mps: float, gate_scale: float) -> float:
     return raw_mps * gate_scale * 3.6
 
 
-def test_package_and_bringup_nav2_profiles_are_byte_synchronized() -> None:
-    """Deployment mirrors must not silently retain old controller tuning."""
-    for filename in ("nav2_base.yaml", "nav2_vehicle.yaml"):
-        assert (PLANNING_CONFIG / filename).read_bytes() == (
-            BRINGUP_CONFIG / filename
-        ).read_bytes()
+def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> None:
+    """Keep the field A/B difference explicit and limited to preview geometry."""
+    preview_keys = {
+        "lookahead_dist",
+        "min_lookahead_dist",
+        "max_lookahead_dist",
+        "use_velocity_scaled_lookahead_dist",
+    }
+    for filename, plugin in (
+        ("nav2_base.yaml", "RotationShim"),
+        ("nav2_vehicle.yaml", "RPP"),
+    ):
+        package = yaml.safe_load(
+            (PLANNING_CONFIG / filename).read_text(encoding="utf-8")
+        )
+        deployed = yaml.safe_load(
+            (BRINGUP_CONFIG / filename).read_text(encoding="utf-8")
+        )
+        package_profile = package["controller_server"]["ros__parameters"][plugin]
+        deployed_profile = deployed["controller_server"]["ros__parameters"][plugin]
+
+        # HH_260818 - worak-test intentionally deploys the long scaled preview
+        # while retaining a fixed package profile for the pending field A/B.
+        assert {key: package_profile[key] for key in preview_keys} == {
+            "lookahead_dist": 1.2,
+            "min_lookahead_dist": 1.1,
+            "max_lookahead_dist": 2.0,
+            "use_velocity_scaled_lookahead_dist": False,
+        }
+        assert {key: deployed_profile[key] for key in preview_keys} == {
+            "lookahead_dist": 3.5,
+            "min_lookahead_dist": 1.5,
+            "max_lookahead_dist": 3.5,
+            "use_velocity_scaled_lookahead_dist": True,
+        }
+        for key in preview_keys:
+            deployed_profile[key] = package_profile[key]
+        assert deployed == package
 
 
 def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
@@ -330,8 +362,8 @@ def test_progress_checker_releases_parent_callbacks_during_lifecycle_cleanup() -
     assert "progress_checker_.reset();" in cleanup
 
 
-def test_manual_rotation_shim_keeps_shared_limits_with_longer_preview() -> None:
-    """Keep speed/safety limits shared while preserving manual anti-oscillation preview."""
+def test_package_manual_rotation_shim_matches_the_fixed_rpp_profile() -> None:
+    """Keep the package's manual and mission controllers on one fixed A/B profile."""
     base = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
     vehicle = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")
     direct_rpp = vehicle["RPP"]
@@ -340,24 +372,15 @@ def test_manual_rotation_shim_keeps_shared_limits_with_longer_preview() -> None:
     assert manual_rpp["primary_controller"].endswith(
         "RegulatedPurePursuitController"
     )
-    manual_preview_keys = {
-        "lookahead_dist",
-        "min_lookahead_dist",
-        "max_lookahead_dist",
-    }
     for key in SHARED_TRACKING_KEYS:
-        if key in manual_preview_keys:
-            continue
         assert manual_rpp[key] == direct_rpp[key], key
 
-    # HH_260807 - UI missions retain the 1.1 m service-A/B result. The manual
-    # RotationShim child uses the longer fixed preview selected after the live
-    # oscillation report; velocity scaling remains disabled for both profiles.
-    assert direct_rpp["lookahead_dist"] == 1.1
-    assert manual_rpp["lookahead_dist"] == 2.0
-    # HJ_0812 - Re-entry preview raised above the 1.59 m footprint length.
-    assert manual_rpp["min_lookahead_dist"] == 1.8
-    assert manual_rpp["max_lookahead_dist"] == 4.5
+    # HH_260818 - This is the retained fixed side of the worak-test field A/B,
+    # not the velocity-scaled profile loaded by full bringup.
+    assert direct_rpp["lookahead_dist"] == 1.2
+    assert manual_rpp["lookahead_dist"] == 1.2
+    assert manual_rpp["min_lookahead_dist"] == 1.1
+    assert manual_rpp["max_lookahead_dist"] == 2.0
     assert manual_rpp["use_velocity_scaled_lookahead_dist"] is False
 
 
@@ -376,17 +399,16 @@ def test_rpp_profile_contains_only_effective_limit_names() -> None:
         assert ignored_key not in rpp
 
 
-def test_two_kph_rpp_keeps_fixed_validated_preview() -> None:
-    """The production cruise must keep the B1/B2-validated 1.1 m preview."""
+def test_package_two_kph_rpp_keeps_the_fixed_ab_preview() -> None:
+    """The package side of the pending A/B must remain fixed and reproducible."""
     rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
 
-    # HH_260807 - The historical 3 km/h A/B run selected this fixed preview;
-    # lowering the cruise to 2 km/h must not silently retune its geometry.
+    # HH_260818 - Full bringup deliberately loads the scaled counterpart; this
+    # assertion protects only the fixed package candidate.
     assert rpp["use_velocity_scaled_lookahead_dist"] is False
-    assert rpp["lookahead_dist"] == 1.1
-    # HJ_0812 - Re-entry preview raised above the 1.59 m footprint length.
-    assert rpp["min_lookahead_dist"] == 1.8
-    assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
+    assert rpp["lookahead_dist"] == 1.2
+    assert rpp["min_lookahead_dist"] == 1.1
+    assert rpp["max_lookahead_dist"] == 2.0
 
 
 def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
@@ -471,6 +493,12 @@ def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
     # HH_260806 - Route-boundary escape is a safety primitive, not an ordinary
     # mission state. It intentionally remains 0.18 km/h instead of scaling up.
     assert recovery["maximum_speed_mps"] == 0.10
+    assert recovery["maximum_distance_m"] == 0.40
+    assert recovery["maximum_duration_s"] == 10.0
+    assert recovery["maximum_attempts"] == 50
+    assert recovery["retry_pause_s"] == 0.5
+    assert recovery["maximum_total_distance_m"] == 1.50
+    assert recovery["maximum_total_duration_s"] == 90.0
     assert math.isclose(
         _final_kph(recovery["maximum_speed_mps"], gate_scale),
         0.18,
@@ -511,8 +539,8 @@ def test_safety_gate_evaluates_the_final_scaled_command() -> None:
     assert "publishCommand(evaluated_command);" in source
 
 
-def test_production_dynamic_stop_sources_are_radar_only() -> None:
-    """LiDAR processing stays live without re-entering the production cost merge."""
+def test_classified_fusion_is_a_direct_two_meter_stop_source() -> None:
+    """Classified fusion stops directly without enabling raw LiDAR cost."""
     gate = yaml.safe_load(
         (CONTROL_CONFIG / "cmd_vel_safety_gate.yaml").read_text(encoding="utf-8")
     )["/**"]["ros__parameters"]
@@ -523,16 +551,23 @@ def test_production_dynamic_stop_sources_are_radar_only() -> None:
     assert gate["cost_source_debug_topics"] == [
         "/map/cost_grid/lanelet_safety",
         "/sensing/cost_grid/radar",
+        "/sensing/cost_grid/lidar",
         "/planning/cost_grid/global_path",
     ]
-    assert gate["cost_source_debug_labels"] == ["lanelet", "radar", "global_path"]
-    assert gate["cost_stop_dynamic_source_labels"] == "radar"
-    assert '"cost_stop_dynamic_source_labels", "radar"' in source
-    assert '"cost_stop_dynamic_source_labels", "lidar,radar"' not in source
+    assert gate["cost_source_debug_labels"] == [
+        "lanelet",
+        "radar",
+        "fusion",
+        "global_path",
+    ]
+    assert gate["cost_stop_dynamic_source_labels"] == "radar,fusion"
+    assert gate["cost_stop_classified_source_labels"] == "fusion"
+    assert gate["cost_stop_classified_front_lookahead_m"] == 2.0
+    assert '"cost_stop_dynamic_source_labels", "radar,fusion"' in source
 
 
-def test_campsite_return_uses_the_explicit_route_goal_anchor() -> None:
-    """Return to the centerline snap instead of Nav2's approximate arrival pose."""
+def test_campsite_return_uses_axis_staged_route_goal_anchor() -> None:
+    """Crab laterally to the centerline snap before straight drift correction."""
     source = (
         SRC_ROOT
         / "camrod_control"
@@ -548,12 +583,89 @@ def test_campsite_return_uses_the_explicit_route_goal_anchor() -> None:
     # service must remove that error before handing control back to Nav2.
     assert 'return_anchor_source_ = "route_goal_snap";' in source
     assert "captureReturnAnchor(" in source
-    assert "distanceTo(return_anchor_x_, return_anchor_y_)" in source
+    assert "bodyAxisPrioritizedTranslationTowardTarget(" in source
     assert re.search(
-        r"return_anchor_x_,\s*return_anchor_y_,\s*return_speed", source
+        r"return_anchor_x_,\s*return_anchor_y_,\s*crab_speed_mps_,"
+        r"\s*return_translation_gain_,\s*return_position_tolerance_m_",
+        source,
     )
+    assert "bodyTranslationTowardTarget(" not in source
     assert campsite["return_position_tolerance_m"] == 0.04
     assert campsite["return_translation_kp"] == 4.0
+
+
+def test_campsite_occupancy_guard_is_one_opt_in_policy() -> None:
+    """UI admission and maneuver start must use one disabled-by-default flag."""
+    defaults = yaml.safe_load(
+        (
+            SRC_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+    package = _node_parameters(
+        CONTROL_CONFIG / "control.yaml",
+        "/control/camping_site_maneuver_controller",
+    )
+    deployed = _node_parameters(
+        BRINGUP_CONTROL_CONFIG / "control.yaml",
+        "/control/camping_site_maneuver_controller",
+    )
+
+    # HH_260818 - A normal destination can contain the guest's own tent, so
+    # occupancy remains opt-in while retaining one switch for both consumers.
+    assert defaults["control"]["enable_campsite_occupancy_guard"] is False
+    assert package["enable_campsite_occupancy_guard"] is False
+    assert deployed["enable_campsite_occupancy_guard"] is False
+    bringup_source = (
+        SRC_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    maneuver_source = (
+        SRC_ROOT / "camrod_control" / "launch" / "maneuvers.launch.py"
+    ).read_text(encoding="utf-8")
+    ui_source = (
+        SRC_ROOT / "camrod_ui" / "camrod_ui_robot" / "launch" / "ui.launch.py"
+    ).read_text(encoding="utf-8")
+    for source in (bringup_source, maneuver_source, ui_source):
+        assert "enable_campsite_occupancy_guard" in source
+
+
+def test_ranger_mode_change_settles_before_campsite_translation() -> None:
+    """Keep the deployed 20% Ackermann floor out of DA/parallel transitions."""
+    bringup = yaml.safe_load(
+        (
+            SRC_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "platform"
+            / "ranger_driver.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+    package = yaml.safe_load(
+        (
+            SRC_ROOT / "camrod_platform" / "config" / "ranger_driver.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+
+    assert bringup["steering_transition_rate_radps"] == 1.5
+    assert bringup["steering_transition_min_velocity_scale"] == 0.2
+    for profile in (bringup, package):
+        assert profile["steering_mode_transition_stationary_enabled"] is True
+        assert profile["steering_mode_transition_ready_error_rad"] == 0.05
+
+    driver_source = (
+        SRC_ROOT
+        / "camrod_platform"
+        / "external"
+        / "ranger_ros2"
+        / "ranger_base"
+        / "src"
+        / "ranger_messenger.cpp"
+    ).read_text(encoding="utf-8")
+    assert "steering_command_initialized_ = false;" in driver_source
+    assert "translational_mode_initialized_ = false;" in driver_source
 
 
 def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> None:
@@ -611,7 +723,7 @@ def test_sim_runner_locks_map_fixed_obstacle_and_repeated_service_contract() -> 
     # HH_260807 - A release soak must exercise at least two destinations in one
     # process and issue RETURN only after the public unload-wait state appears.
     assert 'self.declare_parameter("run_service_soak", False)' in runner
-    assert 'self.declare_parameter("expect_lidar_cost_grid", False)' in runner
+    assert 'self.declare_parameter("expect_lidar_cost_grid", True)' in runner
     assert '"camping_site_1", "camping_site_2", "camping_site_3"' in runner
     assert "service_soak_mission_keys requires at least two sites" in runner
     assert '"WAITING_FOR_RETURN_REQUEST" in service_events' in runner

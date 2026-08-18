@@ -53,8 +53,9 @@
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)
     #   radar:        sensor obstacle costs (0=free, up to 95=obstacle)
     #   global_path:  route-strip bias (low on active path ~10-40, high outside ~80)
-    # HH_260807 - LiDAR is intentionally not an input to the production cost
-    # grid. Camera perception remains diagnostic; radar owns near-field cost.
+    # HH_260818 - Keep semantic camera-LiDAR out of this aggregate so static
+    # guide cost cannot obscure source attribution. Nav2 overlay consumes its
+    # raster for avoidance and the final gate checks it directly over 2.0 m.
     input_topics:
       - "/map/cost_grid/lanelet"
       - "/sensing/cost_grid/radar"

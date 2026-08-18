@@ -2,11 +2,15 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
+#include <set>
+#include <string>
 #include <vector>
 
 // HH_260720 - Name sensor/vision ROS pipeline boundaries directly instead of avg_msgs aliases.
+#include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <vision_msgs/msg/detection2_d_array.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -14,6 +18,7 @@
 #include <sensor_msgs/msg/compressed_image.hpp> // HJ_260529
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/header.hpp>
 #include <vision_msgs/msg/detection3_d_array.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -23,6 +28,8 @@
 #include <message_filters/synchronizer.h>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/opencv.hpp>
+
+#include "camrod_perception/classified_detection.hpp"
 
 // Coordinate frames
 //   LiDAR (vanjee_lidar_750): raw X forward, Y left, Z up
@@ -99,6 +106,15 @@ public:
       1, static_cast<int>(declare_parameter<int>("debug_draw_stride", 4)));
     publish_debug_image_without_subscribers_ = declare_parameter<bool>(
       "publish_debug_image_without_subscribers", false);
+    // HH_260818 - The safety-facing obstacle cloud accepts only current YOLO
+    // classes. Unmatched Euclidean clusters stay on visualization topics.
+    detection_max_age_s_ = std::clamp(
+      declare_parameter<double>("detection_max_age_s", 0.50), 0.05, 2.0);
+    const auto unknown_labels = declare_parameter<std::vector<std::string>>(
+      "unknown_class_labels", {"", "?", "unknown"});
+    for (const auto & label : unknown_labels) {
+      unknown_class_labels_.insert(camrod_perception::NormalizeClassLabel(label));
+    }
     image_width_ = declare_parameter<int>("image_width", 1920);
     image_height_ = declare_parameter<int>("image_height", 1080);
 
@@ -168,6 +184,7 @@ public:
       [this](const vision_msgs::msg::Detection2DArray::ConstSharedPtr & msg) {
         std::lock_guard<std::mutex> lock(det_mutex_);
         latest_det_ = msg;
+        latest_det_receive_time_ = now();
       });
 
     euclidean_sub_ = create_subscription<visualization_msgs::msg::MarkerArray>(
@@ -205,10 +222,10 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "obstacle_fusion started: cloud=%s det=%s bbox=%s "
-      "sync_queue=%d debug_image_rate=%.1fHz",
+      "sync_queue=%d debug_image_rate=%.1fHz class_only=true max_det_age=%.2fs",
       input_cloud_topic_.c_str(), detection_topic_.c_str(),
       bbox_topic_.c_str(), sync_queue_size_,
-      debug_image_publish_rate_hz_);
+      debug_image_publish_rate_hz_, detection_max_age_s_);
     RCLCPP_INFO(
       get_logger(), "extrinsic t=[%.3f, %.3f, %.3f]", extrinsic_x_,
       extrinsic_y_, extrinsic_z_);
@@ -289,9 +306,17 @@ private:
     cloud_msg_frame_ = cloud_msg->header.frame_id;
 
     vision_msgs::msg::Detection2DArray::ConstSharedPtr det_msg;
+    rclcpp::Time det_receive_time{0, 0, RCL_ROS_TIME};
     {
       std::lock_guard<std::mutex> lock(det_mutex_);
       det_msg = latest_det_;
+      det_receive_time = latest_det_receive_time_;
+    }
+    if (det_msg && !detectionFresh(*det_msg, cloud_msg->header, det_receive_time)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Ignoring stale camera detections for safety obstacle cloud");
+      det_msg.reset();
     }
 
     const bool publish_debug_image = shouldPublishDebugImage();
@@ -338,7 +363,7 @@ private:
   }
 
   // Collects YOLO-bbox-filtered LiDAR points and publishes to output_topic_ for
-  // Nav2 costmap.
+  // Nav2 and cmd_vel safety cost.
   void publishObstacleCloud(
     const std::vector<ProjPt> & proj,
     const vision_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
@@ -354,6 +379,13 @@ private:
     std::vector<std::array<float, 3>> pts;
     if (det_msg) {
       for (const auto & d2 : det_msg->detections) {
+        const std::string hypothesis = d2.results.empty() ? "" :
+          d2.results[0].hypothesis.class_id;
+        const std::string label = camrod_perception::ResolveClassLabel(
+          d2.id, hypothesis);
+        if (!camrod_perception::IsClassifiedDetection(label, unknown_class_labels_)) {
+          continue;
+        }
         const float x0 = static_cast<float>(d2.bbox.center.position.x -
           d2.bbox.size_x / 2.0);
         const float x1 = static_cast<float>(d2.bbox.center.position.x +
@@ -386,6 +418,24 @@ private:
     }
     out.is_dense = true;
     pub_obstacles_->publish(out);
+  }
+
+  bool detectionFresh(
+    const vision_msgs::msg::Detection2DArray & detection,
+    const std_msgs::msg::Header & cloud_header,
+    const rclcpp::Time & receive_time) const
+  {
+    const auto stamp_seconds = [](const builtin_interfaces::msg::Time & stamp) {
+        return static_cast<double>(stamp.sec) +
+               static_cast<double>(stamp.nanosec) * 1.0e-9;
+      };
+    const double detection_stamp = stamp_seconds(detection.header.stamp);
+    const double cloud_stamp = stamp_seconds(cloud_header.stamp);
+    if (detection_stamp > 0.0 && cloud_stamp > 0.0) {
+      return std::abs(cloud_stamp - detection_stamp) <= detection_max_age_s_;
+    }
+    return receive_time.nanoseconds() > 0 &&
+           std::max(0.0, (now() - receive_time).seconds()) <= detection_max_age_s_;
   }
 
   std::vector<ProjPt>
@@ -482,7 +532,6 @@ private:
 
       const std::string label = !d2.id.empty() ? d2.id :
         (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
-
       struct BboxPt
       {
         float z, lx, ly, lz;
@@ -730,7 +779,6 @@ private:
         const float hh = static_cast<float>(d2.bbox.size_y) * 0.5f;
         const std::string lbl = !d2.id.empty() ? d2.id :
           (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
-
         int best = -1;
         float best_d = std::numeric_limits<float>::max();
 
@@ -845,6 +893,8 @@ private:
   double debug_image_publish_rate_hz_{2.0};
   int debug_draw_stride_{4};
   bool publish_debug_image_without_subscribers_{false};
+  double detection_max_age_s_{0.50};
+  std::set<std::string> unknown_class_labels_{"", "?", "unknown"};
   int image_width_{1920};
   int image_height_{1080};
   rclcpp::Time last_debug_image_pub_{0, 0, RCL_ROS_TIME};
@@ -879,6 +929,7 @@ private:
 
   // --- detection cache ---
   vision_msgs::msg::Detection2DArray::ConstSharedPtr latest_det_;
+  rclcpp::Time latest_det_receive_time_{0, 0, RCL_ROS_TIME};
   std::mutex det_mutex_;
 
   // --- Euclidean cluster cache ---

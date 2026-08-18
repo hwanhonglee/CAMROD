@@ -6,6 +6,8 @@ transition values, normalized status, and evidence limit in one page. -->
 planning boundary carried by the platform topic. -->
 <!-- HH_260809 - Replace the displayed rectangular outlines with the shared
 tapered-front, six-corner rounded body and planning contours. -->
+<!-- HH_260818 - Document the deployed stationary longitudinal/parallel
+steering transition used by exact campsite crab entry and exit. -->
 
 Ranger CAN command/feedback bridge, BMS charging interpretation, robot
 visualization, planning-boundary publication, and light control.
@@ -38,9 +40,11 @@ RViz markers are generated from the sensor-kit boundary contract below.
 | Driver update loop | `50 Hz` | Configured Ranger loop rate |
 | Platform status heartbeat | `10 Hz` | Maximum steady normalized status rate |
 | Base/status frame | `robot_center_link` | Axle-midpoint platform reference |
-| Steering transition rate | `0.25 rad/s` | About `6.3 s` for 0 to 90 degrees |
+| Steering transition rate | bringup `1.5 rad/s`; package bench `1.0 rad/s` | Deployed 0 to 90 degree command takes about `1.05 s`; package value remains an intentional A/B profile |
 | Full translation | steering error `<= 0.05 rad` | Wheels nearly aligned |
-| Translation stop | steering error `>= 0.35 rad` | Prevents motion on stale wheel direction |
+| Ordinary Ackermann floor | `20%` in bringup | Retained for path tracking only; transition envelope uses stop error `0.70 rad` |
+| Longitudinal <-> parallel transition | stationary until command error `<=0.05 rad` | Overrides the Ackermann floor so crab does not begin or end diagonally |
+| Zero-turn handoff | re-seed from CAN steering feedback | Prevents the following crab/straight command from inheriting a stale pre-turn wheel angle |
 | Wheel linear/angular sigma | `0.05 m/s`, `0.10 rad/s` | Non-zero odometry covariance |
 | Charging threshold | `> 0.3 A`, 2 samples | Debounced positive-current charging rule |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |

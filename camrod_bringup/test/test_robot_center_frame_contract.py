@@ -151,7 +151,9 @@ def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     assert localization["gnss_antenna_offset_y_m"] == pytest.approx(gnss["y"])
     assert localization["gnss_lever_arm_require_fresh_heading"] is True
     assert localization["enable_gnss_lever_arm_ekf_heading_fallback"] is True
-    assert localization["gnss_lever_arm_fallback_anchor_max_age_s"] == pytest.approx(3.0)
+    # HH_260818 - worak-test deliberately tightened the anchor lifetime to
+    # 0.5 s; both package and bringup mirrors must preserve that field setting.
+    assert localization["gnss_lever_arm_fallback_anchor_max_age_s"] == pytest.approx(0.5)
     assert localization["gnss_lever_arm_fallback_history_s"] == pytest.approx(5.0)
     assert localization["gnss_lever_arm_fallback_match_tolerance_s"] == pytest.approx(0.2)
     assert localization["gnss_lever_arm_fallback_max_ekf_yaw_covariance"] == pytest.approx(1.0)

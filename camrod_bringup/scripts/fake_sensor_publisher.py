@@ -491,7 +491,9 @@ class FakeSensorPublisher(Node):
             self.declare_parameter("gnss_antenna_offset_y_m", 0.45).value
         )
         self.gnss_heading_raw_yaw_bias_deg = float(
-            self.declare_parameter("gnss_heading_raw_yaw_bias_deg", 85.0).value
+            # HH_260818 - Keep the fallback default aligned with the v22 field
+            # profile when this node is launched without fake_sensors.yaml.
+            self.declare_parameter("gnss_heading_raw_yaw_bias_deg", 90.0).value
         )
         self._gnss_active = True
         # Keep selected simulation controls adjustable at runtime via ros2 param set.

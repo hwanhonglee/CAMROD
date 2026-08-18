@@ -51,6 +51,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
 | `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and v2.1.4 release-map automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
+| `camrod_control` / `camrod_bringup` | `test-results/worak-crab-fusion-safety-20260818/` JSON | Fresh map-v22 B1 phase result, directional gate matrix, and long-return timeout | Exact site entry/exit and semantic/radar matrix pass; complete drop-zone return timed out; field pending |
 | `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test-results/tapered-rounded-boundary-20260810/` PNG/GIF | Current sensor-kit geometry, exact C++-equivalent contour generation, and Nav2 local/global footprint match | Shape and rigid transforms are source-derived; runtime collision and field clearance are not claimed |
 | `camrod_bringup` / `camrod_sensor_kit` / `camrod_platform` / `camrod_planning` / `camrod_control` | `test-results/tapered-rounded-boundary-road-sim-20260810/` PNG/GIF | Raw historical map-v17 ROS pose/command/gate timeline, recorded map SHA, exact 30-point contours, summary, and manifest | Physical body clear, planning-only contact, bounded reverse-yaw, same-route completion; physical road pending |
 | `camrod_runtime` / `camrod_bringup` | `runtime/test-results/nav2-lifecycle-shutdown-20260810/` JSON/log | Post-fix no-goal SYSTEM OK, UI READY, parent-only SIGINT, and all process exits | AMD64 44/44 clean; ARM64 resources and physical operation pending |
@@ -63,7 +64,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, scoped planner/controller default, state contracts, and footprint sweep | Hybrid Nav2 stopped cleanly 3/3; narrow corridor remains invalid |
 | `camrod_platform` | `ranger-command-and-status.png` | Ranger/visualization YAML | Hardware boundary documented; CAN/actuator timing pending |
 | `camrod_runtime` | `scoped-component-lifecycle.png`, `scoped-component-lifecycle.gif` | Runtime C++ cleanup contract + three final/default AMD64 full-simulation shutdown records | Six-container clean shutdown measured; Jetson resources and physical behavior pending |
-| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; LiDAR grid is default OFF |
+| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + front/rear/LiDAR composition toggles | Bounded hot paths shown; class-associated raster ON, raw-LiDAR cost OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png`, `gnss-left-antenna-lever-arm.png` | Geometry/localization YAML | Exact non-GNSS conversion and measured GNSS Y correction; remaining survey is pending |
@@ -316,7 +317,7 @@ mutates runtime configuration.
 
 | Module | Required real-robot evidence |
 |---|---|
-| sensing/perception | Re-run and commit raw front-camera/radar-off evidence; rear-camera rate, seven-channel radar-on, calibration, detection/fusion/tag output |
+| sensing/perception | Re-run and commit raw front-camera/radar-off evidence; rear-camera rate, six active radar channels plus REAR acceptance, calibration, detection/fusion/tag output |
 | localization | Surveyed GNSS lever arm, GNSS-to-center residuals, yaw, wheel slip, vibration, moving latency |
 | planning/control | All lane widths, physical oscillation, boundary stop distance, crab/reverse recovery, safe re-engage |
 | platform | CAN latency, steering-angle settling, BMS current sign, actuator accuracy |

@@ -1096,6 +1096,9 @@ def render_perception(repo_root: Path, output_root: Path):
     lidar = params["/perception/obstacle_lidar"]["ros__parameters"]
     yolo = params["/perception/yolov9mit"]["ros__parameters"]
     occupancy = params["/perception/campsite_occupancy"]["ros__parameters"]
+    occupancy_guard = load_yaml(
+        repo_root / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
+    )["bringup"]["control"]["enable_campsite_occupancy_guard"]
     tag = ros_params(
         repo_root / "camrod_perception" / "config" / "apriltag_parking_detector.yaml",
         "/perception/apriltag_parking_detector",
@@ -1111,7 +1114,12 @@ def render_perception(repo_root: Path, output_root: Path):
         (0.045, "Front camera", ("rectified image", yolo["input_image_topic"]), BLUE),
         (0.23, "YOLOv9-MIT", (f"{yolo['model_type']} @ {yolo['throttle_fps']:.0f} fps", f"conf/IoU {yolo['min_confidence']:.2f}/{yolo['min_iou']:.2f}"), AMBER),
         (0.415, "Detection2D", (yolo["output_boundingbox_topic"], "COCO labels"), BLUE),
-        (0.60, "Camera-LiDAR fusion", (fusion["fusion_filter_mode"], "+ filtered point cloud"), GREEN),
+        (
+            0.60,
+            "Camera-LiDAR fusion",
+            ("bbox + semantic class", f"age <= {fusion['detection_max_age_s']:.2f} s"),
+            GREEN,
+        ),
         (0.805, "Fused outputs", (fusion["output_topic"], fusion["out_det3d_topic"]), GREEN),
     ]
     widths = [0.155, 0.155, 0.155, 0.175, 0.15]
@@ -1121,7 +1129,7 @@ def render_perception(repo_root: Path, output_root: Path):
             previous_x = field_boxes[index - 1][0]
             draw_arrow(axis, (previous_x + widths[index - 1] + 0.003, 0.745), (x - 0.004, 0.745))
 
-    section_label(axis, 0.045, 0.62, "LiDAR-only path - active in simulation")
+    section_label(axis, 0.045, 0.62, "LiDAR-only diagnostic path - active in simulation")
     draw_box(axis, 0.045, 0.48, 0.205, 0.11, "Filtered LiDAR", ("/sensing/lidar/points_filtered",), face=BLUE_BG, edge=BLUE, title_color=BLUE)
     draw_arrow(axis, (0.253, 0.535), (0.29, 0.535))
     draw_box(
@@ -1137,7 +1145,18 @@ def render_perception(repo_root: Path, output_root: Path):
         title_color=GREEN,
     )
     draw_arrow(axis, (0.573, 0.535), (0.61, 0.535))
-    draw_box(axis, 0.62, 0.48, 0.335, 0.11, "Obstacle outputs", ("/perception/obstacles", "/perception/lidar/bboxes"), face=GREEN_BG, edge=GREEN, title_color=GREEN)
+    draw_box(
+        axis,
+        0.62,
+        0.48,
+        0.335,
+        0.11,
+        "Diagnostic output only",
+        ("/perception/lidar/bboxes", "no safety obstacle cloud"),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
 
     section_label(axis, 0.045, 0.42, "Semantic occupancy and parking")
     draw_box(
@@ -1149,8 +1168,8 @@ def render_perception(repo_root: Path, output_root: Path):
         "Campsite occupancy",
         (
             f"Detection3D input; confidence >= {occupancy['minimum_confidence']:.2f}",
-            f"confirm {occupancy['confirm_hits']} hits within {occupancy['confirm_window_s']:.0f} s",
-            f"occupied hold {occupancy['occupied_hold_s']:.0f} s -> mission-key availability",
+            f"{occupancy['confirm_hits']} hits/{occupancy['confirm_window_s']:.0f} s; hold {occupancy['occupied_hold_s']:.0f} s",
+            f"UI/control availability guard default {'ON' if occupancy_guard else 'OFF'}",
         ),
         face=AMBER_BG,
         edge=AMBER,
@@ -1165,7 +1184,7 @@ def render_perception(repo_root: Path, output_root: Path):
         "Rear-camera AprilTag parking",
         (
             f"{tag['tag_family']} ID {tag['target_tag_id']} / {tag['tag_size']:.2f} m",
-            "capture + image_proc + detector: one container",
+            "capture/rectify + detector: two components, one container",
             "launched only when parking_method:=apriltag",
         ),
         face=BLUE_BG,
@@ -1926,6 +1945,11 @@ def render_sensing(repo_root: Path, output_root: Path):
         repo_root / "camrod_sensing" / "config" / "radar" / "cost_grid.yaml",
         "/sensing/radar/radar_cost_grid",
     )
+    radar_driver = ros_params(
+        repo_root / "camrod_sensing" / "config" / "radar" / "sen0592_radar.yaml",
+        "/**",
+    )
+    radar_active_count = sum(bool(value) for value in radar_driver["sensor_enabled"])
     inflation = ros_params(
         repo_root / "camrod_sensing" / "config" / "inflation_cost_grid.yaml",
         "/sensing/inflation_cost_grid",
@@ -1942,12 +1966,12 @@ def render_sensing(repo_root: Path, output_root: Path):
             "Vanjee 750C points_raw",
             f"intra-process container\nROI + {lidar['downsample_resolution']:.2f} m voxel + ground filter",
             "/sensing/lidar/points_filtered",
-            f"perception + optional grid (default {'ON' if sensing_defaults['enable_lidar_cost_grid'] else 'OFF'})\n{lidar_cost['width']}x{lidar_cost['height']} @ {lidar_cost['resolution']:.2f} m",
+            f"perception + semantic raster (default {'ON' if sensing_defaults['enable_lidar_cost_grid'] else 'OFF'})\n{lidar_cost['width']}x{lidar_cost['height']} @ {lidar_cost['resolution']:.2f} m",
             GREEN,
         ),
         (
-            "Radar x7",
-            "FRONT1/2, LEFT1/2, RIGHT1/2, REAR",
+            f"Radar x7 ({radar_active_count} active)",
+            "FRONT1/2 + LEFT1/2 + RIGHT1/2\nREAR quarantined",
             "range validation\nfixed-return exclusions",
             "/sensing/radar/*/range",
             f"radar cost grid\n{radar['width']}x{radar['height']} @ {radar['resolution']:.2f} m",
@@ -2020,7 +2044,7 @@ def render_sensing(repo_root: Path, output_root: Path):
         title_color=GREEN,
         body_size=7.5,
     )
-    footer(figure, "SOURCE-DERIVED. Front/YOLO, rear/AprilTag, and LiDAR processing have bounded containers; the LiDAR rasterizer is default OFF. Hardware quality still requires field logs.")
+    footer(figure, "SOURCE-DERIVED. Front/YOLO, rear/AprilTag, and LiDAR processing use bounded containers; the class-associated raster is ON while raw-LiDAR cost is OFF. Hardware quality still requires field logs.")
     save_figure(
         figure,
         output_root / "sensing" / "guide" / "sensor-processing-and-cost-fusion.png",

@@ -15,6 +15,7 @@
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "camrod_control/charging_mission_override.hpp"
+#include "camrod_control/bounded_recovery_attempt_policy.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
@@ -28,6 +29,29 @@
 namespace camrod_control {
 
 namespace {
+
+TEST(BoundedRecoveryAttemptPolicy, RetriesAttemptWithoutRemovingTotalEnvelope) {
+  const BoundedRecoveryAttemptLimits limits{10.0, 0.40, 50, 90.0, 1.50};
+  EXPECT_EQ(
+      EvaluateBoundedRecoveryAttempt(limits, 1, 10.0, 0.10, 10.0, 0.10),
+      BoundedRecoveryAction::kRetry);
+  EXPECT_EQ(
+      EvaluateBoundedRecoveryAttempt(limits, 12, 1.0, 0.05, 89.0, 1.49),
+      BoundedRecoveryAction::kContinue);
+}
+
+TEST(BoundedRecoveryAttemptPolicy, TotalTravelAndTimeRemainFinalStops) {
+  const BoundedRecoveryAttemptLimits limits{10.0, 0.40, 50, 90.0, 1.50};
+  EXPECT_EQ(
+      EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 90.0, 0.50),
+      BoundedRecoveryAction::kFinalHold);
+  EXPECT_EQ(
+      EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 30.0, 1.50),
+      BoundedRecoveryAction::kFinalHold);
+  EXPECT_EQ(
+      EvaluateBoundedRecoveryAttempt(limits, 50, 10.0, 0.10, 80.0, 0.50),
+      BoundedRecoveryAction::kFinalHold);
+}
 
 double degrees(const double value) { return value * M_PI / 180.0; }
 
@@ -81,6 +105,26 @@ TEST(MotionGeometry,
       bodyTranslationTowardTarget(1.0, 1.0, 0.0, 1.0, 1.0, 0.5);
   EXPECT_DOUBLE_EQ(stopped.first, 0.0);
   EXPECT_DOUBLE_EQ(stopped.second, 0.0);
+}
+
+TEST(MotionGeometry,
+     CampsiteReturnUsesPureCrabBeforeStraightDriftCorrection) {
+  const auto lateral = bodyAxisPrioritizedTranslationTowardTarget(
+      0.0, 0.0, 0.0, 1.0, 1.0, 0.5, 4.0, 0.04);
+  EXPECT_DOUBLE_EQ(lateral.first, 0.0);
+  EXPECT_DOUBLE_EQ(lateral.second, 0.5);
+
+  const auto longitudinal = bodyAxisPrioritizedTranslationTowardTarget(
+      0.0, 0.98, 0.0, 1.0, 1.0, 0.5, 4.0, 0.04);
+  EXPECT_DOUBLE_EQ(longitudinal.first, 0.5);
+  EXPECT_DOUBLE_EQ(longitudinal.second, 0.0);
+
+  // After the on-site 180 degree turn, body axes are reversed but each command
+  // must still contain only one translational component.
+  const auto reversed = bodyAxisPrioritizedTranslationTowardTarget(
+      1.0, 1.0, M_PI, 0.0, 0.0, 0.5, 4.0, 0.04);
+  EXPECT_DOUBLE_EQ(reversed.first, 0.0);
+  EXPECT_DOUBLE_EQ(reversed.second, 0.5);
 }
 
 avg_msgs::msg::AvgOccupancyGrid makeGrid(
@@ -1460,6 +1504,46 @@ TEST(MotionCostStop, ClearAvoidancePathPassesAndBlockedPathStops) {
 
   cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
+}
+
+TEST(MotionCostStop, ClassifiedFusionStopsOnlyWithinTwoMeterRouteHorizon) {
+  auto config = baseCostConfig();
+  config.fixed_front_lookahead_m = 3.0;
+  config.dynamic_front_use_local_path = true;
+  config.dynamic_source_labels = {"fusion", "radar"};
+  config.classified_dynamic_source_labels = {"fusion"};
+  config.classified_front_lookahead_m = 2.0;
+  const auto route = makePath({{0.0, 0.0}, {3.0, 0.0}});
+
+  auto near_fusion = makeMotionCostStop(config);
+  near_fusion.setLocalPath(route);
+  near_fusion.setSourceGrid("fusion", makeGrid({{1.9, 0.0, 90}}), 0.0);
+  const auto near_decision = near_fusion.evaluate(command(0.2), 0.0);
+  EXPECT_TRUE(near_decision.blocked);
+  EXPECT_EQ(near_decision.reason, "dynamic_front_path:fusion");
+
+  auto far_fusion = makeMotionCostStop(config);
+  far_fusion.setLocalPath(route);
+  far_fusion.setSourceGrid("fusion", makeGrid({{2.2, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(far_fusion.evaluate(command(0.2), 0.0).blocked);
+
+  // A classified object without a current route is not "on the route". Keep
+  // it visible for perception diagnostics, but do not convert the fallback
+  // rectangular corridor into an early semantic stop.
+  auto no_route_fusion = makeMotionCostStop(config);
+  no_route_fusion.setSourceGrid("fusion", makeGrid({{1.0, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(no_route_fusion.evaluate(command(0.2), 0.0).blocked);
+
+  auto lateral_fusion = makeMotionCostStop(config);
+  lateral_fusion.setSourceGrid("fusion", makeGrid({{0.0, 0.5, 90}}), 0.0);
+  EXPECT_FALSE(lateral_fusion.evaluate(command(0.0, 0.2), 0.0).blocked);
+
+  // The semantic cap is source-specific. Radar retains its existing independent
+  // near-field/front policy instead of being weakened by the fusion horizon.
+  auto radar = makeMotionCostStop(config);
+  radar.setLocalPath(route);
+  radar.setSourceGrid("radar", makeGrid({{2.2, 0.0, 90}}), 0.0);
+  EXPECT_TRUE(radar.evaluate(command(0.2), 0.0).blocked);
 }
 
 // HH_260728 - Model the live radar cost disk, not a single occupied pixel. A

@@ -24,7 +24,7 @@ planners/controllers, and semantic mission state.
 `SIM RUNTIME CAPTURE`: historical 2026-08-04 B6 goal, LaneletRoute global path,
 local path, and robot pose. Historical map-v16 campsite sequencing and
 historical map-v17 continuous-service evidence are shown separately below;
-the active user-authored runtime map is map v15.
+the active user-authored runtime map is map v22.
 
 ![Current route trace and tracking telemetry](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-trajectory-20260810.png)
 
@@ -215,7 +215,7 @@ in explicit `OPERATOR_STOPPED` state.
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
 | Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
-| Active user-authored map-v15 source | SHA `689c49...1b39`; 55 lanelets/14 areas/1592 points; LaneletRoute and exported operating-point contracts pass |
+| Active user-authored map-v22 source | SHA `8fa131...e59`; 55 lanelets/14 areas/1652 points; LaneletRoute and exported operating-point contracts pass |
 | Persistent centered obstacle at mapped 3.00 m road | Immediate stop; one Smac no-path preflight; no selector/ABORT loop; original mission resumed `0.242 m` after clear |
 | Continuous service route ownership | B1/B2/B3 completed site, explicit RETURN, drop-zone, parking, charge, and next departure without bringup restart |
 | Reduced-boundary route evidence | Historical `1.29160 x 0.87000 m` run: `10.0403 m`, goal error `0.2932 m`, bounded margin recovery, physical hard stop |

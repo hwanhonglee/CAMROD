@@ -1,11 +1,11 @@
 {
-  "generated_for": "2026-08-10 current Park coordinate synchronization",
+  "generated_for": "2026-08-18 current Park coordinate synchronization",
   "field_claim": false,
   "map": {
     "source_file": "lanelet2_maps.osm",
-    "map_version": 15,
-    "sha256": "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39",
-    "node_count": 1592,
+    "map_version": 22,
+    "sha256": "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59",
+    "node_count": 1652,
     "lanelet_count": 55,
     "semantic_area_count": 14
   },

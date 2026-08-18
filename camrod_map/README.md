@@ -7,7 +7,9 @@ off-lane campsite service-area motion. -->
 <!-- HH_260806 - Add a bounded high-resolution lanelet raster dedicated to the final command gate. -->
 <!-- HH_260807 - Record the synchronized user-authored map-v17 deployment pair. -->
 <!-- HH_260810 - Rebind runtime coordinates and map identity to the current
-user-authored map-v15 file without rewriting independent snapshot copies. -->
+user-authored map file without rewriting independent snapshot copies. -->
+<!-- HH_260818 - Refresh only the current map identity after the worak-test
+map-v22 edit; semantic operating coordinates remain unchanged. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -43,9 +45,9 @@ not replace the surveyed-width acceptance required for the user-authored map.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=15` (user-provided geometry revision) |
-| Active SHA-256 | `689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39` |
-| Loaded primitives | 55 lanelets, 14 areas, 1,592 nodes, 236 ways |
+| Active source revision | `map_version=22` (user-provided geometry revision) |
+| Active SHA-256 | `8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59` |
+| Loaded primitives | 55 lanelets, 14 areas, 1,652 nodes, 236 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -117,7 +119,7 @@ It is retained as v14 evidence and is not presented as a map-v15 rerun.
 The v2.1.4 map-v15 recovery media are likewise bound to release SHA
 `e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
 They demonstrate the staged controller on that release map, not a run on the
-historical map-v17 SHA `8cd05c...5e021`, not the active map-v15 SHA above.
+historical map-v17 SHA `8cd05c...5e021`, not the active map-v22 SHA above.
 
 On the prior map-v15 SHA `d7b730...213f`, a controlled route traveled `10.0403 m` with no
 route hold. A `+0.19 m` placement touched only the planning margin and admitted
@@ -127,7 +129,7 @@ reduced candidate polygons and control interpretation changed; this evidence
 is historical. Map-v16 B1-B10 site maneuvers (10/10) and B11-B13 arrival-only
 checks remain historical policy evidence. The map-v17 B1/B2/B3 continuous
 service and B2 recovery 3/3 also remain historical after the active map edit;
-the active map-v15 service cycle and B11-B13 return geometry require reruns.
+the active map-v22 service cycle and B11-B13 return geometry require reruns.
 
 ## Nodes And Products
 

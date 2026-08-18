@@ -1,6 +1,8 @@
-# Current Park Operating Points (2026-08-10)
+# Current Park Operating Points (updated 2026-08-18)
 
 <!-- HH_260810 - Bind semantic coordinates to the exact current user-authored map. -->
+<!-- HH_260818 - Refresh map identity to v22 after confirming every exported
+operating coordinate remains unchanged. -->
 
 ![Current Park semantic coordinates](park-operating-points.png)
 
@@ -11,7 +13,7 @@ official `area_exporter` output with the operational service policy.
 
 | Input | Contract |
 |---|---|
-| OSM | map v15, SHA `689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39` |
+| OSM | map v22, SHA `8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59` |
 | Park origin | `36.8435737`, `128.0925646`, altitude `0.0 m` |
 | Service areas | B1-B13 plus one `drop_zone` |
 | Other semantic geometry | Three `parking_lot` polygons (ways 1146, 1378, 1615) |

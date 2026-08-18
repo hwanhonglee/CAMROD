@@ -43,7 +43,7 @@ This package observes health. It never generates vehicle motion commands.
 | Selected localization pose | `20 Hz` | EKF/final-pose output |
 | LiDAR raw / filtered cloud | `10 Hz` | Required physical sensing chain |
 | Front / rear camera raw stream | `10 Hz` each | Rear monitoring JPEG is a separate `2 Hz` diagnostic stream |
-| Optional LiDAR cost grid | `10 Hz` when enabled | Its node/topic are omitted when OFF; the shared checker still monitors radar + inflation |
+| Classified camera-LiDAR raster | `10 Hz`, default ON | Its node/topic/checker are omitted together only when explicitly disabled; raw-LiDAR cost remains OFF |
 
 ## Runtime Composition
 

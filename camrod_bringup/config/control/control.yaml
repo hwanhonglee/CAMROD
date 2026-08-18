@@ -29,6 +29,9 @@
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
     # HH_260723 - Block entry into a campsite confirmed occupied by perception.
     campsite_occupancy_topic: "/perception/camping_sites/occupancy"
+    # HH_260818 - Keep the current tent-at-destination workflow by default.
+    # Set true to mark confirmed semantic tent sites unavailable before entry.
+    enable_campsite_occupancy_guard: false
 
     # =========================================================================
     # 2. SITE ENTRY AND GOAL SELECTION
@@ -203,6 +206,13 @@
     # HH_260803 - The safety gate halves raw recovery speed to 0.05 m/s;
     # allow enough time to reach the independent 0.40 m displacement limit.
     maximum_duration_s: 10.0
+    # HH_260818 - Restart a bounded projected attempt instead of latching after
+    # the first 10 s/0.40 m stage. Every command still traverses the final gate;
+    # the complete episode remains capped at 1.50 m and 90 s.
+    maximum_attempts: 50
+    retry_pause_s: 0.5
+    maximum_total_distance_m: 1.50
+    maximum_total_duration_s: 90.0
     pose_timeout_s: 0.5
     candidate_timeout_s: 0.75
     status_timeout_s: 1.0

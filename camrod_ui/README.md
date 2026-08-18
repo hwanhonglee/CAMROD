@@ -37,6 +37,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
 | Operator telemetry transport | latest-value WebSocket `10 Hz`; REST fallback `1 Hz` |
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
+| Confirmed-tent occupancy guard | `false` by default; set `bringup.control.enable_campsite_occupancy_guard: true` to block pre-entry dispatch |
 
 ## Destination Dispatch
 
@@ -54,6 +55,12 @@ Unknown battery or SOC below 35% blocks a new destination. If SOC falls below
 35% during an active campsite mission, the current site phase finishes and the
 UI waits for the normal return request; it does not command immediate motion
 while users may be unloading.
+
+The perception occupancy topic continues to report confirmed tent sites. The
+UI/control admission guard is an explicit shared toggle and defaults to `false`
+because the requested delivery site can legitimately contain the guest's tent.
+When enabled, it blocks or cancels a pre-entry dispatch; `SITE_ENTRY` and later
+phases are not interrupted by a newly observed tent.
 
 ## State Display
 

@@ -310,7 +310,7 @@
   "runtime_claim": false,
   "schema_version": 1,
   "source_sha256": {
-    "camrod_planning/config/nav2_vehicle.yaml": "62501c5b9989fd937865e4911e4e5104ec978374155ce10744a703dfceda896d",
+    "camrod_planning/config/nav2_vehicle.yaml": "552d37575c2f68d6f909c7ee5ae49501280dae8eac575a5d630f37d0f7cda6ea",
     "camrod_sensor_kit/config/robot_params.yaml": "8022426ce1168442bb87f98af22e2178d5d52042c6db96d29ec9e08e02394c91"
   }
 }

@@ -145,6 +145,11 @@ def generate_launch_description():
         default_value=default_camping_sites_yaml,
         description='Camping site coordinates YAML used for destination->goal_pose dispatch',
     )
+    enable_campsite_occupancy_guard_arg = DeclareLaunchArgument(
+        'enable_campsite_occupancy_guard',
+        default_value='false',
+        description='Block campsite dispatch using confirmed semantic tent occupancy',
+    )
     planning_engage_topic_arg = DeclareLaunchArgument(
         'planning_engage_topic',
         default_value='/planning/engage',
@@ -300,6 +305,12 @@ def generate_launch_description():
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
+            # HH_260818 - One bringup flag controls both UI admission and the
+            # control-side occupied-site start gate.
+            'enable_campsite_occupancy_guard': ParameterValue(
+                LaunchConfiguration('enable_campsite_occupancy_guard'),
+                value_type=bool,
+            ),
         }],
     )
 
@@ -378,6 +389,7 @@ def generate_launch_description():
         operator_ui_window_fullscreen_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
+        enable_campsite_occupancy_guard_arg,
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
         platform_drive_enable_topic_arg,

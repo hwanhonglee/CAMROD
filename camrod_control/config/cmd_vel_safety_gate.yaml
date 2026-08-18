@@ -87,12 +87,20 @@
     cost_source_debug_topics:
       # HH_260806 - Match diagnostics to the high-resolution control raster.
       - "/map/cost_grid/lanelet_safety"
-      # HH_260807 - Production dynamic cost is radar-only; LiDAR is not merged.
+      # HH_260818 - Radar is the independent near-field source. The following
+      # fusion grid is checked directly and is not merged as raw LiDAR cost.
       - "/sensing/cost_grid/radar"
+      # HH_260818 - This compatibility topic contains class-associated
+      # camera-LiDAR points only; raw LiDAR remains disabled in its rasterizer.
+      - "/sensing/cost_grid/lidar"
       - "/planning/cost_grid/global_path"
-    cost_source_debug_labels: ["lanelet", "radar", "global_path"]
+    cost_source_debug_labels: ["lanelet", "radar", "fusion", "global_path"]
     cost_stop_require_dynamic_source: true
-    cost_stop_dynamic_source_labels: "radar"
+    cost_stop_dynamic_source_labels: "radar,fusion"
+    # HH_260818 - Semantic fusion stops only on the active local path up to
+    # 2.0 m. Radar remains an independent near-field fail-safe source.
+    cost_stop_classified_source_labels: "fusion"
+    cost_stop_classified_front_lookahead_m: 2.0
     # HH_260729 - Diagnostic-only companion to the aggregate radar grid.
     # It adds SENSOR/frame/range/map point/cost to radar stop logs; occupancy
     # grid evaluation remains the sole authority for stopping and releasing.

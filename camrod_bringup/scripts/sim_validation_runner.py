@@ -190,9 +190,9 @@ class SimValidationRunner(Node):
         # HH_260806 - Keep an absent LiDAR cost grid valid only when the launch
         # contract explicitly disables that optional component.
         self.expect_lidar_cost_grid = bool(
-            # HH_260807 - Match the production launch default. ON validation
-            # remains explicit with expect_lidar_cost_grid:=true.
-            self.declare_parameter("expect_lidar_cost_grid", False).value
+            # HH_260818 - Full bringup now enables the legacy-named raster for
+            # classified camera-LiDAR obstacles. Raw LiDAR cost remains off.
+            self.declare_parameter("expect_lidar_cost_grid", True).value
         )
         self.obstacle_replan_timeout_s = float(
             self.declare_parameter("obstacle_replan_timeout_s", 35.0).value
@@ -272,6 +272,12 @@ class SimValidationRunner(Node):
             MotionOperation, "/parking/operation", 10
         )
         self.pub_raw = self.create_publisher(AvgTwist, "/control/cmd_vel_raw", 10)
+        # HH_260818 - The classified fusion source is authorized only against
+        # a current local path. The isolated gate matrix owns a short synthetic
+        # path because it deliberately cancels Nav2 before source testing.
+        self.pub_gate_test_path = self.create_publisher(
+            AvgPath, "/planning/local_path", 10
+        )
 
         self.param_client = self.create_client(
             SetParameters, f"{self.fake_sensor_node}/set_parameters"
@@ -327,6 +333,7 @@ class SimValidationRunner(Node):
         self.local_path_count = 0
         self.global_path_points = 0
         self.local_path_points = 0
+        self.gate_test_path: AvgPath | None = None
 
         # HH_260720 - Observe the generated IMU contract instead of the hardware ROS boundary.
         self._subscribe_count("/sensing/imu/data", AvgImu)
@@ -628,7 +635,9 @@ class SimValidationRunner(Node):
             return False
         return all(result.successful for result in future.result().results)
 
-    def clear_obstacle(self) -> None:
+    def clear_obstacle(
+        self, settle_s: float = 1.2, drive_gate_clear: bool = False
+    ) -> None:
         self.set_fake_params(
             obstacle_reference_frame="robot",
             obstacle_offset=30.0,
@@ -637,7 +646,13 @@ class SimValidationRunner(Node):
             publish_fake_lidar_obstacle_cloud=True,
             publish_fake_radar_ranges=True,
         )
-        self.spin_for(1.2)
+        if drive_gate_clear:
+            # A dynamic latch advances its continuous-clear timer only while
+            # evaluating commands. Zero is stationary but still exercises the
+            # exact source/path context that triggered the previous stop.
+            self.publish_raw_for(AvgTwist(), max(0.0, settle_s))
+        else:
+            self.spin_for(max(0.0, settle_s))
 
     def cancel_all_actions(self) -> None:
         req = CancelGoal.Request()
@@ -724,6 +739,11 @@ class SimValidationRunner(Node):
     def publish_raw_for(self, cmd: AvgTwist, duration_s: float) -> None:
         end = time.monotonic() + duration_s
         while rclpy.ok() and time.monotonic() < end:
+            if self.gate_test_path is not None:
+                self.gate_test_path.header.stamp = self.get_clock().now().to_msg()
+                for pose in self.gate_test_path.poses:
+                    pose.header.stamp = self.gate_test_path.header.stamp
+                self.pub_gate_test_path.publish(self.gate_test_path)
             self.pub_raw.publish(cmd)
             rclpy.spin_once(self, timeout_sec=0.05)
 
@@ -803,10 +823,10 @@ class SimValidationRunner(Node):
                 "baseline_hz",
                 not bad,
                 (
-                    "ok"
+                    "ok (classified fusion raster active)"
                     if not bad and self.expect_lidar_cost_grid
                     else (
-                        "ok (optional lidar cost grid disabled)"
+                        "ok (classified fusion raster disabled by override)"
                         if not bad
                         else ", ".join(bad)
                     )
@@ -854,16 +874,23 @@ class SimValidationRunner(Node):
         # HH_260701 - This check drives raw body-direction commands directly into
         # the gate. Disable stale-route heading alignment here so the matrix tests
         # cost-stop corridors, not route-following yaw correction.
-        self.set_gate_params(enable_route_heading_alignment=False)
+        self.set_gate_params(
+            enable_route_heading_alignment=False,
+            lanelet_safety_enable=False,
+        )
         self.publish_engage(True)
         self.publish_mission_engage(False)
-        offsets = {"front": 1.0, "left": 0.6, "right": 0.6, "rear": 0.4}
+        # HH_260818 - Inject scalar radar returns inside the deployed accepted
+        # windows, after fixed self-return bands: FRONT2=0.20 m, side=0.09 m,
+        # rear=0.15 m. The former 1.0/0.6/0.4 m values cannot be painted by the
+        # current near-field radar profile and made the test exercise no hit.
+        radar_offsets = {"front": 0.20, "left": 0.09, "right": 0.09, "rear": 0.15}
         # HH_260630: Keep LiDAR-only fake obstacles clearly outside ego-clear
         # while staying inside the side/rear lookahead corridors.
         lidar_offsets = {"front": 1.0, "left": 0.95, "right": 0.95, "rear": 0.95}
         directions = ["front", "left", "right", "rear"]
         sources = [
-            ("lidar", True, False),
+            ("fusion", True, False),
             ("radar", False, True),
             ("combined", True, True),
         ]
@@ -871,12 +898,18 @@ class SimValidationRunner(Node):
         detail_parts = []
         metrics: dict[str, float | str] = {}
         for direction in directions:
+            if direction != "front":
+                self.gate_test_path = None
             for label, lidar, radar in sources:
                 start_counts = dict(self.counts)
+                if direction == "front" and lidar:
+                    self.publish_gate_test_local_path()
                 self.set_fake_params(
                     obstacle_direction=direction,
                     obstacle_offset=(
-                        lidar_offsets[direction] if label == "lidar" else offsets[direction]
+                        lidar_offsets[direction]
+                        if label == "fusion"
+                        else radar_offsets[direction]
                     ),
                     publish_fake_lidar_obstacle_cloud=lidar,
                     publish_fake_radar_ranges=radar,
@@ -895,12 +928,20 @@ class SimValidationRunner(Node):
                 self.publish_raw_for(self.make_cmd(direction), 1.2)
                 out = self.max_abs_since.get("/control/cmd_vel", 0.0)
                 metrics[f"{direction}_{label}_control_cmd_max"] = round(out, 3)
-                ok = out <= 0.03
+                expected_block = label != "fusion" or direction == "front"
+                ok = out <= 0.03 if expected_block else out > 0.03
                 if not ok:
                     all_ok = False
-                    detail_parts.append(f"{direction}/{label} leaked {out:.3f}")
-                self.clear_obstacle()
-        self.set_gate_params(enable_route_heading_alignment=True)
+                    outcome = "leaked" if expected_block else "unexpectedly blocked"
+                    detail_parts.append(f"{direction}/{label} {outcome} {out:.3f}")
+                # HH_260818 - Isolate matrix cells across the configured 2 s
+                # continuous-clear latch and its post-release hold.
+                self.clear_obstacle(settle_s=3.2, drive_gate_clear=True)
+        self.gate_test_path = None
+        self.set_gate_params(
+            enable_route_heading_alignment=True,
+            lanelet_safety_enable=True,
+        )
         self.results.append(
             CheckResult(
                 "directional_cost_stop",
@@ -909,6 +950,36 @@ class SimValidationRunner(Node):
                 metrics,
             )
         )
+
+    def publish_gate_test_local_path(self) -> None:
+        if self.latest_pose is None:
+            return
+        path = AvgPath()
+        path.header.stamp = self.get_clock().now().to_msg()
+        path.header.frame_id = self.latest_pose.header.frame_id or "map"
+        yaw = yaw_from_quat(self.latest_pose.pose.orientation)
+        for distance in (0.0, 0.5, 1.0, 1.5, 2.0):
+            pose = AvgPoseStamped()
+            pose.header = path.header
+            pose.pose.position.x = (
+                self.latest_pose.pose.position.x + distance * math.cos(yaw)
+            )
+            pose.pose.position.y = (
+                self.latest_pose.pose.position.y + distance * math.sin(yaw)
+            )
+            pose.pose.position.z = self.latest_pose.pose.position.z
+            pose.pose.orientation.x = 0.0
+            pose.pose.orientation.y = 0.0
+            pose.pose.orientation.z = math.sin(yaw * 0.5)
+            pose.pose.orientation.w = math.cos(yaw * 0.5)
+            path.poses.append(pose)
+        for _ in range(4):
+            path.header.stamp = self.get_clock().now().to_msg()
+            for pose in path.poses:
+                pose.header.stamp = path.header.stamp
+            self.pub_gate_test_path.publish(path)
+            self.spin_for(0.05)
+        self.gate_test_path = path
 
     def publish_initialpose(self, pose) -> None:
         # HH_260720 - Convert the internal Avg pose only at the RViz reset boundary.

@@ -162,6 +162,8 @@ public:
         "/control/camping_site_maneuver_controller/path_ros");
     campsite_occupancy_topic_ = declare_parameter<std::string>(
         "campsite_occupancy_topic", "/perception/camping_sites/occupancy");
+    enable_campsite_occupancy_guard_ = declare_parameter<bool>(
+        "enable_campsite_occupancy_guard", false);
 
     enable_auto_start_from_planning_state_ =
         declare_parameter<bool>("enable_auto_start_from_planning_state", true);
@@ -388,27 +390,23 @@ public:
                 }
               }
             });
-    // HH_260723 - Reject duplicate campsite entry from the transient semantic
-    // occupancy state and stop an approach if the target becomes occupied.
-    // HH_260813 - DISABLED. A delivery target legitimately holds the guest's
-    // tent, and the robot only sees that tent up close once it has crabbed in,
-    // so this aborted the entry mid-CRAB_IN/ROTATE_180 and the run never
-    // reached UNLOAD_WAIT -> WAIT_RETURN, which is where the operator return
-    // prompt lives. Leaving occupied_mission_keys_ empty keeps every
-    // isSiteOccupied() gate in this node inert; restore this block to re-enable.
-    // campsite_occupancy_subscription_ =
-    //     create_subscription<avg_msgs::msg::CampsiteOccupancy>(
-    //         campsite_occupancy_topic_,
-    //         rclcpp::QoS(1).transient_local().reliable(),
-    //         [this](const avg_msgs::msg::CampsiteOccupancy::SharedPtr message) {
-    //           occupied_mission_keys_.clear();
-    //           occupied_mission_keys_.insert(
-    //               message->occupied_mission_keys.begin(),
-    //               message->occupied_mission_keys.end());
-    //           if (isEntryPhase() && isSiteOccupied(site_goal_key_)) {
-    //             setError("occupied campsite entry blocked: " + site_goal_key_);
-    //           }
-    //         });
+    // HH_260818 - Occupancy is opt-in because a legitimate delivery target can
+    // contain the guest's tent. When enabled, cache the transient state for
+    // start/adoption gates; never interrupt CRAB_IN/ROTATE_180 after entry has
+    // already begun.
+    if (enable_campsite_occupancy_guard_) {
+      campsite_occupancy_subscription_ =
+          create_subscription<avg_msgs::msg::CampsiteOccupancy>(
+              campsite_occupancy_topic_,
+              rclcpp::QoS(1).transient_local().reliable(),
+              [this](
+                  const avg_msgs::msg::CampsiteOccupancy::SharedPtr message) {
+                occupied_mission_keys_.clear();
+                occupied_mission_keys_.insert(
+                    message->occupied_mission_keys.begin(),
+                    message->occupied_mission_keys.end());
+              });
+    }
     operation_service_ = create_service<avg_msgs::srv::RequestMotionOperation>(
         "/control/camping_site_maneuver_controller/request_operation",
         [this](const std::shared_ptr<
@@ -431,12 +429,13 @@ public:
     RCLCPP_INFO(get_logger(),
                 "camping_site_maneuver_controller ready: cmd=%s pose=%s "
                 "lanelet_pose=%s auto_start=%s entry_mode=%s adopt_topic=%s "
-                "cancel_nav2=%s",
+                "cancel_nav2=%s occupancy_guard=%s",
                 command_topic_.c_str(), pose_topic_.c_str(),
                 lanelet_pose_topic_.c_str(),
                 enable_auto_start_from_planning_state_ ? "true" : "false",
                 site_entry_mode_.c_str(), adopt_destination_topic_.c_str(),
-                cancel_nav2_on_site_phase_ ? "true" : "false");
+                cancel_nav2_on_site_phase_ ? "true" : "false",
+                enable_campsite_occupancy_guard_ ? "true" : "false");
   }
 
 private:
@@ -466,10 +465,8 @@ private:
            phase_ == CampingSiteManeuverPhase::kRotate180;
   }
 
-  // HH_260813 - Always false while the occupancy subscription above stays
-  // commented out, so every campsite-occupied gate in this node is inert.
   bool isSiteOccupied(const std::string &mission_key) const {
-    return !mission_key.empty() &&
+    return enable_campsite_occupancy_guard_ && !mission_key.empty() &&
            occupied_mission_keys_.count(mission_key) > 0U;
   }
 
@@ -1373,19 +1370,16 @@ private:
       setError("pose timeout while returning to lanelet snap pose");
       return;
     }
-    // HH_260807 - Keep the return in parallel-motion mode while correcting
-    // both lateral crab distance and the small longitudinal drift accumulated
-    // during zero-turn. Automatic missions target the explicit route-goal snap.
-    const double remaining_distance =
-        distanceTo(return_anchor_x_, return_anchor_y_);
-    // HH_260807 - Proportional slowdown prevents a 10 Hz crab command from
-    // stepping across the narrow 4 cm centerline handoff tolerance.
-    const double return_speed = std::min(
-        crab_speed_mps_, return_translation_gain_ * remaining_distance);
-    const auto velocity = camrod_control::bodyTranslationTowardTarget(
+    // HH_260818 - Do not point the parallel wheels diagonally at the anchor.
+    // Reach the road laterally at exactly +/-90 degrees first, then use a
+    // separate straight correction for zero-turn drift. This preserves the
+    // full crab-out clearance before Nav2 receives command ownership.
+    const auto velocity =
+        camrod_control::bodyAxisPrioritizedTranslationTowardTarget(
         last_pose_->pose.position.x, last_pose_->pose.position.y,
         camrod_control::yawFromPose(*last_pose_), return_anchor_x_,
-        return_anchor_y_, return_speed);
+        return_anchor_y_, crab_speed_mps_, return_translation_gain_,
+        return_position_tolerance_m_);
     avg_msgs::msg::AvgTwist command;
     command.linear.x = velocity.first;
     command.linear.y = velocity.second;
@@ -1720,6 +1714,7 @@ private:
   std::string service_state_topic_;
   std::string reverse_path_topic_;
   std::string campsite_occupancy_topic_;
+  bool enable_campsite_occupancy_guard_{false};
   bool enable_auto_start_from_planning_state_{true};
   std::string site_mission_key_prefix_{"camping_site_"};
   bool use_goal_pair_for_lateral_offset_{true};

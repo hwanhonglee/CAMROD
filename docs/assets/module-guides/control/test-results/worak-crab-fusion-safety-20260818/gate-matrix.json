@@ -1,0 +1,53 @@
+{
+  "overall_pass": true,
+  "checks": [
+    {
+      "name": "baseline_hz",
+      "success": true,
+      "detail": "ok (classified fusion raster active)",
+      "metrics": {
+        "/localization/pose": 20.0,
+        "/planning/lanelet_pose": 11.33,
+        "/sensing/imu/data": 20.67,
+        "/sensing/lidar/points_filtered": 10.0,
+        "/localization/input/wheel_odometry": 10.0,
+        "/sensing/cost_grid/radar": 10.0,
+        "/planning/cost_grid/inflation": 6.0,
+        "/sensing/cost_grid/lidar": 10.0
+      }
+    },
+    {
+      "name": "radar_direction_hz",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "/sensing/radar/front1/range": 10.0,
+        "/sensing/radar/front2/range": 10.0,
+        "/sensing/radar/left1/range": 10.0,
+        "/sensing/radar/left2/range": 10.0,
+        "/sensing/radar/right1/range": 10.0,
+        "/sensing/radar/right2/range": 10.0,
+        "/sensing/radar/rear/range": 10.0
+      }
+    },
+    {
+      "name": "directional_cost_stop",
+      "success": true,
+      "detail": "ok",
+      "metrics": {
+        "front_fusion_control_cmd_max": 0.0,
+        "front_radar_control_cmd_max": 0.0,
+        "front_combined_control_cmd_max": 0.0,
+        "left_fusion_control_cmd_max": 0.08,
+        "left_radar_control_cmd_max": 0.0,
+        "left_combined_control_cmd_max": 0.0,
+        "right_fusion_control_cmd_max": 0.08,
+        "right_radar_control_cmd_max": 0.0,
+        "right_combined_control_cmd_max": 0.0,
+        "rear_fusion_control_cmd_max": 0.09,
+        "rear_radar_control_cmd_max": 0.0,
+        "rear_combined_control_cmd_max": 0.0
+      }
+    }
+  ]
+}

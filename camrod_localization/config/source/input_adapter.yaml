@@ -28,7 +28,7 @@
     gnss_lever_arm_require_fresh_heading: true
     # HH_260807 - During a brief receiver-heading gap, use a time-aligned EKF
     # yaw delta only to rotate the antenna lever arm. Fallback requires a prior
-    # valid dual-GNSS anchor, expires after 3 s, and never makes GNSS yaw valid.
+    # valid dual-GNSS anchor, expires after 0.5 s, and never makes GNSS yaw valid.
     enable_gnss_lever_arm_ekf_heading_fallback: true
     gnss_lever_arm_fallback_anchor_max_age_s: 0.5
     gnss_lever_arm_fallback_history_s: 5.0
@@ -56,7 +56,7 @@
     # HH_260625: Live C-track measurement showed GNSS/localization yaw aligned
     # with each other but ~85 deg clockwise from the lanelet heading. Correct
     # only the dual-antenna heading here; keep map XY/yaw offsets unchanged.
-    gnss_heading_yaw_offset_deg: -85.0
+    gnss_heading_yaw_offset_deg: -90.0
     gnss_heading_covariance_floor_deg: 1.0
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0

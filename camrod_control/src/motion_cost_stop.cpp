@@ -720,10 +720,27 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
     }
 
     for (const auto & corridor : corridors) {
-      if (corridor.label == "FRONT" && config_.dynamic_front_use_local_path) {
+      Corridor source_corridor = corridor;
+      const bool classified_source = sourceIsClassifiedDynamic(source.first);
+      if (classified_source && source_corridor.label != "FRONT") {
+        // HH_260818 - The semantic source requested for this profile is an
+        // early forward-route stop only. Radar continues to own lateral,
+        // reverse, and body-near maneuver protection.
+        continue;
+      }
+      const bool classified_front = source_corridor.label == "FRONT" &&
+        classified_source;
+      if (classified_front) {
+        source_corridor.lookahead_m = std::min(
+          source_corridor.lookahead_m,
+          std::max(0.05, config_.classified_front_lookahead_m));
+      }
+      if (source_corridor.label == "FRONT" && config_.dynamic_front_use_local_path) {
         const auto path_sample = samplePathCorridor(
-          source.second.grid, corridor.lookahead_m, config_.dynamic_front_path_width_m,
-          corridor.threshold, config_.dynamic_front_path_max_start_distance_m, false,
+          source.second.grid, source_corridor.lookahead_m,
+          config_.dynamic_front_path_width_m,
+          source_corridor.threshold,
+          config_.dynamic_front_path_max_start_distance_m, false,
           local_path_);
         if (path_sample.path_available) {
           if (!path_sample.hit.blocked) {
@@ -732,7 +749,7 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
           const std::string reason = "dynamic_front_path:" + source.first;
           LatchContext context;
           context.probe_kind = LatchProbeKind::kPath;
-          context.corridor = corridor;
+          context.corridor = source_corridor;
           context.path_snapshot = local_path_;
           context.source_label = source.first;
           context.source_receive_sec_at_trigger = source.second.receive_sec;
@@ -746,14 +763,21 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
           activateLatch(std::move(context), now_sec);
           return {true, true, false, false, reason};
         }
+        // HH_260818 - Semantic fusion is authorized only by an explicit local
+        // route. Do not widen a missing-path condition into a rectangular
+        // front stop; radar retains that independent near-field fallback.
+        if (classified_front) {
+          continue;
+        }
       }
 
-      const auto hit = sampleCorridor(source.second.grid, corridor, false);
+      const auto hit = sampleCorridor(source.second.grid, source_corridor, false);
       if (hit.blocked) {
-        const std::string reason = "dynamic_" + normalizeLabel(corridor.label) + ":" + source.first;
+        const std::string reason =
+          "dynamic_" + normalizeLabel(source_corridor.label) + ":" + source.first;
         LatchContext context;
         context.probe_kind = LatchProbeKind::kCorridor;
-        context.corridor = corridor;
+        context.corridor = source_corridor;
         context.source_label = source.first;
         context.source_receive_sec_at_trigger = source.second.receive_sec;
         context.source_stamp_sec_at_trigger = messageStampSec(source.second.grid);
@@ -855,6 +879,11 @@ MotionCostStopDecision MotionCostStop::evaluateRotation(const double now_sec)
       (config_.source_max_age_s > 0.0 &&
       now_sec - source.second.receive_sec > config_.source_max_age_s))
     {
+      continue;
+    }
+    if (sourceIsClassifiedDynamic(source.first)) {
+      // HH_260818 - Rotation protection stays radar-owned. The classified
+      // camera-LiDAR source is authorized only against a current forward path.
       continue;
     }
     const auto hit = sampleDisk(
@@ -1554,6 +1583,12 @@ std::optional<double> MotionCostStop::closestPathDistance() const
 bool MotionCostStop::sourceIsDynamic(const std::string & label) const
 {
   return labelMatches(normalizeLabel(label), config_.dynamic_source_labels);
+}
+
+bool MotionCostStop::sourceIsClassifiedDynamic(const std::string & label) const
+{
+  return labelMatches(
+    normalizeLabel(label), config_.classified_dynamic_source_labels);
 }
 
 std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(

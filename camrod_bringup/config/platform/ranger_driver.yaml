@@ -42,6 +42,11 @@
     # the hold for genuine large-lag transitions only.
     steering_transition_stop_error_rad: 0.7
     steering_transition_min_velocity_scale: 0.2
+    # HH_260818 - Preserve the 20% floor for normal Ackermann tracking, but
+    # override it to zero only while changing between longitudinal and pure
+    # parallel steering. Translation starts within 0.05 rad of the target.
+    steering_mode_transition_stationary_enabled: true
+    steering_mode_transition_ready_error_rad: 0.05
 
     # HH_260731 - Wheel velocity is measured, not mathematically exact. Never
     # publish zero covariance: robot_localization treats it as near-perfect and

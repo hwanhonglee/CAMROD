@@ -3,6 +3,8 @@
 
 # HH_260810 - Keep semantic mission coordinates traceable to the exact OSM,
 # shared LocalCartesian origin, and synchronized runtime YAML files.
+# HH_260818 - Regenerate the same semantic coordinates against the active
+# map-v22 identity after the worak-test map update.
 
 import argparse
 import hashlib
@@ -417,7 +419,7 @@ def build_report(
         raise ValueError("current Park map must expose three parking_lot polygons")
 
     report = {
-        "generated_for": "2026-08-10 current Park coordinate synchronization",
+        "generated_for": "2026-08-18 current Park coordinate synchronization",
         "field_claim": False,
         "map": map_identity(map_path),
         "origin": origin,

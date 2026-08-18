@@ -191,7 +191,9 @@
     # The adapter rotates/subtracts this lever arm to recover robot center.
     gnss_antenna_offset_x_m: 0.0
     gnss_antenna_offset_y_m: 0.45
-    gnss_heading_raw_yaw_bias_deg: 85.0
+    # HH_260818 - Mirror the physical -90 deg input-adapter correction so the
+    # simulation still exercises the raw dual-GNSS heading contract.
+    gnss_heading_raw_yaw_bias_deg: 90.0
 
     # =========================================================================
     # 12. NAVIGATION MODE AND INITIAL POSE
