@@ -193,9 +193,14 @@ public:
     declareIfMissing(plugin_name_ + ".max_snap_distance_m", 8.0);
     declareIfMissing(plugin_name_ + ".interpolation_resolution_m", 0.20);
     declareIfMissing(plugin_name_ + ".same_lane_forward_epsilon_m", 0.30);
-    // HH_260721 - Permit the geometric reverse of a legal route only after an explicit 180-degree turn.
+    // HH_260721 - Permit the geometric reverse of a legal route only for an
+    // explicit return; the optional heading gate preserves the older policy.
     declareIfMissing(plugin_name_ + ".enable_reverse_lanelet_shortest_path", true);
     declareIfMissing(plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg", 120.0);
+    // HH_260819 - A typed Return can arrive before the stationary 180deg turn.
+    // Let RotationShim align the body instead of retaining the one-way loop.
+    declareIfMissing(
+      plugin_name_ + ".reverse_lanelet_request_requires_opposite_heading", false);
     // HH_260723 - A reverse lanelet route is a campsite-return exception, not a
     // general response to localization yaw or an operator selecting a goal.
     declareIfMissing(
@@ -231,6 +236,9 @@ public:
       plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg",
       reverse_lanelet_start_heading_threshold_deg_);
     node_->get_parameter(
+      plugin_name_ + ".reverse_lanelet_request_requires_opposite_heading",
+      reverse_lanelet_request_requires_opposite_heading_);
+    node_->get_parameter(
       plugin_name_ + ".reverse_lanelet_request_topic",
       reverse_lanelet_request_topic_);
     node_->get_parameter(
@@ -257,10 +265,16 @@ public:
         [this](const avg_msgs::msg::PlanningRecallRequest::ConstSharedPtr message) {
           std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
           reverse_lanelet_request_pending_ = true;
+          // HH_260819 - Roadside B11-B13 leave the bay without a zero-turn.
+          // Their source marker selects the legal forward loop; every other
+          // explicit Return retains the reverse-shortest policy.
+          reverse_lanelet_request_force_one_way_ =
+          message->source.find("roadside_forward") != std::string::npos;
           reverse_lanelet_request_time_ = node_->now();
           RCLCPP_INFO(
             node_->get_logger(),
-            "authorized next reverse lanelet route: site=%s source=%s",
+            "authorized next lanelet return route: mode=%s site=%s source=%s",
+            reverse_lanelet_request_force_one_way_ ? "forward_one_way" : "reverse_shortest",
             message->site_name.c_str(), message->source.c_str());
         });
     }
@@ -297,6 +311,7 @@ public:
     {
       std::lock_guard<std::mutex> request_lock(reverse_lanelet_request_mutex_);
       reverse_lanelet_request_pending_ = false;
+      reverse_lanelet_request_force_one_way_ = false;
       reverse_lanelet_request_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     }
   }
@@ -357,20 +372,27 @@ public:
     const double start_yaw = quaternionToYaw(start.pose.orientation);
     const double start_heading_error_deg = std::abs(
       normalizeAngle(start_yaw - start_match.projection.heading)) * 180.0 / M_PI;
-    const bool reverse_requested_explicitly = hasActiveReverseLaneletRequest();
+    const auto return_route_request = activeReturnRouteRequest();
+    const bool return_requested_explicitly =
+      return_route_request != ReturnRouteRequestMode::kNone;
+    const bool forward_one_way_requested =
+      return_route_request == ReturnRouteRequestMode::kForwardOneWay;
     // HH_260721 - Keep the selected reverse route across localization-triggered replans of one goal.
     const bool same_route_goal = has_previous_route_goal_ &&
       previous_route_goal_lanelet_id_ == goal_match.lanelet.id() &&
       std::abs(previous_route_goal_arc_length_ - goal_match.projection.arc_length) <= 0.5;
-    if (!same_route_goal) {
+    if (!same_route_goal || forward_one_way_requested) {
       reverse_route_goal_latched_ = false;
     }
     const bool reverse_requested_by_heading =
       start_heading_error_deg >= reverse_lanelet_start_heading_threshold_deg_;
     const bool reverse_requested_by_goal_latch =
       same_route_goal && reverse_route_goal_latched_;
+    const bool explicit_request_heading_allowed =
+      !reverse_lanelet_request_requires_opposite_heading_ || reverse_requested_by_heading;
     bool reverse_lanelet_route = enable_reverse_lanelet_shortest_path_ &&
-      ((reverse_requested_explicitly && reverse_requested_by_heading) ||
+      !forward_one_way_requested &&
+      ((return_requested_explicitly && explicit_request_heading_allowed) ||
       reverse_requested_by_goal_latch);
     std::vector<lanelet::ConstLanelet> route_lanelets;
     if (reverse_lanelet_route) {
@@ -513,9 +535,10 @@ public:
       static_cast<long>(start_match.lanelet.id()),
       static_cast<long>(goal_match.lanelet.id()),
       reverse_lanelet_route ? "reverse_shortest" : "one_way",
-      reverse_requested_by_goal_latch ? "goal_latch" :
-      (reverse_requested_explicitly && reverse_requested_by_heading ?
-      "return_request" : "none"),
+      forward_one_way_requested ? "roadside_forward" :
+      (reverse_requested_by_goal_latch ? "goal_latch" :
+      (return_requested_explicitly && explicit_request_heading_allowed ?
+      "return_request" : "none")),
       start_heading_error_deg,
       route_lanelets.size(), path.poses.size(),
       quality.length_m, quality.total_abs_turn_rad,
@@ -526,24 +549,35 @@ public:
   }
 
 private:
-  bool hasActiveReverseLaneletRequest()
+  enum class ReturnRouteRequestMode
+  {
+    kNone,
+    kReverseShortest,
+    kForwardOneWay,
+  };
+
+  ReturnRouteRequestMode activeReturnRouteRequest()
   {
     std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
     if (!reverse_lanelet_request_pending_) {
-      return false;
+      return ReturnRouteRequestMode::kNone;
     }
     const double age_s = (node_->now() - reverse_lanelet_request_time_).seconds();
     if (age_s < 0.0 || age_s > reverse_lanelet_request_timeout_s_) {
       reverse_lanelet_request_pending_ = false;
-      return false;
+      reverse_lanelet_request_force_one_way_ = false;
+      return ReturnRouteRequestMode::kNone;
     }
-    return true;
+    return reverse_lanelet_request_force_one_way_ ?
+           ReturnRouteRequestMode::kForwardOneWay :
+           ReturnRouteRequestMode::kReverseShortest;
   }
 
   void consumeReverseLaneletRequest()
   {
     std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
     reverse_lanelet_request_pending_ = false;
+    reverse_lanelet_request_force_one_way_ = false;
   }
 
   template<typename ParameterT>
@@ -1137,6 +1171,7 @@ private:
   double same_lane_forward_epsilon_m_{0.30};
   bool enable_reverse_lanelet_shortest_path_{true};
   double reverse_lanelet_start_heading_threshold_deg_{120.0};
+  bool reverse_lanelet_request_requires_opposite_heading_{false};
   std::string reverse_lanelet_request_topic_{
     "/planning/state_machine/return_to_drop_zone"};
   double reverse_lanelet_request_timeout_s_{10.0};
@@ -1169,6 +1204,7 @@ private:
   bool reverse_route_goal_latched_{false};
   std::mutex reverse_lanelet_request_mutex_;
   bool reverse_lanelet_request_pending_{false};
+  bool reverse_lanelet_request_force_one_way_{false};
   rclcpp::Time reverse_lanelet_request_time_{0, 0, RCL_ROS_TIME};
 };
 

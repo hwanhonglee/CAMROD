@@ -16,6 +16,8 @@ return handoff, diagnostic audit, and reproducible endurance media. -->
 manual Goal Pose workflow. -->
 <!-- HH_260810 - Synchronize the 10 Hz client-leased operator stream and
 return-handoff diagnostic grace for the ARM64 deployment boundary. -->
+<!-- HH_260819 - Record serialized UI Return preemption, complete B1-B13 exit,
+roadside forward-loop routing, and measured AMD64 lease-scheduler cost. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -56,13 +58,14 @@ manual Return, docking telemetry, and final parking slowdown contracts. -->
 | Classified camera-LiDAR raster | default `ON`; raw LiDAR cost input remains `OFF` |
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
-| Campsite return | entry/exit share the exact snap anchor; `0.04 m` return tolerance, `90 s` crab-out envelope, live-heading restart side |
+| Campsite return | entry/exit share the exact snap anchor; B1-B10 turn/retrace, while B11-B13 cap at `0.30 m`, skip zero-turn, and request a forward one-way loop after `CRAB_OUT -> DONE` |
 | Final parking | reverse slowdown last `0.30 m`; AprilTag slowdown last `0.60 m`; charging feedback immediately commands zero |
 | Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
 | Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
-| Manual Return / docking UI | state-independent Return API; docking tab uses seven lazy tag/path/controller subscriptions |
+| Manual Return / docking UI | both controls share one state-independent API; ordinary Nav2 is cancelled and held stopped `0.50 s`; docking tab uses seven lazy tag/path/controller subscriptions |
+| Telemetry scheduler | request-triggered ROS GuardCondition plus `1 Hz` abandoned-lease expiry; selected visible stream remains `10 Hz` |
 
 The [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
 indexes every operational speed, distance, timeout, sensor rate, feature toggle,
@@ -121,6 +124,14 @@ The latest full-bringup runtime result is shown separately.
 
 ![Current B8 phase sequence](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-sequence.gif)
 
+![Current B1-B13 full-return policy](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
+
+![Current B1-B13 phase sequence](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif)
+
+![Current AMD64 Return and telemetry resource A/B](../docs/assets/module-guides/ui/test-results/return-resource-amd64-20260819/return-resource-profile.png)
+
+![Measured outbound Return preemption](../docs/assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/manual-return-preemption.png)
+
 ![Measured AMD64 operator telemetry transport](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.png)
 
 ![Operator telemetry transport and lease summary](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/operator-telemetry-websocket-amd64.gif)
@@ -162,8 +173,9 @@ acceptance.
 | Classified fusion safety | GATE-MATRIX + UNIT PASS | Unknown/raw LiDAR excluded; classified fusion stopped forward (`0.00 m/s`) but passed crab/reverse (`0.08/0.09 m/s`); synthetic radar fixtures stopped all directions; both grids ran at `10 Hz` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |
 | B1-B10 site maneuver round trip | PASS (10/10) | Every map-derived entry (`1.79-5.31 m`) completed crab, 180-degree turn, explicit RETURN, crab-out, and `DONE` |
-| B11-B13 roadside arrival | PASS | Capped `0.60 m` crab, unload wait, `WAIT_RETURN`; no zero-turn or RETURN issued |
-| B11-B13 return | FIELD-PENDING | Earlier on-lane alignment attempt was safely blocked by `lanelet_physical_body_cost` |
+| B11-B13 full exit | PASS (AMD64 ROS SIM 3/3) | `0.30 m`-capped crab, unload wait, UI Return, `CRAB_OUT -> DONE`; no zero-turn or mixed-axis crab |
+| B11 full service | PASS (AMD64 ROS SIM) | `155.73 m` source-selected forward loop, drop-zone alignment, reverse parking, `WAITING_FOR_CHARGING -> CHARGING`, internal `PARKED` |
+| Return/telemetry resource A/B | PASS (AMD64 measured) | 45-process graph: total CPU `81.88 -> 80.78%`, UI CPU `6.93 -> 6.53%`, summed RSS `1955.6 -> 1938.7 MiB`; ARM64 pending |
 | B7 clear-road command continuity | PASS | `224.92 s`, `27.1492 m`; Nav2 handoff `0`, post-start stale `0`, input/output `14.983/14.996 Hz` |
 | B8 RPP curve tracking | PASS | `59.931 m`, `GOAL_REACHED`; raw R/T switches `403 -> 0`; one recovered planning-margin contact |
 | B8 lookahead `1.2 m` comparison | REJECTED | first margin release then recontact in `0.999 s`; retry latched and route did not complete |
@@ -222,6 +234,10 @@ physical 5 Hz moving-base link or its epoch alignment.
 ![Historical map-v16 campsite validation](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
 [Open the campsite sequencing GIF](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-phase-sequence.gif).
+
+![Current-map B1-B13 full Return validation](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
+
+[Open the current full Return GIF](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif).
 
 ![Historical map-v17 repeated service](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 
@@ -365,6 +381,7 @@ deployment copies and are covered by synchronization tests.
 |---|---|
 | `pose_latency_probe.py` | Topic rate, age, and pose-chain continuity |
 | `camera_payload_probe.py` | Physical payload decode, dimensions, and rate |
+| `manual_return_preemption_probe.py` | Live outbound stop barrier, duplicate coalescing, and fresh return-route timing |
 | `sim_validation_runner.py` | Mission/state scenarios and assertions |
 | `field_test_tool.sh snapshot` | Nodes, topics, parameters, diagnostics, and platform state |
 | `field_test_tool.sh record-recovery` | Boundary hold, candidate, owner command, and pose timeline |
@@ -420,6 +437,9 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 | Historical map-v17 boundary road simulation | [`tapered-rounded-boundary-road-sim-20260810/`](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/) |
 | Current map-v22 crab/fusion safety simulation | [`worak-crab-fusion-safety-20260818/`](../docs/assets/module-guides/control/test-results/worak-crab-fusion-safety-20260818/) |
 | Current B8 same-anchor return/docking | [`b8-return-docking-20260819/`](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/) |
+| Current B1-B13 full Return | [`camping-site-full-return-20260819/`](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/) |
+| Current Return/telemetry AMD64 A/B | [`return-resource-amd64-20260819/`](../docs/assets/module-guides/ui/test-results/return-resource-amd64-20260819/) |
+| Current live outbound Return preemption | [`manual-return-preemption-amd64-20260819/`](../docs/assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/) |
 | Current normal/crab selection | [`normal-crab-selection-20260819/`](../docs/assets/module-guides/platform/test-results/normal-crab-selection-20260819/) |
 | Current docking workspace | [`docking-workspace-20260819/`](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/) |
 | Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/) |

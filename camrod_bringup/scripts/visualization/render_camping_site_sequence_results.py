@@ -170,6 +170,11 @@ def draw_turnaround_site_grid(
 
 
 def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tuple[bool, dict]]) -> None:
+    roadside_full_return = all(
+        not bool(reports[key][1].get("arrival_only", False))
+        and bool(reports[key][1].get("done", False))
+        for key in ("B11", "B12", "B13")
+    )
     image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, WIDTH, 132), fill="#1f5e3d")
@@ -177,7 +182,11 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
     draw_text(
         draw,
         (66, 87),
-        "Map v16 | command-source arbitration | optional LiDAR cost-grid OFF contract",
+        (
+            "Current active map | UI Return | route-source arbitration"
+            if roadside_full_return
+            else "Historical map v16 | command-source arbitration | arrival-only roadside check"
+        ),
         22,
         "#dcece3",
     )
@@ -191,10 +200,19 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
     draw_badge(draw, (630, 235), "", turnaround_ok)
     draw.rounded_rectangle((830, 210, 1536, 310), radius=8, fill="#ffffff", outline=LINE, width=2)
     draw_text(draw, (854, 232), "B11-B13", 27, ORANGE, True)
-    draw_text(draw, (1015, 237), "0.60 m roadside; no site turn", 19)
+    draw_text(
+        draw,
+        (1015, 237),
+        (
+            "0.30 m roadside; forward loop"
+            if roadside_full_return
+            else "0.60 m roadside; no site turn"
+        ),
+        19,
+    )
     draw_badge(draw, (1396, 235), "", roadside_ok)
 
-    draw_text(draw, (64, 348), "B1-B10 full round-trip simulation", 28, INK, True)
+    draw_text(draw, (64, 348), "B1-B10 entry and Return handoff", 28, INK, True)
     draw_text(draw, (720, 354), "tile value = map-derived lateral entry distance", 18, MUTED)
     draw_turnaround_site_grid(draw, reports, 394)
 
@@ -212,7 +230,7 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
     draw_phase_row(
         draw,
         678,
-        "B11-B13 arrival",
+        "B11-B13 roadside",
         phase_sequence(reports["B11"][1]),
         ORANGE,
         ORANGE_LIGHT,
@@ -225,7 +243,7 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
         "Maneuver phases exclusively own final cmd_vel; Nav2 input is ignored.",
         "Crab completion precedes ROTATE_180; rotation completion precedes unload wait.",
         "Maneuver release and Nav2 rotation-to-translation each hold zero for 0.5 s.",
-        "Campsite lanelet bypass is phase-scoped; live LiDAR/radar stops remain active.",
+        "Static lanelet bypass is service-phase scoped; live LiDAR/radar stops stay active.",
     ]
     for index, item in enumerate(guarantees):
         y = 854 + index * 40
@@ -233,15 +251,32 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
         draw_text(draw, (120, y), item, 19, MUTED)
 
     draw.rounded_rectangle((1040, 780, 1536, 1034), radius=8, fill=ORANGE_LIGHT, outline=ORANGE, width=2)
-    draw_text(draw, (1066, 806), "Field-pending return", 26, ORANGE, True)
-    pending = [
-        "B11-B13 tests stop at WAIT_RETURN.",
-        "No RETURN or zero-turn is issued on site.",
-        "The earlier on-lane return turn was blocked",
-        "by physical-body lanelet cost in simulation.",
-        "Choose return geometry after site survey.",
-    ]
-    for index, item in enumerate(pending):
+    draw_text(
+        draw,
+        (1066, 806),
+        "Roadside return" if roadside_full_return else "Historical limit",
+        26,
+        ORANGE,
+        True,
+    )
+    notes = (
+        [
+            "CRAB_OUT restores the lane anchor.",
+            "No zero-turn occurs in the narrow lane.",
+            "Source selects the legal forward loop.",
+            "After DONE, ordinary body and planning",
+            "lanelet checks resume for route travel.",
+        ]
+        if roadside_full_return
+        else [
+            "B11-B13 tests stop at WAIT_RETURN.",
+            "No RETURN or zero-turn is issued on site.",
+            "The earlier on-lane return turn was blocked",
+            "by physical-body lanelet cost in simulation.",
+            "This directory makes no return claim.",
+        ]
+    )
+    for index, item in enumerate(notes):
         draw_text(draw, (1068, 854 + index * 31), item, 18, INK)
 
     draw_text(draw, (64, 1072), "Source: structured ROS 2 sim reports in this directory", 18, MUTED)
@@ -249,16 +284,25 @@ def render_summary(output: Path, policy: dict[str, str], reports: dict[str, tupl
     image.save(output)
 
 
-def draw_timeline_frame(sequences: dict[str, list[str]], active_index: int) -> Image.Image:
+def draw_timeline_frame(
+    sequences: dict[str, list[str]], active_index: int, roadside_full_return: bool
+) -> Image.Image:
     image = Image.new("RGB", (1400, 760), BACKGROUND)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 1400, 104), fill="#1f5e3d")
-    draw_text(draw, (48, 24), "Campsite phase order: turnaround vs roadside arrival", 34, "#ffffff", True)
+    draw_text(
+        draw,
+        (48, 24),
+        "Campsite phase order: turnaround vs roadside return",
+        34,
+        "#ffffff",
+        True,
+    )
     draw_text(draw, (50, 69), "Runtime-backed phase contract; diagram geometry is schematic", 18, "#dcece3")
 
     rows = [
         ("B1-B10 turnaround", sequences["B10"], BLUE, BLUE_LIGHT, 180),
-        ("B11 roadside arrival", sequences["B11"], ORANGE, ORANGE_LIGHT, 470),
+        ("B11-B13 roadside", sequences["B11"], ORANGE, ORANGE_LIGHT, 470),
     ]
     for label, phases, color, light, y in rows:
         draw_text(draw, (52, y - 48), label, 26, INK, True)
@@ -282,7 +326,18 @@ def draw_timeline_frame(sequences: dict[str, list[str]], active_index: int) -> I
         callout_fill = light
         draw.rounded_rectangle((490, y + 118, 910, y + 176), radius=8, fill=callout_fill, outline=color, width=2)
         draw_text(draw, (516, y + 133), f"Active: {active_phase}", 21, color, True)
-    draw_text(draw, (52, 710), "B11-B13 return maneuver intentionally excluded pending field geometry decision.", 19, RED, True)
+    draw_text(
+        draw,
+        (52, 710),
+        (
+            "Roadside policy: no zero-turn; forward one-way route starts only after CRAB_OUT and DONE."
+            if roadside_full_return
+            else "Historical scope: roadside RETURN was not issued in this arrival-only run."
+        ),
+        19,
+        GREEN if roadside_full_return else RED,
+        True,
+    )
     return image
 
 
@@ -292,7 +347,15 @@ def render_timeline_gif(output: Path, reports: dict[str, tuple[bool, dict]]) -> 
         "B11": phase_sequence(reports["B11"][1]),
     }
     frame_count = max(len(value) for value in sequences.values())
-    frames = [draw_timeline_frame(sequences, index) for index in range(frame_count)]
+    roadside_full_return = all(
+        not bool(reports[key][1].get("arrival_only", False))
+        and bool(reports[key][1].get("done", False))
+        for key in ("B11", "B12", "B13")
+    )
+    frames = [
+        draw_timeline_frame(sequences, index, roadside_full_return)
+        for index in range(frame_count)
+    ]
     frames.extend([frames[-1].copy(), frames[-1].copy()])
     output.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(
@@ -306,13 +369,22 @@ def render_timeline_gif(output: Path, reports: dict[str, tuple[bool, dict]]) -> 
 
 
 def write_summary(path: Path, policy: dict[str, str], reports: dict[str, tuple[bool, dict]]) -> None:
+    roadside_full_return = all(
+        not bool(reports[key][1].get("arrival_only", False))
+        and bool(reports[key][1].get("done", False))
+        for key in ("B11", "B12", "B13")
+    )
     payload = {
-        "map_revision": 16,
+        "map_identity": "current_active_user_map" if roadside_full_return else "historical_map_v16",
         "policy": {
             "turnaround_sites": [f"B{index}" for index in range(1, 11)],
             "roadside_arrival_sites": ["B11", "B12", "B13"],
-            "roadside_max_lateral_offset_m": 0.60,
-            "roadside_return_policy": "field_pending",
+            "roadside_max_lateral_offset_m": 0.30 if roadside_full_return else 0.60,
+            "roadside_return_policy": (
+                "forward_one_way_after_crab_out"
+                if roadside_full_return
+                else "not_exercised"
+            ),
         },
         "runtime": {
             key: {
@@ -340,17 +412,26 @@ def main() -> None:
     parser.add_argument("--result-dir", required=True, type=Path)
     parser.add_argument("--camping-sites", required=True, type=Path)
     args = parser.parse_args()
-    reports = {
-        **{
+    current_names = (args.result_dir / "camping_site_1.json").is_file()
+    if current_names:
+        reports = {
             f"B{index}": load_metrics(
-                args.result_dir / f"b{index}-turnaround.json"
+                args.result_dir / f"camping_site_{index}.json"
             )
-            for index in range(1, 11)
-        },
-        "B11": load_metrics(args.result_dir / "b11-roadside-arrival.json"),
-        "B12": load_metrics(args.result_dir / "b12-roadside-arrival.json"),
-        "B13": load_metrics(args.result_dir / "b13-roadside-arrival.json"),
-    }
+            for index in range(1, 14)
+        }
+    else:
+        reports = {
+            **{
+                f"B{index}": load_metrics(
+                    args.result_dir / f"b{index}-turnaround.json"
+                )
+                for index in range(1, 11)
+            },
+            "B11": load_metrics(args.result_dir / "b11-roadside-arrival.json"),
+            "B12": load_metrics(args.result_dir / "b12-roadside-arrival.json"),
+            "B13": load_metrics(args.result_dir / "b13-roadside-arrival.json"),
+        }
     policy = load_policy(args.camping_sites)
     render_summary(args.result_dir / "campsite-policy-validation.png", policy, reports)
     render_timeline_gif(args.result_dir / "campsite-phase-sequence.gif", reports)

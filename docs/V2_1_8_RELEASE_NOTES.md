@@ -4,6 +4,8 @@
 bounded repeated recovery, semantic obstacle policy, and occupancy toggle. -->
 <!-- HH_260818 - Extend the tag with normal/crab separation, one-anchor site
 return, restart heading recovery, manual Return, and docking observability. -->
+<!-- HH_260819 - Finalize both Return controls, constrained roadside forward
+routing, B1-B13 current-map evidence, and event-driven UI lease scheduling. -->
 
 ## Scope
 
@@ -24,8 +26,11 @@ rewritten.
 | Camera-LiDAR stop | `/perception/obstacles` accepts only current classified detections; unknown or LiDAR-only clusters cannot create the early stop; the final gate checks the active route's first `2.0 m` |
 | Radar | FRONT1/FRONT2 and four side channels remain enabled with their measured self-return windows; rear channel 7 remains quarantined pending field measurement |
 | Tent occupancy | `enable_campsite_occupancy_guard` controls both UI admission and the control start gate; default `false` preserves the current workflow, while `true` blocks pre-entry dispatch without interrupting committed site motion |
-| Manual Return | Robot UI can request return from any active service; it preserves campsite crab-out ownership, aligns before parking at the drop zone, and does not move an already charging robot |
+| Manual Return | Both operator controls share one API; ordinary Nav2 is cancelled and held stopped `0.50 s` before exactly one recall, duplicate presses coalesce, campsite crab-out retains ownership, and charging remains motionless |
+| Roadside B11-B13 | Lateral motion is capped at `0.30 m`; Return completes `CRAB_OUT -> DONE` without zero-turn, then a source marker forces the legal forward one-way loop |
 | Docking/parking | UI exposes tag debug/pose/detection, paths, controller states, battery, and charging; reverse slows over the final `0.30 m`, AprilTag over `0.60 m`, and charging immediately commands zero |
+| Operator controls | Removes the obsolete Parking ON/OFF button and endpoint; final parking remains state-machine-owned after drop-zone alignment |
+| ARM64-oriented scheduling | Replaces permanent 10 Hz telemetry-lease polling with immediate ROS GuardCondition wakeup plus 1 Hz abandoned-lease expiry; visible telemetry remains 10 Hz |
 | Integrated contracts | Package/bringup GNSS uses `-90 deg` and a `0.5 s` fallback anchor; simulation applies the matching raw bias; rear-camera parking retains the current two-component rectify/AprilTag container |
 | Active map | `map_version=22`, SHA `8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59`; 55 lanelets, 14 areas, 1,652 nodes, 236 ways |
 
@@ -33,18 +38,21 @@ rewritten.
 
 | Check | Result |
 |---|---:|
-| Canonical `colcon_build.sh` affected packages | 5 passed |
+| Canonical `colcon_build.sh --packages-up-to camrod_bringup` | 48 passed |
 | Ranger motion policy GTest | `9/9` passed |
 | Control policy/package result | 83 policy cases; `85` xUnit, zero failures |
 | Platform package result | `36` xUnit, zero failures |
-| Robot/Guest UI backend tests | `69/69` passed |
-| Bringup launch/config/evidence contracts | 29 CTest targets; `265` xUnit, zero failures |
+| Robot/Guest UI backend tests | `72/72` passed |
+| Control / planning / bringup CTest | `2/2`, `10/10`, `29/29` passed |
 | Map-v22 B1 site entry/exit simulation | PASS through `CRAB_IN`, `ROTATE_180`, `CRAB_OUT`, and `DONE` |
 | Current B8 same-anchor simulation | PASS through `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; IN/OUT paths `2/2`, mixed-axis commands `0` |
 | Normal route before B8 | PASS; `3.73 m`, maximum `linear.y=0.000 m/s`, no crab-mode command |
 | Manual Return API / docking telemetry | PASS; site action `site_exit_then_return`, no drop-zone plan before `DONE`, schema v3, seven selected-view subscriptions |
 | Parking speed/restart geometry policies | Focused C++ and Python tests PASS |
 | Fusion/radar directional gate matrix | PASS; fusion blocks route-front only, synthetic radar blocks all four commanded directions |
+| Current-map campsite exits | PASS 13/13; B1-B10 seven-phase turnaround, B11-B13 five-phase roadside exit without rotation |
+| B11 full UI Return lifecycle | PASS; `155.73 m` forward loop, drop-zone alignment, reverse parking, `WAITING_FOR_CHARGING -> CHARGING`, internal `PARKED` |
+| AMD64 resource A/B | Total CPU `81.88 -> 80.78%`, UI CPU `6.93 -> 6.53%`, summed RSS `1955.6 -> 1938.7 MiB`; ARM64 acceptance not claimed |
 
 The vendored `ranger_base` functional GTest is green. Its full upstream lint
 bundle still reports the pre-existing copyright/style/package.xml debt across
@@ -57,6 +65,13 @@ The full simulation evidence and its SHA manifest are under
 The same-anchor B8 JSON, generated PNG/GIF, parking profile, production UI
 capture, and SHA manifests are under
 [`b8-return-docking-20260819`](assets/module-guides/bringup/test-results/b8-return-docking-20260819/README.md).
+
+The current B1-B13 reports and generated policy media are under
+[`camping-site-full-return-20260819`](assets/module-guides/bringup/test-results/camping-site-full-return-20260819/README.md).
+The AMD64 scheduling A/B is under
+[`return-resource-amd64-20260819`](assets/module-guides/ui/test-results/return-resource-amd64-20260819/README.md).
+The live outbound stop-and-recall timing is under
+[`manual-return-preemption-amd64-20260819`](assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/README.md).
 
 ## Field Acceptance Still Required
 
@@ -71,3 +86,7 @@ capture, and SHA manifests are under
   station geometry, CAN charger contact, and braking delay.
 - Re-run the reversed-heading campsite restart and manual Return on B1-B10 with
   the physical steering and payload envelope.
+- Run B11-B13 on the surveyed physical roadside and verify the forward loop,
+  body clearance, and absence of any in-lane zero-turn.
+- Run the 30-minute telemetry tab/camera soak on the 8-core/16-GB ARM64 Jetson;
+  AMD64 CPU/RSS deltas are not deployment acceptance.

@@ -45,11 +45,15 @@ planner_server:
       max_snap_distance_m: 8.0
       interpolation_resolution_m: 0.20
       same_lane_forward_epsilon_m: 0.30
-      # HH_260723 - Only an explicit campsite return request may use the
-      # reversed outbound shortest path; ordinary goals always retain one-way routing.
+      # HH_260819 - Explicit Return normally retraces the reverse shortest
+      # route. A B11-B13 `roadside_forward` source marker instead forces the
+      # legal forward one-way loop; ordinary goals also retain one-way routing.
       enable_reverse_lanelet_shortest_path: true
       reverse_lanelet_request_topic: "/planning/state_machine/return_to_drop_zone"
       reverse_lanelet_request_timeout_s: 10.0
+      # HH_260819 - Explicit Return may be pressed during outbound travel;
+      # RotationShim performs the stationary turn before following this route.
+      reverse_lanelet_request_requires_opposite_heading: false
       # The campsite maneuver turns about 180 degrees before requesting its route.
       reverse_lanelet_start_heading_threshold_deg: 120.0
       # HH_260707 - Keep LaneletRoute output on the 2D planning plane.
@@ -515,7 +519,8 @@ bt_navigator:
     # HH_260619 - Use snapped XY but current robot yaw for the planner start.
     # This prevents opposite centerline segment headings from generating a
     # backward/S-shaped path only around the first few meters.
-    # HH_260721 - Preserve the completed 180-degree return alignment so the planner selects reverse_shortest.
+    # HH_260819 - Preserve current heading for source-aware Return selection:
+    # B1-B10 may retrace reverse_shortest, while B11-B13 stay forward one-way.
     start_pose_override_yaw_source: current_pose
     # Tolerate EKF/TF jitter observed during full bringup load.
     transform_tolerance: 0.5

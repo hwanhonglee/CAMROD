@@ -654,6 +654,19 @@ class UiBackendNode(Node):
                 "/planning/state_machine/return_to_drop_zone",
             ).value
         )
+        # HH_260819 - Close the old Nav2 command gate long enough for its final
+        # velocity sample to expire before a manual Return publishes a new route.
+        self.manual_return_preempt_hold_s = max(
+            0.0,
+            min(
+                5.0,
+                float(
+                    self.declare_parameter(
+                        "manual_return_preempt_hold_s", 0.5
+                    ).value
+                ),
+            ),
+        )
         self.drop_zone_exit_complete_topic = str(
             self.declare_parameter(
                 "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
@@ -961,6 +974,12 @@ class UiBackendNode(Node):
         # before campsite arrival. Preserve the active mission site so the
         # Robot and Guest UIs still receive the matching arrival notification.
         self._active_mission_site: str = ""
+        # HH_260819 - Return uses one transient timer only while changing Nav2
+        # ownership. Repeated buttons share this latch instead of creating work.
+        self._manual_return_transition_lock = threading.Lock()
+        self._manual_return_transition_pending = False
+        self._manual_return_transition_timer: Optional[Any] = None
+        self._manual_return_transition_source = ""
         self._low_battery_return_pending = False
         self._low_battery_return_started = False
         self._low_battery_return_wait_notified = False
@@ -1142,10 +1161,14 @@ class UiBackendNode(Node):
         self._readiness_timer = self.create_timer(
             self.readiness_check_period_s, self._on_readiness_timer
         )
+        # HH_260819 - FastAPI wakes the ROS executor immediately through a guard
+        # condition. The 1 Hz timer only expires abandoned leases, replacing the
+        # previous permanent 10 Hz poll on the 8-core ARM64 deployment.
+        self._telemetry_session_guard = self.create_guard_condition(
+            self._maintain_telemetry_session
+        )
         self._telemetry_session_timer = self.create_timer(
-            # HH_260810 - A newly authenticated tab should acquire its lazy ROS
-            # subscriptions within one display frame group, not after 500 ms.
-            0.1, self._maintain_telemetry_session
+            1.0, self._maintain_telemetry_session
         )
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -1252,6 +1275,7 @@ class UiBackendNode(Node):
     def destroy_node(self) -> bool:
         # HH_260805 - Stop the HTTP event loop before ROS destroys callbacks and
         # publishers that in-flight FastAPI/WebSocket handlers may still access.
+        self._cancel_pending_manual_return_transition("node_shutdown")
         self._stop_fastapi_server()
         return super().destroy_node()
 
@@ -1419,6 +1443,11 @@ class UiBackendNode(Node):
                 self._telemetry_session_deadline = 0.0
             session_active = self._telemetry_capture_active
             active_view = self._telemetry_active_view
+        # HH_260819 - GuardCondition.trigger() is the cross-thread handoff; ROS
+        # subscription graph mutation remains on the executor callback.
+        guard = getattr(self, "_telemetry_session_guard", None)
+        if guard is not None:
+            guard.trigger()
         return {
             "enabled": self.enable_operator_telemetry,
             "requested": bool(active),
@@ -3261,6 +3290,11 @@ class UiBackendNode(Node):
         # HH_260818 - A return request is state-independent, but route planning
         # must not start from inside a campsite. Latch physical CRAB_OUT first;
         # that controller publishes the planning recall at the shared snap anchor.
+        if bool(getattr(self, "_manual_return_transition_pending", False)):
+            # HH_260819 - Robot and diagnostics Return buttons call the same API.
+            # Coalesce a double press so only one cancel/route transition exists.
+            return "return_preempting"
+
         if (
             self._latest_service_state in {
                 int(AvgServiceState.DROP_ZONE_WAIT),
@@ -3315,21 +3349,113 @@ class UiBackendNode(Node):
             # approach.
             return "parking_in_progress"
 
-        # HH_260818 - Ordinary Nav2 travel has no campsite exit to serialize.
-        # Preempt it immediately with the drop-zone route.
+        if self._latest_service_state == int(
+            AvgServiceState.RETURNING_TO_DROP_ZONE
+        ):
+            # HH_260819 - Once the fresh return route owns motion, either UI
+            # button is idempotent. Do not cancel and restart a valid return.
+            return "return_in_progress"
+
+        # HH_260819 - Ordinary Nav2 travel must first lose command ownership.
+        # Publishing a new route without this barrier leaves the outbound path
+        # active until Nav2 processes preemption and was visible as continued
+        # campsite motion after either Return button was pressed.
+        self._request_nav2_cancel(source=f"{source}:return_preempt")
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(
+                False, source=f"{source}:return_preempt_hold"
+            )
+        else:
+            self._publish_platform_drive_enable(
+                False, source=f"{source}:return_preempt_hold"
+            )
+        self._publish_engage(
+            False,
+            source=f"{source}:return_preempt_hold",
+            sync_drive_enable=False,
+        )
+        self._schedule_manual_return_transition(source)
+        return "return_preempting"
+
+    def _publish_planning_return_request(self, source: str) -> None:
+        """Publish one fresh drop-zone route after old Nav2 ownership has ended."""
         recall = PlanningRecallRequest()
         recall.header.stamp = self.get_clock().now().to_msg()
         recall.site_name = self._active_mission_site
         recall.source = source
-        self.pub_planning_return_to_drop_zone.publish(recall)
         self._publish_service_state(
             AvgServiceState.RETURNING_TO_DROP_ZONE,
-            source=source,
+            source=f"{source}:preempt_complete",
         )
+        # HH_260819 - Re-open the mission gate explicitly before the recall. The
+        # service-state subscription repeats this idempotently, but its callback
+        # can otherwise race planning on a multi-threaded ARM64 executor.
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(
+                True, source=f"{source}:return_resume"
+            )
+        else:
+            self._publish_platform_drive_enable(
+                True, source=f"{source}:return_resume"
+            )
+        self.pub_planning_return_to_drop_zone.publish(recall)
         self.get_logger().info(
             f"planning return ({source}) -> {self.planning_return_to_drop_zone_topic}"
         )
-        return "return_route"
+
+    def _schedule_manual_return_transition(self, source: str) -> None:
+        complete_immediately = False
+        with self._manual_return_transition_lock:
+            if self._manual_return_transition_pending:
+                return
+            self._manual_return_transition_pending = True
+            self._manual_return_transition_source = source
+            if self.manual_return_preempt_hold_s <= 0.0:
+                complete_immediately = True
+            else:
+                # HH_260819 - Install the timer under the same lock used by
+                # Stop, preventing an uncancelled orphan timer at this boundary.
+                self._manual_return_transition_timer = self.create_timer(
+                    self.manual_return_preempt_hold_s,
+                    self._complete_manual_return_transition,
+                )
+
+        if complete_immediately:
+            self._complete_manual_return_transition()
+
+    def _complete_manual_return_transition(self) -> None:
+        # HH_260819 - This dedicated lock serializes timer completion against
+        # operator Stop without re-entering the general runtime-state lock.
+        with self._manual_return_transition_lock:
+            if not self._manual_return_transition_pending:
+                return
+            timer = self._manual_return_transition_timer
+            self._manual_return_transition_timer = None
+            source = self._manual_return_transition_source or "manual_return"
+            try:
+                if timer is not None:
+                    timer.cancel()
+                    self.destroy_timer(timer)
+                self._publish_planning_return_request(source)
+            finally:
+                self._manual_return_transition_pending = False
+                self._manual_return_transition_timer = None
+                self._manual_return_transition_source = ""
+
+    def _cancel_pending_manual_return_transition(self, reason: str) -> None:
+        with self._manual_return_transition_lock:
+            timer = self._manual_return_transition_timer
+            was_pending = self._manual_return_transition_pending
+            self._manual_return_transition_pending = False
+            self._manual_return_transition_timer = None
+            self._manual_return_transition_source = ""
+        if timer is not None:
+            timer.cancel()
+            self.destroy_timer(timer)
+        if was_pending:
+            self.get_logger().info(
+                f"pending manual return cancelled: reason={reason}"
+            )
 
     def request_manual_return(self) -> Dict[str, Any]:
         """Issue the same supervised return contract from any operator state."""
@@ -3342,37 +3468,13 @@ class UiBackendNode(Node):
                 AvgServiceState.DROP_ZONE_PARKING
                 if action == "parking_alignment"
                 else self._latest_service_state
-                if action in {"already_charging", "parking_in_progress"}
+                if action in {
+                    "already_charging",
+                    "parking_in_progress",
+                    "return_in_progress",
+                }
                 else AvgServiceState.RETURNING_TO_DROP_ZONE
             ),
-        }
-
-    def set_manual_parking(self, enabled: bool) -> Dict[str, Any]:
-        """Align safely, then start/cancel the parking method selected by bringup."""
-        # HH_260818 - Manual parking follows the production drop-zone handoff:
-        # ALIGN_FOR_PARKING settles yaw, then that controller publishes START
-        # to exactly one selected reverse/AprilTag implementation.
-        if enabled:
-            self._publish_drop_zone_operation(
-                MotionOperation.ALIGN_FOR_PARKING,
-                source="http:manual_parking",
-            )
-        else:
-            self._publish_drop_zone_operation(
-                MotionOperation.CANCEL,
-                source="http:manual_parking",
-            )
-            self._publish_parking_operation(
-                MotionOperation.CANCEL,
-                source="http:manual_parking",
-            )
-        return {
-            "success": True,
-            "message": (
-                "parking alignment requested" if enabled
-                else "parking cancelled"
-            ),
-            "value": bool(enabled),
         }
 
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
@@ -3423,8 +3525,8 @@ class UiBackendNode(Node):
             f"{int(operation)}"
         )
 
-    def _cancel_active_motion(self, source: str) -> None:
-        # HH_260724 - Operator cancel/stop should leave no stale Nav2 or maneuver owner active.
+    def _request_nav2_cancel(self, source: str) -> List[str]:
+        """Cancel Nav2 goals without cancelling a serialized maneuver owner."""
         request = CancelGoal.Request()
         request.goal_info.goal_id.uuid = [0] * 16
         request.goal_info.stamp.sec = 0
@@ -3438,6 +3540,19 @@ class UiBackendNode(Node):
             # before it could cancel Nav2 or publish the stopped service state.
             client.call_async(request)
             sent_topics.append(topic)
+        if sent_topics:
+            self.get_logger().info(
+                f"Nav2 cancel requested ({source}): {', '.join(sent_topics)}"
+            )
+        else:
+            self.get_logger().warn(
+                f"Nav2 cancel skipped ({source}): cancel services not ready"
+            )
+        return sent_topics
+
+    def _cancel_active_motion(self, source: str) -> None:
+        # HH_260724 - Operator cancel/stop should leave no stale Nav2 or maneuver owner active.
+        self._request_nav2_cancel(source)
         self._publish_camping_site_operation(
             MotionOperation.CANCEL, source=f"{source}:operator_stop"
         )
@@ -3447,17 +3562,10 @@ class UiBackendNode(Node):
         self._publish_parking_operation(
             MotionOperation.CANCEL, source=f"{source}:operator_stop"
         )
-        if sent_topics:
-            self.get_logger().info(
-                f"Nav2 cancel requested ({source}): {', '.join(sent_topics)}"
-            )
-        else:
-            self.get_logger().warn(
-                f"Nav2 cancel skipped ({source}): cancel services not ready"
-            )
 
     def _stop_active_service(self, source: str) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        self._cancel_pending_manual_return_transition(source)
         self._drop_zone_exit_active = False
         self._pending_site_after_drop_zone_exit = None
         self._cancel_active_motion(source=source)
@@ -4396,11 +4504,6 @@ class UiBackendNode(Node):
             # HH_260818 - Operator docking tests may request return without a
             # preceding campsite WAIT_RETURN state.
             return JSONResponse(node.request_manual_return())
-
-        @app.post("/ui/manual_parking")
-        def post_manual_parking(value: str = "true") -> JSONResponse:
-            enabled = value.lower() in {"1", "true", "yes", "on"}
-            return JSONResponse(node.set_manual_parking(enabled))
 
         # HH_260810 - This is the managed operator-map equivalent of RViz 2D
         # Goal Pose. The backend owns validation and engage ordering; deployment

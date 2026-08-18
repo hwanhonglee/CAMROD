@@ -1,5 +1,25 @@
 # Documentation Changelog
 
+<!-- HH_260819 - Record Return ownership, constrained-site forward routing,
+current B1-B13 evidence, and measured AMD64 scheduler impact. -->
+## [v2.1.8-return-preemption-roadside-final] - 2026-08-19 (HH_260819)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Return ownership | Both visible Return controls share `/ui/manual_return`; ordinary travel cancels Nav2, holds authorization closed `0.50 s`, then publishes one recall; repeated presses are idempotent |
+| Campsite policy | B1-B10 retain turnaround/retrace; B11-B13 cap at `0.30 m`, complete `CRAB_OUT -> DONE` without zero-turn, and select a forward one-way loop from `done_roadside_forward` |
+| Parking UI | Removes obsolete manual Parking ON/OFF; drop-zone alignment and configured parking method remain service-state-owned |
+| Current simulation | B1-B13 focused exits pass 13/13; one B11 UI Return completes a `155.73 m` loop, drop-zone alignment, reverse parking, charging wait, `CHARGING`, and internal `PARKED` |
+| ARM64-oriented scheduling | Replaces permanent 10 Hz telemetry lease polling with immediate GuardCondition wakeup plus 1 Hz abandoned-lease expiry; visible telemetry stays 10 Hz |
+| Resource boundary | AMD64 45-process A/B: total CPU `81.88 -> 80.78%`, UI CPU `6.93 -> 6.53%`, summed RSS `1955.6 -> 1938.7 MiB`; Jetson 8-core/16-GB soak remains TODO |
+| Live Return timing | After `2.019 m` of B6 outbound motion, production Return reached zero in `5.01 ms`, held zero, emitted one recall at `0.508 s`, and generated a fresh `2.133 m` reverse path |
+| Evidence | Adds structured B1-B13/full-cycle JSON, generated PNG/GIF, resource chart, READMEs, checksums, and active evidence contract tests |
+| Final verification | Canonical wrapper builds 48 packages; control/planning/bringup CTest pass `2/2`, `10/10`, `29/29`; UI pytest passes `72/72`; production React build succeeds |
+
+---
+
 <!-- HH_260818 - Record same-anchor campsite return, normal/crab selection,
 manual Return, docking telemetry, parking slowdown, and parameter ownership. -->
 ## [v2.1.8-return-docking-follow-up] - 2026-08-19 (HH_260818)

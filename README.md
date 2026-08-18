@@ -23,6 +23,8 @@ worak-test map-v22 identity without rewriting the user-authored OSM. -->
 recovery, semantic fusion/radar safety, and an opt-in tent occupancy guard. -->
 <!-- HH_260818 - Separate normal Dual-Ackermann from intentional crab, use one
 campsite anchor across restarts, and expose manual return/docking telemetry. -->
+<!-- HH_260819 - Serialize both operator Return controls, validate B1-B13 full
+site exit, and record the no-zero-turn roadside forward-loop policy. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.8`**.
@@ -75,6 +77,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Normal/crab mode selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann | Nav2 lateral residue cannot select parallel motion; campsite/recovery commands remain explicit crab |
 | Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
 | Campsite return anchor | exact entry lanelet snap, return tolerance `0.04 m` | `CRAB_IN` and `CRAB_OUT` share one map anchor; current heading reverses the crab side after a 180-degree restart |
+| Campsite service policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | B11-B13 cap lateral travel at `0.30 m`, skip every zero-turn, finish `CRAB_OUT`, then use a forward one-way return loop |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
 | Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
@@ -84,6 +87,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | Front channels retain measured self-return exclusions and remain an independent near-field fail-safe beside the 2 m classified-fusion path stop |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |
+| Operator Return | one `/ui/manual_return` authority; `0.50 s` preemption hold | Both visible Return controls cancel outbound Nav2, close motion authorization, then publish exactly one fresh drop-zone recall |
 | RViz launch default | `OFF` | Normal operation uses the managed UI; `rviz:=true` remains an engineering override |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
 | System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
@@ -101,6 +105,10 @@ runtime evidence separately.
 
 ![AMD64 operator telemetry resource profile](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
 
+![Current Return and telemetry resource A/B](docs/assets/module-guides/ui/test-results/return-resource-amd64-20260819/return-resource-profile.png)
+
+![Measured outbound Return preemption](docs/assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/manual-return-preemption.png)
+
 The original six actual `1600x1000` browser views had zero
 document/workspace/text overflow. The seventh docking view was captured from
 the production build with schema v3 and seven lazy subscriptions. View leases
@@ -109,6 +117,14 @@ a GNSS view reopened after proximity reported GNSS/IMU `10.01 Hz` and selected
 pose `20.02 Hz` after one second. The AMD64 backend-only profile is bounded but
 is not ARM64 acceptance: the production 8-core/16-GB Jetson still requires a
 30-minute live-camera/tab-cycle resource and frame-pacing test.
+The current full-graph A/B replaced permanent 10 Hz lease polling with an
+event-driven ROS guard plus a 1 Hz abandoned-lease timer. On the same AMD64
+45-process idle graph it changed total CPU `81.88 -> 80.78%` (one-core basis),
+UI CPU `6.93 -> 6.53%`, and summed RSS `1955.6 -> 1938.7 MiB`; visible telemetry
+remains 10 Hz. A separate live B6 outbound run requested Return after `2.019 m`:
+output reached zero in `5.01 ms`, stayed zero through the `0.10-0.45 s` barrier,
+emitted one recall at `0.508 s`, and produced a fresh `2.133 m` reverse path.
+These figures are comparison evidence, not Jetson acceptance.
 
 ![Operator-map manual Goal Pose](docs/assets/module-guides/ui/evidence/ui-captures/operator-manual-goal-20260810.png)
 
@@ -165,12 +181,15 @@ no second hold. This is not physical-road evidence.
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Historical persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.8 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 5 packages; Ranger motion GTest `9/9`, control xUnit `85`, platform xUnit `36`, UI `69/69`, and bringup xUnit `265` passed with zero functional failures |
+| v2.1.8 final build/tests | **PASS** | Canonical wrapper rebuilt 48 packages; control CTest `2/2`, planning `10/10`, bringup `29/29`, and UI pytest `72/72` passed |
 | Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
 | Operator-map manual goal | **AMD64 SIM PASS** | Default launch started no RViz; confirmed UI goal published `/goal_pose`, drive-enable and engage, then produced manual `DRIVING` plus bounded global/local paths |
 | Current map-v22 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `8fa131...e59`; 55 lanelets, 14 areas, 1,652 nodes; B1-B13/drop-zone mirrors synchronized |
 | Current normal route + B8 same-anchor entry/return | **AMD64 SIM PASS** | Normal Nav2 moved `3.73 m` with maximum `linear.y=0.000 m/s`; then `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; localization `20.00 Hz`, wheel odometry `10 Hz` |
-| Manual Return and docking workspace | **API/UI PASS** | Site endpoint returned `site_exit_then_return` and deferred drop-zone planning until `DONE`; docking schema v3 opened seven lazy subscriptions and rendered Return, parking, tag, path, controller, battery, and charging surfaces |
+| Manual Return and docking workspace | **AMD64 API/UI/SIM PASS** | Both controls call one API; outbound motion is cancelled and held `0.50 s`, duplicate presses coalesce, site exit defers planning until `DONE`, and obsolete manual Parking ON/OFF was removed |
+| Current B1-B13 campsite exit | **AMD64 SIM PASS 13/13** | B1-B10 completed seven turnaround phases; B11-B13 completed `CRAB_IN -> WAIT_RETURN -> CRAB_OUT -> DONE`, with no zero-turn and a `0.30 m` cap |
+| B11 full Return and charging | **AMD64 SIM PASS** | UI Return selected a `155.73 m` forward one-way loop, then reached drop-zone alignment, reverse parking, `WAITING_FOR_CHARGING`, controller `PARKED`, and public `CHARGING` |
+| Return/telemetry resource A/B | **AMD64 MEASURED PASS** | Total CPU -1.3%, UI CPU -5.8%, summed RSS -16.9 MiB; 10 Hz visible stream retained; ARM64 8-core/16-GB soak pending |
 | Current B8 axis-separated return | **AMD64 SIM PASS** | Entry/exit paths published `2/2`; IN used 102 lateral samples, OUT used 89 lateral then 13 straight anchor-correction samples, with `0` mixed-axis samples; returned within `0.04 m` of the route anchor |
 | Current repeated boundary recovery | **AMD64 SIM PARTIAL PASS** | The long B1 return replay released three consecutive lanelet contacts and resumed the route; the 180 s runner ended before the 80 m return/parking sequence completed |
 | Current semantic obstacle contract | **UNIT/GATE-MATRIX PASS** | Empty/unknown classes rejected; classified fusion stopped forward but passed crab/reverse, and the synthetic radar matrix stopped all four directions; both full-graph rasters ran at `10 Hz`; physical fusion calibration and rear-radar acceptance remain pending |
@@ -183,13 +202,13 @@ no second hold. This is not physical-road evidence.
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
 | Automatic boundary recovery | **v2.1.4 RELEASE-MAP SIM PASS, FAIL CLOSED** | Release map-v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
 | Earlier reduced-boundary policy | **AMD64 SIM PASS; HISTORICAL** | The `1.29160 x 0.87000 m` candidate produced normal-route, margin recovery, and physical-stop evidence retained for comparison; it is no longer the active body |
-| Historical campsite sequencing | **PASS; B11-B13 RETURN FIELD-PENDING** | Map-v16 B1-B10 all completed crab, zero-turn, wait, explicit return, and crab-out; B11-B13 reached roadside `WAIT_RETURN` without any on-site turn |
+| Historical campsite sequencing | **HISTORICAL PASS** | Map-v16 B1-B10 completed round trips; its B11-B13 arrival-only limitation is retained as history and superseded by the current full-return result above |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
 | Physical rear camera rate | **FIELD-FAIL** | Raw `3.633 Hz` versus `10 Hz` target under field load |
 | B1-B10 turnaround | **SIM PASS (10/10)** | All ten map-derived lateral entries (`1.79-5.31 m`) completed full round trips with maneuver-exclusive command ownership |
-| B11-B13 roadside | **ARRIVAL SIM PASS; RETURN UNRESOLVED** | Each site stopped at `WAIT_RETURN` after a capped `0.60 m` crab; no RETURN was issued |
+| B11-B13 roadside | **CURRENT AMD64 SIM PASS 3/3** | Each site used a `0.30 m` cap, accepted UI Return, completed `CRAB_OUT -> DONE`, skipped zero-turn, and selected the forward one-way loop |
 | Physical Ranger/sensors/audio | **FIELD PENDING** | Jetson and real-robot measurements are still required |
 
 ### Package Technology Proof
@@ -215,7 +234,9 @@ width remains intentionally unchanged for the later site survey/update.
 
 ![Historical reduced-body and planning-margin validation](docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 
-![Current campsite maneuver validation](docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
+![Current campsite maneuver validation](docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
+
+[Open the current B1-B13 phase GIF](docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif).
 
 ![Historical map-v17 repeated service](docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/repeated-service-summary.png)
 

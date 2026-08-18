@@ -190,14 +190,16 @@ public:
         declare_parameter<double>("min_lateral_offset_m", 0.2);
     maximum_lateral_offset_m_ =
         declare_parameter<double>("max_lateral_offset_m", 7.0);
-    // HH_260806 - B11-B13 are roadside service points, not drive-in bays.
-    // Keep their lateral motion shallow even when the map goal is farther away.
+    // HH_260819 - B11-B13 are narrow roadside service points, not drive-in
+    // bays. Keep their lateral reach and speed independently constrained.
     roadside_maximum_lateral_offset_m_ = std::abs(
-        declare_parameter<double>("roadside_max_lateral_offset_m", 0.60));
+        declare_parameter<double>("roadside_max_lateral_offset_m", 0.30));
     default_lateral_direction_ =
         declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ =
         std::abs(declare_parameter<double>("crab_speed_mps", 0.18));
+    roadside_crab_speed_mps_ =
+        std::abs(declare_parameter<double>("roadside_crab_speed_mps", 0.20));
     entry_position_tolerance_m_ =
         std::abs(declare_parameter<double>("entry_position_tolerance_m", 0.15));
     return_position_tolerance_m_ = std::abs(
@@ -753,7 +755,7 @@ private:
     entry_target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
     entry_reverse_axis_yaw_ = start_yaw_;
     const double effective_speed =
-        std::max(0.01, crab_speed_mps_ * crab_timeout_speed_scale_);
+        std::max(0.01, activeCrabSpeedMps() * crab_timeout_speed_scale_);
     crab_duration_s_ = offset > 0.0 ? offset / effective_speed : 0.0;
     return_requested_ = false;
     return_published_ = false;
@@ -783,6 +785,12 @@ private:
     return configured_mode == camping_site_service_modes_.end()
                ? CampsiteServiceMode::kTurnaround
                : configured_mode->second;
+  }
+
+  double activeCrabSpeedMps() const {
+    return active_service_mode_ == CampsiteServiceMode::kRoadsideStop
+               ? roadside_crab_speed_mps_
+               : crab_speed_mps_;
   }
 
   void ensureGoalPairForAutoStart(const std::string &key) {
@@ -1022,7 +1030,8 @@ private:
         source_name += "_roadside_cap";
       }
     }
-    if (lateral_offset <= 0.0 || crab_speed_mps_ <= 0.0) {
+    const double active_crab_speed_mps = activeCrabSpeedMps();
+    if (lateral_offset <= 0.0 || active_crab_speed_mps <= 0.0) {
       setError("invalid lateral motion parameters");
       return {false, "invalid lateral motion parameters"};
     }
@@ -1054,7 +1063,7 @@ private:
                                 std::cos(start_yaw_) * direction * lateral_offset;
     crab_duration_s_ =
         lateral_offset /
-        std::max(0.01, crab_speed_mps_ * crab_timeout_speed_scale_);
+        std::max(0.01, active_crab_speed_mps * crab_timeout_speed_scale_);
     return_requested_ = false;
     return_published_ = false;
     return_acknowledged_ = false;
@@ -1078,7 +1087,8 @@ private:
                  " anchor_offset=" + fixed(return_anchor_offset_m_) +
                  "m anchor_xy=(" + fixed(return_anchor_x_) + "," +
                  fixed(return_anchor_y_) + ")" +
-                 "m timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
+                 "m crab_speed=" + fixed(active_crab_speed_mps) +
+                 "m/s timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
                  " duration=" + fixed(crab_duration_s_, 1) + "s");
     return {true, "site maneuver started"};
   }
@@ -1192,11 +1202,12 @@ private:
 
   void beginReturnExit(const std::string &reason) {
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-      // HH_260721 - Leave constrained terrain first; the 180-degree return
-      // alignment runs on-lane.
+      // HH_260819 - Leave constrained terrain at the original heading. B11-B13
+      // hand planning a forward one-way loop only after CRAB_OUT reaches the
+      // shared lane anchor; no zero-turn is attempted in the narrow lane.
       target_yaw_ = start_yaw_;
       setPhase(CampingSiteManeuverPhase::kCrabOut,
-               reason + "; roadside exit before on-lane return alignment");
+               reason + "; roadside exit before forward return loop");
     } else if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
@@ -1421,7 +1432,7 @@ private:
 
   void publishCrab(const double direction) const {
     avg_msgs::msg::AvgTwist command;
-    command.linear.y = direction * crab_speed_mps_;
+    command.linear.y = direction * activeCrabSpeedMps();
     command_publisher_->publish(command);
   }
 
@@ -1438,7 +1449,7 @@ private:
         camrod_control::bodyAxisPrioritizedTranslationTowardTarget(
         last_pose_->pose.position.x, last_pose_->pose.position.y,
         camrod_control::yawFromPose(*last_pose_), return_anchor_x_,
-        return_anchor_y_, crab_speed_mps_, return_translation_gain_,
+        return_anchor_y_, activeCrabSpeedMps(), return_translation_gain_,
         return_position_tolerance_m_);
     avg_msgs::msg::AvgTwist command;
     command.linear.x = velocity.first;
@@ -1696,12 +1707,13 @@ private:
       if (returnReached()) {
         publishZero();
         if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-          // HH_260721 - Roadside stops rotate on the lane, not beside B12/B13
-          // obstacles.
-          target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
-          setPhase(CampingSiteManeuverPhase::kAlignReturnRouteYaw,
-                   "roadside exit reached lanelet snap pose; align with "
-                   "reversed route");
+          // HH_260819 - B11-B13 cannot safely zero-turn inside the current
+          // narrow mapped lane. Preserve arrival heading, request the legal
+          // forward loop, and resume ordinary body/footprint checks at DONE.
+          setPhase(CampingSiteManeuverPhase::kDone,
+                   "roadside exit reached lanelet snap pose; forward return "
+                   "loop requested");
+          publishReturnRequest("done_roadside_forward");
         } else {
           setPhase(
               CampingSiteManeuverPhase::kDone,
@@ -1716,7 +1728,10 @@ private:
         publishCrabReturnToAnchor();
       }
     } else if (phase_ == CampingSiteManeuverPhase::kDone) {
-      publishReturnRequest("done_retry");
+      publishReturnRequest(
+          active_service_mode_ == CampsiteServiceMode::kRoadsideStop
+              ? "done_roadside_forward_retry"
+              : "done_retry");
     }
     publishStatus(false);
   }
@@ -1736,6 +1751,7 @@ private:
     const std::string message =
         "phase=" + phaseName(phase_) +
         " service_mode=" + serviceModeName(active_service_mode_) +
+        " crab_speed_mps=" + fixed(activeCrabSpeedMps()) +
         " return_published=" + (return_published_ ? "True" : "False") +
         " return_ack=" + (return_acknowledged_ ? "True" : "False");
     status_publisher_->publish(camrod_control::makeModuleState(
@@ -1788,9 +1804,10 @@ private:
   double default_lateral_offset_m_{1.2};
   double minimum_lateral_offset_m_{0.2};
   double maximum_lateral_offset_m_{7.0};
-  double roadside_maximum_lateral_offset_m_{0.60};
+  double roadside_maximum_lateral_offset_m_{0.30};
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
+  double roadside_crab_speed_mps_{0.20};
   double entry_position_tolerance_m_{0.15};
   double return_position_tolerance_m_{0.04};
   double return_translation_gain_{4.0};

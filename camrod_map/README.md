@@ -10,6 +10,8 @@ off-lane campsite service-area motion. -->
 user-authored map file without rewriting independent snapshot copies. -->
 <!-- HH_260818 - Refresh only the current map identity after the worak-test
 map-v22 edit; semantic operating coordinates remain unchanged. -->
+<!-- HH_260819 - Link the current-map B1-B13 full Return evidence without
+modifying the user-maintained OSM geometry. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -106,6 +108,8 @@ are not substituted for the drop-zone command point.
 
 ![Historical map-v16 campsite validation](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/campsite-policy-validation.png)
 
+![Current-map B1-B13 full Return validation](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-policy-validation.png)
+
 ![Historical map-v17 B2 recovery](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/b2-boundary-recovery.png)
 
 The historical map-v14 B6 run contacted the mapped boundary at approximately
@@ -129,7 +133,10 @@ reduced candidate polygons and control interpretation changed; this evidence
 is historical. Map-v16 B1-B10 site maneuvers (10/10) and B11-B13 arrival-only
 checks remain historical policy evidence. The map-v17 B1/B2/B3 continuous
 service and B2 recovery 3/3 also remain historical after the active map edit;
-the active map-v22 service cycle and B11-B13 return geometry require reruns.
+the active map-v22 AMD64 rerun now covers B1-B10 turnaround exits and B11-B13
+roadside exits 13/13. One B11 service also completed the source-selected
+forward loop, parking, and simulated charging. Physical road-width and
+clearance acceptance still require the field survey.
 
 ## Nodes And Products
 

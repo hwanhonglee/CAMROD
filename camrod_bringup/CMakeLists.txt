@@ -45,10 +45,14 @@ install(
     # HH_260818 - Reproduce normal/crab, same-anchor return, and final-parking
     # release evidence from canonical YAML plus a B8 simulation report.
     scripts/visualization/render_v2_1_8_return_docking_results.py
+    # HH_260819 - Reproduce the measured AMD64 Return/telemetry scheduler A/B.
+    scripts/visualization/render_return_resource_profile.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
     scripts/field_test_tool.sh
+    # HH_260819 - Reproduce the live outbound Return motion-barrier timing.
+    scripts/manual_return_preemption_probe.py
     # HH_260730 - Measure every real localization hand-off in one time window.
     scripts/pose_latency_probe.py
     scripts/planning_scenario_leaderboard.py

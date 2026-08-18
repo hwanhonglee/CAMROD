@@ -475,6 +475,9 @@ def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
         "curve_floor": (rpp["regulated_linear_scaling_min_speed"], 0.6),
         "final_approach": (rpp["min_approach_linear_velocity"], 0.5),
         "campsite_crab": (campsite["crab_speed_mps"], 1.2),
+        # HH_260819 - B11-B13 move only 0.30 m beside the narrow road and use
+        # a dedicated low-speed crab profile after the common command gate.
+        "roadside_crab": (campsite["roadside_crab_speed_mps"], 0.36),
         "campsite_reverse": (campsite["reverse_entry_speed_mps"], 0.8),
         "drop_zone_exit": (drop_zone["exit_speed_mps"], 0.8),
         "reverse_parking": (reverse_parking["reverse_speed_mps"], 0.8),
@@ -585,10 +588,11 @@ def test_campsite_return_uses_axis_staged_route_goal_anchor() -> None:
     assert "captureReturnAnchor(" in source
     assert "bodyAxisPrioritizedTranslationTowardTarget(" in source
     assert re.search(
-        r"return_anchor_x_,\s*return_anchor_y_,\s*crab_speed_mps_,"
+        r"return_anchor_x_,\s*return_anchor_y_,\s*activeCrabSpeedMps\(\),"
         r"\s*return_translation_gain_,\s*return_position_tolerance_m_",
         source,
     )
+    assert campsite["roadside_max_lateral_offset_m"] == 0.30
     assert "bodyTranslationTowardTarget(" not in source
     assert campsite["return_position_tolerance_m"] == 0.04
     assert campsite["return_translation_kp"] == 4.0

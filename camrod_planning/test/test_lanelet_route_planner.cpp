@@ -99,6 +99,8 @@ protected:
     node_->declare_parameter<bool>("LaneletRoute.enable_reverse_lanelet_shortest_path", true);
     node_->declare_parameter<double>(
       "LaneletRoute.reverse_lanelet_start_heading_threshold_deg", 120.0);
+    node_->declare_parameter<bool>(
+      "LaneletRoute.reverse_lanelet_request_requires_opposite_heading", false);
     // HH_260727 - Never publish test routes or requests on live planning topics.
     node_->declare_parameter<std::string>(
       "LaneletRoute.route_lanelet_ids_topic", kTestRouteLaneletIdsTopic);
@@ -130,7 +132,7 @@ protected:
     node_.reset();
   }
 
-  bool authorizeReverseRoute()
+  bool authorizeReturnRoute(const std::string & source = "test_campsite_return")
   {
     for (int attempt = 0; attempt < 100; ++attempt) {
       if (request_publisher_->get_subscription_count() > 0U) {
@@ -145,7 +147,7 @@ protected:
 
     avg_msgs::msg::PlanningRecallRequest request;
     request.site_name = "camping_site_12";
-    request.source = "test_campsite_return";
+    request.source = source;
     request_publisher_->publish(request);
     for (int attempt = 0; attempt < 20; ++attempt) {
       executor_.spin_some();
@@ -332,7 +334,7 @@ TEST(PathQualityMetrics, MeasuresLengthTurnAndCurvature)
 
 TEST_F(LaneletRoutePlannerTest, ReversesShortestPathAfterSiteTurnaround)
 {
-  ASSERT_TRUE(authorizeReverseRoute());
+  ASSERT_TRUE(authorizeReturnRoute());
   const auto path = planner_->createPlan(
     makePose(12.7921, 22.52, 103.0),
     makePose(-13.5777, 40.7413, -82.2));
@@ -353,12 +355,38 @@ TEST_F(LaneletRoutePlannerTest, ReversesShortestPathAfterSiteTurnaround)
   EXPECT_LT(pathLength(replanned_path), 80.0);
 }
 
+TEST_F(LaneletRoutePlannerTest, ExplicitReturnReversesShortestPathBeforeTurnaround)
+{
+  ASSERT_TRUE(authorizeReturnRoute());
+  const auto path = planner_->createPlan(
+    makePose(12.7921, 22.52, 23.0),
+    makePose(-13.5777, 40.7413, -82.2));
+
+  // HH_260819 - A Return pressed during outbound travel must not retain the
+  // 120+ m one-way loop merely because the stationary 180deg turn is pending.
+  ASSERT_GT(path.poses.size(), 100U);
+  EXPECT_LT(pathLength(path), 80.0);
+}
+
 TEST_F(LaneletRoutePlannerTest, KeepsOneWayRouteForOrdinaryOppositeHeadingGoal)
 {
   const auto path = planner_->createPlan(
     makePose(12.7921, 22.52, 103.0),
     makePose(-13.5777, 40.7413, -82.2));
 
+  EXPECT_GT(pathLength(path), 120.0);
+}
+
+TEST_F(LaneletRoutePlannerTest, RoadsideReturnKeepsForwardOneWayLoop)
+{
+  ASSERT_TRUE(authorizeReturnRoute("test:done_roadside_forward"));
+  const auto path = planner_->createPlan(
+    makePose(12.7921, 22.52, 23.0),
+    makePose(-13.5777, 40.7413, -82.2));
+
+  // HH_260819 - A roadside robot leaves parallel to the road. It must follow
+  // the legal forward loop instead of rotating into the physical lane edge.
+  ASSERT_GT(path.poses.size(), 100U);
   EXPECT_GT(pathLength(path), 120.0);
 }
 

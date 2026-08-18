@@ -9,6 +9,8 @@ while retaining the tested Chromium and auto alternatives. -->
 a bounded client-leased telemetry WebSocket for the ARM64 deployment target. -->
 <!-- HH_260818 - Add state-independent manual Return and a lazy docking view
 for tag image/pose, parking paths, controller phases, battery, and charging. -->
+<!-- HH_260819 - Make both Return controls share a stopped preemption barrier,
+remove obsolete manual Parking ON/OFF, and wake telemetry leases by event. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -40,7 +42,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Operator telemetry transport | latest-value WebSocket `10 Hz`; REST fallback `1 Hz` |
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
 | Docking telemetry | seven lazy subscriptions: tag debug/pose/detected, two paths, two controller states |
-| Manual Return | `POST /ui/manual_return`; route return or drop-zone alignment, no motion while already charging |
+| Manual Return | one `POST /ui/manual_return` authority; `0.50 s` stopped preemption during ordinary travel, duplicate presses coalesced |
 | Confirmed-tent occupancy guard | `false` by default; set `bringup.control.enable_campsite_occupancy_guard: true` to block pre-entry dispatch |
 
 See the [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
@@ -172,6 +174,9 @@ a silent client loss stops renewal and releases subscriptions after `12 s`.
 REST polling remains a `1 Hz` compatibility fallback.
 Compressed camera bytes are forwarded without decode/re-encode. Point clouds,
 paths, driven traces, and map lines are bounded before JSON serialization.
+FastAPI/WebSocket lease changes trigger a ROS GuardCondition immediately. A
+separate `1 Hz` timer only expires abandoned leases, replacing the former
+permanent 10 Hz executor poll without changing the visible 10 Hz stream.
 
 <!-- HH_260810 - Quantify the per-view lease instead of describing the ARM64
 load reduction as an unmeasured optimization. -->
@@ -240,6 +245,24 @@ cost or ARM64 acceptance.
 The reproducible command and structured values are in
 [`operator-telemetry-websocket-amd64-20260810`](../docs/assets/module-guides/ui/test-results/operator-telemetry-websocket-amd64-20260810/README.md).
 
+### Current AMD64 Return/Lease A/B
+
+![Current Return and telemetry resource A/B](../docs/assets/module-guides/ui/test-results/return-resource-amd64-20260819/return-resource-profile.png)
+
+![Measured outbound Return preemption](../docs/assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/manual-return-preemption.png)
+
+On the same 45-process, 30-second, charging-idle full graph, event-driven lease
+wakeup changed total CPU `81.88 -> 80.78%` and UI CPU `6.93 -> 6.53%` on the
+Linux one-core basis. Summed RSS changed `1955.6 -> 1938.7 MiB`. RViz, browser,
+and Guest UI were off in both runs. The [structured A/B record](../docs/assets/module-guides/ui/test-results/return-resource-amd64-20260819/README.md)
+is AMD64 comparison evidence only; ARM64 8-core/16-GB acceptance remains open.
+
+The [live preemption record](../docs/assets/module-guides/ui/test-results/manual-return-preemption-amd64-20260819/README.md)
+uses the production HTTP endpoint and ROS graph after B6 moved `2.019 m`.
+Command output reached zero in `5.01 ms`, duplicate requests produced one
+planning recall at `0.508 s`, and a fresh `2.133 m` reverse path was observed.
+Frontend tests bind both visible Return controls to that one endpoint.
+
 ### Historical AMD64 Per-View Cost
 
 ![Operator telemetry CPU, PSS, and payload profile](../docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
@@ -302,7 +325,7 @@ Jetson CPU/GPU use; a production Jetson profile is still required.
 
 The historical map-v17 simulation completed charging recall and next-site
 departure twice after the initial cycle. Current `camrod_ui` regression tests
-pass `69/69`; actual CAN timing, touchscreen latency, and Jetson kiosk
+pass `72/72`; actual CAN timing, touchscreen latency, and Jetson kiosk
 performance remain field work.
 
 <!-- HH_260807 - Record the Humble shutdown-only conversion race separately
@@ -353,8 +376,7 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `WS /ws/telemetry?view=<name>` | Selected-view latest snapshot at configured `1-20 Hz`; production default `10 Hz` |
 | `POST /ui/destination?site=B6&run=true` | Select and dispatch a campsite |
 | `POST /ui/manual_goal?x=<m>&y=<m>&yaw_deg=<deg>` | Validate and dispatch a confirmed operator-map goal |
-| `POST /ui/manual_return` | Site: latch exit then plan at the shared snap; normal travel: immediate drop-zone preemption; drop zone: align for parking; charging: no motion |
-| `POST /ui/manual_parking?value=true|false` | Start/cancel drop-zone alignment and selected final parking |
+| `POST /ui/manual_return` | Site: latch exit then plan at the shared snap; normal travel: cancel, stop for `0.50 s`, then publish one drop-zone recall; drop zone: align for parking; charging: no motion |
 | `POST /ui/engage?value=true|false` | Manual engage/disengage |
 | `POST /ui/stop` | Operator stop |
 | `WS /ws` | Real-time state updates |
@@ -366,8 +388,12 @@ single-client slot. The browser heartbeat keeps a healthy idle session active.
 The manual Return publisher serializes physical exit and route planning.
 Inside a campsite it latches RETURN and defers the planning recall until the
 campsite controller reaches the shared snap anchor; during ordinary driving it
-preempts directly to the drop-zone route. At the drop zone it starts body-yaw
-alignment before parking. With a true charging contact it reports
+first cancels Nav2, closes mission/drive authorization for `0.50 s`, then opens
+the gate and publishes exactly one drop-zone recall. Both visible Return
+controls call this API; a second press while preempting or returning is
+idempotent. At the drop zone it starts body-yaw alignment before the configured
+parking method. The obsolete operator Parking ON/OFF command was removed so it
+cannot bypass this service-owned handoff. With a true charging contact it reports
 `already_charging` and publishes no motion. If the public state still says
 `CHARGING` after CAN contact is lost, it restarts parking alignment instead of
 creating a redundant Nav2 loop.

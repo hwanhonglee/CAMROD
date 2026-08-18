@@ -1036,7 +1036,6 @@ function DockingView({ telemetry }) {
   const reverse = controllers.reverse_parking || {};
   const april = controllers.apriltag_parking || {};
   const mission = telemetry.mission || {};
-  const [parkingOn, setParkingOn] = useState(false);
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
@@ -1057,14 +1056,6 @@ function DockingView({ telemetry }) {
     }
   };
 
-  const toggleParking = async () => {
-    const next = !parkingOn;
-    const applied = await postCommand(
-      'parking', `/ui/manual_parking?value=${next}`, next ? '주차 시작 명령 전송됨' : '주차 취소 명령 전송됨'
-    );
-    if (applied) setParkingOn(next);
-  };
-
   return (
     <div className="telemetry-view telemetry-docking-view">
       <div className="telemetry-source-row">
@@ -1083,14 +1074,6 @@ function DockingView({ telemetry }) {
           onClick={() => postCommand('return', '/ui/manual_return', '즉시 복귀 명령 전송됨')}
         >
           {pending === 'return' ? '복귀 요청 중' : '즉시 복귀'}
-        </button>
-        <button
-          type="button"
-          className={`docking-parking-command ${parkingOn ? 'active' : ''}`}
-          disabled={Boolean(pending)}
-          onClick={toggleParking}
-        >
-          {pending === 'parking' ? '명령 전송 중' : (parkingOn ? '주차 취소' : '주차 시작')}
         </button>
         <div className={`docking-command-status ${commandStatus.tone}`}>{commandStatus.message || '명령 대기'}</div>
       </div>

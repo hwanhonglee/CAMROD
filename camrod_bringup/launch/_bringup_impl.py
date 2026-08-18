@@ -1651,6 +1651,11 @@ def generate_launch_description():
             'API UI backend bind port',
         ),
         (
+            'api_ui_manual_return_preempt_hold_s',
+            cfg_get(launch_cfg, 'system/api_ui_manual_return_preempt_hold_s', 0.5),
+            'Stopped hold between Nav2 cancellation and manual Return dispatch',
+        ),
+        (
             'enable_operator_telemetry',
             cfg_get(launch_cfg, 'system/enable_operator_telemetry', True),
             'Enable leased operator sensor/map telemetry views',
@@ -2477,6 +2482,9 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        # HH_260819 - Keep the Return ownership barrier explicit and tunable at
+        # the top-level deployment boundary without adding sustained CPU work.
+        'manual_return_preempt_hold_s': lc['api_ui_manual_return_preempt_hold_s'],
         # HH_260810 - Keep the bounded RViz-replacement workspace explicit at
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],

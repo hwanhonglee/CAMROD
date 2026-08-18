@@ -108,7 +108,6 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # from the managed UI without opening RViz or a separate browser tool.
         for token in (
             "/ui/manual_return",
-            "/ui/manual_parking?value=${next}",
             'camera="docking"',
             "DockingPathPlot",
             "tag_detected",
@@ -116,7 +115,11 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(token, self.telemetry_source)
         self.assertIn("requestManualReturn", self.source)
-        self.assertIn("toggleManualParking", self.source)
+        # HH_260819 - The obsolete Parking ON/OFF switch must not bypass the
+        # state-aware Return command or appear in either operator surface.
+        for removed in ("manual_parking", "toggleManualParking", "Parking OFF"):
+            self.assertNotIn(removed, self.source)
+            self.assertNotIn(removed, self.telemetry_source)
         self.assertIn(".docking-layout", self.css)
 
 

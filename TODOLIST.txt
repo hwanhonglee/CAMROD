@@ -1,6 +1,8 @@
-CAMROD v2.1.7 미완료 실차 확인 목록
-갱신일: 2026-08-10 (Asia/Seoul)
+CAMROD v2.1.8 미완료 실차 확인 목록
+갱신일: 2026-08-19 (Asia/Seoul)
 
+# HH_260819 - Keep unresolved v2.1.8 field acceptance while retaining the
+# existing road, localization, service, obstacle, sensor, resource, and UI gates.
 # HH_260810 - Keep only unresolved v2.1.7 field acceptance here. Move completed
 # implementation, simulation, and measurements to DONE.txt in the same change.
 
@@ -85,7 +87,7 @@ CAMROD v2.1.7 미완료 실차 확인 목록
 - IMU startup port `0x13` 오류와 재기동 후 Fixed 미획득이 재현되면 P0 FAIL이다.
 
 [P0-C] 왕복 서비스, state와 연속 mission 수명 검증
-       [SIM 10/10 (9 FULL OUTBOUND), FIELD-PENDING]
+       [B1-B13 EXIT SIM 13/13, B11 FULL CYCLE SIM PASS, FIELD-PENDING]
 - B1-B10에서 다음 전체 순서를 사이트를 바꿔 최소 3회 연속 수행한다.
   `drop-zone/charging -> campsite route -> CRAB_IN -> ROTATE_180 ->
   WAITING_FOR_RETURN_REQUEST -> 사용자 RETURN -> CRAB_OUT -> return route ->
@@ -97,8 +99,14 @@ CAMROD v2.1.7 미완료 실차 확인 목록
 - cancel은 OPERATOR_STOPPED로 전환되고 5초 동안 goal/path/nonzero cmd_vel이
   자동 재생성되지 않아야 한다. planning의 정상 maneuver handoff cancel은
   system warning으로 고정되지 않아야 한다.
-- B11-B13은 `CRAB_IN -> WAITING_FOR_RETURN_REQUEST` arrival까지만 시험한다.
-  현장 복귀 geometry가 정해질 때까지 on-site zero-turn과 자동 RETURN은 금지한다.
+- B11-B13은 `0.30 m` 이하로 `CRAB_IN -> WAITING_FOR_RETURN_REQUEST`를 수행하고,
+  사용자 RETURN 뒤 같은 anchor까지 `CRAB_OUT -> DONE`해야 한다. 좁은 차선에서
+  zero-turn하지 않고 `done_roadside_forward`가 전방 one-way loop를 선택해야 한다.
+  실제 도로 폭/연석/차체 swept clearance를 측정하기 전에는 SIM 성공만으로 현장
+  합격 처리하지 않는다.
+- Robot 진단 화면과 Docking 화면의 두 Return 버튼을 각각 outbound 주행 중 눌러
+  Nav2 cancel -> drive gate OFF `0.50 s` -> 단일 return recall 순서를 기록한다.
+  연속 두 번 눌러도 route/cancel이 중복되지 않고 site 방향 주행이 즉시 끝나야 한다.
 - 합격: node/bringup restart 없이 3회 이상의 site-return-charge-next-site가
   순서대로 완료되고 state, motion owner와 최종 command가 일치한다.
 - SIM 기준 B1-B10은 `2210.611 s`, restart 0으로 10/10 통과했다. cycle 1은
@@ -106,6 +114,10 @@ CAMROD v2.1.7 미완료 실차 확인 목록
   outbound/RETURN/parking/charging까지 모두 실행했다. cycle 5 장애물
   stop/clear/resume도 통과했다. 실제 CAN 충전, 실제 하역 대기, 사람의 RETURN
   입력으로 같은 판정을 다시 수행해야 이 항목을 닫는다.
+- 2026-08-19 현재-map AMD64 SIM은 B1-B10 turnaround exit 10/10과 B11-B13
+  roadside exit 3/3을 통과했다. B11 전체 run은 `155.73 m` 전방 loop 뒤
+  drop-zone alignment, reverse parking, WAITING_FOR_CHARGING, CHARGING/PARKED까지
+  통과했다. 이는 실차 crab 각도/도로 clearance/CAN 충전 합격을 대신하지 않는다.
 
 [P0-D] 장애물 정지, 넓은 lane 우회와 boundary 회복 [SIM 부분 PASS, FIELD-PENDING]
 - 동적 장애물은 즉시 최종 cmd_vel을 0으로 만들고, 제거 후 fresh clear window
@@ -162,6 +174,11 @@ CAMROD v2.1.7 미완료 실차 확인 목록
   후 subscription release `<=1 s`, 브라우저/network silent loss 후 `<=13 s`,
   30분 종료 뒤 지속 RSS 증가 `<=20 MiB`인지 확인한다. AMD64 standalone 기준
   `9.938 Hz`, CPU `1.00 -> 1.12%`, RSS `+896 KiB`는 비교 시작점일 뿐이다.
+- 2026-08-19 AMD64 45-process A/B에서 permanent 10 Hz lease poll을
+  GuardCondition + 1 Hz expiry로 바꾼 뒤 전체 CPU(one-core basis)
+  `81.88 -> 80.78%`, UI CPU `6.93 -> 6.53%`, summed RSS
+  `1955.6 -> 1938.7 MiB`였다. Jetson에서 같은 topology/mission/tab 순서로
+  30분 재측정하고 이 수치를 ARM64 합격값으로 그대로 쓰지 않는다.
 - 합격: crash/-11/-9/forced kill/잔여 process 0, 필수 topic rate 유지, 자원
   절감 수치와 fallback 조건이 기록된다.
 
