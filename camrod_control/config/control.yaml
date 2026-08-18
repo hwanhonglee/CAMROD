@@ -53,6 +53,9 @@
     # handoff is never rejected for an arrival planning already accepted.
     route_goal_reached_distance_m: 0.6
     adopt_site_arrival_distance_m: 3.0
+    # HH_260818 - A reboot within this radius restores WAIT_RETURN instead of
+    # repeating CRAB_IN toward an adjacent campsite.
+    site_pose_reached_distance_m: 0.60
     goal_pair_max_age_s: 0.0
     default_lateral_direction: "left"
 
@@ -69,6 +72,9 @@
     return_translation_kp: 4.0
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0
+    # HH_260818 - CRAB_OUT shares time with bounded lane-boundary recovery.
+    # Match that 90 s envelope instead of failing on the shorter entry timeout.
+    crab_return_timeout_s: 90.0
     reverse_return_timeout_margin_s: 45.0
     reverse_return_progress_tolerance_m: 0.45
     reverse_return_lateral_tolerance_m: 0.40
@@ -80,7 +86,9 @@
     # HH_260810 - Hold zero until fresh poses prove the turn has settled.
     rotate_settle_hold_s: 0.8
     rotate_settle_max_rate_degps: 3.0
-    site_rotate_direction_policy: "site_index_lanelet_side"
+    # HH_260818 - Derive 180-degree direction from the live crab side. The
+    # site-index lists below remain available for legacy map-specific tuning.
+    site_rotate_direction_policy: "entry_crab_side"
     right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
     left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
 

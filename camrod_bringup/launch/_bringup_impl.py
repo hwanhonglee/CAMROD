@@ -2049,11 +2049,10 @@ def generate_launch_description():
         'sensing_namespace': lc['sensing_namespace'],
         'base_frame_id': lc['robot_center_frame_id'],
         'fake_enable_cost_grids': 'false',
-        # HH_260721 - Disable raw CAN/BMS simulation when the validator owns /platform/status.
-        'publish_simulated_platform_status': PythonExpression([
-            "'false' if str('", lc['sim_platform_status_enable'],
-            "').lower() in ['1', 'true', 'yes', 'on'] else 'true'"
-        ]),
+        # HH_260818 - Keep fake raw CAN/BMS active in simulation even when the
+        # platform safety gate is enabled. ranger_platform_bridge remains the
+        # sole normalized /platform/status publisher, matching the real graph.
+        'publish_simulated_platform_status': 'true',
         'map_path': lc['map_path'],
         'origin_lat': lc['origin_lat'],
         'origin_lon': lc['origin_lon'],
@@ -2508,6 +2507,9 @@ def generate_launch_description():
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
         'camping_site_maneuver_controller_operation_topic': '/control/camping_site_maneuver_controller/operation',
+        # HH_260818 - Keep the manual-return planner handoff explicit across
+        # the full-bringup -> UI launch boundary.
+        'planning_return_to_drop_zone_topic': '/planning/state_machine/return_to_drop_zone',
         'camping_site_maneuver_controller_adopt_topic': '/control/camping_site_maneuver_controller/adopt',
         # HH_260721 - Let the UI release final parking before drop-zone departure.
         'parking_operation_topic': '/parking/operation',

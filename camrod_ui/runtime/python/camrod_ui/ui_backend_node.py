@@ -27,6 +27,7 @@ from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from avg_msgs.msg import (
+    AvgAprilTagPose,
     AvgServiceState,
     AvgBool,
     AvgLocalizationStatus,
@@ -42,6 +43,7 @@ from avg_msgs.msg import (
     ModuleState,
     MotionOperation,
     PlanningMissionKey,
+    PlanningRecallRequest,
     PlanningState,
     SystemStatus,
     UiDestinationCommand,
@@ -134,7 +136,7 @@ OCCUPANCY_CANCEL_BLOCKED_SERVICE_STATES = frozenset({
 
 # HH_260810 - One bounded JSON contract replaces the separate Tk/RViz operator
 # viewers without changing any control or sensor-authority topic.
-TELEMETRY_SCHEMA_VERSION = 2
+TELEMETRY_SCHEMA_VERSION = 3
 TELEMETRY_VIEWS = frozenset({
     "gnss",
     "proximity",
@@ -142,6 +144,7 @@ TELEMETRY_VIEWS = frozenset({
     "trajectory",
     "perception",
     "safety",
+    "docking",
     "all",
 })
 TELEMETRY_RADAR_CHANNELS = (
@@ -204,6 +207,13 @@ TELEMETRY_TOPIC_DEFAULTS = {
     "front_camera_raw": "/sensing/camera/econ_front/image_raw",
     "rear_camera": "/sensing/camera/econ_rear/image_raw/compressed",
     "rear_camera_raw": "/sensing/camera/econ_rear/image_raw",
+    # HH_260818 - Docking sources are lazy and only add image/DDS load while
+    # the operator has the docking tab open.
+    "docking_debug_camera": (
+        "/perception/apriltag_parking_detector/debug_image/compressed"
+    ),
+    "docking_tag_pose": "/perception/apriltag_parking_detector/tag_pose",
+    "docking_tag_detected": "/perception/apriltag_parking_detector/tag_detected",
     "map_markers": "/map/markers",
     "lanelet_cost_grid": "/map/cost_grid/lanelet",
     "lidar_cost_grid": "/sensing/cost_grid/lidar",
@@ -638,6 +648,12 @@ class UiBackendNode(Node):
         self.parking_operation_topic = str(
             self.declare_parameter("parking_operation_topic", "/parking/operation").value
         )
+        self.planning_return_to_drop_zone_topic = str(
+            self.declare_parameter(
+                "planning_return_to_drop_zone_topic",
+                "/planning/state_machine/return_to_drop_zone",
+            ).value
+        )
         self.drop_zone_exit_complete_topic = str(
             self.declare_parameter(
                 "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
@@ -917,6 +933,7 @@ class UiBackendNode(Node):
         self._telemetry_images: Dict[str, Dict[str, Any]] = {
             "front": {"data": b"", "media_type": "image/jpeg", "sequence": 0},
             "rear": {"data": b"", "media_type": "image/jpeg", "sequence": 0},
+            "docking": {"data": b"", "media_type": "image/jpeg", "sequence": 0},
         }
         self._telemetry_map: Dict[str, Any] = {
             "frame_id": "map",
@@ -1091,6 +1108,9 @@ class UiBackendNode(Node):
         )
         self.pub_parking_operation = self.create_publisher(
             MotionOperation, self.parking_operation_topic, 10
+        )
+        self.pub_planning_return_to_drop_zone = self.create_publisher(
+            PlanningRecallRequest, self.planning_return_to_drop_zone_topic, 10
         )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
@@ -1327,6 +1347,7 @@ class UiBackendNode(Node):
             "cameras": {
                 "front": {"available": False, "sequence": 0},
                 "rear": {"available": False, "sequence": 0},
+                "docking": {"available": False, "sequence": 0},
             },
             "localization": {"pose": {}, "status": {}, "trace": []},
             "motion": {"velocity": {}, "tracking_error": {}},
@@ -1352,6 +1373,12 @@ class UiBackendNode(Node):
                 "controllers": {},
                 "radar_evidence": "",
                 "obstacle_replan": "",
+            },
+            "docking": {
+                "tag_detected": False,
+                "tag": {},
+                "is_charging": False,
+                "battery_percentage": None,
             },
             "mission": {},
         }
@@ -1528,6 +1555,28 @@ class UiBackendNode(Node):
                 ),
             ])
 
+        if wants("docking"):
+            subscriptions.extend([
+                self.create_subscription(
+                    CompressedImage,
+                    self.telemetry_topics["docking_debug_camera"],
+                    lambda message: self._on_telemetry_camera("docking", message),
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    AvgAprilTagPose,
+                    self.telemetry_topics["docking_tag_pose"],
+                    self._on_telemetry_docking_tag_pose,
+                    sensor_qos,
+                ),
+                self.create_subscription(
+                    AvgBool,
+                    self.telemetry_topics["docking_tag_detected"],
+                    self._on_telemetry_docking_tag_detected,
+                    sensor_qos,
+                ),
+            ])
+
         if wants("trajectory", "perception"):
             subscriptions.append(self.create_subscription(
                 MarkerArray, self.telemetry_topics["map_markers"],
@@ -1609,8 +1658,12 @@ class UiBackendNode(Node):
             # entries can stay subscribed without drawing two parking paths.
             "apriltag_parking": "/parking/apriltag_parking_controller/path_ros",
         }
-        if wants("trajectory"):
+        if wants("trajectory", "docking"):
             for name, topic in maneuver_topics.items():
+                if active_view == "docking" and name not in {
+                    "reverse_parking", "apriltag_parking"
+                }:
+                    continue
                 subscriptions.append(
                     self.create_subscription(
                         NavPath,
@@ -1629,8 +1682,12 @@ class UiBackendNode(Node):
             "reverse_parking": "/parking/reverse_parking_controller/status",
             "apriltag_parking": "/parking/apriltag_parking_controller/status",
         }
-        if wants("safety"):
+        if wants("safety", "docking"):
             for name, topic in controller_topics.items():
+                if active_view == "docking" and name not in {
+                    "reverse_parking", "apriltag_parking"
+                }:
+                    continue
                 subscriptions.append(
                     self.create_subscription(
                         ModuleState,
@@ -1688,11 +1745,12 @@ class UiBackendNode(Node):
             "trajectory": {"localization", "motion", "paths", "footprint"},
             "perception": {"localization", "perception", "footprint"},
             "safety": {"safety"},
+            "docking": {"cameras", "motion", "paths", "safety", "docking"},
         }.get(view, set())
         template = cls._new_telemetry_snapshot()
         for section in (
             "gnss", "imu", "radar", "lidar", "cameras", "localization",
-            "motion", "paths", "footprint", "perception", "safety",
+            "motion", "paths", "footprint", "perception", "safety", "docking",
         ):
             if section not in allowed_sections:
                 snapshot[section] = template[section]
@@ -2111,6 +2169,38 @@ class UiBackendNode(Node):
                 self._telemetry["paths"]["maneuvers"][name] = payload
             self._touch_telemetry_locked(f"path.{name}")
 
+    def _on_telemetry_docking_tag_pose(
+        self, message: AvgAprilTagPose
+    ) -> None:
+        """Record the camera-relative tag vector used by docking control."""
+        # HH_260818 - Publish the exact controller input instead of deriving a
+        # distance from the debug image, so the UI and controller remain auditable.
+        position = message.pose.pose.position
+        x = float(position.x)
+        y = float(position.y)
+        z = float(position.z)
+        distance_m = math.sqrt(x * x + y * y + z * z)
+        with self._lock:
+            self._telemetry["docking"]["tag"] = {
+                "family": str(message.family),
+                "id": int(message.id),
+                "tag_frame": str(message.tag_frame),
+                "camera_frame": str(message.pose.header.frame_id),
+                "x_m": _finite_or_none(x),
+                "y_m": _finite_or_none(y),
+                "z_m": _finite_or_none(z),
+                "distance_m": _finite_or_none(distance_m),
+                "yaw_deg": _quaternion_yaw_deg(message.pose.pose.orientation),
+            }
+            self._touch_telemetry_locked("docking.tag_pose")
+
+    def _on_telemetry_docking_tag_detected(self, message: AvgBool) -> None:
+        # HH_260818 - Keep detection validity separate from the most recent pose;
+        # a stale pose must never look like a currently visible docking target.
+        with self._lock:
+            self._telemetry["docking"]["tag_detected"] = bool(message.data)
+            self._touch_telemetry_locked("docking.tag_detected")
+
     def _on_telemetry_footprint(self, message: AvgPolygonStamped) -> None:
         points = [
             [round(float(point.x), 4), round(float(point.y), 4)]
@@ -2277,6 +2367,11 @@ class UiBackendNode(Node):
                     if message.battery_state_available else None
                 ),
             }
+            self._telemetry["docking"]["is_charging"] = bool(message.is_charging)
+            self._telemetry["docking"]["battery_percentage"] = (
+                _finite_or_none(float(message.battery_percentage) * 100.0)
+                if message.battery_state_available else None
+            )
             self._touch_telemetry_locked("platform.velocity")
 
     def _record_telemetry_gate(self, message: ModuleState) -> None:
@@ -3162,14 +3257,123 @@ class UiBackendNode(Node):
             return
         self._request_return_to_drop_zone(source=source)
 
-    def _request_return_to_drop_zone(self, source: str) -> None:
-        # HH_260803 - Publishing RETURNING_TO_DROP_ZONE is sufficient: the
-        # service-state callback below performs RETURN, manual-clear, and mission
-        # engage exactly once for robot UI, guest UI, and any future frontend.
+    def _request_return_to_drop_zone(self, source: str) -> str:
+        # HH_260818 - A return request is state-independent, but route planning
+        # must not start from inside a campsite. Latch physical CRAB_OUT first;
+        # that controller publishes the planning recall at the shared snap anchor.
+        if (
+            self._latest_service_state in {
+                int(AvgServiceState.DROP_ZONE_WAIT),
+                int(AvgServiceState.CHARGING),
+            }
+            and not self._latest_platform_is_charging
+        ):
+            # HH_260818 - A stationary robot already at the drop zone needs no
+            # synthetic Nav2 loop. This also recovers a stale CHARGING service
+            # state after CAN contact is lost. Run the normal yaw-alignment
+            # owner, which starts exactly the parking method selected by bringup.
+            self._publish_drop_zone_operation(
+                MotionOperation.ALIGN_FOR_PARKING,
+                source=f"{source}:already_at_drop_zone",
+            )
+            return "parking_alignment"
+        if (
+            self._latest_service_state == int(AvgServiceState.CHARGING)
+            and self._latest_platform_is_charging
+        ):
+            # HH_260818 - Charger contact is authoritative and must never be
+            # broken by a diagnostic return-button press.
+            return "already_charging"
+
+        if self._latest_service_state in {
+            int(AvgServiceState.SITE_ARRIVED),
+            int(AvgServiceState.SITE_ENTRY),
+            int(AvgServiceState.UNLOAD_WAIT),
+            int(AvgServiceState.GUEST_LOADING_WAIT),
+            int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+            int(AvgServiceState.RETURN_WITH_CARGO),
+        }:
+            self._publish_camping_site_maneuver_controller_return(
+                source=f"{source}:site_exit_first"
+            )
+            if self._latest_service_state != int(AvgServiceState.RETURN_WITH_CARGO):
+                # HH_260818 - This public intent re-opens mission authorization.
+                # The site controller immediately replaces it with its exact
+                # exit phase.
+                self._publish_service_state(
+                    AvgServiceState.RETURNING_TO_DROP_ZONE,
+                    source=f"{source}:site_exit_latched",
+                )
+            return "site_exit_then_return"
+
+        if self._latest_service_state in {
+            int(AvgServiceState.DROP_ZONE_PARKING),
+            int(AvgServiceState.WAITING_FOR_CHARGING),
+        }:
+            # HH_260818 - Final parking already owns velocity; restarting
+            # alignment here can pull the chassis away from a valid charger
+            # approach.
+            return "parking_in_progress"
+
+        # HH_260818 - Ordinary Nav2 travel has no campsite exit to serialize.
+        # Preempt it immediately with the drop-zone route.
+        recall = PlanningRecallRequest()
+        recall.header.stamp = self.get_clock().now().to_msg()
+        recall.site_name = self._active_mission_site
+        recall.source = source
+        self.pub_planning_return_to_drop_zone.publish(recall)
         self._publish_service_state(
             AvgServiceState.RETURNING_TO_DROP_ZONE,
             source=source,
         )
+        self.get_logger().info(
+            f"planning return ({source}) -> {self.planning_return_to_drop_zone_topic}"
+        )
+        return "return_route"
+
+    def request_manual_return(self) -> Dict[str, Any]:
+        """Issue the same supervised return contract from any operator state."""
+        action = self._request_return_to_drop_zone(source="http:manual_return")
+        return {
+            "success": True,
+            "message": action,
+            "action": action,
+            "service_state": int(
+                AvgServiceState.DROP_ZONE_PARKING
+                if action == "parking_alignment"
+                else self._latest_service_state
+                if action in {"already_charging", "parking_in_progress"}
+                else AvgServiceState.RETURNING_TO_DROP_ZONE
+            ),
+        }
+
+    def set_manual_parking(self, enabled: bool) -> Dict[str, Any]:
+        """Align safely, then start/cancel the parking method selected by bringup."""
+        # HH_260818 - Manual parking follows the production drop-zone handoff:
+        # ALIGN_FOR_PARKING settles yaw, then that controller publishes START
+        # to exactly one selected reverse/AprilTag implementation.
+        if enabled:
+            self._publish_drop_zone_operation(
+                MotionOperation.ALIGN_FOR_PARKING,
+                source="http:manual_parking",
+            )
+        else:
+            self._publish_drop_zone_operation(
+                MotionOperation.CANCEL,
+                source="http:manual_parking",
+            )
+            self._publish_parking_operation(
+                MotionOperation.CANCEL,
+                source="http:manual_parking",
+            )
+        return {
+            "success": True,
+            "message": (
+                "parking alignment requested" if enabled
+                else "parking cancelled"
+            ),
+            "value": bool(enabled),
+        }
 
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
         msg = MotionOperation()
@@ -4159,6 +4363,12 @@ class UiBackendNode(Node):
         def get_rear_camera() -> Response:
             return node._telemetry_camera_response("rear")
 
+        @app.get("/api/camera/docking")
+        def get_docking_camera() -> Response:
+            # HH_260818 - The detector only renders while this endpoint's lazy
+            # ROS subscription exists, avoiding idle image work on ARM64.
+            return node._telemetry_camera_response("docking")
+
         @app.get("/ui/platform_tuning")
         async def get_platform_tuning() -> JSONResponse:
             result = await node.get_platform_tuning()
@@ -4180,6 +4390,17 @@ class UiBackendNode(Node):
             enabled = value.lower() in {"1", "true", "yes", "on"}
             result = node.set_engage(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/manual_return")
+        def post_manual_return() -> JSONResponse:
+            # HH_260818 - Operator docking tests may request return without a
+            # preceding campsite WAIT_RETURN state.
+            return JSONResponse(node.request_manual_return())
+
+        @app.post("/ui/manual_parking")
+        def post_manual_parking(value: str = "true") -> JSONResponse:
+            enabled = value.lower() in {"1", "true", "yes", "on"}
+            return JSONResponse(node.set_manual_parking(enabled))
 
         # HH_260810 - This is the managed operator-map equivalent of RViz 2D
         # Goal Pose. The backend owns validation and engage ordering; deployment

@@ -7,6 +7,7 @@ import json
 import math
 import os
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -37,6 +38,7 @@ from avg_msgs.msg import (
 from geometry_msgs.msg import PoseStamped as RosPoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped as RosPoseWithCovarianceStamped
 from geometry_msgs.msg import Quaternion as RosQuaternion
+from nav_msgs.msg import Path as RosPath
 from rcl_interfaces.srv import SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -119,6 +121,16 @@ class SimValidationRunner(Node):
         self.camping_stop_at_wait_return = bool(
             self.declare_parameter("camping_stop_at_wait_return", False).value
         )
+        self.camping_return_via_ui = bool(
+            self.declare_parameter("camping_return_via_ui", False).value
+        )
+        # HH_260818 - Let release validation drive the same administrator Return
+        # endpoint used by the operator instead of bypassing backend sequencing.
+        self.ui_backend_base_url = str(
+            self.declare_parameter(
+                "ui_backend_base_url", "http://127.0.0.1:8010"
+            ).value
+        ).rstrip("/")
         # HH_260807 - Require the simulated raw CAN/BMS contract when charging
         # behavior is under test. The runner observes /platform/status but never
         # publishes it; ranger_platform_bridge remains the single owner.
@@ -238,6 +250,15 @@ class SimValidationRunner(Node):
         self.manual_goal_distance_m = float(
             self.declare_parameter("manual_goal_distance_m", 4.0).value
         )
+        # HH_260818 - A normal Nav2 route must remain longitudinal/yaw control;
+        # lateral output above the Ranger deadband would select crab steering.
+        self.normal_drive_lateral_limit_mps = abs(
+            float(
+                self.declare_parameter(
+                    "normal_drive_lateral_limit_mps", 0.02
+                ).value
+            )
+        )
         self.results: list[CheckResult] = []
 
         self.pub_goal = self.create_publisher(RosPoseStamped, "/goal_pose", 10)
@@ -298,6 +319,8 @@ class SimValidationRunner(Node):
         self.first_seen: dict[str, float] = {}
         self.last_seen: dict[str, float] = {}
         self.max_abs_since: dict[str, float] = {}
+        self.max_components_since: dict[str, dict[str, float]] = {}
+        self.site_phase_raw_components: dict[str, dict[str, float | int]] = {}
         self.latest_pose: AvgPoseStamped | None = None
         self.latest_lanelet_pose: AvgPoseStamped | None = None
         self.latest_state: PlanningState | None = None
@@ -333,6 +356,8 @@ class SimValidationRunner(Node):
         self.local_path_count = 0
         self.global_path_points = 0
         self.local_path_points = 0
+        self.site_path_count = 0
+        self.site_path_points = 0
         self.gate_test_path: AvgPath | None = None
 
         # HH_260720 - Observe the generated IMU contract instead of the hardware ROS boundary.
@@ -361,6 +386,12 @@ class SimValidationRunner(Node):
         self.create_subscription(AvgPath, "/planning/local_path", self._on_local_path, 10)
         self.create_subscription(AvgTwist, "/control/cmd_vel_raw", self._on_raw_cmd, 10)
         self.create_subscription(AvgTwist, "/control/cmd_vel", self._on_control_cmd, 10)
+        self.create_subscription(
+            RosPath,
+            "/control/camping_site_maneuver_controller/path_ros",
+            self._on_site_path,
+            10,
+        )
         self.create_subscription(
             PlanningState, "/planning/state_machine/state", self._on_state, 10
         )
@@ -446,6 +477,57 @@ class SimValidationRunner(Node):
     def _record_twist(self, topic: str, msg: AvgTwist) -> None:
         self._count(topic)
         self.max_abs_since[topic] = max(self.max_abs_since.get(topic, 0.0), twist_abs(msg))
+        components = self.max_components_since.setdefault(
+            topic,
+            {"linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0},
+        )
+        components["linear_x"] = max(components["linear_x"], abs(msg.linear.x))
+        components["linear_y"] = max(components["linear_y"], abs(msg.linear.y))
+        components["angular_z"] = max(components["angular_z"], abs(msg.angular.z))
+        if topic == "/control/cmd_vel_raw" and self.latest_site_status is not None:
+            phase = str(self.latest_site_status.operating_state).strip()
+            if phase in {"CRAB_IN", "CRAB_OUT"}:
+                # HH_260818 - Prove the site wheel vector is actually pure
+                # lateral. A phase transition alone cannot establish +/-90 deg.
+                phase_values = self.site_phase_raw_components.setdefault(
+                    phase,
+                    {
+                        "samples": 0,
+                        "lateral_samples": 0,
+                        "longitudinal_samples": 0,
+                        "mixed_axis_samples": 0,
+                        "linear_x_abs_max_mps": 0.0,
+                        "linear_y_abs_max_mps": 0.0,
+                        "angular_z_abs_max_radps": 0.0,
+                    },
+                )
+                phase_values["samples"] = int(phase_values["samples"]) + 1
+                linear_x = abs(msg.linear.x)
+                linear_y = abs(msg.linear.y)
+                if linear_y > 1.0e-6:
+                    phase_values["lateral_samples"] = (
+                        int(phase_values["lateral_samples"]) + 1
+                    )
+                if linear_x > 1.0e-6:
+                    phase_values["longitudinal_samples"] = (
+                        int(phase_values["longitudinal_samples"]) + 1
+                    )
+                if linear_x > 1.0e-6 and linear_y > 1.0e-6:
+                    phase_values["mixed_axis_samples"] = (
+                        int(phase_values["mixed_axis_samples"]) + 1
+                    )
+                phase_values["linear_x_abs_max_mps"] = max(
+                    float(phase_values["linear_x_abs_max_mps"]),
+                    linear_x,
+                )
+                phase_values["linear_y_abs_max_mps"] = max(
+                    float(phase_values["linear_y_abs_max_mps"]),
+                    linear_y,
+                )
+                phase_values["angular_z_abs_max_radps"] = max(
+                    float(phase_values["angular_z_abs_max_radps"]),
+                    abs(msg.angular.z),
+                )
 
     def _on_cost_grid(self, topic: str, msg: AvgOccupancyGrid) -> None:
         self.latest_cost_grids[topic] = msg
@@ -476,6 +558,13 @@ class SimValidationRunner(Node):
         self.local_path_count += 1
         self.local_path_points = len(msg.poses)
         self._count("/planning/local_path")
+
+    def _on_site_path(self, msg: RosPath) -> None:
+        # HH_260818 - Count both entry and return geometry so a missing
+        # CRAB_OUT path fails the same release run that exercises UI Return.
+        self.site_path_count += 1
+        self.site_path_points = max(self.site_path_points, len(msg.poses))
+        self._count("/control/camping_site_maneuver_controller/path_ros")
 
     def _on_raw_cmd(self, msg: AvgTwist) -> None:
         self._record_twist("/control/cmd_vel_raw", msg)
@@ -697,10 +786,44 @@ class SimValidationRunner(Node):
             publisher.publish(message)
             self.spin_for(0.05)
 
+    def request_camping_return(self) -> tuple[bool, str]:
+        """Request campsite return through the selected production boundary."""
+        if not self.camping_return_via_ui:
+            self.publish_operation(
+                self.pub_site_operation, MotionOperation.RETURN, repeats=1
+            )
+            return True, "typed_operation"
+
+        # HH_260818 - Exercise the actual administrator API and record its
+        # state-aware action. The backend must answer site_exit_then_return and
+        # defer planning until the campsite controller reaches its map anchor.
+        request = urllib.request.Request(
+            f"{self.ui_backend_base_url}/ui/manual_return",
+            data=b"",
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=3.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            OSError,
+            TimeoutError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as error:
+            self.get_logger().error(f"manual Return API failed: {error}")
+            return False, f"http_error:{type(error).__name__}"
+        return bool(payload.get("success", False)), str(payload.get("action", ""))
+
     def reset_cmd_metrics(self) -> None:
         # HH_260720 - Measure the raw candidate and single final control output separately.
         for topic in ("/control/cmd_vel_raw", "/control/cmd_vel"):
             self.max_abs_since[topic] = 0.0
+            self.max_components_since[topic] = {
+                "linear_x": 0.0,
+                "linear_y": 0.0,
+                "angular_z": 0.0,
+            }
 
     def cost_grid_max(self, topic: str) -> int:
         grid = self.latest_cost_grids.get(topic)
@@ -1251,7 +1374,19 @@ class SimValidationRunner(Node):
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
-        ok = bool(global_new and local_new and cmd_max > 0.03 and moved_m > 0.5 and succeeded)
+        cmd_components = self.max_components_since.get("/control/cmd_vel", {})
+        longitudinal_max = float(cmd_components.get("linear_x", 0.0))
+        lateral_max = float(cmd_components.get("linear_y", 0.0))
+        yaw_rate_max = float(cmd_components.get("angular_z", 0.0))
+        normal_motion_mode_ok = lateral_max <= self.normal_drive_lateral_limit_mps
+        ok = bool(
+            global_new
+            and local_new
+            and cmd_max > 0.03
+            and moved_m > 0.5
+            and succeeded
+            and normal_motion_mode_ok
+        )
         self.results.append(
             CheckResult(
                 "manual_goal_nav",
@@ -1260,12 +1395,21 @@ class SimValidationRunner(Node):
                 if ok
                 else (
                     f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
-                    f"moved={moved_m:.2f} succeeded={succeeded}"
+                    f"moved={moved_m:.2f} succeeded={succeeded} "
+                    f"lateral={lateral_max:.3f}<="
+                    f"{self.normal_drive_lateral_limit_mps:.3f}"
                 ),
                 {
                     "global_path_points": self.global_path_points,
                     "local_path_points": self.local_path_points,
                     "cmd_max": round(cmd_max, 3),
+                    "cmd_longitudinal_max_mps": round(longitudinal_max, 4),
+                    "cmd_lateral_max_mps": round(lateral_max, 4),
+                    "cmd_yaw_rate_max_radps": round(yaw_rate_max, 4),
+                    "normal_drive_lateral_limit_mps": round(
+                        self.normal_drive_lateral_limit_mps, 4
+                    ),
+                    "normal_motion_mode_ok": normal_motion_mode_ok,
                     "moved_m": round(moved_m, 2),
                     "succeeded": succeeded,
                 },
@@ -1556,8 +1700,13 @@ class SimValidationRunner(Node):
         start = time.monotonic()
         base_global = self.global_path_count
         base_local = self.local_path_count
+        base_site_path = self.site_path_count
         known_nav_goals = self.goal_ids(self.latest_nav_status)
         self.reset_cmd_metrics()
+        self.site_phase_raw_components = {}
+        # HH_260818 - Keep the reported entry/return path size scoped to this
+        # campsite run instead of retaining a prior transient-local sample.
+        self.site_path_points = 0
         for _ in range(4):
             self.pub_mission_key.publish(msg)
             self.spin_for(0.05)
@@ -1620,6 +1769,10 @@ class SimValidationRunner(Node):
         low_battery_finish_manual_return_sent = False
         low_battery_finish_return_started = False
         low_battery_finish_recovered = False
+        manual_return_attempted = False
+        manual_return_sent = False
+        manual_return_action = ""
+        drop_zone_return_before_site_done = False
         reached_nav = False
         seen_goal_reached_state = False
         seen_site_key = False
@@ -1677,11 +1830,17 @@ class SimValidationRunner(Node):
                 reverse_parking_controller_status_messages.add(reverse_parking_controller_msg)
             seen_goal_reached_state = seen_goal_reached_state or state_label == "GOAL_REACHED"
             seen_site_key = seen_site_key or active_key.startswith("camping_site_")
-            seen_drop_zone_return = (
-                seen_drop_zone_return
-                or active_key == "drop_zone"
+            drop_zone_return_now = (
+                active_key == "drop_zone"
                 or scenario_label == "RETURN_TO_DROP_ZONE"
             )
+            if (
+                manual_return_sent
+                and drop_zone_return_now
+                and not (seen_done or "DONE" in site_msg)
+            ):
+                drop_zone_return_before_site_done = True
+            seen_drop_zone_return = seen_drop_zone_return or drop_zone_return_now
             if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
                 seen_site_phase = True
             if (
@@ -1714,18 +1873,18 @@ class SimValidationRunner(Node):
                         low_battery_finish_wait_start = time.monotonic()
                     observe_s = max(0.0, self.low_battery_return_manual_observe_s)
                     if (
-                        not low_battery_finish_manual_return_sent
+                        not manual_return_attempted
                         and time.monotonic() >= low_battery_finish_wait_start + observe_s
                     ):
-                        self.publish_operation(
-                            self.pub_site_operation,
-                            MotionOperation.RETURN,
-                            repeats=1,
+                        manual_return_attempted = True
+                        manual_return_sent, manual_return_action = (
+                            self.request_camping_return()
                         )
-                        low_battery_finish_manual_return_sent = True
-                else:
-                    self.publish_operation(
-                        self.pub_site_operation, MotionOperation.RETURN, repeats=1
+                        low_battery_finish_manual_return_sent = manual_return_sent
+                elif not manual_return_attempted:
+                    manual_return_attempted = True
+                    manual_return_sent, manual_return_action = (
+                        self.request_camping_return()
                     )
             # HH_260701 - RETURNING can be emitted before the campsite exit is
             # actually complete. Require the concrete site maneuver phases so
@@ -2005,14 +2164,58 @@ class SimValidationRunner(Node):
         route_path_ok = global_new or (
             self.camping_stop_at_wait_return and local_new
         )
+        site_path_updates = self.site_path_count - base_site_path
+        required_site_paths = 1 if self.camping_stop_at_wait_return else 2
+        site_path_ok = site_path_updates >= required_site_paths
+        required_crab_phases = ["CRAB_IN"]
+        if seen_crab_out:
+            required_crab_phases.append("CRAB_OUT")
+        crab_command_mode_ok = all(
+            int(self.site_phase_raw_components.get(phase, {}).get("samples", 0)) > 0
+            and int(
+                self.site_phase_raw_components.get(phase, {}).get(
+                    "mixed_axis_samples", 1
+                )
+            ) == 0
+            and float(
+                self.site_phase_raw_components.get(phase, {}).get(
+                    "angular_z_abs_max_radps", 1.0
+                )
+            ) <= 1.0e-6
+            and float(
+                self.site_phase_raw_components.get(phase, {}).get(
+                    "linear_y_abs_max_mps", 0.0
+                )
+            ) > self.normal_drive_lateral_limit_mps
+            and (
+                phase != "CRAB_IN"
+                or int(
+                    self.site_phase_raw_components.get(phase, {}).get(
+                        "longitudinal_samples", 1
+                    )
+                ) == 0
+            )
+            for phase in required_crab_phases
+        )
         site_ok = bool(
             route_path_ok
+            and site_path_ok
+            and crab_command_mode_ok
             and cmd_max > 0.03
             and route_reached
             and seen_site_phase
             and site_departure_ok
             and service_mode_ok
             and seen_service_waiting_for_return_request
+        )
+        manual_return_order_ok = bool(
+            self.camping_stop_at_wait_return
+            or not self.camping_return_via_ui
+            or (
+                manual_return_sent
+                and manual_return_action == "site_exit_then_return"
+                and not drop_zone_return_before_site_done
+            )
         )
         drop_zone_ok = (
             not self.camping_wait_drop_zone
@@ -2069,6 +2272,7 @@ class SimValidationRunner(Node):
         )
         ok = bool(
             site_ok
+            and manual_return_order_ok
             and drop_zone_ok
             and low_battery_finish_return_ok
             and charging_recall_low_battery_ok
@@ -2120,6 +2324,8 @@ class SimValidationRunner(Node):
                 if ok
                 else (
                     f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
+                    f"site_paths={site_path_updates}/{required_site_paths} "
+                    f"pure_crab={crab_command_mode_ok} "
                     f"nav_success={reached_nav} site_phase={seen_site_phase} "
                     f"service_mode={camping_service_mode} service_mode_ok={service_mode_ok} "
                     f"rotate_180={seen_rotate_180} "
@@ -2141,6 +2347,11 @@ class SimValidationRunner(Node):
                 ),
                 {
                     "cmd_max": round(cmd_max, 3),
+                    "site_path_updates": site_path_updates,
+                    "site_path_max_points": self.site_path_points,
+                    "site_path_ok": site_path_ok,
+                    "crab_command_mode_ok": crab_command_mode_ok,
+                    "crab_phase_raw_components": self.site_phase_raw_components,
                     "nav_success": reached_nav,
                     "route_reached": route_reached,
                     "site_phase": seen_site_phase,
@@ -2166,6 +2377,14 @@ class SimValidationRunner(Node):
                     "service_waiting_for_charging": seen_service_waiting_for_charging,
                     "service_charging": seen_service_charging,
                     "service_state_sequence": " -> ".join(self.service_state_names_seen),
+                    "camping_return_via_ui": self.camping_return_via_ui,
+                    "manual_return_attempted": manual_return_attempted,
+                    "manual_return_sent": manual_return_sent,
+                    "manual_return_action": manual_return_action,
+                    "drop_zone_return_before_site_done": (
+                        drop_zone_return_before_site_done
+                    ),
+                    "manual_return_order_ok": manual_return_order_ok,
                     "low_battery_finish_return_enabled": (
                         low_battery_finish_return_enabled
                     ),

@@ -9,6 +9,7 @@ export const TELEMETRY_TABS = [
   { id: 'trajectory', label: '주행 궤적' },
   { id: 'perception', label: '지도 · 인지' },
   { id: 'safety', label: '안전 · 제어' },
+  { id: 'docking', label: '도킹 · 주차' },
 ];
 
 const EMPTY_TELEMETRY = {
@@ -19,7 +20,7 @@ const EMPTY_TELEMETRY = {
   imu: {},
   radar: { channels: {} },
   lidar: { points: [], point_count: 0, sample_count: 0, streams: {} },
-  cameras: { front: {}, rear: {} },
+  cameras: { front: {}, rear: {}, docking: {} },
   localization: { pose: {}, status: {}, trace: [] },
   motion: { velocity: {}, tracking_error: {} },
   paths: { global: {}, local: {}, maneuvers: {} },
@@ -29,6 +30,7 @@ const EMPTY_TELEMETRY = {
     cost_layers: { lanelet: {}, lidar: {}, radar: {}, inflation: {} },
   },
   safety: { gate: {}, controllers: {}, radar_evidence: '', obstacle_replan: '' },
+  docking: { tag_detected: false, tag: {}, is_charging: false, battery_percentage: null },
   mission: {},
 };
 
@@ -383,7 +385,9 @@ function CameraFeed({ telemetry, camera, label }) {
             <strong>NO FRAME</strong>
             <span>{camera === 'front'
               ? '/sensing/camera/econ_front/image_rect/compressed'
-              : '/sensing/camera/econ_rear/image_raw (+ compressed when available)'}</span>
+              : (camera === 'docking'
+                ? '/perception/apriltag_parking_detector/debug_image/compressed'
+                : '/sensing/camera/econ_rear/image_raw (+ compressed when available)')}</span>
           </div>
         )}
       </div>
@@ -976,6 +980,159 @@ function SafetyView({ telemetry }) {
   );
 }
 
+function DockingPathPlot({ telemetry }) {
+  const reverse = pointList(telemetry.paths?.maneuvers?.reverse_parking);
+  const tagGuided = pointList(telemetry.paths?.maneuvers?.apriltag_parking);
+  const all = [...reverse, ...tagGuided];
+  const width = 760;
+  const height = 340;
+  if (all.length < 2) {
+    return (
+      <div className="docking-path-empty">
+        <strong>NO PARKING PATH</strong>
+        <span>주차 컨트롤러 경로 토픽 대기 중</span>
+      </div>
+    );
+  }
+  const xs = all.map(point => point[0]);
+  const ys = all.map(point => point[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = Math.max(0.5, maxX - minX);
+  const spanY = Math.max(0.5, maxY - minY);
+  const scale = Math.min((width - 70) / spanX, (height - 70) / spanY);
+  const toScreen = point => [
+    35 + (point[0] - minX) * scale,
+    height - 35 - (point[1] - minY) * scale,
+  ];
+  const pathText = points => points
+    .map(point => toScreen(point).map(value => value.toFixed(1)).join(','))
+    .join(' ');
+  const lastPath = tagGuided.length > 0 ? tagGuided : reverse;
+  const [targetX, targetY] = toScreen(lastPath[lastPath.length - 1]);
+  return (
+    <svg className="docking-path-plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Parking controller approach trajectories">
+      <defs>
+        <pattern id="dockingGrid" width="38" height="38" patternUnits="userSpaceOnUse">
+          <path d="M 38 0 L 0 0 0 38" className="docking-grid-line" />
+        </pattern>
+      </defs>
+      <rect width={width} height={height} fill="url(#dockingGrid)" />
+      {reverse.length >= 2 && <polyline points={pathText(reverse)} className="docking-path docking-path-reverse" />}
+      {tagGuided.length >= 2 && <polyline points={pathText(tagGuided)} className="docking-path docking-path-tag" />}
+      <circle cx={targetX} cy={targetY} r="8" className="docking-target" />
+      <line x1={targetX - 13} y1={targetY} x2={targetX + 13} y2={targetY} className="docking-target-cross" />
+      <line x1={targetX} y1={targetY - 13} x2={targetX} y2={targetY + 13} className="docking-target-cross" />
+    </svg>
+  );
+}
+
+function DockingView({ telemetry }) {
+  const docking = telemetry.docking || {};
+  const tag = docking.tag || {};
+  const controllers = telemetry.safety?.controllers || {};
+  const reverse = controllers.reverse_parking || {};
+  const april = controllers.apriltag_parking || {};
+  const mission = telemetry.mission || {};
+  const [parkingOn, setParkingOn] = useState(false);
+  const [pending, setPending] = useState('');
+  const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
+
+  const postCommand = async (name, url, successMessage) => {
+    setPending(name);
+    setCommandStatus({ tone: '', message: '' });
+    try {
+      const response = await fetch(url, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok || !body.success) throw new Error(body.message || '명령 실패');
+      setCommandStatus({ tone: 'ok', message: successMessage });
+      return true;
+    } catch (error) {
+      setCommandStatus({ tone: 'err', message: error.message || '명령 실패' });
+      return false;
+    } finally {
+      setPending('');
+    }
+  };
+
+  const toggleParking = async () => {
+    const next = !parkingOn;
+    const applied = await postCommand(
+      'parking', `/ui/manual_parking?value=${next}`, next ? '주차 시작 명령 전송됨' : '주차 취소 명령 전송됨'
+    );
+    if (applied) setParkingOn(next);
+  };
+
+  return (
+    <div className="telemetry-view telemetry-docking-view">
+      <div className="telemetry-source-row">
+        <SourcePill telemetry={telemetry} source="camera.docking" label="AprilTag debug" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="docking.tag_detected" label="Tag detection" />
+        <SourcePill telemetry={telemetry} source="docking.tag_pose" label="Tag pose" />
+        <SourcePill telemetry={telemetry} source="platform.velocity" label="Charging CAN" />
+        <SourcePill telemetry={telemetry} source="controller.apriltag_parking" label="Docking controller" />
+        <SourcePill telemetry={telemetry} source="controller.reverse_parking" label="Parking controller" />
+      </div>
+      <div className="docking-command-bar">
+        <button
+          type="button"
+          className="docking-return-command"
+          disabled={Boolean(pending)}
+          onClick={() => postCommand('return', '/ui/manual_return', '즉시 복귀 명령 전송됨')}
+        >
+          {pending === 'return' ? '복귀 요청 중' : '즉시 복귀'}
+        </button>
+        <button
+          type="button"
+          className={`docking-parking-command ${parkingOn ? 'active' : ''}`}
+          disabled={Boolean(pending)}
+          onClick={toggleParking}
+        >
+          {pending === 'parking' ? '명령 전송 중' : (parkingOn ? '주차 취소' : '주차 시작')}
+        </button>
+        <div className={`docking-command-status ${commandStatus.tone}`}>{commandStatus.message || '명령 대기'}</div>
+      </div>
+      <div className="docking-layout">
+        <CameraFeed telemetry={telemetry} camera="docking" label="AprilTag docking debug" />
+        <section className="telemetry-section docking-status-section">
+          <SectionHeader title="Docking state" meta={mission.service_state_name || 'service state unavailable'} />
+          <div className="docking-state-banner">
+            <div className={docking.tag_detected ? 'detected' : 'missing'}>
+              <span>TAG</span><strong>{docking.tag_detected ? 'DETECTED' : 'NOT DETECTED'}</strong>
+            </div>
+            <div className={docking.is_charging ? 'charging' : 'idle'}>
+              <span>CHARGING</span><strong>{docking.is_charging ? 'TRUE · STOP' : 'FALSE'}</strong>
+            </div>
+          </div>
+          <div className="telemetry-metric-grid telemetry-metric-grid-3">
+            <Metric label="Tag distance" value={numberText(tag.distance_m, 3)} unit="m" tone={docking.tag_detected ? 'ok' : 'warn'} />
+            <Metric label="Camera X" value={numberText(tag.x_m, 3)} unit="m" />
+            <Metric label="Camera Y" value={numberText(tag.y_m, 3)} unit="m" />
+            <Metric label="Camera Z" value={numberText(tag.z_m, 3)} unit="m" />
+            <Metric label="Tag yaw" value={numberText(tag.yaw_deg, 1)} unit="°" />
+            <Metric label="Battery" value={numberText(docking.battery_percentage, 1)} unit="%" />
+          </div>
+          <div className="docking-controller-list">
+            <div><span>Docking</span><strong>{april.operating_state || 'NO DATA'}</strong><em>{april.message || '-'}</em></div>
+            <div><span>Reverse parking</span><strong>{reverse.operating_state || 'NO DATA'}</strong><em>{reverse.message || '-'}</em></div>
+          </div>
+        </section>
+        <section className="telemetry-section docking-path-section">
+          <SectionHeader title="Parking approach path" meta="controller output" />
+          <DockingPathPlot telemetry={telemetry} />
+          <div className="telemetry-legend-row">
+            <span><i className="legend-docking-reverse" />Reverse parking</span>
+            <span><i className="legend-docking-tag" />AprilTag docking</span>
+            <span><i className="legend-docking-target" />Target</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function TelemetryWorkspace({ activeTab }) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
@@ -1113,6 +1270,7 @@ export default function TelemetryWorkspace({ activeTab }) {
     if (activeTab === 'trajectory') return <TrajectoryView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
+    if (activeTab === 'docking') return <DockingView telemetry={telemetry} />;
     return null;
   }, [activeTab, telemetry, mapData]);
 

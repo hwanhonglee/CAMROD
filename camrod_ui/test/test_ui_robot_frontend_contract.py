@@ -62,7 +62,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def test_operator_telemetry_tabs_cover_rviz_runtime_surfaces(self) -> None:
         for label in (
             "GNSS · IMU", "레이더 · LiDAR", "카메라", "주행 궤적",
-            "지도 · 인지", "안전 · 제어",
+            "지도 · 인지", "안전 · 제어", "도킹 · 주차",
         ):
             self.assertIn(label, self.telemetry_source)
         self.assertIn("TelemetryWorkspace", self.source)
@@ -102,6 +102,22 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertIn(token, self.telemetry_source)
         self.assertIn("trajectory-plot-goal-active", self.css)
         self.assertIn("manual-goal-confirm", self.css)
+
+    def test_docking_workspace_exposes_commands_image_path_and_charge(self) -> None:
+        # HH_260818 - A field docking test must be observable and commandable
+        # from the managed UI without opening RViz or a separate browser tool.
+        for token in (
+            "/ui/manual_return",
+            "/ui/manual_parking?value=${next}",
+            'camera="docking"',
+            "DockingPathPlot",
+            "tag_detected",
+            "is_charging",
+        ):
+            self.assertIn(token, self.telemetry_source)
+        self.assertIn("requestManualReturn", self.source)
+        self.assertIn("toggleManualParking", self.source)
+        self.assertIn(".docking-layout", self.css)
 
 
 if __name__ == "__main__":

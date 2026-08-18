@@ -4,6 +4,7 @@
 // signed-speed + parallel-steering representation without depending on the
 // direction of an earlier command.
 
+#include <algorithm>
 #include <cmath>
 
 namespace westonrobot
@@ -14,6 +15,15 @@ struct ParallelMotionCommand
   double signed_speed{0.0};
   double steering_angle_rad{0.0};
 };
+
+// HH_260818 - Nav2 and bridge calculations can leave sub-centimetre lateral
+// velocity residue on an otherwise ordinary Dual-Ackermann command. Do not
+// turn that numerical residue into a longitudinal/parallel mode transition.
+inline bool ShouldUseParallelMotion(
+  const double linear_y, const double lateral_deadband_mps)
+{
+  return std::abs(linear_y) > std::max(0.0, lateral_deadband_mps);
+}
 
 inline ParallelMotionCommand ResolveParallelMotionCommand(
   const double linear_x, const double linear_y)

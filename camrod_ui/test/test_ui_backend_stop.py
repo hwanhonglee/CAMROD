@@ -6,6 +6,7 @@ import threading
 from types import SimpleNamespace
 import unittest
 
+from builtin_interfaces.msg import Time as RosTime
 
 sys.path.insert(
     0,
@@ -103,6 +104,141 @@ class _FakeBackend:
 
 
 class UiBackendStopTest(unittest.TestCase):
+
+    def test_manual_return_defers_planning_until_site_exit_reaches_anchor(self) -> None:
+        events = []
+
+        class Publisher:
+            @staticmethod
+            def publish(message) -> None:
+                events.append(("planning", message))
+
+        backend = SimpleNamespace(
+            _active_mission_site="B8",
+            _latest_service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+            _latest_platform_is_charging=False,
+            planning_return_to_drop_zone_topic=(
+                "/planning/state_machine/return_to_drop_zone"
+            ),
+            pub_planning_return_to_drop_zone=Publisher(),
+            _publish_camping_site_maneuver_controller_return=(
+                lambda source: events.append(("site_exit", source))
+            ),
+            _publish_service_state=(
+                lambda state, source: events.append(("state", state, source))
+            ),
+            get_clock=lambda: SimpleNamespace(
+                now=lambda: SimpleNamespace(
+                    to_msg=lambda: RosTime(sec=1, nanosec=2)
+                )
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(backend, "test:manual")
+
+        self.assertEqual(action, "site_exit_then_return")
+        self.assertEqual([event[0] for event in events], ["site_exit", "state"])
+        self.assertEqual(events[1][1], AvgServiceState.RETURNING_TO_DROP_ZONE)
+
+    def test_manual_return_during_normal_travel_preempts_with_planning_recall(self) -> None:
+        events = []
+
+        class Publisher:
+            @staticmethod
+            def publish(message) -> None:
+                events.append(("planning", message))
+
+        backend = SimpleNamespace(
+            _active_mission_site="B8",
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _latest_platform_is_charging=False,
+            planning_return_to_drop_zone_topic=(
+                "/planning/state_machine/return_to_drop_zone"
+            ),
+            pub_planning_return_to_drop_zone=Publisher(),
+            _publish_camping_site_maneuver_controller_return=(
+                lambda source: events.append(("site_exit", source))
+            ),
+            _publish_service_state=(
+                lambda state, source: events.append(("state", state, source))
+            ),
+            get_clock=lambda: SimpleNamespace(
+                now=lambda: SimpleNamespace(
+                    to_msg=lambda: RosTime(sec=1, nanosec=2)
+                )
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:normal_travel"
+        )
+
+        self.assertEqual(action, "return_route")
+        self.assertEqual([event[0] for event in events], ["planning", "state"])
+        self.assertEqual(events[0][1].site_name, "B8")
+        self.assertEqual(events[0][1].source, "test:normal_travel")
+        self.assertEqual(events[1][1], AvgServiceState.RETURNING_TO_DROP_ZONE)
+
+    def test_manual_return_at_drop_zone_starts_alignment_without_nav_loop(self) -> None:
+        operations = []
+        backend = SimpleNamespace(
+            _latest_service_state=int(AvgServiceState.DROP_ZONE_WAIT),
+            _latest_platform_is_charging=False,
+            _publish_drop_zone_operation=lambda operation, source: operations.append(
+                (operation, source)
+            ),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:station"
+        )
+
+        self.assertEqual(action, "parking_alignment")
+        self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
+
+    def test_manual_return_realigns_when_charging_contact_was_lost(self) -> None:
+        # HH_260818 - A stale public CHARGING state without current CAN contact
+        # is a parking retry, not a reason to create another drop-zone Nav2 loop.
+        operations = []
+        backend = SimpleNamespace(
+            _latest_service_state=int(AvgServiceState.CHARGING),
+            _latest_platform_is_charging=False,
+            _publish_drop_zone_operation=lambda operation, source: operations.append(
+                (operation, source)
+            ),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:lost_contact"
+        )
+
+        self.assertEqual(action, "parking_alignment")
+        self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
+
+    def test_manual_parking_uses_drop_zone_alignment_handoff(self) -> None:
+        operations = []
+        backend = SimpleNamespace(
+            _publish_drop_zone_operation=lambda operation, source: operations.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_parking_operation=lambda operation, source: operations.append(
+                ("parking", operation, source)
+            ),
+        )
+
+        result = UiBackendNode.set_manual_parking(backend, True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            operations,
+            [(
+                "drop_zone",
+                MotionOperation.ALIGN_FOR_PARKING,
+                "http:manual_parking",
+            )],
+        )
 
     def test_readiness_timer_can_rebroadcast_unchanged_authoritative_state(self) -> None:
         broadcasts = []

@@ -21,6 +21,8 @@ axis-staged campsite exit, repeated bounded recovery, and class-only 2 m fusion 
 worak-test map-v22 identity without rewriting the user-authored OSM. -->
 <!-- HH_260818 - Publish v2.1.8 with exact campsite crab, bounded repeated
 recovery, semantic fusion/radar safety, and an opt-in tent occupancy guard. -->
+<!-- HH_260818 - Separate normal Dual-Ackermann from intentional crab, use one
+campsite anchor across restarts, and expose manual return/docking telemetry. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.8`**.
@@ -70,15 +72,18 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Recovery attempt | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | One projected crab/reverse/reverse-yaw stage |
 | Recovery episode | up to `50` attempts, `1.50 m`, `90 s`, `0.5 s` retry pause | Fresh candidates are retried; the first attempt no longer creates a permanent hold |
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
+| Normal/crab mode selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann | Nav2 lateral residue cannot select parallel motion; campsite/recovery commands remain explicit crab |
 | Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
+| Campsite return anchor | exact entry lanelet snap, return tolerance `0.04 m` | `CRAB_IN` and `CRAB_OUT` share one map anchor; current heading reverses the crab side after a 180-degree restart |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
 | Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
+| Final parking slowdown | reverse last `0.30 m`; AprilTag last `0.60 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
 | Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | Front channels retain measured self-return exclusions and remain an independent near-field fail-safe beside the 2 m classified-fusion path stop |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
-| Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | GNSS/IMU, radar/LiDAR, cameras, trajectory, map/perception, safety/control replace daily RViz/Tk inspection |
+| Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |
 | RViz launch default | `OFF` | Normal operation uses the managed UI; `rviz:=true` remains an engineering override |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
 | System health tools | `4` nodes in `system_core_container` | Stable aggregate/status chain; standalone fallback remains available |
@@ -90,12 +95,16 @@ runtime evidence separately.
 
 ## Operator Telemetry
 
-![Six-view operator telemetry workspace](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+![Historical six-view operator telemetry workspace](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-workspace.gif)
+
+![Current operator docking workspace](docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
 
 ![AMD64 operator telemetry resource profile](docs/assets/module-guides/ui/test-results/operator-telemetry-amd64-20260810/operator-telemetry-resource-profile.png)
 
-Six actual `1600x1000` browser views had zero document/workspace/text overflow.
-View leases reduce the former 32 always-on subscriptions to `6/11/4/7/9/7`;
+The original six actual `1600x1000` browser views had zero
+document/workspace/text overflow. The seventh docking view was captured from
+the production build with schema v3 and seven lazy subscriptions. View leases
+reduce the former 32 always-on subscriptions to `6/11/4/7/9/7/7`;
 a GNSS view reopened after proximity reported GNSS/IMU `10.01 Hz` and selected
 pose `20.02 Hz` after one second. The AMD64 backend-only profile is bounded but
 is not ARM64 acceptance: the production 8-core/16-GB Jetson still requires a
@@ -156,11 +165,13 @@ no second hold. This is not physical-road evidence.
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Historical persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.8 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 8 packages; Ranger `1/1`, control `2/2`, perception `7/7`, UI `61/61`, and bringup `194/194` passed |
+| v2.1.8 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 5 packages; Ranger motion GTest `9/9`, control xUnit `85`, platform xUnit `36`, UI `69/69`, and bringup xUnit `265` passed with zero functional failures |
 | Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
 | Operator-map manual goal | **AMD64 SIM PASS** | Default launch started no RViz; confirmed UI goal published `/goal_pose`, drive-enable and engage, then produced manual `DRIVING` plus bounded global/local paths |
 | Current map-v22 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `8fa131...e59`; 55 lanelets, 14 areas, 1,652 nodes; B1-B13/drop-zone mirrors synchronized |
-| Current B1 exact crab/return | **AMD64 SIM PASS** | Fresh map-v22 graph completed `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; exit raw command was pure lateral and returned within `0.04 m` of the route anchor |
+| Current normal route + B8 same-anchor entry/return | **AMD64 SIM PASS** | Normal Nav2 moved `3.73 m` with maximum `linear.y=0.000 m/s`; then `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; localization `20.00 Hz`, wheel odometry `10 Hz` |
+| Manual Return and docking workspace | **API/UI PASS** | Site endpoint returned `site_exit_then_return` and deferred drop-zone planning until `DONE`; docking schema v3 opened seven lazy subscriptions and rendered Return, parking, tag, path, controller, battery, and charging surfaces |
+| Current B8 axis-separated return | **AMD64 SIM PASS** | Entry/exit paths published `2/2`; IN used 102 lateral samples, OUT used 89 lateral then 13 straight anchor-correction samples, with `0` mixed-axis samples; returned within `0.04 m` of the route anchor |
 | Current repeated boundary recovery | **AMD64 SIM PARTIAL PASS** | The long B1 return replay released three consecutive lanelet contacts and resumed the route; the 180 s runner ended before the 80 m return/parking sequence completed |
 | Current semantic obstacle contract | **UNIT/GATE-MATRIX PASS** | Empty/unknown classes rejected; classified fusion stopped forward but passed crab/reverse, and the synthetic radar matrix stopped all four directions; both full-graph rasters ran at `10 Hz`; physical fusion calibration and rear-radar acceptance remain pending |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
@@ -290,6 +301,8 @@ from a workstation-only simulation result.
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
 | [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
+| [Runtime parameter reference](docs/RUNTIME_PARAMETER_REFERENCE.md) | Speed, distance, timeout, feature toggle, sensor, localization, parking, boundary, file precedence, and synchronization index |
+| [Current B8 return/docking evidence](docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/README.md) | Same-anchor B8 JSON, PNG/GIF, active parameter summary, and evidence limits |
 | [v2.1.8 release notes](docs/V2_1_8_RELEASE_NOTES.md) | Worak integration, exact crab, bounded recovery, semantic obstacle safety, occupancy toggle, build, and verification |
 | [v2.1.7 release notes](docs/V2_1_7_RELEASE_NOTES.md) | Previous boundary, UI readiness, package evidence, and tool ownership baseline |
 | [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Previous sensor cadence, motion/boundary policy, visualization, and field acceptance baseline |

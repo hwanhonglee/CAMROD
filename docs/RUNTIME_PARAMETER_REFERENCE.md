@@ -1,0 +1,293 @@
+# CAMROD Runtime Parameter Reference
+
+<!-- HH_260818 - Provide one operator-facing index for motion, safety,
+parking, sensing, localization, feature toggles, and synchronized mirrors. -->
+
+This guide lists the parameters normally changed for vehicle behavior. It does
+not duplicate every ROS topic string or diagnostic checker threshold in the
+repository.
+
+## Precedence And Editing Rule
+
+Full bringup resolves values in this order, highest priority first:
+
+1. explicit `ros2 launch ... name:=value` argument;
+2. `camrod_bringup/config/bringup/launch_defaults.yaml` override;
+3. a parameter file under `camrod_bringup/config/<module>/`;
+4. the package-owned file under `camrod_<module>/config/`;
+5. the node's source-code default.
+
+For synchronized contracts, edit the package-owned file and its bringup mirror
+in the same change. Tests compare exact mirrors or the explicitly shared keys.
+The deployed RPP preview and Ranger steering-rate profiles are intentional A/B
+pairs and must not be made byte-identical without a new driving test.
+
+## File Index
+
+| What to tune | Package source | Full-bringup deployment file |
+|---|---|---|
+| RPP speed, lookahead, curvature and goal approach | `camrod_planning/config/nav2_vehicle.yaml` | `camrod_bringup/config/planning/nav2_vehicle.yaml` |
+| Final command gate and obstacle/boundary policy | `camrod_control/config/cmd_vel_safety_gate.yaml` | `camrod_bringup/config/control/cmd_vel_safety_gate.yaml` plus `bringup/launch_defaults.yaml` overrides |
+| Campsite, drop-zone and route recovery | `camrod_control/config/control.yaml` | `camrod_bringup/config/control/control.yaml` |
+| Reverse and AprilTag parking | `camrod_control/config/parking.yaml` | `camrod_bringup/config/control/parking.yaml` |
+| Ranger steering, crab selection, CAN/BMS | `camrod_platform/config/ranger_driver.yaml` | `camrod_bringup/config/platform/ranger_driver.yaml` |
+| Body/planning contour and sensor TF | `camrod_sensor_kit/config/robot_params.yaml` | `camrod_bringup/config/sensor_kit/robot_params.yaml` |
+| EKF | `camrod_localization/config/filter/ekf.yaml` | `camrod_bringup/config/localization/filter/ekf.yaml` |
+| GNSS input filtering | `camrod_localization/config/source/input_adapter.yaml` | `camrod_bringup/config/localization/source/input_adapter.yaml` |
+| GNSS receiver | `camrod_sensing/config/gnss/zed_f9p_rover.yaml` | `camrod_bringup/config/sensing/gnss/zed_f9p_rover.yaml` |
+| Front/rear cameras | `camrod_sensing/config/camera/camera_params.yaml` | `camrod_bringup/config/sensing/camera/camera_params.yaml` |
+| Radar channels and raster | `camrod_sensing/config/radar/*.yaml` | `camrod_bringup/config/sensing/radar/*.yaml` |
+| Classified camera-LiDAR raster | `camrod_sensing/config/lidar/cost_grid.yaml` | `camrod_bringup/config/sensing/lidar/cost_grid.yaml` |
+| Campsite/drop-zone coordinates | planning/map package YAML | `camrod_bringup/config/{planning,map}/*.yaml` |
+| Module/container/UI feature switches | launch files | `camrod_bringup/config/bringup/launch_defaults.yaml` |
+
+## Vehicle Speed
+
+The final gate applies `cmd_vel_gate_speed_scale: 0.5`. Values below show both
+the raw owner limit and the resulting platform limit.
+
+| Motion | Parameter | Raw | Final / meaning |
+|---|---|---:|---:|
+| Normal RPP cruise | `RPP.desired_linear_vel` | `1.111111 m/s` | `0.555556 m/s` = `2.0 km/h` |
+| RPP curvature floor | `regulated_linear_scaling_min_speed` | `0.333333 m/s` | `0.166667 m/s` = `0.6 km/h` |
+| RPP final goal approach | `min_approach_linear_velocity` | `0.277778 m/s` | `0.138889 m/s` = `0.5 km/h` |
+| Campsite crab | `crab_speed_mps` | `0.666667 m/s` | `0.333334 m/s` = `1.2 km/h` |
+| Campsite reverse | `reverse_entry_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
+| Drop-zone exit | `exit_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
+| Reverse parking cruise | `reverse_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
+| Reverse parking final | `final_approach_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` |
+| AprilTag approach | `reverse_approach_speed_mps` | `0.555556 m/s` | `0.277778 m/s` = `1.0 km/h` |
+| AprilTag final insertion | `final_insertion_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` |
+| Route recovery | `maximum_speed_mps` | `0.10 m/s` | `0.05 m/s` = `0.18 km/h` |
+
+Do not raise only one raw maneuver speed when the ratio to normal cruise is
+important. Change the profile as one set, rerun B1-B10 service simulation, and
+measure physical steering settling.
+
+## Normal Steering Versus Crab
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `parallel_command_lateral_deadband_mps` | `0.02` | `|linear.y|` at or below this remains Dual-Ackermann; above it selects parallel motion |
+| `steering_mode_transition_stationary_enabled` | `true` | Holds translation during longitudinal/parallel mode changes |
+| `steering_mode_transition_ready_error_rad` | `0.05` | Wheel-angle error allowed before traction |
+| `steering_transition_rate_radps` | package `1.0`, bringup `1.5` | Maximum steering target slew; deliberate bench/deployment A/B |
+| `steering_transition_stop_error_rad` | `0.70` | Ordinary path tracking stops only for a genuinely large steering lag |
+
+Normal Nav2 publishes `linear.y=0`. Camping and recovery intentionally publish
+lateral commands at least `0.10 m/s`, well outside the deadband.
+
+## RPP Tracking
+
+| Parameter | Package / bringup | Meaning |
+|---|---:|---|
+| `lookahead_dist` | `1.2 / 3.5 m` | Fixed package study value / deployed fallback value |
+| `use_velocity_scaled_lookahead_dist` | `false / true` | Intentional A/B difference |
+| `min_lookahead_dist` | `1.1 / 1.5 m` | Minimum preview |
+| `max_lookahead_dist` | `2.0 / 3.5 m` | Maximum preview |
+| `rotate_to_heading_angular_vel` | `0.35 rad/s` | Manual RotationShim heading speed |
+| `max_angular_accel` | `0.8 rad/s^2` | Controller angular acceleration cap |
+
+Change RPP values first in the full-bringup deployment file when testing the
+robot. Preserve the package A/B profile until the result is accepted and
+documented.
+
+## Campsite In And Out
+
+File pair: `camrod_control/config/control.yaml` and its bringup mirror.
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `site_entry_mode` | `crab` | B1-B10 use lateral entry |
+| `use_goal_pair_for_lateral_offset` | `true` | Computes site offset from snap/site map coordinates |
+| `site_rotate_direction_policy` | `entry_crab_side` | Turn direction follows the live body-frame crab side, including reversed restart heading |
+| `site_pose_reached_distance_m` | `0.60 m` | Reboot near site restores `WAIT_RETURN` instead of entering again |
+| `entry_position_tolerance_m` | `0.15 m` | Completes crab-in position |
+| `return_position_tolerance_m` | `0.04 m` | Required distance to the shared lanelet snap anchor on crab-out |
+| `crab_return_timeout_s` | `90 s` | Time available for exit plus repeated boundary recovery |
+| `rotate_yaw_tolerance_deg` | `4 deg` | 180-degree target tolerance |
+| `rotate_settle_hold_s` | `0.8 s` | Continuous settled-yaw proof before translation |
+| `rotate_settle_max_rate_degps` | `3 deg/s` | Maximum residual yaw rate during settle proof |
+| `unload_wait_s` | `5 s` | Delay before external Return becomes valid |
+| `auto_return_after_unload_wait` | `false` | Prevents automatic motion while people unload |
+| `roadside_max_lateral_offset_m` | `0.60 m` | B11-B13 roadside-only cap |
+
+Entry and exit now use the same `/planning/goal_pose_snapped` map anchor.
+`CRAB_IN` and `CRAB_OUT` publish `/control/camping_site_maneuver_controller/path_ros`.
+
+## Boundary Recovery
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `enable_route_safety_recovery_controller` | `true` | Enables projected recovery owner |
+| `maximum_attempts` | `50` | Fresh candidates per episode |
+| `maximum_total_distance_m` | `1.50 m` | Whole-episode travel cap |
+| `maximum_total_duration_s` | `90 s` | Whole-episode time cap |
+| `maximum_distance_m` | `0.40 m` | Per-attempt travel cap |
+| `maximum_duration_s` | `10 s` | Per-attempt time cap |
+| `retry_pause_s` | `0.5 s` | Zero command between attempts |
+| `cmd_vel_gate_route_safety_recovery_max_auto_releases` | `50` | Gate release budget per contact region |
+| `cmd_vel_gate_route_safety_recovery_progress_reset_distance_m` | `0.75 m` | Forward progress needed to reset region budget |
+
+Candidates include crab left/right, straight reverse, and reverse-yaw left/right.
+Physical-body collision, dynamic-obstacle, stale-data, episode distance, and
+episode time limits remain fail-closed.
+
+## Obstacle Stop And Replan
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `cmd_vel_gate_cost_threshold` | `85` | Dynamic cost stop threshold |
+| `cmd_vel_gate_cost_stop_dynamic_source_labels` | `radar,fusion` | Sources allowed to stop motion |
+| `cmd_vel_gate_cost_stop_classified_source_labels` | `fusion` | Fusion must have a current semantic class |
+| `cmd_vel_gate_cost_stop_classified_front_lookahead_m` | `2.0 m` | Class-confirmed path-front stop distance |
+| `cmd_vel_gate_cost_stop_clear_required_s` | `2.0 s` | Continuous clear proof before release |
+| `obstacle_replan_monitor.block_hold_s` | `20.0 s` | Delay before fallback planner preemption, not stop delay |
+| `enable_obstacle_replan_monitor` | `true` | Width-gated fallback replan monitor |
+| fallback minimum corridor | `2.50 m` | Prevents replanning in an infeasible narrow lane |
+
+The stop is immediate. The `20 s` value controls only replan escalation. Keep
+the class-confirmed fusion `2.0 m` contract unchanged unless camera-LiDAR field
+calibration is repeated.
+
+## Parking And Charging
+
+File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
+
+| Parameter | Reverse | AprilTag docking |
+|---|---:|---:|
+| Slowdown window | `0.30 m` remaining | `0.60 m` remaining |
+| Cruise raw speed | `0.444444 m/s` | `0.555556 m/s` |
+| Final raw speed | `0.138889 m/s` | `0.138889 m/s` |
+| `stop_when_charging` | `true` | `true` |
+| Charging required | `complete_without_charging: false` | `require_charging_for_completion: true` |
+| Charging wait | `45 s` | tag retry/wait policy |
+| Maximum retry | reverse distance/timeout policy | `5` tag retries |
+
+`bringup.parking.method` is `apriltag` on the physical profile. Simulation is
+forced to `reverse` because fake sensors do not publish a rear-camera tag.
+Charging CAN feedback immediately publishes zero in any active final-parking
+phase, then the internal phase becomes `PARKED` and public state is `CHARGING`.
+
+## Manual Return And Docking UI
+
+| Item | Topic/API | Effect |
+|---|---|---|
+| Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; planning recall is deferred until `CRAB_OUT` reaches the shared snap anchor |
+| Manual Return while driving | same API | Immediately preempts ordinary Nav2 travel with the drop-zone route |
+| Already at drop zone | same API | Starts drop-zone yaw alignment before selected parking method |
+| Already charging | same API | Reports `already_charging`; does not move |
+| `CHARGING` state but CAN contact lost | same API | Restarts drop-zone alignment instead of creating a Nav2 loop |
+| Manual parking | `POST /ui/manual_parking?value=true|false` | Starts/cancels alignment and final parking |
+| Docking debug image | `/perception/apriltag_parking_detector/debug_image/compressed` | Lazy UI camera stream |
+| Tag data | tag pose and detected topics | Exact x/y/z/distance/yaw and presence |
+| Controller paths | reverse/AprilTag `path_ros` | UI parking trajectory |
+| Charging | `/platform/status.is_charging` | UI boolean and immediate controller stop |
+
+The docking UI uses seven dynamic subscriptions only while its administrator
+tab is open.
+
+## Battery Policy
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `api_ui_minimum_mission_dispatch_battery_percent` | `35%` | New campsite admission |
+| `api_ui_low_battery_return_after_current_mission` | `true` | Finish current site service and wait for the user Return |
+| `cmd_vel_gate_critical_battery_percentage` | `0.20` | Hard stop at or below 20% |
+| `cmd_vel_gate_allow_mission_departure_while_charging` | `true` | Allowed charger departure when SOC gate passes |
+| `cmd_vel_gate_charging_departure_grace_s` | `15 s` | Stale charging contact grace after accepted departure |
+
+## Localization And GNSS
+
+| Parameter | Active value | File |
+|---|---:|---|
+| EKF `frequency` | `20 Hz` | `localization/filter/ekf.yaml` |
+| EKF `sensor_timeout` | `0.2 s` | same |
+| GNSS Mahalanobis `pose0_rejection_threshold` | `3.0 sigma` | same; not a direct metre threshold |
+| Adapter `max_position_jump_m` | `8.0 m` | `localization/source/input_adapter.yaml` |
+| Adapter reset | `2.0 s` | same |
+| GNSS receiver `rate` / `nav_rate` | `5 Hz / 1 solution per epoch` | `sensing/gnss/zed_f9p_rover.yaml` |
+| Wheel input | `10 Hz` measured in current sim | Ranger/platform chain |
+| IMU input | `20 Hz` measured in current sim | IMU converter/profile |
+
+The EKF rejection value is a normalized innovation gate, not “reject any
+position differing by 3 m.” Do not set it to `0.3` to obtain a 0.3 m distance
+gate; covariance changes the physical distance represented by sigma.
+
+## Sensors And Perception
+
+| Parameter/toggle | Active value | Main file |
+|---|---:|---|
+| Front/rear raw camera `fps` | `10 Hz` | `sensing/camera/camera_params.yaml` |
+| Rear monitoring JPEG | `2 Hz` | same |
+| LiDAR filtered/raster target | `10 Hz` | LiDAR config |
+| Radar raster/channels | `10 Hz` | radar config |
+| `enable_lidar_cost_grid` | `true` | launch defaults; this is classified fusion compatibility raster |
+| Direct raw LiDAR cost paint | `false` | LiDAR cost-grid file |
+| `enable_radar_cost_grid` | `true` | launch defaults |
+| `enable_yolo` | `true` | launch defaults |
+| `enable_campsite_occupancy_guard` | `false` | launch defaults and control YAML |
+| AprilTag detector | enabled only for selected physical docking path | perception/launch defaults |
+
+## Runtime And Resource Toggles
+
+| Toggle | Active value | Meaning |
+|---|---:|---|
+| `rviz` | `false` | Managed UI is the normal operator surface |
+| `use_nav2_container` | `true` | Scoped planner/controller component process |
+| `use_lidar_processing_container` | `true` | LiDAR preprocessing/ground segmentation composition |
+| `use_camera_yolo_container` | `true` | Front camera and YOLO hot path |
+| `use_rear_camera_apriltag_container` | `true` | Physical rear camera rectify/tag path |
+| `use_system_tools_container` | `true` | Core diagnostic tools composition |
+| `use_checker_components` | `true` | Four serialized checker fault-domain containers |
+| `enable_dds_shared_memory` | `false` | Full-graph DDS SHM remains off on Humble |
+| `enable_operator_telemetry` | `true` | Administrator live views available |
+| `operator_telemetry_stream_rate_hz` | `10 Hz` | Selected-view stream ceiling |
+
+## Validation-Only Runner Parameters
+
+These values affect `sim_validation_runner.py`; they do not tune the physical
+vehicle.
+
+| Parameter | Release value | Effect |
+|---|---:|---|
+| `camping_return_via_ui` | `true` for the release run | Calls the production `/ui/manual_return` API instead of publishing a controller operation directly |
+| `ui_backend_base_url` | `http://127.0.0.1:18122` in the recorded run | Backend selected for the Return API check |
+| `normal_drive_lateral_limit_mps` | `0.02` | Fails a normal Nav2 run if maximum `|linear.y|` could select crab |
+| `expect_lidar_cost_grid` | `false` in the recorded optional-grid run | Keeps the disabled compatibility raster out of baseline requirements |
+
+## Geometry And Coordinates
+
+| Change | File |
+|---|---|
+| Body dimensions, taper, corner radius, sensor mounts | `camrod_sensor_kit/config/robot_params.yaml` and bringup mirror |
+| Nav2 footprints | `camrod_planning/config/nav2_vehicle.yaml` and bringup deployment profile |
+| Gate body/planning extents | `camrod_control/config/cmd_vel_safety_gate.yaml` and launch-default overrides |
+| Campsite coordinates/mode | `camrod_planning/config/camping_sites.yaml` and bringup mirror |
+| Drop zone / parking station | `camrod_map/config/drop_zones.yaml`, localization/control consumers, and bringup mirrors |
+| Lanelet map | user-owned `lanelet2_maps.osm` selected by launch; never auto-rewritten by config synchronization |
+
+Changing geometry requires all three body/footprint/gate contracts to agree.
+Changing map coordinates requires re-exporting campsite and drop-zone YAML from
+the selected map, not hand-editing only one consumer.
+
+## Verification After A Change
+
+```bash
+./setup_camrod.sh
+./colcon_build.sh --packages-select camrod_control camrod_platform camrod_ui camrod_bringup
+
+diff -u camrod_control/config/control.yaml camrod_bringup/config/control/control.yaml
+diff -u camrod_control/config/parking.yaml camrod_bringup/config/control/parking.yaml
+# Ranger files intentionally retain steering-profile A/B differences. Verify
+# parallel_command_lateral_deadband_mps is 0.02 in both files.
+
+colcon test --packages-select camrod_control camrod_platform camrod_ui camrod_bringup
+colcon test-result --verbose
+```
+
+For motion changes, also run B1-B10 service, a reversed-heading restart case,
+boundary contact recovery, class-confirmed obstacle stop/clear, return to the
+drop zone, selected parking, and charger-contact stop. AMD64 simulation is a
+logic check; the 8-core/16-GB ARM64 robot still needs actuator, camera, tag,
+radar, charging-current, and resource acceptance.

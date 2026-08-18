@@ -251,8 +251,11 @@ function DiagnosticsMonitor() {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
-  // HH_260720 - Keep only the parking control; the removed docking stack has no UI actions.
+  // HH_260818 - Manual return and parking use the same backend authority as
+  // normal service commands; local state only reports the last operator request.
   const [parkingOn, setParkingOn] = useState(false);
+  const [motionCommandPending, setMotionCommandPending] = useState('');
+  const [motionCommandStatus, setMotionCommandStatus] = useState('');
   const [steeringRate, setSteeringRate] = useState(0.5);
   const [steeringTuningAvailable, setSteeringTuningAvailable] = useState(false);
   const [steeringTuningStatus, setSteeringTuningStatus] = useState('드라이버 연결 확인 중');
@@ -323,6 +326,38 @@ function DiagnosticsMonitor() {
     );
   };
 
+  const requestManualReturn = async () => {
+    setMotionCommandPending('return');
+    setMotionCommandStatus('');
+    try {
+      const response = await fetch('/ui/manual_return', { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok || !body.success) throw new Error(body.message || '복귀 요청 실패');
+      setMotionCommandStatus('복귀 명령 전송됨');
+    } catch (error) {
+      setMotionCommandStatus(error.message || '복귀 요청 실패');
+    } finally {
+      setMotionCommandPending('');
+    }
+  };
+
+  const toggleManualParking = async () => {
+    const next = !parkingOn;
+    setMotionCommandPending('parking');
+    setMotionCommandStatus('');
+    try {
+      const response = await fetch(`/ui/manual_parking?value=${next}`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok || !body.success) throw new Error(body.message || '주차 명령 실패');
+      setParkingOn(next);
+      setMotionCommandStatus(next ? '주차 시작 명령 전송됨' : '주차 취소 명령 전송됨');
+    } catch (error) {
+      setMotionCommandStatus(error.message || '주차 명령 실패');
+    } finally {
+      setMotionCommandPending('');
+    }
+  };
+
   // HH_260721 - Operator diagnostics use one unambiguous three-level health scale.
   const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR' };
   const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a' };
@@ -353,17 +388,27 @@ function DiagnosticsMonitor() {
         <>
       {/* ── 상단 컨트롤 바 ── */}
       <div className="diag-control-bar">
-        <span className="diag-control-label">Manual Parking</span>
+        <span className="diag-control-label">Manual Motion</span>
+        <button
+          type="button"
+          className="manual-return-btn"
+          onClick={requestManualReturn}
+          disabled={Boolean(motionCommandPending)}
+          title="현재 서비스 상태와 관계없이 drop zone 복귀를 요청"
+        >
+          {motionCommandPending === 'return' ? 'Return 요청 중' : 'Return'}
+        </button>
         <button
           className={`parking-toggle-btn ${parkingOn ? 'on' : 'off'}`}
-          onClick={() => setParkingOn(prev => !prev)}
+          onClick={toggleManualParking}
+          disabled={Boolean(motionCommandPending)}
         >
           <span className="parking-toggle-knob" />
           <span className="parking-toggle-text">
             {parkingOn ? 'Parking ON' : 'Parking OFF'}
           </span>
         </button>
-
+        <span className="manual-motion-status">{motionCommandStatus || '명령 대기'}</span>
       </div>
 
       <div className="steering-tuning-card">

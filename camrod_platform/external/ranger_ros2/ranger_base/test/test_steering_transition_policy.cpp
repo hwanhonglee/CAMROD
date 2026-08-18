@@ -100,4 +100,16 @@ TEST(ParallelMotionPolicy, PureCrabDoesNotDependOnEarlierLongitudinalDirection)
   EXPECT_NEAR(right.signed_speed * std::sin(right.steering_angle_rad), -0.4, 1.0e-9);
 }
 
+TEST(ParallelMotionPolicy, LateralResidueDoesNotSelectCrabMode)
+{
+  // HH_260818 - Ordinary path tracking must not pay the stationary steering
+  // transition penalty for tiny bridge/controller lateral residue.
+  EXPECT_FALSE(ShouldUseParallelMotion(0.0, 0.02));
+  EXPECT_FALSE(ShouldUseParallelMotion(0.019, 0.02));
+  EXPECT_FALSE(ShouldUseParallelMotion(-0.02, 0.02));
+  EXPECT_TRUE(ShouldUseParallelMotion(0.021, 0.02));
+  EXPECT_TRUE(ShouldUseParallelMotion(-0.10, 0.02));
+  EXPECT_TRUE(ShouldUseParallelMotion(0.666667, 0.02));
+}
+
 }  // namespace westonrobot

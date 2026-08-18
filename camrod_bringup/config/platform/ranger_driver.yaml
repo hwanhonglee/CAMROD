@@ -47,6 +47,9 @@
     # parallel steering. Translation starts within 0.05 rad of the target.
     steering_mode_transition_stationary_enabled: true
     steering_mode_transition_ready_error_rad: 0.05
+    # HH_260818 - Ignore tiny lateral residue during normal Nav2 tracking. Site
+    # and boundary-recovery crab commands (>=0.10 m/s) remain parallel motion.
+    parallel_command_lateral_deadband_mps: 0.02
 
     # HH_260731 - Wheel velocity is measured, not mathematically exact. Never
     # publish zero covariance: robot_localization treats it as near-perfect and

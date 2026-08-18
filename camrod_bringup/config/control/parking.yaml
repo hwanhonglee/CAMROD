@@ -42,6 +42,9 @@
     start_yaw_tolerance_deg: 7.5
     # HH_260807 - Preserve 40% of the 2.0 km/h cruise reference after the gate.
     reverse_speed_mps: 0.444444
+    # HH_260818 - From 0.30 m remaining, ramp to this final raw speed.
+    final_approach_speed_mps: 0.138889
+    slowdown_start_remaining_distance_m: 0.30
     heading_proportional_gain: 0.8
     lateral_proportional_gain: -0.25
     maximum_angular_speed_radps: 0.22
@@ -92,6 +95,8 @@
     # 2. APPROACH AND INSERTION TUNING
     # =========================================================================
     require_charging_for_completion: true
+    # HH_260818 - Charging CAN contact immediately stops every active phase.
+    stop_when_charging: true
 
     heading_gain: 1.5
     lateral_to_heading_gain: 2.5
@@ -105,6 +110,9 @@
     # HH_260803 - Longitudinal thresholds add 0.443 m so the physical rear-axle
     # stop points remain equivalent after moving the controller reference forward.
     slowdown_start_distance_m: 1.443
+    # HH_260818 - Canonical operator-facing threshold measured from the final
+    # parked pose; this takes precedence over the legacy absolute value above.
+    slowdown_start_remaining_distance_m: 0.60
 
     final_heading_tolerance_rad: 0.10
     final_lateral_tolerance_m: 0.03

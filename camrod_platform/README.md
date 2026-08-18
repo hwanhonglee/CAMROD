@@ -8,6 +8,8 @@ planning boundary carried by the platform topic. -->
 tapered-front, six-corner rounded body and planning contours. -->
 <!-- HH_260818 - Document the deployed stationary longitudinal/parallel
 steering transition used by exact campsite crab entry and exit. -->
+<!-- HH_260818 - Keep normal Dual-Ackermann commands out of parallel mode with
+an explicit lateral deadband and publish reproducible mode-selection evidence. -->
 
 Ranger CAN command/feedback bridge, BMS charging interpretation, robot
 visualization, planning-boundary publication, and light control.
@@ -44,9 +46,10 @@ RViz markers are generated from the sensor-kit boundary contract below.
 | Full translation | steering error `<= 0.05 rad` | Wheels nearly aligned |
 | Ordinary Ackermann floor | `20%` in bringup | Retained for path tracking only; transition envelope uses stop error `0.70 rad` |
 | Longitudinal <-> parallel transition | stationary until command error `<=0.05 rad` | Overrides the Ackermann floor so crab does not begin or end diagonally |
+| Parallel-motion selector | `|linear.y| > 0.02 m/s` | Tiny Nav2 lateral residue stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Zero-turn handoff | re-seed from CAN steering feedback | Prevents the following crab/straight command from inheriting a stale pre-turn wheel angle |
 | Wheel linear/angular sigma | `0.05 m/s`, `0.10 rad/s` | Non-zero odometry covariance |
-| Charging threshold | `> 0.3 A`, 2 samples | Debounced positive-current charging rule |
+| Charging threshold | `> 0.3 A`, 2 samples and `10 s` confirmation | Rejects regenerative-current spikes before asserting charger contact |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |
 | Robot marker/boundary rate | `5 Hz` | RViz/diagnostic publication |
 | Physical body | `1.39160 x 1.07000 m` bounding extents | `0.12 m` tapered front and `R0.05 m` corners; fabrication-inclusive ordinary-stop/swept-recovery envelope |
@@ -61,6 +64,15 @@ current source-derived marker/polygon contour. -->
 The [visual record](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/README.md)
 shows the contour now generated for RViz and `/platform/robot/planning_boundary`.
 Its GIF explains TF motion only; it does not measure Ranger steering response.
+
+![Normal Dual-Ackermann and explicit crab selection](../docs/assets/module-guides/platform/test-results/normal-crab-selection-20260819/normal-vs-crab-mode-selection.png)
+
+![Normal route followed by explicit campsite crab](../docs/assets/module-guides/platform/test-results/normal-crab-selection-20260819/normal-vs-crab-mode-selection.gif)
+
+The [mode-selection record](../docs/assets/module-guides/platform/test-results/normal-crab-selection-20260819/README.md)
+is generated from the deployed Ranger YAML. Unit tests cover values below,
+at, and above the deadband. Physical wheel-angle settling and CAN timing remain
+field acceptance.
 
 ![Published contours on measured map-v17 poses](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/tapered-rounded-boundary-road-sim.png)
 
@@ -119,6 +131,10 @@ ros2 run tf2_ros tf2_echo odom robot_center_link
 | `config/robot_visualization.yaml` | Pose source, marker, and planning-boundary publication |
 | `config/lights.yaml` | Indicator MCU behavior |
 | `config/vehicle_params.yaml` | Legacy/general vehicle model parameters; not the measured sensor-kit body source |
+
+The [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
+lists steering-mode thresholds, speed ownership, BMS timing, launch precedence,
+and the bringup mirrors that must remain synchronized.
 
 These are configured values. CAN latency, steering settling, battery-current
 sign, and actuator accuracy require logs from the Jetson/Ranger and are not
