@@ -4,7 +4,7 @@
 HH_260722 - Field topology and correction ownership:
 
 * Input: ``/gnss/ntrip_client/rtcm`` from the CORS caster.
-* Output: the FTDI DN03DF8V stable by-id path at 115200 baud. This device is
+* Output: the FTDI DN05Y9E7 stable by-id path at 115200 baud. This device is
   currently ``/dev/ttyUSB0`` and reaches the Lite moving base on UART1 through
   the board's POWER+XBEE connector.
 * The moving base applies CORS, becomes absolute RTK fixed, and independently

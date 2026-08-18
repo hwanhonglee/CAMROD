@@ -100,15 +100,18 @@ def test_synced_gnss_config_owns_both_receiver_ports():
     moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
 
     assert rover["device"] == "/dev/ttyACM0"
-    # HH_260807 - Lock the antenna frame and 200 ms receiver cadence at the
+    # HH_260818 - Lock the antenna frame and the receiver cadence at the
     # deployment mirror; nav_rate is an epoch divisor, not a frequency in Hz.
+    # The FTDI identity and baud track the sensing package: the mirror still
+    # carried DN03DF8V after the cable swap, which is the stale path that let
+    # the moving base run without CORS while the rover reported carrSoln=0.
     assert rover["frame_id"] == "gnss_link"
-    assert rover["rate"] == 5.0
+    assert rover["rate"] == 10.0
     assert rover["nav_rate"] == 1
     assert moving_base["device"] == (
-        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0"
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0"
     )
-    assert moving_base["baud"] == 115200
+    assert moving_base["baud"] == 460800
 
 
 def test_cleanup_removes_stale_moving_base_writer():

@@ -18,7 +18,7 @@
     # adapter remains the sole owner of the heading-rotated lever-arm correction.
     frame_id: gnss_link
     # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
-    # External CORS goes to the Lite moving base through FTDI DN03DF8V
+    # External CORS goes to the Lite moving base through FTDI DN05Y9E7
     # by its stable by-id path; only the corrected moving-base stream reaches
     # this receiver through UART2, regardless of ttyUSB enumeration.
     rtcm_topic: rtcm
@@ -48,10 +48,16 @@
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # HH_260806 - The custom dual setup applies a CFG-RATE RAM write even with
     # config_on_startup=false, so a receiver-saved profile does not override ROS.
-    # HH_260807 - Use the current 5 Hz physical validation profile (200 ms
-    # receiver epochs). nav_rate=1 is one solution per measurement cycle; it
-    # is not a 1 Hz setting. Validate moving-base epoch compatibility separately.
-    rate: 5.0
+    # HH_260818 - This is now the single owner of the rover epoch rate in both
+    # single- and dual-antenna mode; gnss.launch.py no longer overlays `rate`.
+    # nav_rate=1 is one solution per measurement cycle, not a 1 Hz setting.
+    # The moving base must keep up with this rate or heading is lost. Measured
+    # on the rover at 10 Hz: MSM7 arrived at 9.6/7.2/5.5/2.8 Hz (uneven = link
+    # saturated) while 4072.0 arrived at only 0.3 Hz, so NAV-PVT reached RTK
+    # fixed but RELPOSNED stayed rel_pos_valid=0 with no heading. Halved to
+    # 5 Hz to cut the required link bandwidth while the Lite's 4072.0 output
+    # rate and the MSM7->MSM4 change are verified on the receiver boards.
+    rate: 10.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)
@@ -99,8 +105,17 @@
     # POWER+XBEE FTDI connected to the Lite moving-base UART1.
     # Use this stable identity because the Quectel modem shares ttyUSB indices
     # and must not receive RTCM.
-    # HH_260807 - This 115200 setting is the CORS-to-Lite input only. The
-    # Lite-to-rover output baud is stored on both receiver boards and must be
-    # checked separately for RTCM bandwidth and matching endpoint values.
-    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
-    baud: 115200
+    # HH_260818 - Serial changed DN03DF8V -> DN05Y9E7 after the FTDI swap. The
+    # stale path silently broke RTK: rtcm_serial_writer.py could not open it,
+    # the moving base never received CORS, and the rover reported zero
+    # RXM-RTCM with carrSoln=0. Re-check this value whenever the cable changes.
+    # This baud is the CORS-to-Lite input only, and it must match whatever the
+    # Lite has stored for the UART1 port this cable lands on. The Lite-to-rover
+    # output baud is a separate setting on both receiver boards.
+    # HH_260818 - Raised 115200 -> 460800 after both boards were moved to
+    # 460800. At 115200 the moving-base link could not carry MSM7 at 10 Hz:
+    # the rover saw 1077/1087/1097/1127 at 9.6/7.2/5.5/2.8 Hz. Leaving this
+    # writer at 115200 while the Lite expects 460800 feeds the moving base
+    # pure garbage, which silently costs RTK on the rover.
+    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0
+    baud: 460800

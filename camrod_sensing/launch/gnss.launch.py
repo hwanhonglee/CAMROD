@@ -10,7 +10,7 @@
 #   NTRIP CORS
 #       -> /gnss/ntrip_client/rtcm
 #       -> moving_base_rtcm_writer
-#       -> FTDI DN03DF8V by-id (POWER+XBEE / Lite moving-base UART1)
+#       -> FTDI DN05Y9E7 by-id (POWER+XBEE / Lite moving-base UART1)
 #       -> Lite solves absolute RTK and emits 4072.0 + MSM4 + 1230
 #       -> board UART/XBee link
 #       -> /dev/ttyACM0 receiver UART2 (Budget heading rover)
@@ -69,15 +69,15 @@ def _dual_antenna_runtime_params(usb_rtcm_in, warm_start_on_startup=False):
         # diagnostic has left the rover tracking the wrong reference.
         "dual_antenna.warm_start_on_startup": warm_start_on_startup,
         "dual_antenna.warm_start_wait_ms": 12000,
-        # HH_260806 - This repository's dual-rover setup writes CFG-RATE to RAM
-        # even when config_on_startup=false, so the inline rate is the active
-        # receiver contract rather than only a ROS publication expectation.
-        # HH_260807 - The current physical validation profile uses 200 ms rover
-        # epochs. ``rate`` is Hz; ``nav_rate=1`` means every measurement epoch,
-        # not 1 Hz. Validate the independently configured moving-base cadence
-        # before changing this profile after the 5 Hz test.
-        "rate": 5.0,
-        "nav_rate": 1,
+        # HH_260818 - ``rate``/``nav_rate`` deliberately stay out of this overlay.
+        # Inline params override the YAML, so hardcoding them here made
+        # zed_f9p_rover.yaml's rate silently dead in dual-antenna mode: the file
+        # read 10 Hz while the receiver ran the 5 Hz overlay value. The rover
+        # epoch rate now has exactly one owner, the selected GNSS YAML.
+        # This repository's dual-rover setup writes CFG-RATE to RAM even when
+        # config_on_startup=false, so that YAML value is the active receiver
+        # contract, not just a ROS publication expectation. ``rate`` is Hz;
+        # ``nav_rate=1`` means every measurement epoch, not 1 Hz.
         "publish.nav.cov": True,
         "publish.nav.status": True,
         "publish.nav.relposned": True,
