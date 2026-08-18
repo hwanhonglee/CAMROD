@@ -355,15 +355,23 @@ private:
     cost_source_topics_ = declare_parameter<std::vector<std::string>>(
         "cost_source_debug_topics",
         {"/map/cost_grid/lanelet_safety", "/sensing/cost_grid/radar",
-         "/planning/cost_grid/global_path"});
+         "/sensing/cost_grid/lidar", "/planning/cost_grid/global_path"});
     cost_source_labels_ = declare_parameter<std::vector<std::string>>(
-        "cost_source_debug_labels", {"lanelet", "radar", "global_path"});
+        "cost_source_debug_labels",
+        {"lanelet", "radar", "fusion", "global_path"});
     motion_cost_stop_config_.require_dynamic_source =
         declare_parameter<bool>("cost_stop_require_dynamic_source", true);
     motion_cost_stop_config_.dynamic_source_labels =
         parseLabelSet(declare_parameter<std::string>(
-                          "cost_stop_dynamic_source_labels", "radar"),
-                      {"radar"});
+                          "cost_stop_dynamic_source_labels", "radar,fusion"),
+                      {"radar", "fusion"});
+    motion_cost_stop_config_.classified_dynamic_source_labels =
+        parseLabelSet(declare_parameter<std::string>(
+                          "cost_stop_classified_source_labels", "fusion"),
+                      {"fusion"});
+    motion_cost_stop_config_.classified_front_lookahead_m =
+        declare_parameter<double>(
+          "cost_stop_classified_front_lookahead_m", 2.0);
     // HH_260729 - The radar grid is intentionally kept as one lightweight
     // occupancy grid. Receive its parallel diagnostic provenance so stop logs
     // can identify the exact channel without changing any stop decision.
@@ -2084,7 +2092,13 @@ private:
         motion_cost_stop_config_.require_dynamic_source = parameter.as_bool();
       } else if (name == "cost_stop_dynamic_source_labels") {
         motion_cost_stop_config_.dynamic_source_labels =
-            parseLabelSet(parameter.as_string(), {"lidar", "radar"});
+            parseLabelSet(parameter.as_string(), {"radar", "fusion"});
+      } else if (name == "cost_stop_classified_source_labels") {
+        motion_cost_stop_config_.classified_dynamic_source_labels =
+            parseLabelSet(parameter.as_string(), {"fusion"});
+      } else if (name == "cost_stop_classified_front_lookahead_m") {
+        motion_cost_stop_config_.classified_front_lookahead_m =
+            parameter.as_double();
       } else if (name == "radar_obstacle_evidence_max_age_s") {
         radar_obstacle_evidence_max_age_s_ = parameter.as_double();
       } else if (name == "front_dynamic_stop_use_local_path") {

@@ -2,6 +2,8 @@
 
 <!-- HH_260805 - Keep perception ownership and component boundaries explicit,
 including the physical rear-camera parking chain. -->
+<!-- HH_260818 - Make the class-only safety cloud immutable and distinguish it
+from LiDAR-only diagnostic clustering. -->
 
 LiDAR obstacle clustering, front-camera TensorRT YOLO fusion, campsite
 occupancy, and rear-camera AprilTag parking perception.
@@ -12,9 +14,9 @@ occupancy, and rear-camera AprilTag parking perception.
 
 ![Live obstacle perception](../docs/assets/module-guides/perception/evidence/runtime-capture-20260804/runtime-obstacle-bboxes-20260804.png)
 
-`SIM RUNTIME CAPTURE`: actual fused obstacle points and bounding boxes over the
-filtered LiDAR stream. Simulation exercises the LiDAR path; it does not claim
-physical YOLO, camera-LiDAR calibration, or AprilTag accuracy.
+`SIM RUNTIME CAPTURE`: fake semantic obstacle points plus Euclidean bounding
+boxes over the filtered LiDAR stream. Simulation exercises topic consumers; it
+does not claim physical YOLO, camera-LiDAR calibration, or AprilTag accuracy.
 
 ![Current map and perception operator overlay](../docs/assets/module-guides/ui/evidence/ui-captures/operator-telemetry-perception-20260810.png)
 
@@ -26,8 +28,8 @@ AprilTag field accuracy is inferred from this screen.
 
 | Pipeline | Uses | Main output |
 |---|---|---|
-| LiDAR obstacles | Filtered nonground cloud + Euclidean clustering | `/perception/lidar/bboxes`, `/perception/obstacles` |
-| Camera-LiDAR fusion | Front image, CameraInfo, YOLO 2D boxes, LiDAR points | 3D detections, fused cloud, optional debug image |
+| LiDAR obstacles | Filtered nonground cloud + Euclidean clustering | `/perception/lidar/bboxes` visualization evidence |
+| Camera-LiDAR fusion | Front image, CameraInfo, YOLO 2D boxes, LiDAR points | Class-associated `/perception/obstacles`, 3D detections, optional debug image |
 | Campsite occupancy | Confirmed tent-class 3D detections + semantic site map | `/perception/camping_sites/occupancy` |
 | Parking tag | Rear rectified image + CameraInfo + AprilTag | Tag pose/TF and debug image |
 
@@ -35,16 +37,20 @@ AprilTag field accuracy is inferred from this screen.
 
 | Item | Value | Meaning |
 |---|---:|---|
-| Filtered LiDAR input | target `10 Hz` | Required perception source even when the optional LiDAR cost grid is OFF |
+| Filtered LiDAR input | target `10 Hz` | Required projection source for class-associated fusion; direct raw-LiDAR cost is OFF |
 | LiDAR cluster tolerance | `0.25 m` | Neighbor distance for cluster growth |
 | Cluster size | `12..8000 points` | Accepted cluster point count |
 | LiDAR ROI | `x 0..5 m`, `y -3..3 m` | Local obstacle search region |
 | YOLO backend | TensorRT device `0` | Jetson inference path |
 | YOLO throttle | `5 fps` | CPU/GPU headroom target, not measured throughput |
 | Confidence / IoU | `0.50 / 0.50` | Detection thresholds |
-| Fusion mode | `camera_bbox` | Retains points associated with image detections |
+| Fusion association | camera bbox + semantic class | Retains only current LiDAR points associated with a classified image detection |
+| Safety class policy | nonempty class, not `?`/`unknown` | Euclidean-only and malformed detections cannot create the early stop |
+| Detection freshness | `<= 0.50 s` | Stale cached camera boxes publish no safety obstacle points |
+| Classified stop consumer | active path front `2.0 m` | Final command gate checks the semantic raster directly |
 | Occupancy confirmation | `3 hits / 2 s` | Tent observation required before occupied state |
-| Occupied hold | `3600 s` | Keeps confirmed site unavailable for the field session |
+| Occupied hold | `3600 s` | Retains confirmed state for optional UI/control consumers |
+| Occupancy consumer guard | default `false` | Detection still publishes; one bringup toggle enables UI/control pre-entry blocking |
 | Parking tag | `tag36h11`, ID `3`, `0.16 m` | Rear docking target |
 
 ## Runtime Profiles
@@ -81,7 +87,7 @@ physical tag-pose equivalence remain explicit Jetson checks in `TODOLIST.txt`.
 
 | Node | Responsibility |
 |---|---|
-| `obstacle_lidar` | ROI filter, clustering, axis-aligned boxes, and obstacle cloud |
+| `obstacle_lidar` | ROI filter, clustering, and diagnostic axis-aligned box markers; no safety cloud |
 | `yolov9mit` | TensorRT inference and `Detection2DArray` output |
 | `obstacle_fusion` | Projects LiDAR into the camera and creates fused 3D results |
 | `campsite_occupancy` | Maps confirmed tent detections to campsite mission keys |
@@ -96,7 +102,7 @@ physical tag-pose equivalence remain explicit Jetson checks in `TODOLIST.txt`.
 | Input | `/sensing/camera/econ_front/camera_info` | Projection calibration |
 | Output | `/perception/camera/detections_2d` | YOLO detections |
 | Output | `/perception/camera_lidar/detections_3d` | Fused 3D detections |
-| Output | `/perception/obstacles` | Obstacle point cloud |
+| Output | `/perception/obstacles` | Current class-associated camera-LiDAR safety point cloud |
 | Output | `/perception/camping_sites/occupancy` | Site availability contract |
 
 ## Run And Validate

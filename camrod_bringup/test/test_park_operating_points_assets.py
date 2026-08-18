@@ -2,6 +2,8 @@
 
 # HH_260810 - Keep area-exported mission coordinates synchronized with the
 # exact active OSM while preserving runtime service modes outside the map.
+# HH_260818 - Rebind the reproducible asset to map v22; the exported service
+# coordinates themselves did not change.
 
 import hashlib
 import json
@@ -15,7 +17,7 @@ import yaml
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_MAP = SRC_ROOT / "lanelet2_maps.osm"
-MAP_SHA256 = "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39"
+MAP_SHA256 = "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59"
 RENDERER = (
     SRC_ROOT
     / "camrod_bringup"
@@ -92,9 +94,9 @@ def test_current_operating_point_report_matches_map_identity() -> None:
     assert _sha256(ACTIVE_MAP) == MAP_SHA256
     assert report["map"] == {
         "source_file": "lanelet2_maps.osm",
-        "map_version": 15,
+        "map_version": 22,
         "sha256": MAP_SHA256,
-        "node_count": 1592,
+        "node_count": 1652,
         "lanelet_count": 55,
         "semantic_area_count": 14,
     }

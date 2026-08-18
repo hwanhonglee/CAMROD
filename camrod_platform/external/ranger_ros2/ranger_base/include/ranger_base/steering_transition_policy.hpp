@@ -37,6 +37,27 @@ inline double SteeringTransitionVelocityScale(
   return 1.0 - ratio * (1.0 - bounded_minimum);
 }
 
+// HH_260818 - A velocity floor that is useful for ordinary Ackermann tracking
+// is unsafe while changing between longitudinal and parallel wheel geometry.
+// Keep those mode changes stationary until the rate-limited command reaches
+// the requested wheel angle; the regular transition envelope resumes after it
+// settles.
+inline double SteeringModeTransitionVelocityScale(
+  const double regular_scale,
+  const bool mode_transition_active,
+  const double target_angle_rad,
+  const double limited_angle_rad,
+  const double ready_error_rad)
+{
+  if (!mode_transition_active ||
+    std::abs(target_angle_rad - limited_angle_rad) <=
+    std::max(0.0, ready_error_rad))
+  {
+    return std::max(0.0, std::min(1.0, regular_scale));
+  }
+  return 0.0;
+}
+
 }  // namespace westonrobot
 
 #endif  // RANGER_BASE_STEERING_TRANSITION_POLICY_HPP_

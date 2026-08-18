@@ -3,6 +3,8 @@
 <!-- HH_260805 - Document the front, rear-parking, and LiDAR composition
 boundaries while keeping hardware measurements field-pending. -->
 <!-- HH_260807 - Bind optional LiDAR TF subscriptions to the scoped container context. -->
+<!-- HH_260818 - Reassign the legacy LiDAR grid topic to classified camera-LiDAR
+points and document the measured front-radar acceptance windows separately. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -21,8 +23,8 @@ not physical sensor accuracy or field rate.
 
 | Sensor/source | Processing | Main output / consumer |
 |---|---|---|
-| Vanjee 750C LiDAR | Intra-process ROI, voxel downsample, DFKI ground segmentation | Filtered cloud -> perception; optional LiDAR grid -> bench/visualization |
-| SEN0592 x7 | Serial polling, fixed-return filter, map projection | Range topics and radar cost grid -> control |
+| Vanjee 750C LiDAR | Intra-process ROI, voxel downsample, DFKI ground segmentation | Filtered cloud -> perception; direct raw-LiDAR cost remains disabled |
+| SEN0592 x7 | Serial polling, fixed-return filter, map projection | Six active channels plus one fail-visible quarantined rear channel -> radar cost grid |
 | Front econ camera | VPI rectification + NvJPEG | Compressed image + CameraInfo -> YOLO/fusion |
 | Rear econ camera | GStreamer/OpenCV raw + monitoring JPEG | Raw image + CameraInfo -> AprilTag parking |
 | F9P GNSS | NTRIP/RTK, optional moving-base heading | Fix, pose, and heading -> localization |
@@ -34,22 +36,23 @@ not physical sensor accuracy or field rate.
 
 | Grid | Geometry | Configured rate | Obstacle radius / role |
 |---|---|---:|---|
-| LiDAR, optional | `180 x 180 @ 0.10 m` | `10 Hz` when enabled | `0.20 m`; production default `OFF` |
+| Classified camera-LiDAR raster | `180 x 180 @ 0.10 m` | `10 Hz` | legacy `/sensing/cost_grid/lidar`; default `ON`, raw LiDAR inputs `OFF` |
 | Radar | `120 x 120 @ 0.10 m` | `10 Hz` | `0.30 m` |
 | Inflation/fusion | `180 x 180 @ 0.10 m` | `6 Hz` | Merges lanelet, radar, and global path in production |
 
-Radar costs, and LiDAR costs when the optional grid is enabled, are clipped to
+Radar costs and classified camera-LiDAR costs are clipped to
 active-route lanelets plus a `0.35 m` margin. Missing or stale route-mask data
 fails open for obstacle pass-through; the downstream safety gate still
 evaluates current source freshness and costs. Production inflation consumes
-only lanelet, radar, and global-path grids. Enabling the optional LiDAR grid
-does not add it to fusion without an explicit alternate inflation input config.
+only lanelet, radar, and global-path grids. The final command gate checks the
+classified raster directly for the active path's first `2.0 m`, while Nav2's
+lanelet overlay still consumes it for avoidance. It is not merged into the
+aggregate inflation grid and does not consume raw/preprocessed LiDAR points.
 
-`enable_lidar_cost_grid:=false` is the production default. The filtered LiDAR
-cloud and perception remain active, while `/sensing/lidar/lidar_cost_grid` and
-`/sensing/cost_grid/lidar` are removed from graph-readiness and cost-grid
-diagnostics. Setting the flag to `true` loads that component and restores both
-checks; no source code rebuild is required. The component-owned TF listener is
+`enable_lidar_cost_grid:=true` is now the production default for the semantic
+raster. Setting it to `false` removes `/sensing/lidar/lidar_cost_grid` and
+`/sensing/cost_grid/lidar` from graph readiness/diagnostics without disabling
+the filtered cloud or perception. The component-owned TF listener is
 bound to the same scoped node context/executor and uses a dedicated buffer
 thread with nonblocking lookups. A historical map-v17 full graph with the option ON
 published the 10 Hz grid, reached `[SYSTEM] OK`, and produced no null
@@ -122,12 +125,12 @@ accuracy.
 
 | Item | Active value |
 |---|---|
-| Channels | FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
+| Active channels | FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2; REAR is quarantined |
 | Serial | CH9344 USB ports, `115200` baud |
 | Hardware beam | angle level `4` on all channels (widest; approximately 65 deg horizontal / 80 deg vertical) |
 | Hardware range level | all channels level 1 (approximately `0.50 m`) |
 | Software observation maximum | all channels `0.50 m` (full level-1 window) |
-| Radar stop windows | FRONT1 `(0.220, 0.320] m`, FRONT2 `(0.117, 0.217] m`, REAR `(0.106, 0.206] m`; left/right cut off at `0.10 m` |
+| Radar stop windows | FRONT1 `(0.220, 0.320] m`, FRONT2 `(0.117, 0.217] m`, REAR `(0.106, 0.206] m`; each front window is 0.10 m after its measured body-return edge |
 | Automatic startup learning | disabled in field-driving profile |
 | Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
 | Cost message maximum age | `0.35 s` |
@@ -136,9 +139,10 @@ The side harness order is explicitly configured; do not infer left/right from
 USB index. A supervised calibration requires a clear, stationary, disengaged
 robot and remains bounded by the configured per-channel windows.
 
-`radar_status_gui.py` is a read-only visualization of the seven physical
+`radar_status_gui.py` is a read-only visualization of all seven configured
 `sen0592_radar_node` `/range_ros` streams. It neither launches nor publishes a
-dummy radar source; an absent channel remains visibly absent/stale.
+dummy radar source; the disabled rear channel remains explicitly marked dummy
+instead of being mistaken for live hardware.
 
 ## Camera And GNSS Values
 
@@ -187,8 +191,8 @@ accepting the 5 Hz field profile.
 
 The normalized values come from the committed field report, but its raw logs
 are referenced only by Jetson paths and are not in this repository. Detection
-correctness, seven-channel radar-on separation, and moving performance remain
-open.
+correctness, six-active-channel radar separation, REAR/channel-7 acceptance,
+and moving performance remain open.
 
 The package-owned and bringup-mirrored front/rear camera YAML files are byte
 identical. Front `9.167 Hz` is the last physical lifetime pass; rear raw
@@ -214,7 +218,7 @@ sensor publisher already owns the same schemas.
 | Topic | Purpose |
 |---|---|
 | `/sensing/lidar/points_filtered` | Nonground cloud for perception |
-| `/sensing/cost_grid/lidar` | Optional LiDAR obstacle cost; absent by default |
+| `/sensing/cost_grid/lidar` | Classified camera-LiDAR obstacle raster; raw LiDAR inputs disabled |
 | `/sensing/cost_grid/radar` | Seven-channel near-field cost |
 | `/planning/cost_grid/inflation` | Merged robot-centered cost |
 | `/sensing/gnss/ublox_gps_node/fix` | Absolute GNSS position/status |

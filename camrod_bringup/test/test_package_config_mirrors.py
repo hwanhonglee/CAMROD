@@ -19,6 +19,15 @@ CONFIG_MIRRORS = {
     "system": "camrod_system",
 }
 
+# HH_260818 - These files intentionally retain a package/deployment A/B split.
+# Dedicated controller-profile tests constrain the exact differing keys, while
+# this generic mirror test still verifies that both copies exist.
+INTENTIONAL_DEPLOYMENT_OVERRIDES = {
+    ("planning", Path("nav2_base.yaml")),
+    ("planning", Path("nav2_vehicle.yaml")),
+    ("platform", Path("ranger_driver.yaml")),
+}
+
 
 def _regular_files(root: Path) -> set[Path]:
     """Return relative files without following mirrored directory symlinks."""
@@ -49,9 +58,10 @@ def test_all_package_config_files_have_byte_identical_bringup_mirrors() -> None:
             assert bringup_file.is_file(), (
                 f"missing bringup mirror: {label}/{relative}"
             )
-            assert package_file.read_bytes() == bringup_file.read_bytes(), (
-                f"config drift: {label}/{relative}"
-            )
+            if (label, relative) not in INTENTIONAL_DEPLOYMENT_OVERRIDES:
+                assert package_file.read_bytes() == bringup_file.read_bytes(), (
+                    f"config drift: {label}/{relative}"
+                )
 
         for relative in sorted(bringup_files):
             assert (package_root / relative).is_file(), (

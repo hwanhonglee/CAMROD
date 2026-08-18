@@ -19,7 +19,7 @@ RUNTIME_REPORT = (
     / "runtime-visual-capture-20260804.json"
 )
 ACTIVE_MAP_SHA256 = (
-    "689c49854f3e5d93b59ccde13799f9748a669956cf9bbfa7c121f369ecdb1b39"
+    "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59"
 )
 
 
@@ -32,7 +32,7 @@ def _tags(element: ET.Element) -> dict[str, str]:
 
 def test_active_park_map_matches_the_current_user_revision() -> None:
     """Deployment must bind derived configs to the current active map."""
-    # HH_260810 - lanelet2_maps.osm is the active source. Named copy files are
+    # HH_260818 - lanelet2_maps.osm is the active source. Named copy files are
     # user-owned snapshots and are intentionally not overwritten or required
     # to match this revision.
     assert hashlib.sha256(ACTIVE_MAP.read_bytes()).hexdigest() == ACTIVE_MAP_SHA256
@@ -40,12 +40,13 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "15"
+    assert metadata.attrib["map_version"] == "22"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
-    assert len(root.findall("node")) == 1592
+    assert len(root.findall("node")) == 1652
+    assert len(root.findall("way")) == 236
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

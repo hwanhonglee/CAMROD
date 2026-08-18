@@ -1006,8 +1006,30 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_cost_stop_dynamic_source_labels',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_dynamic_source_labels', 'radar'),
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_cost_stop_dynamic_source_labels',
+                'radar,fusion',
+            ),
             'Comma-separated source labels that can trigger dynamic cost-stop',
+        ),
+        (
+            'control_cmd_vel_gate_cost_stop_classified_source_labels',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_cost_stop_classified_source_labels',
+                'fusion',
+            ),
+            'Classified dynamic sources using the fixed early-stop horizon',
+        ),
+        (
+            'control_cmd_vel_gate_cost_stop_classified_front_lookahead_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_cost_stop_classified_front_lookahead_m',
+                2.0,
+            ),
+            'Front route lookahead for classified fusion obstacle stops (m)',
         ),
         (
             'control_cmd_vel_gate_front_dynamic_stop_use_local_path',
@@ -1735,7 +1757,9 @@ def generate_launch_description():
         ('enable_front_camera', cfg_get(launch_cfg, 'sensing/enable_front_camera', True), 'Enable front econ camera node'),
         ('enable_rear_camera',  cfg_get(launch_cfg, 'sensing/enable_rear_camera',  True), 'Enable rear econ camera node'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
-        ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', False), 'Enable optional lidar cost-grid'),
+        # HH_260818 - The legacy name now denotes the classified camera-LiDAR
+        # obstacle raster; raw LiDAR painting stays controlled independently.
+        ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable classified camera-LiDAR cost-grid'),
         (
             'use_lidar_processing_container',
             cfg_get(launch_cfg, 'sensing/use_lidar_processing_container', True),
@@ -1820,6 +1844,8 @@ def generate_launch_description():
         ('parking_method', parking_method_default, 'Parking implementation: reverse|apriltag'),
         ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable final parking control'),
         ('enable_camping_site_maneuver_controller', cfg_get(launch_cfg, 'control/enable_camping_site_maneuver_controller', True), 'Enable campsite crab/rotate control node'),
+        # HH_260818 - Keep UI admission and control start checks on one policy.
+        ('enable_campsite_occupancy_guard', cfg_get(launch_cfg, 'control/enable_campsite_occupancy_guard', False), 'Block confirmed semantic tent sites before campsite entry'),
         ('enable_drop_zone_maneuver_controller', cfg_get(launch_cfg, 'control/enable_drop_zone_maneuver_controller', True), 'Enable drop-zone exit/yaw control node'),
         ('enable_route_safety_recovery_controller', cfg_get(launch_cfg, 'control/enable_route_safety_recovery_controller', True), 'Enable bounded route-safety reverse/crab owner'),
         ('control_param_file', control_param_default, 'Control maneuver parameter YAML path'),
@@ -2420,6 +2446,7 @@ def generate_launch_description():
     maneuver_args = {
         'control_namespace': lc['control_namespace'],
         'enable_camping_site_maneuver_controller': lc['enable_camping_site_maneuver_controller'],
+        'enable_campsite_occupancy_guard': lc['enable_campsite_occupancy_guard'],
         'enable_drop_zone_maneuver_controller': lc['enable_drop_zone_maneuver_controller'],
         'enable_route_safety_recovery_controller': lc['enable_route_safety_recovery_controller'],
         'command_topic': lc['control_cmd_vel_raw_topic'],
@@ -2463,6 +2490,8 @@ def generate_launch_description():
         'minimum_mission_dispatch_battery_percent': lc['api_ui_minimum_mission_dispatch_battery_percent'],
         'low_battery_return_after_current_mission': lc['api_ui_low_battery_return_after_current_mission'],
         'low_battery_return_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
+        # HH_260818 - UI and control consume the same confirmed-tent policy.
+        'enable_campsite_occupancy_guard': lc['enable_campsite_occupancy_guard'],
         # HH_260727 - Keep headless opt-out and window geometry explicit at top level.
         'enable_operator_ui_window': lc['enable_operator_ui_window'],
         'operator_ui_window_engine': lc['operator_ui_window_engine'],

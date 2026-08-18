@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -11,6 +12,7 @@
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
+#include "camrod_control/bounded_recovery_attempt_policy.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace camrod_control
@@ -43,6 +45,19 @@ public:
       declare_parameter<double>("maximum_distance_m", 0.40), 0.05, 1.0);
     maximum_duration_s_ = std::clamp(
       declare_parameter<double>("maximum_duration_s", 10.0), 0.5, 15.0);
+    maximum_attempts_ = static_cast<int>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("maximum_attempts", 50), 1, 100));
+    retry_pause_s_ = std::clamp(
+      declare_parameter<double>("retry_pause_s", 0.5), 0.1, 5.0);
+    maximum_total_distance_m_ = std::max(
+      maximum_distance_m_, std::clamp(
+        declare_parameter<double>("maximum_total_distance_m", 1.50), 0.40, 3.0));
+    maximum_total_duration_s_ = std::max(
+      maximum_duration_s_, std::clamp(
+        declare_parameter<double>("maximum_total_duration_s", 90.0), 5.0, 300.0));
+    attempt_limits_ = {
+      maximum_duration_s_, maximum_distance_m_, maximum_attempts_,
+      maximum_total_duration_s_, maximum_total_distance_m_};
     pose_timeout_s_ = std::clamp(
       declare_parameter<double>("pose_timeout_s", 0.5), 0.05, 2.0);
     candidate_timeout_s_ = std::clamp(
@@ -77,16 +92,26 @@ private:
     const bool hold = message && message->operating_state == "ROUTE_SAFETY_HOLD";
     last_gate_status_time_ = now();
     if (hold && !hold_active_) {
-      hold_start_time_ = now();
+      episode_start_time_ = now();
+      attempt_start_time_ = episode_start_time_;
       start_pose_ = poseFresh() ? latest_pose_ : std::nullopt;
       start_yaw_ = start_pose_.has_value() ?
         std::optional<double>(poseYaw(*start_pose_)) : std::nullopt;
+      cumulative_distance_m_ = 0.0;
+      current_attempt_ = 1;
+      retry_waiting_ = false;
       limit_reached_ = false;
-      RCLCPP_WARN(get_logger(), "bounded route recovery armed");
+      RCLCPP_WARN(
+        get_logger(),
+        "bounded route recovery armed: attempts=%d total=%.1fs/%.2fm",
+        maximum_attempts_, maximum_total_duration_s_, maximum_total_distance_m_);
     } else if (!hold && hold_active_) {
       publishZero();
       start_pose_.reset();
       start_yaw_.reset();
+      current_attempt_ = 0;
+      cumulative_distance_m_ = 0.0;
+      retry_waiting_ = false;
       limit_reached_ = false;
       RCLCPP_INFO(get_logger(), "bounded route recovery released to Nav2");
     }
@@ -121,7 +146,7 @@ private:
            (now() - last_pose_time_).seconds() <= pose_timeout_s_;
   }
 
-  double displacement()
+  double displacement() const
   {
     if (!latest_pose_.has_value() || !start_pose_.has_value()) {
       return 0.0;
@@ -170,12 +195,52 @@ private:
       publishStatus("SAFETY_HOLD", "candidate_missing_or_stale");
       return;
     }
-    const double elapsed = (current_time - hold_start_time_).seconds();
+    const double total_elapsed = (current_time - episode_start_time_).seconds();
+    if (retry_waiting_) {
+      if (total_elapsed >= maximum_total_duration_s_ ||
+        cumulative_distance_m_ >= maximum_total_distance_m_)
+      {
+        limit_reached_ = true;
+        publishZero();
+        publishStatus("LIMIT_HOLD", recoveryDetail("total_recovery_limit_reached"));
+        return;
+      }
+      if ((current_time - retry_wait_start_time_).seconds() < retry_pause_s_) {
+        publishZero();
+        publishStatus("RETRY_WAIT", recoveryDetail("waiting_for_fresh_candidate"));
+        return;
+      }
+      ++current_attempt_;
+      attempt_start_time_ = current_time;
+      start_pose_ = latest_pose_;
+      start_yaw_ = poseYaw(*latest_pose_);
+      retry_waiting_ = false;
+      RCLCPP_WARN(
+        get_logger(), "bounded route recovery retry %d/%d",
+        current_attempt_, maximum_attempts_);
+    }
+
+    const double elapsed = (current_time - attempt_start_time_).seconds();
     const double distance = displacement();
-    if (limit_reached_ || elapsed >= maximum_duration_s_ || distance >= maximum_distance_m_) {
+    // HH_260818 - Sum one net displacement per bounded attempt instead of
+    // every 20 Hz pose segment. Segment summation turns harmless localization
+    // jitter into artificial travel and can exhaust the episode while stopped.
+    const double total_distance = cumulative_distance_m_ + distance;
+    const auto limit_action = EvaluateBoundedRecoveryAttempt(
+      attempt_limits_, current_attempt_, elapsed, distance, total_elapsed,
+      total_distance);
+    if (limit_reached_ || limit_action == BoundedRecoveryAction::kFinalHold) {
       limit_reached_ = true;
       publishZero();
-      publishStatus("LIMIT_HOLD", "bounded_recovery_limit_reached");
+      publishStatus("LIMIT_HOLD", recoveryDetail("bounded_recovery_limit_reached"));
+      return;
+    }
+    if (limit_action == BoundedRecoveryAction::kRetry) {
+      cumulative_distance_m_ = total_distance;
+      retry_waiting_ = true;
+      retry_wait_start_time_ = current_time;
+      publishZero();
+      publishStatus("RETRY_WAIT", recoveryDetail("attempt_limit_reached"));
       return;
     }
 
@@ -203,9 +268,21 @@ private:
       command.angular.z < -1.0e-6 ? "REVERSE_YAW_RIGHT" : "REVERSE";
     publishStatus(
       motion,
-      "distance=" + std::to_string(distance) +
+      recoveryDetail("moving") +
+      " distance=" + std::to_string(distance) +
       " yaw_deg=" + std::to_string(yawDisplacement() * 180.0 / M_PI) +
       " elapsed=" + std::to_string(elapsed));
+  }
+
+  std::string recoveryDetail(const std::string & reason) const
+  {
+    return reason +
+           " attempt=" + std::to_string(current_attempt_) + "/" +
+           std::to_string(maximum_attempts_) +
+           " total_distance=" +
+           std::to_string(cumulative_distance_m_ + displacement()) +
+           " total_elapsed=" +
+           std::to_string((now() - episode_start_time_).seconds());
   }
 
   void publishZero()
@@ -232,6 +309,10 @@ private:
   double maximum_yaw_change_rad_{12.0 * M_PI / 180.0};
   double maximum_distance_m_{0.40};
   double maximum_duration_s_{10.0};
+  int maximum_attempts_{50};
+  double retry_pause_s_{0.5};
+  double maximum_total_distance_m_{1.50};
+  double maximum_total_duration_s_{90.0};
   double pose_timeout_s_{0.5};
   double candidate_timeout_s_{0.75};
   double status_timeout_s_{1.0};
@@ -245,10 +326,16 @@ private:
   std::optional<avg_msgs::msg::AvgPoseStamped> latest_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> start_pose_;
   std::optional<double> start_yaw_;
+  BoundedRecoveryAttemptLimits attempt_limits_;
+  int current_attempt_{0};
+  double cumulative_distance_m_{0.0};
+  bool retry_waiting_{false};
   rclcpp::Time last_gate_status_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_candidate_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_pose_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Time hold_start_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time episode_start_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time attempt_start_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time retry_wait_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr gate_status_subscription_;

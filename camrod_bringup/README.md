@@ -38,7 +38,7 @@ physical drive. The orange path is the dispatched B6 route.
 | Fake sensor/platform publishers | Exercises message, state, planner, control, and UI contracts | Deterministic simulation topics and normalized platform feedback |
 | Probe and field-test scripts | Captures timing, payload, recovery, and mission evidence | JSON, rosbag, logs, PNG/GIF derived reports |
 
-## Active v2.1.7 Contract
+## Active v2.1.8 Contract
 
 <!-- HH_260809 - Synchronize the full-bringup contract with the shared
 tapered-front rounded body and exact planning offset. -->
@@ -51,9 +51,9 @@ tapered-front rounded body and exact planning offset. -->
 | Body / planning boundary | tapered rounded `1.39160 x 1.07000 m` / exact `0.10 m` offset `1.59160 x 1.27000 m` |
 | LiDAR raw and filtered cloud | target `10 Hz`; no preprocessor throttling |
 | Front / rear camera raw contract | target `10 Hz` each; rear monitoring JPEG remains independently capped at `2 Hz` |
-| Optional LiDAR cost grid | default `OFF` |
+| Classified camera-LiDAR raster | default `ON`; raw LiDAR cost input remains `OFF` |
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
-| Radar display | `radar_status_gui.py` subscribes to seven real `/range_ros` streams; it does not publish dummy data |
+| Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
 | Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
@@ -124,7 +124,7 @@ acceptance.
 | Check | Result | Measured value |
 |---|---|---:|
 | Historical tapered/rounded B2 road run | PASS (MEASURED ROS SIM) | map-v17; body cost-100 contact no; planning contact yes; `0.0972 m`, `-4.545 deg`; no second hold; route complete |
-| Stack startup | PASS | Fresh isolated active map-v15 graph reached `[SYSTEM] OK` |
+| Stack startup | PASS | Fresh isolated historical map-v15 graph reached `[SYSTEM] OK` |
 | Goal-independent UI startup | PASS | Zero RViz/UI goals; planning `WAIT_DZ`, UI `READY`; 5 authoritative READY frames in 2.2 s |
 | Operator telemetry workspace | PASS (AMD64 SIM) | Six leased views, `4-11` subscriptions per view, 1600x1000 overflow `0`, GNSS/IMU `10.01 Hz`, pose `20.02 Hz` after view reopen |
 | Operator telemetry transport | PASS (AMD64 STANDALONE) | `201` frames at `9.938 Hz`, p95 `100.792 ms`; CPU `1.00 -> 1.12%`, RSS `76,696 -> 77,592 KiB`; close `83.3 ms`, silent lease `12.078 s` |
@@ -139,6 +139,9 @@ acceptance.
 | Charger departure | PASS | B2/B3 left CHARGING through `DEPARTING_CHARGER`; stale charge contact did not close drive authorization |
 | Historical map-v17 B2 boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
+| Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |
+| Repeated boundary recovery | AMD64 SIM PARTIAL + UNIT PASS | Per attempt `0.40 m/10 s`; up to 50 attempts with `0.5 s` pauses and `1.50 m/90 s` episode caps; whichever limit is reached first ends the episode; long B1 return released three consecutive contacts before the runner timeout |
+| Classified fusion safety | GATE-MATRIX + UNIT PASS | Unknown/raw LiDAR excluded; classified fusion stopped forward (`0.00 m/s`) but passed crab/reverse (`0.08/0.09 m/s`); synthetic radar fixtures stopped all directions; both grids ran at `10 Hz` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |
 | B1-B10 site maneuver round trip | PASS (10/10) | Every map-derived entry (`1.79-5.31 m`) completed crab, 180-degree turn, explicit RETURN, crab-out, and `DONE` |
 | B11-B13 roadside arrival | PASS | Capped `0.60 m` crab, unload wait, `WAIT_RETURN`; no zero-turn or RETURN issued |
@@ -159,8 +162,8 @@ acceptance.
 The 2026-08-04 captures are historical map-v14 evidence, the staged map-v15
 records are bound to the v2.1.4 release SHA, the campsite policy media are
 bound to map-v16, and the service/road runs are bound to their recorded
-map-v17 SHA. The active user-authored OSM is `map_version=15`, SHA
-`689c49...1b39`, with 55 lanelets, 14 areas, and 1592 points; older results are
+map-v17 SHA. The active user-authored OSM is `map_version=22`, SHA
+`8fa131...e59`, with 55 lanelets, 14 areas, and 1652 points; older results are
 intentionally not relabeled as current.
 The active fabrication-inclusive physical body has `1.39160 x 1.07000 m`
 bounding extents, a `0.12 m` tapered front shoulder, and `R0.05 m` corners. The
@@ -380,6 +383,7 @@ python3 -m pytest -q camrod_bringup/test/test_tapered_rounded_road_sim_assets.py
 | Map-v15 staged recovery | [`map-v15-boundary-recovery/`](../docs/assets/module-guides/control/evidence/map-v15-boundary-recovery/) |
 | Current boundary geometry/motion | [`tapered-rounded-boundary-20260810/`](../docs/assets/module-guides/sensor-kit/test-results/tapered-rounded-boundary-20260810/) |
 | Historical map-v17 boundary road simulation | [`tapered-rounded-boundary-road-sim-20260810/`](../docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/) |
+| Current map-v22 crab/fusion safety simulation | [`worak-crab-fusion-safety-20260818/`](../docs/assets/module-guides/control/test-results/worak-crab-fusion-safety-20260818/) |
 | Current boundary runtime tests | [`robot-boundary-adjustment-20260806/`](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/) |
 | Historical campsite sequencing tests | [`camping-site-sequencing-20260806/`](../docs/assets/module-guides/bringup/test-results/camping-site-sequencing-20260806/) |
 | Historical RPP curve-tracking tests | [`rpp-curve-tracking-20260806/`](../docs/assets/module-guides/planning/test-results/rpp-curve-tracking-20260806/) |

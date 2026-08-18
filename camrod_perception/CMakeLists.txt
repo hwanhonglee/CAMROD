@@ -9,6 +9,8 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -43,6 +45,8 @@ add_definitions(${PCL_DEFINITIONS})
 add_executable(obstacle_fusion_node src/obstacle_fusion_node.cpp)
 ament_target_dependencies(obstacle_fusion_node
   avg_msgs
+  builtin_interfaces
+  std_msgs
   rclcpp
   sensor_msgs
   geometry_msgs
@@ -51,7 +55,10 @@ ament_target_dependencies(obstacle_fusion_node
   cv_bridge
   message_filters
 )
-target_include_directories(obstacle_fusion_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_include_directories(obstacle_fusion_node PRIVATE
+  include
+  ${OpenCV_INCLUDE_DIRS}
+)
 target_link_libraries(obstacle_fusion_node ${OpenCV_LIBS})
 
 add_executable(obstacle_lidar_node src/obstacle_lidar_node.cpp)
@@ -131,6 +138,10 @@ install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_classified_detection test/test_classified_detection.cpp)
+  target_include_directories(test_classified_detection PRIVATE include)
+
   find_package(ament_lint_auto REQUIRED)
   # HH_260721 - Keep vendored YOLO sources outside CAMROD package lint ownership.
   set(AMENT_LINT_AUTO_FILE_EXCLUDE external)

@@ -81,7 +81,9 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     # be exported to the complete graph on Humble.
     assert defaults["runtime"]["enable_dds_shared_memory"] is False
     assert defaults["sensing"]["use_lidar_processing_container"] is True
-    assert defaults["sensing"]["enable_lidar_cost_grid"] is False
+    # HH_260818 - This legacy-named component rasterizes classified
+    # camera-LiDAR obstacles only; raw LiDAR painting remains disabled.
+    assert defaults["sensing"]["enable_lidar_cost_grid"] is True
     assert defaults["system"]["operator_ui_window_engine"] == "webkit"
     assert defaults["system"]["enable_operator_telemetry"] is True
     assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 10.0

@@ -87,6 +87,10 @@ void RangerROSMessenger::LoadParameters() {
     "steering_transition_stop_error_rad", 0.35);
   steering_transition_min_velocity_scale_ = node_->declare_parameter<double>(
     "steering_transition_min_velocity_scale", 0.0);
+  steering_mode_transition_stationary_enabled_ = node_->declare_parameter<bool>(
+    "steering_mode_transition_stationary_enabled", true);
+  steering_mode_transition_ready_error_rad_ = node_->declare_parameter<double>(
+    "steering_mode_transition_ready_error_rad", 0.05);
   odom_linear_velocity_stddev_mps_ = node_->declare_parameter<double>(
     "odom_linear_velocity_stddev_mps", 0.05);
   odom_angular_velocity_stddev_radps_ = node_->declare_parameter<double>(
@@ -98,6 +102,8 @@ void RangerROSMessenger::LoadParameters() {
     steering_transition_stop_error_rad_);
   steering_transition_min_velocity_scale_ = std::max(
     0.0, std::min(1.0, steering_transition_min_velocity_scale_));
+  steering_mode_transition_ready_error_rad_ = std::max(
+    0.0, std::min(0.35, steering_mode_transition_ready_error_rad_));
   odom_linear_velocity_stddev_mps_ =
     std::max(1.0e-3, odom_linear_velocity_stddev_mps_);
   odom_angular_velocity_stddev_radps_ =
@@ -109,6 +115,7 @@ void RangerROSMessenger::LoadParameters() {
       "update_rate: %d\n odom_topic_name: %s\n "
       "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n "
       "steering_transition_velocity_scale: %d full=%.2f stop=%.2f min=%.2f\n "
+      "steering_mode_transition_stationary: %d ready_error=%.2f\n "
       "odom_velocity_stddev: linear=%.3f angular=%.3f\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
@@ -117,6 +124,8 @@ void RangerROSMessenger::LoadParameters() {
       steering_transition_full_speed_error_rad_,
       steering_transition_stop_error_rad_,
       steering_transition_min_velocity_scale_,
+      steering_mode_transition_stationary_enabled_,
+      steering_mode_transition_ready_error_rad_,
       odom_linear_velocity_stddev_mps_,
       odom_angular_velocity_stddev_radps_);
 
@@ -503,6 +512,17 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       robot_->SetMotionMode(MotionState::MOTION_MODE_DUAL_ACKERMAN);
     }
   }
+  if (command_mode != MotionState::MOTION_MODE_DUAL_ACKERMAN &&
+    command_mode != MotionState::MOTION_MODE_PARALLEL)
+  {
+    // HH_260818 - A campsite zero-turn physically leaves the previous parallel
+    // wheel geometry. Re-seed the next longitudinal/parallel limiter from CAN
+    // feedback so CRAB_OUT cannot inherit a stale +/-90 degree command and move
+    // before the wheels return to the newly requested geometry.
+    steering_command_initialized_ = false;
+    translational_mode_initialized_ = false;
+    steering_mode_transition_active_ = false;
+  }
   // send motion command to robot
   switch (command_mode) {
     case MotionState::MOTION_MODE_DUAL_ACKERMAN: {
@@ -514,12 +534,14 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       }
       const double target_steering_rad = steer_cmd;
       steer_cmd = LimitSteeringAngle(target_steering_rad);
-      const double velocity_scale = SteeringTransitionVelocityScale(
+      const double regular_velocity_scale = SteeringTransitionVelocityScale(
         target_steering_rad, steer_cmd,
         steering_transition_velocity_scale_enabled_,
         steering_transition_full_speed_error_rad_,
         steering_transition_stop_error_rad_,
         steering_transition_min_velocity_scale_);
+      const double velocity_scale = ApplySteeringModeTransitionVelocityScale(
+        command_mode, target_steering_rad, steer_cmd, regular_velocity_scale);
       const double commanded_speed_mps = msg->linear.x * velocity_scale;
       robot_->SetMotionCommand(commanded_speed_mps, steer_cmd);
       PublishSteeringTransitionState(
@@ -551,12 +573,14 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       }
       const double target_steering_rad = steer_cmd;
       steer_cmd = LimitSteeringAngle(target_steering_rad);
-      const double velocity_scale = SteeringTransitionVelocityScale(
+      const double regular_velocity_scale = SteeringTransitionVelocityScale(
         target_steering_rad, steer_cmd,
         steering_transition_velocity_scale_enabled_,
         steering_transition_full_speed_error_rad_,
         steering_transition_stop_error_rad_,
         steering_transition_min_velocity_scale_);
+      const double velocity_scale = ApplySteeringModeTransitionVelocityScale(
+        command_mode, target_steering_rad, steer_cmd, regular_velocity_scale);
       const double commanded_speed_mps = parallel.signed_speed * velocity_scale;
       robot_->SetMotionCommand(commanded_speed_mps, steer_cmd);
       PublishSteeringTransitionState(
@@ -655,6 +679,56 @@ double RangerROSMessenger::LimitSteeringAngle(const double target_angle) {
   return last_steering_command_rad_;
 }
 
+double RangerROSMessenger::ApplySteeringModeTransitionVelocityScale(
+  const uint8_t command_mode,
+  const double target_angle_rad,
+  const double limited_angle_rad,
+  const double regular_scale)
+{
+  if (command_mode != MotionState::MOTION_MODE_DUAL_ACKERMAN &&
+    command_mode != MotionState::MOTION_MODE_PARALLEL)
+  {
+    return regular_scale;
+  }
+
+  if (!translational_mode_initialized_) {
+    // HH_260818 - Do not infer the physical mode from an intermediate limited
+    // angle: the first parallel step can already exceed the Ackermann maximum
+    // and would incorrectly release the 20% velocity floor. After startup or
+    // zero-turn, require the requested angle itself to settle before moving.
+    settled_translational_mode_ = command_mode;
+    steering_mode_transition_target_ = command_mode;
+    steering_mode_transition_active_ =
+      std::abs(target_angle_rad - limited_angle_rad) >
+      steering_mode_transition_ready_error_rad_;
+    translational_mode_initialized_ = true;
+  } else if (steering_mode_transition_active_) {
+    // A cancel/reversal during steering remains stationary until the newest
+    // target is reached; falling back to the ordinary 20% floor here would
+    // recreate the diagonal campsite exit.
+    steering_mode_transition_target_ = command_mode;
+  } else if (command_mode != settled_translational_mode_) {
+    steering_mode_transition_target_ = command_mode;
+    steering_mode_transition_active_ = true;
+  }
+
+  if (!steering_mode_transition_stationary_enabled_) {
+    settled_translational_mode_ = command_mode;
+    steering_mode_transition_target_ = command_mode;
+    steering_mode_transition_active_ = false;
+    return regular_scale;
+  }
+
+  const double velocity_scale = SteeringModeTransitionVelocityScale(
+    regular_scale, steering_mode_transition_active_, target_angle_rad,
+    limited_angle_rad, steering_mode_transition_ready_error_rad_);
+  if (steering_mode_transition_active_ && velocity_scale > 0.0) {
+    settled_translational_mode_ = steering_mode_transition_target_;
+    steering_mode_transition_active_ = false;
+  }
+  return velocity_scale;
+}
+
 rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged(
   const std::vector<rclcpp::Parameter>& parameters) {
   rcl_interfaces::msg::SetParametersResult result;
@@ -664,6 +738,10 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
   double requested_full_speed_error = steering_transition_full_speed_error_rad_;
   double requested_stop_error = steering_transition_stop_error_rad_;
   double requested_minimum_scale = steering_transition_min_velocity_scale_;
+  bool requested_stationary_mode_transition =
+    steering_mode_transition_stationary_enabled_;
+  double requested_mode_transition_ready_error =
+    steering_mode_transition_ready_error_rad_;
   bool changed = false;
 
   for (const auto& parameter : parameters) {
@@ -688,6 +766,31 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
         return result;
       }
       requested_scaling_enabled = parameter.as_bool();
+      changed = true;
+    } else if (name == "steering_mode_transition_stationary_enabled") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+        result.successful = false;
+        result.reason = "steering_mode_transition_stationary_enabled must be a bool";
+        return result;
+      }
+      requested_stationary_mode_transition = parameter.as_bool();
+      changed = true;
+    } else if (name == "steering_mode_transition_ready_error_rad") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        result.successful = false;
+        result.reason = "steering_mode_transition_ready_error_rad must be a double";
+        return result;
+      }
+      requested_mode_transition_ready_error = parameter.as_double();
+      if (!std::isfinite(requested_mode_transition_ready_error) ||
+        requested_mode_transition_ready_error < 0.0 ||
+        requested_mode_transition_ready_error > 0.35)
+      {
+        result.successful = false;
+        result.reason =
+          "steering_mode_transition_ready_error_rad must be in [0, 0.35]";
+        return result;
+      }
       changed = true;
     } else if (
       name == "steering_transition_full_speed_error_rad" ||
@@ -734,15 +837,21 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
     steering_transition_full_speed_error_rad_ = requested_full_speed_error;
     steering_transition_stop_error_rad_ = requested_stop_error;
     steering_transition_min_velocity_scale_ = requested_minimum_scale;
+    steering_mode_transition_stationary_enabled_ =
+      requested_stationary_mode_transition;
+    steering_mode_transition_ready_error_rad_ =
+      requested_mode_transition_ready_error;
     RCLCPP_INFO(
       node_->get_logger(),
       "steering transition updated dynamically: rate=%.2f rad/s scale=%s "
-      "full=%.2f stop=%.2f min=%.2f",
+      "full=%.2f stop=%.2f min=%.2f mode_stationary=%s ready=%.2f",
       steering_transition_rate_radps_,
       steering_transition_velocity_scale_enabled_ ? "true" : "false",
       steering_transition_full_speed_error_rad_,
       steering_transition_stop_error_rad_,
-      steering_transition_min_velocity_scale_);
+      steering_transition_min_velocity_scale_,
+      steering_mode_transition_stationary_enabled_ ? "true" : "false",
+      steering_mode_transition_ready_error_rad_);
   }
   return result;
 }

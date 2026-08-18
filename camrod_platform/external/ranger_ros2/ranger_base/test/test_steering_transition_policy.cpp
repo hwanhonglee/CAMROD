@@ -29,6 +29,39 @@ TEST(SteeringTransitionPolicy, CanBeDisabled)
     SteeringTransitionVelocityScale(1.0, 0.0, false, 0.05, 0.35, 0.0), 1.0);
 }
 
+TEST(SteeringTransitionPolicy, ModeChangeOverridesOrdinaryVelocityFloor)
+{
+  const double regular_scale =
+    SteeringTransitionVelocityScale(1.57, 0.0, true, 0.05, 0.70, 0.20);
+  ASSERT_DOUBLE_EQ(regular_scale, 0.20);
+  EXPECT_DOUBLE_EQ(
+    SteeringModeTransitionVelocityScale(
+      regular_scale, true, 1.57, 0.0, 0.05),
+    0.0);
+}
+
+TEST(SteeringTransitionPolicy, ModeChangeReleasesOnlyAtRequestedAngle)
+{
+  EXPECT_DOUBLE_EQ(
+    SteeringModeTransitionVelocityScale(0.75, true, 1.57, 1.50, 0.05),
+    0.0);
+  EXPECT_DOUBLE_EQ(
+    SteeringModeTransitionVelocityScale(1.0, true, 1.57, 1.53, 0.05),
+    1.0);
+  EXPECT_DOUBLE_EQ(
+    SteeringModeTransitionVelocityScale(0.6, false, 0.2, 0.0, 0.05),
+    0.6);
+}
+
+TEST(SteeringTransitionPolicy, IntermediateAngleCannotReleaseInitialParallelRequest)
+{
+  // HH_260818 - 0.775 rad can exceed the Ackermann limit after one limiter
+  // step, but it is still far from the requested 90 degree crab geometry.
+  EXPECT_DOUBLE_EQ(
+    SteeringModeTransitionVelocityScale(0.20, true, 1.57, 0.775, 0.05),
+    0.0);
+}
+
 TEST(ParallelMotionPolicy, PreservesRequestedVectorInAllQuadrants)
 {
   constexpr double kHalfPi = 1.57079632679489661923;

@@ -43,6 +43,11 @@
     # 0.7 rad keeps the hold for genuine large-lag transitions only.
     steering_transition_stop_error_rad: 0.7
     steering_transition_min_velocity_scale: 0.0
+    # HH_260818 - A pure crab command is exactly +/-90 deg. Keep traction at
+    # zero while entering or leaving parallel mode so the chassis cannot move
+    # diagonally during the wheel-angle slew.
+    steering_mode_transition_stationary_enabled: true
+    steering_mode_transition_ready_error_rad: 0.05
 
     # HH_260731 - Wheel velocity is measured, not mathematically exact. Never
     # publish zero covariance: robot_localization treats it as near-perfect and

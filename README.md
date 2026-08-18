@@ -12,12 +12,18 @@ left-antenna lever arm and heading-aware center correction. -->
 <!-- HH_260810 - Publish the v2.1.7 shared tapered/rounded boundary,
 goal-independent UI readiness, reproducible package evidence, and tool layout. -->
 <!-- HH_260810 - Re-export Park operating coordinates from the user-edited
-map-v15 source and require settled yaw before campsite/drop-zone translation. -->
+map source and require settled yaw before campsite/drop-zone translation. -->
 <!-- HH_260810 - Make the managed operator map the default manual-goal surface
 and keep RViz as an explicit maintenance-only launch option. -->
+<!-- HH_260818 - Record stationary longitudinal/parallel steering transitions,
+axis-staged campsite exit, repeated bounded recovery, and class-only 2 m fusion stop. -->
+<!-- HH_260818 - Rebind the unchanged Park operating coordinates to the
+worak-test map-v22 identity without rewriting the user-authored OSM. -->
+<!-- HH_260818 - Publish v2.1.8 with exact campsite crab, bounded repeated
+recovery, semantic fusion/radar safety, and an opt-in tent occupancy guard. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.7`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.1.8`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
@@ -45,7 +51,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
-| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most 3 s without making GNSS yaw valid |
+| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most `0.5 s` without making GNSS yaw valid |
 | GNSS receiver cadence | `5 Hz` (`200 ms` epoch) | Rover is configured on launch; moving-base epoch/link acceptance remains a physical test |
 | Localization pose cadence | `20 Hz` | EKF predicts between GNSS corrections; this is not a claim that GNSS itself publishes at 20 Hz |
 | Physical body boundary | `1.39160 x 1.07000 m` bounding extents | Tapered front (`0.12 m` side inset over `0.12 m` depth), six rounded corners (`R0.05 m`); cost-100 overlap stops ordinary motion |
@@ -58,15 +64,19 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Straight cruise | `2.000 km/h` (`0.555556 m/s` final) | Raw RPP `1.111111 m/s` passes through the retained `0.5` command gate |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
-| Active Lanelet map | `map_version=15`, SHA `689c49...1b39` | User-edited runtime OSM; named copies are user snapshots and are not auto-synchronized |
-| RPP preview | UI mission `1.1 m`; manual RotationShim `2.0 m` | Both fixed; manual profile uses the longer field anti-oscillation preview |
-| Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
+| Classified fusion stop | route-front `2.0 m`, detection age `<=0.50 s` | Only current YOLO-class-associated camera-LiDAR points stop the active path; unknown/raw LiDAR points do not |
+| Active Lanelet map | `map_version=22`, SHA `8fa131...e59` | User-edited runtime OSM; named copies are user snapshots and are not auto-synchronized |
+| RPP preview A/B | bringup velocity-scaled `1.5-3.5 m`; package fixed `1.2 m` | Deliberate `worak-test` field A/B divergence; do not treat package YAML as the deployed mirror yet |
+| Recovery attempt | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | One projected crab/reverse/reverse-yaw stage |
+| Recovery episode | up to `50` attempts, `1.50 m`, `90 s`, `0.5 s` retry pause | Fresh candidates are retried; the first attempt no longer creates a permanent hold |
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
+| Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
+| Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
 | Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
-| LiDAR processing | raw/filtered target `10 Hz`; cost grid default `OFF` | Physical cloud processing remains required; only the optional raster node/topic and its graph entry are disabled |
-| Radar visualization | seven real `/range_ros` streams | `radar_status_gui.py` observes physical publishers and never starts a dummy publisher |
+| LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
+| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | Front channels retain measured self-return exclusions and remain an independent near-field fail-safe beside the 2 m classified-fusion path stop |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | GNSS/IMU, radar/LiDAR, cameras, trajectory, map/perception, safety/control replace daily RViz/Tk inspection |
 | RViz launch default | `OFF` | Normal operation uses the managed UI; `rviz:=true` remains an engineering override |
@@ -118,8 +128,8 @@ See the [source-derived record](docs/assets/module-guides/sensor-kit/test-result
 ![Current Park semantic operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
 
 The [current map-derived record](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
-binds B1-B13, the drop zone, and three parking-lot Areas to active map v15 SHA
-`689c49...1b39`. Runtime YAML mirrors use the exported coordinates while the
+binds B1-B13, the drop zone, and three parking-lot Areas to active map v22 SHA
+`8fa131...e59`. Runtime YAML mirrors use the exported coordinates while the
 service policy remains B1-B10 `turnaround` and B11-B13 `roadside_stop`.
 
 ### Measured Road Simulation
@@ -146,10 +156,13 @@ no second hold. This is not physical-road evidence.
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
 | Current B2 boundary recovery | **AMD64 SIM PASS 3/3** | `REVERSE_YAW_RIGHT`, real recovery motion before 1.5 s release, mission complete, no second hold/retry latch |
 | Historical persistent obstacle, map-v17 3.0 m lane | **SAFE-HOLD PASS** | Immediate stop; one Smac path preflight found no safe path; no selector/ABORT loop; obstacle clear resumed the original mission |
-| v2.1.7 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 13 packages; `88/88` CTest targets and 683 xUnit records passed with 0 errors/failures (24 static-analysis skips); current direct UI policy/transport/telemetry/manual-goal suite `52/52` |
+| v2.1.8 affected-package build/tests | **PASS** | Canonical wrapper rebuilt 8 packages; Ranger `1/1`, control `2/2`, perception `7/7`, UI `61/61`, and bringup `194/194` passed |
 | Goal-independent initialization | **PASS** | No manual/UI goal; full graph reached `[SYSTEM] OK`, UI `ready=true`, `mission_phase=READY`, diagnostics errors `0`, then exited cleanly on SIGINT |
 | Operator-map manual goal | **AMD64 SIM PASS** | Default launch started no RViz; confirmed UI goal published `/goal_pose`, drive-enable and engage, then produced manual `DRIVING` plus bounded global/local paths |
-| Current map-v15 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `689c49...1b39`; 55 lanelets, 14 areas, 1,592 nodes; B1-B13/drop-zone mirrors synchronized |
+| Current map-v22 coordinate contract | **SOURCE-DERIVED PASS** | Active OSM SHA `8fa131...e59`; 55 lanelets, 14 areas, 1,652 nodes; B1-B13/drop-zone mirrors synchronized |
+| Current B1 exact crab/return | **AMD64 SIM PASS** | Fresh map-v22 graph completed `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT -> DONE`; exit raw command was pure lateral and returned within `0.04 m` of the route anchor |
+| Current repeated boundary recovery | **AMD64 SIM PARTIAL PASS** | The long B1 return replay released three consecutive lanelet contacts and resumed the route; the 180 s runner ended before the 80 m return/parking sequence completed |
+| Current semantic obstacle contract | **UNIT/GATE-MATRIX PASS** | Empty/unknown classes rejected; classified fusion stopped forward but passed crab/reverse, and the synthetic radar matrix stopped all four directions; both full-graph rasters ran at `10 Hz`; physical fusion calibration and rear-radar acceptance remain pending |
 | Boundary guard regression | **PASS** | Repository `colcon_build.sh` rebuilt 5 affected packages; 32/32 CTest targets passed; 334 aggregate xUnit records, 0 errors/failures, 8 cppcheck skips |
 | Full stack startup/shutdown | **PASS** | Three fresh controlled runs reached Nav2 active and `[SYSTEM] OK`; every component and standalone process, including lifecycle manager and Robot/Guest UI, exited cleanly |
 | Post-fix lifecycle shutdown | **AMD64 PASS 1/1** | No-goal graph READY/SYSTEM OK; parent-only SIGINT; 44/44 processes clean, failures/forced kills/descendants 0; raw log retained |
@@ -276,8 +289,9 @@ from a workstation-only simulation result.
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
-| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v15 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
-| [v2.1.7 release notes](docs/V2_1_7_RELEASE_NOTES.md) | Current boundary, UI readiness, package evidence, tool ownership, build, and verification |
+| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
+| [v2.1.8 release notes](docs/V2_1_8_RELEASE_NOTES.md) | Worak integration, exact crab, bounded recovery, semantic obstacle safety, occupancy toggle, build, and verification |
+| [v2.1.7 release notes](docs/V2_1_7_RELEASE_NOTES.md) | Previous boundary, UI readiness, package evidence, and tool ownership baseline |
 | [v2.1.6 release notes](docs/V2_1_6_RELEASE_NOTES.md) | Previous sensor cadence, motion/boundary policy, visualization, and field acceptance baseline |
 | [v2.1.5 release notes](docs/V2_1_5_RELEASE_NOTES.md) | Previous baseline and its exact historical evidence |
 | [v2.1.5 field handoff](camrod_bringup/docs/v2_1_5_field_handoff_20260808.md) | Other-PC start, TODO crosswalk, and physical test order |

@@ -1,5 +1,27 @@
 # Documentation Changelog
 
+<!-- HH_260818 - Integrate worak-test and record exact crab, bounded repeated
+recovery, and semantic fusion/radar safety contracts. -->
+## [v2.1.8-worak-crab-fusion-safety] - 2026-08-18 (HH_260818)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Branch integration | `worak-test` is an exact 20-commit fast-forward of the previous `develop`; no develop-only commit was discarded |
+| Campsite crab | Keeps entry as pure `linear.y`, holds longitudinal/parallel steering changes stationary to `0.05 rad`, and stages exit lateral correction before straight drift |
+| Boundary recovery | Replaces the one-attempt permanent hold with up to 50 fresh projected attempts; each stays within `0.40 m/10 s`, with whole-episode `1.50 m/90 s` caps and `0.5 s` zero pauses |
+| Classified fusion stop | Accepts only current nonempty/non-unknown YOLO-associated LiDAR points and checks the active route's first `2.0 m` directly at the final command gate |
+| Radar independence | Confirms FRONT1/FRONT2 were already enabled, retains their measured self-return windows, and preserves the separate `worak-test` REAR/channel-7 quarantine |
+| Active map identity | Rebinds the unchanged B1-B13/drop-zone/parking coordinates to user map v22 SHA `8fa131...e59`; 55 lanelets, 14 areas, and 1,652 points are reproduced without editing the OSM |
+| Integrated runtime contracts | Synchronizes package/bringup GNSS input at `-90 deg` with a `0.5 s` fallback anchor, matches the simulated raw heading bias, and validates the current two-component rear-camera rectify/AprilTag container without restoring the removed `image_proc` stage |
+| Tent occupancy toggle | Restores the commented YOLO-tent site guard as one `enable_campsite_occupancy_guard` switch shared by UI and control; defaults `false`, blocks only pre-entry dispatch when enabled, and does not interrupt a committed site maneuver |
+| AMD64 simulation | Fresh map-v22 B1 completes every site phase through `DONE`, emits pure-lateral `CRAB_OUT`, and returns within `0.04 m`; a long return replay releases three consecutive lanelet contacts before its 180 s whole-route timeout |
+| Full-graph safety matrix | PASS: classified fusion stopped forward motion (`0.00 m/s`) but passed left/right crab (`0.08 m/s`) and reverse (`0.09 m/s`); synthetic radar fixtures stopped all four directions at `0.00 m/s`; radar/fusion grids each held `10 Hz` |
+| Verification boundary | Policy/unit/build checks cover wheel-transition gating, retry limits, class filtering, and 2 m source isolation; physical wheel settling, camera-LiDAR calibration, and radar false-return acceptance remain field tests |
+
+---
+
 <!-- HH_260810 - Keep administrator diagnostics alive across service screens,
 move selected telemetry to a bounded client-leased stream, and narrow return
 handoff warning suppression to the outgoing Nav2 goal. -->

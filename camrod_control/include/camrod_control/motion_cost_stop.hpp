@@ -43,7 +43,13 @@ struct MotionCostStopConfig
   // grids; recovery keeps a separate age without weakening dynamic fail-close.
   double lanelet_recovery_stale_timeout_s{0.0};
   bool require_dynamic_source{true};
-  std::set<std::string> dynamic_source_labels{"lidar", "radar"};
+  // Keep the library-compatible lidar label for standalone policy users. The
+  // deployed gate narrows this explicitly to radar,fusion in its ROS config.
+  std::set<std::string> dynamic_source_labels{"lidar", "radar", "fusion"};
+  // HH_260818 - Classified camera-LiDAR cost is an early route stop with a
+  // fixed 2 m horizon. Near-field radar keeps its independent corridor range.
+  std::set<std::string> classified_dynamic_source_labels{"fusion"};
+  double classified_front_lookahead_m{2.0};
   double source_max_age_s{1.0};
 
   bool use_speed_dependent_lookahead{true};
@@ -353,6 +359,7 @@ private:
     const std::optional<avg_msgs::msg::AvgPath> & path) const;
   std::optional<double> closestPathDistance() const;
   bool sourceIsDynamic(const std::string & label) const;
+  bool sourceIsClassifiedDynamic(const std::string & label) const;
   std::optional<std::string> sourceGridBlockingPoint(
     const GridHit & hit,
     int threshold,

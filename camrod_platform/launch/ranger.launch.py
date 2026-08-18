@@ -161,6 +161,15 @@ def _launch_setup(context, *args, **kwargs):
             'steering_transition_min_velocity_scale': float(
                 p.get('steering_transition_min_velocity_scale', 0.0)
             ),
+            # HH_260818 - Keep longitudinal<->parallel wheel-mode changes
+            # stationary even when ordinary Ackermann tracking uses a nonzero
+            # transition velocity floor.
+            'steering_mode_transition_stationary_enabled': _truthy(
+                p.get('steering_mode_transition_stationary_enabled', True)
+            ),
+            'steering_mode_transition_ready_error_rad': float(
+                p.get('steering_mode_transition_ready_error_rad', 0.05)
+            ),
         }],
         # HH_260720 - Ranger consumes the single final output from camrod_control directly.
         # HH_260720 - Ranger requires geometry_msgs/Twist at the explicit driver boundary.

@@ -180,9 +180,10 @@ bringup:
     radar_log_status: false
     # HH_260723 - Keep the compatibility rasterizer alive, but consume only
     # /perception/obstacles. Raw/preprocessed LiDAR cost is temporarily disabled.
-    # HH_260805 - The LiDAR cost-grid is optional in production; perception,
-    # radar, and inflation remain active without this compatibility rasterizer.
-    enable_lidar_cost_grid: false
+    # HH_260818 - The legacy-named LiDAR grid is enabled to rasterize only
+    # classified camera-LiDAR /perception/obstacles. Direct raw/preprocessed
+    # LiDAR painting remains disabled inside its own parameter file.
+    enable_lidar_cost_grid: true
     # HH_260805 - Preprocess and ground-segment LiDAR through intra-process
     # ownership in one container. The optional transient-local grid component
     # shares that process but retains DDS transport for Humble compatibility.
@@ -262,6 +263,9 @@ bringup:
   control:
     # HH_260720 - Crab, zero-turn, drop-zone exit, and parking-yaw alignment live here.
     enable_camping_site_maneuver_controller: true
+    # HH_260818 - One switch controls YOLO tent occupancy in both UI admission
+    # and the maneuver start gate. False preserves the current field workflow.
+    enable_campsite_occupancy_guard: false
     enable_drop_zone_maneuver_controller: true
     # HH_260803 / TODOLIST 12 - Execute only gate-approved bounded reverse/crab recovery.
     enable_route_safety_recovery_controller: true
@@ -340,10 +344,12 @@ bringup:
     cmd_vel_gate_cost_grid_stale_stop_enable: true
     cmd_vel_gate_cost_grid_stale_timeout_s: 1.0
     cmd_vel_gate_cost_grid_stale_log_interval_s: 1.0
-    # HH_260807 - The production inflation grid carries static lanelet/path
-    # guidance plus radar. LiDAR/perception is intentionally not a cost source.
+    # HH_260818 - Radar remains the independent near-field source; classified
+    # camera-LiDAR fusion adds a path-only 2 m stop without raw LiDAR cost.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
-    cmd_vel_gate_cost_stop_dynamic_source_labels: radar
+    cmd_vel_gate_cost_stop_dynamic_source_labels: radar,fusion
+    cmd_vel_gate_cost_stop_classified_source_labels: fusion
+    cmd_vel_gate_cost_stop_classified_front_lookahead_m: 2.0
     # HH_260702 - When Nav2 publishes an avoidance local path, validate that
     # path corridor before blocking on the old body-front obstacle rectangle.
     cmd_vel_gate_front_dynamic_stop_use_local_path: true

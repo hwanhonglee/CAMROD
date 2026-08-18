@@ -49,6 +49,7 @@ tapered-front rounded geometry published by camrod_platform. -->
 | Policy | Value | Result |
 |---|---:|---|
 | New campsite mission | `SOC >= 35%` | Departure admitted |
+| Confirmed-tent occupancy | guard default `false` | Optional UI/control pre-entry block; never interrupts an already committed site maneuver |
 | Critical battery | `SOC <= 20%` | Hard command stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
 | Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; only projected monotonic inward escape on cost 100 |
@@ -61,13 +62,14 @@ tapered-front rounded geometry published by camrod_platform. -->
 | Planning-margin stop | cost `100` or unknown | `lanelet_footprint_cost`; ordinary command remains zero |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Lanelet safety raster | `600 x 600 @ 0.05 m` | Independent `30 m` local grid; avoids the Nav2 grid's `0.125 m` half-cell dilation |
-| Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
+| Dynamic cost stop | threshold `85` | Independent radar plus classified camera-LiDAR fusion hold |
 | Route-clear proof | `1.5 s` after admitted recovery motion | Releases retained route hold |
 | Automatic release budget | `50` per contact region | Allows repeated projected recovery/final-yaw fitting without an unbounded loop |
 | Regional reset | `0.75 m` signed forward progress | Passing the original contact starts a new budget; oscillation around it does not |
 | Pose-free fallback window | `5.0 s` | Used only for historical/malformed contact decisions without a valid map pose |
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
-| Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, total travel, duration |
+| Recovery attempt | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, net travel, and duration per projected attempt |
+| Recovery episode | `50` attempts, `1.50 m`, `90 s` | `0.5 s` zero-command pause before each fresh candidate; first limit no longer latches permanently |
 | Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
 | Maneuver release hold | `0.5 s` | Final output remains zero before Nav2 may resume |
 | Normal Nav2 rotation/translation | Continuous owner | RotationShim/RPP mode changes do not create an artificial zero handoff |
@@ -91,7 +93,7 @@ their previous ratio to the current `2.0 km/h` cruise reference.
 | Operation | Cruise ratio | Final limit |
 |---|---:|---:|
 | RPP cruise | `100%` | `2.000 km/h` |
-| RPP curvature floor | `50%` | `1.000 km/h` |
+| RPP curvature floor | `30%` | `0.600 km/h` |
 | RPP final approach | `25%` | `0.500 km/h` |
 | Campsite crab | `60%` | `1.200 km/h` |
 | Campsite reverse / drop-zone exit / reverse parking | `40%` | `0.800 km/h` |
@@ -101,9 +103,10 @@ their previous ratio to the current `2.0 km/h` cruise reference.
 | Zero-turn / gross yaw alignment | `0%` | `0 km/h` |
 | Route-boundary recovery safety exception | `9%` | `0.180 km/h` |
 
-Boundary recovery is intentionally not proportionally increased: its raw
-`0.10 m/s`, `0.40 m`, `10 s`, and `12 deg` limits remain a separate safety
-budget. Angular-speed limits are unchanged. The previous 3 km/h raw/final
+Boundary recovery is intentionally not proportionally increased: each attempt
+retains raw `0.10 m/s`, `0.40 m`, `10 s`, and `12 deg` limits. An episode may
+retry up to 50 times but still stops at `1.50 m` or `90 s`; every candidate is
+rechecked by the final gate. Angular-speed limits are unchanged. The previous 3 km/h raw/final
 values and AMD64 command trace remain as historical evidence in the
 [3 km/h test record](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/README.md).
 
@@ -112,7 +115,7 @@ values and AMD64 command trace remain as historical evidence in the
 | Node | Responsibility |
 |---|---|
 | `cmd_vel_safety_gate` | Final engage, platform, battery, localization, timeout, obstacle, and lanelet authorization |
-| `route_safety_recovery_controller` | Executes projected crab/reverse/reverse-yaw stages within one shared speed/distance/yaw/time budget |
+| `route_safety_recovery_controller` | Executes fresh projected crab/reverse/reverse-yaw attempts within per-attempt and whole-episode limits |
 | `camping_site_maneuver_controller` | Site entry, arrival turnaround, unload wait, explicit return, and exit |
 | `drop_zone_maneuver_controller` | Charger/drop-zone exit, route yaw alignment, and parking handoff |
 | `reverse_parking_controller` | Yaw-aware reverse travel and charging wait |
@@ -145,8 +148,11 @@ localization, or battery hold.
 lane handoff from inheriting Nav2's early goal-reached pose. -->
 For automatic B1-B10 service, the actual Nav2 arrival pose starts and measures
 site entry, while `/planning/goal_pose_snapped` is retained as a separate return
-anchor. `CRAB_OUT` corrects both body axes toward that anchor, slows
-proportionally near it, and hands motion back only within `0.04 m`. Manual/adopt
+anchor. `CRAB_OUT` first corrects body-lateral error with pure `linear.y`
+(`+/-90 deg` parallel steering), then corrects any zero-turn drift with pure
+`linear.x`; it never takes the old diagonal shortcut. Ranger holds translation
+until a longitudinal/parallel mode target is within `0.05 rad`, and control
+hands motion back only within `0.04 m`. Manual/adopt
 operation keeps the actual arrival/adopted pose as its anchor. This distinction
 matters on the current B4 lane: the observed Nav2 arrival was `0.27 m` from the
 snap, while the measured planning-margin clearance was only about `0.136 m` per
@@ -156,6 +162,10 @@ parking/charging cycles, and produced no post-return body or margin hold.
 The final B1-B10 endurance kept every route-snap handoff within `0.03-0.04 m`.
 B2-B10 also completed nine planning-margin recoveries with observed recovery
 motion, release, continued service, and zero retry latch.
+
+The [current map-v22 crab/fusion safety record](../docs/assets/module-guides/control/test-results/worak-crab-fusion-safety-20260818/README.md)
+keeps the fresh B1 entry/exit PASS, final directional gate matrix PASS, and the
+180-second full-return timeout as separate raw JSON results.
 
 ![B1-B10 route-snap return and recovery endurance](../docs/assets/module-guides/bringup/test-results/b1-b10-service-endurance-20260807/b1-b10-service-endurance.png)
 
