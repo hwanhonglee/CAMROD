@@ -111,16 +111,16 @@ def test_every_hardware_source_has_an_explicit_freshness_contract():
         assert radar[name]["dummy_active_timeout_s"] == 1.0
 
 
-# HH_260807 - Diagnostics must reject the former 1 Hz rover profile while the
-# current physical validation run intentionally uses 200 ms receiver epochs.
-def test_physical_gnss_checkers_expect_five_hz():
+# HH_260819 - Diagnostics must reject the former 1/5 Hz rover profiles while
+# the replacement-board validation intentionally uses 100 ms receiver epochs.
+def test_physical_gnss_checkers_expect_ten_hz():
     sensing = _checker_params("sensing", "gnss_checker.yaml")
     localization = _checker_params(
         "localization", "localization_gnss_checker.yaml"
     )
 
-    assert sensing["main"]["expected_hz"] == 5.0
-    assert localization["main"]["expected_hz"] == 5.0
+    assert sensing["main"]["expected_hz"] == 10.0
+    assert localization["main"]["expected_hz"] == 10.0
 
 
 # HH_260807 - The raw sensor and motion-relevant ground-segmented output are

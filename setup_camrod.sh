@@ -21,7 +21,9 @@
 #   - colcon tests/lint are separate from setup because ament lint policy is package-specific.
 # HH_260727: current field setup assumptions:
 #   - ZED-F9P heading rover uses /dev/ttyACM0; moving-base corrections use the
-#     FTDI DN03DF8V by-id path. CV7 uses its LORD/MicroStrain by-id path when
+#     FTDI DN05Y9E7 by-id path at 460800 baud. A replacement adapter requires
+#     updating both mirrored GNSS YAMLs after rediscovering /dev/serial/by-id.
+#     CV7 uses its LORD/MicroStrain by-id path when
 #     connected; never substitute the GNSS ACM or light-controller FTDI port.
 #   - CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.

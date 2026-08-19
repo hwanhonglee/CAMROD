@@ -21,7 +21,7 @@
  *
  *   main:
  *     topic:                "/sensing/gnss/pose_with_covariance"
- *     expected_hz:          5.0
+ *     expected_hz:          10.0
  *     hz_warn_ratio:        0.8
  *     hz_error_ratio:       0.5
  *     stale_timeout:        2.0
@@ -58,7 +58,7 @@ struct LocalizationGnssState
   // 설정
   std::string name;
   std::string topic;
-  double expected_hz{5.0};
+  double expected_hz{10.0};
   double hz_warn_ratio{0.8};
   double hz_error_ratio{0.5};
   double stale_timeout{2.0};
@@ -114,7 +114,7 @@ protected:
 
       declare_parameter(name + ".topic",
         std::string("/sensing/gnss/pose_with_covariance"));
-      declare_parameter(name + ".expected_hz",          5.0);
+      declare_parameter(name + ".expected_hz",          10.0);
       declare_parameter(name + ".hz_warn_ratio",        0.8);
       declare_parameter(name + ".hz_error_ratio",       0.5);
       declare_parameter(name + ".stale_timeout_s",        2.0);

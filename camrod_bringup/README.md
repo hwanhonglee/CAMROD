@@ -18,6 +18,8 @@ manual Goal Pose workflow. -->
 return-handoff diagnostic grace for the ARM64 deployment boundary. -->
 <!-- HH_260819 - Record serialized UI Return preemption, complete B1-B13 exit,
 roadside forward-loop routing, and measured AMD64 lease-scheduler cost. -->
+<!-- HH_260819 - Synchronize the replacement dual GNSS 10 Hz/100 ms field
+contract without treating ROS cadence alone as moving-base acceptance. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -49,7 +51,7 @@ manual Return, docking telemetry, and final parking slowdown contracts. -->
 
 | Item | Full-bringup value |
 |---|---:|
-| Physical GNSS / epoch | `5 Hz` / `200 ms` |
+| Physical GNSS / epoch | `10 Hz` / `100 ms` |
 | EKF, selected pose, Nav2 control | `20 Hz` |
 | Straight cruise | final `2.0 km/h` (`0.555556 m/s`) |
 | Body / planning boundary | tapered rounded `1.39160 x 1.07000 m` / exact `0.10 m` offset `1.59160 x 1.27000 m` |
@@ -227,7 +229,7 @@ misreported as a completed campsite mission.
 The [3 km/h structured record](../docs/assets/module-guides/localization/test-results/three-kph-localization-20260806/README.md)
 keeps the historical 3 km/h maneuver ratios, raw/final command trace, fusion inputs, bag
 hash, and the explicit limitation that fake 10 Hz GNSS does not validate the
-physical 5 Hz moving-base link or its epoch alignment.
+physical 10 Hz moving-base RTCM path, epoch alignment, or heading flags.
 
 ![Historical reduced-boundary policy validation](../docs/assets/module-guides/control/test-results/robot-boundary-adjustment-20260806/02-runtime-boundary-policy.png)
 

@@ -12,6 +12,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import RobotAnimation from './RobotAnimation';
 import TelemetryWorkspace, { TELEMETRY_TABS } from './TelemetryWorkspace';
+import {
+  ServiceEvidenceDashboard,
+  ServiceEvidenceSummary,
+  ServiceTripBadge,
+  useServiceMetricsSummary,
+} from './ServiceEvidence';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -1030,6 +1036,9 @@ function App() {
   const [missionBlockMessage, setMissionBlockMessage] = useState('');
   const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
   const [batteryReturnState, setBatteryReturnState] = useState(emptyBatteryReturnState);
+  // HH_260819 - Public field-operation evidence stays lightweight and separate
+  // from the administrator-only, high-bandwidth telemetry session.
+  const serviceMetrics = useServiceMetricsSummary();
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -1490,6 +1499,7 @@ function App() {
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
+  const serviceEvidenceModalOpen = activeModal === 'service-evidence';
   const adminEntryZone = (
     <div
       className="diag-secret-zone diag-secret-zone-global"
@@ -1658,8 +1668,16 @@ function App() {
           </div>
         </div>
 
-        {/* ── 하단 콘텐츠 영역: 3개 버튼 1×3 ── */}
+        {/* ── 하단 콘텐츠 영역: 실증 요약 + 기존 4개 버튼 2×2 ── */}
         <div className="waiting-body">
+
+          {/* ── 공개 실증 운행 요약: 기존 2×2 서비스 버튼은 그대로 유지 ── */}
+          <ServiceEvidenceSummary
+            data={serviceMetrics.data}
+            loading={serviceMetrics.loading}
+            error={serviceMetrics.error}
+            onOpen={() => setActiveModal('service-evidence')}
+          />
 
           {/* ── 목적지 선택 ── */}
           <button className="waiting-grid-btn" onClick={handleWaitingClick}>
@@ -1695,14 +1713,27 @@ function App() {
         </div>
 
         {/* ── 모달 오버레이 ── */}
-        {activeModal && activeModal !== 'settings' && modalData && (
+        {activeModal && activeModal !== 'settings' && (modalData || serviceEvidenceModalOpen) && (
           <div className="modal-overlay">
-            <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div
+              className={`modal-box ${serviceEvidenceModalOpen ? 'service-evidence-modal' : ''}`}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-header">
-                <span className="modal-title">{modalData.title}</span>
+                <span className="modal-title">
+                  {serviceEvidenceModalOpen ? '실증 운행 현황' : modalData.title}
+                </span>
                 <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
-              <div className="modal-body">{modalData.content}</div>
+              <div className="modal-body">
+                {serviceEvidenceModalOpen ? (
+                  <ServiceEvidenceDashboard
+                    summaryData={serviceMetrics.data}
+                    summaryLoading={serviceMetrics.loading}
+                    summaryError={serviceMetrics.error}
+                  />
+                ) : modalData.content}
+              </div>
             </div>
           </div>
         )}
@@ -1859,6 +1890,12 @@ function App() {
               <span className="preview-placeholder">목적지 선택 버튼을 눌러주세요</span>
             </>
           )}
+          <ServiceTripBadge
+            serviceActive={Boolean(activeSite || arrivedSite || displayedReturning)}
+            currentService={serviceMetrics.data?.current_service}
+            loading={serviceMetrics.loading}
+            error={serviceMetrics.error}
+          />
         </div>
 
         {/* ── 오른쪽: 컨트롤 패널 ── */}

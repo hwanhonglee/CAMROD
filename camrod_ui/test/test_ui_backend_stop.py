@@ -35,6 +35,26 @@ class _FakeLogger:
         self.warning_messages.append(message)
 
 
+class _FakeServiceMetrics:
+
+    def __init__(self) -> None:
+        self.starts = []
+        self.velocities = []
+        self.states = []
+
+    def start_service(self, site: str, **kwargs) -> bool:
+        self.starts.append((site, kwargs))
+        return True
+
+    def observe_velocity(self, vx, vy, sample_time) -> float:
+        self.velocities.append((float(vx), float(vy), float(sample_time)))
+        return 0.0
+
+    def observe_service_state(self, state, state_name, **kwargs) -> bool:
+        self.states.append((int(state), str(state_name), kwargs))
+        return False
+
+
 class _FakeCancelClient:
 
     def __init__(self, ready: bool) -> None:
@@ -421,6 +441,32 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(published_states, [])
         self.assertIn("preserving departure authorization", logger.info_messages[-1])
 
+    def test_platform_velocity_is_recorded_without_battery_telemetry(self) -> None:
+        metrics = _FakeServiceMetrics()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _runtime_policy=SimpleNamespace(update_platform=lambda **_kwargs: None),
+            _service_metrics=metrics,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_service_state = lambda *_args, **_kwargs: None
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        backend._now_s = lambda: 99.0
+
+        message = AvgPlatformStatus()
+        message.velocity.header.stamp.sec = 12
+        message.velocity.header.stamp.nanosec = 500_000_000
+        message.velocity.twist.linear.x = 1.25
+        message.velocity.twist.linear.y = -0.5
+        message.battery_state_available = False
+
+        UiBackendNode._on_platform_status(backend, message)
+
+        self.assertEqual(metrics.velocities, [(1.25, -0.5, 12.5)])
+
     def test_duplicate_destination_is_idempotent_during_station_departure(self) -> None:
         logger = _FakeLogger()
         backend = SimpleNamespace(
@@ -529,10 +575,12 @@ class UiBackendStopTest(unittest.TestCase):
         )
 
     def test_battery_rejected_destination_does_not_become_active_site(self) -> None:
+        metrics = _FakeServiceMetrics()
         backend = SimpleNamespace(
             _active_mission_site="B4",
             _lock=threading.Lock(),
             broadcasts=[],
+            _service_metrics=metrics,
         )
         backend.get_logger = lambda: _FakeLogger()
         backend._resolve_mission_key_for_site = lambda site: f"camping_site_{site[1:]}"
@@ -559,6 +607,44 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertTrue(result["blocked"])
         self.assertEqual(backend._active_mission_site, "B4")
+        self.assertEqual(metrics.starts, [])
+
+    def test_accepted_already_arrived_destination_starts_service_evidence(self) -> None:
+        metrics = _FakeServiceMetrics()
+        backend = SimpleNamespace(
+            _active_mission_site="",
+            _lock=threading.Lock(),
+            _service_metrics=metrics,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_6"
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda _site: (
+            True,
+            "camping_site_6",
+            0.4,
+            "inside_site_polygon",
+        )
+        backend._publish_camping_site_maneuver_controller_adopt = (
+            lambda *_args, **_kwargs: None
+        )
+        backend._publish_service_state = lambda *_args, **_kwargs: None
+        backend._notify_site_arrival = lambda *_args, **_kwargs: None
+        backend._publish_engage = lambda *_args, **_kwargs: None
+
+        result = UiBackendNode._apply_destination_command(
+            backend,
+            site="B6",
+            run=True,
+            source="test_accept",
+        )
+
+        self.assertTrue(result["run"])
+        self.assertEqual(backend._active_mission_site, "B6")
+        self.assertEqual(metrics.starts[0][0], "B6")
+        self.assertEqual(metrics.starts[0][1]["mission_key"], "camping_site_6")
+        self.assertEqual(metrics.starts[0][1]["source"], "test_accept")
 
     @staticmethod
     def _occupancy_backend(service_state: int, enabled: bool = False):

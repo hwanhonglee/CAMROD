@@ -39,7 +39,7 @@ This package observes health. It never generates vehicle motion commands.
 
 | Diagnostic input | Expected rate | Scope |
 |---|---:|---|
-| Physical GNSS and localization GNSS input | `5 Hz` | Receiver corrections; independent of EKF prediction |
+| Physical GNSS and localization GNSS input | `10 Hz` | Receiver corrections; independent of EKF prediction and moving-base heading validity |
 | Selected localization pose | `20 Hz` | EKF/final-pose output |
 | LiDAR raw / filtered cloud | `10 Hz` | Required physical sensing chain |
 | Front / rear camera raw stream | `10 Hz` each | Rear monitoring JPEG is a separate `2 Hz` diagnostic stream |

@@ -18,7 +18,7 @@
     # adapter remains the sole owner of the heading-rotated lever-arm correction.
     frame_id: gnss_link
     # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
-    # External CORS goes to the Lite moving base through FTDI DN03DF8V
+    # External CORS goes to the Lite moving base through FTDI DN05Y9E7
     # by its stable by-id path; only the corrected moving-base stream reaches
     # this receiver through UART2, regardless of ttyUSB enumeration.
     rtcm_topic: rtcm
@@ -48,10 +48,13 @@
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # HH_260806 - The custom dual setup applies a CFG-RATE RAM write even with
     # config_on_startup=false, so a receiver-saved profile does not override ROS.
-    # HH_260807 - Use the current 5 Hz physical validation profile (200 ms
-    # receiver epochs). nav_rate=1 is one solution per measurement cycle; it
-    # is not a 1 Hz setting. Validate moving-base epoch compatibility separately.
-    rate: 5.0
+    # HH_260819 - The replacement rover was saved in u-center for 10 Hz
+    # (100 ms epochs). This YAML is the single ROS owner of that rate; do not
+    # reintroduce a launch-file rate overlay because inline ROS parameters take
+    # precedence. nav_rate=1 means one solution per measurement epoch, not 1 Hz.
+    # A board/rate change is accepted only after NAV-PVT, RXM-RTCM, and valid
+    # NAV-RELPOSNED heading have all been measured on the physical pair.
+    rate: 10.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)
@@ -99,8 +102,11 @@
     # POWER+XBEE FTDI connected to the Lite moving-base UART1.
     # Use this stable identity because the Quectel modem shares ttyUSB indices
     # and must not receive RTCM.
-    # HH_260807 - This 115200 setting is the CORS-to-Lite input only. The
-    # Lite-to-rover output baud is stored on both receiver boards and must be
-    # checked separately for RTCM bandwidth and matching endpoint values.
-    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
-    baud: 115200
+    # HH_260819 - The FTDI adapter was replaced (DN03DF8V -> DN05Y9E7). Always
+    # rediscover /dev/serial/by-id after a cable/adapter change; a stale path
+    # leaves NTRIP connected while silently delivering no CORS to the Lite.
+    # This 460800 value controls only CORS -> Lite UART1. Lite -> rover UART2 is
+    # a separate board-saved link and both endpoints must also match 460800 in
+    # u-center. Verify RTCM message reception before blaming the GNSS hardware.
+    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0
+    baud: 460800

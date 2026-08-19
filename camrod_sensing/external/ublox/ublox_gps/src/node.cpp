@@ -636,7 +636,10 @@ bool UbloxNode::configureDualAntennaRover() {
   cfg.cfgdata.push_back(makeValsetU2(kCfgRateNav, nav_rate_));
   // HH_260722 - Keep UART2 as the production moving-base correction input.
   // Optional USB RTCM exists only for the isolated direct-rover diagnostic.
-  // Baudrate is intentionally not written here so the u-center saved 115200 setting stays intact.
+  // HH_260819 - Baudrate is intentionally not written here. The deployment
+  // currently saves 460800 on both Lite-output and rover-UART2 endpoints in
+  // u-center; a future board replacement must update and verify both sides.
+  // The ROS writer baud is the separate CORS-to-Lite UART1 link.
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtUbx, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtNmea, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtRtcm3x, false));

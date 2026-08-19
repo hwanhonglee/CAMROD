@@ -65,13 +65,12 @@ class NTRIPClient(NTRIPBase):
     self.rtcm_timeout_seconds = self.DEFAULT_RTCM_TIMEOUT_SECONDS
 
   def connect(self):
-    # Create a socket object that we will use to connect to the server
-    self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    self._server_socket.settimeout(5)
-
-    # Connect the socket to the server
+    # HH_260819 - Let getaddrinfo select IPv4 or IPv6. The wired field network
+    # is IPv6-only with DNS64/NAT64, while the previous AF_INET-only socket
+    # failed with ENETUNREACH even though the caster was reachable over IPv6.
     try:
-      self._server_socket.connect((self._host, self._port))
+      self._server_socket = socket.create_connection(
+        (self._host, self._port), timeout=5)
     except Exception as e:
       self._logerr('Unable to connect socket to server at http://{}:{}'.format(self._host, self._port))
       self._logerr('Exception: {}'.format(str(e)))

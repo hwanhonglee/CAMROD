@@ -342,6 +342,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260819 - The field wired network may expose the NTRIP caster through
+  # DNS64/NAT64, so the client must not force an IPv4-only socket.
+  ament_add_pytest_test(
+    test_ntrip_address_family
+    test/test_ntrip_address_family.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260729 - Keep disabled-hardware dummy outputs aligned with all seven
   # canonical radar and RViz topic boundaries from the SEN0592 YAML.
   ament_add_pytest_test(
