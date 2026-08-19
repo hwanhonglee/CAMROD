@@ -139,6 +139,7 @@ private:
   {
     const std::string value = normalize(phase);
     return value == "reverse_approach" || value == "wait_for_charging" ||
+           value == "waiting_for_charging" || value == "final_yaw_alignment" ||
            value == "waiting_for_tag" || value == "tag_guided_reverse" ||
            value == "final_reverse_insertion" || value == "retry_forward_exit" ||
            value == "parked";

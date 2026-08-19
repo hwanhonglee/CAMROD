@@ -2,16 +2,14 @@
 // HH_260720 - Rename the bench controller as the final AprilTag parking controller.
 //
 // HH_260720 - The controller waits for a rear-camera parking tag, estimates the
-// station axis in odometry, reverses with heading/lateral feedback, and uses a
-// short odometry-only final insertion when the tag leaves the camera field of view.
+// station axis in odometry, reverses with heading/lateral feedback, and latches
+// translation off at the camera-range stop before a bounded yaw-only alignment.
 // It never bypasses /control/cmd_vel_safety_gate.
 //
 // State machine:
-//   WAITING_FOR_TAG -> TAG_GUIDED_REVERSE -> FINAL_REVERSE_INSERTION -> PARKED
-//                              |                         |
-//                              +-> RETRY_FORWARD_EXIT <--+
-//                                           |
-//                                         ERROR
+//   WAITING_FOR_TAG -> TAG_GUIDED_REVERSE -> FINAL_YAW_ALIGNMENT
+//                              |                       |
+//                              +-> ERROR       WAITING_FOR_CHARGING -> PARKED
 
 #include <memory>
 #include <string>
@@ -36,6 +34,7 @@
 #include <diagnostic_msgs/msg/key_value.hpp>
 
 #include "camrod_control/parking_speed_profile.hpp"
+#include "camrod_control/yaw_alignment_settling.hpp"
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -60,7 +59,7 @@ class AprilTagParkingControllerNode : public rclcpp::Node
 public:
   // HH_260720 - State names describe the physical motion performed in each phase.
   enum class State { IDLE, WAITING_FOR_TAG, TAG_GUIDED_REVERSE,
-    FINAL_REVERSE_INSERTION, PARKED, RETRY_FORWARD_EXIT, ERROR };
+    FINAL_YAW_ALIGNMENT, WAITING_FOR_CHARGING, PARKED, ERROR };
 
   AprilTagParkingControllerNode()
   : Node("apriltag_parking_controller"),
@@ -104,6 +103,16 @@ public:
       "invert_angular_command_while_reversing", false);
     final_insertion_speed_mps_ =
       declare_parameter<double>("final_insertion_speed_mps", 0.05);
+    // HH_260819 - These thresholds use the unmodified camera-frame 3D range,
+    // exactly matching the operator UI's Tag distance value.
+    slowdown_start_tag_distance_m_ = std::abs(declare_parameter<double>(
+      "slowdown_start_tag_distance_m", 0.80));
+    translation_stop_tag_distance_m_ = std::abs(declare_parameter<double>(
+      "translation_stop_tag_distance_m", 0.60));
+    minimum_approach_turn_radius_m_ = std::abs(declare_parameter<double>(
+      "minimum_approach_turn_radius_m", 0.85));
+    final_yaw_angular_speed_radps_ = std::abs(declare_parameter<double>(
+      "final_yaw_angular_speed_radps", 0.20));
     slowdown_start_distance_m_ =
       declare_parameter<double>("slowdown_start_distance_m", 1.443);
     slowdown_start_remaining_distance_m_ = std::abs(declare_parameter<double>(
@@ -114,6 +123,14 @@ public:
       declare_parameter<double>("final_heading_tolerance_rad", 0.10);
     final_lateral_tolerance_m_ =
       declare_parameter<double>("final_lateral_tolerance_m", 0.03);
+    final_yaw_settle_hold_s_ = std::abs(declare_parameter<double>(
+      "final_yaw_settle_hold_s", 0.8));
+    final_yaw_settle_max_rate_degps_ = std::abs(declare_parameter<double>(
+      "final_yaw_settle_max_rate_degps", 3.0));
+    yaw_alignment_settling_.setConfig(
+      camrod_control::YawAlignmentSettlingConfig{
+        std::abs(final_heading_tolerance_rad_) * 180.0 / M_PI,
+        final_yaw_settle_hold_s_, final_yaw_settle_max_rate_degps_});
 
     // HH_260720 - Distances are measured along the parking-tag normal axis.
     final_insertion_start_distance_m_ = declare_parameter<double>(
@@ -121,6 +138,7 @@ public:
     parked_distance_from_tag_m_ = declare_parameter<double>(
       "parked_distance_from_tag_m", 0.943);
     tag_timeout_s_ = declare_parameter<double>("tag_timeout_s", 0.5);
+    odometry_timeout_s_ = std::abs(declare_parameter<double>("odometry_timeout_s", 0.5));
     tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 10.0);
     retry_forward_distance_m_ =
       declare_parameter<double>("retry_forward_distance_m", 1.0);
@@ -155,7 +173,7 @@ public:
         charging_detected_ = message->is_charging;
         if (charging_changed && state_ == State::PARKED) {
           // HH_260721 - Refresh the shared parked state when CAN charging changes.
-          publishServiceState();
+          publishServiceState(true);
         }
       });
 
@@ -208,6 +226,12 @@ public:
         "final insertion start %.2fm must exceed parked distance %.2fm",
         final_insertion_start_distance_m_, parked_distance_from_tag_m_);
     }
+    if (slowdown_start_tag_distance_m_ <= translation_stop_tag_distance_m_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "tag slowdown start %.2fm must exceed translation stop %.2fm",
+        slowdown_start_tag_distance_m_, translation_stop_tag_distance_m_);
+    }
     RCLCPP_INFO(
       get_logger(),
       "apriltag_parking_controller ready: command=%s odometry=%s tag=%s",
@@ -219,9 +243,28 @@ private:
   // HH_260720 - Transform tag observations and estimate a fixed odometry-frame parking axis.
   void tagCallback(const avg_msgs::msg::AvgAprilTagPose::SharedPtr msg)
   {
+    const auto observation_time = now();
+    // HH_260819 - Do not freeze a new tag/axis estimate against an old vehicle
+    // pose. WAITING_FOR_TAG remains stopped until tag and odometry overlap in
+    // the configured freshness window.
+    if (!odometryIsFresh(observation_time)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "fresh odometry unavailable; rejecting parking tag observation");
+      return;
+    }
     // HH_260720 - TF remains a standard ROS boundary; convert only for that call.
     const geometry_msgs::msg::PoseStamped tag_pose =
       avg_msgs::conversions::toRos(msg->pose);
+    // HH_260819 - Preserve the detector's camera-frame 3D norm before TF.  The
+    // UI computes Tag distance from these exact three coordinates.
+    const double measured_tag_camera_distance_m = std::sqrt(
+      tag_pose.pose.position.x * tag_pose.pose.position.x +
+      tag_pose.pose.position.y * tag_pose.pose.position.y +
+      tag_pose.pose.position.z * tag_pose.pose.position.z);
+    if (!std::isfinite(measured_tag_camera_distance_m)) {
+      return;
+    }
     // HH_260720 - Transform the optical-frame observation into the robot base frame.
     geometry_msgs::msg::PoseStamped pose_base;
     try {
@@ -256,12 +299,6 @@ private:
     if (ax < 0.0) {ax = -ax; ay = -ay;}
 
     // HH_260720 - Filter the stationary tag and axis in odometry so brief camera loss is tolerable.
-    if (!odom_valid_) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "odometry unavailable; cannot estimate the parking axis");
-      return;
-    }
     const double cy = std::cos(vehicle_odometry_yaw_rad_);
     const double sy = std::sin(vehicle_odometry_yaw_rad_);
     const double measured_tag_odometry_x_m = vehicle_odometry_x_m_ + cy * px - sy * py;
@@ -292,7 +329,9 @@ private:
         parking_axis_odometry_yaw_rad_ + axis_filter_gain * normalizeAngle(
           measured_axis_odometry_yaw_rad - parking_axis_odometry_yaw_rad_));
     }
-    last_tag_time_ = now();
+    tag_camera_distance_m_ = measured_tag_camera_distance_m;
+    tag_camera_distance_valid_ = true;
+    last_tag_time_ = observation_time;
   }
 
   // HH_260720 - Update longitudinal, lateral, and heading errors from current odometry.
@@ -318,6 +357,7 @@ private:
       2.0 * (q.w * q.z + q.x * q.y),
       1.0 - 2.0 * (q.y * q.y + q.z * q.z));
     odom_valid_ = true;
+    last_odometry_time_ = now();
 
     // HH_260720 - Record one path point per 2 cm only while parking is active.
     if (viz_enabled_ && path_pub_ && state_ != State::IDLE &&
@@ -345,6 +385,15 @@ private:
     }
   }
 
+  bool odometryIsFresh(const rclcpp::Time & current_time) const
+  {
+    if (!odom_valid_ || last_odometry_time_.nanoseconds() <= 0) {
+      return false;
+    }
+    const double age_s = (current_time - last_odometry_time_).seconds();
+    return age_s >= 0.0 && age_s <= odometry_timeout_s_;
+  }
+
   // HH_260720 - Start and cancel are shared by topic and service interfaces.
   bool startParking(const std::string & source, std::string & detail)
   {
@@ -352,13 +401,16 @@ private:
       detail = "AprilTag parking is already active";
       return false;
     }
-    if (!odom_valid_) {
+    if (!odometryIsFresh(now())) {
       detail = "fresh odometry is unavailable";
       transitionTo(State::ERROR);
       return false;
     }
     retries_ = 0;
     axis_valid_ = false;
+    tag_camera_distance_valid_ = false;
+    yaw_alignment_settling_.reset();
+    yaw_alignment_settled_logged_ = false;
     robot_path_.poses.clear();
     transitionTo(State::WAITING_FOR_TAG);
     detail = "AprilTag parking started from " + source;
@@ -395,11 +447,13 @@ private:
   // HH_260720 - Run the explicit AprilTag parking state machine.
   void controlLoop()
   {
-    const bool tag_fresh = axis_valid_ &&
-      (now() - last_tag_time_).seconds() < tag_timeout_s_;
+    const auto current_time = now();
+    const bool odometry_is_fresh = odometryIsFresh(current_time);
+    const bool tag_fresh = axis_valid_ && tag_camera_distance_valid_ &&
+      (current_time - last_tag_time_).seconds() < tag_timeout_s_;
 
-    // HH_260720 - Refresh errors from odometry every tick after the first valid tag.
-    if (axis_valid_ && odom_valid_) {
+    // HH_260720 - Refresh errors only from current odometry after the first valid tag.
+    if (axis_valid_ && odometry_is_fresh) {
       updateParkingErrorsFromOdometry();
       if (viz_enabled_) {updateVisualizationGeometry();}
     }
@@ -427,6 +481,14 @@ private:
 
       // HH_260720 - Wait stopped until the configured parking tag is visible.
       case State::WAITING_FOR_TAG: {
+          if (!odometry_is_fresh) {
+            RCLCPP_ERROR_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "odometry stale while waiting for parking tag; holding zero");
+            publishStop();
+            publishStatus();
+            return;
+          }
           if (tag_fresh) {
             transitionTo(State::TAG_GUIDED_REVERSE);
             break;
@@ -441,105 +503,108 @@ private:
           break;
         }
 
-      // HH_260720 - Reverse along the observed tag axis with lateral and heading correction.
+      // HH_260819 - Reverse from the first valid tag with simultaneous lateral
+      // and heading correction. Camera range owns slowdown and the one-way
+      // translation stop; robot-center thresholds below remain compatibility-only.
       case State::TAG_GUIDED_REVERSE: {
-          if (!tag_fresh) {
-            // HH_260720 - Near the tag, continue with bounded odometry-only final insertion.
-            if (axis_valid_ &&
-              distance_along_parking_axis_m_ < final_insertion_start_distance_m_ * 1.5)
-            {
-              startFinalReverseInsertion();
-            } else {
-              handleTagDetectionLoss();
-            }
-            break;
-          }
-          // HH_260720 - Stop before passing the configured parking distance.
-          if (distance_along_parking_axis_m_ < parked_distance_from_tag_m_) {
+          if (!odometry_is_fresh) {
+            // HH_260819 - A current tag must never drive reverse/steer using
+            // the last heading or lateral error from stale odometry.
+            RCLCPP_ERROR_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "odometry stale during tag-guided reverse; holding zero");
             publishStop();
-            if (!require_charging_for_completion_ || charging_detected_) {
-              transitionTo(State::PARKED);
-            } else {
-              RCLCPP_WARN(
-                get_logger(),
-                "parking distance reached without charging feedback; retrying");
-              startRetryForwardExit();
-            }
+            publishStatus();
+            return;
+          }
+          if (!tag_fresh) {
+            // HH_260819 - Never turn a near-tag camera loss into blind reverse
+            // insertion. The default command is zero until reacquisition.
+            handleTagDetectionLoss();
             break;
           }
           const double correction_heading_rad = calculateLateralCorrectionHeading();
-          if (distance_along_parking_axis_m_ < final_insertion_start_distance_m_) {
-            // HH_260720 - Reject straight final insertion while outside alignment tolerances.
-            if (std::fabs(lateral_error_m_) > final_lateral_tolerance_m_ ||
-              std::fabs(heading_error_rad_) > final_heading_tolerance_rad_)
-            {
-              RCLCPP_WARN(
+          if (tag_camera_distance_m_ <= translation_stop_tag_distance_m_) {
+            // HH_260819 - The 0.60 m camera-range crossing is a latch: after
+            // this point no tag loss, yaw error, or missing charge may restart
+            // translation. Lateral error cannot be corrected by yaw-only motion.
+            if (std::fabs(lateral_error_m_) > final_lateral_tolerance_m_) {
+              RCLCPP_ERROR(
                 get_logger(),
-                "final insertion alignment failed: lateral=%.3fm heading=%.3frad; retrying",
-                lateral_error_m_, heading_error_rad_);
-              startRetryForwardExit();
-            } else {
-              startFinalReverseInsertion();
+                "tag translation stop reached with unsafe lateral error: "
+                "tag=%.3fm lateral=%.3fm tolerance=%.3fm",
+                tag_camera_distance_m_, lateral_error_m_, final_lateral_tolerance_m_);
+              fail();
+              break;
             }
+            yaw_alignment_settling_.reset();
+            yaw_alignment_settled_logged_ = false;
+            publishStop();
+            transitionTo(State::FINAL_YAW_ALIGNMENT);
             break;
           }
-          const double remaining_distance_m = std::max(
-            0.0, distance_along_parking_axis_m_ - parked_distance_from_tag_m_);
-          // HH_260818 - Express docking slowdown from the actual stop point.
-          // The legacy absolute threshold remains declared for older override
-          // files, while this readable remaining-distance parameter is canonical.
+          const double remaining_tag_distance_m =
+            camrod_control::tagApproachRemainingDistance(
+              tag_camera_distance_m_, translation_stop_tag_distance_m_);
+          const double slowdown_window_m =
+            camrod_control::tagApproachSlowdownWindow(
+              slowdown_start_tag_distance_m_, translation_stop_tag_distance_m_);
           const double reverse_speed_mps = camrod_control::parkingApproachSpeed(
-            remaining_distance_m, slowdown_start_remaining_distance_m_,
+            remaining_tag_distance_m, slowdown_window_m,
             reverse_approach_speed_mps_, final_insertion_speed_mps_);
           double angular_speed_radps = clamp(
             heading_gain_ * normalizeAngle(heading_error_rad_ - correction_heading_rad),
             -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
           if (invert_wz_in_reverse_) {angular_speed_radps = -angular_speed_radps;}
+          angular_speed_radps = camrod_control::limitApproachAngularSpeedForTurnRadius(
+            angular_speed_radps, reverse_speed_mps, minimum_approach_turn_radius_m_);
           command.linear.x = -reverse_speed_mps;
           command.angular.z = angular_speed_radps;
           break;
         }
 
-      // HH_260720 - Finish with a bounded straight reverse using odometry and charging feedback.
-      case State::FINAL_REVERSE_INSERTION: {
-          const double traveled = std::hypot(
-            vehicle_odometry_x_m_ - final_insertion_start_odometry_x_m_,
-            vehicle_odometry_y_m_ - final_insertion_start_odometry_y_m_);
-          const bool distance_done = traveled >= final_insertion_target_distance_m_;
-          const bool charging_done =
-            require_charging_for_completion_ && charging_detected_;
-
-          if (charging_done || (!require_charging_for_completion_ && distance_done)) {
+      // HH_260819 - At the camera-range stop, rotate only around the chassis
+      // center. A fresh odometry sample must remain aligned and slow for the
+      // configured hold; charging confirmation may arrive later while stopped.
+      case State::FINAL_YAW_ALIGNMENT: {
+          if (!odometry_is_fresh) {
+            // HH_260819 - Never continue rotating from a stale heading error.
+            // Stay in this exact phase with zero so the charging fast-path can
+            // still preempt to PARKED as soon as current is confirmed.
+            yaw_alignment_settling_.reset();
+            RCLCPP_ERROR_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "odometry stale during final yaw alignment; holding zero");
+            break;
+          }
+          const bool settled = yaw_alignment_settling_.observe(
+            heading_error_rad_, vehicle_odometry_yaw_rad_, last_odometry_time_.seconds());
+          if (!yaw_alignment_settling_.withinTolerance()) {
+            command.angular.z = clamp(
+              heading_gain_ * heading_error_rad_,
+              -final_yaw_angular_speed_radps_, final_yaw_angular_speed_radps_);
+          } else if (settled && !yaw_alignment_settled_logged_) {
+            RCLCPP_INFO(
+              get_logger(),
+              "final yaw aligned at tag %.3fm; stopped while waiting for charging",
+              tag_camera_distance_m_);
+            yaw_alignment_settled_logged_ = true;
+          }
+          if (settled && require_charging_for_completion_) {
+            publishStop();
+            transitionTo(State::WAITING_FOR_CHARGING);
+          } else if (settled) {
             publishStop();
             transitionTo(State::PARKED);
-            RCLCPP_INFO(get_logger(), "AprilTag parking completed after final %.3fm", traveled);
-            break;
           }
-          // HH_260720 - Retry if the charger is still absent beyond the bounded overtravel margin.
-          if (require_charging_for_completion_ &&
-            traveled > final_insertion_target_distance_m_ * 1.2 + 0.03)
-          {
-            RCLCPP_WARN(get_logger(), "final insertion completed without charging; retrying");
-            startRetryForwardExit();
-            break;
-          }
-          command.linear.x = -final_insertion_speed_mps_;
           break;
         }
 
-      // HH_260720 - Drive forward a bounded distance before waiting for the tag again.
-      case State::RETRY_FORWARD_EXIT: {
-          const double traveled = std::hypot(
-            vehicle_odometry_x_m_ - retry_start_odometry_x_m_,
-            vehicle_odometry_y_m_ - retry_start_odometry_y_m_);
-          if (traveled >= retry_forward_distance_m_) {
-            // HH_260720 - Retain the odometry-frame axis for immediate reuse after reacquisition.
-            transitionTo(State::WAITING_FOR_TAG);
-            break;
-          }
-          command.linear.x = reverse_approach_speed_mps_;
-          break;
-        }
+      // HH_260819 - Publish an explicit fresh phase for the charging fast-path
+      // while continuing to command zero at the latched 0.60 m stop.
+      case State::WAITING_FOR_CHARGING:
+        break;
+
     }
 
     cmd_pub_->publish(command);
@@ -552,37 +617,6 @@ private:
     return clamp(
       -lateral_to_heading_gain_ * lateral_error_m_,
       -maximum_approach_angle_rad_, maximum_approach_angle_rad_);
-  }
-
-  void startFinalReverseInsertion()
-  {
-    if (!odom_valid_) {
-      RCLCPP_ERROR(get_logger(), "odometry unavailable; final reverse insertion is blocked");
-      fail();
-      return;
-    }
-    final_insertion_start_odometry_x_m_ = vehicle_odometry_x_m_;
-    final_insertion_start_odometry_y_m_ = vehicle_odometry_y_m_;
-    // HH_260720 - Reverse only the remaining tag-axis distance to the configured stop point.
-    final_insertion_target_distance_m_ = std::max(
-      distance_along_parking_axis_m_ - parked_distance_from_tag_m_, 0.0);
-    RCLCPP_INFO(
-      get_logger(), "final insertion started: remaining=%.3fm",
-      final_insertion_target_distance_m_);
-    transitionTo(State::FINAL_REVERSE_INSERTION);
-  }
-
-  void startRetryForwardExit()
-  {
-    if (++retries_ > max_retries_) {
-      RCLCPP_ERROR(get_logger(), "maximum AprilTag parking retries exceeded");
-      fail();
-      return;
-    }
-    retry_start_odometry_x_m_ = vehicle_odometry_x_m_;
-    retry_start_odometry_y_m_ = vehicle_odometry_y_m_;
-    RCLCPP_WARN(get_logger(), "AprilTag parking retry %d/%d", retries_, max_retries_);
-    transitionTo(State::RETRY_FORWARD_EXIT);
   }
 
   void handleTagDetectionLoss()
@@ -709,7 +743,7 @@ private:
         stateName(state_), stateName(s));
       state_ = s;
       state_enter_time_ = now();
-      publishServiceState();
+      publishServiceState(true);
       publishStatus(true);
     }
   }
@@ -725,17 +759,24 @@ private:
       case State::IDLE:           return "IDLE";
       case State::WAITING_FOR_TAG: return "WAITING_FOR_TAG";
       case State::TAG_GUIDED_REVERSE: return "TAG_GUIDED_REVERSE";
-      case State::FINAL_REVERSE_INSERTION: return "FINAL_REVERSE_INSERTION";
+      case State::FINAL_YAW_ALIGNMENT: return "FINAL_YAW_ALIGNMENT";
+      case State::WAITING_FOR_CHARGING: return "WAITING_FOR_CHARGING";
       case State::PARKED:          return "PARKED";
-      case State::RETRY_FORWARD_EXIT: return "RETRY_FORWARD_EXIT";
       case State::ERROR:           return "ERROR";
     }
     return "?";
   }
 
-  void publishServiceState()
+  void publishServiceState(bool force = false)
   {
     if (state_ == State::IDLE || state_ == State::ERROR) {
+      return;
+    }
+    const auto current_time = now();
+    if (!force && last_service_state_time_.nanoseconds() > 0 &&
+      (current_time - last_service_state_time_).seconds() <
+      1.0 / std::max(status_rate_hz_, 0.1))
+    {
       return;
     }
     avg_msgs::msg::AvgServiceState message;
@@ -745,12 +786,16 @@ private:
         avg_msgs::msg::AvgServiceState::CHARGING :
         avg_msgs::msg::AvgServiceState::DROP_ZONE_WAIT;
       message.state_name = charging_detected_ ? "CHARGING" : "DROP_ZONE_WAIT";
+    } else if (state_ == State::WAITING_FOR_CHARGING) {
+      message.state = avg_msgs::msg::AvgServiceState::WAITING_FOR_CHARGING;
+      message.state_name = "WAITING_FOR_CHARGING";
     } else {
       message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING;
       message.state_name = "DROP_ZONE_PARKING";
     }
     message.description = std::string("apriltag_parking_controller:") + stateName(state_);
     service_state_pub_->publish(message);
+    last_service_state_time_ = current_time;
   }
 
   void publishStatus(bool force = false)
@@ -761,21 +806,19 @@ private:
     {
       return;
     }
-    char buf[128];
+    char buf[192];
     snprintf(
-      buf, sizeof(buf), "phase=%s distance_m=%.3f lateral_m=%.3f heading_rad=%.3f "
-      "remaining_m=%.3f retry=%d charging=%s",
-      stateName(state_), distance_along_parking_axis_m_, lateral_error_m_,
-      heading_error_rad_,
-      std::max(0.0, distance_along_parking_axis_m_ - parked_distance_from_tag_m_),
+      buf, sizeof(buf), "phase=%s tag_distance_m=%.3f axis_distance_m=%.3f "
+      "lateral_m=%.3f heading_rad=%.3f remaining_tag_m=%.3f retry=%d charging=%s",
+      stateName(state_), tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0,
+      distance_along_parking_axis_m_, lateral_error_m_, heading_error_rad_,
+      tag_camera_distance_valid_ ? camrod_control::tagApproachRemainingDistance(
+        tag_camera_distance_m_, translation_stop_tag_distance_m_) : -1.0,
       retries_, charging_detected_ ? "true" : "false");
 
     uint8_t level = avg_msgs::msg::ModuleState::OK;
     if (state_ == State::ERROR) {
       level = avg_msgs::msg::ModuleState::ERROR;
-    } else if (state_ == State::RETRY_FORWARD_EXIT) {
-      // HH_260721 - A retry is degraded but recoverable; normal parking progress remains OK.
-      level = avg_msgs::msg::ModuleState::WARN;
     }
 
     avg_msgs::msg::ModuleState module_state;
@@ -805,6 +848,11 @@ private:
     diagnostic_status.values.push_back(category);
     diagnostic_array.status.push_back(diagnostic_status);
     diagnostics_pub_->publish(diagnostic_array);
+    // HH_260819 - Re-announce recoverable parked phases on the same 2 Hz
+    // heartbeat so a restarted UI does not depend on a past transition edge.
+    if (state_ == State::PARKED || state_ == State::WAITING_FOR_CHARGING) {
+      publishServiceState();
+    }
     last_status_time_ = current_time;
   }
 
@@ -817,12 +865,20 @@ private:
   double heading_gain_, lateral_to_heading_gain_;
   double maximum_angular_speed_radps_, maximum_approach_angle_rad_;
   double reverse_approach_speed_mps_, final_insertion_speed_mps_;
+  double slowdown_start_tag_distance_m_{0.80};
+  double translation_stop_tag_distance_m_{0.60};
+  double minimum_approach_turn_radius_m_{0.85};
+  double final_yaw_angular_speed_radps_{0.20};
+  // HH_260819 - Deprecated robot-center distance parameters remain declared so
+  // older override files and frame-contract tests continue to load unchanged.
   double slowdown_start_distance_m_;
   double slowdown_start_remaining_distance_m_{0.60};
   bool invert_wz_in_reverse_{false};
   double final_heading_tolerance_rad_, final_lateral_tolerance_m_;
+  double final_yaw_settle_hold_s_{0.8};
+  double final_yaw_settle_max_rate_degps_{3.0};
   double final_insertion_start_distance_m_, parked_distance_from_tag_m_;
-  double tag_timeout_s_, tag_wait_timeout_s_;
+  double tag_timeout_s_, odometry_timeout_s_, tag_wait_timeout_s_;
   double retry_forward_distance_m_, pose_filter_gain_, control_rate_hz_, status_rate_hz_;
   int max_retries_{5};
 
@@ -830,6 +886,7 @@ private:
   State state_{State::IDLE};
   rclcpp::Time state_enter_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_service_state_time_{0, 0, RCL_ROS_TIME};
   int retries_{0};
 
   // HH_260720 - Fixed tag and parking-axis estimate in the odometry frame.
@@ -842,16 +899,17 @@ private:
   // HH_260720 - Parking errors recomputed from odometry on every control tick.
   double distance_along_parking_axis_m_{0.0};
   double lateral_error_m_{0.0}, heading_error_rad_{0.0};
+  double tag_camera_distance_m_{0.0};
+  bool tag_camera_distance_valid_{false};
   rclcpp::Time last_tag_time_{0, 0, RCL_ROS_TIME};
 
-  // HH_260720 - Vehicle odometry and bounded insertion/retry start positions.
+  // HH_260819 - Vehicle odometry drives final yaw after camera-range translation latches off.
   double vehicle_odometry_x_m_{0.0}, vehicle_odometry_y_m_{0.0};
   double vehicle_odometry_yaw_rad_{0.0};
   bool odom_valid_{false};
-  double final_insertion_start_odometry_x_m_{0.0};
-  double final_insertion_start_odometry_y_m_{0.0};
-  double final_insertion_target_distance_m_{0.0};
-  double retry_start_odometry_x_m_{0.0}, retry_start_odometry_y_m_{0.0};
+  rclcpp::Time last_odometry_time_{0, 0, RCL_ROS_TIME};
+  camrod_control::YawAlignmentSettling yaw_alignment_settling_;
+  bool yaw_alignment_settled_logged_{false};
 
   bool charging_detected_{false};
 

@@ -46,6 +46,7 @@
 #include "ranger_msgs/msg/motor_state.hpp"
 
 #include "ranger_base/ranger_params.hpp"
+#include "ranger_base/fresh_sample_gate.hpp"
 
 namespace westonrobot {
 class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenger>
@@ -157,6 +158,9 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
     steering_transition_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
+  // HH_260819 - The SDK timestamp advances only when a physical BMS basic
+  // frame (CAN 0x361) is decoded.  Do not replay its cached value at 50 Hz.
+  FreshSampleGate<SdkTimePoint> bms_sample_gate_;
 
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr motion_cmd_sub_;
 

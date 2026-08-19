@@ -183,7 +183,7 @@ def test_renderer_is_executable_installed_and_documented() -> None:
     parameter_reference = (REPO_ROOT / "docs/RUNTIME_PARAMETER_REFERENCE.md").read_text()
     assert "parallel_command_lateral_deadband_mps" in parameter_reference
     assert "`0.30 m` remaining" in parameter_reference
-    assert "`0.60 m` remaining" in parameter_reference
+    assert "UI camera range `0.80 -> 0.60 m`" in parameter_reference
     assert "Charging CAN feedback immediately publishes zero" in parameter_reference
 
     # HH_260819 - Keep the live production-endpoint probe available on AMD64

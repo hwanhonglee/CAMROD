@@ -61,7 +61,7 @@ manual Return, docking telemetry, and final parking slowdown contracts. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | entry/exit share the exact snap anchor; B1-B10 turn/retrace, while B11-B13 cap at `0.30 m`, skip zero-turn, and request a forward one-way loop after `CRAB_OUT -> DONE` |
-| Final parking | reverse slowdown last `0.30 m`; AprilTag slowdown last `0.60 m`; charging feedback immediately commands zero |
+| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.60 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
 | Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
@@ -170,7 +170,7 @@ acceptance.
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |
 | B8 same-anchor/restart policy | AMD64 SIM + UNIT PASS | Current graph completed seven phases through `DONE`; live heading reverses body crab sign without moving the map anchor; manual Return API returned `site_exit_then_return` and deferred route planning until campsite `DONE` |
-| Final parking slowdown/stop | SOURCE + UNIT + UI PASS | Reverse/AprilTag ramps begin at `0.30/0.60 m`; charging immediately commands zero; physical tag and charger acceptance pending |
+| Final parking slowdown/stop | SOURCE + UNIT + UI PASS | Reverse ramps over `0.30 m`; AprilTag ramps at camera range `0.80 -> 0.60 m`, then latches translation off for yaw/charging; physical acceptance pending |
 | Repeated boundary recovery | AMD64 SIM PARTIAL + UNIT PASS | Per attempt `0.40 m/10 s`; up to 50 attempts with `0.5 s` pauses and `1.50 m/90 s` episode caps; whichever limit is reached first ends the episode; long B1 return released three consecutive contacts before the runner timeout |
 | Classified fusion safety | GATE-MATRIX + UNIT PASS | Unknown/raw LiDAR excluded; classified fusion stopped forward (`0.00 m/s`) but passed crab/reverse (`0.08/0.09 m/s`); synthetic radar fixtures stopped all directions; both grids ran at `10 Hz` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |

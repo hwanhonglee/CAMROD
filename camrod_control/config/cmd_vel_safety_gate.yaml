@@ -33,6 +33,15 @@
     charging_departure_grace_s: 15.0
     charger_departure_mission_prefixes: "camping_site_"
     mission_request_dedup_s: 1.0
+    # HH_260819 - UI holds the next campsite mission key until exit_complete.
+    # Fresh, healthy exact EXIT_STRAIGHT/ALIGN_EXIT_YAW controller heartbeats
+    # independently release only the charging interlock; stale/other states stop.
+    allow_drop_zone_departure_while_charging: true
+    drop_zone_departure_status_timeout_s: 2.0
+    drop_zone_departure_status_future_tolerance_s: 0.25
+    drop_zone_departure_require_source_stamp: true
+    # Current drop-zone makeModuleState contract; status topic is also exact.
+    drop_zone_departure_expected_module_name: "control"
     # HH_260724 - Require 35% SOC before a parked/charging robot may start a new campsite mission.
     require_battery_for_mission_departure: true
     minimum_mission_departure_battery_percentage: 0.35
@@ -228,8 +237,8 @@
     # source-specific LiDAR/radar obstacle checks remain active.
     reverse_parking_controller_status_topic: "/parking/reverse_parking_controller/status"
     apriltag_parking_controller_status_topic: "/parking/apriltag_parking_controller/status"
-    parking_controller_static_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"
-    parking_controller_lanelet_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"
+    parking_controller_static_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,RETRY_FORWARD_EXIT"
+    parking_controller_lanelet_bypass_phases: "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,RETRY_FORWARD_EXIT"
 
     # =========================================================================
     # Speed-dependent front corridor

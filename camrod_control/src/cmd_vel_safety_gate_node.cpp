@@ -33,6 +33,7 @@
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
+#include "camrod_control/drop_zone_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
@@ -301,6 +302,33 @@ private:
                                        "camping_site_"),
         {"camping_site_"});
     charging_mission_override_.setConfig(charging_override_config_);
+
+    // HH_260819 - The UI deliberately withholds the next campsite mission key
+    // until physical station exit completes.  Authorize only fresh, healthy
+    // progress from the drop-zone controller so charging contact cannot
+    // deadlock that exit; planning identity remains a separate concern.
+    drop_zone_departure_authorization_config_.enabled =
+        declare_parameter<bool>("allow_drop_zone_departure_while_charging",
+                                true);
+    drop_zone_departure_authorization_config_.heartbeat_timeout_s =
+        declare_parameter<double>("drop_zone_departure_status_timeout_s", 2.0);
+    drop_zone_departure_authorization_config_.future_tolerance_s =
+        declare_parameter<double>(
+            "drop_zone_departure_status_future_tolerance_s", 0.25);
+    drop_zone_departure_authorization_config_.require_source_stamp =
+        declare_parameter<bool>("drop_zone_departure_require_source_stamp",
+                                true);
+    drop_zone_departure_authorization_config_.expected_module_name =
+        declare_parameter<std::string>(
+            "drop_zone_departure_expected_module_name", "control");
+    if (!dropZoneChargingDepartureAuthorizationConfigIsValid(
+            drop_zone_departure_authorization_config_)) {
+      throw std::runtime_error(
+          "drop-zone charging departure status timeout/future tolerance is "
+          "invalid");
+    }
+    drop_zone_departure_authorization_.setConfig(
+        drop_zone_departure_authorization_config_);
   }
 
   // HH_260721 - Load all translation, crab, zero-turn, lanelet, and latch stop
@@ -650,18 +678,22 @@ private:
         declare_parameter<std::string>(
             "parking_controller_static_bypass_phases",
             "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,"
-            "FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"),
+            "FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,"
+            "RETRY_FORWARD_EXIT"),
         {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
-         "final_reverse_insertion", "retry_forward_exit"});
+         "final_reverse_insertion", "final_yaw_alignment", "waiting_for_charging",
+         "retry_forward_exit"});
     motion_cost_stop_config_.parking_lanelet_bypass_phases = parseLabelSet(
         declare_parameter<std::string>(
             "parking_controller_lanelet_bypass_phases",
             // HH_260807 - The parking station is outside road lanelets; only
             // the selected parking controller may cross that semantic boundary.
             "REVERSE_APPROACH,WAITING_FOR_TAG,TAG_GUIDED_REVERSE,"
-            "FINAL_REVERSE_INSERTION,RETRY_FORWARD_EXIT"),
+            "FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,"
+            "RETRY_FORWARD_EXIT"),
         {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
-         "final_reverse_insertion", "retry_forward_exit"});
+         "final_reverse_insertion", "final_yaw_alignment", "waiting_for_charging",
+         "retry_forward_exit"});
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 
@@ -839,8 +871,22 @@ private:
         create_subscription<avg_msgs::msg::ModuleState>(
             drop_zone_status_topic_, 10,
             [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
-              drop_zone_phase_ = phaseFromStatus(message->message);
+              drop_zone_phase_ = message->operating_state.empty()
+                                     ? phaseFromStatus(message->message)
+                                     : message->operating_state;
+              const double received_sec = nowSec();
+              std::optional<double> source_stamp_sec;
+              if (message->stamp.sec != 0 || message->stamp.nanosec != 0U) {
+                source_stamp_sec =
+                    static_cast<double>(message->stamp.sec) +
+                    static_cast<double>(message->stamp.nanosec) * 1.0e-9;
+              }
+              drop_zone_departure_authorization_.observe(
+                  message->module_name, message->operating_state,
+                  message->level == avg_msgs::msg::ModuleState::OK,
+                  received_sec, source_stamp_sec);
               updateManeuverPhases();
+              onAuthorizationChanged("drop_zone_status");
             });
     campsite_status_subscription_ =
         create_subscription<avg_msgs::msg::ModuleState>(
@@ -1303,6 +1349,10 @@ private:
     gate_policy_.setPlatformState(state);
     charging_mission_override_.setBatteryPercentage(state.battery_percentage);
     charging_mission_override_.setCharging(message->is_charging);
+    if (!message->is_charging) {
+      // Require a new exit-phase heartbeat if charging contact later returns.
+      drop_zone_departure_authorization_.reset();
+    }
     gate_policy_.setEstopSource(platform_status_topic_, message->estop);
     publishState();
     if (!effectiveEnabledConsideringRouteRecovery(nowSec()) &&
@@ -1376,14 +1426,14 @@ private:
   bool effectiveEnabled(const double now_sec) {
     updatePolicyCostState();
     return gate_policy_.enabled(now_sec, charging_mission_override_.charging(),
-                                charging_mission_override_.isActive(now_sec));
+                                chargingMotionOverrideActive(now_sec));
   }
 
   bool effectiveEnabledForRouteRecovery(const double now_sec) {
     updatePolicyCostState();
     const auto reasons = gate_policy_.blockReasons(
         now_sec, charging_mission_override_.charging(),
-        charging_mission_override_.isActive(now_sec));
+        chargingMotionOverrideActive(now_sec));
     // HH_260807 - The route violation itself starts a short generic cost hold.
     // A separately projected recovery candidate may ignore only that reason;
     // every platform, E-stop, charging, battery, GNSS and dynamic-latch reason
@@ -1406,7 +1456,7 @@ private:
     updatePolicyCostState();
     auto reasons = gate_policy_.blockReasons(
         now_sec, charging_mission_override_.charging(),
-        charging_mission_override_.isActive(now_sec));
+        chargingMotionOverrideActive(now_sec));
     if (route_safety_recovery_.active()) {
       const std::string label = route_safety_recovery_.automaticReleaseBlocked()
                                     ? "route_safety_retry_latched="
@@ -1422,14 +1472,31 @@ private:
     gate_policy_.setGnssRecoveryHoldUntil(gnss_recovery_hold_until_sec_);
   }
 
+  bool dropZoneStatusChargingDepartureActive(const double now_sec) const {
+    // Preserve the existing departure SOC policy without coupling this
+    // controller heartbeat to a future campsite mission key.
+    return charging_mission_override_.charging() &&
+           drop_zone_departure_authorization_.isActive(now_sec) &&
+           charging_mission_override_.batteryReadyForDeparture();
+  }
+
+  bool chargingMotionOverrideActive(const double now_sec) const {
+    return charging_mission_override_.isActive(now_sec) ||
+           dropZoneStatusChargingDepartureActive(now_sec);
+  }
+
   void publishState() {
     const double now_sec = nowSec();
     // HH_260729 - Continue route-clear evaluation after Nav2 stops publishing
     // commands. This is what lets command_enabled pause and later resume the
     // engage-aware progress checker without restarting any node.
     refreshRouteSafetyRecovery(now_sec);
-    const bool charging_motion_override_active =
+    const bool mission_charging_override_active =
         charging_mission_override_.isActive(now_sec);
+    const bool drop_zone_status_override_active =
+        dropZoneStatusChargingDepartureActive(now_sec);
+    const bool charging_motion_override_active =
+        mission_charging_override_active || drop_zone_status_override_active;
     const auto reasons = currentBlockReasons(now_sec);
     const bool enabled = reasons.empty();
     const auto recovery_candidate = publishRouteSafetyCandidate(now_sec);
@@ -1470,6 +1537,18 @@ private:
         " reasons=" + (reasons.empty() ? "none" : join(reasons, ",")) +
         " charging=" +
         std::string(charging_mission_override_.charging() ? "true" : "false") +
+        " charging_departure_auth=" +
+        std::string(mission_charging_override_active
+                        ? "mission_key"
+                    : drop_zone_status_override_active
+                        ? "drop_zone_status"
+                        : "none") +
+        " drop_zone_auth_phase=" +
+        (drop_zone_departure_authorization_.phase().empty()
+             ? "none"
+             : drop_zone_departure_authorization_.phase()) +
+        " drop_zone_auth_age_s=" +
+        fixed(drop_zone_departure_authorization_.receiptAgeSec(now_sec), 2) +
         " battery=" + batteryText() + " route_clear_s=" +
         fixed(route_safety_recovery_.clearElapsed(now_sec), 2) +
         " route_releases=" +
@@ -1495,6 +1574,15 @@ private:
     }
     status.operating_state = operating_state;
     status_publisher_->publish(status);
+
+    // A missed controller heartbeat revokes the exception.  Emit a zero on
+    // the 2 Hz state timer edge even when no new cmd_vel arrives.
+    if (drop_zone_status_override_was_active_ &&
+        !drop_zone_status_override_active &&
+        charging_mission_override_.charging() && publish_zero_when_blocked_) {
+      publishZero();
+    }
+    drop_zone_status_override_was_active_ = drop_zone_status_override_active;
   }
 
   RouteRecoveryCandidate publishRouteSafetyCandidate(const double now_sec) {
@@ -2304,11 +2392,14 @@ private:
 
   CmdVelGatePolicyConfig gate_config_;
   ChargingMissionOverrideConfig charging_override_config_;
+  DropZoneChargingDepartureAuthorizationConfig
+      drop_zone_departure_authorization_config_;
   MotionCostStopConfig motion_cost_stop_config_;
   RouteSafetyRecoveryConfig route_safety_recovery_config_;
   CommandSourceArbiterConfig command_source_arbiter_config_;
   CmdVelGatePolicy gate_policy_;
   ChargingMissionOverride charging_mission_override_;
+  DropZoneChargingDepartureAuthorization drop_zone_departure_authorization_;
   MotionCostStop motion_cost_stop_;
   RouteSafetyRecovery route_safety_recovery_;
   CommandSourceArbiter command_source_arbiter_;
@@ -2372,6 +2463,7 @@ private:
   bool route_safety_retry_latched_logged_{false};
   bool command_input_stale_{false};
   bool yaw_zone_satisfied_{false};
+  bool drop_zone_status_override_was_active_{false};
   int route_heading_min_path_points_{2};
   int gnss_recovery_source_mode_min_{2};
   int gnss_recovery_target_mode_{0};

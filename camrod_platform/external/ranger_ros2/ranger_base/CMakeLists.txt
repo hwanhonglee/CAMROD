@@ -79,6 +79,11 @@ if(BUILD_TESTING)
     test_steering_transition_policy
     test/test_steering_transition_policy.cpp)
   target_include_directories(test_steering_transition_policy PRIVATE include)
+  # HH_260819 - Cached 50 Hz state must not impersonate distinct CAN 0x361 frames.
+  ament_add_gtest(
+    test_fresh_sample_gate
+    test/test_fresh_sample_gate.cpp)
+  target_include_directories(test_fresh_sample_gate PRIVATE include)
 endif()
 
 ament_package()

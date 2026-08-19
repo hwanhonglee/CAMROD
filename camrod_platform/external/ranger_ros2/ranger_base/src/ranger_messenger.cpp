@@ -346,25 +346,29 @@ void RangerROSMessenger::PublishStateToROS() {
   // publish BMS state
   {
     auto common_sensor_state = robot_->GetCommonSensorState();
+    // HH_260819 - GetCommonSensorState() is cached and this function runs at
+    // 50 Hz.  Its SDK timestamp changes only in UpdateCommonSensorState() for
+    // AgxMsgBmsBasic, so publish exactly once per received CAN 0x361 frame.
+    if (bms_sample_gate_.accept(common_sensor_state.time_stamp)) {
+      sensor_msgs::msg::BatteryState batt_msg;
+      batt_msg.header.stamp = current_time_;
+      batt_msg.voltage = common_sensor_state.bms_basic_state.voltage;
+      batt_msg.temperature = common_sensor_state.bms_basic_state.temperature;
+      batt_msg.current = common_sensor_state.bms_basic_state.current;
+      batt_msg.percentage = common_sensor_state.bms_basic_state.battery_soc;
+      batt_msg.charge = std::numeric_limits<float>::quiet_NaN();
+      batt_msg.capacity = std::numeric_limits<float>::quiet_NaN();
+      batt_msg.design_capacity = std::numeric_limits<float>::quiet_NaN();
+      batt_msg.power_supply_status =
+          sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
+      batt_msg.power_supply_health =
+          sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+      batt_msg.power_supply_technology =
+          sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+      batt_msg.present = std::numeric_limits<uint8_t>::quiet_NaN();
 
-    sensor_msgs::msg::BatteryState batt_msg;
-    batt_msg.header.stamp = current_time_;
-    batt_msg.voltage = common_sensor_state.bms_basic_state.voltage;
-    batt_msg.temperature = common_sensor_state.bms_basic_state.temperature;
-    batt_msg.current = common_sensor_state.bms_basic_state.current;
-    batt_msg.percentage = common_sensor_state.bms_basic_state.battery_soc;
-    batt_msg.charge = std::numeric_limits<float>::quiet_NaN();
-    batt_msg.capacity = std::numeric_limits<float>::quiet_NaN();
-    batt_msg.design_capacity = std::numeric_limits<float>::quiet_NaN();
-    batt_msg.power_supply_status =
-        sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
-    batt_msg.power_supply_health =
-        sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
-    batt_msg.power_supply_technology =
-        sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
-    batt_msg.present = std::numeric_limits<uint8_t>::quiet_NaN();
-
-    battery_state_pub_->publish(batt_msg);
+      battery_state_pub_->publish(batt_msg);
+    }
   }
 }
 

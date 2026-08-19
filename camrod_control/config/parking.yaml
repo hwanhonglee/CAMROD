@@ -107,19 +107,29 @@
     reverse_approach_speed_mps: 0.555556
     invert_angular_command_while_reversing: false
     final_insertion_speed_mps: 0.138889
-    # HH_260803 - Longitudinal thresholds add 0.443 m so the physical rear-axle
-    # stop points remain equivalent after moving the controller reference forward.
+
+    # HH_260819 - Match the operator UI's camera-frame 3D Tag distance exactly:
+    # ramp from 0.80 to 0.60 m, then latch translation off and align yaw only.
+    slowdown_start_tag_distance_m: 0.80
+    translation_stop_tag_distance_m: 0.60
+    # Keep combined reverse + steering above Ranger's 0.81033 m spin threshold.
+    minimum_approach_turn_radius_m: 0.85
+    final_yaw_angular_speed_radps: 0.20
+
+    # HH_260819 - Deprecated compatibility values. Camera-range thresholds above
+    # own runtime motion; retain these robot-center values for older overrides.
     slowdown_start_distance_m: 1.443
-    # HH_260818 - Canonical operator-facing threshold measured from the final
-    # parked pose; this takes precedence over the legacy absolute value above.
     slowdown_start_remaining_distance_m: 0.60
 
     final_heading_tolerance_rad: 0.10
     final_lateral_tolerance_m: 0.03
+    final_yaw_settle_hold_s: 0.8
+    final_yaw_settle_max_rate_degps: 3.0
     final_insertion_start_distance_m: 0.993
     parked_distance_from_tag_m: 0.943
 
     tag_timeout_s: 0.5
+    odometry_timeout_s: 0.5
     tag_wait_timeout_s: 10.0
     retry_forward_distance_m: 1.0
     maximum_retries: 5

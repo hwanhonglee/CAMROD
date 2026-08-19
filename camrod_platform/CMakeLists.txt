@@ -87,6 +87,7 @@ if(ranger_msgs_FOUND)
   add_executable(ranger_platform_bridge_node
     src/ranger_platform_bridge_node.cpp
   )
+  target_include_directories(ranger_platform_bridge_node PRIVATE include)
   ament_target_dependencies(ranger_platform_bridge_node
     rclcpp
     nav_msgs
@@ -113,6 +114,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_gtest(test_light_decision test/test_light_decision.cpp)
   target_include_directories(test_light_decision PRIVATE include)
+  # HH_260819 - Keep the global regen filter and AprilTag-only fast charging
+  # confirmation deterministic without a ROS graph or CAN hardware.
+  ament_add_gtest(
+    test_charging_detection_policy
+    test/test_charging_detection_policy.cpp)
+  target_include_directories(test_charging_detection_policy PRIVATE include)
   # HH_260729 - Lock the dummy payload to zero/ESTOP/faulted state and prove
   # that ranger.launch never activates the real driver and dummy together.
   set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
@@ -125,6 +132,12 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_velocity_kph_gui
     test/test_velocity_kph_gui.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  ament_add_pytest_test(
+    test_charging_config_contract
+    test/test_charging_config_contract.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

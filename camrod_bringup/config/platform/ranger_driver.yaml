@@ -68,13 +68,21 @@
     # HH_260617: BMS CAN 0x361 is published by ranger_base as /battery_state.
     # HH_260720 - The bridge stores BMS data in the canonical AvgPlatformStatus message.
     battery_state_topic: "/battery_state"              # Raw BatteryState from Ranger BMS CAN 0x361.
+    apriltag_parking_status_topic: "/parking/apriltag_parking_controller/status"
     charging_current_threshold_a: 0.3                  # Current above threshold means charging by default.
     charging_current_positive_is_charging: true        # Flip to false if measured BMS current is negative while charging.
-    charging_min_consecutive_samples: 2                # Debounce BMS current spikes.
+    charging_min_consecutive_samples: 2                # Distinct physical 0x361 frames, not 50 Hz cached samples.
     # HH_260813 - Regenerative braking drove current positive for up to 7 s per
     # deceleration, which announced charging while the robot was simply driving.
-    charging_confirm_s: 10.0                           # Charger contact must hold this long.
+    charging_confirm_s: 10.0                           # Global rising edge; keep the regen rejection window.
     charging_release_s: 3.0                            # Unplugging is reported quickly.
+    # HH_260819 - Only a fresh, healthy AprilTag FINAL_YAW_ALIGNMENT or
+    # WAITING_FOR_CHARGING heartbeat can use this shorter confirmation path.
+    charging_fast_confirm_s: 1.5                       # Sustained current before docking preemption/CHARGING.
+    charging_fast_status_ttl_s: 1.5                    # Fast arm expires if the 2 Hz controller heartbeat stops.
+    # HH_260819 - Live can0 measured 0x361 at mean 0.243 s, max 0.401 s
+    # over 62 frames. Allow normal jitter/missed frames but never join sparse evidence.
+    charging_sample_max_gap_s: 1.0                     # Reset any rising/release dwell after a longer BMS gap.
 
     status_frame_id: "robot_center_link"       # Frame id used in /platform/status header.
     actuator_state_topic: "/actuator_state"     # Actuator state topic from ranger_base (CAN 0x281/0x271).
