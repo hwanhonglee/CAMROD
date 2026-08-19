@@ -17,7 +17,7 @@ ros2 run camrod_bringup field_test_tool.sh config
 test -x /home/nvidia/camrod_ws/src/camrod_bringup/scripts/camera_payload_probe.py
 # HH_260727 - Confirm both role-specific GNSS ports before real bringup.
 ls -l /dev/ttyACM0 \
-  /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
+  /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0
 df -h /home/nvidia
 ```
 
@@ -31,7 +31,7 @@ Expected:
   match their `install/<package>/share/<package>/config` copies. A source-only
   `OK` is not sufficient after changing deployment YAML.
 - `/dev/ttyACM0` is the POWER+GPS heading rover used for NAV-PVT and
-  NAV-RELPOSNED. The FTDI DN03DF8V by-id path is POWER+XBEE into the Lite
+  NAV-RELPOSNED. The FTDI DN05Y9E7 by-id path is POWER+XBEE into the Lite
   moving base; its `/dev/ttyUSB*` assignment may change between boots.
 - Both values come from the node-specific sections of
   `config/sensing/gnss/zed_f9p_rover.yaml`; launch device/baud arguments default
@@ -193,9 +193,9 @@ in the JSON `errors` list.
 Run this probe once with RViz/Chromium/Brave and development builds stopped.
 Measure CPU over the same window with `field_test_tool.sh profile 60
 pose_latency_baseline`. Interpret the chain using
-`pose_latency_diagnosis.md`. HH_260807 configures dual GNSS at 5 Hz; do not
+`pose_latency_diagnosis.md`. HH_260819 configures dual GNSS at 10 Hz; do not
 accept that contract from this stationary localization test alone. Also verify
-200 ms PVT/RELPOSNED `iTOW`, carrier/heading flags, and link loss counters.
+100 ms PVT/RELPOSNED `iTOW`, carrier/heading flags, and link loss counters.
 
 For the front camera and YOLO path specifically:
 
@@ -276,7 +276,12 @@ route without GNSS overrides. In a second terminal, check:
 
 ```bash
 ros2 node list | grep /sensing/gnss/moving_base_rtcm_writer
+ros2 param get /sensing/gnss/ublox_gps_node rate
+ros2 param get /sensing/gnss/moving_base_rtcm_writer device
+ros2 param get /sensing/gnss/moving_base_rtcm_writer baud
 ros2 topic info /sensing/gnss/ntrip_client/rtcm -v
+timeout 20 ros2 topic hz /sensing/gnss/ublox_gps_node/navpvt
+timeout 20 ros2 topic hz /sensing/gnss/ublox_gps_node/fix
 ros2 topic echo /sensing/gnss/ublox_gps_node/navpvt --once
 ros2 topic echo /sensing/gnss/navrelposned --once
 ros2 topic echo /sensing/gnss/rxmrtcm --once
@@ -284,13 +289,34 @@ ros2 topic echo /sensing/gnss/rxmrtcm --once
 
 Acceptance requires:
 
+- runtime `rate=10.0`, with NAV-PVT and fix both close to `10 Hz`;
 - exactly one NTRIP publisher and one subscriber, owned by
   `moving_base_rtcm_writer`;
+- the writer parameters report `DN05Y9E7` and `460800`, its process owns an
+  open FD resolving to that FTDI device after NTRIP starts, and rover RXM-RTCM
+  is not empty. Default full bringup hides INFO logs, so an `Opened ...` log is
+  supporting evidence only when a GNSS-only test explicitly uses
+  `gnss_log_level:=info`;
 - NAV-PVT carrier solution fixed (`(flags & 0xC0) == 0x80`) with
   centimeter-scale `hAcc`;
 - NAV-RELPOSNED moving baseline, relative position valid, heading valid, and
   carrier solution fixed (normally decimal flags `311`), with a stable physical
   antenna baseline.
+
+Do not accept `head_valid` alone. Directly feeding CORS RTCM to the rover can
+produce a valid-looking RELPOS heading whose baseline is the kilometres-long
+CORS-to-rover vector. Vehicle heading additionally requires `is_moving=1` and a
+baseline length matching the measured antenna separation.
+
+<!-- HH_260819 - A replacement adapter/board changes three independent
+contracts. Keep them explicit so a ROS 10 Hz pass is not mistaken for a
+moving-base/heading pass. -->
+When GNSS hardware changes, update or verify all of the following before
+testing: (1) the FTDI `/dev/serial/by-id` value in both mirrored YAML files,
+(2) CORS-to-Lite writer baud, (3) the Lite-output and rover-UART2 baud/protocol
+saved in u-center, and (4) the rover epoch rate owned by the YAML. Change one
+link at a time. If NTRIP is live but RXM-RTCM stays empty, diagnose serial
+routing before replacing a receiver.
 
 Do not enable `ublox_dual_warm_start_on_startup` during normal operation. Use
 it for one launch only after an explicit direct-rover/one-port diagnostic leaves
@@ -299,9 +325,12 @@ the rover tracking the wrong reference, then restart with the default `false`.
 <!-- HH_260731 - A single good accuracy field does not prove carrier Fixed. -->
 Do not accept a single `--once` sample or centimeter-scale `hAcc` alone.
 Capture the flags distribution for at least 120 seconds immediately after a
-bringup restart. Final field acceptance requires NAV-PVT flags 131 and
-NAV-RELPOSNED flags 311 to remain fixed for 10 minutes without flags 11 or
-float fallback.
+bringup restart. Final field acceptance requires the NAV-PVT fixed mask
+`(flags & 0xC3) == 0x83` and the NAV-RELPOSNED moving-heading fixed mask
+`(flags & 0x137) == 0x137`, with no reference-missing bits
+`(flags & 0xC0) == 0`, to remain valid for 10 minutes without float or invalid
+samples. Decimal flags `131` and `311` are the normal values, but evaluate the
+required bits rather than rejecting a future benign extra flag.
 
 ## 6. Gate Commands
 

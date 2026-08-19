@@ -25,6 +25,8 @@ recovery, semantic fusion/radar safety, and an opt-in tent occupancy guard. -->
 campsite anchor across restarts, and expose manual return/docking telemetry. -->
 <!-- HH_260819 - Serialize both operator Return controls, validate B1-B13 full
 site exit, and record the no-zero-turn roadside forward-loop policy. -->
+<!-- HH_260819 - Move the replacement dual GNSS deployment to 10 Hz/100 ms,
+DN05Y9E7, and 460800 baud; require physical RTCM and heading evidence. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.8`**.
@@ -56,7 +58,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
 | GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most `0.5 s` without making GNSS yaw valid |
-| GNSS receiver cadence | `5 Hz` (`200 ms` epoch) | Rover is configured on launch; moving-base epoch/link acceptance remains a physical test |
+| GNSS receiver cadence | `10 Hz` (`100 ms` epoch) | The canonical YAML configures the rover on launch; moving-base RTCM/link/heading acceptance remains a separate physical test |
 | Localization pose cadence | `20 Hz` | EKF predicts between GNSS corrections; this is not a claim that GNSS itself publishes at 20 Hz |
 | Physical body boundary | `1.39160 x 1.07000 m` bounding extents | Tapered front (`0.12 m` side inset over `0.12 m` depth), six rounded corners (`R0.05 m`); cost-100 overlap stops ordinary motion |
 | Planning boundary | `1.59160 x 1.27000 m` bounding extents | Exact `0.10 m` parallel offset of the body contour (`R0.15 m`); endpoint planning clearance remains mandatory for escape |

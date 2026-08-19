@@ -16,9 +16,9 @@ localization_gnss_checker:
       dummy_active_topic: "/sensing/gnss/dummy_active"
       dummy_active_timeout_s: 1.0
 
-      # HH_260807 - A healthy fix/heading path should emit one accepted pose for
-      # each 200 ms rover epoch in the current 5 Hz physical test profile.
-      expected_hz: 5.0
+      # HH_260819 - A healthy fix/heading path should emit one accepted pose for
+      # each 100 ms rover epoch in the replacement 10 Hz physical profile.
+      expected_hz: 10.0
       hz_warn_ratio: 0.8
       hz_error_ratio: 0.5
       stale_timeout_s: 2.0

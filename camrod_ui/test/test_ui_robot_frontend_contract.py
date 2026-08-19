@@ -14,6 +14,7 @@ APP_SOURCE = (
 )
 APP_CSS = APP_SOURCE.with_name("App.css")
 TELEMETRY_SOURCE = APP_SOURCE.with_name("TelemetryWorkspace.js")
+SERVICE_EVIDENCE_SOURCE = APP_SOURCE.with_name("ServiceEvidence.js")
 PUBLIC_ASSETS = APP_SOURCE.parents[1] / "public"
 
 
@@ -23,6 +24,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         cls.source = APP_SOURCE.read_text(encoding="utf-8")
         cls.css = APP_CSS.read_text(encoding="utf-8")
         cls.telemetry_source = TELEMETRY_SOURCE.read_text(encoding="utf-8")
+        cls.service_evidence_source = SERVICE_EVIDENCE_SOURCE.read_text(
+            encoding="utf-8"
+        )
 
     def test_site_verification_owns_virtual_keyboard_input(self) -> None:
         self.assertIn(": setMoveVerifyInput;", self.source)
@@ -121,6 +125,84 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertNotIn(removed, self.source)
             self.assertNotIn(removed, self.telemetry_source)
         self.assertIn(".docking-layout", self.css)
+
+    def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
+        self.assertIn("/api/service-metrics/summary", self.service_evidence_source)
+        self.assertIn("/api/service-metrics?days=30", self.service_evidence_source)
+        for field in (
+            "current_service",
+            "last_completed_service",
+            "today",
+            "lifetime",
+            "daily_history",
+            "recent_services",
+            "generated_at",
+            "persistence",
+        ):
+            self.assertIn(field, self.service_evidence_source)
+
+    def test_public_service_evidence_preserves_waiting_screen_two_by_two_grid(self) -> None:
+        self.assertIn("<ServiceEvidenceSummary", self.source)
+        self.assertIn("setActiveModal('service-evidence')", self.source)
+        self.assertIn("<ServiceEvidenceDashboard", self.source)
+        self.assertIn(
+            "grid-template-rows: auto repeat(2, minmax(0, 1fr));",
+            self.css,
+        )
+        self.assertIn(".evidence-summary-strip", self.css)
+        self.assertIn("grid-column: 1 / -1;", self.css)
+        # Destination plus the three established information cards remain the
+        # only children that fill the two service-card rows.
+        self.assertIn(
+            "SIDE_BUTTONS.filter(btn => btn.id !== 'settings').map",
+            self.source,
+        )
+
+    def test_active_service_screen_exposes_current_trip_distance(self) -> None:
+        self.assertIn("<ServiceTripBadge", self.source)
+        self.assertIn("serviceMetrics.data?.current_service", self.source)
+        self.assertIn(
+            "serviceActive={Boolean(activeSite || arrivedSite || "
+            "displayedReturning)}",
+            self.source,
+        )
+        self.assertIn("이번 서비스", self.service_evidence_source)
+        self.assertIn(".evidence-trip-badge", self.css)
+
+    def test_evidence_modal_merges_live_summary_into_bounded_history(self) -> None:
+        self.assertIn("...detailData", self.service_evidence_source)
+        self.assertIn("...summaryData", self.service_evidence_source)
+        self.assertIn(
+            "daily_history: detailData.daily_history",
+            self.service_evidence_source,
+        )
+        self.assertIn(
+            "recent_services: detailData.recent_services",
+            self.service_evidence_source,
+        )
+        self.assertIn(
+            "const combinedError = detailError || summaryError;",
+            self.service_evidence_source,
+        )
+
+    def test_service_evidence_never_substitutes_missing_data_with_zero(self) -> None:
+        # Loading, transport failure, and a successful empty history are three
+        # different evidence states. Only an actual numeric API value may show 0.
+        for message in ("불러오는 중", "확인 불가", "기록 없음"):
+            self.assertIn(message, self.service_evidence_source)
+        self.assertIn(
+            "value === null || value === undefined",
+            self.service_evidence_source,
+        )
+        self.assertNotIn("distance_m || 0", self.service_evidence_source)
+        self.assertNotIn("completed_service_count || 0", self.service_evidence_source)
+
+    def test_service_evidence_modal_has_responsive_bounded_layout(self) -> None:
+        self.assertIn("service-evidence-modal", self.source)
+        self.assertIn(".service-evidence-modal", self.css)
+        self.assertIn(".evidence-table-scroll", self.css)
+        self.assertIn("@media (max-width: 1000px)", self.css)
+        self.assertIn("@media (max-width: 700px)", self.css)
 
 
 if __name__ == "__main__":

@@ -162,20 +162,24 @@ retaining the exact front/rear topic names and `10 Hz` sensor targets.
 | Front camera | `1920 x 1080`, rectified JPEG target `10 Hz` | Physical decode/rate requires Jetson probe |
 | Rear raw camera | `1920 x 1080`, target `10 Hz` | AprilTag input; subscriber-gated |
 | Rear monitoring JPEG | `2 Hz` | CPU worker avoids blocking raw publication |
-| Single F9P | requested `5 Hz` | RTK state must be checked from UBX flags |
-| Dual moving-base F9P | configured `5 Hz` | Launch writes rover `CFG-RATE` in RAM; 200 ms base/rover epoch match and heading flags require field verification |
+| Single F9P | requested `10 Hz` | RTK state must be checked from UBX flags |
+| Dual moving-base F9P | configured `10 Hz` | Driver writes rover `CFG-RATE` in RAM; 100 ms base/rover epoch match and heading flags require field verification |
 
 For dual-GNSS acceptance, verify `NAV-PVT` carrier state and
 `NAV-RELPOSNED` validity/heading flags. A valid `NavSatFix` alone is not proof
 of RTK Fixed.
 
-<!-- HH_260807 - Align the dual rover with the moving base's 200 ms epochs. -->
-The dual launch's `rate: 5.0` is an active receiver override, not only a ROS
-diagnostic expectation. The custom dual-rover setup writes `CFG-RATE` to rover
-RAM even with `config_on_startup: false`, so a profile saved in u-center is
-replaced when ROS starts. ROS does not configure the Lite moving base; confirm
-200 ms `iTOW` increments at both receivers and verify link bandwidth before
-accepting the 5 Hz field profile.
+<!-- HH_260819 - Align the replacement dual rover with 100 ms board epochs. -->
+The canonical GNSS YAML owns `rate: 10.0`; the dual launch deliberately does
+not overlay it. The custom dual-rover setup writes that YAML-derived
+`CFG-RATE` to rover RAM even with `config_on_startup: false`, so a profile saved
+in u-center is not sufficient by itself. ROS does not configure the Lite moving
+base or the Lite-to-rover UART baud. Confirm 100 ms `iTOW` increments at both
+receivers, `460800` on both ends of the board-to-board link, live RTCM input,
+and valid/fixed RELPOSNED before accepting a replacement board.
+
+The measured A/B result and future replacement checklist are recorded in the
+[2026-08-19 10 Hz validation report](../camrod_bringup/docs/gnss_10hz_replacement_validation_20260819.md).
 
 ## Reported Physical Stationary Performance
 

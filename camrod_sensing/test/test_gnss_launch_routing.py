@@ -153,9 +153,10 @@ def test_dual_cascade_keeps_ntrip_separate_and_rover_usb_rtcm_off():
     assert ublox_topic == "rtcm"
     assert params["dual_antenna.usb_rtcm_in"] is False
     assert params["dual_antenna.warm_start_on_startup"] is False
-    # HH_260807 - The active physical validation profile uses 200 ms epochs.
-    assert params["rate"] == 5.0
-    assert params["nav_rate"] == 1
+    # HH_260819 - Rate has one owner: the selected GNSS YAML. An inline value
+    # would silently override board/deployment changes in dual-antenna mode.
+    assert "rate" not in params
+    assert "nav_rate" not in params
 
 
 def test_dual_direct_injection_fallback_enables_rover_usb_rtcm():
@@ -293,15 +294,15 @@ def test_gnss_config_owns_distinct_rover_and_moving_base_ports():
     moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
 
     assert rover["device"] == "/dev/ttyACM0"
-    # HH_260807 - Raw receiver messages identify the antenna TF and the shared
-    # profile retains the same 200 ms cadence as the dual runtime overlay.
+    # HH_260819 - Raw receiver messages identify the antenna TF, while this
+    # canonical file alone owns the 100 ms receiver cadence.
     assert rover["frame_id"] == "gnss_link"
-    assert rover["rate"] == 5.0
+    assert rover["rate"] == 10.0
     assert rover["nav_rate"] == 1
     assert moving_base["device"] == (
-        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0"
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0"
     )
-    assert moving_base["baud"] == 115200
+    assert moving_base["baud"] == 460800
     assert rover["device"] != moving_base["device"]
 
 

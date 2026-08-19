@@ -11,6 +11,7 @@ a bounded client-leased telemetry WebSocket for the ARM64 deployment target. -->
 for tag image/pose, parking paths, controller phases, battery, and charging. -->
 <!-- HH_260819 - Make both Return controls share a stopped preemption barrier,
 remove obsolete manual Parking ON/OFF, and wake telemetry leases by event. -->
+<!-- HH_260819 - Add persistent public field-operation distance and service evidence. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -43,6 +44,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
 | Docking telemetry | seven lazy subscriptions: tag debug/pose/detected, two paths, two controller states |
 | Manual Return | one `POST /ui/manual_return` authority; `0.50 s` stopped preemption during ordinary travel, duplicate presses coalesced |
+| Service evidence | `Asia/Seoul`; SQLite at `~/.local/state/camrod/service_metrics.sqlite3`; public summary plus 30-day detail |
 | Confirmed-tent occupancy guard | `false` by default; set `bringup.control.enable_campsite_occupancy_guard: true` to block pre-entry dispatch |
 
 See the [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
@@ -100,6 +102,24 @@ The administrator long-press entry and authenticated workspace are top-level
 UI surfaces. They remain available during waiting, manual/campsite driving,
 arrival, unload wait, return, parking, and charging; a service-state render
 change no longer closes the diagnostics view or its telemetry lease.
+
+## Field Operation Evidence
+
+The public waiting screen shows the current or latest service distance, today's
+distance and completed-service count, and all-time distance and completions.
+Opening the strip shows per-day totals and recent service rows. During an active
+campsite service the control preview also shows the current trip distance.
+
+A run begins only after destination occupancy and battery admission succeeds.
+It completes at `WAITING_FOR_CHARGING`, `CHARGING`, or `DROP_ZONE_WAIT` and is
+recorded as interrupted at `OPERATOR_STOPPED`. Interrupted distance remains in
+the honest travelled-distance total but does not increment completed service
+count. Planar `/platform/status.velocity` is trapezoid-integrated, including
+lateral motion; duplicate timestamps, samples above `3.0 m/s`, and gaps above
+`2.0 s` are rejected. The database is checkpointed during travel and reloaded
+after process or workspace rebuilds. Evidence starts accumulating with the
+first accepted service after this version is deployed; it does not invent
+historical runs.
 
 ## Operator Telemetry Workspace
 
@@ -369,6 +389,8 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /ui/state` | Full UI state snapshot |
 | `GET /ui/destination` | Current/valid destinations |
 | `GET /ui/diagnostics` | Aggregated diagnostic detail |
+| `GET /api/service-metrics/summary` | Current/latest, today, and all-time service evidence without history arrays |
+| `GET /api/service-metrics?days=30&recent_limit=50` | Date totals and recent per-service distance, duration, destination, and result |
 | `POST /api/telemetry/session?active=true|false&view=<name>` | Acquire/release one bounded live-view lease |
 | `GET /api/telemetry` | Sensor, localization, route, and safety snapshot |
 | `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |

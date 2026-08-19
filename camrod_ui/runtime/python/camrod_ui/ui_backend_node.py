@@ -72,6 +72,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
+from camrod_ui.service_metrics import (
+    ServiceMetricsTracker,
+    default_service_metrics_path,
+)
 from camrod_ui.ui_state_policy import UiStatePolicy
 
 # HH_260721 - Keep symbolic service names stable across ROS, REST, and WebSocket clients.
@@ -233,6 +237,15 @@ def _finite_or_none(value: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return parsed if math.isfinite(parsed) else None
+
+
+def _ros_stamp_seconds(stamp: Any) -> Optional[float]:
+    """Convert a generated/builtin ROS timestamp to finite seconds."""
+    try:
+        seconds = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return seconds if math.isfinite(seconds) else None
 
 
 def _quaternion_yaw_deg(orientation: Any) -> Optional[float]:
@@ -572,6 +585,54 @@ class UiBackendNode(Node):
         self.port = int(self.declare_parameter("port", 8000).value)
         self.enable_http_server = bool(self.declare_parameter("enable_http_server", True).value)
         self.frontend_dir = Path(str(self.declare_parameter("frontend_dir", "").value))
+        # HH_260819 - Persist proof-of-operation evidence outside the build and
+        # install trees so an ARM64 rebuild cannot erase accumulated history.
+        self.service_metrics_enabled = bool(
+            self.declare_parameter("service_metrics_enabled", True).value
+        )
+        self.service_metrics_database_path = str(
+            self.declare_parameter(
+                "service_metrics_database_path",
+                str(default_service_metrics_path()),
+            ).value
+        )
+        self.service_metrics_timezone = str(
+            self.declare_parameter(
+                "service_metrics_timezone", "Asia/Seoul"
+            ).value
+        )
+        self.service_metrics_minimum_speed_mps = max(
+            0.0,
+            float(
+                self.declare_parameter(
+                    "service_metrics_minimum_speed_mps", 0.03
+                ).value
+            ),
+        )
+        self.service_metrics_maximum_speed_mps = max(
+            self.service_metrics_minimum_speed_mps,
+            float(
+                self.declare_parameter(
+                    "service_metrics_maximum_speed_mps", 3.0
+                ).value
+            ),
+        )
+        self.service_metrics_maximum_sample_gap_s = max(
+            0.05,
+            float(
+                self.declare_parameter(
+                    "service_metrics_maximum_sample_gap_s", 2.0
+                ).value
+            ),
+        )
+        self.service_metrics_checkpoint_interval_s = max(
+            0.1,
+            float(
+                self.declare_parameter(
+                    "service_metrics_checkpoint_interval_s", 5.0
+                ).value
+            ),
+        )
 
         # Topic and destination dispatch parameters.
         self.ui_destination_topic = str(
@@ -938,6 +999,20 @@ class UiBackendNode(Node):
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
         )
+        self._service_metrics = ServiceMetricsTracker(
+            self.service_metrics_database_path
+            if self.service_metrics_enabled else None,
+            timezone_name=self.service_metrics_timezone,
+            minimum_speed_mps=self.service_metrics_minimum_speed_mps,
+            maximum_speed_mps=self.service_metrics_maximum_speed_mps,
+            maximum_sample_gap_s=self.service_metrics_maximum_sample_gap_s,
+            checkpoint_interval_s=self.service_metrics_checkpoint_interval_s,
+        )
+        if self._service_metrics.persistence_error:
+            self.get_logger().warn(
+                "service metrics persistence unavailable; continuing with "
+                f"in-memory evidence: {self._service_metrics.persistence_error}"
+            )
         self._telemetry = self._new_telemetry_snapshot()
         self._telemetry_source_rx: Dict[str, float] = {}
         self._telemetry_source_history: Dict[str, deque[float]] = defaultdict(
@@ -1277,6 +1352,9 @@ class UiBackendNode(Node):
         # publishers that in-flight FastAPI/WebSocket handlers may still access.
         self._cancel_pending_manual_return_transition("node_shutdown")
         self._stop_fastapi_server()
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.close()
         return super().destroy_node()
 
     def _stop_fastapi_server(self, join_timeout_s: float = 3.0) -> None:
@@ -2945,6 +3023,18 @@ class UiBackendNode(Node):
         )
         if getattr(self, "_telemetry_capture_active", False):
             UiBackendNode._record_telemetry_platform(self, msg)
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            sample_time_s = _ros_stamp_seconds(msg.velocity.header.stamp)
+            if sample_time_s is None or sample_time_s <= 0.0:
+                sample_time_s = _ros_stamp_seconds(msg.stamp)
+            if sample_time_s is None or sample_time_s <= 0.0:
+                sample_time_s = self._now_s()
+            service_metrics.observe_velocity(
+                msg.velocity.twist.linear.x,
+                msg.velocity.twist.linear.y,
+                sample_time_s,
+            )
         charging = bool(msg.is_charging)
         charging_changed = charging != self._latest_platform_is_charging
         self._latest_platform_is_charging = charging
@@ -3046,6 +3136,13 @@ class UiBackendNode(Node):
             state, f"UNKNOWN_{state}"
         )
         description = str(msg.description).strip() or state_name
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.observe_service_state(
+                state,
+                state_name,
+                now_s=time.time(),
+            )
         with self._lock:
             self._state.service_state = state
             self._state.service_state_name = state_name
@@ -3178,6 +3275,13 @@ class UiBackendNode(Node):
         msg.state = state
         msg.state_name = SERVICE_STATE_NAMES.get(state, f"UNKNOWN_{state}")
         msg.description = desc_map.get(state, f"unknown state {state}")
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.observe_service_state(
+                int(state),
+                msg.state_name,
+                now_s=time.time(),
+            )
         # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
         self._latest_service_state = int(state)
         self.pub_service_state.publish(msg)
@@ -3807,6 +3911,14 @@ class UiBackendNode(Node):
         if already_arrived:
             with self._lock:
                 self._active_mission_site = site
+            service_metrics = getattr(self, "_service_metrics", None)
+            if service_metrics is not None:
+                service_metrics.start_service(
+                    site,
+                    mission_key=mission_key,
+                    source=source,
+                    now_s=time.time(),
+                )
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -3859,6 +3971,14 @@ class UiBackendNode(Node):
         # arrival identity. A battery-rejected request must not replace it.
         with self._lock:
             self._active_mission_site = site
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.start_service(
+                site,
+                mission_key=mission_key,
+                source=source,
+                now_s=time.time(),
+            )
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
@@ -4445,6 +4565,23 @@ class UiBackendNode(Node):
             with node._lock:
                 diags = list(node._state.diagnostics)
             return JSONResponse({"status": diags})
+
+        # HH_260819 - A compact endpoint keeps the always-visible KPI strip
+        # inexpensive; history is fetched only while its evidence modal is open.
+        @app.get("/api/service-metrics/summary")
+        def get_service_metrics_summary() -> JSONResponse:
+            return JSONResponse(node._service_metrics.summary())
+
+        @app.get("/api/service-metrics")
+        def get_service_metrics(
+            days: int = 30, recent_limit: int = 50
+        ) -> JSONResponse:
+            return JSONResponse(
+                node._service_metrics.snapshot(
+                    days=days,
+                    recent_limit=recent_limit,
+                )
+            )
 
         # HH_260810 - The browser renews this lease only while the administrator
         # telemetry modal is open. The ROS timer owns subscription creation and

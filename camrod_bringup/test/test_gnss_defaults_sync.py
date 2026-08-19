@@ -100,15 +100,15 @@ def test_synced_gnss_config_owns_both_receiver_ports():
     moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
 
     assert rover["device"] == "/dev/ttyACM0"
-    # HH_260807 - Lock the antenna frame and 200 ms receiver cadence at the
-    # deployment mirror; nav_rate is an epoch divisor, not a frequency in Hz.
+    # HH_260819 - Lock the replacement FTDI identity, UART1 baud, and 100 ms
+    # receiver cadence in the deployment mirror. nav_rate is an epoch divisor.
     assert rover["frame_id"] == "gnss_link"
-    assert rover["rate"] == 5.0
+    assert rover["rate"] == 10.0
     assert rover["nav_rate"] == 1
     assert moving_base["device"] == (
-        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0"
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0"
     )
-    assert moving_base["baud"] == 115200
+    assert moving_base["baud"] == 460800
 
 
 def test_cleanup_removes_stale_moving_base_writer():

@@ -4,7 +4,7 @@
 HH_260722 - Field topology and correction ownership:
 
 * Input: ``/gnss/ntrip_client/rtcm`` from the CORS caster.
-* Output: the FTDI DN03DF8V stable by-id path at 115200 baud. This device is
+* Output: the FTDI DN05Y9E7 stable by-id path at 460800 baud. This device is
   currently ``/dev/ttyUSB0`` and reaches the Lite moving base on UART1 through
   the board's POWER+XBEE connector.
 * The moving base applies CORS, becomes absolute RTK fixed, and independently
@@ -37,7 +37,9 @@ class RtcmSerialWriter(Node):
         # HH_260722 - Keep the node-level device default empty so an accidental
         # standalone start cannot write to an arbitrary serial receiver.
         self.declare_parameter("device", "")
-        self.declare_parameter("baud", 115200)
+        # HH_260819 - Canonical launches override this from the GNSS YAML. Keep
+        # the standalone fallback aligned with the replacement Lite UART1 link.
+        self.declare_parameter("baud", 460800)
         self.declare_parameter("rtcm_topic", "ntrip_client/rtcm")
         self.declare_parameter("write_timeout_sec", 0.2)
         self.declare_parameter("reopen_delay_sec", 1.0)

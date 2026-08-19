@@ -18,10 +18,9 @@ gnss_checker:
       # false/stale heartbeat restores the normal physical-sensor diagnosis.
       dummy_active_topic: "/sensing/gnss/dummy_active"
       dummy_active_timeout_s: 1.0
-      # HH_260807 - The current physical GNSS validation profile uses a 200 ms
-      # receiver epoch. Diagnose that intentional 5 Hz stream instead of
-      # reporting every healthy test run as critically slow.
-      expected_hz: 5.0
+      # HH_260819 - Replacement rover uses 100 ms epochs. Keeping this at 10 Hz
+      # makes a stale 5 Hz launch override visible instead of reporting healthy.
+      expected_hz: 10.0
       hz_warn_ratio: 0.8
       hz_error_ratio: 0.5
       stale_timeout_s: 2.0
