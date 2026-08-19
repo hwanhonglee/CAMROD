@@ -18,6 +18,7 @@
 #include "camrod_control/bounded_recovery_attempt_policy.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
+#include "camrod_control/drop_zone_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
@@ -400,6 +401,27 @@ TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc) {
   policy.setPlatformState(platform);
   EXPECT_FALSE(policy.enabled(21.0, true, false));
   EXPECT_TRUE(policy.enabled(21.0, true, true));
+
+  // A charging-departure authorization removes only the charging reason.
+  // Every independent safety reason remains authoritative.
+  policy.setEstopSource("test", true);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  policy.setEstopSource("test", false);
+  platform.error_code = 0x0100;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  platform.error_code = 0;
+  platform.battery_percentage = 0.19;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  platform.battery_percentage = 0.21;
+  platform.received_sec = 21.0;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.6, true, true));
+  platform.received_sec = 22.0;
+  policy.setPlatformState(platform);
+  policy.setCostState(true, 23.0);
+  EXPECT_FALSE(policy.enabled(22.0, true, true));
 }
 
 TEST(CmdVelGatePolicy, SeparatesNormalStandbyFromWarningAndErrorHolds) {
@@ -436,6 +458,77 @@ TEST(ChargingMissionOverride, AcceptsOnlyFreshCampsiteRequestDuringCharging) {
   EXPECT_FALSE(policy.isActive(115.1));
   policy.setCharging(false);
   EXPECT_FALSE(policy.isActive(101.0));
+}
+
+TEST(DropZoneChargingDepartureAuthorization, AcceptsOnlyExactHealthyExitPhases) {
+  DropZoneChargingDepartureAuthorization authorization;
+
+  EXPECT_FALSE(authorization.observe(
+      "control", "exit_straight", true, 100.0,
+      std::optional<double>{100.0}));
+  EXPECT_FALSE(authorization.isActive(100.0));
+  EXPECT_FALSE(authorization.observe(
+      "control", "PARKED", true, 100.0,
+      std::optional<double>{100.0}));
+  EXPECT_FALSE(authorization.observe(
+      "drop_zone_maneuver_controller", "EXIT_STRAIGHT", true, 100.0,
+      std::optional<double>{100.0}));
+  EXPECT_TRUE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 100.0,
+      std::optional<double>{100.0}));
+  EXPECT_TRUE(authorization.isActive(100.5));
+  EXPECT_TRUE(authorization.observe(
+      "control", "ALIGN_EXIT_YAW", true, 101.0,
+      std::optional<double>{101.0}));
+  EXPECT_TRUE(authorization.isActive(101.5));
+
+  // Any unhealthy or unrelated heartbeat immediately revokes prior evidence.
+  EXPECT_FALSE(authorization.observe(
+      "control", "ALIGN_EXIT_YAW", false, 101.6,
+      std::optional<double>{101.6}));
+  EXPECT_FALSE(authorization.isActive(101.6));
+  EXPECT_TRUE(authorization.phase().empty());
+}
+
+TEST(DropZoneChargingDepartureAuthorization, HeartbeatAndSourceStampExpire) {
+  DropZoneChargingDepartureAuthorization authorization;
+  ASSERT_TRUE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 10.0,
+      std::optional<double>{9.9}));
+  EXPECT_TRUE(authorization.isActive(11.89));
+  EXPECT_FALSE(authorization.isActive(12.01));
+
+  // A newly received replayed or excessively future-dated status is invalid.
+  EXPECT_FALSE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 20.0,
+      std::optional<double>{17.9}));
+  EXPECT_FALSE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 20.0,
+      std::optional<double>{20.26}));
+  EXPECT_TRUE(authorization.phase().empty());
+
+  // Production rejects unstamped evidence.  Simulation can opt into explicit
+  // receipt-only freshness without weakening the deployed default.
+  EXPECT_FALSE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 30.0));
+  auto simulation_config = authorization.config();
+  simulation_config.require_source_stamp = false;
+  authorization.setConfig(simulation_config);
+  EXPECT_TRUE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 30.0));
+  EXPECT_TRUE(authorization.isActive(31.9));
+  EXPECT_FALSE(authorization.isActive(32.1));
+}
+
+TEST(DropZoneChargingDepartureAuthorization, InvalidConfigurationFailsClosed) {
+  DropZoneChargingDepartureAuthorizationConfig config;
+  config.heartbeat_timeout_s = 0.0;
+  EXPECT_FALSE(dropZoneChargingDepartureAuthorizationConfigIsValid(config));
+  DropZoneChargingDepartureAuthorization authorization(config);
+  EXPECT_FALSE(authorization.observe(
+      "control", "EXIT_STRAIGHT", true, 1.0,
+      std::optional<double>{1.0}));
+  EXPECT_FALSE(authorization.isActive(1.0));
 }
 
 TEST(MotionCostStop, ForwardThresholdAndBelowThreshold) {
@@ -1392,6 +1485,17 @@ TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle) {
   EXPECT_TRUE(started.parking_started);
   EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
   EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+
+  // HH_260819 - Final yaw and the explicit stopped charging wait retain
+  // ownership, so Nav2 cannot interleave translation after the 0.60 m latch.
+  const auto yaw =
+      arbiter.setManeuverPhases("IDLE", "IDLE", "FINAL_YAW_ALIGNMENT", 1.5);
+  EXPECT_FALSE(yaw.maneuver_finished);
+  EXPECT_EQ(arbiter.evaluate(true, 1.5), CommandSourceDecision::kIgnore);
+  const auto charging_wait =
+      arbiter.setManeuverPhases("IDLE", "IDLE", "WAITING_FOR_CHARGING", 1.8);
+  EXPECT_FALSE(charging_wait.maneuver_finished);
+  EXPECT_EQ(arbiter.evaluate(true, 1.8), CommandSourceDecision::kIgnore);
 
   const auto parked = arbiter.setManeuverPhases("IDLE", "IDLE", "PARKED", 2.0);
   EXPECT_FALSE(parked.maneuver_finished);

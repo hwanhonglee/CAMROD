@@ -146,6 +146,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_reverse_parking_axis test/test_reverse_parking_axis.cpp)
   target_include_directories(test_reverse_parking_axis PRIVATE include)
   ament_target_dependencies(test_reverse_parking_axis avg_msgs geometry_msgs diagnostic_msgs rclcpp)
+
+  # HH_260819 - Verify immutable lanelet exit-target selection without ROS I/O.
+  ament_add_gtest(test_drop_zone_exit_target_policy
+    test/test_drop_zone_exit_target_policy.cpp
+  )
+  target_include_directories(test_drop_zone_exit_target_policy PRIVATE include)
 endif()
 
 ament_package()

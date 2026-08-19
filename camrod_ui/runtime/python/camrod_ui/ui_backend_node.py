@@ -733,6 +733,12 @@ class UiBackendNode(Node):
                 "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
             ).value
         )
+        self.drop_zone_maneuver_status_topic = str(
+            self.declare_parameter(
+                "drop_zone_maneuver_status_topic",
+                "/control/drop_zone_maneuver_controller/status",
+            ).value
+        )
         self.nav2_cancel_action_topics = [
             str(topic)
             for topic in self.declare_parameter(
@@ -1045,6 +1051,10 @@ class UiBackendNode(Node):
         self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
         self._drop_zone_exit_active = False
+        self._drop_zone_exit_handoff_ready = False
+        self._drop_zone_exit_failure_latched = False
+        self._drop_zone_exit_waiting_for_fresh_status = False
+        self._drop_zone_exit_cancel_suppressed = False
         # HJ_260804 - Destination state may be cleared by a departure ack
         # before campsite arrival. Preserve the active mission site so the
         # Robot and Guest UIs still receive the matching arrival notification.
@@ -1149,11 +1159,21 @@ class UiBackendNode(Node):
             self._on_platform_status,
             10,
         )
+        # HH_260819 - AprilTag parking republishes its current service state as
+        # a 2 Hz heartbeat.  Keep QoS compatible with the existing volatile
+        # publishers; the periodic value, rather than a latched historical
+        # event, restores departure_required after a UI restart.
+        service_heartbeat_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         self.sub_service_state = self.create_subscription(
             AvgServiceState,
             self.service_state_topic,
             self._on_service_state,
-            10,
+            service_heartbeat_qos,
         )
         self.sub_arrival_pose = self.create_subscription(
             AvgPoseStamped,
@@ -1166,6 +1186,12 @@ class UiBackendNode(Node):
             self.drop_zone_exit_complete_topic,
             self._on_drop_zone_exit_complete,
             10,
+        )
+        self.sub_drop_zone_maneuver_status = self.create_subscription(
+            ModuleState,
+            self.drop_zone_maneuver_status_topic,
+            self._on_drop_zone_maneuver_status,
+            service_heartbeat_qos,
         )
         self.sub_campsite_occupancy = None
         if self.enable_campsite_occupancy_guard:
@@ -3087,32 +3113,152 @@ class UiBackendNode(Node):
             UiBackendNode._record_telemetry_pose(self, msg)
 
     # HH_260721 - Release the pending Nav2 site goal only after vertical exit and yaw alignment.
+    def _mark_drop_zone_exit_failed(self, source: str) -> None:
+        safe_state = (
+            AvgServiceState.CHARGING
+            if self._latest_platform_is_charging
+            else AvgServiceState.DROP_ZONE_WAIT
+        )
+        already_safe = (
+            getattr(self, "_drop_zone_exit_failure_latched", False)
+            and getattr(self, "_latest_service_state", None) == int(safe_state)
+        )
+        self._drop_zone_exit_failure_latched = True
+        self._drop_zone_exit_active = False
+        self._drop_zone_exit_handoff_ready = False
+        if already_safe:
+            return
+        if getattr(self, "publish_mission_engage_from_destination", False):
+            self._publish_mission_engage(False, source=source)
+        self._schedule_broadcast({
+            "departure_failed": True,
+            "message": "Drop-zone exit failed; select the destination again to retry",
+        })
+        self._publish_service_state(safe_state, source=source)
+
+    def _on_drop_zone_maneuver_status(self, msg: ModuleState) -> None:
+        operating_state = str(msg.operating_state).strip()
+        if operating_state in {"EXIT_STRAIGHT", "ALIGN_EXIT_YAW"}:
+            if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
+                # Operator stop owns the motion gate until a new human request.
+                # Queued controller heartbeats cannot reconstruct departure.
+                return
+            if getattr(self, "_drop_zone_exit_failure_latched", False):
+                if not getattr(
+                    self, "_drop_zone_exit_waiting_for_fresh_status", False
+                ):
+                    # ERROR/failure is terminal for this attempt.  A delayed
+                    # pre-error heartbeat cannot reconstruct DEPARTING afterward.
+                    return
+                # A human retry can race an old false/ERROR from the prior
+                # attempt. The first later EXIT status on this ordered writer
+                # proves that the controller accepted the new operation.
+                self._drop_zone_exit_failure_latched = False
+                self._drop_zone_exit_active = True
+            self._drop_zone_exit_waiting_for_fresh_status = False
+            if getattr(self, "_drop_zone_exit_handoff_ready", False):
+                # This status writer's pre-terminal phase can be delivered
+                # after exit_complete.  A new UI-owned exit clears the flag
+                # before publishing EXIT, so only an old heartbeat is ignored.
+                return
+            self._drop_zone_exit_handoff_ready = False
+            if self._latest_service_state not in {
+                int(AvgServiceState.DEPARTING_CHARGER),
+                int(AvgServiceState.DEPARTING_DROP_ZONE),
+            }:
+                recovered = AvgServiceState()
+                recovered.state = (
+                    AvgServiceState.DEPARTING_CHARGER
+                    if self._latest_platform_is_charging
+                    else AvgServiceState.DEPARTING_DROP_ZONE
+                )
+                recovered.state_name = (
+                    "DEPARTING_CHARGER"
+                    if self._latest_platform_is_charging
+                    else "DEPARTING_DROP_ZONE"
+                )
+                recovered.description = (
+                    f"drop_zone_maneuver_controller:{operating_state}:status recovery"
+                )
+                self._on_service_state(recovered)
+            return
+        if operating_state == "ERROR":
+            if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
+                return
+            # ERROR is the controller's persistent, ordered failure terminal.
+            # It is authoritative even after a UI restart; Bool(false) is not.
+            self._mark_drop_zone_exit_failed(source="drop_zone_status:error")
+            return
+        if operating_state == "IDLE":
+            # IDLE is both the normal pre-start heartbeat and the post-cancel
+            # state, so it is never a departure terminal.
+            return
+        if operating_state == "ROAD_HANDOFF_READY":
+            if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
+                return
+            if (
+                getattr(self, "_drop_zone_exit_failure_latched", False)
+                and not getattr(
+                    self, "_drop_zone_exit_waiting_for_fresh_status", False
+                )
+            ):
+                return
+            self._drop_zone_exit_failure_latched = False
+            self._drop_zone_exit_waiting_for_fresh_status = False
+            terminal = AvgServiceState()
+            terminal.state = AvgServiceState.DROP_ZONE_WAIT
+            terminal.state_name = "ROAD_HANDOFF_READY"
+            terminal.description = "Drop-zone exit complete; ready for route dispatch"
+            self._on_service_state(terminal)
+
     def _on_drop_zone_exit_complete(self, msg: AvgBool) -> None:
+        if not bool(msg.data):
+            # This topic is intentionally observation-only for failures:
+            # startExit() also emits false when an exit is already active, and
+            # cross-topic delivery can carry an old false into a new attempt.
+            # The ordered, persistent ModuleState ERROR owns failure handling.
+            self.get_logger().warn(
+                "drop-zone exit_complete=false observed; awaiting authoritative "
+                "drop-zone ModuleState ERROR"
+            )
+            return
+        self._drop_zone_exit_failure_latched = False
+        self._drop_zone_exit_waiting_for_fresh_status = False
         if not self._drop_zone_exit_active:
+            departure_states = {
+                int(AvgServiceState.DEPARTING_CHARGER),
+                int(AvgServiceState.DEPARTING_DROP_ZONE),
+            }
+            if getattr(self, "_latest_service_state", None) not in departure_states:
+                return
+            # HH_260819 - The UI may restart and recover only the controller's
+            # DEPARTING heartbeat before this completion.  Remember a
+            # successful road handoff even without a pending site; otherwise a
+            # stale DEPARTING value would make the next selection wait forever.
+            self._drop_zone_exit_handoff_ready = True
+            self._latest_service_state = None
+            with self._lock:
+                self._state.service_state = int(AvgServiceState.DROP_ZONE_WAIT)
+                self._state.service_state_name = "ROAD_HANDOFF_READY"
+                self._state.service_state_description = (
+                    "Drop-zone exit complete; ready for route dispatch"
+                )
+            self._schedule_broadcast({
+                "departure_complete": True,
+                "service_state": int(AvgServiceState.DROP_ZONE_WAIT),
+                "service_state_name": "ROAD_HANDOFF_READY",
+                "service_state_description": (
+                    "Drop-zone exit complete; ready for route dispatch"
+                ),
+            })
             return
         pending = self._pending_site_after_drop_zone_exit
         self._drop_zone_exit_active = False
         self._pending_site_after_drop_zone_exit = None
+        self._drop_zone_exit_handoff_ready = True
         if pending is None:
             return
         site, mission_key, source = pending
-        if not bool(msg.data):
-            self.get_logger().error(
-                f"drop-zone departure failed; campsite goal cancelled: site={site}"
-            )
-            if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(False, source="drop_zone_exit_failed")
-            self._schedule_broadcast(
-                {"departure_failed": True, "site": site, "message": "drop-zone exit failed"}
-            )
-            # HH_260721 - Do not leave the UI in a departure state after a failed exit.
-            self._publish_service_state(
-                AvgServiceState.CHARGING
-                if self._latest_platform_is_charging
-                else AvgServiceState.DROP_ZONE_WAIT,
-                source="drop_zone_exit_failed",
-            )
-            return
         # HH_260727 - The state-machine mission-key latch expires while the
         # station-exit maneuver runs, so refresh it immediately before the goal.
         release_source = f"{source}:drop_zone_exit_complete"
@@ -3130,32 +3276,98 @@ class UiBackendNode(Node):
 
     def _on_service_state(self, msg: AvgServiceState) -> None:
         state = int(msg.state)
-        # HH_260721 - DROP_ZONE_WAIT is the semantic parked state used by departure sequencing.
-        self._latest_service_state = state
         state_name = str(msg.state_name).strip() or SERVICE_STATE_NAMES.get(
             state, f"UNKNOWN_{state}"
         )
         description = str(msg.description).strip() or state_name
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.observe_service_state(
-                state,
-                state_name,
-                now_s=time.time(),
+        road_handoff_ready = (
+            state == int(AvgServiceState.DROP_ZONE_WAIT)
+            and state_name == "ROAD_HANDOFF_READY"
+        )
+        # HH_260721 - DROP_ZONE_WAIT is the semantic parked state used by departure sequencing.
+        previous_state = getattr(self, "_latest_service_state", None)
+        if (
+            state
+            in {
+                int(AvgServiceState.DEPARTING_CHARGER),
+                int(AvgServiceState.DEPARTING_DROP_ZONE),
+            }
+            and (
+                getattr(self, "_drop_zone_exit_handoff_ready", False)
+                or getattr(self, "_drop_zone_exit_failure_latched", False)
+                or getattr(self, "_drop_zone_exit_cancel_suppressed", False)
             )
+        ):
+            # A pre-terminal DEPARTING heartbeat from another writer cannot
+            # roll back a completed road handoff.
+            return
+        if (
+            road_handoff_ready
+            and getattr(self, "_drop_zone_exit_handoff_ready", False)
+            and previous_state
+            not in {
+                None,
+                int(AvgServiceState.DROP_ZONE_WAIT),
+                int(AvgServiceState.DEPARTING_CHARGER),
+                int(AvgServiceState.DEPARTING_DROP_ZONE),
+            }
+        ):
+            # A separate exit_complete writer may already have released and
+            # synchronously recorded MOVING_TO_SITE.  Its later terminal
+            # service-state companion is an acknowledgement, not a rollback.
+            return
+        state_changed = previous_state != state
+        self._latest_service_state = state
+        if state in {
+            int(AvgServiceState.DROP_ZONE_PARKING),
+            int(AvgServiceState.WAITING_FOR_CHARGING),
+            int(AvgServiceState.CHARGING),
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        }:
+            self._drop_zone_exit_handoff_ready = False
         with self._lock:
+            visible_changed = (
+                self._state.service_state != state
+                or self._state.service_state_name != state_name
+                or self._state.service_state_description != description
+            )
             self._state.service_state = state
             self._state.service_state_name = state_name
             self._state.service_state_description = description
-        # HH_260721 - Every client receives explicit operational state, not a health warning surrogate.
-        self._schedule_broadcast({
-            "service_state": state,
-            "service_state_name": state_name,
-            "service_state_description": description,
-        })
-        self.get_logger().info(
-            f"Service state received: {state_name}({state}) ({description})"
-        )
+        if state_changed:
+            service_metrics = getattr(self, "_service_metrics", None)
+            if service_metrics is not None:
+                service_metrics.observe_service_state(
+                    state,
+                    state_name,
+                    now_s=time.time(),
+                )
+        if visible_changed:
+            # HH_260721 - Every client receives explicit operational state, not a health warning surrogate.
+            self._schedule_broadcast({
+                "service_state": state,
+                "service_state_name": state_name,
+                "service_state_description": description,
+            })
+            self.get_logger().info(
+                f"Service state received: {state_name}({state}) ({description})"
+            )
+        if road_handoff_ready:
+            # The terminal service state is ordered after every DEPARTING
+            # heartbeat on one DataWriter.  It therefore wins regardless of
+            # how the separate exit_complete topic is interleaved.
+            self._drop_zone_exit_handoff_ready = True
+            if getattr(self, "_drop_zone_exit_active", False):
+                completion = AvgBool()
+                completion.data = True
+                self._on_drop_zone_exit_complete(completion)
+            return
+        if not state_changed:
+            # HH_260819 - A controller heartbeat restores the latest value
+            # after restart, but repeating that same value must not re-run
+            # engage transitions or count another service metric edge.
+            return
         arrival_states = {
             int(AvgServiceState.SITE_ARRIVED),
             int(AvgServiceState.UNLOAD_WAIT),
@@ -3670,8 +3882,22 @@ class UiBackendNode(Node):
     def _stop_active_service(self, source: str) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
         self._cancel_pending_manual_return_transition(source)
+        departure_states = {
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        }
+        departure_was_active = (
+            getattr(self, "_drop_zone_exit_active", False)
+            or getattr(self, "_pending_site_after_drop_zone_exit", None) is not None
+            or getattr(self, "_latest_service_state", None) in departure_states
+        )
         self._drop_zone_exit_active = False
         self._pending_site_after_drop_zone_exit = None
+        self._drop_zone_exit_waiting_for_fresh_status = False
+        self._drop_zone_exit_failure_latched = False
+        self._drop_zone_exit_cancel_suppressed = departure_was_active
+        if departure_was_active:
+            self._drop_zone_exit_handoff_ready = False
         self._cancel_active_motion(source=source)
         if self.publish_mission_engage_from_destination:
             self._publish_mission_engage(False, source=source)
@@ -3992,26 +4218,53 @@ class UiBackendNode(Node):
 
         # HH_260721 - A parked/charging robot must leave the station before Nav2 gets a site goal.
         departure_required = (
-            self._latest_platform_is_charging
-            or self._latest_service_state
-            in {
-                int(AvgServiceState.DROP_ZONE_WAIT),
-                int(AvgServiceState.CHARGING),
-            }
+            getattr(self, "_drop_zone_exit_cancel_suppressed", False)
+            or self._latest_platform_is_charging
+            or (
+                not getattr(self, "_drop_zone_exit_handoff_ready", False)
+                and self._latest_service_state
+                in {
+                    int(AvgServiceState.DROP_ZONE_PARKING),
+                    int(AvgServiceState.DROP_ZONE_WAIT),
+                    int(AvgServiceState.CHARGING),
+                    int(AvgServiceState.WAITING_FOR_CHARGING),
+                    int(AvgServiceState.DEPARTING_CHARGER),
+                    int(AvgServiceState.DEPARTING_DROP_ZONE),
+                }
+            )
         )
         mission_key = self._resolve_mission_key_for_site(site) or ""
         if departure_required and mission_key:
-            self._publish_site_mission_key(mission_key, source)
+            # HH_260819 - Keep the planning mission identity on drop_zone until
+            # physical departure reaches its captured road handoff. Publishing
+            # the campsite key here can pair it with the previous reached goal.
             self._pending_site_after_drop_zone_exit = (site, mission_key, source)
+            self._drop_zone_exit_handoff_ready = False
+            self._drop_zone_exit_failure_latched = False
+            self._drop_zone_exit_cancel_suppressed = False
             if not self._drop_zone_exit_active:
                 self._drop_zone_exit_active = True
-                # HH_260721 - Transfer motion ownership from final parking to station departure.
-                self._publish_parking_operation(
-                    MotionOperation.CANCEL, source=f"{source}:site_departure"
-                )
-                self._publish_drop_zone_operation(
-                    MotionOperation.EXIT, source=f"{source}:site_departure"
-                )
+                resumed_active_departure = self._latest_service_state in {
+                    int(AvgServiceState.DEPARTING_CHARGER),
+                    int(AvgServiceState.DEPARTING_DROP_ZONE),
+                }
+                if self._latest_service_state == int(AvgServiceState.DROP_ZONE_PARKING):
+                    # HH_260819 - DROP_ZONE_PARKING can still be owned by the
+                    # drop-zone yaw aligner. Preempt that owner on the same
+                    # reliable operation stream before requesting EXIT.
+                    self._publish_drop_zone_operation(
+                        MotionOperation.CANCEL,
+                        source=f"{source}:site_departure_preempt_alignment",
+                    )
+                if not resumed_active_departure:
+                    # HH_260721 - Transfer motion ownership from final parking to station departure.
+                    self._publish_parking_operation(
+                        MotionOperation.CANCEL, source=f"{source}:site_departure"
+                    )
+                    self._drop_zone_exit_waiting_for_fresh_status = True
+                    self._publish_drop_zone_operation(
+                        MotionOperation.EXIT, source=f"{source}:site_departure"
+                    )
             # HH_260721 - Show physical departure before the Nav2 site route is released.
             departure_state = (
                 AvgServiceState.DEPARTING_CHARGER

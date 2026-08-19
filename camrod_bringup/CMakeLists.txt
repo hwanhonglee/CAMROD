@@ -257,6 +257,21 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260819 - Lock camera-range docking, yaw-only stop, and charging handoff.
+  ament_add_pytest_test(
+    test_apriltag_docking_contract
+    test/test_apriltag_docking_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260819 - Bind UI restart recovery, captured lanelet exit and the
+  # charging-only controller-status authorization across package boundaries.
+  ament_add_pytest_test(
+    test_drop_zone_departure_contract
+    test/test_drop_zone_departure_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260807 - Keep v2.1.5 service/obstacle/boundary visuals traceable to
   # the committed machine-readable simulation reports.
   ament_add_pytest_test(

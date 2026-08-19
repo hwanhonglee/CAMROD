@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "avg_msgs/msg/planning_state.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
 #include "camrod_control/control_diagnostics.hpp"
+#include "camrod_control/drop_zone_exit_target_policy.hpp"
 #include "camrod_control/drop_zone_station_pose.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/reverse_parking_axis.hpp"
@@ -141,12 +143,42 @@ public:
                                                    yaw_settle_max_rate_degps_});
     exit_distance_m_ =
         std::abs(declare_parameter<double>("exit_distance_m", 1.2));
+    require_lanelet_exit_target_ =
+        declare_parameter<bool>("require_lanelet_exit_target", true);
+    allow_fixed_distance_fallback_ =
+        declare_parameter<bool>("allow_fixed_distance_fallback", false);
+    exit_target_min_distance_m_ =
+        declare_parameter<double>("exit_target_min_distance_m", 0.3);
+    exit_target_max_distance_m_ =
+        declare_parameter<double>("exit_target_max_distance_m", 8.0);
+    exit_target_min_forward_m_ =
+        declare_parameter<double>("exit_target_min_forward_m", 0.1);
+    exit_target_max_lateral_m_ =
+        declare_parameter<double>("exit_target_max_lateral_m", 1.0);
+    exit_position_tolerance_m_ =
+        declare_parameter<double>("exit_position_tolerance_m", 0.20);
     exit_speed_mps_ =
         std::abs(declare_parameter<double>("exit_speed_mps", 0.16));
     exit_timeout_s_ =
         std::abs(declare_parameter<double>("exit_timeout_s", 30.0));
     pose_timeout_s_ =
         std::abs(declare_parameter<double>("pose_timeout_s", 2.0));
+    allow_unstamped_pose_fallback_ = declare_parameter<bool>(
+        "allow_unstamped_pose_fallback", false);
+    exit_target_policy_config_ = camrod_control::DropZoneExitTargetPolicyConfig{
+        require_lanelet_exit_target_, allow_fixed_distance_fallback_,
+        pose_timeout_s_, exit_target_min_distance_m_,
+        exit_target_max_distance_m_, exit_target_min_forward_m_,
+        exit_target_max_lateral_m_, exit_distance_m_};
+    exit_target_policy_config_.allow_unstamped_pose_fallback =
+        allow_unstamped_pose_fallback_;
+    if (!camrod_control::dropZoneExitTargetConfigIsValid(
+            exit_target_policy_config_) ||
+        !std::isfinite(exit_position_tolerance_m_) ||
+        exit_position_tolerance_m_ <= 0.0) {
+      throw std::invalid_argument(
+          "invalid drop-zone exit-target safety configuration");
+    }
     control_rate_hz_ =
         std::max(0.1, declare_parameter<double>("control_rate_hz", 10.0));
     idle_rate_hz_ =
@@ -294,6 +326,7 @@ private:
       return startExit(source);
     }
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
+      road_handoff_ready_ = false;
       publishZero();
       setPhase(DropZoneManeuverPhase::kIdle, "cancel=" + source);
       return {true, "drop-zone maneuver cancelled"};
@@ -303,13 +336,26 @@ private:
   }
 
   bool vehiclePoseIsFresh() const {
-    return last_vehicle_pose_.has_value() &&
-           (now() - last_vehicle_pose_time_).seconds() <= pose_timeout_s_;
-  }
-
-  bool laneletPoseIsFresh() const {
-    return last_lanelet_pose_.has_value() &&
-           (now() - last_lanelet_pose_time_).seconds() <= pose_timeout_s_;
+    if (!last_vehicle_pose_.has_value() ||
+        last_vehicle_pose_->header.frame_id.empty()) {
+      return false;
+    }
+    const rclcpp::Time current_time = now();
+    const bool header_stamp_available =
+        last_vehicle_pose_->header.stamp.sec != 0 ||
+        last_vehicle_pose_->header.stamp.nanosec != 0U;
+    double header_stamp_age_s = 0.0;
+    if (header_stamp_available) {
+      const double header_stamp_sec =
+          static_cast<double>(last_vehicle_pose_->header.stamp.sec) +
+          static_cast<double>(last_vehicle_pose_->header.stamp.nanosec) *
+              1.0e-9;
+      header_stamp_age_s = current_time.seconds() - header_stamp_sec;
+    }
+    return camrod_control::dropZoneExitPoseSampleIsFresh(
+        (current_time - last_vehicle_pose_time_).seconds(),
+        header_stamp_available, header_stamp_age_s,
+        allow_unstamped_pose_fallback_, pose_timeout_s_);
   }
 
   std::pair<bool, std::string>
@@ -317,6 +363,7 @@ private:
     if (isActive()) {
       return {false, "drop-zone maneuver already active: " + phaseName(phase_)};
     }
+    road_handoff_ready_ = false;
     if (!vehiclePoseIsFresh()) {
       setError("fresh pose unavailable for parking alignment");
       return {false, "fresh pose unavailable for parking alignment"};
@@ -331,19 +378,87 @@ private:
       publishExitComplete(false);
       return {false, "drop-zone maneuver already active: " + phaseName(phase_)};
     }
+    road_handoff_ready_ = false;
+    exit_target_ = camrod_control::DropZoneExitTargetSelection{};
+    exit_target_frame_id_.clear();
     if (!vehiclePoseIsFresh()) {
       publishExitComplete(false);
       setError("fresh pose unavailable for drop-zone exit");
       return {false, "fresh pose unavailable for drop-zone exit"};
     }
+    const rclcpp::Time capture_time = now();
     exit_start_x_m_ = last_vehicle_pose_->pose.position.x;
     exit_start_y_m_ = last_vehicle_pose_->pose.position.y;
-    exit_heading_yaw_rad_ = camrod_control::yawFromPose(*last_vehicle_pose_);
-    target_body_yaw_rad_ = selectExitYaw();
+    const double start_yaw_rad =
+        camrod_control::yawFromPose(*last_vehicle_pose_);
+    camrod_control::DropZoneExitTargetPolicyInput target_input;
+    target_input.vehicle_x_m = exit_start_x_m_;
+    target_input.vehicle_y_m = exit_start_y_m_;
+    target_input.vehicle_yaw_rad = start_yaw_rad;
+    target_input.vehicle_frame_id = last_vehicle_pose_->header.frame_id;
+    target_input.vehicle_age_s =
+        (capture_time - last_vehicle_pose_time_).seconds();
+    if (last_vehicle_pose_->header.stamp.sec != 0 ||
+        last_vehicle_pose_->header.stamp.nanosec != 0U) {
+      target_input.vehicle_header_stamp_available = true;
+      const double header_stamp_sec =
+          static_cast<double>(last_vehicle_pose_->header.stamp.sec) +
+          static_cast<double>(last_vehicle_pose_->header.stamp.nanosec) *
+              1.0e-9;
+      target_input.vehicle_header_stamp_age_s =
+          capture_time.seconds() - header_stamp_sec;
+    }
+    target_input.lanelet_pose_available = last_lanelet_pose_.has_value();
+    if (last_lanelet_pose_.has_value()) {
+      target_input.lanelet_x_m = last_lanelet_pose_->pose.position.x;
+      target_input.lanelet_y_m = last_lanelet_pose_->pose.position.y;
+      target_input.lanelet_yaw_rad =
+          camrod_control::yawFromPose(*last_lanelet_pose_);
+      target_input.lanelet_frame_id = last_lanelet_pose_->header.frame_id;
+      target_input.lanelet_age_s =
+          (capture_time - last_lanelet_pose_time_).seconds();
+      if (last_lanelet_pose_->header.stamp.sec != 0 ||
+          last_lanelet_pose_->header.stamp.nanosec != 0U) {
+        target_input.lanelet_header_stamp_available = true;
+        const double header_stamp_sec =
+            static_cast<double>(last_lanelet_pose_->header.stamp.sec) +
+            static_cast<double>(last_lanelet_pose_->header.stamp.nanosec) *
+                1.0e-9;
+        target_input.lanelet_header_stamp_age_s =
+            capture_time.seconds() - header_stamp_sec;
+      }
+    }
+    exit_target_ = camrod_control::makeDropZoneExitTargetSelection(
+        exit_target_policy_config_, target_input);
+    if (!exit_target_.valid) {
+      const std::string detail =
+          "drop-zone exit target rejected: " + exit_target_.detail;
+      publishExitComplete(false);
+      setError(detail);
+      return {false, detail};
+    }
+    exit_target_frame_id_ = "map";
+    if (exit_target_.source ==
+            camrod_control::DropZoneExitTargetSource::kLaneletPose &&
+        !target_input.lanelet_frame_id.empty()) {
+      exit_target_frame_id_ = target_input.lanelet_frame_id;
+    } else if (!target_input.vehicle_frame_id.empty()) {
+      exit_target_frame_id_ = target_input.vehicle_frame_id;
+    }
+    exit_heading_yaw_rad_ = std::atan2(
+        exit_target_.target_y_m - exit_start_y_m_,
+        exit_target_.target_x_m - exit_start_x_m_);
+    // HH_260819 - Final yaw belongs to the same immutable lanelet sample as
+    // the exit XY target; live snap updates cannot move either target.
+    target_body_yaw_rad_ = exit_target_.target_yaw_rad;
     // HH_260721 - Preserve departure origin while charger feedback clears
     // during physical exit.
     exit_started_while_charging_ = is_charging_;
-    setPhase(DropZoneManeuverPhase::kExitStraight, "start=" + source);
+    setPhase(
+        DropZoneManeuverPhase::kExitStraight,
+        "start=" + source + " target_source=" +
+            camrod_control::dropZoneExitTargetSourceName(exit_target_.source) +
+            " target_distance_m=" + fixed(exit_target_.initial_distance_m));
     return {true, "drop-zone exit started"};
   }
 
@@ -409,31 +524,28 @@ private:
   }
 
   void publishExitPath() const {
-    if (!last_vehicle_pose_.has_value()) {
+    if (!exit_target_.valid) {
       return;
     }
     nav_msgs::msg::Path path;
-    path.header.frame_id = last_vehicle_pose_->header.frame_id.empty()
-                               ? "map"
-                               : last_vehicle_pose_->header.frame_id;
+    path.header.frame_id = exit_target_frame_id_;
     path.header.stamp = now();
-    const double end_x =
-        exit_start_x_m_ + std::cos(exit_heading_yaw_rad_) * exit_distance_m_;
-    const double end_y =
-        exit_start_y_m_ + std::sin(exit_heading_yaw_rad_) * exit_distance_m_;
     const int step_count =
-        std::max(1, static_cast<int>(exit_distance_m_ / 0.25));
+        std::max(1, static_cast<int>(exit_target_.initial_distance_m / 0.25));
     for (int step = 0; step <= step_count; ++step) {
       const double ratio =
           static_cast<double>(step) / static_cast<double>(step_count);
       geometry_msgs::msg::PoseStamped pose;
       pose.header = path.header;
       pose.pose.position.x =
-          exit_start_x_m_ + (end_x - exit_start_x_m_) * ratio;
+          exit_start_x_m_ +
+          (exit_target_.target_x_m - exit_start_x_m_) * ratio;
       pose.pose.position.y =
-          exit_start_y_m_ + (end_y - exit_start_y_m_) * ratio;
-      pose.pose.orientation =
-          camrod_control::quaternionFromYaw(exit_heading_yaw_rad_);
+          exit_start_y_m_ +
+          (exit_target_.target_y_m - exit_start_y_m_) * ratio;
+      pose.pose.orientation = camrod_control::quaternionFromYaw(
+          step == step_count ? exit_target_.target_yaw_rad
+                             : exit_heading_yaw_rad_);
       path.poses.push_back(pose);
     }
     exit_path_publisher_->publish(path);
@@ -461,16 +573,6 @@ private:
         last_vehicle_pose_->pose.position.x,
         last_vehicle_pose_->pose.position.y, station_pose_.x_m,
         station_pose_.y_m, camrod_control::reverseAxisYawForBody(body_yaw_rad));
-  }
-
-  double selectExitYaw() const {
-    const double current_yaw = camrod_control::yawFromPose(*last_vehicle_pose_);
-    const double desired_yaw =
-        laneletPoseIsFresh() ? camrod_control::yawFromPose(*last_lanelet_pose_)
-                             : configuredParkingBodyYaw();
-    return camrod_control::normalizeAngle(
-        current_yaw +
-        camrod_control::normalizeAngle(desired_yaw - current_yaw));
   }
 
   bool publishAlignmentCommand() {
@@ -503,16 +605,35 @@ private:
                       last_vehicle_pose_->pose.position.y - exit_start_y_m_);
   }
 
+  double exitTargetError() const {
+    if (!last_vehicle_pose_.has_value() || !exit_target_.valid) {
+      return 0.0;
+    }
+    return camrod_control::dropZoneExitTargetError(
+        exit_target_, last_vehicle_pose_->pose.position.x,
+        last_vehicle_pose_->pose.position.y);
+  }
+
   void publishExitCommand() {
     if (!vehiclePoseIsFresh()) {
       publishExitComplete(false);
       setError("pose timeout during drop-zone exit");
       return;
     }
-    if (distanceFromExitStart() >= exit_distance_m_) {
+    if (!exit_target_.valid) {
+      publishExitComplete(false);
+      setError("captured drop-zone exit target unavailable");
+      return;
+    }
+    const double current_x_m = last_vehicle_pose_->pose.position.x;
+    const double current_y_m = last_vehicle_pose_->pose.position.y;
+    if (camrod_control::dropZoneExitTranslationComplete(
+            exit_target_, current_x_m, current_y_m,
+            exit_position_tolerance_m_)) {
       publishZero();
-      target_body_yaw_rad_ = selectExitYaw();
-      setPhase(DropZoneManeuverPhase::kAlignExitYaw, "straight exit complete");
+      setPhase(
+          DropZoneManeuverPhase::kAlignExitYaw,
+          "captured exit target reached; aligning captured lanelet yaw");
       return;
     }
     if ((now() - phase_start_time_).seconds() >= exit_timeout_s_) {
@@ -520,8 +641,10 @@ private:
       setError("drop-zone exit timeout");
       return;
     }
-    const double heading_error = camrod_control::normalizeAngle(
-        exit_heading_yaw_rad_ -
+    // HH_260819 - Correct the small map/tag lateral offset while translating
+    // instead of holding the parking heading for a blind fixed distance.
+    const double heading_error = camrod_control::dropZoneExitBearingError(
+        exit_target_, current_x_m, current_y_m,
         camrod_control::yawFromPose(*last_vehicle_pose_));
     avg_msgs::msg::AvgTwist command;
     command.linear.x = exit_speed_mps_;
@@ -536,6 +659,7 @@ private:
       publishExitCommand();
     } else if (phase_ == DropZoneManeuverPhase::kAlignExitYaw) {
       if (publishAlignmentCommand()) {
+        road_handoff_ready_ = true;
         publishExitComplete(true);
         setPhase(DropZoneManeuverPhase::kIdle, "drop-zone exit aligned");
       }
@@ -560,13 +684,25 @@ private:
     const uint8_t module_level = phase_ == DropZoneManeuverPhase::kError
                                      ? avg_msgs::msg::ModuleState::ERROR
                                      : avg_msgs::msg::ModuleState::OK;
+    const std::string operating_state =
+        phase_ == DropZoneManeuverPhase::kIdle && road_handoff_ready_
+            ? "ROAD_HANDOFF_READY"
+            : phaseName(phase_);
     const std::string message =
-        "phase=" + phaseName(phase_) +
+        "phase=" + operating_state +
+        " exit_target_source=" +
+        camrod_control::dropZoneExitTargetSourceName(exit_target_.source) +
+        " exit_target_error_m=" + fixed(exitTargetError()) +
         " target_yaw_deg=" + fixed(target_body_yaw_rad_ * 180.0 / M_PI, 2) +
         " settle_s=" + fixed(yaw_alignment_settling_.stableDurationS(), 2) +
         " yaw_rate_degps=" + fixed(yaw_alignment_settling_.yawRateDegps(), 2);
     status_publisher_->publish(camrod_control::makeModuleState(
-        *this, "control", module_level, message, phaseName(phase_)));
+        *this, "control", module_level, message, operating_state));
+    if (!force) {
+      // HH_260819 - Reconstruct in-progress departure after a UI restart.
+      // `_on_service_state` treats identical heartbeats as edge-idempotent.
+      publishServiceState("heartbeat");
+    }
     const uint8_t diagnostic_level =
         module_level == avg_msgs::msg::ModuleState::ERROR
             ? diagnostic_msgs::msg::DiagnosticStatus::ERROR
@@ -577,9 +713,20 @@ private:
         *this, "control/drop_zone_maneuver_controller", "control",
         diagnostic_level, message,
         {
-            {"phase", phaseName(phase_)},
+            {"phase", operating_state},
             {"command_topic", command_topic_},
-            {"exit_distance_m", fixed(distanceFromExitStart())},
+            {"exit_travel_distance_m", fixed(distanceFromExitStart())},
+            {"exit_target_source",
+             camrod_control::dropZoneExitTargetSourceName(exit_target_.source)},
+            {"exit_target_x_m", fixed(exit_target_.target_x_m)},
+            {"exit_target_y_m", fixed(exit_target_.target_y_m)},
+            {"exit_target_initial_distance_m",
+             fixed(exit_target_.initial_distance_m)},
+            {"exit_target_initial_forward_m",
+             fixed(exit_target_.initial_forward_m)},
+            {"exit_target_initial_lateral_m",
+             fixed(exit_target_.initial_lateral_m)},
+            {"exit_target_error_m", fixed(exitTargetError())},
             {"station_x_m", fixed(station_pose_.x_m)},
             {"station_y_m", fixed(station_pose_.y_m)},
             {"station_yaw_deg", fixed(station_pose_.yaw_rad * 180.0 / M_PI)},
@@ -614,9 +761,17 @@ private:
   double yaw_settle_hold_s_{1.0};
   double yaw_settle_max_rate_degps_{3.0};
   double exit_distance_m_{1.2};
+  bool require_lanelet_exit_target_{true};
+  bool allow_fixed_distance_fallback_{false};
+  double exit_target_min_distance_m_{0.3};
+  double exit_target_max_distance_m_{8.0};
+  double exit_target_min_forward_m_{0.1};
+  double exit_target_max_lateral_m_{1.0};
+  double exit_position_tolerance_m_{0.20};
   double exit_speed_mps_{0.16};
   double exit_timeout_s_{30.0};
   double pose_timeout_s_{2.0};
+  bool allow_unstamped_pose_fallback_{false};
   double control_rate_hz_{10.0};
   double idle_rate_hz_{1.0};
   double status_rate_hz_{1.0};
@@ -632,9 +787,13 @@ private:
   double exit_start_y_m_{0.0};
   double exit_heading_yaw_rad_{0.0};
   double target_body_yaw_rad_{0.0};
+  camrod_control::DropZoneExitTargetPolicyConfig exit_target_policy_config_;
+  camrod_control::DropZoneExitTargetSelection exit_target_;
+  std::string exit_target_frame_id_{"map"};
   camrod_control::YawAlignmentSettling yaw_alignment_settling_;
   bool is_charging_{false};
   bool exit_started_while_charging_{false};
+  bool road_handoff_ready_{false};
   std::string last_auto_alignment_key_;
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
 

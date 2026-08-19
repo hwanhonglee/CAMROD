@@ -14,9 +14,11 @@ sys.path.insert(
 )
 
 from avg_msgs.msg import (  # noqa: E402
+    AvgBool,
     AvgPlatformStatus,
     AvgServiceState,
     CampsiteOccupancy,
+    ModuleState,
     MotionOperation,
 )
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
@@ -25,8 +27,12 @@ from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 class _FakeLogger:
 
     def __init__(self) -> None:
+        self.error_messages = []
         self.info_messages = []
         self.warning_messages = []
+
+    def error(self, message: str) -> None:
+        self.error_messages.append(message)
 
     def info(self, message: str) -> None:
         self.info_messages.append(message)
@@ -431,7 +437,6 @@ class UiBackendStopTest(unittest.TestCase):
             lambda state, source: published_states.append((state, source))
         )
         backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
-
         message = AvgPlatformStatus()
         message.is_charging = True
         message.battery_state_available = False
@@ -485,6 +490,832 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(result["mission_key"], "camping_site_2")
         self.assertFalse(result["goal_pose_published"])
         self.assertIn("already pending", result["message"])
+
+    def test_station_states_defer_campsite_identity_and_goal_until_exit(self) -> None:
+        for service_state in (
+            AvgServiceState.DROP_ZONE_PARKING,
+            AvgServiceState.DROP_ZONE_WAIT,
+            AvgServiceState.CHARGING,
+            AvgServiceState.WAITING_FOR_CHARGING,
+        ):
+            with self.subTest(service_state=int(service_state)):
+                events = []
+                backend = SimpleNamespace(
+                    _drop_zone_exit_active=False,
+                    _pending_site_after_drop_zone_exit=None,
+                    _latest_platform_is_charging=False,
+                    _latest_service_state=int(service_state),
+                    _active_mission_site="",
+                    _service_metrics=None,
+                    _lock=threading.Lock(),
+                    _runtime_policy=SimpleNamespace(
+                        update_goal_received=lambda mode: events.append(
+                            ("runtime_goal", mode)
+                        )
+                    ),
+                    publish_engage_from_destination=False,
+                    publish_mission_engage_from_destination=False,
+                )
+                backend.get_logger = lambda: _FakeLogger()
+                backend._resolve_mission_key_for_site = (
+                    lambda _site: "camping_site_2"
+                )
+                backend._is_site_occupied = lambda _site: False
+                backend._site_arrival_match = lambda _site: (
+                    False,
+                    "camping_site_2",
+                    10.0,
+                    "outside_arrival_radius",
+                )
+                backend._mission_dispatch_battery_block = lambda _site: None
+                backend._schedule_broadcast = lambda payload: events.append(
+                    ("broadcast", payload)
+                )
+                backend._update_runtime_state = lambda callback: callback()
+                backend._publish_site_mission_key = (
+                    lambda key, source: events.append(("mission_key", key, source))
+                )
+                backend._publish_site_goal_pose = (
+                    lambda site, key, source: events.append(
+                        ("goal", site, key, source)
+                    )
+                )
+                backend._publish_parking_operation = (
+                    lambda operation, source: events.append(
+                        ("parking_operation", operation, source)
+                    )
+                )
+                backend._publish_drop_zone_operation = (
+                    lambda operation, source: events.append(
+                        ("drop_zone_operation", operation, source)
+                    )
+                )
+                backend._publish_service_state = (
+                    lambda state, source: events.append(("state", state, source))
+                )
+
+                result = UiBackendNode._apply_destination_command(
+                    backend,
+                    site="B2",
+                    run=True,
+                    source="test",
+                )
+
+                self.assertTrue(result["run"])
+                self.assertFalse(result["goal_pose_published"])
+                self.assertTrue(backend._drop_zone_exit_active)
+                self.assertEqual(
+                    backend._pending_site_after_drop_zone_exit,
+                    ("B2", "camping_site_2", "test"),
+                )
+                self.assertNotIn("mission_key", [event[0] for event in events])
+                self.assertNotIn("goal", [event[0] for event in events])
+                operation_events = [
+                    event for event in events if event[0].endswith("operation")
+                ]
+                if service_state == AvgServiceState.DROP_ZONE_PARKING:
+                    self.assertEqual(
+                        [(event[0], event[1]) for event in operation_events],
+                        [
+                            ("drop_zone_operation", MotionOperation.CANCEL),
+                            ("parking_operation", MotionOperation.CANCEL),
+                            ("drop_zone_operation", MotionOperation.EXIT),
+                        ],
+                    )
+                else:
+                    self.assertEqual(
+                        [(event[0], event[1]) for event in operation_events],
+                        [
+                            ("parking_operation", MotionOperation.CANCEL),
+                            ("drop_zone_operation", MotionOperation.EXIT),
+                        ],
+                    )
+                self.assertEqual(events[-1][0], "state")
+
+    def test_service_heartbeat_restores_restart_departure_without_duplicate_edges(self) -> None:
+        events = []
+        metrics = _FakeServiceMetrics()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            _active_mission_site="",
+            _service_metrics=metrics,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                destination={"site": "", "run": False},
+                service_state=-1,
+                service_state_name="",
+                service_state_description="",
+                battery_percentage=80,
+            ),
+            _runtime_policy=SimpleNamespace(
+                update_goal_received=lambda mode: events.append(
+                    ("runtime_goal", mode)
+                )
+            ),
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_engage = lambda enabled, source, **_kwargs: events.append(
+            ("engage", enabled, source)
+        )
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+
+        heartbeat = AvgServiceState()
+        heartbeat.state = AvgServiceState.WAITING_FOR_CHARGING
+        heartbeat.state_name = "WAITING_FOR_CHARGING"
+        heartbeat.description = "Waiting for charger connection"
+        UiBackendNode._on_service_state(backend, heartbeat)
+        first_event_count = len(events)
+        UiBackendNode._on_service_state(backend, heartbeat)
+
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.WAITING_FOR_CHARGING),
+        )
+        self.assertEqual(len(metrics.states), 1)
+        self.assertEqual(len(events), first_event_count)
+        self.assertEqual(
+            len([event for event in events if event[0] == "engage"]),
+            1,
+        )
+
+        # The first post-restart heartbeat must force physical departure.  It
+        # may not dispatch the campsite identity/goal before exit_complete.
+        events.clear()
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_2"
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda _site: (
+            False,
+            "camping_site_2",
+            10.0,
+            "outside_arrival_radius",
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_site_mission_key = lambda key, source: events.append(
+            ("mission_key", key, source)
+        )
+        backend._publish_site_goal_pose = lambda site, key, source: events.append(
+            ("goal", site, key, source)
+        )
+        backend._publish_parking_operation = lambda operation, source: events.append(
+            ("parking_operation", operation, source)
+        )
+        backend._publish_drop_zone_operation = lambda operation, source: events.append(
+            ("drop_zone_operation", operation, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="restart_test"
+        )
+
+        self.assertFalse(result["goal_pose_published"])
+        self.assertNotIn("mission_key", [event[0] for event in events])
+        self.assertNotIn("goal", [event[0] for event in events])
+        self.assertIn(
+            ("drop_zone_operation", MotionOperation.EXIT),
+            [(event[0], event[1]) for event in events],
+        )
+
+    def test_restart_attaches_to_active_departure_and_defers_changed_site(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                destination={"site": "", "run": False},
+                service_state=-1,
+                service_state_name="",
+                service_state_description="",
+                battery_percentage=80,
+            ),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        backend._resolve_mission_key_for_site = (
+            lambda site: f"camping_site_{site[1:]}"
+        )
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda site: (
+            False,
+            f"camping_site_{site[1:]}",
+            10.0,
+            "outside_arrival_radius",
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_site_mission_key = lambda key, source: events.append(
+            ("mission_key", key, source)
+        )
+
+        def publish_goal(site, key, source):
+            events.append(("goal", site, key, source))
+            return True
+
+        backend._publish_site_goal_pose = publish_goal
+        backend._publish_parking_operation = lambda operation, source: events.append(
+            ("parking_operation", operation, source)
+        )
+        backend._publish_drop_zone_operation = lambda operation, source: events.append(
+            ("drop_zone_operation", operation, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+        backend._on_service_state = lambda msg: UiBackendNode._on_service_state(
+            backend, msg
+        )
+
+        heartbeat = AvgServiceState()
+        heartbeat.state = AvgServiceState.DEPARTING_DROP_ZONE
+        heartbeat.state_name = "DEPARTING_DROP_ZONE"
+        heartbeat.description = "drop_zone_maneuver_controller:EXIT_STRAIGHT:heartbeat"
+        UiBackendNode._on_service_state(backend, heartbeat)
+        events.clear()
+
+        first = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="restart"
+        )
+        self.assertFalse(first["goal_pose_published"])
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertEqual(
+            backend._pending_site_after_drop_zone_exit,
+            ("B2", "camping_site_2", "restart"),
+        )
+        # Attach to the controller already in EXIT; never CANCEL/restart it.
+        self.assertNotIn("drop_zone_operation", [event[0] for event in events])
+        self.assertNotIn("mission_key", [event[0] for event in events])
+        self.assertNotIn("goal", [event[0] for event in events])
+
+        changed = UiBackendNode._apply_destination_command(
+            backend, site="B3", run=True, source="changed"
+        )
+        self.assertFalse(changed["goal_pose_published"])
+        self.assertEqual(
+            backend._pending_site_after_drop_zone_exit,
+            ("B3", "camping_site_3", "changed"),
+        )
+        self.assertNotIn("mission_key", [event[0] for event in events])
+        self.assertNotIn("goal", [event[0] for event in events])
+
+        completed = AvgBool()
+        completed.data = True
+        UiBackendNode._on_drop_zone_exit_complete(backend, completed)
+        release_events = [
+            event for event in events if event[0] in {"mission_key", "goal"}
+        ]
+        self.assertEqual(release_events[0][0:2], ("mission_key", "camping_site_3"))
+        self.assertEqual(release_events[1][0:3], ("goal", "B3", "camping_site_3"))
+
+    def test_orphan_exit_complete_clears_recovered_departing_state(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                destination={"site": "", "run": False},
+                service_state=-1,
+                service_state_name="",
+                service_state_description="",
+                battery_percentage=80,
+            ),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+        backend._on_service_state = lambda msg: UiBackendNode._on_service_state(
+            backend, msg
+        )
+
+        heartbeat = AvgServiceState()
+        heartbeat.state = AvgServiceState.DEPARTING_DROP_ZONE
+        heartbeat.state_name = "DEPARTING_DROP_ZONE"
+        heartbeat.description = "drop_zone_maneuver_controller:EXIT_STRAIGHT:heartbeat"
+        UiBackendNode._on_service_state(backend, heartbeat)
+
+        completed = AvgBool()
+        completed.data = True
+        UiBackendNode._on_drop_zone_exit_complete(backend, completed)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+        self.assertIsNone(backend._latest_service_state)
+        self.assertEqual(backend._state.service_state_name, "ROAD_HANDOFF_READY")
+
+        # A delayed heartbeat from the service-state writer may arrive after
+        # exit_complete, but cannot roll the handoff back.
+        UiBackendNode._on_service_state(backend, heartbeat)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+        terminal = ModuleState()
+        terminal.operating_state = "ROAD_HANDOFF_READY"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, terminal)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_2"
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda _site: (
+            False,
+            "camping_site_2",
+            10.0,
+            "outside_arrival_radius",
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_site_mission_key = lambda key, source: events.append(
+            ("mission_key", key, source)
+        )
+
+        def publish_goal(site, key, source):
+            events.append(("goal", site, key, source))
+            return True
+
+        backend._publish_site_goal_pose = publish_goal
+        backend._publish_goal_for_site = lambda site, source: {
+            "mission_key": "camping_site_2",
+            "goal_pose_published": (
+                backend._publish_site_mission_key("camping_site_2", source)
+                is None
+                and publish_goal(site, "camping_site_2", source)
+            ),
+            "message": "ok",
+        }
+        backend._publish_parking_operation = lambda operation, source: events.append(
+            ("parking_operation", operation, source)
+        )
+        backend._publish_drop_zone_operation = lambda operation, source: events.append(
+            ("drop_zone_operation", operation, source)
+        )
+
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="after_orphan_complete"
+        )
+        self.assertTrue(result["goal_pose_published"])
+        self.assertNotIn("drop_zone_operation", [event[0] for event in events])
+        release = [event[0] for event in events if event[0] in {"mission_key", "goal"}]
+        self.assertEqual(release, ["mission_key", "goal"])
+
+    def test_terminal_handoff_state_before_exit_complete_is_not_rolled_back(self) -> None:
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                service_state=-1,
+                service_state_name="",
+                service_state_description="",
+                battery_percentage=80,
+            ),
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda _payload: None
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+
+        terminal = AvgServiceState()
+        terminal.state = AvgServiceState.DROP_ZONE_WAIT
+        terminal.state_name = "ROAD_HANDOFF_READY"
+        terminal.description = "Drop-zone exit complete; ready for route dispatch"
+        UiBackendNode._on_service_state(backend, terminal)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+
+        completion = AvgBool()
+        completion.data = True
+        UiBackendNode._on_drop_zone_exit_complete(backend, completion)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+        self.assertEqual(backend._latest_service_state, AvgServiceState.DROP_ZONE_WAIT)
+
+    def test_successful_station_exit_releases_key_then_goal_once(self) -> None:
+        events = []
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _pending_site_after_drop_zone_exit=(
+                "B2",
+                "camping_site_2",
+                "test",
+            ),
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=True,
+            _drop_zone_exit_cancel_suppressed=False,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: logger
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_site_mission_key = lambda key, source: events.append(
+            ("mission_key", key, source)
+        )
+
+        def publish_goal(site, key, source):
+            events.append(("goal", site, key, source))
+            return True
+
+        backend._publish_site_goal_pose = publish_goal
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._on_service_state = lambda msg: UiBackendNode._on_service_state(
+            backend, msg
+        )
+
+        # A fresh status acknowledges the current retry.  A delayed false from
+        # the prior/already-active request remains observation-only.
+        accepted = ModuleState()
+        accepted.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, accepted)
+        old_false = AvgBool()
+        old_false.data = False
+        UiBackendNode._on_drop_zone_exit_complete(backend, old_false)
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertIsNotNone(backend._pending_site_after_drop_zone_exit)
+        self.assertEqual(events, [])
+
+        message = AvgBool()
+        message.data = True
+        UiBackendNode._on_drop_zone_exit_complete(backend, message)
+
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertIsNone(backend._pending_site_after_drop_zone_exit)
+        self.assertEqual(
+            [event[0] for event in events],
+            ["mission_key", "goal", "state"],
+        )
+        self.assertEqual(events[0][1], "camping_site_2")
+        self.assertEqual(events[1][1:3], ("B2", "camping_site_2"))
+        self.assertEqual(events[2][1], AvgServiceState.MOVING_TO_SITE)
+
+        # If the status terminal is delivered after exit_complete, it is an
+        # acknowledgement and cannot roll MOVING_TO_SITE back to a wait state.
+        delayed_exit_status = ModuleState()
+        delayed_exit_status.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, delayed_exit_status)
+        self.assertTrue(backend._drop_zone_exit_handoff_ready)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.MOVING_TO_SITE),
+        )
+        terminal_status = ModuleState()
+        terminal_status.operating_state = "ROAD_HANDOFF_READY"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, terminal_status)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.MOVING_TO_SITE),
+        )
+        self.assertEqual([event[0] for event in events], ["mission_key", "goal", "state"])
+
+        # A reliable-topic duplicate cannot release the pending goal twice.
+        UiBackendNode._on_drop_zone_exit_complete(backend, message)
+        self.assertEqual(
+            [event[0] for event in events],
+            ["mission_key", "goal", "state"],
+        )
+
+    def test_failed_station_exit_never_releases_campsite_key_or_goal(self) -> None:
+        events = []
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _pending_site_after_drop_zone_exit=(
+                "B2",
+                "camping_site_2",
+                "test",
+            ),
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=False,
+            _drop_zone_exit_cancel_suppressed=False,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: logger
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_site_mission_key = lambda key, source: events.append(
+            ("mission_key", key, source)
+        )
+        backend._publish_site_goal_pose = lambda site, key, source: events.append(
+            ("goal", site, key, source)
+        )
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._mark_drop_zone_exit_failed = (
+            lambda source: UiBackendNode._mark_drop_zone_exit_failed(
+                backend, source
+            )
+        )
+
+        message = AvgBool()
+        message.data = False
+        UiBackendNode._on_drop_zone_exit_complete(backend, message)
+
+        # Bool(false) is ambiguous (invalid target or already-active request),
+        # so it cannot terminate the current attempt by itself.
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertEqual(
+            backend._pending_site_after_drop_zone_exit,
+            ("B2", "camping_site_2", "test"),
+        )
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        )
+        self.assertNotIn("mission_key", [event[0] for event in events])
+        self.assertNotIn("goal", [event[0] for event in events])
+        self.assertEqual(events, [])
+        self.assertTrue(logger.warning_messages)
+
+        # The same-writer persistent ERROR is the authoritative real failure.
+        error_status = ModuleState()
+        error_status.operating_state = "ERROR"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, error_status)
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertTrue(backend._drop_zone_exit_failure_latched)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DROP_ZONE_WAIT),
+        )
+        self.assertEqual(events[-1][0], "state")
+
+        event_count = len(events)
+        delayed_exit = ModuleState()
+        delayed_exit.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, delayed_exit)
+        self.assertEqual(len(events), event_count)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DROP_ZONE_WAIT),
+        )
+        self.assertTrue(backend._drop_zone_exit_failure_latched)
+
+    def test_orphan_failure_before_exit_status_blocks_recovery_until_retry(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=False,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._mark_drop_zone_exit_failed = (
+            lambda source: UiBackendNode._mark_drop_zone_exit_failed(
+                backend, source
+            )
+        )
+
+        failed = AvgBool()
+        failed.data = False
+        UiBackendNode._on_drop_zone_exit_complete(backend, failed)
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+        self.assertIsNone(backend._latest_service_state)
+
+        error_status = ModuleState()
+        error_status.operating_state = "ERROR"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, error_status)
+        self.assertTrue(backend._drop_zone_exit_failure_latched)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DROP_ZONE_WAIT),
+        )
+
+        delayed_exit = ModuleState()
+        delayed_exit.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, delayed_exit)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DROP_ZONE_WAIT),
+        )
+        self.assertFalse(backend._drop_zone_exit_active)
+
+    def test_prestart_idle_cannot_fail_new_exit_and_fresh_exit_wins_old_false(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _pending_site_after_drop_zone_exit=(
+                "B2",
+                "camping_site_2",
+                "retry",
+            ),
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=True,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+                service_state_name="DEPARTING_DROP_ZONE",
+                service_state_description="Departing drop zone",
+                battery_percentage=80,
+            ),
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._mark_drop_zone_exit_failed = (
+            lambda source: UiBackendNode._mark_drop_zone_exit_failed(
+                backend, source
+            )
+        )
+        backend._on_service_state = lambda msg: UiBackendNode._on_service_state(
+            backend, msg
+        )
+
+        stale_idle = ModuleState()
+        stale_idle.operating_state = "IDLE"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, stale_idle)
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+
+        accepted_exit = ModuleState()
+        accepted_exit.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, accepted_exit)
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+        self.assertFalse(backend._drop_zone_exit_waiting_for_fresh_status)
+
+        # A false from startExit(already-active) cannot fail the ongoing exit.
+        delayed_failure = AvgBool()
+        delayed_failure.data = False
+        UiBackendNode._on_drop_zone_exit_complete(backend, delayed_failure)
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+        self.assertTrue(backend._drop_zone_exit_active)
+
+        UiBackendNode._on_drop_zone_maneuver_status(backend, accepted_exit)
+        self.assertFalse(backend._drop_zone_exit_failure_latched)
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertFalse(backend._drop_zone_exit_waiting_for_fresh_status)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        )
+
+    def test_operator_stop_suppresses_queued_departure_statuses(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _pending_site_after_drop_zone_exit=(
+                "B2",
+                "camping_site_2",
+                "test",
+            ),
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=False,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+            _active_mission_site="B2",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(
+                ws_site_states={"B2": True},
+                destination={"site": "B2", "run": True},
+                service_state=int(AvgServiceState.DEPARTING_DROP_ZONE),
+                service_state_name="DEPARTING_DROP_ZONE",
+                service_state_description="Departing drop zone",
+                battery_percentage=80,
+            ),
+            site_names=["B2"],
+            publish_mission_engage_from_destination=False,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._cancel_pending_manual_return_transition = (
+            lambda source: events.append(("cancel_pending", source))
+        )
+        backend._cancel_active_motion = (
+            lambda source: events.append(("cancel_motion", source))
+        )
+        backend._publish_engage = (
+            lambda enabled, source: events.append(("engage", enabled, source))
+        )
+        backend._schedule_broadcast = (
+            lambda payload: events.append(("broadcast", payload))
+        )
+
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._on_service_state = lambda msg: UiBackendNode._on_service_state(
+            backend, msg
+        )
+        backend._mark_drop_zone_exit_failed = (
+            lambda source: UiBackendNode._mark_drop_zone_exit_failed(
+                backend, source
+            )
+        )
+
+        UiBackendNode._stop_active_service(backend, "test_stop")
+        self.assertTrue(backend._drop_zone_exit_cancel_suppressed)
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertIsNone(backend._pending_site_after_drop_zone_exit)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.OPERATOR_STOPPED),
+        )
+
+        queued_exit = ModuleState()
+        queued_exit.operating_state = "EXIT_STRAIGHT"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, queued_exit)
+        queued_departing = AvgServiceState()
+        queued_departing.state = AvgServiceState.DEPARTING_DROP_ZONE
+        queued_departing.state_name = "DEPARTING_DROP_ZONE"
+        queued_departing.description = "queued departure heartbeat"
+        UiBackendNode._on_service_state(backend, queued_departing)
+        queued_road = ModuleState()
+        queued_road.operating_state = "ROAD_HANDOFF_READY"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, queued_road)
+        idle = ModuleState()
+        idle.operating_state = "IDLE"
+        UiBackendNode._on_drop_zone_maneuver_status(backend, idle)
+
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertFalse(backend._drop_zone_exit_handoff_ready)
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.OPERATOR_STOPPED),
+        )
 
     def test_both_ui_nodes_accept_external_shutdown_as_clean_exit(self) -> None:
         runtime_dir = Path(__file__).resolve().parents[1] / "runtime" / "python" / "camrod_ui"

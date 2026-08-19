@@ -41,6 +41,8 @@
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 #include <ranger_msgs/msg/system_state.hpp>
 
+#include "camrod_platform/charging_detection_policy.hpp"
+
 namespace camrod_platform
 {
 
@@ -68,6 +70,10 @@ public:
     // HH_260720 - Normalize Ranger BMS CAN 0x361 into platform-owned status topics.
     battery_state_topic_   = declare_parameter<std::string>(
       "battery_state_topic",    "/battery_state");
+    // HH_260819 - A fresh, exact AprilTag terminal-docking heartbeat is the
+    // only context allowed to shorten charging confirmation.
+    apriltag_parking_status_topic_ = declare_parameter<std::string>(
+      "apriltag_parking_status_topic", "/parking/apriltag_parking_controller/status");
     charging_current_threshold_a_ = declare_parameter<double>(
       "charging_current_threshold_a", 0.3);
     charging_current_positive_is_charging_ = declare_parameter<bool>(
@@ -82,6 +88,17 @@ public:
       0.0, declare_parameter<double>("charging_confirm_s", 10.0));
     charging_release_s_ = std::max(
       0.0, declare_parameter<double>("charging_release_s", 3.0));
+    charging_fast_confirm_s_ = std::max(
+      0.0, declare_parameter<double>("charging_fast_confirm_s", 1.5));
+    charging_fast_status_ttl_s_ = std::max(
+      0.0, declare_parameter<double>("charging_fast_status_ttl_s", 1.5));
+    charging_sample_max_gap_s_ = std::max(
+      0.0, declare_parameter<double>("charging_sample_max_gap_s", 1.0));
+    charging_detection_.setConfig(ChargingDetectionConfig{
+      std::max(1, charging_min_consecutive_samples_),
+      charging_confirm_s_, charging_fast_confirm_s_, charging_release_s_,
+      charging_sample_max_gap_s_});
+    charging_fast_arm_.setTtl(charging_fast_status_ttl_s_);
     // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic",  "/platform/status");
@@ -151,16 +168,25 @@ public:
       battery_state_topic_, rclcpp::QoS(10),
       std::bind(&RangerPlatformBridgeNode::onBatteryState, this, _1));
 
+    apriltag_parking_status_sub_ = create_subscription<avg_msgs::msg::ModuleState>(
+      apriltag_parking_status_topic_, rclcpp::QoS(10),
+      std::bind(&RangerPlatformBridgeNode::onAprilTagParkingStatus, this, _1));
+
     RCLCPP_INFO(
       get_logger(),
       "ranger_platform_bridge ready: "
       "odom=%s fallback=%s (%.1fs) actuator=%s system_state=%s battery=%s"
-      " -> odom=%s vel=%s wheel=%s status=%s frame=%s status_rate=%.1fHz",
+      " -> odom=%s vel=%s wheel=%s status=%s frame=%s status_rate=%.1fHz; "
+      "charging global=%.1fs/release=%.1fs, AprilTag fast=%.1fs ttl=%.1fs "
+      "sample_gap<=%.1fs status=%s",
       odom_input_topic_.c_str(), odom_fallback_topic_.c_str(), odom_fallback_timeout_s_,
       actuator_state_topic_.c_str(), system_state_topic_.c_str(), battery_state_topic_.c_str(),
       status_odom_topic_.c_str(), status_velocity_topic_.c_str(),
       status_wheel_topic_.c_str(), platform_status_topic_.c_str(), status_frame_id_.c_str(),
-      platform_status_publish_rate_hz_);
+      platform_status_publish_rate_hz_, charging_confirm_s_, charging_release_s_,
+      charging_fast_confirm_s_, charging_fast_status_ttl_s_,
+      charging_sample_max_gap_s_,
+      apriltag_parking_status_topic_.c_str());
   }
 
 private:
@@ -366,40 +392,66 @@ private:
     return current < -charging_current_threshold_a_;
   }
 
-  void updateChargingDebounce(bool charging_sample)
+  void onAprilTagParkingStatus(const avg_msgs::msg::ModuleState::ConstSharedPtr msg)
   {
-    // HH_260617: Debounce BMS current spikes before declaring charger contact.
-    const int required = std::max(1, charging_min_consecutive_samples_);
-    const rclcpp::Time sample_time = now();
-    if (charging_sample == charging_debounced_) {
-      charging_candidate_count_ = 0;
-      charging_candidate_ = charging_sample;
-      charging_candidate_since_ = sample_time;
-      return;
+    const double receipt_time_s = now().seconds();
+    const bool previously_eligible = charging_fast_arm_.eligible(receipt_time_s);
+    const std::string previous_phase = charging_fast_arm_.phase();
+    const double source_stamp_s =
+      static_cast<double>(msg->stamp.sec) +
+      static_cast<double>(msg->stamp.nanosec) * 1.0e-9;
+    const bool accepted = charging_fast_arm_.observeStatus(
+      msg->module_name, msg->operating_state,
+      msg->level == avg_msgs::msg::ModuleState::OK,
+      source_stamp_s, receipt_time_s);
+
+    // If the previous heartbeat expired (or an invalid status arrived), an old
+    // fast dwell must not bridge the gap.  FINAL -> WAITING is intentionally
+    // continuous while both status heartbeats remain fresh.
+    if (!previously_eligible || !accepted) {
+      charging_detection_.resetFastCandidate();
     }
-    if (charging_sample != charging_candidate_) {
-      charging_candidate_ = charging_sample;
-      charging_candidate_count_ = 1;
-      charging_candidate_since_ = sample_time;
-    } else {
-      ++charging_candidate_count_;
+    if (accepted && (!previously_eligible || previous_phase != msg->operating_state)) {
+      RCLCPP_INFO(
+        get_logger(), "AprilTag charging fast arm: phase=%s ttl=%.1fs",
+        msg->operating_state.c_str(), charging_fast_status_ttl_s_);
+    } else if (!accepted && previously_eligible) {
+      RCLCPP_WARN(
+        get_logger(), "AprilTag charging fast arm cleared by module=%s phase=%s level=%u",
+        msg->module_name.c_str(), msg->operating_state.c_str(),
+        static_cast<unsigned>(msg->level));
     }
-    // HH_260813: A deceleration regen burst satisfies the sample counter within
-    // milliseconds, so the candidate must also survive its own hold window.
-    const double hold_s = charging_sample ? charging_confirm_s_ : charging_release_s_;
-    const double held_s = (sample_time - charging_candidate_since_).seconds();
-    if (charging_candidate_count_ >= required && held_s >= hold_s) {
-      charging_debounced_ = charging_sample;
+  }
+
+  ChargingDetectionResult updateChargingDebounce(bool charging_sample)
+  {
+    // HH_260819 - ranger_base now emits one BatteryState per physical CAN 0x361
+    // update, so policy sample counts represent distinct BMS frames rather than
+    // 50 Hz cached replays.
+    const double sample_time_s = now().seconds();
+    const bool fast_armed = charging_fast_arm_.eligible(sample_time_s);
+    const auto result = charging_detection_.observe(
+      charging_sample, fast_armed, sample_time_s);
+    charging_debounced_ = result.charging;
+    if (result.changed) {
       charging_state_changed_ = true;
-      charging_candidate_count_ = 0;
+      const char * reason = "release";
+      if (result.reason == ChargingTransitionReason::kDockingFastConfirm) {
+        reason = "apriltag_docking_fast";
+      } else if (result.reason == ChargingTransitionReason::kGlobalConfirm) {
+        reason = "global";
+      }
       RCLCPP_INFO(
         get_logger(),
-        "charging status -> %s (threshold=%.2f A, positive_is_charging=%s, held=%.1fs)",
+        "charging status -> %s (path=%s, threshold=%.2f A, "
+        "positive_is_charging=%s, distinct_frames=%d, held=%.2fs)",
         charging_debounced_ ? "true" : "false",
+        reason,
         charging_current_threshold_a_,
         charging_current_positive_is_charging_ ? "true" : "false",
-        held_s);
+        result.sample_count, result.held_s);
     }
+    return result;
   }
 
   void onBatteryState(const sensor_msgs::msg::BatteryState::ConstSharedPtr msg)
@@ -413,7 +465,7 @@ private:
       normalized.percentage = std::clamp(normalized.percentage, 0.0F, 1.0F);
     }
     const bool charging_sample = inferChargingFromBattery(*msg);
-    updateChargingDebounce(charging_sample);
+    const auto charging_result = updateChargingDebounce(charging_sample);
 
     // HH_260720 - Surface the debounced charging state in both canonical platform outputs.
     normalized.power_supply_status = charging_debounced_ ?
@@ -421,6 +473,16 @@ private:
       sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_NOT_CHARGING;
     latest_battery_state_ = normalized;
     has_battery_state_ = true;
+
+    // Publish the confirmed edge from this BMS callback instead of waiting for
+    // the next 50 Hz system-state callback.  Controllers therefore receive
+    // is_charging=true and globally preempt yaw/translation at confirmation.
+    if (charging_result.changed && latest_system_state_) {
+      publishAggregatedStatus(normalized.header.stamp);
+      last_platform_status_publish_time_ = now();
+      has_published_platform_status_ = true;
+      charging_state_changed_ = false;
+    }
   }
 
   // HH_260428: Publish AvgPlatformStatus aggregating all available CAN data.
@@ -521,6 +583,7 @@ private:
   std::string  status_velocity_topic_;
   std::string  status_wheel_topic_;
   std::string  battery_state_topic_;
+  std::string  apriltag_parking_status_topic_;
   std::string  platform_status_topic_;
   std::string  status_frame_id_;
   double       platform_status_publish_rate_hz_{10.0};
@@ -532,10 +595,12 @@ private:
   int          charging_min_consecutive_samples_{2};
   double       charging_confirm_s_{10.0};
   double       charging_release_s_{3.0};
-  rclcpp::Time charging_candidate_since_{0, 0, RCL_ROS_TIME};
+  double       charging_fast_confirm_s_{1.5};
+  double       charging_fast_status_ttl_s_{1.5};
+  double       charging_sample_max_gap_s_{1.0};
+  ChargingDetectionPolicy charging_detection_;
+  AprilTagChargingFastArm charging_fast_arm_;
   bool         charging_debounced_{false};
-  bool         charging_candidate_{false};
-  int          charging_candidate_count_{0};
   bool         charging_state_changed_{false};
   bool         has_published_platform_status_{false};
   rclcpp::Time last_platform_status_publish_time_{0, 0, RCL_ROS_TIME};
@@ -563,6 +628,7 @@ private:
   rclcpp::Subscription<ranger_msgs::msg::ActuatorStateArray>::SharedPtr actuator_state_sub_;
   rclcpp::Subscription<ranger_msgs::msg::SystemState>::SharedPtr       system_state_sub_;
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr      battery_sub_;
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr          apriltag_parking_status_sub_;
 };
 
 }  // namespace camrod_platform

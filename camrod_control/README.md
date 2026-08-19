@@ -103,7 +103,7 @@ their previous ratio to the current `2.0 km/h` cruise reference.
 | Campsite crab | `60%` | `1.200 km/h` |
 | Campsite reverse / drop-zone exit / reverse parking | `40%` | `0.800 km/h` |
 | AprilTag approach | `50%` | `1.000 km/h` |
-| AprilTag insertion | `12.5%` | `0.250 km/h` |
+| AprilTag low-speed approach | `12.5%` | `0.250 km/h` before the `0.60 m` stop |
 | Optional yaw-zone approach 1 / 2 | `62.5% / 50%` | `1.250 / 1.000 km/h` |
 | Zero-turn / gross yaw alignment | `0%` | `0 km/h` |
 | Route-boundary recovery safety exception | `9%` | `0.180 km/h` |
@@ -124,7 +124,7 @@ values and AMD64 command trace remain as historical evidence in the
 | `camping_site_maneuver_controller` | Site entry, arrival turnaround, unload wait, explicit return, and exit |
 | `drop_zone_maneuver_controller` | Charger/drop-zone exit, route yaw alignment, and parking handoff |
 | `reverse_parking_controller` | Yaw-aware reverse travel and charging wait |
-| `apriltag_parking_controller` | Rear-camera tag approach, insertion, retry, and charging completion |
+| `apriltag_parking_controller` | Rear-camera tag approach, latched yaw alignment, stopped charging wait, and charging completion |
 
 ## Command Path
 
@@ -148,6 +148,17 @@ localization, or battery hold.
 | B11-B13 return | Preserve arrival heading, restore the lane anchor laterally, then request a forward one-way loop |
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
+
+Drop-zone departure captures one fresh, same-frame lanelet pose at `EXIT`
+start and holds that XY/yaw target for the whole maneuver. Production requires
+the stamped lanelet target (`require_lanelet_exit_target=true`, fixed fallback
+disabled), accepts only `0.3-8.0 m` targets ahead with at most `1.0 m` lateral
+offset, and finishes translation within `0.20 m` before settling captured yaw.
+The UI withholds the campsite mission key and Nav2 goal until
+`exit_complete=true`. While CAN still reports charging, only a stamped, healthy
+drop-zone status with exact `EXIT_STRAIGHT` or `ALIGN_EXIT_YAW` operating state
+opens the charging reason for at most `2.0 s`; SOC, E-stop, platform freshness,
+fault and obstacle reasons remain authoritative.
 
 ![B8 same-anchor campsite entry and return](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/b8-same-anchor-return.png)
 
@@ -204,18 +215,21 @@ and the normal user return request remains required.
 | Condition | Controller phase | Public `/service/state` |
 |---|---|---|
 | Final pose not reached | active parking phase | `DROP_ZONE_PARKING` |
-| Contact pose reached; CAN charge absent | `WAIT_FOR_CHARGING` | `WAITING_FOR_CHARGING` |
+| Tag range `<= 0.60 m`; yaw correcting | `FINAL_YAW_ALIGNMENT` | `DROP_ZONE_PARKING` |
+| Yaw settled; CAN charge absent | `WAITING_FOR_CHARGING` | `WAITING_FOR_CHARGING` |
 | Parking complete; CAN charge true | `PARKED` | `CHARGING` |
 | Parked; no active charge feedback | `PARKED` | `DROP_ZONE_WAIT` |
 | New allowed mission while charging | departure override | `DEPARTING_CHARGER` |
 
-Reverse parking linearly slows over the final `0.30 m`; AprilTag docking slows
-over the final `0.60 m`. Both reach `0.138889 m/s` raw before the final pose and
-subscribe to `/platform/status`. A true charging contact commands zero from any
-active parking phase before the controller reports `PARKED`. The reverse
-controller defaults to `complete_without_charging: false` and a `45 s` charging
-wait. `CHARGING` therefore takes precedence on the public state surface while
-the internal controller remains `PARKED`.
+Reverse parking linearly slows over the final `0.30 m`. AprilTag docking uses
+the same camera-frame 3D `Tag distance` shown in the UI: it ramps from `0.80 m`
+to `0.60 m`, then latches translation off. The controller performs heading-only
+`FINAL_YAW_ALIGNMENT`, proves `0.8 s` of settled yaw, and publishes
+`WAITING_FOR_CHARGING` while continuing zero commands. Approach curvature is
+limited to a minimum `0.85 m` radius so Ranger keeps combined reverse and
+Dual-Ackermann steering instead of silently selecting spinning mode. A true
+charging contact commands zero from any active phase before the controller
+reports `PARKED`. Dynamic rotation obstacle protection remains enabled.
 
 ## Campsite Sequencing Evidence
 

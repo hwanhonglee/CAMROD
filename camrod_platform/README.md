@@ -49,7 +49,8 @@ RViz markers are generated from the sensor-kit boundary contract below.
 | Parallel-motion selector | `|linear.y| > 0.02 m/s` | Tiny Nav2 lateral residue stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Zero-turn handoff | re-seed from CAN steering feedback | Prevents the following crab/straight command from inheriting a stale pre-turn wheel angle |
 | Wheel linear/angular sigma | `0.05 m/s`, `0.10 rad/s` | Non-zero odometry covariance |
-| Charging threshold | `> 0.3 A`, 2 samples and `10 s` confirmation | Rejects regenerative-current spikes before asserting charger contact |
+| Charging threshold | `> 0.3 A`, at least 2 distinct `0x361` frames, max `1.0 s` inter-frame gap | Cached 50 Hz driver reads and sparse/dropout-separated frames are not continuous charging evidence |
+| Charging confirmation | global `10 s`; AprilTag terminal docking `1.5 s`; release `3 s` | The fast path requires a fresh healthy `FINAL_YAW_ALIGNMENT` or `WAITING_FOR_CHARGING` heartbeat; ordinary driving keeps the regenerative-current guard |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |
 | Robot marker/boundary rate | `5 Hz` | RViz/diagnostic publication |
 | Physical body | `1.39160 x 1.07000 m` bounding extents | `0.12 m` tapered front and `R0.05 m` corners; fabrication-inclusive ordinary-stop/swept-recovery envelope |
@@ -88,11 +89,26 @@ reverse-yaw, release, and completion. CAN/steering response remains field-pendin
 
 ```text
 /control/cmd_vel_ros -> ranger_base / CAN
-CAN odometry + actuator + wheel + BMS
+CAN odometry + actuator + wheel + each fresh BMS 0x361 frame
   -> ranger_platform_bridge
   -> /platform/status
   -> localization, control, diagnostics, UI, voice
 ```
+
+Ranger BMS current is the signed big-endian value in `0x361` data bytes 4-5
+(zero-based), scaled by `0.1 A`. The bridge keeps the global 10-second rising
+filter because braking regeneration has remained positive for several seconds.
+Only the selected AprilTag controller's timestamped 2 Hz terminal-phase status
+arms the 1.5-second path; stale, wrong-module, wrong-phase, or error status
+immediately falls back to the global policy. A confirmed edge is published from
+the BMS callback so the controller's charging preemption can stop remaining yaw
+motion without waiting for another platform frame.
+
+On 2026-08-19, a read-only 15-second `can0` sample contained 62 `0x361`
+frames: mean interval `0.243 s`, minimum `0.200 s`, and maximum `0.401 s`.
+`charging_sample_max_gap_s=1.0` therefore leaves more than twice the observed
+worst-case interval while resetting global-confirm, docking-fast-confirm, and
+release candidates whenever BMS evidence is interrupted longer than that.
 
 | Status content | Source |
 |---|---|

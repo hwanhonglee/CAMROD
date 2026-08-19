@@ -174,13 +174,23 @@
     # =========================================================================
     # 3. EXIT AND YAW-ALIGNMENT TUNING
     # =========================================================================
-    # HH_260720 - Preserve the previous drop-zone exit and yaw-alignment tuning.
+    # HH_260720 - Preserve the previous drop-zone yaw-alignment tuning.
     yaw_tolerance_deg: 5.0
     yaw_proportional_gain: 1.2
     maximum_angular_speed_radps: 0.35
     # HH_260810 - Keep the platform stationary before reverse-parking handoff.
     yaw_settle_hold_s: 1.0
     yaw_settle_max_rate_degps: 3.0
+    # HH_260819 - Production departure ends at one fresh lanelet snap captured
+    # at EXIT start. Never declare an off-lane fixed-distance exit successful.
+    require_lanelet_exit_target: true
+    allow_fixed_distance_fallback: false
+    exit_target_min_distance_m: 0.3
+    exit_target_max_distance_m: 8.0
+    exit_target_min_forward_m: 0.1
+    exit_target_max_lateral_m: 1.0
+    exit_position_tolerance_m: 0.20
+    # Maintenance-only fallback distance; inactive with production policy above.
     exit_distance_m: 1.2
     # HH_260807 - Preserve 40% of the cruise reference: 0.80 km/h final.
     exit_speed_mps: 0.444444
@@ -190,6 +200,9 @@
     # 4. TIMING AND RATES
     # =========================================================================
     pose_timeout_s: 2.0
+    # Production poses must carry a fresh source stamp. Simulation-only
+    # profiles may explicitly opt into receipt-time fallback.
+    allow_unstamped_pose_fallback: false
     control_rate_hz: 10.0
     idle_rate_hz: 1.0
     status_rate_hz: 1.0

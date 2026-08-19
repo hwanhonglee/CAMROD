@@ -60,7 +60,7 @@ the raw owner limit and the resulting platform limit.
 | Reverse parking cruise | `reverse_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
 | Reverse parking final | `final_approach_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` |
 | AprilTag approach | `reverse_approach_speed_mps` | `0.555556 m/s` | `0.277778 m/s` = `1.0 km/h` |
-| AprilTag final insertion | `final_insertion_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` |
+| AprilTag low-speed approach | `final_insertion_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` immediately before the stop |
 | Route recovery | `maximum_speed_mps` | `0.10 m/s` | `0.05 m/s` = `0.18 km/h` |
 
 Do not raise only one raw maneuver speed when the ratio to normal cruise is
@@ -162,18 +162,27 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 
 | Parameter | Reverse | AprilTag docking |
 |---|---:|---:|
-| Slowdown window | `0.30 m` remaining | `0.60 m` remaining |
+| Slowdown window | `0.30 m` remaining | UI camera range `0.80 -> 0.60 m` |
 | Cruise raw speed | `0.444444 m/s` | `0.555556 m/s` |
 | Final raw speed | `0.138889 m/s` | `0.138889 m/s` |
+| Translation stop | station axis | `translation_stop_tag_distance_m: 0.60 m` |
+| Approach steering | heading/lateral correction | combined reverse + steering, minimum radius `0.85 m` |
+| Final yaw | map/station policy | heading-only, raw maximum `0.20 rad/s` |
+| Yaw settling | controller-specific | `0.8 s`, maximum residual rate `3 deg/s` |
+| Final-yaw odometry freshness | controller-specific | `0.5 s`; stale input holds zero |
 | `stop_when_charging` | `true` | `true` |
 | Charging required | `complete_without_charging: false` | `require_charging_for_completion: true` |
-| Charging wait | `45 s` | tag retry/wait policy |
-| Maximum retry | reverse distance/timeout policy | `5` tag retries |
+| Charging wait | `45 s` | explicit stopped `WAITING_FOR_CHARGING` phase |
 
 `bringup.parking.method` is `apriltag` on the physical profile. Simulation is
 forced to `reverse` because fake sensors do not publish a rear-camera tag.
-Charging CAN feedback immediately publishes zero in any active final-parking
-phase, then the internal phase becomes `PARKED` and public state is `CHARGING`.
+The AprilTag thresholds consume the unmodified camera pose 3D norm, exactly as
+the UI `Tag distance` does; deprecated robot-center longitudinal parameters stay
+loadable but no longer own motion. After the `0.60 m` crossing, tag loss cannot
+restart insertion or retry translation. Charging CAN feedback immediately publishes zero
+in any active final-parking phase, then the internal phase becomes
+`PARKED` and public state is `CHARGING`. Radar-backed dynamic rotation protection
+remains active during `FINAL_YAW_ALIGNMENT`.
 
 ## Manual Return And Docking UI
 
@@ -208,6 +217,10 @@ retained only for abandoned-lease expiry, while visible telemetry remains
 | `cmd_vel_gate_critical_battery_percentage` | `0.20` | Hard stop at or below 20% |
 | `cmd_vel_gate_allow_mission_departure_while_charging` | `true` | Allowed charger departure when SOC gate passes |
 | `cmd_vel_gate_charging_departure_grace_s` | `15 s` | Stale charging contact grace after accepted departure |
+| `cmd_vel_gate_allow_drop_zone_departure_while_charging` | `true` | Separately allows a controller-owned station exit without prepublishing the next mission key |
+| `cmd_vel_gate_drop_zone_departure_status_timeout_s` | `2.0 s` | Revokes controller authorization and publishes zero after a missed heartbeat |
+| `cmd_vel_gate_drop_zone_departure_require_source_stamp` | `true` | Rejects unstamped/replayed production controller status |
+| Drop-zone captured exit | lanelet required, fixed fallback disabled, `0.20 m` tolerance | Captures fresh same-frame XY/yaw at EXIT start; campsite key/goal release only follows `exit_complete=true` |
 
 ## Localization And GNSS
 
@@ -218,7 +231,7 @@ retained only for abandoned-lease expiry, while visible telemetry remains
 | GNSS Mahalanobis `pose0_rejection_threshold` | `3.0 sigma` | same; not a direct metre threshold |
 | Adapter `max_position_jump_m` | `8.0 m` | `localization/source/input_adapter.yaml` |
 | Adapter reset | `2.0 s` | same |
-| GNSS receiver `rate` / `nav_rate` | `5 Hz / 1 solution per epoch` | `sensing/gnss/zed_f9p_rover.yaml` |
+| GNSS receiver `rate` / `nav_rate` | `10 Hz / 1 solution per epoch` | `sensing/gnss/zed_f9p_rover.yaml` |
 | Wheel input | `10 Hz` measured in current sim | Ranger/platform chain |
 | IMU input | `20 Hz` measured in current sim | IMU converter/profile |
 
