@@ -41,6 +41,9 @@ def generate_launch_description():
                 executable='voice_announcer_node',
                 name='voice_announcer',
                 output='screen',
+                # Jetson runs PipeWire's PulseAudio compatibility server. Pin
+                # SDL to that session so it follows the selected BT sink.
+                additional_env={'SDL_AUDIODRIVER': 'pulseaudio'},
                 # The launch argument wins over the file default for locale.
                 parameters=[cfg('voice_announcer.yaml'), {'locale': locale}],
             ),

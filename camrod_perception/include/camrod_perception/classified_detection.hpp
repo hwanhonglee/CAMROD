@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <set>
 #include <string>
 
@@ -39,6 +40,15 @@ inline bool IsClassifiedDetection(
 {
   const auto normalized = NormalizeClassLabel(label);
   return !normalized.empty() && unknown_labels.count(normalized) == 0U;
+}
+
+inline bool HasValidDetectionBox(
+  const double center_x, const double center_y,
+  const double size_x, const double size_y)
+{
+  return std::isfinite(center_x) && std::isfinite(center_y) &&
+         std::isfinite(size_x) && std::isfinite(size_y) &&
+         size_x > 0.0 && size_y > 0.0;
 }
 
 }  // namespace camrod_perception

@@ -362,6 +362,26 @@ private:
     }
   }
 
+  // HH_260824 - Apply one semantic and geometry contract to every fused
+  // output. This prevents an unknown/malformed Detection2D from creating a
+  // safety cloud, Detection3D, or fusion marker through a less strict path.
+  std::string classifiedDetectionLabel(
+    const vision_msgs::msg::Detection2D & detection) const
+  {
+    const std::string hypothesis = detection.results.empty() ? "" :
+      detection.results[0].hypothesis.class_id;
+    const std::string label = camrod_perception::ResolveClassLabel(
+      detection.id, hypothesis);
+    if (!camrod_perception::IsClassifiedDetection(label, unknown_class_labels_) ||
+      !camrod_perception::HasValidDetectionBox(
+        detection.bbox.center.position.x, detection.bbox.center.position.y,
+        detection.bbox.size_x, detection.bbox.size_y))
+    {
+      return {};
+    }
+    return label;
+  }
+
   // Collects YOLO-bbox-filtered LiDAR points and publishes to output_topic_ for
   // Nav2 and cmd_vel safety cost.
   void publishObstacleCloud(
@@ -379,11 +399,8 @@ private:
     std::vector<std::array<float, 3>> pts;
     if (det_msg) {
       for (const auto & d2 : det_msg->detections) {
-        const std::string hypothesis = d2.results.empty() ? "" :
-          d2.results[0].hypothesis.class_id;
-        const std::string label = camrod_perception::ResolveClassLabel(
-          d2.id, hypothesis);
-        if (!camrod_perception::IsClassifiedDetection(label, unknown_class_labels_)) {
+        const std::string label = classifiedDetectionLabel(d2);
+        if (label.empty()) {
           continue;
         }
         const float x0 = static_cast<float>(d2.bbox.center.position.x -
@@ -521,6 +538,10 @@ private:
     std::vector<bool> matched(tracks_.size(), false);
 
     for (const auto & d2 : det_msg->detections) {
+      const std::string label = classifiedDetectionLabel(d2);
+      if (label.empty()) {
+        continue;
+      }
       const double cx = d2.bbox.center.position.x;
       const double cy = d2.bbox.center.position.y;
       const double bw = d2.bbox.size_x;
@@ -530,8 +551,6 @@ private:
       const float y0 = static_cast<float>(cy - bh / 2);
       const float y1 = static_cast<float>(cy + bh / 2);
 
-      const std::string label = !d2.id.empty() ? d2.id :
-        (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
       struct BboxPt
       {
         float z, lx, ly, lz;
@@ -773,12 +792,14 @@ private:
       std::vector<bool> used(cls.size(), false);
 
       for (const auto & d2 : det_msg->detections) {
+        const std::string lbl = classifiedDetectionLabel(d2);
+        if (lbl.empty()) {
+          continue;
+        }
         const float cx = static_cast<float>(d2.bbox.center.position.x);
         const float cy = static_cast<float>(d2.bbox.center.position.y);
         const float hw = static_cast<float>(d2.bbox.size_x) * 0.5f;
         const float hh = static_cast<float>(d2.bbox.size_y) * 0.5f;
-        const std::string lbl = !d2.id.empty() ? d2.id :
-          (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
         int best = -1;
         float best_d = std::numeric_limits<float>::max();
 

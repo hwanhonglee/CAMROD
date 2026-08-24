@@ -342,6 +342,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260824 - Prevent visualization markers or malformed semantic detections
+  # from regaining an independent path into the LiDAR safety raster.
+  ament_add_pytest_test(
+    test_classified_obstacle_cost_contract
+    test/test_classified_obstacle_cost_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260819 - The field wired network may expose the NTRIP caster through
   # DNS64/NAT64, so the client must not force an IPv4-only socket.
   ament_add_pytest_test(

@@ -569,8 +569,8 @@ def test_classified_fusion_is_a_direct_two_meter_stop_source() -> None:
     assert '"cost_stop_dynamic_source_labels", "radar,fusion"' in source
 
 
-def test_campsite_return_uses_axis_staged_route_goal_anchor() -> None:
-    """Crab laterally to the centerline snap before straight drift correction."""
+def test_campsite_return_uses_latched_axis_stages_at_route_goal_anchor() -> None:
+    """Crab, settle the wheels once, then correct longitudinal drift."""
     source = (
         SRC_ROOT
         / "camrod_control"
@@ -586,16 +586,69 @@ def test_campsite_return_uses_axis_staged_route_goal_anchor() -> None:
     # service must remove that error before handing control back to Nav2.
     assert 'return_anchor_source_ = "route_goal_snap";' in source
     assert "captureReturnAnchor(" in source
-    assert "bodyAxisPrioritizedTranslationTowardTarget(" in source
-    assert re.search(
-        r"return_anchor_x_,\s*return_anchor_y_,\s*activeCrabSpeedMps\(\),"
-        r"\s*return_translation_gain_,\s*return_position_tolerance_m_",
-        source,
-    )
+    assert "crab_return_sequencer_.update(" in source
+    assert "CampsiteEntryYawSource::kLaneletSnap" in source
+    assert "entry yaw aligned; geometry reprojected" in source
+    assert "motionPhaseRequiresPose() && !poseIsFresh()" in source
+    assert "poseHasFiniteMotionGeometry(*last_pose_)" in source
+    assert "pending_crab_start_source_.clear();" in source
+    assert "pending_crab_motion_ = motion;" in source
+    assert "*pending_crab_motion_" in source
+    planning_state_body = source[
+        source.index("void onPlanningState(") : source.index(
+            "std::pair<bool, std::string> applyOperation"
+        )
+    ]
+    return_ack = planning_state_body.index("return_acknowledged_ = true;")
+    internal_guard = planning_state_body.index("if (isSiteInternalPhase())")
+    goal_pair_mutation = planning_state_body.index("ensureGoalPairForAutoStart")
+    assert return_ack < internal_guard < goal_pair_mutation
+    assert "ignored planning-state mission mutation" in planning_state_body
+    assert "restored route_goal from current pose at GOAL_REACHED" not in source
+    assert "regulated automatic mission must wait for the real snapped" in source
+    assert "ignored route_goal update during campsite phase" in source
+    assert "valid lanelet snap yaw unavailable for auto site maneuver" in source
+    assert "finite route/site goal geometry unavailable for auto site maneuver" in source
+    assert "non-finite campsite goal-pair geometry" in source
+    assert "non-finite resolved campsite lateral motion" in source
+    assert "valid site yaw unavailable for reverse site maneuver" in source
+    assert "lateralTargetFromAnchor(" in source
+    assert "campsiteCrabReturnMayComplete(" in source
+    adopt_body = source[
+        source.index("bool adoptWaitReturnState(") : source.index(
+            "bool siteGoalMatchesKey("
+        )
+    ]
+    assert "stampPoseNow(*last_pose_)" not in adopt_body
+    assert "latest_lanelet_pose" in adopt_body
+    assert "correlated_route_goal" in adopt_body
+    assert "campsiteAdoptAnchorsCorrelated(" in source
+    assert "roadsideArrivalMatches(" in source
     assert campsite["roadside_max_lateral_offset_m"] == 0.30
+    assert campsite["route_goal_reached_distance_m"] == 0.6
     assert "bodyTranslationTowardTarget(" not in source
     assert campsite["return_position_tolerance_m"] == 0.04
     assert campsite["return_translation_kp"] == 4.0
+    assert campsite["return_lateral_transition_tolerance_m"] == 0.02
+    assert campsite["return_lateral_hysteresis_m"] == 0.10
+    assert campsite["return_steering_settle_s"] == 1.20
+    assert campsite["entry_yaw_alignment_timeout_s"] == 15.0
+    assert "automaticCrabEntryAlignmentTimedOut(" in source
+    assert "automatic crab entry yaw alignment timeout" in source
+
+    ranger = yaml.safe_load(
+        (
+            SRC_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "platform"
+            / "ranger_driver.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+    ninety_to_ready_s = (
+        math.pi / 2.0 - ranger["steering_mode_transition_ready_error_rad"]
+    ) / ranger["steering_transition_rate_radps"]
+    assert campsite["return_steering_settle_s"] >= ninety_to_ready_s
 
 
 def test_campsite_occupancy_guard_is_one_opt_in_policy() -> None:

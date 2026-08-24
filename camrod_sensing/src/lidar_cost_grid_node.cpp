@@ -10,8 +10,6 @@
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_lidar.hpp>
 #include <std_msgs/msg/header.hpp>
-#include <visualization_msgs/msg/marker.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 #include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -54,8 +52,6 @@ public:
         "raw_lidar_input_topics",
         std::vector<std::string>{"/sensing/lidar/points_filtered",
                                  "/sensing/lidar/filtered_cloud"});
-    perception_marker_topics_ = declare_parameter<std::vector<std::string>>(
-        "perception_marker_topics", std::vector<std::string>{});
     output_topic_ = declare_parameter<std::string>("output_topic",
                                                    "/sensing/cost_grid/lidar");
     base_frame_id_ =
@@ -79,14 +75,6 @@ public:
         "cloud_min_z_m", -std::numeric_limits<double>::infinity());
     cloud_max_z_m_ = declare_parameter<double>(
         "cloud_max_z_m", std::numeric_limits<double>::infinity());
-    perception_marker_cost_ =
-        declare_parameter<int>("perception_marker_cost", 90);
-    perception_marker_min_radius_m_ =
-        declare_parameter<double>("perception_marker_min_radius_m", 0.35);
-    perception_marker_max_radius_m_ =
-        declare_parameter<double>("perception_marker_max_radius_m", 0.75);
-    perception_marker_radius_scale_ =
-        declare_parameter<double>("perception_marker_radius_scale", 0.35);
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
@@ -158,12 +146,6 @@ private:
     rclcpp::Time rx_time{0, 0, RCL_ROS_TIME};
   };
 
-  struct MarkerInput {
-    std::string topic;
-    visualization_msgs::msg::MarkerArray::ConstSharedPtr markers;
-    rclcpp::Time rx_time{0, 0, RCL_ROS_TIME};
-  };
-
   // Implements `appendUniqueTopic` behavior.
   static void appendUniqueTopic(std::vector<std::string> &topics,
                                 const std::string &topic) {
@@ -201,22 +183,10 @@ private:
           }));
     }
 
-    marker_inputs_.resize(perception_marker_topics_.size());
-    for (std::size_t i = 0; i < perception_marker_topics_.size(); ++i) {
-      marker_inputs_[i].topic = perception_marker_topics_[i];
-      marker_inputs_[i].rx_time =
-          rclcpp::Time(0, 0, get_clock()->get_clock_type());
-      sub_markers_.push_back(create_subscription<visualization_msgs::msg::MarkerArray>(
-          perception_marker_topics_[i], rclcpp::SensorDataQoS(),
-          [this, i](const visualization_msgs::msg::MarkerArray::ConstSharedPtr msg) {
-            onMarkers(i, msg);
-          }));
-    }
-
     RCLCPP_INFO(
         get_logger(),
-        "lidar_cost_grid: clouds=%zu markers=%zu raw_lidar_cost=%s output=%s",
-        cloud_inputs_.size(), marker_inputs_.size(),
+        "lidar_cost_grid: clouds=%zu marker_cost=disabled raw_lidar_cost=%s output=%s",
+        cloud_inputs_.size(),
         raw_lidar_cost_enabled_ ? "on" : "off", output_topic_.c_str());
   }
 
@@ -232,17 +202,6 @@ private:
     if (idx == 0) {
       latest_primary_cloud_ = msg;
     }
-  }
-
-  // Handles the `onMarkers` callback.
-  void onMarkers(const std::size_t idx,
-                 const visualization_msgs::msg::MarkerArray::ConstSharedPtr msg) {
-    if (!msg || idx >= marker_inputs_.size()) {
-      return;
-    }
-    marker_inputs_[idx].markers = msg;
-    marker_inputs_[idx].rx_time = now();
-    ++input_sequence_;
   }
 
   // HH_260720 - Cache route-mask validity once per map update and invalidate
@@ -473,42 +432,6 @@ private:
     }
   }
 
-  // Implements `transformMarkerPoint` behavior.
-  bool transformMarkerPoint(const visualization_msgs::msg::Marker &marker,
-                            geometry_msgs::msg::PointStamped &point_out) {
-    if (marker.header.frame_id.empty()) {
-      return false;
-    }
-
-    geometry_msgs::msg::PointStamped point;
-    point.header = marker.header;
-    if (point.header.stamp.sec == 0 && point.header.stamp.nanosec == 0) {
-      point.header.stamp = now();
-    }
-    point.point.x = marker.pose.position.x;
-    point.point.y = marker.pose.position.y;
-    point.point.z = marker.pose.position.z;
-
-    try {
-      point_out = tf_buffer_->transform(point, output_frame_id_,
-                                        tf2::durationFromSec(0.0));
-      return true;
-    } catch (const tf2::TransformException &) {
-      point.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
-      try {
-        point_out = tf_buffer_->transform(point, output_frame_id_,
-                                          tf2::durationFromSec(0.0));
-        return true;
-      } catch (const tf2::TransformException &ex_latest) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "lidar_cost_grid marker TF failed (%s -> %s): %s",
-                             marker.header.frame_id.c_str(),
-                             output_frame_id_.c_str(), ex_latest.what());
-        return false;
-      }
-    }
-  }
-
   // Implements `markCloudInput` behavior.
   void markCloudInput(const CloudInput &input,
                       avg_msgs::msg::AvgOccupancyGrid &grid,
@@ -599,52 +522,6 @@ private:
     }
   }
 
-  // Implements `markMarkerInput` behavior.
-  void markMarkerInput(const MarkerInput &input,
-                       avg_msgs::msg::AvgOccupancyGrid &grid,
-                       const geometry_msgs::msg::PointStamped &base_in_output,
-                       const double grid_origin_x, const double grid_origin_y) {
-    if (!input.markers) {
-      return;
-    }
-
-    for (const auto &marker : input.markers->markers) {
-      if (marker.action != visualization_msgs::msg::Marker::ADD) {
-        continue;
-      }
-      if (marker.type != visualization_msgs::msg::Marker::CUBE &&
-          marker.type != visualization_msgs::msg::Marker::SPHERE &&
-          marker.type != visualization_msgs::msg::Marker::CYLINDER) {
-        continue;
-      }
-
-      geometry_msgs::msg::PointStamped point_out;
-      if (!transformMarkerPoint(marker, point_out)) {
-        continue;
-      }
-
-      const double distance = std::sqrt(
-          squaredDistance2d(point_out.point.x, point_out.point.y,
-                            base_in_output.point.x, base_in_output.point.y));
-      const double marker_min_radius =
-          std::max(obstacle_radius_m_, perception_marker_min_radius_m_);
-      const double marker_max_radius =
-          std::max(marker_min_radius, perception_marker_max_radius_m_);
-      const double marker_radius = std::clamp(
-          // HH_260707 - Keep perception detections large enough to influence
-          // planning, but capped so object markers do not become lane-wide
-          // stops.
-          perception_marker_radius_scale_ *
-              std::hypot(marker.scale.x, marker.scale.y),
-          marker_min_radius, marker_max_radius);
-      const int value = std::clamp(
-          std::max(perception_marker_cost_, mapDistanceToCost(distance)),
-          min_cost_, max_cost_);
-      markDiskWithRadius(grid, grid_origin_x, grid_origin_y, point_out.point.x,
-                         point_out.point.y, marker_radius, value);
-    }
-  }
-
   // Publishes `Grid` output.
   void publishGrid() {
     geometry_msgs::msg::PointStamped base_in_output;
@@ -694,15 +571,6 @@ private:
                        grid_origin_y);
       }
     }
-    for (const auto &input : marker_inputs_) {
-      if (input.markers &&
-          (now_time - input.rx_time).seconds() <= max_message_age_s_) {
-        has_fresh_input = true;
-        markMarkerInput(input, grid, base_in_output, grid_origin_x,
-                        grid_origin_y);
-      }
-    }
-
     if (!has_fresh_input) {
       cacheBuiltGrid(
           grid, base_in_output, fresh_mask, route_lanelet_filter_active);
@@ -735,16 +603,6 @@ private:
         break;
       }
       if (input.cloud &&
-          (now_time - input.rx_time).seconds() <= max_message_age_s_) {
-        mask |= (std::uint64_t{1} << bit);
-      }
-      ++bit;
-    }
-    for (const auto &input : marker_inputs_) {
-      if (bit >= 64) {
-        break;
-      }
-      if (input.markers &&
           (now_time - input.rx_time).seconds() <= max_message_age_s_) {
         mask |= (std::uint64_t{1} << bit);
       }
@@ -803,7 +661,6 @@ private:
   std::vector<std::string> extra_input_topics_;
   bool raw_lidar_cost_enabled_{true};
   std::vector<std::string> raw_lidar_input_topics_;
-  std::vector<std::string> perception_marker_topics_;
   std::string output_topic_;
   std::string lidar_status_topic_;
   std::string base_frame_id_;
@@ -822,10 +679,6 @@ private:
   double obstacle_radius_m_{0.20};
   double cloud_min_z_m_{-std::numeric_limits<double>::infinity()};
   double cloud_max_z_m_{std::numeric_limits<double>::infinity()};
-  int perception_marker_cost_{90};
-  double perception_marker_min_radius_m_{0.35};
-  double perception_marker_max_radius_m_{0.75};
-  double perception_marker_radius_scale_{0.35};
   double ego_clear_radius_m_{0.90};
   double max_message_age_s_{0.50};
   double publish_rate_hz_{10.0};
@@ -856,10 +709,7 @@ private:
       route_lanelet_mask_sub_;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>
       sub_clouds_;
-  std::vector<rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr>
-      sub_markers_;
   std::vector<CloudInput> cloud_inputs_;
-  std::vector<MarkerInput> marker_inputs_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_primary_cloud_;
   avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr route_lanelet_mask_;
   rclcpp::Time route_lanelet_mask_receive_time_{0, 0, RCL_ROS_TIME};

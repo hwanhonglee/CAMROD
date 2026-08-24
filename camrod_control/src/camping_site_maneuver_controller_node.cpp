@@ -206,6 +206,16 @@ public:
         declare_parameter<double>("return_position_tolerance_m", 0.04));
     return_translation_gain_ = std::max(
         0.1, std::abs(declare_parameter<double>("return_translation_kp", 4.0)));
+    return_lateral_transition_tolerance_m_ = std::abs(
+        declare_parameter<double>("return_lateral_transition_tolerance_m", 0.02));
+    return_lateral_hysteresis_m_ = std::abs(
+        declare_parameter<double>("return_lateral_hysteresis_m", 0.10));
+    return_steering_settle_s_ = std::abs(
+        declare_parameter<double>("return_steering_settle_s", 1.20));
+    crab_return_sequencer_.setConfig(
+        camrod_control::CampsiteCrabReturnConfig{
+            return_lateral_transition_tolerance_m_,
+            return_lateral_hysteresis_m_, return_steering_settle_s_});
     crab_timeout_margin_s_ =
         std::abs(declare_parameter<double>("crab_timeout_margin_s", 3.0));
     crab_return_timeout_s_ =
@@ -221,6 +231,9 @@ public:
         std::abs(declare_parameter<double>("crab_timeout_speed_scale", 1.0)));
     maximum_forward_residual_m_ =
         std::abs(declare_parameter<double>("max_forward_residual_m", 0.8));
+    entry_yaw_alignment_timeout_s_ = std::max(
+        0.1,
+        std::abs(declare_parameter<double>("entry_yaw_alignment_timeout_s", 15.0)));
     rotate_proportional_gain_ = declare_parameter<double>("rotate_kp", 1.2);
     maximum_angular_speed_radps_ =
         std::abs(declare_parameter<double>("max_angular_speed_radps", 0.35));
@@ -358,6 +371,16 @@ public:
         create_subscription<avg_msgs::msg::AvgPoseStamped>(
             route_goal_topic_, 10,
             [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
+              // HH_260824 - ALIGN_ENTRY_YAW and every following internal phase
+              // own one immutable route/site pair. A retained/reissued Nav2
+              // goal must not mix a new projection with the captured anchor.
+              if (isSiteInternalPhase()) {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 2000,
+                    "ignored route_goal update during campsite phase=%s",
+                    phaseName(phase_).c_str());
+                return;
+              }
               route_goal_ = *message;
               route_goal_time_ = now();
               last_auto_key_.clear();
@@ -470,6 +493,17 @@ private:
            phase_ == CampingSiteManeuverPhase::kReverseIn ||
            phase_ == CampingSiteManeuverPhase::kCrabIn ||
            phase_ == CampingSiteManeuverPhase::kRotate180;
+  }
+
+  bool motionPhaseRequiresPose() const {
+    return phase_ == CampingSiteManeuverPhase::kAlignEntryYaw ||
+           phase_ == CampingSiteManeuverPhase::kReverseIn ||
+           phase_ == CampingSiteManeuverPhase::kCrabIn ||
+           phase_ == CampingSiteManeuverPhase::kRotate180 ||
+           phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
+           phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
+           phase_ == CampingSiteManeuverPhase::kReverseOut ||
+           phase_ == CampingSiteManeuverPhase::kCrabOut;
   }
 
   bool isSiteOccupied(const std::string &mission_key) const {
@@ -630,13 +664,121 @@ private:
 
   bool poseUsableAsAdoptRoute(
       const std::optional<avg_msgs::msg::AvgPoseStamped> &route_pose,
+      const rclcpp::Time &route_pose_time,
       const avg_msgs::msg::AvgPoseStamped &site_goal) const {
-    if (!route_pose.has_value()) {
+    if (!camrod_control::campsiteAdoptAnchorIsFreshFinite(
+            route_pose, site_goal, (now() - route_pose_time).seconds(),
+            pose_timeout_s_)) {
       return false;
     }
     const double distance = poseDistance(*route_pose, site_goal);
     return distance >= minimum_lateral_offset_m_ &&
            distance <= maximum_lateral_offset_m_;
+  }
+
+  struct RoadsideOperationalGeometry {
+    avg_msgs::msg::AvgPoseStamped anchor;
+    avg_msgs::msg::AvgPoseStamped target;
+    double signed_lateral_m{0.0};
+    double operational_signed_lateral_m{0.0};
+    double forward_residual_m{0.0};
+    double operational_offset_m{0.0};
+    std::string anchor_source;
+  };
+
+  std::optional<RoadsideOperationalGeometry>
+  resolveRoadsideOperationalGeometry(
+      const avg_msgs::msg::AvgPoseStamped &raw_site_goal) const {
+    if (!camrod_control::poseHasFinitePlanarPosition(raw_site_goal)) {
+      return std::nullopt;
+    }
+    const auto resolve =
+        [this, &raw_site_goal](
+            const std::optional<avg_msgs::msg::AvgPoseStamped> &candidate,
+            const bool fresh, const std::string &source)
+        -> std::optional<RoadsideOperationalGeometry> {
+      if (!candidate.has_value() || !fresh ||
+          !camrod_control::poseHasFiniteMotionGeometry(*candidate)) {
+        return std::nullopt;
+      }
+      if (!candidate->header.frame_id.empty() &&
+          !raw_site_goal.header.frame_id.empty() &&
+          candidate->header.frame_id != raw_site_goal.header.frame_id) {
+        return std::nullopt;
+      }
+      const double anchor_yaw = camrod_control::yawFromPose(*candidate);
+      const auto relative = camrod_control::relativeXyAtHeading(
+          *candidate, raw_site_goal, anchor_yaw);
+      if (!std::isfinite(relative.first) || !std::isfinite(relative.second) ||
+          std::abs(relative.first) > maximum_forward_residual_m_ ||
+          std::abs(relative.second) < minimum_lateral_offset_m_) {
+        return std::nullopt;
+      }
+      const double direction = relative.second >= 0.0 ? 1.0 : -1.0;
+      const double bounded_offset = camrod_control::clamp(
+          std::abs(relative.second), minimum_lateral_offset_m_,
+          maximum_lateral_offset_m_);
+      const double operational_offset =
+          std::min(bounded_offset, roadside_maximum_lateral_offset_m_);
+      if (!std::isfinite(operational_offset) || operational_offset <= 0.0) {
+        return std::nullopt;
+      }
+      const auto target_xy = camrod_control::lateralTargetFromAnchor(
+          candidate->pose.position.x, candidate->pose.position.y, anchor_yaw,
+          direction, operational_offset);
+      RoadsideOperationalGeometry geometry;
+      geometry.anchor = *candidate;
+      geometry.target = *candidate;
+      geometry.target.pose.position.x = target_xy.first;
+      geometry.target.pose.position.y = target_xy.second;
+      geometry.signed_lateral_m = relative.second;
+      geometry.operational_signed_lateral_m = direction * operational_offset;
+      geometry.forward_residual_m = relative.first;
+      geometry.operational_offset_m = operational_offset;
+      geometry.anchor_source = source;
+      return geometry;
+    };
+
+    const bool lanelet_pose_fresh =
+        lanelet_pose_.has_value() &&
+        (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_;
+    if (const auto lanelet = resolve(
+            lanelet_pose_, lanelet_pose_fresh, "latest_lanelet_pose")) {
+      return lanelet;
+    }
+    // Route goals are unkeyed and an adjacent B-site goal may still be fresh.
+    // Use one only when the current lanelet pose proves the same XY anchor.
+    const bool route_goal_correlated =
+        lanelet_pose_fresh && route_goal_.has_value() &&
+        (now() - route_goal_time_).seconds() <= pose_timeout_s_ &&
+        camrod_control::campsiteAdoptAnchorsCorrelated(
+            *lanelet_pose_, *route_goal_, route_goal_reached_distance_m_);
+    return resolve(
+        route_goal_, route_goal_correlated, "correlated_route_goal");
+  }
+
+  std::pair<double, double> roadsideArrivalErrors(
+      const RoadsideOperationalGeometry &geometry,
+      const avg_msgs::msg::AvgPoseStamped &pose) const {
+    const auto relative = camrod_control::relativeXyAtHeading(
+        geometry.anchor, pose, camrod_control::yawFromPose(geometry.anchor));
+    return {relative.first,
+            relative.second - geometry.operational_signed_lateral_m};
+  }
+
+  bool roadsideArrivalMatches(
+      const RoadsideOperationalGeometry &geometry,
+      const avg_msgs::msg::AvgPoseStamped &pose) const {
+    if (!camrod_control::poseHasFinitePlanarPosition(pose)) {
+      return false;
+    }
+    const auto errors = roadsideArrivalErrors(geometry, pose);
+    const double forward_tolerance =
+        std::min(route_goal_reached_distance_m_, site_pose_reached_distance_m_);
+    return camrod_control::roadsideOperationalArrivalMatches(
+        errors.first, errors.second + geometry.operational_signed_lateral_m,
+        geometry.operational_signed_lateral_m,
+        forward_tolerance, entry_position_tolerance_m_);
   }
 
   bool adoptWaitReturnState(const std::string &key, const std::string &source) {
@@ -678,27 +820,80 @@ private:
       return false;
     }
     *adopted_site_goal = stampPoseNow(*adopted_site_goal);
+    const CampsiteServiceMode adopted_service_mode = serviceModeForKey(key);
+    const std::optional<RoadsideOperationalGeometry> roadside_geometry =
+        adopted_service_mode == CampsiteServiceMode::kRoadsideStop
+            ? resolveRoadsideOperationalGeometry(*adopted_site_goal)
+            : std::nullopt;
+    if (adopted_service_mode == CampsiteServiceMode::kRoadsideStop &&
+        !roadside_geometry.has_value()) {
+      RCLCPP_WARN(
+          get_logger(),
+          "camping_site_maneuver_controller roadside adopt ignored: fresh "
+          "finite route/lanelet anchor unavailable for %s",
+          key.c_str());
+      return false;
+    }
+    const auto &arrival_target = roadside_geometry.has_value()
+                                     ? roadside_geometry->target
+                                     : *adopted_site_goal;
+    const auto roadside_errors =
+        roadside_geometry.has_value()
+            ? roadsideArrivalErrors(*roadside_geometry, *last_pose_)
+            : std::pair<double, double>{0.0, 0.0};
     const double distance_to_site =
-        poseDistance(*last_pose_, *adopted_site_goal);
-    if (distance_to_site > adopt_site_arrival_distance_m_) {
+        roadside_geometry.has_value()
+            ? std::hypot(roadside_errors.first, roadside_errors.second)
+            : poseDistance(*last_pose_, arrival_target);
+    const double arrival_limit = roadside_geometry.has_value()
+                                     ? entry_position_tolerance_m_
+                                     : adopt_site_arrival_distance_m_;
+    const bool arrival_matches =
+        roadside_geometry.has_value()
+            ? roadsideArrivalMatches(*roadside_geometry, *last_pose_)
+            : distance_to_site <= arrival_limit + 1.0e-6;
+    if (!arrival_matches) {
       RCLCPP_WARN(get_logger(),
                   "camping_site_maneuver_controller adopt ignored: key=%s "
-                  "distance=%.2fm limit=%.2fm",
-                  key.c_str(), distance_to_site,
-                  adopt_site_arrival_distance_m_);
+                  "distance=%.2fm lateral_limit=%.2fm forward=%.2fm "
+                  "forward_limit=%.2fm lateral=%.2fm",
+                  key.c_str(), distance_to_site, arrival_limit,
+                  roadside_errors.first,
+                  std::min(route_goal_reached_distance_m_,
+                           site_pose_reached_distance_m_),
+                  roadside_errors.second);
       return false;
     }
 
     avg_msgs::msg::AvgPoseStamped adopted_route_goal;
-    std::string route_source = "current_pose_fallback";
-    if (poseUsableAsAdoptRoute(route_goal_, *adopted_site_goal)) {
-      adopted_route_goal = stampPoseNow(*route_goal_);
-      route_source = "latest_route_goal";
-    } else if (poseUsableAsAdoptRoute(lanelet_pose_, *adopted_site_goal)) {
+    std::string route_source;
+    if (roadside_geometry.has_value()) {
+      // B13's authored center is 9.018 m from its true snap and intentionally
+      // exceeds the turnaround-only 7 m guard. A roadside restart therefore
+      // requires the real finite snap/lanelet anchor and never fabricates the
+      // current pose as an already-complete return anchor.
+      adopted_route_goal = stampPoseNow(roadside_geometry->anchor);
+      route_source = roadside_geometry->anchor_source;
+    } else if (poseUsableAsAdoptRoute(
+                   lanelet_pose_, lanelet_pose_time_, *adopted_site_goal)) {
       adopted_route_goal = stampPoseNow(*lanelet_pose_);
       route_source = "latest_lanelet_pose";
+    } else if (
+        poseUsableAsAdoptRoute(
+            route_goal_, route_goal_time_, *adopted_site_goal) &&
+        lanelet_pose_.has_value() &&
+        (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_ &&
+        camrod_control::campsiteAdoptAnchorsCorrelated(
+            *lanelet_pose_, *route_goal_, route_goal_reached_distance_m_)) {
+      adopted_route_goal = stampPoseNow(*route_goal_);
+      route_source = "correlated_route_goal";
     } else {
-      adopted_route_goal = stampPoseNow(*last_pose_);
+      RCLCPP_WARN(
+          get_logger(),
+          "camping_site_maneuver_controller adopt ignored: fresh finite "
+          "route/lanelet anchor unavailable for %s",
+          key.c_str());
+      return false;
     }
 
     // HH_260818 - Keep the route anchor in map coordinates, but infer which
@@ -711,16 +906,15 @@ private:
     double offset = std::abs(relative.second);
     double direction = relative.second >= 0.0 ? 1.0 : -1.0;
     std::string source_name = "goal_pair";
+    if (roadside_geometry.has_value()) {
+      offset = roadside_geometry->operational_offset_m;
+      source_name = "goal_pair_roadside_cap";
+    }
     if (offset < minimum_lateral_offset_m_) {
       direction = default_lateral_direction_ == "right" ? -1.0 : 1.0;
-      if (route_source != "current_pose_fallback") {
-        offset = std::min(poseDistance(adopted_route_goal, *adopted_site_goal),
-                          maximum_lateral_offset_m_);
-        source_name = route_source + "_distance";
-      } else {
-        offset = 0.0;
-        source_name = "adopt_current_pose";
-      }
+      offset = std::min(poseDistance(adopted_route_goal, *adopted_site_goal),
+                        maximum_lateral_offset_m_);
+      source_name = route_source + "_distance";
     }
 
     site_goal_ = *adopted_site_goal;
@@ -730,11 +924,13 @@ private:
     site_goal_key_ = key;
     // HH_260721 - Restore the configured service policy when adopting a robot
     // already at a site.
-    active_service_mode_ = serviceModeForKey(key);
+    active_service_mode_ = adopted_service_mode;
     last_auto_key_ = "adopt:" + key + ":" + fixed(now().seconds(), 3);
     // HH_260818 - The current pose is already the post-turn heading. Reconstruct
     // the entry heading so ALIGN_RETRACE_YAW confirms, rather than repeats, it.
-    start_yaw_ = camrod_control::normalizeAngle(current_yaw - M_PI);
+    start_yaw_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop
+                     ? current_yaw
+                     : camrod_control::normalizeAngle(current_yaw - M_PI);
     target_yaw_ = current_yaw;
     rotate_direction_sign_ =
         camrod_control::turnaroundDirectionForCrab(direction);
@@ -750,9 +946,12 @@ private:
     return_anchor_source_ = route_source;
     return_anchor_offset_m_ = poseDistance(*last_pose_, adopted_route_goal);
     entry_reference_yaw_ = start_yaw_;
-    entry_target_x_ = adopted_site_goal->pose.position.x;
-    entry_target_y_ = adopted_site_goal->pose.position.y;
-    entry_target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
+    entry_target_x_ = arrival_target.pose.position.x;
+    entry_target_y_ = arrival_target.pose.position.y;
+    entry_target_yaw_ =
+        active_service_mode_ == CampsiteServiceMode::kRoadsideStop
+            ? start_yaw_
+            : camrod_control::normalizeAngle(start_yaw_ + M_PI);
     entry_reverse_axis_yaw_ = start_yaw_;
     const double effective_speed =
         std::max(0.01, activeCrabSpeedMps() * crab_timeout_speed_scale_);
@@ -809,12 +1008,10 @@ private:
           key.c_str(), site_goal_->pose.position.x,
           site_goal_->pose.position.y);
     }
-    if (!route_goal_.has_value() && poseIsFresh()) {
-      route_goal_ = stampPoseNow(*last_pose_);
-      route_goal_time_ = now();
-      RCLCPP_INFO(get_logger(),
-                  "restored route_goal from current pose at GOAL_REACHED");
-    }
+    // HH_260824 - A regulated automatic mission must wait for the real snapped
+    // route goal. Promoting the live pose here would attach a valid quaternion
+    // to fabricated geometry and falsely classify it as lanelet-authored yaw.
+    // Restart/adopt fallback remains isolated in adoptWaitReturnState().
   }
 
   std::optional<int64_t> siteIndexFromText(const std::string &text) const {
@@ -862,6 +1059,16 @@ private:
             avg_msgs::msg::PlanningScenario::RETURN_TO_DROP_ZONE ||
         message.active_mission_key == "drop_zone") {
       return_acknowledged_ = true;
+    }
+    // HH_260824 - A return-route acknowledgement is still consumed above, but
+    // no planning-state reissue may mutate the site key, service policy, or
+    // route/site goal pair owned by an in-flight campsite maneuver.
+    if (isSiteInternalPhase()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "ignored planning-state mission mutation during campsite phase=%s",
+          phaseName(phase_).c_str());
+      return;
     }
     if (!enable_auto_start_from_planning_state_) {
       return;
@@ -954,9 +1161,9 @@ private:
     double forward = 0.0;
     if (use_goal_pair_for_lateral_offset_ && route_goal_.has_value() &&
         site_goal_.has_value() && goalPairIsFresh()) {
-      // HH_260818 - Site coordinates are stable, while the vehicle may restart
-      // with the opposite heading. Project with the live heading so crab and
-      // turnaround directions reverse together when the body is reversed.
+      // HH_260824 - Site coordinates are stable. Normal automatic arrival
+      // supplies the lanelet snap yaw; restart/adopt paths supply the live yaw
+      // so crab and turnaround directions reverse with an already-turned body.
       const auto relative = camrod_control::relativeXyAtHeading(
           *route_goal_, *site_goal_, current_yaw);
       forward = relative.first;
@@ -969,6 +1176,105 @@ private:
     return {camrod_control::clamp(offset, minimum_lateral_offset_m_,
                                   maximum_lateral_offset_m_),
             direction, source, forward};
+  }
+
+  std::pair<bool, std::string> configureCrabEntryGeometry(
+      const std::string &source, const double entry_yaw,
+      const std::tuple<double, double, std::string, double> &motion) {
+    const double requested_lateral_offset = std::get<0>(motion);
+    const double direction = std::get<1>(motion);
+    std::string source_name = std::get<2>(motion);
+    const double forward_residual = std::get<3>(motion);
+    if (!std::isfinite(entry_yaw) ||
+        !std::isfinite(requested_lateral_offset) ||
+        !std::isfinite(direction) || !std::isfinite(forward_residual) ||
+        !std::isfinite(return_anchor_x_) ||
+        !std::isfinite(return_anchor_y_) ||
+        (site_goal_.has_value() &&
+         !camrod_control::poseHasFinitePlanarPosition(*site_goal_))) {
+      setError("non-finite campsite goal-pair geometry");
+      return {false, "non-finite campsite goal-pair geometry"};
+    }
+    double lateral_offset = requested_lateral_offset;
+    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+      lateral_offset =
+          std::min(lateral_offset, roadside_maximum_lateral_offset_m_);
+      if (lateral_offset + 1.0e-6 < requested_lateral_offset) {
+        source_name += "_roadside_cap";
+      }
+    }
+    const double active_crab_speed_mps = activeCrabSpeedMps();
+    if (!std::isfinite(lateral_offset) ||
+        !std::isfinite(active_crab_speed_mps) || lateral_offset <= 0.0 ||
+        active_crab_speed_mps <= 0.0) {
+      setError("invalid lateral motion parameters");
+      return {false, "invalid lateral motion parameters"};
+    }
+
+    start_yaw_ = camrod_control::normalizeAngle(entry_yaw);
+    const auto rotation = rotationDirectionForSource(source, direction);
+    rotate_direction_sign_ = rotation.first;
+    rotate_direction_label_ = rotation.second;
+    target_yaw_ = camrod_control::normalizeAngle(
+        start_yaw_ +
+        (rotate_direction_sign_ == 0.0 ? M_PI
+                                       : rotate_direction_sign_ * M_PI));
+    crab_direction_ = direction;
+    crab_offset_m_ = lateral_offset;
+    crab_source_ = source_name;
+    goal_pair_forward_m_ = forward_residual;
+    // HH_260824 - Both axes are now projected from the lanelet-authored entry
+    // yaw. CRAB_IN and CRAB_OUT therefore share the same immutable map anchor
+    // even when Nav2 hands over with a few degrees of live-yaw error.
+    entry_start_x_ = return_anchor_x_;
+    entry_start_y_ = return_anchor_y_;
+    entry_reference_yaw_ = start_yaw_;
+    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop ||
+        !site_goal_.has_value()) {
+      const auto operational_target =
+          camrod_control::lateralTargetFromAnchor(
+              return_anchor_x_, return_anchor_y_, start_yaw_, direction,
+              lateral_offset);
+      entry_target_x_ = operational_target.first;
+      entry_target_y_ = operational_target.second;
+    } else {
+      // B1-B10 preserve the exact authored service target. Their signed active
+      // map fixtures prove that its forward residual is effectively zero.
+      entry_target_x_ = site_goal_->pose.position.x;
+      entry_target_y_ = site_goal_->pose.position.y;
+    }
+    crab_duration_s_ =
+        lateral_offset /
+        std::max(0.01, active_crab_speed_mps * crab_timeout_speed_scale_);
+    if (!std::isfinite(entry_target_x_) || !std::isfinite(entry_target_y_) ||
+        !std::isfinite(target_yaw_) || !std::isfinite(crab_duration_s_)) {
+      setError("non-finite configured campsite entry geometry");
+      return {false, "non-finite configured campsite entry geometry"};
+    }
+    if (source_name == "goal_pair" &&
+        std::abs(forward_residual) > maximum_forward_residual_m_) {
+      RCLCPP_WARN(
+          get_logger(),
+          "goal pair forward residual %.2fm exceeds crab-only limit %.2fm",
+          forward_residual, maximum_forward_residual_m_);
+    }
+    return {
+        true,
+        "start=" + source + " offset=" + fixed(lateral_offset) +
+            "m direction=" + signedFixed(direction) +
+            " rotate=" + rotate_direction_label_ +
+            " service_mode=" + serviceModeName(active_service_mode_) +
+            " source=" + source_name +
+            " entry_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 1) +
+            "deg forward=" + fixed(forward_residual) +
+            "m requested_offset=" + fixed(requested_lateral_offset) +
+            "m return_anchor=" + return_anchor_source_ +
+            " anchor_offset=" + fixed(return_anchor_offset_m_) +
+            "m anchor_xy=(" + fixed(return_anchor_x_) + "," +
+            fixed(return_anchor_y_) + ")" +
+            "m crab_speed=" + fixed(active_crab_speed_mps) +
+            "m/s timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
+            " duration=" + fixed(crab_duration_s_, 1) + "s"};
   }
 
   std::pair<bool, std::string> startSequence(const std::string &source) {
@@ -991,22 +1297,67 @@ private:
     // mission key selects otherwise.
     active_service_mode_ = serviceModeForKey(site_goal_key_);
     const double current_yaw = camrod_control::yawFromPose(*last_pose_);
-    if (site_goal_.has_value() &&
-        poseDistance(*last_pose_, *site_goal_) <= site_pose_reached_distance_m_) {
+    bool already_at_site = false;
+    if (site_goal_.has_value()) {
+      if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+        const auto roadside = resolveRoadsideOperationalGeometry(*site_goal_);
+        already_at_site = roadside.has_value() &&
+                          roadsideArrivalMatches(*roadside, *last_pose_);
+      } else {
+        already_at_site =
+            poseDistance(*last_pose_, *site_goal_) <=
+            site_pose_reached_distance_m_;
+      }
+    }
+    if (already_at_site) {
       // HH_260818 - Rebooting while parked inside a campsite must restore the
       // return wait instead of issuing a second CRAB_IN into the adjacent bay.
+      // Roadside service compares signed progress toward the requested 0.30 m
+      // target, accepts the existing 0.15 m entry completion tolerance, and
+      // bounds inherited axial handoff error by the smaller existing
+      // route-goal/site threshold (0.60 m deployed). The raw semantic center
+      // is never used as a global-radius shortcut.
       const std::string key = site_goal_key_.empty() ? last_auto_key_ : site_goal_key_;
       if (!key.empty() &&
           adoptWaitReturnState(key, "already_at_site:" + source)) {
         return {true, "site arrival restored; waiting for return"};
       }
     }
-    const auto motion = resolveLateralMotion(current_yaw);
-    const double requested_lateral_offset = std::get<0>(motion);
-    const double direction = std::get<1>(motion);
-    std::string source_name = std::get<2>(motion);
-    const double forward_residual = std::get<3>(motion);
-    if (source.rfind("planning_state:", 0) == 0 &&
+    const bool automatic_arrival = source.rfind("planning_state:", 0) == 0;
+    if (automatic_arrival &&
+        (!route_goal_.has_value() ||
+         !camrod_control::poseHasFiniteMotionGeometry(*route_goal_) ||
+         !site_goal_.has_value() ||
+         !camrod_control::poseHasFinitePlanarPosition(*site_goal_))) {
+      setError("finite route/site goal geometry unavailable for auto site maneuver");
+      return {
+          false,
+          "finite route/site goal geometry unavailable for auto site maneuver"};
+    }
+    std::optional<double> lanelet_snap_yaw;
+    if (route_goal_.has_value() &&
+        camrod_control::quaternionHasFiniteNonzeroNorm(
+            route_goal_->pose.orientation)) {
+      lanelet_snap_yaw = camrod_control::yawFromPose(*route_goal_);
+    }
+    const auto yaw_selection = camrod_control::selectCampsiteEntryYaw(
+        current_yaw, lanelet_snap_yaw, automatic_arrival);
+    if (automatic_arrival &&
+        yaw_selection.source !=
+            camrod_control::CampsiteEntryYawSource::kLaneletSnap) {
+      setError("valid lanelet snap yaw unavailable for auto site maneuver");
+      return {false,
+              "valid lanelet snap yaw unavailable for auto site maneuver"};
+    }
+    const auto motion = resolveLateralMotion(yaw_selection.yaw_rad);
+    const std::string source_name = std::get<2>(motion);
+    if (!std::isfinite(std::get<0>(motion)) ||
+        !std::isfinite(std::get<1>(motion)) ||
+        !std::isfinite(std::get<3>(motion))) {
+      setError("non-finite resolved campsite lateral motion");
+      return {false, "non-finite resolved campsite lateral motion"};
+    }
+    if (automatic_arrival &&
         require_goal_pair_for_auto_start_ && source_name != "goal_pair") {
       setError("site/route goal pair unavailable for auto site maneuver");
       return {false, "site/route goal pair unavailable for auto site maneuver"};
@@ -1016,80 +1367,44 @@ private:
     // progress, but return automatic services to the explicit route goal so the
     // next Nav2 command never inherits an arrival pose already touching the
     // road margin.
-    captureReturnAnchor(source.rfind("planning_state:", 0) == 0 &&
-                        source_name == "goal_pair");
+    captureReturnAnchor(automatic_arrival && source_name == "goal_pair");
     if (site_entry_mode_ == "reverse" &&
         active_service_mode_ != CampsiteServiceMode::kRoadsideStop) {
-      return startReverseEntrySequence(source, source_name, forward_residual);
+      // Reverse entry owns a separate site-axis alignment policy. Preserve its
+      // live-pose behavior; the authored-yaw selection applies to crab entry.
+      const auto reverse_motion = resolveLateralMotion(current_yaw);
+      return startReverseEntrySequence(source, std::get<2>(reverse_motion),
+                                       std::get<3>(reverse_motion));
     }
-    double lateral_offset = requested_lateral_offset;
-    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-      lateral_offset =
-          std::min(lateral_offset, roadside_maximum_lateral_offset_m_);
-      if (lateral_offset + 1.0e-6 < requested_lateral_offset) {
-        source_name += "_roadside_cap";
-      }
+    const auto configured =
+        configureCrabEntryGeometry(source, yaw_selection.yaw_rad, motion);
+    if (!configured.first) {
+      return configured;
     }
-    const double active_crab_speed_mps = activeCrabSpeedMps();
-    if (lateral_offset <= 0.0 || active_crab_speed_mps <= 0.0) {
-      setError("invalid lateral motion parameters");
-      return {false, "invalid lateral motion parameters"};
-    }
-
-    start_yaw_ = current_yaw;
-    const auto rotation = rotationDirectionForSource(source, direction);
-    rotate_direction_sign_ = rotation.first;
-    rotate_direction_label_ = rotation.second;
-    target_yaw_ = camrod_control::normalizeAngle(
-        start_yaw_ +
-        (rotate_direction_sign_ == 0.0 ? M_PI : rotate_direction_sign_ * M_PI));
-    crab_direction_ = direction;
-    crab_offset_m_ = lateral_offset;
-    crab_source_ = source_name;
-    goal_pair_forward_m_ = forward_residual;
-    // HH_260818 - Measure entry and exit against one map anchor. Nav2 may hand
-    // over early; using the actual handoff as CRAB_IN's origin while CRAB_OUT
-    // targeted the snap point made the two trajectories miss one another.
-    entry_start_x_ = return_anchor_x_;
-    entry_start_y_ = return_anchor_y_;
-    entry_reference_yaw_ = start_yaw_;
-    entry_target_x_ = site_goal_.has_value()
-                          ? site_goal_->pose.position.x
-                          : return_anchor_x_ -
-                                std::sin(start_yaw_) * direction * lateral_offset;
-    entry_target_y_ = site_goal_.has_value()
-                          ? site_goal_->pose.position.y
-                          : return_anchor_y_ +
-                                std::cos(start_yaw_) * direction * lateral_offset;
-    crab_duration_s_ =
-        lateral_offset /
-        std::max(0.01, active_crab_speed_mps * crab_timeout_speed_scale_);
     return_requested_ = false;
     return_published_ = false;
     return_acknowledged_ = false;
     last_return_request_publish_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-    if (source_name == "goal_pair" &&
-        std::abs(forward_residual) > maximum_forward_residual_m_) {
-      RCLCPP_WARN(
-          get_logger(),
-          "goal pair forward residual %.2fm exceeds crab-only limit %.2fm",
-          forward_residual, maximum_forward_residual_m_);
+    if (yaw_selection.source ==
+        camrod_control::CampsiteEntryYawSource::kLaneletSnap) {
+      // HH_260824 - Rotate to the snapped lanelet tangent before any lateral
+      // command. Geometry is re-projected after the settling hold below, so a
+      // live arrival yaw can never choose the neighbouring campsite direction.
+      pending_crab_start_source_ = source;
+      pending_crab_motion_ = motion;
+      entry_yaw_alignment_for_crab_ = true;
+      target_yaw_ = start_yaw_;
+      setPhase(CampingSiteManeuverPhase::kAlignEntryYaw,
+               "align automatic crab entry to lanelet snap yaw=" +
+                   fixed(start_yaw_ * 180.0 / M_PI, 1) +
+                   "deg live_yaw=" + fixed(current_yaw * 180.0 / M_PI, 1) +
+                   "deg; " + configured.second);
+    } else {
+      entry_yaw_alignment_for_crab_ = false;
+      pending_crab_motion_.reset();
+      setPhase(CampingSiteManeuverPhase::kCrabIn,
+               "live-yaw fallback; " + configured.second);
     }
-    setPhase(CampingSiteManeuverPhase::kCrabIn,
-             "start=" + source + " offset=" + fixed(lateral_offset) +
-                 "m direction=" + signedFixed(direction) +
-                 " rotate=" + rotate_direction_label_ +
-                 " service_mode=" + serviceModeName(active_service_mode_) +
-                 " source=" + source_name +
-                 " forward=" + fixed(forward_residual) +
-                 "m requested_offset=" + fixed(requested_lateral_offset) +
-                 "m return_anchor=" + return_anchor_source_ +
-                 " anchor_offset=" + fixed(return_anchor_offset_m_) +
-                 "m anchor_xy=(" + fixed(return_anchor_x_) + "," +
-                 fixed(return_anchor_y_) + ")" +
-                 "m crab_speed=" + fixed(active_crab_speed_mps) +
-                 "m/s timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
-                 " duration=" + fixed(crab_duration_s_, 1) + "s");
     return {true, "site maneuver started"};
   }
 
@@ -1128,7 +1443,18 @@ private:
       setError("site goal unavailable for reverse site maneuver");
       return {false, "site goal unavailable for reverse site maneuver"};
     }
-    if (reverse_entry_speed_mps_ <= 0.0) {
+    if (!camrod_control::poseHasFinitePlanarPosition(*site_goal_)) {
+      setError("finite site position unavailable for reverse site maneuver");
+      return {false,
+              "finite site position unavailable for reverse site maneuver"};
+    }
+    if (reverse_entry_use_site_goal_yaw_ &&
+        !camrod_control::poseHasFiniteMotionGeometry(*site_goal_)) {
+      setError("valid site yaw unavailable for reverse site maneuver");
+      return {false, "valid site yaw unavailable for reverse site maneuver"};
+    }
+    if (!std::isfinite(reverse_entry_speed_mps_) ||
+        reverse_entry_speed_mps_ <= 0.0) {
       setError("invalid reverse entry speed");
       return {false, "invalid reverse entry speed"};
     }
@@ -1170,6 +1496,7 @@ private:
     return_requested_ = false;
     return_published_ = false;
     return_acknowledged_ = false;
+    entry_yaw_alignment_for_crab_ = false;
     last_return_request_publish_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     publishReversePath(entry_start_x_, entry_start_y_, entry_target_x_,
                        entry_target_y_, entry_target_yaw_);
@@ -1248,7 +1575,8 @@ private:
 
   bool poseIsFresh() const {
     return last_pose_.has_value() &&
-           (now() - last_pose_time_).seconds() <= pose_timeout_s_;
+           (now() - last_pose_time_).seconds() <= pose_timeout_s_ &&
+           camrod_control::poseHasFiniteMotionGeometry(*last_pose_);
   }
 
   void captureReturnAnchor(const bool use_route_goal) {
@@ -1277,14 +1605,6 @@ private:
     return poseIsFresh() &&
            crab_direction_ * relativeLateralFromEntry() >=
                std::max(0.0, crab_offset_m_ - entry_position_tolerance_m_);
-  }
-
-  bool returnReached() const {
-    // HH_260818 - Require the shared entry/exit route anchor in both map axes.
-    // Nav2 may hand over short of it, but CRAB_IN progress and CRAB_OUT
-    // completion are both measured from this stable map point.
-    return poseIsFresh() && distanceTo(return_anchor_x_, return_anchor_y_) <=
-                                return_position_tolerance_m_;
   }
 
   std::pair<double, double> axisProgressLateral(const double origin_x,
@@ -1362,6 +1682,13 @@ private:
     phase_ = phase;
     phase_start_time_ = now();
     yaw_alignment_settling_.reset();
+    if (phase_ == CampingSiteManeuverPhase::kIdle ||
+        phase_ == CampingSiteManeuverPhase::kDone ||
+        phase_ == CampingSiteManeuverPhase::kError) {
+      entry_yaw_alignment_for_crab_ = false;
+      pending_crab_start_source_.clear();
+      pending_crab_motion_.reset();
+    }
     if (phase_ == CampingSiteManeuverPhase::kReverseOut &&
         last_pose_.has_value()) {
       return_start_x_ = last_pose_->pose.position.x;
@@ -1378,6 +1705,7 @@ private:
                          entry_target_y_, start_yaw_);
     }
     if (phase_ == CampingSiteManeuverPhase::kCrabOut && last_pose_.has_value()) {
+      crab_return_sequencer_.reset(now().seconds());
       publishReversePath(last_pose_->pose.position.x,
                          last_pose_->pose.position.y, return_anchor_x_,
                          return_anchor_y_,
@@ -1441,19 +1769,46 @@ private:
       setError("pose timeout while returning to lanelet snap pose");
       return;
     }
-    // HH_260818 - Do not point the parallel wheels diagonally at the anchor.
-    // Reach the road laterally at exactly +/-90 degrees first, then use a
-    // separate straight correction for zero-turn drift. This preserves the
-    // full crab-out clearance before Nav2 receives command ownership.
-    const auto velocity =
-        camrod_control::bodyAxisPrioritizedTranslationTowardTarget(
-        last_pose_->pose.position.x, last_pose_->pose.position.y,
-        camrod_control::yawFromPose(*last_pose_), return_anchor_x_,
-        return_anchor_y_, activeCrabSpeedMps(), return_translation_gain_,
-        return_position_tolerance_m_);
+    const double yaw = camrod_control::yawFromPose(*last_pose_);
+    const double dx = return_anchor_x_ - last_pose_->pose.position.x;
+    const double dy = return_anchor_y_ - last_pose_->pose.position.y;
+    const double body_longitudinal_error =
+        std::cos(yaw) * dx + std::sin(yaw) * dy;
+    const double body_lateral_error =
+        -std::sin(yaw) * dx + std::cos(yaw) * dy;
+    const auto velocity = crab_return_sequencer_.update(
+        body_longitudinal_error, body_lateral_error, now().seconds(),
+        activeCrabSpeedMps(), return_translation_gain_);
+    if (velocity.invalid_input) {
+      setError("non-finite crab return geometry or timing input");
+      return;
+    }
+    if (velocity.lateral_latch_exceeded) {
+      setError("crab return lateral drift exceeded latched hysteresis: error=" +
+               fixed(std::abs(body_lateral_error)) + "m limit=" +
+               fixed(return_lateral_transition_tolerance_m_ +
+                     return_lateral_hysteresis_m_) +
+               "m");
+      return;
+    }
+    if (velocity.stage_changed) {
+      RCLCPP_INFO(
+          get_logger(),
+          "crab return stage=%s longitudinal_error=%.3fm lateral_error=%.3fm",
+          camrod_control::campsiteCrabReturnStageName(velocity.stage),
+          body_longitudinal_error, body_lateral_error);
+    }
     avg_msgs::msg::AvgTwist command;
-    command.linear.x = velocity.first;
-    command.linear.y = velocity.second;
+    // HH_260824 - If the robot is already inside the radial tolerance, consume
+    // the full settle transition but do not issue a one-tick longitudinal
+    // impulse. The next timer tick completes from the latched stage.
+    if (!camrod_control::campsiteCrabReturnMayComplete(
+            velocity.stage,
+            distanceTo(return_anchor_x_, return_anchor_y_),
+            return_position_tolerance_m_)) {
+      command.linear.x = velocity.linear_x_mps;
+      command.linear.y = velocity.linear_y_mps;
+    }
     command_publisher_->publish(command);
   }
 
@@ -1624,10 +1979,49 @@ private:
   void onTimer() {
     const double elapsed = (now() - phase_start_time_).seconds();
     requestNav2CancelForSitePhase(false);
+    // HH_260824 - Never let yawFromPose's legacy numeric fallback turn a zero,
+    // NaN, or otherwise invalid localization quaternion into a real command.
+    // Every translating/rotating site phase fails closed with an explicit zero.
+    if (motionPhaseRequiresPose() && !poseIsFresh()) {
+      setError("fresh finite motion pose unavailable during " +
+               phaseName(phase_));
+      publishStatus(false);
+      return;
+    }
+    if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
+        camrod_control::automaticCrabEntryAlignmentTimedOut(
+            entry_yaw_alignment_for_crab_, elapsed,
+            entry_yaw_alignment_timeout_s_)) {
+      setError("automatic crab entry yaw alignment timeout after " +
+               fixed(elapsed, 1) + "s");
+      publishStatus(false);
+      return;
+    }
     if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw) {
       if (publishRotate()) {
-        setPhase(CampingSiteManeuverPhase::kReverseIn,
-                 "entry yaw aligned for reverse site approach");
+        if (entry_yaw_alignment_for_crab_) {
+          // HH_260824 - Re-project the fixed goal pair only after the live body
+          // has settled on the authored lanelet yaw. Translation can now begin
+          // without inheriting Nav2's arrival heading error.
+          if (!pending_crab_motion_.has_value() ||
+              (require_goal_pair_for_auto_start_ &&
+               std::get<2>(*pending_crab_motion_) != "goal_pair")) {
+            setError("captured site/route goal pair unavailable after entry yaw alignment");
+          } else {
+            const auto configured = configureCrabEntryGeometry(
+                pending_crab_start_source_, start_yaw_, *pending_crab_motion_);
+            if (configured.first) {
+              entry_yaw_alignment_for_crab_ = false;
+              pending_crab_motion_.reset();
+              setPhase(CampingSiteManeuverPhase::kCrabIn,
+                       "entry yaw aligned; geometry reprojected; " +
+                           configured.second);
+            }
+          }
+        } else {
+          setPhase(CampingSiteManeuverPhase::kReverseIn,
+                   "entry yaw aligned for reverse site approach");
+        }
       }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseIn) {
       if (reverseInReached()) {
@@ -1704,7 +2098,11 @@ private:
             return_anchor_x_, return_anchor_y_);
       }
     } else if (phase_ == CampingSiteManeuverPhase::kCrabOut) {
-      if (returnReached()) {
+      const double return_error =
+          distanceTo(return_anchor_x_, return_anchor_y_);
+      if (camrod_control::campsiteCrabReturnMayComplete(
+              crab_return_sequencer_.stage(), return_error,
+              return_position_tolerance_m_)) {
         publishZero();
         if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
           // HH_260819 - B11-B13 cannot safely zero-turn inside the current
@@ -1775,6 +2173,9 @@ private:
             {"return_anchor_offset_m", fixed(return_anchor_offset_m_)},
             {"return_anchor_error_m",
              fixed(distanceTo(return_anchor_x_, return_anchor_y_))},
+            {"crab_return_stage",
+             camrod_control::campsiteCrabReturnStageName(
+                 crab_return_sequencer_.stage())},
             {"crab_return_timeout_s", fixed(crab_return_timeout_s_)},
         }));
     last_status_publish_time_ = current_time;
@@ -1811,6 +2212,9 @@ private:
   double entry_position_tolerance_m_{0.15};
   double return_position_tolerance_m_{0.04};
   double return_translation_gain_{4.0};
+  double return_lateral_transition_tolerance_m_{0.02};
+  double return_lateral_hysteresis_m_{0.10};
+  double return_steering_settle_s_{1.20};
   double crab_timeout_margin_s_{3.0};
   double crab_return_timeout_s_{90.0};
   double reverse_return_timeout_margin_s_{45.0};
@@ -1818,6 +2222,7 @@ private:
   double reverse_return_lateral_tolerance_m_{0.40};
   double crab_timeout_speed_scale_{1.0};
   double maximum_forward_residual_m_{0.8};
+  double entry_yaw_alignment_timeout_s_{15.0};
   double rotate_proportional_gain_{1.2};
   double maximum_angular_speed_radps_{0.35};
   double rotate_yaw_tolerance_deg_{4.0};
@@ -1889,10 +2294,15 @@ private:
   double entry_start_x_{0.0};
   double entry_start_y_{0.0};
   double entry_reference_yaw_{0.0};
+  camrod_control::CampsiteCrabReturnSequencer crab_return_sequencer_;
   double return_anchor_x_{0.0};
   double return_anchor_y_{0.0};
   double return_anchor_offset_m_{0.0};
   std::string return_anchor_source_{"actual_arrival_pose"};
+  std::string pending_crab_start_source_;
+  std::optional<std::tuple<double, double, std::string, double>>
+      pending_crab_motion_;
+  bool entry_yaw_alignment_for_crab_{false};
   std::string last_auto_key_;
   bool return_requested_{false};
   bool return_published_{false};

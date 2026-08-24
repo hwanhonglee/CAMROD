@@ -74,6 +74,13 @@
     # finish within 0.04 m of the route snap before handing control back to Nav2.
     return_position_tolerance_m: 0.04
     return_translation_kp: 4.0
+    # HH_260824 - Finish pure lateral crab inside 2 cm, hold zero while the
+    # wheels settle to 0 deg, then latch one longitudinal correction. At the
+    # deployed 1.5 rad/s and 0.05 rad ready error, +/-90 -> 0 needs <=1.014 s.
+    # A 10 cm hysteresis absorbs pose noise without repeated mode switching.
+    return_lateral_transition_tolerance_m: 0.02
+    return_lateral_hysteresis_m: 0.10
+    return_steering_settle_s: 1.20
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0
     # HH_260818 - CRAB_OUT shares time with bounded lane-boundary recovery.
@@ -83,6 +90,9 @@
     reverse_return_progress_tolerance_m: 0.45
     reverse_return_lateral_tolerance_m: 0.40
     max_forward_residual_m: 0.8
+    # HH_260824 - A normal lanelet-yaw correction must either settle or fail
+    # closed; never publish angular.z indefinitely on a reachable but stuck yaw.
+    entry_yaw_alignment_timeout_s: 15.0
 
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35

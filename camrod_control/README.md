@@ -15,6 +15,8 @@ the fixed-preview service A/B. -->
 normal/crab separation, parking slowdown, and charging-first stop behavior. -->
 <!-- HH_260819 - Document complete B11-B13 crab-out, no-zero-turn roadside
 return, and the source-selected forward loop. -->
+<!-- HH_260824 - Move the current AprilTag translation latch to the operator
+requested 0.40 m camera range and expose the exact runtime trigger. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -103,7 +105,7 @@ their previous ratio to the current `2.0 km/h` cruise reference.
 | Campsite crab | `60%` | `1.200 km/h` |
 | Campsite reverse / drop-zone exit / reverse parking | `40%` | `0.800 km/h` |
 | AprilTag approach | `50%` | `1.000 km/h` |
-| AprilTag low-speed approach | `12.5%` | `0.250 km/h` before the `0.60 m` stop |
+| AprilTag low-speed approach | `12.5%` | `0.250 km/h` before the `0.40 m` stop |
 | Optional yaw-zone approach 1 / 2 | `62.5% / 50%` | `1.250 / 1.000 km/h` |
 | Zero-turn / gross yaw alignment | `0%` | `0 km/h` |
 | Route-boundary recovery safety exception | `9%` | `0.180 km/h` |
@@ -143,8 +145,8 @@ localization, or battery hold.
 
 | Site mode | Phase order |
 |---|---|
-| Active B1-B10 turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
-| Active B11-B13 roadside | `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
+| Active B1-B10 turnaround | `ALIGN_ENTRY_YAW -> CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
+| Active B11-B13 roadside | `ALIGN_ENTRY_YAW ->` `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
 | B11-B13 return | Preserve arrival heading, restore the lane anchor laterally, then request a forward one-way loop |
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
@@ -166,19 +168,26 @@ fault and obstacle reasons remain authoritative.
 
 <!-- HH_260807 - Explain the route-snap return anchor that prevents a narrow
 lane handoff from inheriting Nav2's early goal-reached pose. -->
-For automatic B1-B10 service, `/planning/goal_pose_snapped` is the single map
-anchor used to measure both `CRAB_IN` and `CRAB_OUT`. This removes the former
-mismatch between Nav2's early handoff pose and the return target. The live
-current heading projects the fixed anchor/site pair into the body frame, so a
-robot restarted after the on-site 180-degree turn chooses the opposite crab
-side instead of moving toward the adjacent bay. A reboot within `0.60 m` of the
-site restores `WAIT_RETURN` rather than repeating entry. `CRAB_OUT` first
-corrects body-lateral error with pure `linear.y`
-(`+/-90 deg` parallel steering), then corrects any zero-turn drift with pure
-`linear.x`; it never takes the old diagonal shortcut. Ranger holds translation
+For automatic B1-B13 service, `/planning/goal_pose_snapped` is the single map
+anchor used to measure both `CRAB_IN` and `CRAB_OUT`. The controller first runs
+mandatory `ALIGN_ENTRY_YAW` against that lanelet's authored tangent, then uses
+the same tangent and signed anchor/site projection to select the crab side.
+Invalid pose/goal geometry or failure to align within `15 s` stops with zero
+command. This removes the former mismatch between Nav2's early handoff pose and
+the return target and prevents the live arrival yaw from choosing the adjacent
+bay. A B1-B10 reboot within `0.60 m` of the authored site restores
+`WAIT_RETURN`. B11-B13 instead match signed progress toward the requested
+`0.30 m` roadside target with the existing `0.15 m` lateral and `0.60 m`
+forward bounds. Every restart/adopt requires a fresh finite lanelet anchor (or
+a route goal correlated to it); the current pose is never fabricated as a
+completed return anchor. These paths intentionally retain the live-heading
+fallback so a post-turn robot chooses the opposite return side.
+`CRAB_OUT` corrects body-lateral error with pure `linear.y` (`+/-90 deg`
+parallel steering), holds zero for a one-way `1.20 s` steering-settle latch,
+then corrects longitudinal drift with pure `linear.x`. It never changes back to
+lateral steering or takes the old diagonal shortcut. Ranger holds translation
 until a longitudinal/parallel mode target is within `0.05 rad`, and control
-hands motion back only within `0.04 m`. Manual/adopt operation also reconstructs
-the entry heading from the current post-turn pose. This distinction matters on
+hands motion back only within `0.04 m`. This distinction matters on
 the current B4 lane: an earlier observed Nav2 arrival was `0.27 m` from the snap,
 while the measured planning-margin clearance was only about `0.136 m` per side.
 A focused B1 -> B4 service run returned at `0.03/0.04 m`, completed both
@@ -210,12 +219,15 @@ and the normal user return request remains required.
 
 ## Parking And Charging State
 
-![Reverse and AprilTag final-approach profiles](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/parking-slowdown-profile.png)
+![Historical 0.60 m Reverse and AprilTag final-approach profiles](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/parking-slowdown-profile.png)
+
+The profile image above is retained as historical `2026-08-19` evidence. The
+current source and runtime contract below uses the updated `0.40 m` stop.
 
 | Condition | Controller phase | Public `/service/state` |
 |---|---|---|
 | Final pose not reached | active parking phase | `DROP_ZONE_PARKING` |
-| Tag range `<= 0.60 m`; yaw correcting | `FINAL_YAW_ALIGNMENT` | `DROP_ZONE_PARKING` |
+| Tag range `<= 0.40 m`; yaw correcting | `FINAL_YAW_ALIGNMENT` | `DROP_ZONE_PARKING` |
 | Yaw settled; CAN charge absent | `WAITING_FOR_CHARGING` | `WAITING_FOR_CHARGING` |
 | Parking complete; CAN charge true | `PARKED` | `CHARGING` |
 | Parked; no active charge feedback | `PARKED` | `DROP_ZONE_WAIT` |
@@ -223,13 +235,15 @@ and the normal user return request remains required.
 
 Reverse parking linearly slows over the final `0.30 m`. AprilTag docking uses
 the same camera-frame 3D `Tag distance` shown in the UI: it ramps from `0.80 m`
-to `0.60 m`, then latches translation off. The controller performs heading-only
+to `0.40 m`, then latches translation off. The controller performs heading-only
 `FINAL_YAW_ALIGNMENT`, proves `0.8 s` of settled yaw, and publishes
 `WAITING_FOR_CHARGING` while continuing zero commands. Approach curvature is
 limited to a minimum `0.85 m` radius so Ranger keeps combined reverse and
 Dual-Ackermann steering instead of silently selecting spinning mode. A true
 charging contact commands zero from any active phase before the controller
 reports `PARKED`. Dynamic rotation obstacle protection remains enabled.
+The status message reports `configured_stop_tag_m`, `stop_reason`, and the exact
+`stop_trigger_tag_m`, so later Tag updates cannot obscure why translation ended.
 
 ## Campsite Sequencing Evidence
 

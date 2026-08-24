@@ -27,6 +27,8 @@ public:
   ~AudioPlayer();
 
   bool init(int sample_rate = 44100, int channels = 2);
+  std::string audioDriver() const;
+  bool isDummyMode() const { return dummy_mode_.load(); }
 
   // ── Speech ────────────────────────────────────────────────────────────────
 

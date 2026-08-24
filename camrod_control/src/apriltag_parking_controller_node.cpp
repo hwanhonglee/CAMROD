@@ -108,7 +108,7 @@ public:
     slowdown_start_tag_distance_m_ = std::abs(declare_parameter<double>(
       "slowdown_start_tag_distance_m", 0.80));
     translation_stop_tag_distance_m_ = std::abs(declare_parameter<double>(
-      "translation_stop_tag_distance_m", 0.60));
+      "translation_stop_tag_distance_m", 0.40));
     minimum_approach_turn_radius_m_ = std::abs(declare_parameter<double>(
       "minimum_approach_turn_radius_m", 0.85));
     final_yaw_angular_speed_radps_ = std::abs(declare_parameter<double>(
@@ -234,8 +234,10 @@ public:
     }
     RCLCPP_INFO(
       get_logger(),
-      "apriltag_parking_controller ready: command=%s odometry=%s tag=%s",
-      cmd_vel_topic_.c_str(), odom_topic_.c_str(), tag_pose_topic_.c_str());
+      "apriltag_parking_controller ready: command=%s odometry=%s tag=%s "
+      "slowdown_tag=%.3fm translation_stop_tag=%.3fm",
+      cmd_vel_topic_.c_str(), odom_topic_.c_str(), tag_pose_topic_.c_str(),
+      slowdown_start_tag_distance_m_, translation_stop_tag_distance_m_);
     publishStatus(true);
   }
 
@@ -409,6 +411,8 @@ private:
     retries_ = 0;
     axis_valid_ = false;
     tag_camera_distance_valid_ = false;
+    translation_stop_reason_ = "none";
+    translation_stop_trigger_tag_distance_m_ = -1.0;
     yaw_alignment_settling_.reset();
     yaw_alignment_settled_logged_ = false;
     robot_path_.poses.clear();
@@ -466,6 +470,15 @@ private:
     if (stop_when_charging_ && charging_detected_ && state_ != State::IDLE &&
       state_ != State::PARKED && state_ != State::ERROR)
     {
+      translation_stop_reason_ = "charging";
+      translation_stop_trigger_tag_distance_m_ =
+        tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0;
+      RCLCPP_INFO(
+        get_logger(),
+        "parking translation stopped by charging contact: tag=%.3fm "
+        "configured_stop=%.3fm phase=%s",
+        translation_stop_trigger_tag_distance_m_, translation_stop_tag_distance_m_,
+        stateName(state_));
       publishStop();
       transitionTo(State::PARKED);
       publishStatus();
@@ -525,9 +538,20 @@ private:
           }
           const double correction_heading_rad = calculateLateralCorrectionHeading();
           if (tag_camera_distance_m_ <= translation_stop_tag_distance_m_) {
-            // HH_260819 - The 0.60 m camera-range crossing is a latch: after
-            // this point no tag loss, yaw error, or missing charge may restart
-            // translation. Lateral error cannot be corrected by yaw-only motion.
+            // HH_260824 - The configured 0.40 m camera-range crossing is a
+            // one-way latch. Record the exact trigger sample separately from
+            // later tag observations so final yaw motion or chassis settling
+            // cannot make the operator-visible stop cause ambiguous.
+            translation_stop_reason_ = "tag_range";
+            translation_stop_trigger_tag_distance_m_ = tag_camera_distance_m_;
+            RCLCPP_INFO(
+              get_logger(),
+              "parking translation stop threshold crossed: tag=%.3fm "
+              "configured_stop=%.3fm lateral=%.3fm heading=%.3frad",
+              translation_stop_trigger_tag_distance_m_, translation_stop_tag_distance_m_,
+              lateral_error_m_, heading_error_rad_);
+            // After this point no tag loss, yaw error, or missing charge may
+            // restart translation. Lateral error cannot be corrected by yaw-only motion.
             if (std::fabs(lateral_error_m_) > final_lateral_tolerance_m_) {
               RCLCPP_ERROR(
                 get_logger(),
@@ -600,8 +624,8 @@ private:
           break;
         }
 
-      // HH_260819 - Publish an explicit fresh phase for the charging fast-path
-      // while continuing to command zero at the latched 0.60 m stop.
+      // HH_260824 - Publish an explicit fresh phase for the charging fast-path
+      // while continuing to command zero at the configured 0.40 m stop.
       case State::WAITING_FOR_CHARGING:
         break;
 
@@ -806,15 +830,19 @@ private:
     {
       return;
     }
-    char buf[192];
+    char buf[320];
     snprintf(
       buf, sizeof(buf), "phase=%s tag_distance_m=%.3f axis_distance_m=%.3f "
-      "lateral_m=%.3f heading_rad=%.3f remaining_tag_m=%.3f retry=%d charging=%s",
+      "lateral_m=%.3f heading_rad=%.3f remaining_tag_m=%.3f "
+      "configured_stop_tag_m=%.3f stop_reason=%s stop_trigger_tag_m=%.3f "
+      "retry=%d charging=%s",
       stateName(state_), tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0,
       distance_along_parking_axis_m_, lateral_error_m_, heading_error_rad_,
       tag_camera_distance_valid_ ? camrod_control::tagApproachRemainingDistance(
         tag_camera_distance_m_, translation_stop_tag_distance_m_) : -1.0,
-      retries_, charging_detected_ ? "true" : "false");
+      translation_stop_tag_distance_m_, translation_stop_reason_.c_str(),
+      translation_stop_trigger_tag_distance_m_, retries_,
+      charging_detected_ ? "true" : "false");
 
     uint8_t level = avg_msgs::msg::ModuleState::OK;
     if (state_ == State::ERROR) {
@@ -866,7 +894,7 @@ private:
   double maximum_angular_speed_radps_, maximum_approach_angle_rad_;
   double reverse_approach_speed_mps_, final_insertion_speed_mps_;
   double slowdown_start_tag_distance_m_{0.80};
-  double translation_stop_tag_distance_m_{0.60};
+  double translation_stop_tag_distance_m_{0.40};
   double minimum_approach_turn_radius_m_{0.85};
   double final_yaw_angular_speed_radps_{0.20};
   // HH_260819 - Deprecated robot-center distance parameters remain declared so
@@ -901,6 +929,10 @@ private:
   double lateral_error_m_{0.0}, heading_error_rad_{0.0};
   double tag_camera_distance_m_{0.0};
   bool tag_camera_distance_valid_{false};
+  // HH_260824 - Preserve the exact one-way stop cause and trigger sample for
+  // field diagnosis; the live Tag distance may continue changing after zero.
+  std::string translation_stop_reason_{"none"};
+  double translation_stop_trigger_tag_distance_m_{-1.0};
   rclcpp::Time last_tag_time_{0, 0, RCL_ROS_TIME};
 
   // HH_260819 - Vehicle odometry drives final yaw after camera-range translation latches off.

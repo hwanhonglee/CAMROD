@@ -114,6 +114,13 @@ the condition itself rather than a counter:
 available, planning is idle, localization is normal, TF exists, the gate is
 standby/charging, platform estop is released, and engage is false.
 
+That strict idle snapshot controls only the one-shot `system.ready` cue. After
+`system.startup`, mission, obstacle, and docking cues follow their direct
+planning, engage, command-gate, and parking-phase evidence, so beginning a
+service while the gate is leaving an idle hold cannot mute voice for the rest of
+the process. Every emitted `AudioRequest` is logged at INFO; the announcer's
+`Playing [...]` line is the separate downstream playback-stage evidence.
+
 ## Topics
 
 | Direction | Topic | Purpose |

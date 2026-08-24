@@ -49,9 +49,13 @@ class VoiceEventPolicy:
         {
             "REVERSE_APPROACH",
             "WAIT_FOR_CHARGING",
+            # AprilTag parking uses the service-state spelling below and may
+            # hold either phase while yaw settles or charger contact arrives.
+            "WAITING_FOR_CHARGING",
             "WAITING_FOR_TAG",
             "TAG_GUIDED_REVERSE",
             "FINAL_REVERSE_INSERTION",
+            "FINAL_YAW_ALIGNMENT",
             "RETRY_FORWARD_EXIT",
         }
     )
@@ -189,7 +193,10 @@ class VoiceEventPolicy:
 
         was_active = self._docking_active
         self._docking_active = phase in self._DOCKING_ACTIVE_PHASES
-        if not self.ready_announced:
+        # A strict idle-readiness rendezvous is only the contract for the
+        # system.ready cue.  Parking can legitimately begin before that one
+        # snapshot ever exists (for example while the gate leaves charging).
+        if not self.startup_announced:
             return []
         if self._docking_active:
             if was_active:
@@ -233,7 +240,7 @@ class VoiceEventPolicy:
             obstacle_is_active
             and not obstacle_was_active
             and self.engaged
-            and self.ready_announced
+            and self.startup_announced
         ):
             self._obstacle_announced = True
             events.append(VoiceEvent("safety.obstacle", priority=2))
@@ -241,7 +248,7 @@ class VoiceEventPolicy:
             # HH_260812 - The hold that was announced has cleared, so the robot
             # is moving again; thank whoever stepped out of the way.
             self._obstacle_announced = False
-            if self.engaged and self.ready_announced:
+            if self.engaged and self.startup_announced:
                 events.append(VoiceEvent("safety.thankyou", priority=1))
         events.extend(self._events_after_update())
         return events
@@ -416,7 +423,7 @@ class VoiceEventPolicy:
         """
 
         return (
-            self.ready_announced
+            self.startup_announced
             and self.engaged
             and self._trip_identity is not None
             and self._trip_identity in self._departed_trips
@@ -438,7 +445,7 @@ class VoiceEventPolicy:
             self._obstacle_announced
             and self._obstacle_hold_active()
             and self.engaged
-            and self.ready_announced
+            and self.startup_announced
         )
 
     def obstacle_repeat_events(self) -> list[VoiceEvent]:
@@ -450,7 +457,7 @@ class VoiceEventPolicy:
 
     def _motion_event(self) -> Optional[VoiceEvent]:
         if (
-            not self.ready_announced
+            not self.startup_announced
             or not self.operational
             or not self.engaged
         ):
@@ -473,7 +480,7 @@ class VoiceEventPolicy:
         return VoiceEvent(key, priority=1)
 
     def _arrival_event(self) -> Optional[VoiceEvent]:
-        if not self.ready_announced or not self._valid_goal():
+        if not self.startup_announced or not self._valid_goal():
             return None
         if self.planning_state != "GOAL_REACHED":
             return None
