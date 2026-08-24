@@ -17,14 +17,12 @@ def _parameters(path: Path) -> dict:
     ]["ros__parameters"]
 
 
-def test_camera_range_thresholds_and_mirrors_are_exact() -> None:
+def test_camera_range_thresholds_are_exact() -> None:
     """The runtime threshold must use the same camera norm shown by the UI."""
     package = CONTROL / "config/parking.yaml"
-    deployment = BRINGUP / "config/control/parking.yaml"
-    assert package.read_bytes() == deployment.read_bytes()
     parameters = _parameters(package)
     assert parameters["slowdown_start_tag_distance_m"] == 0.80
-    assert parameters["translation_stop_tag_distance_m"] == 0.60
+    assert parameters["translation_stop_tag_distance_m"] == 0.40
     assert parameters["minimum_approach_turn_radius_m"] == 0.85
     assert parameters["final_yaw_angular_speed_radps"] == 0.20
     assert parameters["final_yaw_settle_hold_s"] == 0.8
@@ -32,11 +30,20 @@ def test_camera_range_thresholds_and_mirrors_are_exact() -> None:
     assert parameters["odometry_timeout_s"] == 0.5
 
 
+def test_parking_parameter_mirrors_are_exact() -> None:
+    """Full bringup mirrors the package-owned runtime file byte for byte."""
+    package = CONTROL / "config/parking.yaml"
+    deployment = BRINGUP / "config/control/parking.yaml"
+    assert package.read_bytes() == deployment.read_bytes()
+
+
 def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
-    """No post-0.60 m phase may restore blind insertion or retry motion."""
+    """No post-0.40 m phase may restore blind insertion or retry motion."""
     source = NODE.read_text(encoding="utf-8")
     assert "tag_camera_distance_m_ <= translation_stop_tag_distance_m_" in source
     assert "transitionTo(State::FINAL_YAW_ALIGNMENT)" in source
+    assert 'translation_stop_reason_ = "tag_range"' in source
+    assert "translation_stop_trigger_tag_distance_m_ = tag_camera_distance_m_" in source
     assert "case State::FINAL_REVERSE_INSERTION" not in source
     assert "startFinalReverseInsertion" not in source
 
@@ -139,6 +146,7 @@ def test_charging_preempts_every_active_motion_phase() -> None:
     guard = source[preemption:state_switch]
     assert "publishStop();" in guard
     assert "transitionTo(State::PARKED);" in guard
+    assert 'translation_stop_reason_ = "charging"' in guard
     assert 'case State::WAITING_FOR_CHARGING: return "WAITING_FOR_CHARGING";' in source
     assert 'message.state_name = "WAITING_FOR_CHARGING";' in source
 

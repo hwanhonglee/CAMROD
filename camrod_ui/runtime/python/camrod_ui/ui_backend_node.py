@@ -138,6 +138,15 @@ OCCUPANCY_CANCEL_BLOCKED_SERVICE_STATES = frozenset({
 })
 
 
+# HH_260824 - A roadside service is intentionally stopped beside the lanelet,
+# not at the authored campsite center.  The minimum lateral separation mirrors
+# the campsite controller's goal-pair contract.  B13's authored center is more
+# than 7 m from its snap, so roadside matching must apply the 0.30 m cap after
+# projecting the raw pair rather than rejecting the authored center distance.
+ROADSIDE_MINIMUM_SITE_LATERAL_M = 0.20
+MAX_PENDING_SITE_ROUTE_GOALS = 32
+
+
 # HH_260810 - One bounded JSON contract replaces the separate Tk/RViz operator
 # viewers without changing any control or sensor-authority topic.
 TELEMETRY_SCHEMA_VERSION = 3
@@ -761,6 +770,31 @@ class UiBackendNode(Node):
         self.site_arrival_pose_timeout_s = float(
             self.declare_parameter("site_arrival_pose_timeout_s", 2.0).value
         )
+        # HH_260824 - B11-B13 stop at a signed, lane-relative service point;
+        # their semantic polygon centers are 3.3-9.0 m away and are not an
+        # arrival predicate. Mirror the controller's requested offset and
+        # existing entry/route tolerances without widening the global radius.
+        self.site_arrival_roadside_offset_m = abs(
+            float(
+                self.declare_parameter(
+                    "site_arrival_roadside_offset_m", 0.30
+                ).value
+            )
+        )
+        self.site_arrival_roadside_lateral_tolerance_m = abs(
+            float(
+                self.declare_parameter(
+                    "site_arrival_roadside_lateral_tolerance_m", 0.15
+                ).value
+            )
+        )
+        self.site_arrival_roadside_forward_tolerance_m = abs(
+            float(
+                self.declare_parameter(
+                    "site_arrival_roadside_forward_tolerance_m", 0.60
+                ).value
+            )
+        )
         self.publish_mission_key = bool(self.declare_parameter("publish_mission_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
         self.publish_engage_from_destination = bool(
@@ -852,6 +886,11 @@ class UiBackendNode(Node):
         self.planning_route_goal_topic = str(
             self.declare_parameter(
                 "planning_route_goal_topic", "/planning/goal_pose_snapped_ros"
+            ).value
+        )
+        self.planning_lanelet_pose_topic = str(
+            self.declare_parameter(
+                "planning_lanelet_pose_topic", "/planning/lanelet_pose"
             ).value
         )
         self.planning_goal_source_topic = str(
@@ -1046,6 +1085,14 @@ class UiBackendNode(Node):
         self._readiness_log_last_sec = 0.0
         self._latest_arrival_pose: Optional[AvgPoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
+        self._latest_planning_lanelet_pose: Optional[AvgPoseStamped] = None
+        self._latest_planning_lanelet_pose_time_s = 0.0
+        # HH_260824 - Correlate the UI's raw campsite goal with goal_snapper's
+        # output using the preserved ROS timestamp.  A mission-scoped real snap
+        # is required before roadside parked-state adoption; the live vehicle
+        # pose is never promoted into a synthetic return anchor.
+        self._pending_site_route_goal_stamps: Dict[tuple[int, int], str] = {}
+        self._site_route_anchors: Dict[str, PoseStamped] = {}
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
         self._latest_platform_is_charging = False
         self._latest_service_state: Optional[int] = None
@@ -1121,6 +1168,12 @@ class UiBackendNode(Node):
             PoseStamped,
             self.planning_route_goal_topic,
             self._on_planning_route_goal,
+            10,
+        )
+        self.sub_planning_lanelet_pose = self.create_subscription(
+            AvgPoseStamped,
+            self.planning_lanelet_pose_topic,
+            self._on_planning_lanelet_pose,
             10,
         )
         self.sub_planning_goal_source = self.create_subscription(
@@ -1291,6 +1344,10 @@ class UiBackendNode(Node):
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"manual_goal_pose_topic={self.manual_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
+            f"planning_lanelet_pose_topic={self.planning_lanelet_pose_topic} "
+            f"roadside_arrival_offset={self.site_arrival_roadside_offset_m:.2f}m "
+            f"roadside_arrival_lateral_tolerance={self.site_arrival_roadside_lateral_tolerance_m:.2f}m "
+            f"roadside_arrival_forward_tolerance={self.site_arrival_roadside_forward_tolerance_m:.2f}m "
             f"campsite_occupancy_topic={self.campsite_occupancy_topic} "
             f"campsite_occupancy_guard={str(self.enable_campsite_occupancy_guard).lower()} "
             f"ranger_base_node={self.ranger_base_node_name} "
@@ -2542,6 +2599,209 @@ class UiBackendNode(Node):
             j = i
         return inside
 
+    @staticmethod
+    def _route_goal_stamp_key(message: Any) -> tuple[int, int]:
+        stamp = message.header.stamp
+        return (int(stamp.sec), int(stamp.nanosec))
+
+    @staticmethod
+    def _finite_planar_pose(message: Any) -> bool:
+        try:
+            values = (
+                float(message.pose.position.x),
+                float(message.pose.position.y),
+            )
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return all(math.isfinite(value) for value in values)
+
+    @staticmethod
+    def _planar_pose_yaw(message: Any) -> Optional[float]:
+        try:
+            quaternion = tuple(
+                float(value)
+                for value in (
+                    message.pose.orientation.x,
+                    message.pose.orientation.y,
+                    message.pose.orientation.z,
+                    message.pose.orientation.w,
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in quaternion):
+            return None
+        norm_sq = sum(component * component for component in quaternion)
+        if not math.isfinite(norm_sq) or norm_sq <= 1.0e-12:
+            return None
+        inverse_norm = 1.0 / math.sqrt(norm_sq)
+        qx, qy, qz, qw = (
+            component * inverse_norm for component in quaternion
+        )
+        yaw = math.atan2(
+            2.0 * (qw * qz + qx * qy),
+            1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+        return yaw if math.isfinite(yaw) else None
+
+    def _remember_pending_site_route_goal(
+        self, raw_goal: PoseStamped, mission_key: str
+    ) -> None:
+        stamp_key = self._route_goal_stamp_key(raw_goal)
+        with self._lock:
+            if stamp_key not in self._pending_site_route_goal_stamps:
+                self._pending_site_route_goal_stamps[stamp_key] = mission_key
+            elif self._pending_site_route_goal_stamps[stamp_key] != mission_key:
+                # A paused simulation clock can produce duplicate stamps. An
+                # ambiguous stamp authorizes neither mission.
+                previous_mission = self._pending_site_route_goal_stamps[
+                    stamp_key
+                ]
+                self._site_route_anchors.pop(previous_mission, None)
+                self._site_route_anchors.pop(mission_key, None)
+                self._pending_site_route_goal_stamps[stamp_key] = ""
+            while (
+                len(self._pending_site_route_goal_stamps)
+                > MAX_PENDING_SITE_ROUTE_GOALS
+            ):
+                oldest = next(iter(self._pending_site_route_goal_stamps))
+                self._pending_site_route_goal_stamps.pop(oldest, None)
+
+    def _roadside_operational_arrival_match(
+        self,
+        mission_key: str,
+        keypoint: MissionKeypoint,
+        px: float,
+        py: float,
+        pose_frame: str,
+    ) -> tuple[bool, float, str]:
+        with self._lock:
+            route_goal = self._site_route_anchors.get(mission_key)
+            lanelet_pose = self._latest_planning_lanelet_pose
+            lanelet_pose_time_s = self._latest_planning_lanelet_pose_time_s
+        if route_goal is None:
+            return False, float("inf"), "missing_mission_route_anchor"
+        if lanelet_pose is None:
+            return False, float("inf"), "missing_fresh_lanelet_anchor"
+        lanelet_age_s = self._now_s() - lanelet_pose_time_s
+        if (
+            not math.isfinite(lanelet_age_s)
+            or lanelet_age_s < 0.0
+            or not math.isfinite(self.site_arrival_pose_timeout_s)
+            or self.site_arrival_pose_timeout_s <= 0.0
+        ):
+            return False, float("inf"), "invalid_lanelet_anchor_freshness"
+        if lanelet_age_s > self.site_arrival_pose_timeout_s:
+            return (
+                False,
+                float("inf"),
+                f"stale_lanelet_anchor:{lanelet_age_s:.2f}s",
+            )
+
+        route_frame = str(route_goal.header.frame_id or self.default_goal_frame_id)
+        lanelet_frame = str(
+            lanelet_pose.header.frame_id or self.default_goal_frame_id
+        )
+        goal_frame = str(keypoint.frame_id or self.default_goal_frame_id)
+        frames = {
+            frame
+            for frame in (pose_frame, route_frame, lanelet_frame, goal_frame)
+            if frame
+        }
+        if len(frames) > 1:
+            return False, float("inf"), "roadside_frame_mismatch"
+
+        if (
+            not self._finite_planar_pose(route_goal)
+            or not self._finite_planar_pose(lanelet_pose)
+            or not all(
+                math.isfinite(value)
+                for value in (px, py, float(keypoint.x), float(keypoint.y))
+            )
+        ):
+            return False, float("inf"), "invalid_roadside_geometry"
+        route_yaw = self._planar_pose_yaw(route_goal)
+        if route_yaw is None:
+            return False, float("inf"), "invalid_roadside_route_yaw"
+
+        requested_offset = float(self.site_arrival_roadside_offset_m)
+        lateral_tolerance = float(
+            self.site_arrival_roadside_lateral_tolerance_m
+        )
+        forward_tolerance = float(
+            self.site_arrival_roadside_forward_tolerance_m
+        )
+        if (
+            not all(
+                math.isfinite(value)
+                for value in (
+                    requested_offset,
+                    lateral_tolerance,
+                    forward_tolerance,
+                )
+            )
+            or requested_offset <= 0.0
+            or lateral_tolerance < 0.0
+            or forward_tolerance < 0.0
+        ):
+            return False, float("inf"), "invalid_roadside_arrival_policy"
+
+        anchor_x = float(route_goal.pose.position.x)
+        anchor_y = float(route_goal.pose.position.y)
+        cos_yaw = math.cos(route_yaw)
+        sin_yaw = math.sin(route_yaw)
+
+        def relative_axes(x: float, y: float) -> tuple[float, float]:
+            dx = x - anchor_x
+            dy = y - anchor_y
+            return (
+                cos_yaw * dx + sin_yaw * dy,
+                -sin_yaw * dx + cos_yaw * dy,
+            )
+
+        raw_forward, raw_lateral = relative_axes(
+            float(keypoint.x), float(keypoint.y)
+        )
+        if (
+            not math.isfinite(raw_forward)
+            or not math.isfinite(raw_lateral)
+            or abs(raw_forward) > forward_tolerance + 1.0e-6
+            or abs(raw_lateral) < ROADSIDE_MINIMUM_SITE_LATERAL_M
+        ):
+            return False, float("inf"), "invalid_roadside_goal_pair"
+
+        # The live lanelet projection must still agree with this mission's
+        # timestamp-correlated snap.  This rejects a stale snap from another
+        # campsite even if its raw center happens to be nearby.
+        lanelet_forward, lanelet_lateral = relative_axes(
+            float(lanelet_pose.pose.position.x),
+            float(lanelet_pose.pose.position.y),
+        )
+        if (
+            abs(lanelet_forward) > forward_tolerance + 1.0e-6
+            or abs(lanelet_lateral) > lateral_tolerance + 1.0e-6
+        ):
+            return False, float("inf"), "lanelet_anchor_disagrees_with_route"
+
+        operational_offset = min(abs(raw_lateral), requested_offset)
+        signed_target_lateral = math.copysign(
+            operational_offset, raw_lateral
+        )
+        current_forward, current_lateral = relative_axes(px, py)
+        lateral_error = current_lateral - signed_target_lateral
+        distance = math.hypot(current_forward, lateral_error)
+        matches = (
+            abs(current_forward) <= forward_tolerance + 1.0e-6
+            and abs(lateral_error) <= lateral_tolerance + 1.0e-6
+        )
+        return (
+            matches,
+            distance,
+            "near_roadside_operational_target"
+            if matches
+            else "outside_roadside_operational_target",
+        )
+
     def _site_arrival_match(self, site: str) -> tuple[bool, str, float, str]:
         mission_key = self._resolve_mission_key_for_site(site) or ""
         keypoint = self._keypoints_by_mission_key.get(mission_key)
@@ -2562,6 +2822,13 @@ class UiBackendNode(Node):
 
         px = float(self._latest_arrival_pose.pose.position.x)
         py = float(self._latest_arrival_pose.pose.position.y)
+        if not math.isfinite(px) or not math.isfinite(py):
+            return False, mission_key, float("inf"), "nonfinite_pose"
+        if str(keypoint.service_mode).strip().lower() == "roadside_stop":
+            matched, distance, reason = self._roadside_operational_arrival_match(
+                mission_key, keypoint, px, py, pose_frame
+            )
+            return matched, mission_key, distance, reason
         center_distance = math.hypot(px - keypoint.x, py - keypoint.y)
         if keypoint.corners and self._point_in_polygon(px, py, keypoint.corners):
             return True, mission_key, center_distance, "inside_site_polygon"
@@ -2923,10 +3190,35 @@ class UiBackendNode(Node):
             )
         )
 
-    def _on_planning_route_goal(self, _msg: PoseStamped) -> None:
+    def _on_planning_route_goal(self, msg: PoseStamped) -> None:
+        # goal_snapper preserves the raw goal timestamp.  Only that exact
+        # correspondence may populate a campsite return anchor; manual/RViz or
+        # another campsite's latest route must never authorize roadside adopt.
+        stamp_key = self._route_goal_stamp_key(msg)
+        mission_key = ""
+        with self._lock:
+            mission_key = self._pending_site_route_goal_stamps.pop(
+                stamp_key, ""
+            )
+            if mission_key:
+                self._site_route_anchors[mission_key] = copy.deepcopy(msg)
+        if mission_key:
+            self.get_logger().info(
+                "cached timestamp-correlated campsite route anchor: "
+                f"mission_key={mission_key} "
+                f"xy=({msg.pose.position.x:.2f},{msg.pose.position.y:.2f})"
+            )
         self._update_runtime_state(
             self._runtime_policy.update_goal_received
         )
+
+    def _on_planning_lanelet_pose(self, msg: AvgPoseStamped) -> None:
+        with self._lock:
+            # Match the existing localization-pose cache: rclpy hands this
+            # callback an owned message object, so retaining it avoids a 10 Hz
+            # deep-copy allocation on ARM64.
+            self._latest_planning_lanelet_pose = msg
+            self._latest_planning_lanelet_pose_time_s = self._now_s()
 
     def _on_planning_goal_source(self, msg: String) -> None:
         self._update_runtime_state(
@@ -4026,6 +4318,7 @@ class UiBackendNode(Node):
             pose.pose.orientation.y = qy
             pose.pose.orientation.z = qz
             pose.pose.orientation.w = qw
+            self._remember_pending_site_route_goal(pose, mission_key)
             self.pub_goal_pose.publish(pose)
             pose_published = True
             self.get_logger().info(

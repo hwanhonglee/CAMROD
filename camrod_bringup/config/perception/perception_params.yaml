@@ -31,9 +31,10 @@
     image_width: 1920
     image_height: 1080
 
-    # HH_260818 - Safety-facing /perception/obstacles contains only LiDAR
-    # points associated with a current semantic class. This safety rule has no
-    # config bypass; raw/unknown clusters remain diagnostic visualization only.
+    # HH_260818 / HH_260824 - Safety-facing /perception/obstacles and fusion
+    # markers contain only LiDAR results associated with a current, valid
+    # semantic detection. Raw/unknown Euclidean clusters remain on the separate
+    # diagnostic visualization topic only.
     unknown_class_labels: ["", "?", "unknown"]
     detection_max_age_s: 0.50
 

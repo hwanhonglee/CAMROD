@@ -15,8 +15,18 @@ VoiceAnnouncerNode::VoiceAnnouncerNode(const rclcpp::NodeOptions & options)
 {
   declareParameters();
 
-  if (!player_.init()) {
+  const bool audio_ready = player_.init();
+  const std::string audio_driver = player_.audioDriver();
+  if (!audio_ready) {
     RCLCPP_ERROR(get_logger(), "AudioPlayer init failed — check SDL2 audio device");
+  } else if (player_.isDummyMode()) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "AudioPlayer is using SDL dummy driver — physical speaker output is disabled");
+  } else {
+    RCLCPP_INFO(
+      get_logger(), "AudioPlayer initialized (SDL driver=%s)",
+      audio_driver.empty() ? "unknown" : audio_driver.c_str());
   }
 
   player_.setFinishCallback([this]() { publishState(); });

@@ -197,6 +197,9 @@ install(
 )
 
 if(BUILD_TESTING)
+  # HH_260824 - Active campsite YAML is consumed only by the native map
+  # regression; runtime planning binaries retain their existing dependency set.
+  find_package(yaml-cpp REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   # HH_260721 - Lint CAMROD-owned planning files without re-linting vendored Nav2 sources.
   set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
@@ -264,6 +267,36 @@ if(BUILD_TESTING)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
   )
+
+  # HH_260824 - Keep B1-B13 map geometry in a small native target. The main
+  # route-planner test compiles two production translation units and is too
+  # expensive to duplicate merely to validate static map/YAML contracts.
+  ament_add_gtest(
+    test_active_campsite_geometry
+    test/test_active_campsite_geometry.cpp
+  )
+  ament_target_dependencies(test_active_campsite_geometry
+    action_msgs
+    avg_msgs
+    camrod_map
+    geometry_msgs
+    lanelet2_core
+    lanelet2_io
+    lanelet2_projection
+    lanelet2_routing
+    lanelet2_traffic_rules
+    nav_msgs
+    rclcpp
+    std_msgs
+  )
+  target_compile_definitions(
+    test_active_campsite_geometry PRIVATE CAMROD_PLANNING_GOAL_SNAPPER_NO_MAIN
+  )
+  target_include_directories(test_active_campsite_geometry PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
+  )
+  target_link_libraries(test_active_campsite_geometry yaml-cpp)
 
   # HH_260729 - Exercise bounded Nav2 goal recovery without a running map,
   # action server, or control gate.

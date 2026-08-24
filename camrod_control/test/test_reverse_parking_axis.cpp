@@ -19,19 +19,19 @@ TEST(ParkingSpeedProfile, SlowsInsideConfiguredRemainingDistance)
   EXPECT_NEAR(parkingApproachSpeed(0.15, 0.30, 0.40, 0.08), 0.24, 1.0e-9);
 }
 
-TEST(ParkingSpeedProfile, AprilTagCameraRangeRampsFromPointEightToPointSix)
+TEST(ParkingSpeedProfile, AprilTagCameraRangeRampsFromPointEightToPointFour)
 {
-  // HH_260819 - The controller uses the same camera-frame 3D norm as the UI.
-  const double stop_m = 0.60;
+  // HH_260824 - The controller uses the same camera-frame 3D norm as the UI.
+  const double stop_m = 0.40;
   const double window_m = tagApproachSlowdownWindow(0.80, stop_m);
-  EXPECT_NEAR(window_m, 0.20, 1.0e-12);
-  EXPECT_NEAR(tagApproachRemainingDistance(0.80, stop_m), 0.20, 1.0e-12);
-  EXPECT_NEAR(tagApproachRemainingDistance(0.70, stop_m), 0.10, 1.0e-12);
-  EXPECT_DOUBLE_EQ(tagApproachRemainingDistance(0.60, stop_m), 0.0);
-  EXPECT_DOUBLE_EQ(tagApproachRemainingDistance(0.55, stop_m), 0.0);
+  EXPECT_NEAR(window_m, 0.40, 1.0e-12);
+  EXPECT_NEAR(tagApproachRemainingDistance(0.80, stop_m), 0.40, 1.0e-12);
+  EXPECT_NEAR(tagApproachRemainingDistance(0.60, stop_m), 0.20, 1.0e-12);
+  EXPECT_DOUBLE_EQ(tagApproachRemainingDistance(0.40, stop_m), 0.0);
+  EXPECT_DOUBLE_EQ(tagApproachRemainingDistance(0.35, stop_m), 0.0);
 
-  EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.20, window_m, 0.50, 0.10), 0.50);
-  EXPECT_NEAR(parkingApproachSpeed(0.10, window_m, 0.50, 0.10), 0.30, 1.0e-12);
+  EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.40, window_m, 0.50, 0.10), 0.50);
+  EXPECT_NEAR(parkingApproachSpeed(0.20, window_m, 0.50, 0.10), 0.30, 1.0e-12);
   EXPECT_DOUBLE_EQ(parkingApproachSpeed(0.0, window_m, 0.50, 0.10), 0.10);
 }
 

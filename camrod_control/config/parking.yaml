@@ -108,10 +108,12 @@
     invert_angular_command_while_reversing: false
     final_insertion_speed_mps: 0.138889
 
-    # HH_260819 - Match the operator UI's camera-frame 3D Tag distance exactly:
-    # ramp from 0.80 to 0.60 m, then latch translation off and align yaw only.
+    # HH_260824 - Match the operator UI's camera-frame 3D Tag distance exactly.
+    # Slow down from 0.80 m, latch translation off at 0.40 m, then align yaw only.
+    # Full bringup loads this package-owned file by default; keep deployment
+    # mirrors synchronized so a field edit cannot silently leave 0.60 m active.
     slowdown_start_tag_distance_m: 0.80
-    translation_stop_tag_distance_m: 0.60
+    translation_stop_tag_distance_m: 0.40
     # Keep combined reverse + steering above Ranger's 0.81033 m spin threshold.
     minimum_approach_turn_radius_m: 0.85
     final_yaw_angular_speed_radps: 0.20

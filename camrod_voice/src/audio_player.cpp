@@ -93,6 +93,12 @@ bool AudioPlayer::init(int sample_rate, int channels)
   return true;
 }
 
+std::string AudioPlayer::audioDriver() const
+{
+  const char * driver = SDL_GetCurrentAudioDriver();
+  return driver == nullptr ? std::string{} : std::string{driver};
+}
+
 Mix_Chunk * AudioPlayer::loadChunk(const std::string & path)
 {
   auto it = chunk_cache_.find(path);

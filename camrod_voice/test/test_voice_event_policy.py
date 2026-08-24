@@ -98,6 +98,72 @@ def test_ready_requires_every_input_and_is_announced_once():
     assert policy.update_tf(True) == []
 
 
+def test_active_mission_audio_survives_missed_idle_readiness_rendezvous():
+    """A mission may start while the gate is still leaving its idle hold."""
+
+    policy = VoiceEventPolicy(REQUIRED_MODULES)
+    assert event_keys(policy.announce_startup()) == ["system.startup"]
+    policy.update_system(healthy_modules())
+    policy.update_planning(
+        state="WAIT_DZ",
+        scenario="WAIT_DROP_ZONE",
+        active_mission_key="",
+        active_goal_source="none",
+        return_requested=False,
+    )
+    policy.update_action_server(True)
+    policy.update_localization(0)
+    policy.update_tf(True)
+    policy.update_platform(estop=False, error_code=0)
+    policy.update_engaged(False)
+
+    # This is the production startup race: control_mode=3 keeps the gate out
+    # of STANDBY until the mission has already engaged.  Strict system.ready
+    # must remain silent, but it must not permanently mute runtime cues.
+    policy.update_gate(
+        level=1,
+        operating_state="SAFETY_HOLD",
+        message="reasons=control_mode=3",
+    )
+    assert not policy.ready_announced
+
+    policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_7",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    policy.update_engaged(True)
+    departure = policy.update_gate(
+        level=0,
+        operating_state="ENABLED",
+        message="reasons=none",
+    )
+
+    assert event_keys(departure) == ["navigation.to_campsite"]
+    assert not policy.ready_announced
+    assert policy.operational
+    assert policy.travel_active
+
+    held = policy.update_gate(
+        level=1,
+        operating_state="ROUTE_SAFETY_HOLD",
+        message="reasons=cost_stop_latched",
+    )
+    assert event_keys(held) == ["safety.obstacle"]
+    assert event_keys(policy.obstacle_repeat_events()) == [
+        "navigation.please_step_aside",
+    ]
+    assert event_keys(
+        policy.update_gate(
+            level=0,
+            operating_state="ENABLED",
+            message="reasons=none",
+        )
+    ) == ["safety.thankyou"]
+
+
 def test_dummy_warn_is_degraded_ready_but_error_still_blocks():
     policy = VoiceEventPolicy(REQUIRED_MODULES)
     events = policy.announce_startup()
@@ -411,6 +477,34 @@ def test_docking_announces_start_then_one_outcome():
         "docking.started",
     ]
     assert event_keys(policy.update_docking("ERROR")) == ["docking.failed"]
+
+
+def test_apriltag_docking_phases_remain_one_run_before_system_ready():
+    policy = VoiceEventPolicy(REQUIRED_MODULES)
+    assert event_keys(policy.announce_startup()) == ["system.startup"]
+    assert not policy.ready_announced
+
+    assert policy.update_docking("IDLE") == []
+    assert event_keys(policy.update_docking("WAITING_FOR_TAG")) == [
+        "docking.started",
+    ]
+    assert policy.update_docking("TAG_GUIDED_REVERSE") == []
+    assert policy.update_docking("FINAL_YAW_ALIGNMENT") == []
+    assert policy.update_docking("WAITING_FOR_CHARGING") == []
+    assert event_keys(policy.update_docking("PARKED")) == [
+        "docking.succeeded",
+    ]
+
+    # Charger current may already be confirmed during final yaw, in which case
+    # the controller goes directly to PARKED without the waiting phase.
+    assert event_keys(policy.update_docking("WAITING_FOR_TAG")) == [
+        "docking.started",
+    ]
+    assert policy.update_docking("TAG_GUIDED_REVERSE") == []
+    assert policy.update_docking("FINAL_YAW_ALIGNMENT") == []
+    assert event_keys(policy.update_docking("PARKED")) == [
+        "docking.succeeded",
+    ]
 
 
 def test_docking_outcome_without_a_started_run_stays_silent():

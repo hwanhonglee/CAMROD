@@ -279,6 +279,7 @@ def generate_launch_description():
             'parking_operation_topic': LaunchConfiguration('parking_operation_topic'),
             'drop_zone_exit_complete_topic': LaunchConfiguration('drop_zone_exit_complete_topic'),
             'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
+            'planning_lanelet_pose_topic': '/planning/lanelet_pose',
             'platform_status_topic': LaunchConfiguration('platform_status_topic'),
             # HH_260727 - Standard ROS parameter service target for live steering tuning.
             'ranger_base_node_name': '/ranger_base_node',
@@ -288,6 +289,9 @@ def generate_launch_description():
             'immediate_site_arrival_enabled': True,
             'site_arrival_center_radius_m': 2.5,
             'site_arrival_pose_timeout_s': 2.0,
+            'site_arrival_roadside_offset_m': 0.30,
+            'site_arrival_roadside_lateral_tolerance_m': 0.15,
+            'site_arrival_roadside_forward_tolerance_m': 0.60,
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             # HH_260810 - Site missions retain the regulated input while the

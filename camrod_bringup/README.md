@@ -20,6 +20,8 @@ return-handoff diagnostic grace for the ARM64 deployment boundary. -->
 roadside forward-loop routing, and measured AMD64 lease-scheduler cost. -->
 <!-- HH_260819 - Synchronize the replacement dual GNSS 10 Hz/100 ms field
 contract without treating ROS cadence alone as moving-base acceptance. -->
+<!-- HH_260824 - Update the active AprilTag docking latch to 0.40 m while
+keeping the earlier 0.60 m media explicitly historical. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
@@ -61,7 +63,7 @@ manual Return, docking telemetry, and final parking slowdown contracts. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | entry/exit share the exact snap anchor; B1-B10 turn/retrace, while B11-B13 cap at `0.30 m`, skip zero-turn, and request a forward one-way loop after `CRAB_OUT -> DONE` |
-| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.60 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
+| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
 | Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
@@ -120,7 +122,7 @@ The latest full-bringup runtime result is shown separately.
 
 ### Current UI And Diagnostic Follow-up
 
-![Current operator docking workspace](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
+![Historical 0.60 m operator docking workspace](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
 
 ![Current B8 same-anchor entry and return](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-summary.png)
 
@@ -170,7 +172,7 @@ acceptance.
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |
 | B8 same-anchor/restart policy | AMD64 SIM + UNIT PASS | Current graph completed seven phases through `DONE`; live heading reverses body crab sign without moving the map anchor; manual Return API returned `site_exit_then_return` and deferred route planning until campsite `DONE` |
-| Final parking slowdown/stop | SOURCE + UNIT + UI PASS | Reverse ramps over `0.30 m`; AprilTag ramps at camera range `0.80 -> 0.60 m`, then latches translation off for yaw/charging; physical acceptance pending |
+| Final parking slowdown/stop | CURRENT SOURCE + UNIT PASS; HISTORICAL 0.60 m UI PASS | Reverse ramps over `0.30 m`; current AprilTag contract ramps at camera range `0.80 -> 0.40 m`, then latches translation off for yaw/charging; updated physical acceptance pending |
 | Repeated boundary recovery | AMD64 SIM PARTIAL + UNIT PASS | Per attempt `0.40 m/10 s`; up to 50 attempts with `0.5 s` pauses and `1.50 m/90 s` episode caps; whichever limit is reached first ends the episode; long B1 return released three consecutive contacts before the runner timeout |
 | Classified fusion safety | GATE-MATRIX + UNIT PASS | Unknown/raw LiDAR excluded; classified fusion stopped forward (`0.00 m/s`) but passed crab/reverse (`0.08/0.09 m/s`); synthetic radar fixtures stopped all directions; both grids ran at `10 Hz` |
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |

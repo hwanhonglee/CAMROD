@@ -442,7 +442,11 @@ class VoiceEventAdapterNode(Node):
         req.interrupt = interrupt
         req.locale = ''          # node default 사용
         self._say_pub.publish(req)
-        self.get_logger().debug(f'say → {key} (pri={priority})')
+        # INFO is intentional operational evidence: it distinguishes an event
+        # policy miss from a downstream audio-device/playback failure.
+        self.get_logger().info(
+            f'AudioRequest published: key={key} priority={priority} '
+            f'interrupt={interrupt}')
 
 
 def main(args=None):

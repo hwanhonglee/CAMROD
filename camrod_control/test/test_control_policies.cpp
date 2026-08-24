@@ -144,6 +144,313 @@ TEST(MotionGeometry, RestartedTurnaroundUsesCurrentHeadingAndSameMapAnchor) {
   EXPECT_DOUBLE_EQ(anchor.pose.position.y, 0.0);
 }
 
+TEST(MotionGeometry, AutomaticCampsiteEntryUsesLaneletYawButRestartUsesLiveYaw) {
+  constexpr double live_yaw = -58.38 * M_PI / 180.0;
+  constexpr double lanelet_yaw = -66.42 * M_PI / 180.0;
+
+  const auto automatic =
+      selectCampsiteEntryYaw(live_yaw, lanelet_yaw, true);
+  EXPECT_EQ(automatic.source, CampsiteEntryYawSource::kLaneletSnap);
+  EXPECT_NEAR(automatic.yaw_rad, lanelet_yaw, 1.0e-12);
+
+  const auto restarted =
+      selectCampsiteEntryYaw(live_yaw, lanelet_yaw, false);
+  EXPECT_EQ(restarted.source, CampsiteEntryYawSource::kLivePoseFallback);
+  EXPECT_NEAR(restarted.yaw_rad, live_yaw, 1.0e-12);
+
+  const auto missing_snap =
+      selectCampsiteEntryYaw(live_yaw, std::nullopt, true);
+  EXPECT_EQ(missing_snap.source,
+            CampsiteEntryYawSource::kLivePoseFallback);
+  EXPECT_NEAR(missing_snap.yaw_rad, live_yaw, 1.0e-12);
+}
+
+TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
+  struct Fixture {
+    double snap_x;
+    double snap_y;
+    double site_x;
+    double site_y;
+    double snap_yaw_deg;
+    double signed_lateral_m;
+    double operational_offset_m;
+    bool roadside;
+  };
+  // HH_260824 - Locked against active lanelet2_maps.osm map-v22 and
+  // camrod_planning/config/camping_sites.yaml. Signed values catch both a yaw
+  // reversal and the reported B6 live-yaw axial skew.
+  constexpr std::array<Fixture, 13> fixtures{{
+      {22.357515191, -6.908337803, 25.8687, -5.13869, -63.251744,
+       3.931930, 3.931930, false},
+      {22.454856615, -7.101474235, 19.566, -8.55747, -63.251706,
+       -3.235030, 3.235030, false},
+      {19.772336735, -1.222936079, 23.3585, 0.427582, -65.285918,
+       3.947756, 3.947756, false},
+      {19.307410106, -0.152900333, 16.4276, -1.34999, -67.428154,
+       -3.118706, 3.118706, false},
+      {17.382903354, 4.336168303, 20.9591, 5.86183, -66.896141,
+       3.888036, 3.888036, false},
+      {16.786389776, 5.715787406, 13.9518, 4.47866, -66.421645,
+       -3.092795, 3.092795, false},
+      {15.085466253, 9.670478273, 18.6442, 11.1853, -66.942319,
+       3.867722, 3.867722, false},
+      {14.147071672, 11.827906846, 11.3705, 10.645, -66.924479,
+       -3.018049, 3.018049, false},
+      {12.679983302, 15.667433959, 16.3636, 17.1396, -68.215752,
+       3.966901, 3.966901, false},
+      {11.891069361, 17.727651240, 9.02731, 16.6389, -69.184081,
+       -3.063739, 3.063739, false},
+      {10.821530478, 20.516472190, 14.8445, 22.0782, -68.783648,
+       4.315470, 0.300000, true},
+      {10.103421888, 23.093735129, 6.85414, 22.4291, -78.439719,
+       -3.316560, 0.300000, true},
+      {9.626348588, 27.418616995, 0.610449, 27.604, -91.177942,
+       -9.017805, 0.300000, true},
+  }};
+
+  for (std::size_t index = 0; index < fixtures.size(); ++index) {
+    const auto & fixture = fixtures[index];
+    SCOPED_TRACE("B" + std::to_string(index + 1U));
+    avg_msgs::msg::AvgPoseStamped snap;
+    snap.pose.position.x = fixture.snap_x;
+    snap.pose.position.y = fixture.snap_y;
+    const double snap_yaw = degrees(fixture.snap_yaw_deg);
+    snap.pose.orientation.z = std::sin(snap_yaw * 0.5);
+    snap.pose.orientation.w = std::cos(snap_yaw * 0.5);
+    avg_msgs::msg::AvgPoseStamped site;
+    site.pose.position.x = fixture.site_x;
+    site.pose.position.y = fixture.site_y;
+    site.pose.orientation.w = 1.0;
+
+    const auto selected = selectCampsiteEntryYaw(
+        normalizeAngle(snap_yaw + M_PI), yawFromPose(snap), true);
+    ASSERT_EQ(selected.source, CampsiteEntryYawSource::kLaneletSnap);
+    EXPECT_NEAR(normalizeAngle(selected.yaw_rad - snap_yaw), 0.0,
+                degrees(0.2));
+    const auto relative = relativeXyAtHeading(snap, site, selected.yaw_rad);
+    EXPECT_NEAR(relative.first, 0.0, 0.01);
+    EXPECT_NEAR(relative.second, fixture.signed_lateral_m, 0.02);
+    const double direction = relative.second >= 0.0 ? 1.0 : -1.0;
+    EXPECT_DOUBLE_EQ(direction,
+                     fixture.signed_lateral_m >= 0.0 ? 1.0 : -1.0);
+    const double clamped_offset = clamp(std::abs(relative.second), 0.2, 7.0);
+    const double operational_offset =
+        fixture.roadside ? std::min(clamped_offset, 0.30) : clamped_offset;
+    EXPECT_NEAR(operational_offset, fixture.operational_offset_m, 0.02);
+
+    const auto operational_target = lateralTargetFromAnchor(
+        fixture.snap_x, fixture.snap_y, selected.yaw_rad, direction,
+        operational_offset);
+    avg_msgs::msg::AvgPoseStamped target;
+    target.pose.position.x = operational_target.first;
+    target.pose.position.y = operational_target.second;
+    const auto target_relative =
+        relativeXyAtHeading(snap, target, selected.yaw_rad);
+    EXPECT_NEAR(target_relative.first, 0.0, 1.0e-9);
+    EXPECT_NEAR(target_relative.second, direction * operational_offset,
+                1.0e-9);
+    if (fixture.roadside) {
+      EXPECT_FALSE(roadsideOperationalArrivalMatches(
+          0.0, 0.0, direction * operational_offset, 0.60, 0.15));
+      EXPECT_TRUE(roadsideOperationalArrivalMatches(
+          0.59, direction * (operational_offset - 0.15),
+          direction * operational_offset, 0.60, 0.15));
+      EXPECT_FALSE(roadsideOperationalArrivalMatches(
+          0.61, direction * operational_offset,
+          direction * operational_offset, 0.60, 0.15));
+    }
+  }
+}
+
+TEST(MotionGeometry, CampsiteMotionPoseRejectsInvalidPositionAndQuaternion) {
+  avg_msgs::msg::AvgPoseStamped pose;
+  pose.pose.orientation.w = 1.0;
+  EXPECT_TRUE(poseHasFiniteMotionGeometry(pose));
+
+  pose.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(poseHasFiniteMotionGeometry(pose));
+  pose.pose.position.x = 0.0;
+  pose.pose.position.y = std::numeric_limits<double>::infinity();
+  EXPECT_FALSE(poseHasFiniteMotionGeometry(pose));
+
+  pose.pose.position.y = 0.0;
+  pose.pose.orientation.w = 0.0;
+  EXPECT_FALSE(poseHasFiniteMotionGeometry(pose));
+  EXPECT_TRUE(poseHasFinitePlanarPosition(pose));
+  pose.pose.orientation.z = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(poseHasFiniteMotionGeometry(pose));
+
+  pose.pose.position.x = std::numeric_limits<double>::infinity();
+  pose.pose.orientation.z = 0.0;
+  pose.pose.orientation.w = 1.0;
+  EXPECT_FALSE(poseHasFinitePlanarPosition(pose));
+  EXPECT_FALSE(poseHasFiniteMotionGeometry(pose));
+}
+
+TEST(MotionGeometry, B6RestartRequiresRealFreshFiniteSnapAnchor) {
+  avg_msgs::msg::AvgPoseStamped site;
+  site.header.frame_id = "map";
+  site.pose.position.x = 13.9518;
+  site.pose.position.y = 4.47866;
+  site.pose.orientation.w = 1.0;
+  std::optional<avg_msgs::msg::AvgPoseStamped> missing;
+  EXPECT_FALSE(campsiteAdoptAnchorIsFreshFinite(missing, site, 0.0, 1.0));
+
+  avg_msgs::msg::AvgPoseStamped snap;
+  snap.header.frame_id = "map";
+  snap.pose.position.x = 16.786389776;
+  snap.pose.position.y = 5.715787406;
+  const double snap_yaw = degrees(-66.421645);
+  snap.pose.orientation.z = std::sin(snap_yaw * 0.5);
+  snap.pose.orientation.w = std::cos(snap_yaw * 0.5);
+  EXPECT_TRUE(campsiteAdoptAnchorIsFreshFinite(snap, site, 0.1, 1.0));
+  const auto relative = relativeXyAtHeading(snap, site, yawFromPose(snap));
+  EXPECT_NEAR(relative.first, 0.0, 0.01);
+  EXPECT_NEAR(relative.second, -3.092795, 0.02);
+
+  avg_msgs::msg::AvgPoseStamped adjacent_b5_snap = snap;
+  adjacent_b5_snap.pose.position.x = 17.382903354;
+  adjacent_b5_snap.pose.position.y = 4.336168303;
+  const double b5_yaw = degrees(-66.896141);
+  adjacent_b5_snap.pose.orientation.z = std::sin(b5_yaw * 0.5);
+  adjacent_b5_snap.pose.orientation.w = std::cos(b5_yaw * 0.5);
+  EXPECT_FALSE(campsiteAdoptAnchorsCorrelated(
+      snap, adjacent_b5_snap, 0.90));
+  EXPECT_TRUE(campsiteAdoptAnchorsCorrelated(snap, snap, 0.90));
+
+  EXPECT_FALSE(campsiteAdoptAnchorIsFreshFinite(snap, site, 1.1, 1.0));
+  snap.pose.orientation.x = 0.0;
+  snap.pose.orientation.y = 0.0;
+  snap.pose.orientation.z = 0.0;
+  snap.pose.orientation.w = 0.0;
+  EXPECT_FALSE(campsiteAdoptAnchorIsFreshFinite(snap, site, 0.1, 1.0));
+}
+
+TEST(MotionGeometry, AutomaticCrabEntryAlignmentHasBoundedTimeoutOnly) {
+  EXPECT_FALSE(automaticCrabEntryAlignmentTimedOut(true, 14.99, 15.0));
+  EXPECT_TRUE(automaticCrabEntryAlignmentTimedOut(true, 15.01, 15.0));
+  // The existing reverse-entry alignment policy is intentionally unchanged.
+  EXPECT_FALSE(automaticCrabEntryAlignmentTimedOut(false, 100.0, 15.0));
+  EXPECT_TRUE(automaticCrabEntryAlignmentTimedOut(
+      true, std::numeric_limits<double>::quiet_NaN(), 15.0));
+}
+
+TEST(MotionGeometry,
+     CampsiteReturnLatchesLateralSettleLongitudinalWithoutModeChatter) {
+  CampsiteCrabReturnSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(10.0);
+
+  const auto lateral = sequencer.update(0.40, 0.50, 10.0, 0.50, 4.0);
+  EXPECT_EQ(lateral.stage, CampsiteCrabReturnStage::kLateral);
+  EXPECT_DOUBLE_EQ(lateral.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(lateral.linear_y_mps, 0.50);
+
+  const auto settle = sequencer.update(0.40, 0.019, 11.0, 0.50, 4.0);
+  EXPECT_EQ(settle.stage, CampsiteCrabReturnStage::kSteeringSettle);
+  EXPECT_TRUE(settle.stage_changed);
+  EXPECT_DOUBLE_EQ(settle.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(settle.linear_y_mps, 0.0);
+
+  // Jitter above the 2 cm transition threshold remains inside the 12 cm
+  // latched envelope and cannot request parallel steering again.
+  const auto jitter = sequencer.update(0.40, 0.08, 11.8, 0.50, 4.0);
+  EXPECT_EQ(jitter.stage, CampsiteCrabReturnStage::kSteeringSettle);
+  EXPECT_FALSE(jitter.stage_changed);
+  EXPECT_DOUBLE_EQ(jitter.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(jitter.linear_y_mps, 0.0);
+
+  const auto longitudinal =
+      sequencer.update(0.40, 0.018, 12.2, 0.50, 4.0);
+  EXPECT_EQ(longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_TRUE(longitudinal.stage_changed);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.50);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_y_mps, 0.0);
+
+  const auto still_longitudinal =
+      sequencer.update(-0.10, -0.08, 12.3, 0.50, 4.0);
+  EXPECT_EQ(still_longitudinal.stage,
+            CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(still_longitudinal.linear_x_mps, -0.40);
+  EXPECT_DOUBLE_EQ(still_longitudinal.linear_y_mps, 0.0);
+
+  // A real displacement beyond the hysteresis stops instead of initiating an
+  // unbounded longitudinal/parallel steering oscillation.
+  const auto latch_fault =
+      sequencer.update(0.10, 0.121, 12.4, 0.50, 4.0);
+  EXPECT_TRUE(latch_fault.lateral_latch_exceeded);
+  EXPECT_EQ(latch_fault.stage, CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(latch_fault.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(latch_fault.linear_y_mps, 0.0);
+}
+
+TEST(MotionGeometry, CampsiteReturnCannotCompleteBeforeSteeringSettles) {
+  constexpr double radial_error_m = 0.03;
+  constexpr double tolerance_m = 0.04;
+  EXPECT_FALSE(campsiteCrabReturnMayComplete(
+      CampsiteCrabReturnStage::kLateral, radial_error_m, tolerance_m));
+  EXPECT_FALSE(campsiteCrabReturnMayComplete(
+      CampsiteCrabReturnStage::kSteeringSettle, radial_error_m, tolerance_m));
+  EXPECT_TRUE(campsiteCrabReturnMayComplete(
+      CampsiteCrabReturnStage::kLongitudinal, radial_error_m, tolerance_m));
+  EXPECT_FALSE(campsiteCrabReturnMayComplete(
+      CampsiteCrabReturnStage::kLongitudinal,
+      std::numeric_limits<double>::quiet_NaN(), tolerance_m));
+}
+
+TEST(MotionGeometry, CampsiteReturnRejectsNonFiniteInputsWithoutAdvancingStage) {
+  CampsiteCrabReturnSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(0.0);
+
+  const auto invalid = sequencer.update(
+      std::numeric_limits<double>::quiet_NaN(), 0.30, 0.0, 0.50, 4.0);
+  EXPECT_TRUE(invalid.invalid_input);
+  EXPECT_EQ(invalid.stage, CampsiteCrabReturnStage::kLateral);
+  EXPECT_EQ(sequencer.stage(), CampsiteCrabReturnStage::kLateral);
+  EXPECT_DOUBLE_EQ(invalid.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(invalid.linear_y_mps, 0.0);
+
+  const auto invalid_time = sequencer.update(
+      0.10, 0.30, std::numeric_limits<double>::infinity(), 0.50, 4.0);
+  EXPECT_TRUE(invalid_time.invalid_input);
+  EXPECT_EQ(sequencer.stage(), CampsiteCrabReturnStage::kLateral);
+}
+
+TEST(MotionGeometry, CampsiteWheelSettleCoversDeployedNinetyDegreeTransition) {
+  constexpr double deployed_transition_rate_radps = 1.5;
+  constexpr double deployed_ready_error_rad = 0.05;
+  constexpr double controller_settle_s = 1.20;
+  const double worst_case_transition_s =
+      (M_PI_2 - deployed_ready_error_rad) / deployed_transition_rate_radps;
+
+  EXPECT_NEAR(worst_case_transition_s, 1.013864, 1.0e-6);
+  EXPECT_GE(controller_settle_s, worst_case_transition_s);
+}
+
+TEST(MotionGeometry,
+     RoadsideCrabExitCanReachFourCentimeterRadialToleranceAfterLatch) {
+  CampsiteCrabReturnSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(0.0);
+
+  // B11-B13 cap lateral travel and raw speed at 0.30 m and 0.20 m/s.
+  const auto lateral = sequencer.update(0.05, -0.30, 0.0, 0.20, 4.0);
+  EXPECT_DOUBLE_EQ(lateral.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(lateral.linear_y_mps, -0.20);
+  const auto settle = sequencer.update(0.05, -0.019, 2.0, 0.20, 4.0);
+  EXPECT_EQ(settle.stage, CampsiteCrabReturnStage::kSteeringSettle);
+  const auto longitudinal =
+      sequencer.update(0.05, -0.019, 3.2, 0.20, 4.0);
+  EXPECT_EQ(longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.20);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_y_mps, 0.0);
+
+  // Once longitudinal error reaches 3 cm, the latched 1.9 cm lateral residual
+  // is still inside the deployed 4 cm radial handoff tolerance.
+  EXPECT_LT(std::hypot(0.030, 0.019), 0.04);
+}
+
 avg_msgs::msg::AvgOccupancyGrid makeGrid(
     const std::vector<std::tuple<double, double, int>> &occupied_cells = {},
     const double resolution = 0.1, const double origin_yaw = 0.0) {

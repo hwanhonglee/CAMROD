@@ -376,6 +376,8 @@ accepted the next campsite without duplicating the destination or motion owner.
 | Publish | `/control/drop_zone_maneuver_controller/operation` | At-station yaw alignment before final parking |
 | Publish | `/parking/operation` | Selected reverse/AprilTag parking start or cancel |
 | Subscribe | `/service/state` | Public lifecycle |
+| Subscribe | `/planning/goal_pose_snapped_ros` | Timestamp-correlated route anchor for same-site roadside adoption |
+| Subscribe | `/planning/lanelet_pose` | Fresh lanelet agreement guard for B11-B13 operational stops |
 | Subscribe | `/control/cmd_vel_safety_gate/status` | Motion/safety overlay |
 | Subscribe | `/platform/status` | SOC, charging, and platform state |
 | Subscribe | `/system/diagnostics_agg` | Detailed health display |
@@ -419,6 +421,15 @@ cannot bypass this service-owned handoff. With a true charging contact it report
 `already_charging` and publishes no motion. If the public state still says
 `CHARGING` after CAN contact is lost, it restarts parking alignment instead of
 creating a redundant Nav2 loop.
+
+B11-B13 re-selection uses a separate fail-closed arrival contract. The backend
+correlates the UI raw-goal timestamp with its real snapped route goal, requires
+a fresh `/planning/lanelet_pose` that still agrees with that mission anchor,
+and recognizes only the signed `0.30 m` roadside target within `0.60 m`
+longitudinal and `0.15 m` lateral error. It never enlarges the generic `2.5 m`
+site-center radius or falls back to the live vehicle pose. A match publishes
+the normal campsite `adopt` request; the Return button then makes the
+controller crab back to that cached lanelet snap before route planning resumes.
 
 ## Measured amd64 Renderer A/B
 

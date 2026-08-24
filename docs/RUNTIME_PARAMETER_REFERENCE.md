@@ -4,6 +4,8 @@
 parking, sensing, localization, feature toggles, and synchronized mirrors. -->
 <!-- HH_260819 - Add source-aware roadside Return, serialized operator
 preemption, and event-driven telemetry scheduling values. -->
+<!-- HH_260824 - Set the active AprilTag translation stop to the same 0.40 m
+camera-frame range requested by the operator and document trigger provenance. -->
 
 This guide lists the parameters normally changed for vehicle behavior. It does
 not duplicate every ROS topic string or diagnostic checker threshold in the
@@ -103,10 +105,15 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 |---|---:|---|
 | `site_entry_mode` | `crab` | B1-B10 use lateral entry |
 | `use_goal_pair_for_lateral_offset` | `true` | Computes site offset from snap/site map coordinates |
-| `site_rotate_direction_policy` | `entry_crab_side` | Turn direction follows the live body-frame crab side, including reversed restart heading |
-| `site_pose_reached_distance_m` | `0.60 m` | Reboot near site restores `WAIT_RETURN` instead of entering again |
+| `site_rotate_direction_policy` | `entry_crab_side` | Turn direction follows the signed snap-frame crab side; restart/adopt retains live-yaw fallback |
+| `site_pose_reached_distance_m` | `0.60 m` | B1-B10 reboot near the authored target restores `WAIT_RETURN` |
+| `route_goal_reached_distance_m` | `0.60 m` | Bounds axial handoff and B11-B13 operational-target adoption independently of lateral tolerance |
+| `entry_yaw_alignment_timeout_s` | `15.0 s` | Automatic crab entry fails closed if lanelet-snap yaw alignment does not finish |
 | `entry_position_tolerance_m` | `0.15 m` | Completes crab-in position |
 | `return_position_tolerance_m` | `0.04 m` | Required distance to the shared lanelet snap anchor on crab-out |
+| `return_lateral_transition_tolerance_m` | `0.02 m` | Latches lateral correction complete before steering settle |
+| `return_lateral_hysteresis_m` | `0.10 m` | Fails closed if lateral error escapes the latched band; never switches back to crab |
+| `return_steering_settle_s` | `1.20 s` | Zero-command hold for the deployed `+/-90 -> 0 deg` steering transition |
 | `crab_return_timeout_s` | `90 s` | Time available for exit plus repeated boundary recovery |
 | `rotate_yaw_tolerance_deg` | `4 deg` | 180-degree target tolerance |
 | `rotate_settle_hold_s` | `0.8 s` | Continuous settled-yaw proof before translation |
@@ -116,6 +123,14 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `roadside_max_lateral_offset_m` | `0.30 m` | B11-B13 roadside-only cap |
 
 Entry and exit now use the same `/planning/goal_pose_snapped` map anchor.
+Normal automatic B1-B13 entry must align to and project from its lanelet-snap
+yaw. Restart/adopt and manual recovery intentionally use the fresh live-yaw
+fallback because the robot may already hold the post-turn heading. Adoption
+still requires a fresh finite lanelet anchor, or a route goal correlated to
+that anchor; it never promotes the current pose into a completed return anchor.
+B11-B13 match their signed `0.30 m` requested target using the existing
+`0.15 m` lateral completion and `0.60 m` axial handoff bounds, not the distant
+raw semantic site center or the global B1-B10 center radius.
 `CRAB_IN` and `CRAB_OUT` publish `/control/camping_site_maneuver_controller/path_ros`.
 B1-B10 may retrace the reverse shortest Return after their on-site turn.
 B11-B13 publish a `roadside_forward` source only after `CRAB_OUT -> DONE`, so
@@ -162,10 +177,10 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 
 | Parameter | Reverse | AprilTag docking |
 |---|---:|---:|
-| Slowdown window | `0.30 m` remaining | UI camera range `0.80 -> 0.60 m` |
+| Slowdown window | `0.30 m` remaining | UI camera range `0.80 -> 0.40 m` |
 | Cruise raw speed | `0.444444 m/s` | `0.555556 m/s` |
 | Final raw speed | `0.138889 m/s` | `0.138889 m/s` |
-| Translation stop | station axis | `translation_stop_tag_distance_m: 0.60 m` |
+| Translation stop | station axis | `translation_stop_tag_distance_m: 0.40 m` |
 | Approach steering | heading/lateral correction | combined reverse + steering, minimum radius `0.85 m` |
 | Final yaw | map/station policy | heading-only, raw maximum `0.20 rad/s` |
 | Yaw settling | controller-specific | `0.8 s`, maximum residual rate `3 deg/s` |
@@ -178,8 +193,10 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 forced to `reverse` because fake sensors do not publish a rear-camera tag.
 The AprilTag thresholds consume the unmodified camera pose 3D norm, exactly as
 the UI `Tag distance` does; deprecated robot-center longitudinal parameters stay
-loadable but no longer own motion. After the `0.60 m` crossing, tag loss cannot
-restart insertion or retry translation. Charging CAN feedback immediately publishes zero
+loadable but no longer own motion. After the `0.40 m` crossing, tag loss cannot
+restart insertion or retry translation. Controller status preserves the active
+`configured_stop_tag_m`, `stop_reason`, and exact `stop_trigger_tag_m` sample.
+Charging CAN feedback immediately publishes zero
 in any active final-parking phase, then the internal phase becomes
 `PARKED` and public state is `CHARGING`. Radar-backed dynamic rotation protection
 remains active during `FINAL_YAW_ALIGNMENT`.
