@@ -138,9 +138,13 @@ the process. Every emitted `AudioRequest` is logged at INFO; the announcer's
 
 ## Build And Run
 
+<!-- HH_260825 - Route package builds through the workspace wrapper so the
+source checkout never accumulates local build/install/log directories. -->
+
 ```bash
+cd ~/camrod_ws/src
+./colcon_build.sh --packages-select camrod_voice
 cd ~/camrod_ws
-colcon build --packages-select camrod_voice --symlink-install
 source install/setup.bash
 
 ros2 launch camrod_voice voice.launch.py

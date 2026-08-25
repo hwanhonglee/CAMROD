@@ -13,6 +13,8 @@ the B1-B10 turnaround / B11-B13 roadside service policy. -->
 manual goal-snapper and RotationShim contract. -->
 <!-- HH_260819 - Document source-aware reverse-shortest versus roadside
 forward Return selection and current B1-B13 simulation evidence. -->
+<!-- HH_260825 - Accept campsite Return from the current live lane position and
+keep both Nav2 selector behavior trees on reachable LaneletRoute/RPP defaults. -->
 
 Nav2 lifecycle servers, Lanelet routing, goal snapping, local paths, fallback
 planners/controllers, and semantic mission state.
@@ -273,10 +275,19 @@ check; physical 5 Hz moving-base GNSS and 20 Hz Jetson localization remain pendi
 
 Explicit Return is source-aware. B1-B10 may use the reversed outbound shortest
 path after their on-site 180-degree turnaround. B11-B13 publish
-`done_roadside_forward` only after `CRAB_OUT -> DONE`; LaneletRoute then keeps
+`done_roadside_forward_live_lanelet` only after `CRAB_OUT -> DONE`; LaneletRoute then keeps
 one-way direction and takes the forward loop, avoiding a zero-turn in the
 narrow roadside lane. Focused planner tests lock ordinary one-way, explicit
 reverse-shortest, and roadside-forward requests as three separate cases.
+
+For B1-B10, `done_live_lanelet` authorizes the same reverse-shortest policy but
+the planner start is the current projected vehicle pose, not the historical
+campsite entry anchor. The v2.2.1 B8 run generated a valid Return while the old
+anchor was still `0.231 m` away. A planner regression starts 20 outbound path
+samples before the old endpoint and verifies that the returned path begins
+within `0.5 m` of that live start.
+
+![v2.2.1 live lanelet Return start](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
 
 ![Persistent-obstacle no-path result](../docs/assets/module-guides/bringup/test-results/v2-1-5-service-validation-20260807/obstacle-safe-hold.png)
 

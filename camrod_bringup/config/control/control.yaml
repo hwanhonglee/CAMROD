@@ -81,6 +81,13 @@
     return_lateral_transition_tolerance_m: 0.02
     return_lateral_hysteresis_m: 0.10
     return_steering_settle_s: 1.20
+    # HH_260825 - Complete a normal site exit at the live centerline projection,
+    # regardless of longitudinal offset from the historical entry snap. Hold
+    # zero for steering settlement before LaneletRoute plans from the current XY.
+    # If the live projection is stale, the exact-anchor sequence remains fallback.
+    enable_live_lanelet_return_handoff: true
+    return_lanelet_handoff_distance_m: 0.15
+    return_lanelet_handoff_hold_s: 1.20
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0
     # HH_260818 - CRAB_OUT shares time with bounded lane-boundary recovery.

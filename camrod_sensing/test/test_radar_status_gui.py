@@ -27,16 +27,16 @@ def test_sample_classification_preserves_real_no_target_contract():
     assert classify(0.01, 0.02, 0.8, 0.1, 1.0) == "invalid"
     front1_body = ((0.020, 0.120), (0.120, 0.220))
     assert (
-        classify(0.220, 0.02, 0.5, 0.1, 1.0, front1_body, 0.320)
+        classify(0.220, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
         == "filtered"
     )
     assert (
-        classify(0.221, 0.02, 0.5, 0.1, 1.0, front1_body, 0.320)
+        classify(0.221, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
         == "hit"
     )
-    assert classify(0.320, 0.02, 0.5, 0.1, 1.0, front1_body, 0.320) == "hit"
+    assert classify(0.520, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520) == "hit"
     assert (
-        classify(0.321, 0.02, 0.5, 0.1, 1.0, front1_body, 0.320)
+        classify(0.521, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
         == "outside_stop"
     )
 
@@ -102,14 +102,17 @@ def test_active_yaml_supplies_seven_physical_standard_range_topics():
     specs = RADAR_GUI.load_channel_specs(str(config_path), "/sensing/radar")
 
     assert tuple(spec.name for spec in specs) == RADAR_GUI.SENSOR_ORDER
-    assert all(spec.configured_enabled for spec in specs)
+    assert all(spec.configured_enabled for spec in specs[:6])
+    assert not specs[6].configured_enabled
     assert specs[0].topic == "/sensing/radar/front1/range_ros"
     assert specs[3].port == "/dev/ttyCH9344USB5"
     assert specs[5].port == "/dev/ttyCH9344USB3"
-    assert all(spec.configured_max_m == pytest.approx(0.50) for spec in specs)
+    assert tuple(spec.configured_max_m for spec in specs) == pytest.approx(
+        (0.55, 0.55, 0.50, 0.50, 0.50, 0.50, 0.50)
+    )
 
 
-def test_live_cost_profile_uses_body_edge_plus_ten_centimeter_stop_windows():
+def test_live_cost_profile_uses_front_thirty_and_other_ten_centimeter_windows():
     config_path = (
         Path(__file__).resolve().parents[1]
         / "config"
@@ -123,8 +126,8 @@ def test_live_cost_profile_uses_body_edge_plus_ten_centimeter_stop_windows():
     assert bands["FRONT2"] == ((0.020, 0.117),)
     assert bands["REAR"] == ((0.020, 0.106),)
     assert tuple(stop_max[name] for name in RADAR_GUI.SENSOR_ORDER) == pytest.approx(
-        (0.320, 0.217, 0.100, 0.100, 0.100, 0.100, 0.206)
+        (0.520, 0.417, 0.100, 0.100, 0.100, 0.100, 0.206)
     )
-    assert stop_max["FRONT1"] - bands["FRONT1"][-1][1] == pytest.approx(0.10)
-    assert stop_max["FRONT2"] - bands["FRONT2"][-1][1] == pytest.approx(0.10)
+    assert stop_max["FRONT1"] - bands["FRONT1"][-1][1] == pytest.approx(0.30)
+    assert stop_max["FRONT2"] - bands["FRONT2"][-1][1] == pytest.approx(0.30)
     assert stop_max["REAR"] - bands["REAR"][-1][1] == pytest.approx(0.10)

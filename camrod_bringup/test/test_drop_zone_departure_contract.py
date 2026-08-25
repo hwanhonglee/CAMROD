@@ -9,8 +9,12 @@ SRC_ROOT = Path(__file__).resolve().parents[2]
 CONTROL = SRC_ROOT / "camrod_control"
 BRINGUP = SRC_ROOT / "camrod_bringup"
 UI_NODE = SRC_ROOT / "camrod_ui/runtime/python/camrod_ui/ui_backend_node.py"
+UI_LAUNCH = SRC_ROOT / "camrod_ui/camrod_ui_robot/launch/ui.launch.py"
+BRINGUP_IMPL = BRINGUP / "launch/_bringup_impl.py"
+LAUNCH_DEFAULTS = BRINGUP / "config/bringup/launch_defaults.yaml"
 DROP_ZONE_NODE = CONTROL / "src/drop_zone_maneuver_controller_node.cpp"
 GATE_NODE = CONTROL / "src/cmd_vel_safety_gate_node.cpp"
+SIM_VALIDATION_RUNNER = BRINGUP / "scripts/sim_validation_runner.py"
 
 
 def _parameters(path: Path, node: str = "/**") -> dict:
@@ -92,8 +96,17 @@ def test_ui_never_releases_campsite_before_exit_complete() -> None:
         "DEPARTING_DROP_ZONE",
     ):
         assert f"AvgServiceState.{state}" in departure
-    assert "resumed_active_departure" in departure
-    assert "if not resumed_active_departure:" in departure
+    # HH_260825 - Destination admission now owns only the optional charging
+    # dwell. The shared departure helper owns restart idempotency so delayed and
+    # immediate departures cannot diverge or publish EXIT twice.
+    begin_departure = ui.split("def _begin_drop_zone_departure", 1)[1].split(
+        "def _mark_drop_zone_exit_failed", 1
+    )[0]
+    assert "resumed_active_departure" in begin_departure
+    assert "if not resumed_active_departure:" in begin_departure
+    assert begin_departure.count("MotionOperation.EXIT") == 1
+    assert "_schedule_charging_departure_transition" in departure
+    assert "_begin_drop_zone_departure" in departure
     assert "_publish_site_mission_key" not in departure
     assert "_publish_site_goal_pose" not in departure
 
@@ -110,6 +123,42 @@ def test_ui_never_releases_campsite_before_exit_complete() -> None:
     assert "service_heartbeat_qos = QoSProfile" in ui
     assert "durability=DurabilityPolicy.VOLATILE" in ui
     assert "if not state_changed:" in ui
+
+
+def test_charging_departure_dwell_is_forwarded_from_one_deployment_default() -> None:
+    """The field default reaches the sole UI service-state owner unchanged."""
+    defaults = yaml.safe_load(LAUNCH_DEFAULTS.read_text(encoding="utf-8"))
+    delay_s = defaults["bringup"]["system"][
+        "api_ui_charging_departure_delay_s"
+    ]
+    assert delay_s == 7.0
+    assert 5.0 <= delay_s <= 10.0
+
+    # HH_260825 - Lock all three launch boundaries so a config rename cannot
+    # silently bypass the stopped dwell on the ARM64 deployment.
+    bringup = BRINGUP_IMPL.read_text(encoding="utf-8")
+    assert "system/api_ui_charging_departure_delay_s" in bringup
+    assert "'charging_departure_delay_s': lc[" in bringup
+    ui_launch = UI_LAUNCH.read_text(encoding="utf-8")
+    assert "DeclareLaunchArgument(\n        'charging_departure_delay_s'" in ui_launch
+    assert "'charging_departure_delay_s': ParameterValue(" in ui_launch
+
+
+def test_charging_recall_validation_uses_public_service_states() -> None:
+    """Smoke tests must not depend on presentation-specific gate text."""
+    runner = SIM_VALIDATION_RUNNER.read_text(encoding="utf-8")
+    recall_start = runner.split(
+        "# HH_260825 - Recall only after PARKED", 1
+    )[1].split("if charging_recall_requested:", 1)[0]
+    assert "and seen_service_charging" in recall_start
+    assert "and seen_gate_charging_state" not in recall_start
+
+    recall_result = runner.split("charging_recall_ok = (", 1)[1].split(
+        "low_battery_finish_return_ok", 1
+    )[0]
+    assert "and seen_service_charging" in recall_result
+    assert "and seen_gate_charging_state" not in recall_result
+    assert 'or service_state_name == "DEPARTING_CHARGER"' in runner
 
 
 def test_drop_zone_heartbeat_and_pose_provenance_survive_restart() -> None:

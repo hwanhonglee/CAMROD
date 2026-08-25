@@ -5,6 +5,8 @@ boundaries while keeping hardware measurements field-pending. -->
 <!-- HH_260807 - Bind optional LiDAR TF subscriptions to the scoped container context. -->
 <!-- HH_260818 - Reassign the legacy LiDAR grid topic to classified camera-LiDAR
 points and document the measured front-radar acceptance windows separately. -->
+<!-- HH_260825 - Extend only FRONT1/FRONT2 to a 0.30 m usable near-field stop
+window while retaining route/path clipping and side/rear 0.10 m policy. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -128,12 +130,21 @@ accuracy.
 | Active channels | FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2; REAR is quarantined |
 | Serial | CH9344 USB ports, `115200` baud |
 | Hardware beam | angle level `4` on all channels (widest; approximately 65 deg horizontal / 80 deg vertical) |
-| Hardware range level | all channels level 1 (approximately `0.50 m`) |
-| Software observation maximum | all channels `0.50 m` (full level-1 window) |
-| Radar stop windows | FRONT1 `(0.220, 0.320] m`, FRONT2 `(0.117, 0.217] m`, REAR `(0.106, 0.206] m`; each front window is 0.10 m after its measured body-return edge |
+| Hardware range level | FRONT1/FRONT2 level 2; remaining channels level 1 |
+| Software observation maximum | front `0.55 m`; remaining channels `0.50 m` |
+| Radar stop windows | FRONT1 `(0.220, 0.520] m`, FRONT2 `(0.117, 0.417] m`; side/rear retain 0.10 m usable windows |
+| Front spatial gate | active lanelet mask plus the `1.27 m` local-path corridor in `cmd_vel_safety_gate` |
 | Automatic startup learning | disabled in field-driving profile |
 | Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
 | Cost message maximum age | `0.35 s` |
+
+![v2.2.1 front radar range and cost result](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
+
+The measured integration probe published a fresh FRONT1 `AvgRange` at
+`0.300 m` and `20 Hz`. The radar grid reported active FRONT1 evidence at cost
+`95`; while the robot was outside the active route corridor, the configured
+fail-open behavior retained that obstacle rather than suppressing it. This
+proves the software path, not physical SEN0592 multipath or stopping distance.
 
 The side harness order is explicitly configured; do not infer left/right from
 USB index. A supervised calibration requires a clear, stationary, disengaged

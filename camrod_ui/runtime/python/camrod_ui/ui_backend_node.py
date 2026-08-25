@@ -737,6 +737,21 @@ class UiBackendNode(Node):
                 ),
             ),
         )
+        # HH_260825 - A campsite selection made while physically charging is
+        # accepted immediately but motion remains disabled for this one-shot
+        # dwell.  The timer is created only for a pending departure, avoiding a
+        # permanent polling callback on the constrained ARM64 deployment.
+        self.charging_departure_delay_s = max(
+            0.0,
+            min(
+                30.0,
+                float(
+                    self.declare_parameter(
+                        "charging_departure_delay_s", 7.0
+                    ).value
+                ),
+            ),
+        )
         self.drop_zone_exit_complete_topic = str(
             self.declare_parameter(
                 "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
@@ -1102,6 +1117,12 @@ class UiBackendNode(Node):
         self._drop_zone_exit_failure_latched = False
         self._drop_zone_exit_waiting_for_fresh_status = False
         self._drop_zone_exit_cancel_suppressed = False
+        # HH_260825 - Serialize the one-shot charger departure timer against
+        # operator Stop without re-entering the general UI state lock.
+        self._charging_departure_transition_lock = threading.Lock()
+        self._charging_departure_delay_pending = False
+        self._charging_departure_transition_timer: Optional[Any] = None
+        self._charging_departure_from_charger = False
         # HJ_260804 - Destination state may be cleared by a departure ack
         # before campsite arrival. Preserve the active mission site so the
         # Robot and Guest UIs still receive the matching arrival notification.
@@ -1434,6 +1455,7 @@ class UiBackendNode(Node):
         # HH_260805 - Stop the HTTP event loop before ROS destroys callbacks and
         # publishers that in-flight FastAPI/WebSocket handlers may still access.
         self._cancel_pending_manual_return_transition("node_shutdown")
+        self._cancel_pending_charging_departure_transition("node_shutdown")
         self._stop_fastapi_server()
         service_metrics = getattr(self, "_service_metrics", None)
         if service_metrics is not None:
@@ -3405,6 +3427,168 @@ class UiBackendNode(Node):
             UiBackendNode._record_telemetry_pose(self, msg)
 
     # HH_260721 - Release the pending Nav2 site goal only after vertical exit and yaw alignment.
+    def _charging_departure_delay_required(self) -> bool:
+        delay_s = float(getattr(self, "charging_departure_delay_s", 0.0))
+        if delay_s <= 0.0:
+            return False
+        state = getattr(self, "_latest_service_state", None)
+        if state in {
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        }:
+            return False
+        return bool(getattr(self, "_latest_platform_is_charging", False)) or state in {
+            int(AvgServiceState.CHARGING),
+            int(AvgServiceState.WAITING_FOR_CHARGING),
+        }
+
+    def _hold_charging_departure_motion(self, source: str) -> None:
+        # HH_260825 - Close manual, mission, and platform gates independently.
+        # This prevents a stale manual latch from defeating the visible dwell.
+        if getattr(self, "publish_mission_engage_from_destination", False):
+            self._publish_mission_engage(
+                False, source=f"{source}:charging_departure_delay"
+            )
+        self._publish_engage(
+            False,
+            source=f"{source}:charging_departure_delay",
+            sync_drive_enable=False,
+        )
+        self._publish_platform_drive_enable(
+            False, source=f"{source}:charging_departure_delay"
+        )
+
+    def _schedule_charging_departure_transition(self, source: str) -> bool:
+        delay_s = float(getattr(self, "charging_departure_delay_s", 0.0))
+        if delay_s <= 0.0:
+            return UiBackendNode._begin_drop_zone_departure(self, source)
+        lock = getattr(self, "_charging_departure_transition_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._charging_departure_transition_lock = lock
+        with lock:
+            if getattr(self, "_charging_departure_delay_pending", False):
+                return True
+            self._charging_departure_delay_pending = True
+            self._charging_departure_transition_timer = self.create_timer(
+                delay_s,
+                lambda: UiBackendNode._complete_charging_departure_transition(self),
+            )
+        UiBackendNode._hold_charging_departure_motion(self, source)
+        self._schedule_broadcast(
+            {
+                "departure_delay_active": True,
+                "departure_delay_seconds": delay_s,
+                "message": f"Charging departure starts after {delay_s:.1f} s safety dwell",
+            }
+        )
+        self.get_logger().info(
+            "charging departure safety dwell started: "
+            f"delay={delay_s:.1f}s source={source}"
+        )
+        return True
+
+    def _complete_charging_departure_transition(self) -> None:
+        lock = getattr(self, "_charging_departure_transition_lock", None)
+        if lock is None:
+            return
+        with lock:
+            if not getattr(self, "_charging_departure_delay_pending", False):
+                return
+            timer = getattr(self, "_charging_departure_transition_timer", None)
+            self._charging_departure_delay_pending = False
+            self._charging_departure_transition_timer = None
+        if timer is not None:
+            timer.cancel()
+            self.destroy_timer(timer)
+        pending = getattr(self, "_pending_site_after_drop_zone_exit", None)
+        if pending is None:
+            return
+        UiBackendNode._begin_drop_zone_departure(self, pending[2])
+
+    def _cancel_pending_charging_departure_transition(self, reason: str) -> None:
+        lock = getattr(self, "_charging_departure_transition_lock", None)
+        if lock is None:
+            self._charging_departure_delay_pending = False
+            self._charging_departure_transition_timer = None
+            self._charging_departure_from_charger = False
+            return
+        with lock:
+            timer = getattr(self, "_charging_departure_transition_timer", None)
+            was_pending = bool(
+                getattr(self, "_charging_departure_delay_pending", False)
+            )
+            self._charging_departure_delay_pending = False
+            self._charging_departure_transition_timer = None
+            self._charging_departure_from_charger = False
+        if timer is not None:
+            timer.cancel()
+            self.destroy_timer(timer)
+        if was_pending:
+            self.get_logger().info(
+                f"pending charging departure cancelled: reason={reason}"
+            )
+
+    def _begin_drop_zone_departure(self, source: str) -> bool:
+        pending = getattr(self, "_pending_site_after_drop_zone_exit", None)
+        if pending is None:
+            return False
+        if getattr(self, "_drop_zone_exit_active", False):
+            return True
+
+        self._drop_zone_exit_active = True
+        self._drop_zone_exit_handoff_ready = False
+        self._drop_zone_exit_failure_latched = False
+        self._drop_zone_exit_cancel_suppressed = False
+        state = getattr(self, "_latest_service_state", None)
+        resumed_active_departure = state in {
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        }
+        if state == int(AvgServiceState.DROP_ZONE_PARKING):
+            self._publish_drop_zone_operation(
+                MotionOperation.CANCEL,
+                source=f"{source}:site_departure_preempt_alignment",
+            )
+        if not resumed_active_departure:
+            self._publish_parking_operation(
+                MotionOperation.CANCEL, source=f"{source}:site_departure"
+            )
+            self._drop_zone_exit_waiting_for_fresh_status = True
+
+        # HH_260825 - Open authorization only after the dwell has expired, then
+        # start the departure owner. Dynamic radar/fusion cost checks stay active
+        # in EXIT_STRAIGHT and ALIGN_EXIT_YAW; only static lanelet cost is bypassed.
+        if getattr(self, "publish_engage_from_destination", False):
+            self._publish_engage(True, source=f"{source}:site_departure")
+        if getattr(self, "publish_mission_engage_from_destination", False):
+            self._publish_mission_engage(
+                True, source=f"{source}:site_departure"
+            )
+        if not resumed_active_departure:
+            self._publish_drop_zone_operation(
+                MotionOperation.EXIT, source=f"{source}:site_departure"
+            )
+        departure_state = (
+            AvgServiceState.DEPARTING_CHARGER
+            if bool(getattr(self, "_charging_departure_from_charger", False))
+            or bool(getattr(self, "_latest_platform_is_charging", False))
+            else AvgServiceState.DEPARTING_DROP_ZONE
+        )
+        self._schedule_broadcast(
+            {
+                "departure_delay_active": False,
+                "departure_delay_seconds": 0.0,
+            }
+        )
+        self._publish_service_state(
+            departure_state, source=f"{source}:drop_zone_departure"
+        )
+        self.get_logger().info(
+            f"drop-zone departure released after safety dwell: source={source}"
+        )
+        return True
+
     def _mark_drop_zone_exit_failed(self, source: str) -> None:
         safe_state = (
             AvgServiceState.CHARGING
@@ -3418,6 +3602,7 @@ class UiBackendNode(Node):
         self._drop_zone_exit_failure_latched = True
         self._drop_zone_exit_active = False
         self._drop_zone_exit_handoff_ready = False
+        self._charging_departure_from_charger = False
         if already_safe:
             return
         if getattr(self, "publish_mission_engage_from_destination", False):
@@ -3548,6 +3733,7 @@ class UiBackendNode(Node):
         self._drop_zone_exit_active = False
         self._pending_site_after_drop_zone_exit = None
         self._drop_zone_exit_handoff_ready = True
+        self._charging_departure_from_charger = False
         if pending is None:
             return
         site, mission_key, source = pending
@@ -4174,6 +4360,7 @@ class UiBackendNode(Node):
     def _stop_active_service(self, source: str) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
         self._cancel_pending_manual_return_transition(source)
+        UiBackendNode._cancel_pending_charging_departure_transition(self, source)
         departure_states = {
             int(AvgServiceState.DEPARTING_CHARGER),
             int(AvgServiceState.DEPARTING_DROP_ZONE),
@@ -4188,6 +4375,7 @@ class UiBackendNode(Node):
         self._drop_zone_exit_waiting_for_fresh_status = False
         self._drop_zone_exit_failure_latched = False
         self._drop_zone_exit_cancel_suppressed = departure_was_active
+        self._charging_departure_from_charger = False
         if departure_was_active:
             self._drop_zone_exit_handoff_ready = False
         self._cancel_active_motion(source=source)
@@ -4391,7 +4579,10 @@ class UiBackendNode(Node):
 
         pending_departure = getattr(self, "_pending_site_after_drop_zone_exit", None)
         if (
-            getattr(self, "_drop_zone_exit_active", False)
+            (
+                getattr(self, "_drop_zone_exit_active", False)
+                or getattr(self, "_charging_departure_delay_pending", False)
+            )
             and pending_departure is not None
             and pending_departure[0] == site
         ):
@@ -4504,11 +4695,6 @@ class UiBackendNode(Node):
         self._update_runtime_state(
             lambda: self._runtime_policy.update_goal_received("regulated")
         )
-        if self.publish_engage_from_destination:
-            self._publish_engage(True, source=f"{source}:destination")
-        if self.publish_mission_engage_from_destination:
-            self._publish_mission_engage(True, source=f"{source}:destination")
-
         # HH_260721 - A parked/charging robot must leave the station before Nav2 gets a site goal.
         departure_required = (
             getattr(self, "_drop_zone_exit_cancel_suppressed", False)
@@ -4535,47 +4721,33 @@ class UiBackendNode(Node):
             self._drop_zone_exit_handoff_ready = False
             self._drop_zone_exit_failure_latched = False
             self._drop_zone_exit_cancel_suppressed = False
-            if not self._drop_zone_exit_active:
-                self._drop_zone_exit_active = True
-                resumed_active_departure = self._latest_service_state in {
-                    int(AvgServiceState.DEPARTING_CHARGER),
-                    int(AvgServiceState.DEPARTING_DROP_ZONE),
-                }
-                if self._latest_service_state == int(AvgServiceState.DROP_ZONE_PARKING):
-                    # HH_260819 - DROP_ZONE_PARKING can still be owned by the
-                    # drop-zone yaw aligner. Preempt that owner on the same
-                    # reliable operation stream before requesting EXIT.
-                    self._publish_drop_zone_operation(
-                        MotionOperation.CANCEL,
-                        source=f"{source}:site_departure_preempt_alignment",
-                    )
-                if not resumed_active_departure:
-                    # HH_260721 - Transfer motion ownership from final parking to station departure.
-                    self._publish_parking_operation(
-                        MotionOperation.CANCEL, source=f"{source}:site_departure"
-                    )
-                    self._drop_zone_exit_waiting_for_fresh_status = True
-                    self._publish_drop_zone_operation(
-                        MotionOperation.EXIT, source=f"{source}:site_departure"
-                    )
-            # HH_260721 - Show physical departure before the Nav2 site route is released.
-            departure_state = (
-                AvgServiceState.DEPARTING_CHARGER
-                if self._latest_platform_is_charging
-                else AvgServiceState.DEPARTING_DROP_ZONE
+            charging_delay_required = (
+                UiBackendNode._charging_departure_delay_required(self)
             )
-            self._publish_service_state(
-                departure_state,
-                source=f"{source}:drop_zone_departure",
-            )
+            self._charging_departure_from_charger = charging_delay_required
+            if charging_delay_required:
+                UiBackendNode._schedule_charging_departure_transition(
+                    self, source
+                )
+            else:
+                UiBackendNode._begin_drop_zone_departure(self, source)
             return {
                 "site": site,
                 "run": True,
                 "mission_key": mission_key,
                 "goal_pose_published": False,
-                "message": "site goal pending drop-zone straight exit and yaw alignment",
+                "message": (
+                    f"site goal pending {self.charging_departure_delay_s:.1f} s "
+                    "charging safety dwell, then drop-zone exit"
+                    if charging_delay_required
+                    else "site goal pending drop-zone straight exit and yaw alignment"
+                ),
             }
 
+        if self.publish_engage_from_destination:
+            self._publish_engage(True, source=f"{source}:destination")
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(True, source=f"{source}:destination")
         self._publish_service_state(AvgServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
@@ -4644,6 +4816,16 @@ class UiBackendNode(Node):
                 "battery_return_pending": self._low_battery_return_pending,
                 "battery_return_started": self._low_battery_return_started,
                 "battery_return_waiting_for_user": self._low_battery_return_wait_notified,
+                # HH_260825 - Initial clients receive the same departure dwell
+                # state as websocket edge updates.
+                "departure_delay_active": bool(
+                    getattr(self, "_charging_departure_delay_pending", False)
+                ),
+                "departure_delay_seconds": (
+                    self.charging_departure_delay_s
+                    if getattr(self, "_charging_departure_delay_pending", False)
+                    else 0.0
+                ),
                 "minimum_battery_percentage": self.low_battery_return_threshold_percent,
                 "occupied_sites": list(self._state.occupied_sites),
             }

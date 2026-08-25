@@ -257,6 +257,14 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260825 - Keep v2.2.1 current-lane Return, charging dwell, and front
+  # radar claims tied to the measured result and synchronized deployment YAML.
+  ament_add_pytest_test(
+    test_v2_2_1_safety_handoff_assets
+    test/test_v2_2_1_safety_handoff_assets.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260819 - Lock camera-range docking, yaw-only stop, and charging handoff.
   ament_add_pytest_test(
     test_apriltag_docking_contract

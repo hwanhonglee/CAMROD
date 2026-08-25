@@ -1051,6 +1051,48 @@ CAMROD 구현·검증 완료 기록
   frontend `npm audit`의 기존 39건(critical 2 포함)은 강제 dependency upgrade 없이
   release note에 공개했으며 별도 호환성 검토 대상이다.
 
+34. HH_260825: campsite 현재 lanelet 복귀 인계
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- B1-B10 `CRAB_OUT` 완료 조건을 과거 진입 snap XY 재통과에서 fresh
+  `/planning/lanelet_pose_ros` 투영점 인계로 변경했다. 현재 pose와 투영점이
+  `0.15 m` 이내인 상태에서 zero command를 `1.20 s` 유지한 뒤 `DONE`과 Return을
+  발행하며, LaneletRoute는 실제 현재 XY에서 drop-zone 경로를 계산한다.
+- stale, wrong-frame, NaN 투영점은 완료로 인정하지 않고 기존 exact-anchor
+  sequencer로 fallback한다. B11-B13 roadside forward-loop 정책은 변경하지 않았다.
+- AMD64 full-graph B8에서 현재 pose `(14.090, 11.605) m`, 투영점
+  `(14.218, 11.661) m`, 거리 `0.140 m`에서 hold를 시작했다. 당시 과거 anchor
+  오차는 `0.231 m`였고 완료 때도 `0.210 m`였지만 `done_live_lanelet` 이후
+  current-start `reverse_shortest` 경로가 생성됐다. 즉 과거 점으로 후진하지 않아도
+  복귀 경로가 생성됨을 확인했다.
+
+35. HH_260825: 충전 출발 대기와 전방 radar 0.30 m 정책
+    [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- `CHARGING`/`WAITING_FOR_CHARGING`에서 campsite를 선택하면 목적지는 queue에
+  보존하고 manual/mission/platform authorization을 모두 닫는다. pending 동안만
+  존재하는 one-shot ROS timer가 `7.0 s` 뒤 parking cancel과 station `EXIT`를
+  각각 한 번 발행한다. Stop/shutdown은 timer를 먼저 폐기하며 영구 polling loop는
+  추가하지 않았다.
+- AMD64 full graph에서 B2 요청부터 EXIT까지 `6.996327111 s`였고, 대기 중 세
+  authorization은 모두 false였다. 해제 뒤 `DEPARTING_CHARGER`가 먼저 발생하고
+  station exit 전 campsite goal 발행은 0회였다.
+- FRONT1/FRONT2 hardware range level을 2로 올리고 software max를 `0.55 m`로
+  제한했다. measured body exclusion 뒤 stop candidate는 각각
+  `(0.220, 0.520] m`, `(0.117, 0.417] m`로 실제 사용 가능한 `0.30 m` 창이다.
+  측면/후방은 기존 `0.10 m`, REAR quarantine, active lanelet 및 `1.27 m`
+  local-path corridor를 유지한다.
+- fake radar publisher를 끄고 FRONT1 `0.300 m` `AvgRange`를 `20 Hz`로 주입한
+  live graph에서 active evidence와 cost `95`를 확인했다. 물리 SEN0592 multipath,
+  제동거리와 ARM64 자원 합격은 TODO에 남겼다. 구조화 결과와 그림은
+  `docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/`에
+  보존했다.
+- canonical Release build는 control/planning/sensing/UI/bringup `5/5`를
+  완료했고 focused contract `65/65`가 통과했다. 전체 격리 실행에서는 v2.2.0부터
+  존재한 parking YAML mirror/test drift와 worktree/Pillow 환경 제한 때문에 bringup
+  target 6개가 실패했다. 이 결과를 zero-failure로 표시하지 않는다.
+- `colcon_build.sh`가 source checkout 위치와 관계없이 workspace root의
+  `build/install/log`를 사용하도록 검증했다. 활성 package README의 직접 colcon
+  명령도 wrapper로 변경해 `src/build`, `src/install`, `src/log` 재생성을 막았다.
+
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
   2026-07-31, 600.063초, 7채널 exact dummy, evidence active 0,

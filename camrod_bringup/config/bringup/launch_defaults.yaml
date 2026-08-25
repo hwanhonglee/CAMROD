@@ -607,6 +607,9 @@ bringup:
     # HH_260819 - Stop the outbound Nav2 owner, wait beyond the 0.35 s command
     # timeout, then publish exactly one return route for either Return button.
     api_ui_manual_return_preempt_hold_s: 0.5
+    # HH_260825 - Keep the charging robot stationary for seven seconds after a
+    # campsite selection; the UI backend then releases exactly one EXIT command.
+    api_ui_charging_departure_delay_s: 7.0
     # HH_260810 - Enable leased sensor/map views; heavy subscriptions remain
     # inactive until an administrator opens the matching diagnostics tab.
     enable_operator_telemetry: true

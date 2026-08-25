@@ -40,6 +40,10 @@
 # HH_260807: single-config CMake packages now default to Release so compute-heavy
 # sensor components use compiler optimization in normal robot builds. An explicit
 # -DCMAKE_BUILD_TYPE override remains authoritative for debugging/profiling.
+# HH_260825 - Always resolve and enter the workspace root and pass explicit
+# build/install/log bases. Direct `colcon build` uses the caller's current
+# directory, which is why running it under src previously created src/build,
+# src/install, and src/log.
 
 set -euo pipefail
 

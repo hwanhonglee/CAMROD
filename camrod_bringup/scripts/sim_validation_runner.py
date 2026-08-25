@@ -1981,10 +1981,15 @@ class SimValidationRunner(Node):
                 or "ERROR" in reverse_parking_controller_msg
             )
 
+            # HH_260825 - CHARGING is a public service state, while the command
+            # gate may remain in its ordinary standby text after parking. Use
+            # the public state plus the controller's PARKED phase to start the
+            # low-battery recall probe; retaining the old gate substring here
+            # made a healthy charging cycle wait until the smoke-test timeout.
             if (
                 charging_recall_battery_gate_enabled
                 and seen_reverse_parking_controller_parked
-                and seen_gate_charging_state
+                and seen_service_charging
                 and not charging_recall_low_battery_requested
             ):
                 recall_key = self.charging_recall_mission_key.strip() or mission_key
@@ -2048,11 +2053,13 @@ class SimValidationRunner(Node):
                     self.reset_cmd_metrics()
                     charging_recall_low_battery_done = True
 
-            # HH_260721 - Recall only after both parking and the gate confirm the simulated charge.
+            # HH_260825 - Recall only after PARKED and the public CHARGING state
+            # confirm simulated charger contact. Gate text is diagnostic detail,
+            # not part of the service-state contract.
             if (
                 self.run_charging_recall
                 and seen_reverse_parking_controller_parked
-                and seen_gate_charging_state
+                and seen_service_charging
                 and not charging_recall_requested
                 and (
                     not charging_recall_battery_gate_enabled
@@ -2084,6 +2091,7 @@ class SimValidationRunner(Node):
                 )
                 charging_recall_departure_state_seen = (
                     charging_recall_departure_state_seen
+                    or service_state_name == "DEPARTING_CHARGER"
                     or "state=DEPARTING_CHARGER" in gate_status_msg
                 )
                 # HH_260721 - The first admitted command represents physical charger separation.
@@ -2230,13 +2238,15 @@ class SimValidationRunner(Node):
                 and not seen_drop_sequence_error
             )
         )
-        # HH_260721 - Require the complete charging recall contract only when requested.
+        # HH_260825 - Require the public CHARGING observation rather than a
+        # presentation-specific cmd-gate string. The departure check accepts
+        # the public state first and keeps the gate string as legacy evidence.
         charging_recall_ok = (
             not self.run_charging_recall
             or (
                 self.simulate_platform_status
                 and seen_reverse_wait_for_charging
-                and seen_gate_charging_state
+                and seen_service_charging
                 and charging_recall_requested
                 and charging_recall_key_seen
                 and charging_recall_departure_state_seen
