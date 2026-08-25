@@ -97,6 +97,28 @@ def test_inline_cmake_argument_is_preserved_when_adding_release() -> None:
     ]
 
 
+def test_wrapper_pins_colcon_outputs_outside_source_checkout() -> None:
+    """Following maintained build docs must not recreate src/build/install/log."""
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+
+    # HH_260825 - Raw colcon defaults all three bases to its current directory.
+    # Require both the workspace-root cwd and explicit bases so a later refactor
+    # cannot silently reintroduce generated trees below the source checkout.
+    assert 'cd "${WS_ROOT}"' in source
+    assert '--log-base "${WS_ROOT}/log" build' in source
+    assert '--build-base  "${WS_ROOT}/build"' in source
+    assert '--install-base "${WS_ROOT}/install"' in source
+
+    for relative_path in (
+        "camrod_common/README.md",
+        "camrod_ui/README.md",
+        "camrod_voice/README.md",
+    ):
+        readme = (SRC_ROOT / relative_path).read_text(encoding="utf-8")
+        assert "./colcon_build.sh --packages-select" in readme
+        assert "colcon build --packages-select" not in readme
+
+
 def test_only_explicit_virtual_carla_underlays_survive_sanitization(
     tmp_path: Path,
 ) -> None:

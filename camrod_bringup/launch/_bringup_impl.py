@@ -1722,6 +1722,11 @@ def generate_launch_description():
             'Stopped hold between Nav2 cancellation and manual Return dispatch',
         ),
         (
+            'api_ui_charging_departure_delay_s',
+            cfg_get(launch_cfg, 'system/api_ui_charging_departure_delay_s', 7.0),
+            'Stopped dwell before charger departure receives motion authorization',
+        ),
+        (
             'enable_operator_telemetry',
             cfg_get(launch_cfg, 'system/enable_operator_telemetry', True),
             'Enable leased operator sensor/map telemetry views',
@@ -2569,6 +2574,9 @@ def generate_launch_description():
         # HH_260819 - Keep the Return ownership barrier explicit and tunable at
         # the top-level deployment boundary without adding sustained CPU work.
         'manual_return_preempt_hold_s': lc['api_ui_manual_return_preempt_hold_s'],
+        # HH_260825 - Propagate the one-shot charger departure dwell from the
+        # deployment config into the sole service-state owner.
+        'charging_departure_delay_s': lc['api_ui_charging_departure_delay_s'],
         # HH_260810 - Keep the bounded RViz-replacement workspace explicit at
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],

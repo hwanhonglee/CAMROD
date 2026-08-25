@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <rect width="1400" height="820" fill="#f5f7f8"/>
+  <rect x="44" y="38" width="1312" height="82" rx="6" fill="#173f35"/>
+  <text x="78" y="76" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="700">CAMROD v2.2.1 safety handoff</text>
+  <text x="78" y="103" fill="#d8e7e2" font-family="sans-serif" font-size="17">Measured AMD64 ROS simulation, 2026-08-25. Not physical-road acceptance.</text>
+
+  <rect x="44" y="146" width="418" height="612" rx="6" fill="#ffffff" stroke="#b7c3c7" stroke-width="2"/>
+  <text x="72" y="188" fill="#173f35" font-family="sans-serif" font-size="22" font-weight="700">1. Campsite return handoff</text>
+  <text x="72" y="216" fill="#44545a" font-family="sans-serif" font-size="15">B8 CRAB_OUT, map frame</text>
+  <line x1="105" y1="405" x2="402" y2="405" stroke="#aeb9bd" stroke-width="32" stroke-linecap="round"/>
+  <line x1="105" y1="405" x2="402" y2="405" stroke="#ffffff" stroke-width="3" stroke-dasharray="10 8"/>
+  <circle cx="280" cy="391" r="13" fill="#1777c8"/>
+  <text x="298" y="386" fill="#174b75" font-family="sans-serif" font-size="14" font-weight="700">live robot</text>
+  <text x="298" y="404" fill="#44545a" font-family="sans-serif" font-size="13">14.090, 11.605</text>
+  <circle cx="280" cy="405" r="6" fill="#3a9b59"/>
+  <text x="108" y="450" fill="#23683c" font-family="sans-serif" font-size="15">projection distance 0.140 m</text>
+  <circle cx="218" cy="405" r="8" fill="#e4a42c"/>
+  <text x="108" y="480" fill="#8c6413" font-family="sans-serif" font-size="15">old anchor still 0.231 m away</text>
+  <line x1="218" y1="405" x2="280" y2="391" stroke="#e4a42c" stroke-width="2" stroke-dasharray="5 4"/>
+  <rect x="74" y="530" width="356" height="92" rx="5" fill="#eef6f1"/>
+  <text x="94" y="560" fill="#173f35" font-family="sans-serif" font-size="16" font-weight="700">0 command for 1.20 s</text>
+  <text x="94" y="588" fill="#44545a" font-family="sans-serif" font-size="15">then done_live_lanelet</text>
+  <text x="94" y="610" fill="#44545a" font-family="sans-serif" font-size="15">LaneletRoute starts at current XY</text>
+  <text x="74" y="700" fill="#23683c" font-family="sans-serif" font-size="22" font-weight="700">PASS</text>
+
+  <rect x="491" y="146" width="418" height="612" rx="6" fill="#ffffff" stroke="#b7c3c7" stroke-width="2"/>
+  <text x="519" y="188" fill="#173f35" font-family="sans-serif" font-size="22" font-weight="700">2. Charging departure dwell</text>
+  <text x="519" y="216" fill="#44545a" font-family="sans-serif" font-size="15">B2 selected while CHARGING</text>
+  <line x1="545" y1="350" x2="850" y2="350" stroke="#c6ced1" stroke-width="8"/>
+  <circle cx="555" cy="350" r="12" fill="#1777c8"/>
+  <circle cx="839" cy="350" r="12" fill="#3a9b59"/>
+  <text x="532" y="325" fill="#174b75" font-family="sans-serif" font-size="14">select</text>
+  <text x="810" y="325" fill="#23683c" font-family="sans-serif" font-size="14">EXIT</text>
+  <rect x="570" y="374" width="255" height="53" rx="4" fill="#fff4da"/>
+  <text x="593" y="406" fill="#79530b" font-family="sans-serif" font-size="17" font-weight="700">6.996 s stopped dwell</text>
+  <text x="534" y="478" fill="#44545a" font-family="sans-serif" font-size="15">manual engage = false</text>
+  <text x="534" y="507" fill="#44545a" font-family="sans-serif" font-size="15">mission engage = false</text>
+  <text x="534" y="536" fill="#44545a" font-family="sans-serif" font-size="15">platform drive enable = false</text>
+  <rect x="521" y="570" width="356" height="76" rx="5" fill="#eef6f1"/>
+  <text x="541" y="600" fill="#173f35" font-family="sans-serif" font-size="16" font-weight="700">one cancel + one EXIT</text>
+  <text x="541" y="627" fill="#44545a" font-family="sans-serif" font-size="15">site goal waits for exit_complete</text>
+  <text x="521" y="700" fill="#23683c" font-family="sans-serif" font-size="22" font-weight="700">PASS</text>
+
+  <rect x="938" y="146" width="418" height="612" rx="6" fill="#ffffff" stroke="#b7c3c7" stroke-width="2"/>
+  <text x="966" y="188" fill="#173f35" font-family="sans-serif" font-size="22" font-weight="700">3. Front radar near field</text>
+  <text x="966" y="216" fill="#44545a" font-family="sans-serif" font-size="15">Sensor-face scalar range windows</text>
+  <text x="974" y="286" fill="#44545a" font-family="sans-serif" font-size="15">FRONT1</text>
+  <rect x="974" y="304" width="122" height="38" fill="#b7c3c7"/>
+  <rect x="1096" y="304" width="167" height="38" fill="#d65050"/>
+  <text x="989" y="329" fill="#263238" font-family="sans-serif" font-size="13">body 0.02-0.22</text>
+  <text x="1117" y="329" fill="#ffffff" font-family="sans-serif" font-size="13">stop to 0.52 m</text>
+  <text x="974" y="390" fill="#44545a" font-family="sans-serif" font-size="15">FRONT2</text>
+  <rect x="974" y="408" width="72" height="38" fill="#b7c3c7"/>
+  <rect x="1046" y="408" width="167" height="38" fill="#d65050"/>
+  <text x="982" y="433" fill="#263238" font-family="sans-serif" font-size="12">body</text>
+  <text x="1067" y="433" fill="#ffffff" font-family="sans-serif" font-size="13">stop to 0.417 m</text>
+  <line x1="1140" y1="272" x2="1140" y2="465" stroke="#1777c8" stroke-width="3"/>
+  <circle cx="1140" cy="272" r="7" fill="#1777c8"/>
+  <text x="1160" y="278" fill="#174b75" font-family="sans-serif" font-size="14" font-weight="700">0.300 m injection</text>
+  <rect x="968" y="510" width="356" height="112" rx="5" fill="#eef6f1"/>
+  <text x="988" y="542" fill="#173f35" font-family="sans-serif" font-size="16" font-weight="700">active SENSOR=FRONT1</text>
+  <text x="988" y="571" fill="#44545a" font-family="sans-serif" font-size="15">cost = 95 at 20 Hz input</text>
+  <text x="988" y="600" fill="#44545a" font-family="sans-serif" font-size="15">route-outside fail-open retained</text>
+  <text x="968" y="700" fill="#23683c" font-family="sans-serif" font-size="22" font-weight="700">PASS</text>
+
+  <text x="44" y="798" fill="#68787e" font-family="sans-serif" font-size="13">Source: result.json. Physical radar, charger-clearance, and ARM64 acceptance remain pending.</text>
+</svg>

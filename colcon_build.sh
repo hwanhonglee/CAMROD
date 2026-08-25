@@ -40,6 +40,10 @@
 # HH_260807: single-config CMake packages now default to Release so compute-heavy
 # sensor components use compiler optimization in normal robot builds. An explicit
 # -DCMAKE_BUILD_TYPE override remains authoritative for debugging/profiling.
+# HH_260825 - Always resolve and enter the workspace root and pass explicit
+# build/install/log bases. Direct `colcon build` uses the caller's current
+# directory, which is why running it under src previously created src/build,
+# src/install, and src/log.
 
 set -euo pipefail
 
@@ -245,6 +249,8 @@ set +u; source /opt/ros/humble/setup.bash; set -u
 # example a previously sourced Autoware workspace) remain rejected.
 _is_allowed_extra_prefix() {
   local candidate="$1" root candidate_real root_real
+  # HH_260825 - An explicit empty array is required under `set -u`; a machine
+  # without CARLA underlays must still build the ordinary CAMROD graph.
   local allowed_roots=()
   candidate_real="$(readlink -m "${candidate}")"
   IFS=':' read -r -a allowed_roots <<< "${CAMROD_EXTRA_PREFIX_ROOTS:-}"

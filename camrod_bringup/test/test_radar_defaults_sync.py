@@ -38,9 +38,11 @@ _EXPECTED_DRIVER_ARRAYS = {
     # quarantine until rear hardware is accepted in a supervised field test.
     "sensor_enabled": [True, True, True, True, True, True, False],
     "hardware_angle_levels": [4] * 7,
-    # HH_260807: Shortest hardware level with its full observation window.
-    "hardware_range_levels": [1] * 7,
-    "software_max_ranges_m": [0.50] * 7,
+    # HH_260825 - FRONT1/2 use hardware level 2 so their software-visible
+    # windows can extend 0.30 m beyond the measured body-return envelopes.
+    # Side/rear channels keep the shorter level-1 acquisition window.
+    "hardware_range_levels": [2, 2, 1, 1, 1, 1, 1],
+    "software_max_ranges_m": [0.55, 0.55, 0.50, 0.50, 0.50, 0.50, 0.50],
     "frame_ids": [
         "radar_front1_link",
         "radar_front2_link",
@@ -101,8 +103,8 @@ _EXPECTED_FIXED_RETURN_INTERVALS = [
 ]
 
 _EXPECTED_STOP_CANDIDATE_MAX_RANGES_M = [
-    0.320,
-    0.217,
+    0.520,
+    0.417,
     0.100,
     0.100,
     0.100,
@@ -321,14 +323,25 @@ def test_active_cost_grid_uses_canonical_cost_and_return_names_only():
         == _EXPECTED_STOP_CANDIDATE_MAX_RANGES_M
     )
     assert len(params["stop_candidate_max_ranges_m"]) == len(params["input_topics"])
+    # HH_260825 - Only the two forward channels receive the larger 0.30 m
+    # usable stop window. The quarantined rear channel retains 0.10 m so a
+    # future re-enable cannot silently inherit the forward policy.
     body_upper_m = {"FRONT1": 0.220, "FRONT2": 0.117, "REAR": 0.106}
+    expected_usable_window_m = {"FRONT1": 0.30, "FRONT2": 0.30, "REAR": 0.10}
     topic_labels = [
         topic.rstrip("/").split("/")[-2].upper()
         for topic in params["input_topics"]
     ]
     per_sensor_max = dict(zip(topic_labels, params["stop_candidate_max_ranges_m"]))
     for sensor, body_upper in body_upper_m.items():
-        assert abs(per_sensor_max[sensor] - body_upper - 0.10) < 1e-9
+        assert (
+            abs(
+                per_sensor_max[sensor]
+                - body_upper
+                - expected_usable_window_m[sensor]
+            )
+            < 1e-9
+        )
     assert params["cost_near_distance_m"] == 0.30
     assert params["cost_far_distance_m"] == 2.00
     assert (
