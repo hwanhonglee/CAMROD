@@ -41,9 +41,13 @@ publisher/subscriber graph.
 
 ## Build And Inspect
 
+<!-- HH_260825 - Use the workspace wrapper so colcon artifacts stay under
+`~/camrod_ws` even when this README is followed from the source tree. -->
+
 ```bash
+cd ~/camrod_ws/src
+./colcon_build.sh --packages-select avg_msgs
 cd ~/camrod_ws
-colcon build --packages-select avg_msgs --symlink-install
 source install/setup.bash
 
 ros2 interface list | rg '^avg_msgs/'

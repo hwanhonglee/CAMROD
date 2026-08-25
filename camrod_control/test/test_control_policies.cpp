@@ -56,6 +56,17 @@ TEST(BoundedRecoveryAttemptPolicy, TotalTravelAndTimeRemainFinalStops) {
 
 double degrees(const double value) { return value * M_PI / 180.0; }
 
+avg_msgs::msg::AvgPoseStamped makeMotionPose(
+    const double x, const double y, const double yaw_degrees) {
+  avg_msgs::msg::AvgPoseStamped pose;
+  pose.pose.position.x = x;
+  pose.pose.position.y = y;
+  const double yaw = degrees(yaw_degrees);
+  pose.pose.orientation.z = std::sin(yaw * 0.5);
+  pose.pose.orientation.w = std::cos(yaw * 0.5);
+  return pose;
+}
+
 TEST(YawAlignmentSettling, RequiresFreshStableSamplesBeforeTranslationHandoff) {
   YawAlignmentSettling settling({5.0, 1.0, 3.0});
 
@@ -333,6 +344,43 @@ TEST(MotionGeometry, AutomaticCrabEntryAlignmentHasBoundedTimeoutOnly) {
   EXPECT_FALSE(automaticCrabEntryAlignmentTimedOut(false, 100.0, 15.0));
   EXPECT_TRUE(automaticCrabEntryAlignmentTimedOut(
       true, std::numeric_limits<double>::quiet_NaN(), 15.0));
+}
+
+TEST(MotionGeometry, CampsiteLiveLaneletHandoffIgnoresLongitudinalEntryOffset) {
+  auto current = makeMotionPose(12.0, 4.10, 180.0);
+  auto live_lanelet = makeMotionPose(12.0, 4.00, 0.0);
+  current.header.frame_id = "map";
+  live_lanelet.header.frame_id = "map";
+
+  // HH_260825 - The robot may leave a diagonal campsite exit metres away along
+  // the lane. Only its 10 cm centerline distance decides route readiness.
+  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 0.1, 2.0, 0.15));
+  current.pose.position.x = 25.0;
+  live_lanelet.pose.position.x = 25.0;
+  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 0.1, 2.0, 0.15));
+
+  current.pose.position.y = 4.16;
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 0.1, 2.0, 0.15));
+}
+
+TEST(MotionGeometry, CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame) {
+  auto current = makeMotionPose(1.0, 2.0, 180.0);
+  auto live_lanelet = makeMotionPose(1.0, 2.0, 0.0);
+  current.header.frame_id = "map";
+  live_lanelet.header.frame_id = "map";
+
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 2.01, 2.0, 0.15));
+  live_lanelet.header.frame_id = "odom";
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 0.1, 2.0, 0.15));
+  live_lanelet.header.frame_id = "map";
+  live_lanelet.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
+      current, live_lanelet, 0.1, 2.0, 0.15));
 }
 
 TEST(MotionGeometry,

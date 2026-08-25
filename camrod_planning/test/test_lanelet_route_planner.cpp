@@ -370,6 +370,32 @@ TEST_F(LaneletRoutePlannerTest, ExplicitReturnReversesShortestPathBeforeTurnarou
   EXPECT_LT(pathLength(path), 80.0);
 }
 
+TEST_F(LaneletRoutePlannerTest, ExplicitReturnStartsFromCurrentLanePositionNotEntryAnchor)
+{
+  const auto outbound = planner_->createPlan(
+    makePose(-13.5777, 40.7413, 10.4),
+    makePose(12.7921, 22.52, -77.0));
+  ASSERT_GT(outbound.poses.size(), 30U);
+
+  // HH_260825 - Model a diagonal campsite exit that reaches the active lane
+  // several path samples before the historical arrival anchor. LaneletRoute
+  // must accept that live start directly after the typed Return authorization.
+  auto live_exit_pose = outbound.poses[outbound.poses.size() - 20U];
+  live_exit_pose.pose.orientation = makePose(0.0, 0.0, 103.0).pose.orientation;
+  ASSERT_TRUE(authorizeReturnRoute("test:done_live_lanelet"));
+  const auto return_path = planner_->createPlan(
+    live_exit_pose, makePose(-13.5777, 40.7413, -82.2));
+
+  ASSERT_GT(return_path.poses.size(), 80U);
+  EXPECT_LT(pathLength(return_path), 80.0);
+  const auto & first = return_path.poses.front().pose.position;
+  EXPECT_LT(
+    std::hypot(
+      first.x - live_exit_pose.pose.position.x,
+      first.y - live_exit_pose.pose.position.y),
+    0.5);
+}
+
 TEST_F(LaneletRoutePlannerTest, KeepsOneWayRouteForOrdinaryOppositeHeadingGoal)
 {
   const auto path = planner_->createPlan(

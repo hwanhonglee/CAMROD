@@ -14,12 +14,14 @@ TEST(RadarStopRangeFilter, KeepsObservationAndStopRangesIndependent)
   EXPECT_FALSE(filter::isStopCandidate(0.400, 0.020, 0.500, 0.100));
 }
 
-TEST(RadarStopRangeFilter, IncludesEachBodyEdgePlusTenCentimeterCutoff)
+TEST(RadarStopRangeFilter, IncludesFrontThirtyAndRearTenCentimeterCutoffs)
 {
-  EXPECT_TRUE(filter::isStopCandidate(0.320, 0.020, 0.500, 0.320));
-  EXPECT_FALSE(filter::isStopCandidate(0.321, 0.020, 0.500, 0.320));
-  EXPECT_TRUE(filter::isStopCandidate(0.217, 0.020, 0.500, 0.217));
-  EXPECT_FALSE(filter::isStopCandidate(0.218, 0.020, 0.500, 0.217));
+  // HH_260825 - FRONT1/FONT2 stop exactly 0.30 m after their measured body
+  // envelopes; the rear and scalar fallback retain the 0.10 m contract.
+  EXPECT_TRUE(filter::isStopCandidate(0.520, 0.020, 0.550, 0.520));
+  EXPECT_FALSE(filter::isStopCandidate(0.521, 0.020, 0.550, 0.520));
+  EXPECT_TRUE(filter::isStopCandidate(0.417, 0.020, 0.550, 0.417));
+  EXPECT_FALSE(filter::isStopCandidate(0.418, 0.020, 0.550, 0.417));
   EXPECT_TRUE(filter::isStopCandidate(0.206, 0.020, 0.500, 0.206));
   EXPECT_FALSE(filter::isStopCandidate(0.207, 0.020, 0.500, 0.206));
 }

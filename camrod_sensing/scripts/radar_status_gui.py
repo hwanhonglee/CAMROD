@@ -686,7 +686,7 @@ class RadarStatusGui:
         note = (
             "One scalar distance is reported somewhere on the shown arc.\n"
             "Blue = measured body echo excluded from stopping. Active raw stop\n"
-            "windows: F1 (22,32] cm, F2 (11.7,21.7] cm, REAR (10.6,20.6] cm;\n"
+            "windows: F1 (22,52] cm, F2 (11.7,41.7] cm, REAR (10.6,20.6] cm;\n"
             "LEFT/RIGHT cutoff is 10 cm. Gray is outside that channel's window."
         )
         tk.Label(

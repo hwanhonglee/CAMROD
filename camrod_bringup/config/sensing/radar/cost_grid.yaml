@@ -45,12 +45,12 @@
     # with distance and reaches min_cost at/beyond far distance.
     min_cost: 85
     max_cost: 95
-    # HH_260807 - Keep 0.10 m as the backward-compatible side/fallback gate.
-    # Front/rear entries are the measured body-return upper edge plus another
-    # 0.10 m of usable stopping distance, all measured from the sensor face.
+    # HH_260825 - Keep 0.10 m as the side/rear/fallback gate. FRONT1 and FRONT2
+    # extend exactly 0.30 m beyond their measured body-return upper edges so an
+    # unclassified near-field object can stop charger departure sooner.
     stop_candidate_max_range_m: 0.10
     # input_topics order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    stop_candidate_max_ranges_m: [0.320, 0.217, 0.100, 0.100, 0.100, 0.100, 0.206]
+    stop_candidate_max_ranges_m: [0.520, 0.417, 0.100, 0.100, 0.100, 0.100, 0.206]
     cost_near_distance_m: 0.30
     cost_far_distance_m: 2.00
     obstacle_radius_m: 0.30
@@ -64,9 +64,9 @@
     # =========================================================================
     # Format: "SENSOR:min_m:max_m" (inclusive).
     # HH_260807 - FRONT1, FRONT2, and REAR currently see the vehicle body.
-    # Exclude that complete measured envelope, then admit only the following
-    # 0.10 m via stop_candidate_max_ranges_m. A real object at the same scalar
-    # range cannot be distinguished and is also ignored (see limitation below).
+    # Exclude that complete measured envelope. FRONT1/FRONT2 then admit the next
+    # 0.30 m while side/rear channels keep 0.10 m. A real object at an excluded
+    # scalar range cannot be distinguished and is also ignored (see below).
     fixed_return_filter_enable: true
     fixed_return_bands:
       # FRONT1's 0.020..0.220 m body envelope is split only because each named
@@ -134,6 +134,9 @@
     # =========================================================================
     route_lanelet_filter_enable: true
     route_lanelet_mask_topic: "/map/cost_grid/route_lanelet_mask"
+    # HH_260825 - The route mask clips front radar painting to the active
+    # lanelet. cmd_vel_safety_gate independently intersects it with the 1.27 m
+    # local-path corridor, so widening range does not widen the stop corridor.
     route_lanelet_margin_m: 0.35
     route_lanelet_allowed_max_cost: 50
     route_lanelet_mask_max_age_s: 2.5

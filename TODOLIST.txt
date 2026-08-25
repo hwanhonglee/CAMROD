@@ -1,6 +1,9 @@
-CAMROD v2.1.8 미완료 실차 확인 목록
-갱신일: 2026-08-19 (Asia/Seoul)
+CAMROD v2.2.1 미완료 실차 확인 목록
+갱신일: 2026-08-25 (Asia/Seoul)
 
+# HH_260825 - Move the completed current-lane campsite handoff, event-driven
+# charger departure dwell, and front-radar range policy to DONE.txt while
+# retaining their unresolved physical acceptance checks here.
 # HH_260819 - Keep unresolved v2.1.8 field acceptance while retaining the
 # existing road, localization, service, obstacle, sensor, resource, and UI gates.
 # HH_260810 - Keep only unresolved v2.1.7 field acceptance here. Move completed
@@ -12,7 +15,7 @@ CAMROD v2.1.8 미완료 실차 확인 목록
 - 다른 PC 인계와 다음 현장 순서:
   camrod_bringup/docs/v2_1_5_field_handoff_20260808.md
 - 실행 명령과 안전 절차: camrod_bringup/docs/field_test_runbook.md
-- 현재 변경과 검증 한계: docs/V2_1_7_RELEASE_NOTES.md
+- 현재 변경과 검증 한계: docs/V2_2_1_RELEASE_NOTES.md
 
 현재 소프트웨어 기준
 - 주행 기준 frame: `robot_center_link`
@@ -24,6 +27,9 @@ CAMROD v2.1.8 미완료 실차 확인 목록
 - real EKF/Nav2/local-path: `20 Hz`
 - physical dual-GNSS: launch 설정 `5 Hz` (200 ms epoch, 실차 합격 대기)
 - physical LiDAR raw/filtered: 목표 `10 Hz`; optional LiDAR cost grid만 운영 기본 OFF
+- campsite return handoff: fresh live lanelet projection `<=0.15 m`, zero hold `1.20 s`
+- charging departure dwell: destination 접수 후 authorization OFF `7.0 s`
+- front radar usable stop window: measured body echo 뒤 `0.30 m`; side/rear `0.10 m`
 - lanelet safety grid: `/map/cost_grid/lanelet_safety`, `0.05 m`
 - LiDAR cost grid/DDS-SHM: 운영 기본 OFF
 - checker/Nav2/system-core container: 운영 기본 ON
@@ -93,6 +99,11 @@ CAMROD v2.1.8 미완료 실차 확인 목록
   WAITING_FOR_RETURN_REQUEST -> 사용자 RETURN -> CRAB_OUT -> return route ->
   drop-zone alignment -> parking -> WAITING_FOR_CHARGING -> CHARGING ->
   DEPARTING_CHARGER -> 다음 campsite`
+- B1-B10 `CRAB_OUT`은 과거 진입 XY를 다시 정확히 밟는 조건으로 합격시키지
+  않는다. fresh `/planning/lanelet_pose_ros` 투영점과 현재 pose가 `<=0.15 m`인
+  상태를 `1.20 s` 연속 유지한 뒤, 실제 현재 XY에서 drop-zone 경로가 생성되는지
+  기록한다. 투영점이 stale/wrong-frame/non-finite일 때만 기존 exact-anchor
+  fallback이 동작하고 잘못된 현재 pose를 완료점으로 승격하지 않아야 한다.
 - 사이트 도착 즉시 자동 RETURN하지 않아야 하며, 사람이 하역하는 동안
   WAITING_FOR_RETURN_REQUEST와 zero final cmd_vel을 유지해야 한다.
 - manual engage와 UI destination 모두 MOVING/DRIVING 상태를 표시해야 한다.
@@ -107,6 +118,11 @@ CAMROD v2.1.8 미완료 실차 확인 목록
 - Robot 진단 화면과 Docking 화면의 두 Return 버튼을 각각 outbound 주행 중 눌러
   Nav2 cancel -> drive gate OFF `0.50 s` -> 단일 return recall 순서를 기록한다.
   연속 두 번 눌러도 route/cancel이 중복되지 않고 site 방향 주행이 즉시 끝나야 한다.
+- `CHARGING` 또는 `WAITING_FOR_CHARGING`에서 다음 campsite를 선택하면 목표는
+  접수하되 `7.0 s` 동안 manual/mission/platform authorization과 최종 cmd_vel이
+  모두 0이어야 한다. 시간이 지난 뒤 parking cancel과 station `EXIT`가 각각
+  한 번만 발생하고 `DEPARTING_CHARGER` 뒤에만 campsite goal이 발행되어야 한다.
+  대기 중 Stop을 누르면 timer가 폐기되고 이후 자동 출발하지 않아야 한다.
 - 합격: node/bringup restart 없이 3회 이상의 site-return-charge-next-site가
   순서대로 완료되고 state, motion owner와 최종 command가 일치한다.
 - SIM 기준 B1-B10은 `2210.611 s`, restart 0으로 10/10 통과했다. cycle 1은
@@ -150,10 +166,15 @@ CAMROD v2.1.8 미완료 실차 확인 목록
   측정하고 설정/진단 metadata와 동기화한다.
 - 주변을 완전히 비운 7채널 15분 raw를 저장하고 거리별 시험 장애물을 한 채널씩
   배치한다. self-return과 실제 장애물을 분리하기 전 fixed exclusion을 추가하지 않는다.
+- FRONT1은 센서면 기준 body exclusion `(0.020, 0.220] m` 뒤 `(0.220, 0.520] m`,
+  FRONT2는 `(0.020, 0.117] m` 뒤 `(0.117, 0.417] m`를 각각 실제 `0.30 m`
+  정지 창으로 검증한다. lanelet/local-path 가로 corridor 밖 물체에는 멈추지 않고,
+  robot-width 경로 안의 미분류 물체에는 두 전방 채널 모두 최종 cmd_vel이 0이어야
+  한다. 측면 4채널은 기존 `0.10 m`, REAR는 quarantine 상태를 유지한다.
 - rear raw/camera_info/compressed rate를 production 부하에서 재측정한다. raw
   목표는 10 Hz이며 기존 실측 3.633 Hz의 CPU/driver/encode 원인을 구분한다.
 - 합격: radar 실제 장애물을 가리지 않는 noise 정책과 rear 10 Hz, AprilTag
-  pose/rate, publisher 중복 0을 확인한다.
+  pose/rate, publisher 중복 0, 전방 `0.30 m`의 정지/해제 반복 10/10을 확인한다.
 
 [P1-F] Jetson container CPU/GPU/PSS와 반복 종료
 - 최종 대상은 ARM64 8코어/16 GB RAM이다. AMD64 수치는 구현 전후 비교와

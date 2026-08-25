@@ -184,6 +184,13 @@ def generate_launch_description():
         default_value='0.5',
         description='Stopped hold between cancelling an active Nav2 goal and dispatching Return',
     )
+    charging_departure_delay_s_arg = DeclareLaunchArgument(
+        'charging_departure_delay_s',
+        # HH_260825 - A one-shot stopped dwell gives people time to clear the
+        # charger before the station-exit owner receives motion authorization.
+        default_value='7.0',
+        description='Stopped safety dwell before a charging robot begins drop-zone exit',
+    )
     platform_status_topic_arg = DeclareLaunchArgument(
         'platform_status_topic',
         default_value='/platform/status',
@@ -271,6 +278,10 @@ def generate_launch_description():
             'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
             'manual_return_preempt_hold_s': ParameterValue(
                 LaunchConfiguration('manual_return_preempt_hold_s'),
+                value_type=float,
+            ),
+            'charging_departure_delay_s': ParameterValue(
+                LaunchConfiguration('charging_departure_delay_s'),
                 value_type=float,
             ),
             'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
@@ -418,6 +429,7 @@ def generate_launch_description():
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,
         manual_return_preempt_hold_s_arg,
+        charging_departure_delay_s_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,
         drop_zone_maneuver_controller_operation_topic_arg,

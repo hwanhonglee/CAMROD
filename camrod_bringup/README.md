@@ -44,12 +44,14 @@ physical drive. The orange path is the dispatched B6 route.
 | Fake sensor/platform publishers | Exercises message, state, planner, control, and UI contracts | Deterministic simulation topics and normalized platform feedback |
 | Probe and field-test scripts | Captures timing, payload, recovery, and mission evidence | JSON, rosbag, logs, PNG/GIF derived reports |
 
-## Active v2.1.8 Contract
+## Active v2.2.1 Contract
 
 <!-- HH_260809 - Synchronize the full-bringup contract with the shared
 tapered-front rounded body and exact planning offset. -->
 <!-- HH_260818 - Synchronize normal/crab selection, campsite return anchor,
 manual Return, docking telemetry, and final parking slowdown contracts. -->
+<!-- HH_260825 - Synchronize live lanelet Return handoff, charging departure
+dwell, front radar near-field range, and external-simulator ownership. -->
 
 | Item | Full-bringup value |
 |---|---:|
@@ -62,9 +64,10 @@ manual Return, docking telemetry, and final parking slowdown contracts. -->
 | Classified camera-LiDAR raster | default `ON`; raw LiDAR cost input remains `OFF` |
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
-| Campsite return | entry/exit share the exact snap anchor; B1-B10 turn/retrace, while B11-B13 cap at `0.30 m`, skip zero-turn, and request a forward one-way loop after `CRAB_OUT -> DONE` |
+| Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
 | Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
-| Radar display | `radar_status_gui.py` subscribes to all seven configured `/range_ros` streams; FRONT1/2 and four side channels are live while quarantined REAR is fail-visible dummy data |
+| Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes and are clipped by active lanelet plus the `1.27 m` path corridor; side/rear stay `0.10 m`; the GUI shows all seven streams |
+| Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
 | Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
@@ -122,6 +125,14 @@ The latest full-bringup runtime result is shown separately.
 
 ### Current UI And Diagnostic Follow-up
 
+![v2.2.1 campsite, charging, and radar handoff](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
+
+The [v2.2.1 result](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md)
+records the measured B8 current-lane Return handoff, the stopped charging
+recall interval, and the live FRONT1 cost-grid injection. It is AMD64
+simulation evidence; physical radar, charger clearance, and ARM64 load remain
+field acceptance items.
+
 ![Historical 0.60 m operator docking workspace](../docs/assets/module-guides/ui/test-results/docking-workspace-20260819/operator-docking-workspace.png)
 
 ![Current B8 same-anchor entry and return](../docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/b8-entry-return-summary.png)
@@ -168,6 +179,7 @@ acceptance.
 | B1-B10 service endurance | PASS (10/10) | `2210.611 s`, restart 0; cycle 1 seeded site handoff, cycles 2-10 full charger departure/outbound/RETURN/park/charge |
 | Fixed-lookahead source profile | PASS (2/2) | B1/B2 in 422.848 s, zero restart; obstacle stop/resume, margin recovery, RETURN, park and charge |
 | Charger departure | PASS | B2/B3 left CHARGING through `DEPARTING_CHARGER`; stale charge contact did not close drive authorization |
+| v2.2.1 selected build/tests | BUILD PASS / BASELINE TEST DEBT | Isolated Release build `5/5`; focused contracts `65/65`; 6 inherited/environment-sensitive bringup targets remain failing |
 | Historical map-v17 B2 boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |

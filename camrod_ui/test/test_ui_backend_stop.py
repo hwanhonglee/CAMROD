@@ -491,6 +491,151 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertFalse(result["goal_pose_published"])
         self.assertIn("already pending", result["message"])
 
+    def test_duplicate_destination_is_idempotent_during_charging_dwell(self) -> None:
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _charging_departure_delay_pending=True,
+            _pending_site_after_drop_zone_exit=("B2", "camping_site_2", "first"),
+        )
+        backend.get_logger = lambda: logger
+
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="retry"
+        )
+
+        self.assertEqual(result["mission_key"], "camping_site_2")
+        self.assertFalse(result["goal_pose_published"])
+        self.assertIn("already pending", result["message"])
+
+    def test_charging_destination_waits_seven_seconds_before_one_exit(self) -> None:
+        events = []
+        timers = []
+
+        def create_timer(period_s, callback):
+            timer = _FakeTimer(period_s, callback)
+            timers.append(timer)
+            events.append(("timer", period_s))
+            return timer
+
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=False,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=True,
+            _latest_service_state=int(AvgServiceState.CHARGING),
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            charging_departure_delay_s=7.0,
+            _charging_departure_transition_lock=threading.Lock(),
+            _charging_departure_delay_pending=False,
+            _charging_departure_transition_timer=None,
+            _charging_departure_from_charger=False,
+            create_timer=create_timer,
+            destroy_timer=lambda timer: events.append(("destroy_timer", timer)),
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_2"
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda _site: (
+            False,
+            "camping_site_2",
+            10.0,
+            "outside_arrival_radius",
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._publish_engage = lambda enabled, source, **kwargs: events.append(
+            ("engage", enabled, source, kwargs)
+        )
+        backend._publish_platform_drive_enable = (
+            lambda enabled, source: events.append(("platform", enabled, source))
+        )
+        backend._publish_parking_operation = lambda operation, source: events.append(
+            ("parking_operation", operation, source)
+        )
+        backend._publish_drop_zone_operation = lambda operation, source: events.append(
+            ("drop_zone_operation", operation, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="charging_test"
+        )
+
+        self.assertTrue(result["run"])
+        self.assertFalse(result["goal_pose_published"])
+        self.assertIn("7.0 s", result["message"])
+        self.assertTrue(backend._charging_departure_delay_pending)
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertEqual(len(timers), 1)
+        self.assertEqual(timers[0].period_s, 7.0)
+        self.assertNotIn("drop_zone_operation", [event[0] for event in events])
+        self.assertNotIn("state", [event[0] for event in events])
+        self.assertFalse(
+            any(event[0] == "mission_engage" and event[1] for event in events)
+        )
+
+        timers[0].callback()
+
+        self.assertTrue(timers[0].cancelled)
+        self.assertFalse(backend._charging_departure_delay_pending)
+        self.assertTrue(backend._drop_zone_exit_active)
+        self.assertEqual(
+            [
+                event[1]
+                for event in events
+                if event[0] == "drop_zone_operation"
+            ],
+            [MotionOperation.EXIT],
+        )
+        self.assertTrue(
+            any(event[0] == "mission_engage" and event[1] for event in events)
+        )
+        self.assertIn(
+            ("state", AvgServiceState.DEPARTING_CHARGER, "charging_test:drop_zone_departure"),
+            events,
+        )
+
+    def test_operator_stop_cancels_pending_charging_departure_timer(self) -> None:
+        destroyed = []
+        timer = _FakeTimer(7.0, lambda: None)
+        backend = SimpleNamespace(
+            _charging_departure_transition_lock=threading.Lock(),
+            _charging_departure_delay_pending=True,
+            _charging_departure_transition_timer=timer,
+            _charging_departure_from_charger=True,
+            destroy_timer=lambda value: destroyed.append(value),
+        )
+        backend.get_logger = lambda: _FakeLogger()
+
+        # HH_260825 - Stop/shutdown must invalidate the one-shot callback before
+        # it can reopen mission or platform authorization after a human stop.
+        UiBackendNode._cancel_pending_charging_departure_transition(
+            backend, "operator_stop"
+        )
+
+        self.assertTrue(timer.cancelled)
+        self.assertEqual(destroyed, [timer])
+        self.assertFalse(backend._charging_departure_delay_pending)
+        self.assertIsNone(backend._charging_departure_transition_timer)
+        self.assertFalse(backend._charging_departure_from_charger)
+
     def test_station_states_defer_campsite_identity_and_goal_until_exit(self) -> None:
         for service_state in (
             AvgServiceState.DROP_ZONE_PARKING,
