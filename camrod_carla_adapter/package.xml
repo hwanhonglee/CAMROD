@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd"?>
+<package format="3">
+  <name>camrod_carla_adapter</name>
+  <version>0.1.0</version>
+  <description>Fail-closed CAMROD Twist and CARLA 4WS/feedback integration</description>
+  <maintainer email="hwanhong57@gmail.com">hwanhonglee</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>carla_extended_ackermann_control</exec_depend>
+  <exec_depend>carla_extended_ackermann_msgs</exec_depend>
+  <exec_depend>camrod_bringup</exec_depend>
+  <exec_depend>camrod_control</exec_depend>
+  <exec_depend>camrod_localization</exec_depend>
+  <exec_depend>camrod_map</exec_depend>
+  <exec_depend>camrod_planning</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>ranger_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

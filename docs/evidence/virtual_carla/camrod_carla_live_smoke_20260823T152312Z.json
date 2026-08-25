@@ -1,0 +1,451 @@
+{
+  "schema": "camrod.carla.live_functional_smoke.v1",
+  "created_at_utc": "2026-08-23T15:23:12Z",
+  "updated_at_utc": "2026-08-23T16:08:49Z",
+  "status": "functional_smoke_pass",
+  "formal_acceptance": false,
+  "claim_scope": {
+    "control_adapter_live": true,
+    "carla_physical_4ws_live": true,
+    "camrod_localization_and_lanelet_stack_started": true,
+    "nav2_goal_completed": true,
+    "perception_acceptance": false,
+    "formal_camrod_carla_e2e_acceptance": false,
+    "statement": "This report records bounded CAMROD mode smokes plus one successful short LaneletRoute/RPP Nav2 goal through the accepted CARLA Ranger physical 4WS backend. It is not a formal perception, safety, mission, or full E2E acceptance report."
+  },
+  "runtime": {
+    "carla_server_pid": 1224237,
+    "carla_server_render_mode": "NullRHI",
+    "carla_server_arguments_of_interest": [
+      "-nullrhi",
+      "-quality-level=Low",
+      "-world-port=2000",
+      "-nosound",
+      "-unattended"
+    ],
+    "map": "map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/Woraksan_v1_0_3_parking_lot_hegiht_fit",
+    "ros_domain_id": 5,
+    "carla_ros_bridge": {
+      "launch_pid": 1226119,
+      "bridge_pid": 1226176,
+      "synchronous_mode": true,
+      "fixed_delta_seconds": 0.05,
+      "synchronous_mode_wait_for_vehicle_control_command": true,
+      "ego_vehicle_role_name": "ego_vehicle"
+    },
+    "ego_vehicle": {
+      "actor_id": 2,
+      "session_scope": "initial bounded manual mode-smoke session",
+      "blueprint": "vehicle.ranger.default",
+      "physical_backend": "PHYSX_FOUR_WHEEL_STEERING"
+    },
+    "physical_lifecycle": {
+      "lifecycle_id": "ranger-55b35b28e6e74aa1954eb7f2c7245303",
+      "activation_status": "PASS",
+      "activation_path": "reports/carla_ros_bridge_ranger_physx_lifecycle_evidence/ranger-55b35b28e6e74aa1954eb7f2c7245303/activation.json",
+      "activation_sha256": "730f1e0bc109036e00f74408f9d2799129b68658d0995b59437fc7cfefb673c4"
+    }
+  },
+  "build_and_tests": {
+    "build": {
+      "command": "colcon build --symlink-install --packages-select camrod_carla_adapter --event-handlers console_direct+",
+      "selected_packages": 1,
+      "packages_succeeded": 1,
+      "exit_code": 0,
+      "elapsed_seconds_from_colcon_log": 3.04,
+      "log_path": "carla_ws/log/build_2026-08-24_01-08-35/logger_all.log",
+      "log_sha256": "fe0706f5c530f9bf48d90043136f1ed41d48522fac764913c7c7995a065c2245"
+    },
+    "new_camrod_carla_adapter_test_run": {
+      "framework": "pytest through colcon test",
+      "collected": 54,
+      "passed": 54,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "pytest_reported_seconds": 1.01,
+      "junit_seconds": 1.012,
+      "breakdown": {
+        "pure_command_mapping_and_contract": 43,
+        "feedback_bridge_ros_health": 1,
+        "pure_feedback_mapping": 7,
+        "launch_and_bt_contracts": 2,
+        "ros_message_and_watchdog": 1
+      },
+      "colcon_package_output": "54 passed in 1.01s",
+      "junit_path": "carla_ws/build/camrod_carla_adapter/pytest.xml",
+      "junit_sha256": "c1bab054c47c819d2bad3e06c29e02d2983bb0aa9123cd3595dcfee3a4a83957",
+      "console_log_path": "carla_ws/log/test_2026-08-24_01-08-39/camrod_carla_adapter/stdout_stderr.log",
+      "console_log_sha256": "bbe450e74bfa9e12e04d06e40a55d28084f65be9fa240a0b1f8d5c56b5f6cb07"
+    },
+    "selected_package_test_result": {
+      "total": 54,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "interpretation": "colcon test-result was restricted to build/camrod_carla_adapter, so all 54 results belong to this package run."
+    }
+  },
+  "live_modes": {
+    "ackermann": {
+      "status": "functional_smoke_pass",
+      "requested_twist": {
+        "linear_x_mps": 0.5,
+        "linear_y_mps": 0.0,
+        "angular_z_radps": 0.0,
+        "duration_seconds": 2.0
+      },
+      "gate_output": {
+        "linear_x_mps_approx": 0.2,
+        "configured_speed_scale": 0.4
+      },
+      "pose_frame": "carla_ros_map_xy",
+      "start_xy_m": [
+        38.006168365478516,
+        -36.45638656616211
+      ],
+      "end_xy_m": [
+        38.13759994506836,
+        -36.373104095458984
+      ],
+      "displacement_m": 0.15559636898044346,
+      "final_safe_stop": {
+        "velocity_mps": 0.0,
+        "brake": 1.0,
+        "hand_brake": true
+      },
+      "functional_evidence": {
+        "nonzero_command_reached_actor": true,
+        "actor_translation_observed": true,
+        "safe_stop_observed": true
+      }
+    },
+    "crab": {
+      "status": "functional_smoke_pass",
+      "requested_twist": {
+        "linear_x_mps": 0.0,
+        "linear_y_mps": 0.25,
+        "angular_z_radps": 0.0,
+        "duration_seconds": 4.0
+      },
+      "gate_output": {
+        "max_abs_linear_y_mps": 0.1,
+        "nonzero_samples": 80,
+        "configured_speed_scale": 0.4
+      },
+      "extended_command_mode_sample_counts": {
+        "ACKERMANN_0": 42,
+        "CRAB_1": 80
+      },
+      "extended_command_max_abs_crab_angle_rad": 1.535889744758606,
+      "physical_control_mode_sample_counts": {
+        "ACKERMANN_0": 411,
+        "CRAB_1": 801
+      },
+      "physical_control_nonzero_torque_samples": 512,
+      "physical_max_abs_wheel_angle_rad": 1.535889744758606,
+      "physical_max_abs_wheel_torque_nm": 0.2442764937877655,
+      "pose_frame": "carla_ros_map_xy",
+      "start_xy_m": [
+        38.13457107543945,
+        -36.36149215698242
+      ],
+      "end_xy_m": [
+        38.13189697265625,
+        -36.35469055175781
+      ],
+      "displacement_m": 0.0073083964948932705,
+      "functional_evidence": {
+        "crab_mode_propagated": true,
+        "accepted_88_degree_limit_observed": true,
+        "physical_wheel_steering_observed": true,
+        "physical_wheel_torque_observed": true
+      },
+      "formal_acceptance_note": "The small translation was sufficient only to show a live physical response. A formal crab direction, yaw-drift, settle, transition, and minimum-chord acceptance was not run here."
+    },
+    "zero_turn": {
+      "status": "functional_smoke_pass",
+      "requested_twist": {
+        "linear_x_mps": 0.0,
+        "linear_y_mps": 0.0,
+        "angular_z_radps": 0.4,
+        "duration_seconds": 5.0
+      },
+      "gate_output": {
+        "max_abs_angular_z_radps": 0.16,
+        "nonzero_samples": 100,
+        "configured_speed_scale": 0.4
+      },
+      "extended_command_mode_sample_counts": {
+        "ACKERMANN_0": 41,
+        "ZERO_TURN_2": 100
+      },
+      "physical_control_mode_sample_counts": {
+        "ACKERMANN_0": 405,
+        "ZERO_TURN_2": 1007
+      },
+      "physical_control_nonzero_torque_samples": 650,
+      "physical_max_abs_wheel_angle_rad": 1.0156383514404297,
+      "physical_max_abs_wheel_torque_nm": 0.22679579257965088,
+      "pose_frame": "carla_ros_map_xy",
+      "start_xy_m": [
+        38.13189697265625,
+        -36.35469055175781
+      ],
+      "end_xy_m": [
+        38.13068771362305,
+        -36.35383987426758
+      ],
+      "translation_m": 0.0014784991044213764,
+      "yaw_delta_rad": 0.14995234781216515,
+      "yaw_delta_deg": 8.591636657714847,
+      "functional_evidence": {
+        "zero_turn_mode_propagated": true,
+        "physical_wheel_steering_observed": true,
+        "physical_wheel_torque_observed": true,
+        "positive_rotation_observed": true,
+        "translation_remained_small": true
+      }
+    }
+  },
+  "map_and_calibration": {
+    "camrod_lanelet_map": {
+      "path": "/home/hong/camrod_ws/src/lanelet2_maps.osm",
+      "sha256": "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59",
+      "map_version": 22,
+      "lanelets": 55,
+      "areas": 14,
+      "local_cartesian_origin": {
+        "latitude_deg": 36.8435737,
+        "longitude_deg": 128.0925646,
+        "altitude_m": 0.0
+      }
+    },
+    "accepted_spawn_ros_pose": {
+      "x_m": 38.00654220581055,
+      "y_m": -36.45695114135742,
+      "z_m": 7.181118011474609,
+      "yaw_deg": 32.45613098144531
+    },
+    "carla_georef_to_camrod_local_before_lane_anchor": {
+      "x_m": 45.00474254302758,
+      "y_m": -26.853812592730982
+    },
+    "nearest_camrod_centerline_pose": {
+      "lanelet_id": 4584,
+      "segment_index": 6,
+      "x_m": 43.8380321740837,
+      "y_m": -24.779907458655806,
+      "yaw_rad": 0.5124402741914627,
+      "yaw_deg": 29.360664963697495,
+      "distance_from_unaligned_georef_position_m": 2.3795578560195887
+    },
+    "se2_carla_ros_to_camrod_map": {
+      "convention": "p_camrod = R(yaw_rad) * p_carla_ros + [x_m, y_m]",
+      "x_m": 7.855611455645338,
+      "y_m": 13.676196558868874,
+      "yaw_rad": -0.05402607389329672,
+      "yaw_deg": -3.095466017747822,
+      "calibration_type": "single_lane_anchor",
+      "config_path": "carla_ws/src/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml",
+      "config_sha256": "c3c11ba6ce61fb02e5fb07d2cd84e89a51b028b42ed8970753be527a47957bbb"
+    },
+    "calibration_interpretation": "The accepted spawn is forced onto lanelet 4584 at one pose. This does not establish a surveyed global alignment or bound residual error elsewhere on the map."
+  },
+  "gpu_and_runtime_workarounds": {
+    "gpu_driver_state": {
+      "nvidia_smi_status": "failed",
+      "nvidia_smi_message": "Failed to initialize NVML: Driver/library version mismatch",
+      "nvml_userspace_version": "580.178",
+      "installed_driver_userspace_version": "580.178.04",
+      "loaded_kernel_module_version": "580.173.02",
+      "kernel_release": "6.8.0-136-generic",
+      "mismatch_present": true
+    },
+    "nullrhi_workaround": {
+      "used": true,
+      "reason": "Run the CARLA physics/control smoke without initializing the unusable NVIDIA rendering stack.",
+      "result": "The headless physical control path ran under -nullrhi.",
+      "coverage_impact": "Rendered camera output and visual sensor correctness were not tested and cannot be inferred from this smoke."
+    },
+    "bridge_wait_for_control_workaround": {
+      "used": true,
+      "configuration": {
+        "synchronous_mode": true,
+        "fixed_delta_seconds": 0.05,
+        "synchronous_mode_wait_for_vehicle_control_command": true
+      },
+      "startup_behavior": "After actor 2 spawned, the bridge logged repeated 1.0 second missing-control timeouts until the controller and physical bridge came online.",
+      "runtime_behavior": "Once the control stack was active, commands drove the physical backend. The log also contains unexpected extra vehicle-control-command warnings, so bridge scheduling was not formally accepted.",
+      "interpretation": "Waiting for vehicle control bounded headless synchronous stepping for this smoke; it is an operational workaround rather than a completed timing acceptance."
+    }
+  },
+  "provenance": {
+    "camrod_checkout": {
+      "path": "/home/hong/camrod_ws/src",
+      "branch": "develop",
+      "git_sha": "eb4cb958a5e639c1be09bc4e6e42a797074265d8",
+      "working_tree_clean_at_inspection": true
+    },
+    "physical_gate": {
+      "path": "reports/ranger_physical_4ws_acceptance_gate_20260823T084641Z.json",
+      "schema": "carla.ranger.physical_four_wheel_acceptance_gate.v3",
+      "status": "VERIFIED",
+      "sha256": "5987cc1c67125670d86170a422add4cde0fa9716ee6935bf5224790de258e534"
+    },
+    "production_authorization": {
+      "path": "reports/carla_ranger_physx_substep_production_authority/20260821T081234Z/authorization.json",
+      "sha256": "7ccfbe672888f184353c05e3261465979e050746de5b426683b289d67db91ffc"
+    },
+    "gate_bound_runtime_artifacts": {
+      "carla_plugin_binary_sha256": "72ecfa2c74a6a4815630e1bf608efab4840b1e020950df22946a8a213606ceda",
+      "python_api_egg_sha256": "328e90242236b8f0529e6c9526694934bf20c27dc1e7348ba46eaf79061e6617",
+      "libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+      "controller_source_sha256": "44f60422849eb02c40793e9f96a6c93a38eb95c163fee38a696beb476689d0b6",
+      "physical_bridge_source_sha256": "45edcd42af2785f4b38fd2d2d23d656c193bbb99f40bbe611304c2a3664238ba",
+      "ranger_settings_sha256": "920aa375ee1875ef992f7b1880563811be26942e568a7b7db699a3ee160b56ff"
+    },
+    "live_run_camrod_carla_adapter_artifacts": {
+      "scope": "These hashes identify the adapter revision used for the recorded CARLA mode and NavigateToPose runs. Post-live hardening is recorded separately and was not replayed in CARLA.",
+      "command_mapping_py_sha256": "b9e2154139bd0a268d2f03781a020dd2508d6cf4c2b235b6a2274faeb2e9c9b7",
+      "feedback_mapping_py_sha256": "96c1dc078fc89d865c871a79c79a94ac161d56dd1405f1e2bc10ecf1c69a1fa8",
+      "twist_to_4ws_node_py_sha256": "6b181f8de6b80efc77b9eb25e62f64a5e8f2343d7191b5d3e67d78c44717e75f",
+      "feedback_bridge_node_py_sha256": "3025cff02746960da2e1194e31cfc9bbe44cc8fbb067c0ff4f0a52595a35fc00",
+      "camrod_carla_launch_sha256": "2df7e09fa97159e2d7ba102e2864c123294b070a445f0b5cc5cbbf3cac8286a7",
+      "command_adapter_config_sha256": "0418083ec51825686172a68f897843f6096fde3520fe750feb94821a185ef9cb",
+      "feedback_bridge_config_sha256": "6f0aa3e751bb938c5b8eec5ad3ceb729eaabad7c772f16216cab3ee6313b0993",
+      "carla_safety_gate_config_sha256": "65a2a08e2f19339c5debba24b84aadf78eb66f0f483e4ae18ae9f4528b7ab520",
+      "spawn_config_sha256": "cda46fd3d2c551b4df38a62a5b1725eee5909fe597ac87242ad71374340bb566"
+    },
+    "post_live_hardening_artifacts": {
+      "carla_replay_after_hardening": false,
+      "default_command_mapping_changed": false,
+      "changes": [
+        "role_name now expands all four CARLA adapter topics",
+        "audited command and watchdog parameters cannot be widened by overrides",
+        "non-finite IMU values are rejected and odometry/IMU/GNSS health is tracked independently",
+        "NavigateThroughPoses uses a LaneletRoute/RPP selector BT instead of unavailable GridBased/FollowPath IDs"
+      ],
+      "command_mapping_py_sha256": "c8c2f78264b34785a4711b5a84843ff0bfe6623ebf60565484e20274f55b63cc",
+      "feedback_mapping_py_sha256": "b98b441836ccbdb9c21e631ff07632ba6ff5d1731ee654412fabfcdb22f6a034",
+      "twist_to_4ws_node_py_sha256": "181d1eb5ec0a71c24c2fb11be3ccbfd2c733fd6103771a457ddc58fbd4561463",
+      "feedback_bridge_node_py_sha256": "a4ff319a9d67ee3b7c2330ba43eb1e68eee48cecfe4d6f8dc31c6d536bfebcef",
+      "adapter_launch_sha256": "56ab0226da6756d1a1be7867f634eb1ff8a731dc03a92931c36baadf98463fd8",
+      "camrod_carla_launch_sha256": "62da8ed4af62ada61aeb4e369ac14b966b3910618ab23bba2cdca792d76bbff4",
+      "navigate_through_poses_bt_sha256": "649a25c3b2914bf31dd37ce057de89a92df8a40c90cb101d359eccff18888a41",
+      "setup_py_sha256": "3d5276a7ea55de7453490c6ec53f6f63a746aca6d94a2b7ec561dffdc902eddb",
+      "offline_and_launch_checks": {
+        "tests_passed": 54,
+        "non_default_role_parameters_observed": [
+          "/carla/test_vehicle/extended_ackermann_cmd",
+          "/carla/test_vehicle/odometry",
+          "/carla/test_vehicle/imu",
+          "/carla/test_vehicle/gnss"
+        ],
+        "bt_navigator_through_poses_parameter_observed": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/config/navigate_through_poses_w_camrod_selectors.xml",
+        "bt_xml_configure_error_observed": false,
+        "two_pose_carla_action_run": false
+      }
+    },
+    "visual_summary": {
+      "scope": "Measured-point diagram; not a camera frame or time-sampled trajectory",
+      "svg_path": "reports/camrod_carla_functional_smoke_summary_20260824.svg",
+      "svg_sha256": "edc07e37bef33383edc34b8abe5419b302b2b847e6c94a255ea942733bc316de",
+      "png_path": "reports/camrod_carla_functional_smoke_summary_20260824.png",
+      "png_sha256": "727a2f157a0423a2ce5736b38e0dc24ee86d9cfe88c35adeec9735c76d6527e5"
+    },
+    "prior_formal_physical_ros_evidence": {
+      "ackermann_report_sha256": "85db6ac378ab4b1c567162b13fdf47e14cf3f83fba3ed3a7e26f4f230b832b29",
+      "crab_report_sha256": "36d379b7d6c702d31857c99ce14c7a904f937fca71fffb0ee22ec5a2ab32e363",
+      "zero_turn_report_sha256": "58f1e46b2868bf86b95092bbdcec322dafa62b324d6e270240a01646cd18cf8c"
+    }
+  },
+  "nav2_goal": {
+    "status": "functional_smoke_pass",
+    "formal_acceptance": false,
+    "action": "/planning/navigate_to_pose",
+    "result": "SUCCEEDED",
+    "planner": "LaneletRoute",
+    "controller": "RPP",
+    "controller_selector_topic_value": "RPP",
+    "lanelet_id": 4584,
+    "route_length_m": 1.5,
+    "route_points": 9,
+    "route_total_abs_turn_rad": 0.0,
+    "route_max_curvature_per_m": 0.001,
+    "number_of_recoveries": 0,
+    "goal_navigation_time_seconds": 5.44,
+    "start_map_pose": {
+      "x_m": 43.837689360092924,
+      "y_m": -24.779323535242625,
+      "yaw_deg": 29.36066497784928
+    },
+    "requested_goal_map_pose": {
+      "x_m": 45.145,
+      "y_m": -24.045,
+      "yaw_deg": 29.360664963697495
+    },
+    "final_map_pose_after_disengage": {
+      "x_m": 44.89932581705904,
+      "y_m": -24.18242228158402,
+      "yaw_deg": 29.347271561594642
+    },
+    "actor_displacement_m": 1.2179339363770003,
+    "final_position_error_m": 0.28149722492321116,
+    "final_yaw_error_deg": -0.013393402102853003,
+    "final_safety_state": {
+      "gate_operating_state": "STANDBY",
+      "vehicle_velocity_mps": 0.0003676647902466357,
+      "throttle": 0.0,
+      "brake": 1.0,
+      "hand_brake": true,
+      "physical_status_ready": true,
+      "physical_gate_accepted": true,
+      "physical_actor_id": 12
+    },
+    "runtime_retest": {
+      "carla_ros_bridge_pid": 1246196,
+      "ego_vehicle_actor_id": 12,
+      "spawn_config": "carla_ws/src/camrod_carla_adapter/config/ranger_spawn_camrod_control_only.json",
+      "clean_accepted_spawn_alignment": true,
+      "physical_lifecycle_id": "ranger-fab0c14b7b0e47829c0a88ba5ebad993",
+      "physical_activation_path": "reports/carla_ros_bridge_ranger_physx_lifecycle_evidence/ranger-fab0c14b7b0e47829c0a88ba5ebad993/activation.json",
+      "physical_activation_sha256": "eea36e5f1b82eea152db75c6d5ca912b2aa38589ba6fb5647729727db13c9c93",
+      "physical_terminal_path": "reports/carla_ros_bridge_ranger_physx_lifecycle_evidence/ranger-fab0c14b7b0e47829c0a88ba5ebad993/terminal.json",
+      "physical_terminal_sha256": "759ac0cfa18c248ac23383a72b8fef35dba29c050e46caf055dce4e57d80ac81",
+      "physical_terminal_status": "DESTROYED"
+    },
+    "runtime_log_evidence": {
+      "bt_navigator_log_path": "reports/logs/camrod_carla_nav2_bt_navigator_actor12.log",
+      "bt_navigator_log_sha256": "2ee3a3d950b71ea57e5653bec41c41c6375eb7ca069b6c72c5c7ff5081283f32",
+      "bt_navigator_observation": "Goal succeeded",
+      "planner_controller_log_path": "reports/logs/camrod_carla_nav2_planner_controller_actor12.log",
+      "planner_controller_log_sha256": "57168d047cad9a6f128008055b0fde9b8127e8bfe0e87b745b6a2f1746cc5d9a",
+      "planner_controller_observation": "LaneletRoute planned lanelet 4584, 1.50 m, 9 points; RPP received the goal and reported Reached the goal!",
+      "launch_log_path": "reports/logs/camrod_carla_nav2_launch_actor12.log",
+      "launch_log_sha256": "eb49019e0bdf9303c803d440ebaa7bbaa679ae59647d9760ba1787579b2cb919",
+      "action_cli_transcript_saved": false,
+      "scope_note": "The hash-bound ROS logs prove planner/controller selection and BT success in the actor-12 session. Exact CLI feedback text was observed live but was not persisted as a separate transcript."
+    },
+    "configuration_issue_found_and_fixed": {
+      "symptom": "The standalone CAMROD planning launch inferred MPPI from disabled.yaml while the production controller profile loaded only RPP and RotationShim.",
+      "observed_error": "FollowPath called with controller name MPPI, which does not exist. Available controllers are: RPP RotationShim.",
+      "fix": "camrod_carla.launch.py now explicitly defaults nav2_selected_planner=LaneletRoute and nav2_selected_controller=RPP and forwards both to camrod_planning.",
+      "first_goal_was_canceled_safely": true
+    },
+    "interpretation": "This proves one short, initially aligned, static-lanelet planning/control goal can complete through CAMROD and the CARLA physical 4WS backend. It does not prove long-route, curved-route, disturbed-start, obstacle, mission, or formal navigation acceptance."
+  },
+  "limitations": {
+    "camera": "No rendered camera acceptance was run. The control-only spawn has no camera, and NullRHI bypasses rendered visual output.",
+    "lidar": "No CARLA LiDAR sensor or CAMROD LiDAR adapter was present; obstacle perception and dynamic-stop behavior were not tested.",
+    "vehicle_shape": "The known Ranger visual/mesh shape issue, including the previously reviewed front-left skinning defect, remains outside this smoke and is not resolved by successful wheel physics.",
+    "map_alignment": "The SE(2) calibration uses one lane anchor only. Multi-point road/lanelet residuals and global alignment were not accepted.",
+    "crab_motion": "CRAB mode, wheel angle, and torque propagation were observed, but translation was only 0.0073083964948932705 m; formal direction, yaw-drift, settle, transition, and minimum-motion checks remain outstanding.",
+    "platform_safety": "The CARLA smoke safety profile disables hardware-only platform, CAN-mode, charging, battery, and dynamic-perception interlocks. It must not be used as evidence that those production safety paths passed.",
+    "bridge_timing": "Startup missing-control timeouts and runtime unexpected-control warnings remain. Deterministic timing and competing-publisher acceptance were not completed.",
+    "navigation": "One initially aligned 1.50 m static-lanelet goal succeeded. A prior disturbed-start trial did not converge within its 40 second bound. Long/curved routes, large heading errors, lane adherence bounds, obstacle response, and mission completion remain unproven.",
+    "navigate_through_poses": "A selector-based LaneletRoute/RPP BT was installed, parsed, and observed as the bt_navigator parameter after the live run, but a two-pose CARLA action was not executed.",
+    "formal_acceptance": "The formal passive-observer E2E matrix, watchdog/fault injection, same-actor mode transitions, localization error bounds, multi-point map calibration, full Nav2 route suite, and mission tests remain incomplete."
+  },
+  "final_interpretation": "ACKERMANN translation and safe stop, CRAB steering/torque propagation, ZERO_TURN rotation with small translation, and one successful short LaneletRoute/RPP Nav2 goal were observed through the live CAMROD-to-CARLA chain. These observations justify functional_smoke_pass only; formal_acceptance remains false."
+}

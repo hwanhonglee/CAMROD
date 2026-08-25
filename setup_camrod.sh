@@ -339,6 +339,10 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   _ROSDEP_SKIP_KEYS=(
     ament_python
     catkin
+    # virtual/CARLA provides these from the separately built Ranger ROS
+    # workspace. They intentionally have no system rosdep rule.
+    carla_extended_ackermann_control
+    carla_extended_ackermann_msgs
     OpenCV
     cuda_cudart
     libsdl2-dev

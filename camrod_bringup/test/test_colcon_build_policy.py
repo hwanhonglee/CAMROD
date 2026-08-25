@@ -95,3 +95,55 @@ def test_inline_cmake_argument_is_preserved_when_adding_release() -> None:
         "-DBUILD_TESTING=OFF",
         "-DCMAKE_BUILD_TYPE=Release",
     ]
+
+
+def test_only_explicit_virtual_carla_underlays_survive_sanitization(
+    tmp_path: Path,
+) -> None:
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+    functions = "\n".join(
+        _function_source(source, name)
+        for name in ("_is_allowed_extra_prefix", "sanitize_path_var")
+    )
+    workspace = tmp_path / "camrod_ws"
+    bridge_install = (
+        tmp_path / "ranger" / ".work" / "ros-bridge-ws" / "install"
+    )
+    ranger_install = tmp_path / "ranger" / "ros_ws" / "install"
+    unrelated = tmp_path / "ambient_autoware" / "install"
+    bridge_package = bridge_install / "carla_ros_bridge"
+    ranger_package = ranger_install / "carla_extended_ackermann_control"
+    for path in (bridge_package, ranger_package, unrelated):
+        path.mkdir(parents=True)
+
+    script = f"""
+set -euo pipefail
+{functions}
+WS_ROOT="$1"
+export CAMROD_EXTRA_PREFIX_ROOTS="$2:$3"
+export TEST_PREFIX_PATH="$4:$5:$6"
+sanitize_path_var TEST_PREFIX_PATH
+printf '%s' "${{TEST_PREFIX_PATH}}"
+"""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "build-prefix-test",
+            str(workspace),
+            str(bridge_install),
+            str(ranger_install),
+            str(bridge_package),
+            str(ranger_package),
+            str(unrelated),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.split(":") == [
+        str(bridge_package),
+        str(ranger_package),
+    ]

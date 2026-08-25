@@ -11,6 +11,11 @@ SRC_ROOT = Path(__file__).resolve().parents[2]
 OWNED_SHELL_TOOLS = (
     "setup_camrod.sh",
     "colcon_build.sh",
+    "scripts/virtual_carla/env.sh",
+    "scripts/virtual_carla/setup.sh",
+    "scripts/virtual_carla/build.sh",
+    "scripts/virtual_carla/test.sh",
+    "scripts/virtual_carla/run.sh",
     "camrod_bringup/scripts/field_test_tool.sh",
     "camrod_bringup/scripts/run_bringup.sh",
     "camrod_platform/scripts/install_can0_service.sh",

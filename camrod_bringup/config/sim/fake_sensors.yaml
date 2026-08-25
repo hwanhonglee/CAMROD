@@ -26,8 +26,12 @@
     # HH_260807 - Constant-speed fallback matches the 2.0 km/h final cruise.
     speed_mps: 0.555556
     # HH_260526: Motion source mode.
-    # motion_source: cmd_vel | constant_speed
+    # motion_source: cmd_vel | constant_speed | external_odometry
     motion_source: "cmd_vel"
+    # In external_odometry mode this map-aligned source is authoritative. Sensor
+    # output stops on timeout so a dead simulator cannot look healthy.
+    external_odometry_topic: "/odom"
+    external_odometry_timeout_s: 0.5
     # HH_260720 - Sim integrates the same final control topic consumed by Ranger.
     cmd_vel_motion_topic: "/control/cmd_vel"
     cmd_vel_timeout_s: 0.5

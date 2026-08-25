@@ -320,6 +320,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # Keep the full simulation graph coupled to external physics odometry while
+  # preserving fail-closed validation and explicit platform-status ownership.
+  ament_add_pytest_test(
+    test_external_simulator_contract
+    test/test_external_simulator_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

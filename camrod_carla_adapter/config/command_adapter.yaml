@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    input_topic: "/control/cmd_vel_ros"
+    output_topic: "/carla/ego_vehicle/extended_ackermann_cmd"
+    status_topic: "/camrod_carla/command_adapter/status"
+    base_frame_id: "robot_center_link"
+
+    # Match CAMROD Ranger mode selection exactly at the command boundary.
+    lateral_deadband_mps: 0.02
+    angular_epsilon_radps: 0.000001
+    minimum_turn_radius_m: 0.810330349
+    camrod_wheelbase_m: 0.90
+
+    # Accepted CARLA Ranger limits. Pure +/-Y is clipped from 90 to 88 deg.
+    max_ackermann_steer_rad: 0.6981
+    max_crab_angle_rad: 1.53588974175501
+    max_ackermann_speed_mps: 1.4
+    max_crab_speed_mps: 1.0
+    max_yaw_rate_radps: 0.7853
+
+    # Independent final-boundary watchdog; no non-zero command is replayed.
+    input_timeout_sec: 0.35
+    watchdog_rate_hz: 50.0
+    zero_publish_rate_hz: 10.0
+    unsupported_axis_tolerance: 0.000001

@@ -173,6 +173,16 @@ def generate_launch_description():
         pkg_share('camrod_map', os.path.join('config', 'drop_zones.yaml')),
         map_profile_default,
     )
+    nav2_bt_xml_nav_to_pose_default = pkg_share(
+        'camrod_planning',
+        os.path.join('config', 'bt', 'navigate_to_pose_w_planner_selector.xml'),
+    )
+    nav2_bt_xml_nav_through_poses_default = pkg_share(
+        'camrod_planning',
+        os.path.join(
+            'config', 'bt', 'navigate_through_poses_w_planner_selector.xml'
+        ),
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='planning'),
@@ -241,6 +251,14 @@ def generate_launch_description():
             default_value='__auto__',
         ),
         DeclareLaunchArgument(
+            'nav2_bt_xml_nav_to_pose',
+            default_value=nav2_bt_xml_nav_to_pose_default,
+        ),
+        DeclareLaunchArgument(
+            'nav2_bt_xml_nav_through_poses',
+            default_value=nav2_bt_xml_nav_through_poses_default,
+        ),
+        DeclareLaunchArgument(
             'planning_state_machine_keypoints_yaml',
             default_value=planning_state_machine_keypoints_default,
         ),
@@ -270,6 +288,8 @@ def generate_launch_description():
                     'nav2_robot_base_frame',
                     'nav2_selected_planner',
                     'nav2_selected_controller',
+                    'nav2_bt_xml_nav_to_pose',
+                    'nav2_bt_xml_nav_through_poses',
                     'use_nav2_container',
                     'module_namespace',
                     'navigation_cmd_vel_topic',

@@ -13,6 +13,10 @@ from std_msgs.msg import String
 # manual arrival direction remains unrestricted without sacrificing long,
 # narrow-map connectivity or active-route sensor masks.
 DEFAULT_MANUAL_PLANNER_ID = "LaneletRoute"
+# Keep executable-alone fallbacks reachable in the default production plugin
+# profiles. Launch files may still select the opt-in planner/controller sets.
+DEFAULT_REGULATED_PLANNER_ID = "LaneletRoute"
+DEFAULT_REGULATED_CONTROLLER_ID = "RPP"
 
 
 def resolve_goal_source(requested: str) -> tuple[str, bool]:
@@ -43,12 +47,14 @@ class Nav2SelectorLatchNode(Node):
 
         # HH_260528: Keep combo-level planner/controller choice sticky via transient-local QoS.
         self._regulated_planner_id = str(
-            self.declare_parameter("planner_id", "NavFn").value
+            self.declare_parameter(
+                "planner_id", DEFAULT_REGULATED_PLANNER_ID
+            ).value
         ).strip()
-        # HH_260618: Default to MPPI so normal autonomy uses local trajectory
-        # sampling against the local costmap instead of pure path tracking.
         self._regulated_controller_id = str(
-            self.declare_parameter("controller_id", "MPPI").value
+            self.declare_parameter(
+                "controller_id", DEFAULT_REGULATED_CONTROLLER_ID
+            ).value
         ).strip()
         # HH_260730 / TODOLIST 7 - Both sources use the connected route by
         # default and both receive a projected vehicle-lane position. Manual RViz

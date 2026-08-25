@@ -1,0 +1,60 @@
+/**:
+  ros__parameters:
+    # CARLA control/planning smoke profile. It keeps explicit operator engage,
+    # timeout handling and lanelet geometry, but does not claim hardware or
+    # live-perception interlocks that are not represented by this bridge.
+    require_platform_drive_enable: false
+    platform_safety_source_mode: "disabled"
+    block_on_platform_status_stale: false
+    block_on_charging: false
+    block_on_platform_error_code: false
+    require_can_control_mode: false
+    critical_battery_stop_enabled: false
+    dr_timeout_source_mode: "disabled"
+    additional_estop_topics: ""
+    enable_gnss_recovery_hold: false
+
+    allow_on_start: false
+    publish_zero_when_blocked: true
+    speed_scale: 0.4
+    input_timeout_s: 0.35
+    zero_publish_rate_hz: 10.0
+
+    # Reuse CAMROD's high-resolution static lanelet raster as the initial
+    # merged source. Dynamic obstacle claims remain disabled until CARLA
+    # LiDAR/radar adapters are added.
+    enable_cost_stop: true
+    cost_grid_topic: "/map/cost_grid/lanelet_safety"
+    cost_stop_threshold: 100
+    cost_stop_hold_s: 0.25
+    cost_stop_latch_enable: false
+    cost_stop_clear_required_s: 0.25
+    cost_grid_stale_stop_enable: true
+    cost_grid_stale_timeout_s: 2.0
+    cost_source_debug_enable: false
+    cost_stop_require_dynamic_source: false
+    enable_side_rear_cost_stop: false
+    enable_body_near_dynamic_stop: false
+    enable_unavoidable_stop: false
+    front_dynamic_stop_use_local_path: false
+
+    lanelet_safety_enable: true
+    lanelet_safety_grid_topic: "/map/cost_grid/lanelet_safety"
+    lanelet_safety_threshold: 100
+    lanelet_safety_current_threshold: 100
+    lanelet_safety_body_hard_stop_enable: true
+    lanelet_safety_footprint_enable: true
+    lanelet_safety_footprint_threshold: 100
+    lanelet_safety_stop_on_unknown: true
+    lanelet_safety_check_reverse: true
+    lanelet_safety_check_lateral: true
+    lanelet_safety_front_use_local_path: false
+    route_safety_recovery_enable: false
+    route_safety_auto_recovery_candidate_enable: false
+
+    pose_topic: "/localization/pose"
+    odometry_topic: "/localization/odometry"
+    pose_source_preference: "pose_topic"
+    enable_pose_raw_fallback: false
+    enable_yaw_alignment_zone: false
+    enable_route_heading_alignment: false

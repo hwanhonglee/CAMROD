@@ -1,0 +1,58 @@
+{
+  "objects": [
+    {
+      "type": "sensor.pseudo.actor_list",
+      "id": "actor_list"
+    },
+    {
+      "type": "sensor.pseudo.opendrive_map",
+      "id": "map"
+    },
+    {
+      "type": "sensor.pseudo.objects",
+      "id": "objects"
+    },
+    {
+      "type": "vehicle.ranger.default",
+      "id": "ego_vehicle",
+      "spawn_point": {
+        "x": 38.00654220581055,
+        "y": -36.45695114135742,
+        "z": 7.181118011474609,
+        "roll": 0.0,
+        "pitch": 0.0,
+        "yaw": 32.45613098144531
+      },
+      "sensors": [
+        {
+          "type": "sensor.other.collision",
+          "id": "collision",
+          "spawn_point": {"x": 0.0, "y": 0.0, "z": 0.0}
+        },
+        {
+          "type": "sensor.other.lane_invasion",
+          "id": "lane_invasion",
+          "spawn_point": {"x": 0.0, "y": 0.0, "z": 0.0}
+        },
+        {
+          "type": "sensor.other.gnss",
+          "id": "gnss",
+          "spawn_point": {"x": 0.0, "y": 0.0, "z": 0.7}
+        },
+        {
+          "type": "sensor.other.imu",
+          "id": "imu",
+          "spawn_point": {"x": 0.0, "y": 0.0, "z": 0.7}
+        },
+        {
+          "type": "sensor.pseudo.odom",
+          "id": "odometry"
+        },
+        {
+          "type": "actor.pseudo.control",
+          "id": "control"
+        }
+      ]
+    }
+  ]
+}

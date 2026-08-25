@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    # Use only when the CARLA ROS map and CAMROD map already share one SE(2).
+    map_offset_x_m: 0.0
+    map_offset_y_m: 0.0
+    map_yaw_offset_rad: 0.0
