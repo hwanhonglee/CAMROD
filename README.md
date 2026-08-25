@@ -27,9 +27,11 @@ campsite anchor across restarts, and expose manual return/docking telemetry. -->
 site exit, and record the no-zero-turn roadside forward-loop policy. -->
 <!-- HH_260819 - Move the replacement dual GNSS deployment to 10 Hz/100 ms,
 DN05Y9E7, and 460800 baud; require physical RTCM and heading evidence. -->
+<!-- HH_260825 - Publish v2.2.1 with current-lane campsite Return handoff,
+stopped charger-departure dwell, and a wider route-clipped front radar gate. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.8`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.2.1`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
@@ -78,15 +80,16 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
 | Normal/crab mode selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann | Nav2 lateral residue cannot select parallel motion; campsite/recovery commands remain explicit crab |
 | Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
-| Campsite return anchor | exact entry lanelet snap, return tolerance `0.04 m` | `CRAB_IN` and `CRAB_OUT` share one map anchor; current heading reverses the crab side after a 180-degree restart |
+| Campsite return handoff | live lanelet projection `<=0.15 m`, stopped hold `1.20 s` | Return routing starts from the current lane position; exact historical entry XY is used only when the live projection is stale or unavailable |
 | Campsite service policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | B11-B13 cap lateral travel at `0.30 m`, skip every zero-turn, finish `CRAB_OUT`, then use a forward one-way return loop |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
 | Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
-| Final parking slowdown | reverse last `0.30 m`; AprilTag last `0.60 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
+| Final parking slowdown | reverse last `0.30 m`; AprilTag camera range `0.80 -> 0.40 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
-| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | Front channels retain measured self-return exclusions and remain an independent near-field fail-safe beside the 2 m classified-fusion path stop |
+| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions and accept the next `0.30 m`; active lanelet plus the `1.27 m` local-path corridor bounds front stopping; side/rear remain `0.10 m` |
+| Charging mission start | `7.0 s` stopped dwell | A campsite selection is queued while charging; manual, mission, and platform gates stay closed until one station `EXIT` is released |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |
 | Operator Return | one `/ui/manual_return` authority; `0.50 s` preemption hold | Both visible Return controls cancel outbound Nav2, close motion authorization, then publish exactly one fresh drop-zone recall |
@@ -178,6 +181,8 @@ no second hold. This is not physical-road evidence.
 
 | Check | Result | Scope |
 |---|---|---|
+| v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
+| v2.2.1 selected build/tests | **PASS** | Release build `6/6`; control `110`, planning `65` (skip `8`), sensing `117`, UI `110`, bringup `264`; errors/failures `0`; CARLA source contracts `21/21` |
 | Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
@@ -321,6 +326,9 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, CARLA integration, tests, and field limits |
+| [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
+| [Virtual CARLA integration](docs/virtual_carla.md) | External Ranger/CARLA ownership, build/run gates, adapter topics, and bounded functional evidence |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
 | [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |

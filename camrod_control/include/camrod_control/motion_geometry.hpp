@@ -94,6 +94,40 @@ inline bool campsiteAdoptAnchorsCorrelated(
          maximum_separation_m;
 }
 
+// HH_260825 - A campsite exit is route-ready when the live robot pose reaches
+// the current centerline projection.  Longitudinal displacement along that
+// lanelet is intentionally irrelevant: LaneletRoute can plan from the current
+// position, so forcing the body back to the historical entry XY adds motion
+// without improving route validity.
+inline bool campsiteLiveLaneletReturnHandoffEligible(
+  const avg_msgs::msg::AvgPoseStamped & current_pose,
+  const avg_msgs::msg::AvgPoseStamped & live_lanelet_pose,
+  const double lanelet_pose_age_s,
+  const double freshness_timeout_s,
+  const double maximum_lateral_distance_m)
+{
+  if (!poseHasFiniteMotionGeometry(current_pose) ||
+    !poseHasFiniteMotionGeometry(live_lanelet_pose) ||
+    !std::isfinite(lanelet_pose_age_s) || lanelet_pose_age_s < 0.0 ||
+    !std::isfinite(freshness_timeout_s) || freshness_timeout_s < 0.0 ||
+    lanelet_pose_age_s > freshness_timeout_s ||
+    !std::isfinite(maximum_lateral_distance_m) ||
+    maximum_lateral_distance_m < 0.0)
+  {
+    return false;
+  }
+  if (!current_pose.header.frame_id.empty() &&
+    !live_lanelet_pose.header.frame_id.empty() &&
+    current_pose.header.frame_id != live_lanelet_pose.header.frame_id)
+  {
+    return false;
+  }
+  return std::hypot(
+    current_pose.pose.position.x - live_lanelet_pose.pose.position.x,
+    current_pose.pose.position.y - live_lanelet_pose.pose.position.y) <=
+         maximum_lateral_distance_m + 1.0e-9;
+}
+
 inline double yawFromPose(const avg_msgs::msg::AvgPoseStamped & pose)
 {
   const auto & orientation = pose.pose.orientation;

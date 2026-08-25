@@ -17,6 +17,8 @@ normal/crab separation, parking slowdown, and charging-first stop behavior. -->
 return, and the source-selected forward loop. -->
 <!-- HH_260824 - Move the current AprilTag translation latch to the operator
 requested 0.40 m camera range and expose the exact runtime trigger. -->
+<!-- HH_260825 - Finish campsite exit at a fresh live lanelet projection and
+retain exact-entry XY only as a stale-projection recovery fallback. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -147,8 +149,8 @@ localization, or battery hold.
 |---|---|
 | Active B1-B10 turnaround | `ALIGN_ENTRY_YAW -> CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
 | Active B11-B13 roadside | `ALIGN_ENTRY_YAW ->` `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
-| B11-B13 return | Preserve arrival heading, restore the lane anchor laterally, then request a forward one-way loop |
-| Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
+| B11-B13 return | Preserve arrival heading, reach a fresh lanelet projection laterally, then request a forward one-way loop |
+| Drop-zone departure | optional charging `7.0 s` stopped dwell -> `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
 Drop-zone departure captures one fresh, same-frame lanelet pose at `EXIT`
@@ -168,8 +170,9 @@ fault and obstacle reasons remain authoritative.
 
 <!-- HH_260807 - Explain the route-snap return anchor that prevents a narrow
 lane handoff from inheriting Nav2's early goal-reached pose. -->
-For automatic B1-B13 service, `/planning/goal_pose_snapped` is the single map
-anchor used to measure both `CRAB_IN` and `CRAB_OUT`. The controller first runs
+For automatic B1-B13 service, `/planning/goal_pose_snapped` remains the map
+anchor for `CRAB_IN`, crab-side selection, restart correlation, and the
+stale-live-projection fallback. The controller first runs
 mandatory `ALIGN_ENTRY_YAW` against that lanelet's authored tangent, then uses
 the same tangent and signed anchor/site projection to select the crab side.
 Invalid pose/goal geometry or failure to align within `15 s` stops with zero
@@ -178,20 +181,26 @@ the return target and prevents the live arrival yaw from choosing the adjacent
 bay. A B1-B10 reboot within `0.60 m` of the authored site restores
 `WAIT_RETURN`. B11-B13 instead match signed progress toward the requested
 `0.30 m` roadside target with the existing `0.15 m` lateral and `0.60 m`
-forward bounds. Every restart/adopt requires a fresh finite lanelet anchor (or
-a route goal correlated to it); the current pose is never fabricated as a
-completed return anchor. These paths intentionally retain the live-heading
+forward bounds. Every restart/adopt still requires a fresh finite lanelet
+anchor or a route goal correlated to it; these paths retain the live-heading
 fallback so a post-turn robot chooses the opposite return side.
-`CRAB_OUT` corrects body-lateral error with pure `linear.y` (`+/-90 deg`
-parallel steering), holds zero for a one-way `1.20 s` steering-settle latch,
-then corrects longitudinal drift with pure `linear.x`. It never changes back to
-lateral steering or takes the old diagonal shortcut. Ranger holds translation
-until a longitudinal/parallel mode target is within `0.05 rad`, and control
-hands motion back only within `0.04 m`. This distinction matters on
-the current B4 lane: an earlier observed Nav2 arrival was `0.27 m` from the snap,
-while the measured planning-margin clearance was only about `0.136 m` per side.
-A focused B1 -> B4 service run returned at `0.03/0.04 m`, completed both
-parking/charging cycles, and produced no post-return body or margin hold.
+
+<!-- HH_260825 - Current-pose routing removes unnecessary longitudinal retrace. -->
+`CRAB_OUT` now observes the fresh `/planning/lanelet_pose_ros` projection. At
+`<=0.15 m`, it publishes zero for `1.20 s`, then emits
+`done_live_lanelet`; LaneletRoute builds the Return from the current vehicle XY.
+Longitudinal separation from the historical entry snap is intentionally ignored.
+If the projection is missing, stale, non-finite, or in another frame, the
+existing axis-separated exact-anchor sequence remains the deterministic
+fallback and still requires `return_position_tolerance_m=0.04`.
+
+![v2.2.1 current-lane campsite handoff](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
+
+The [v2.2.1 measured run](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md)
+finished B8 at `0.140 m` from the live projection while the original anchor was
+still `0.231 m` away, then planned the reverse-shortest Return from current XY.
+The older `0.03-0.04 m` anchor results below remain valid evidence for the
+fallback sequencer, not the normal v2.2.1 handoff target.
 
 The final B1-B10 endurance kept every route-snap handoff within `0.03-0.04 m`.
 B2-B10 also completed nine planning-margin recoveries with observed recovery
@@ -252,8 +261,8 @@ The status message reports `configured_stop_tag_m`, `stop_reason`, and the exact
 ![Current turnaround and roadside phase order](../docs/assets/module-guides/bringup/test-results/camping-site-full-return-20260819/campsite-phase-sequence.gif)
 
 All B1-B10 sites completed the full turnaround/return sequence. B11-B13 used
-the `0.30 m` roadside cap, accepted Return, restored the shared lane anchor with
-pure lateral `CRAB_OUT`, reached `DONE`, and never entered a rotation phase.
+the `0.30 m` roadside cap, accepted Return, reached a live lanelet projection
+with pure lateral `CRAB_OUT`, reached `DONE`, and never entered a rotation phase.
 The `done_roadside_forward` source selects the legal forward one-way loop
 instead of attempting a physical-body-blocked zero-turn in the narrow lane.
 The final gate ignores Nav2 commands while a campsite phase owns motion, then

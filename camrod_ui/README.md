@@ -12,6 +12,8 @@ for tag image/pose, parking paths, controller phases, battery, and charging. -->
 <!-- HH_260819 - Make both Return controls share a stopped preemption barrier,
 remove obsolete manual Parking ON/OFF, and wake telemetry leases by event. -->
 <!-- HH_260819 - Add persistent public field-operation distance and service evidence. -->
+<!-- HH_260825 - Queue charging campsite selections behind a stopped one-shot
+departure dwell and expose that pending state to every UI snapshot. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -44,6 +46,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
 | Docking telemetry | seven lazy subscriptions: tag debug/pose/detected, two paths, two controller states |
 | Manual Return | one `POST /ui/manual_return` authority; `0.50 s` stopped preemption during ordinary travel, duplicate presses coalesced |
+| Charging campsite selection | accepted and queued; `7.0 s` with manual, mission, and platform authorization closed before one station `EXIT` |
 | Service evidence | `Asia/Seoul`; SQLite at `~/.local/state/camrod/service_metrics.sqlite3`; public summary plus 30-day detail |
 | Confirmed-tent occupancy guard | `false` by default; set `bringup.control.enable_campsite_occupancy_guard: true` to block pre-entry dispatch |
 
@@ -67,6 +70,17 @@ Unknown battery or SOC below 35% blocks a new destination. If SOC falls below
 35% during an active campsite mission, the current site phase finishes and the
 UI waits for the normal return request; it does not command immediate motion
 while users may be unloading.
+
+When a valid campsite is selected in `CHARGING` or
+`WAITING_FOR_CHARGING`, the backend stores the destination but publishes no
+site goal. A one-shot ROS timer keeps manual engage, mission engage, and
+platform drive-enable false for `charging_departure_delay_s` (`7.0 s` in full
+bringup). Expiry emits exactly one parking cancel and one drop-zone `EXIT`;
+the campsite key and goal remain deferred until `exit_complete=true`.
+Operator Stop, shutdown, and a duplicate destination safely cancel or reuse
+the pending timer without reopening authorization.
+
+![v2.2.1 charging departure dwell](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
 
 The perception occupancy topic continues to report confirmed tent sites. The
 UI/control admission guard is an explicit shared toggle and defaults to `false`
@@ -455,13 +469,17 @@ in [`amd64-container-ab-20260805.json`](../docs/assets/module-guides/runtime/evi
 
 ## Build And Run
 
+<!-- HH_260825 - Keep generated frontend assets package-local, but route colcon
+outputs through the canonical workspace wrapper outside the source tree. -->
+
 ```bash
 cd ~/camrod_ws/src/camrod_ui/camrod_ui_robot/assets/frontend
 npm ci
 npm run build
 
+cd ~/camrod_ws/src
+./colcon_build.sh --packages-select camrod_ui
 cd ~/camrod_ws
-colcon build --packages-select camrod_ui --symlink-install
 source install/setup.bash
 
 ros2 launch camrod_ui ui.launch.py

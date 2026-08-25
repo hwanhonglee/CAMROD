@@ -6,6 +6,8 @@ parking, sensing, localization, feature toggles, and synchronized mirrors. -->
 preemption, and event-driven telemetry scheduling values. -->
 <!-- HH_260824 - Set the active AprilTag translation stop to the same 0.40 m
 camera-frame range requested by the operator and document trigger provenance. -->
+<!-- HH_260825 - Add live campsite lanelet handoff, charging departure dwell,
+front-only radar stop windows, and external-simulator ownership parameters. -->
 
 This guide lists the parameters normally changed for vehicle behavior. It does
 not duplicate every ROS topic string or diagnostic checker threshold in the
@@ -44,6 +46,7 @@ pairs and must not be made byte-identical without a new driving test.
 | Classified camera-LiDAR raster | `camrod_sensing/config/lidar/cost_grid.yaml` | `camrod_bringup/config/sensing/lidar/cost_grid.yaml` |
 | Campsite/drop-zone coordinates | planning/map package YAML | `camrod_bringup/config/{planning,map}/*.yaml` |
 | Module/container/UI feature switches | launch files | `camrod_bringup/config/bringup/launch_defaults.yaml` |
+| Charging campsite departure dwell | UI backend default | `launch_defaults.yaml` key `system/api_ui_charging_departure_delay_s` |
 
 ## Vehicle Speed
 
@@ -114,6 +117,9 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `return_lateral_transition_tolerance_m` | `0.02 m` | Latches lateral correction complete before steering settle |
 | `return_lateral_hysteresis_m` | `0.10 m` | Fails closed if lateral error escapes the latched band; never switches back to crab |
 | `return_steering_settle_s` | `1.20 s` | Zero-command hold for the deployed `+/-90 -> 0 deg` steering transition |
+| `enable_live_lanelet_return_handoff` | `true` | Normal exit completes at a fresh live lanelet projection instead of requiring historical entry XY |
+| `return_lanelet_handoff_distance_m` | `0.15 m` | Maximum current-pose to live-projection separation for route handoff |
+| `return_lanelet_handoff_hold_s` | `1.20 s` | Continuous zero-command steering-settle hold before publishing Return planning authorization |
 | `crab_return_timeout_s` | `90 s` | Time available for exit plus repeated boundary recovery |
 | `rotate_yaw_tolerance_deg` | `4 deg` | 180-degree target tolerance |
 | `rotate_settle_hold_s` | `0.8 s` | Continuous settled-yaw proof before translation |
@@ -122,12 +128,15 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `auto_return_after_unload_wait` | `false` | Prevents automatic motion while people unload |
 | `roadside_max_lateral_offset_m` | `0.30 m` | B11-B13 roadside-only cap |
 
-Entry and exit now use the same `/planning/goal_pose_snapped` map anchor.
-Normal automatic B1-B13 entry must align to and project from its lanelet-snap
-yaw. Restart/adopt and manual recovery intentionally use the fresh live-yaw
-fallback because the robot may already hold the post-turn heading. Adoption
-still requires a fresh finite lanelet anchor, or a route goal correlated to
-that anchor; it never promotes the current pose into a completed return anchor.
+Entry still uses `/planning/goal_pose_snapped` for its map target, authored
+tangent, signed crab side, and restart correlation. During `CRAB_OUT`, normal
+completion uses the fresh `/planning/lanelet_pose_ros` projection and ignores
+longitudinal distance from the historical entry snap. After a `1.20 s` stopped
+hold within `0.15 m`, LaneletRoute plans from current XY. A stale, non-finite,
+or wrong-frame live projection falls back to the exact-anchor sequencer and its
+`0.04 m` tolerance. Restart/adopt still requires a fresh finite lanelet anchor
+or a route goal correlated to it; current pose is not accepted without a live
+projection.
 B11-B13 match their signed `0.30 m` requested target using the existing
 `0.15 m` lateral completion and `0.60 m` axial handoff bounds, not the distant
 raw semantic site center or the global B1-B10 center radius.
@@ -163,6 +172,10 @@ episode time limits remain fail-closed.
 | `cmd_vel_gate_cost_stop_classified_source_labels` | `fusion` | Fusion must have a current semantic class |
 | `cmd_vel_gate_cost_stop_classified_front_lookahead_m` | `2.0 m` | Class-confirmed path-front stop distance |
 | `cmd_vel_gate_cost_stop_clear_required_s` | `2.0 s` | Continuous clear proof before release |
+| FRONT1 stop candidate | `(0.220, 0.520] m` from sensor face | Measured body envelope followed by `0.30 m` usable window |
+| FRONT2 stop candidate | `(0.117, 0.417] m` from sensor face | Measured body envelope followed by `0.30 m` usable window |
+| Side/rear usable window | `0.10 m` | Unchanged near-field policy; REAR remains quarantined |
+| Front radar spatial gate | active lanelet + `1.27 m` local-path corridor | Prevents the longer scalar window from widening lateral stop authority |
 | `obstacle_replan_monitor.block_hold_s` | `20.0 s` | Delay before fallback planner preemption, not stop delay |
 | `enable_obstacle_replan_monitor` | `true` | Width-gated fallback replan monitor |
 | fallback minimum corridor | `2.50 m` | Prevents replanning in an infeasible narrow lane |
@@ -188,6 +201,7 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 | `stop_when_charging` | `true` | `true` |
 | Charging required | `complete_without_charging: false` | `require_charging_for_completion: true` |
 | Charging wait | `45 s` | explicit stopped `WAITING_FOR_CHARGING` phase |
+| Charging mission dwell | `7.0 s` | Destination queued with all drive authorization false before one station `EXIT` |
 
 `bringup.parking.method` is `apriltag` on the physical profile. Simulation is
 forced to `reverse` because fake sensors do not publish a rear-camera tag.
@@ -205,7 +219,7 @@ remains active during `FINAL_YAW_ALIGNMENT`.
 
 | Item | Topic/API | Effect |
 |---|---|---|
-| Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; planning recall is deferred until `CRAB_OUT` reaches the shared snap anchor |
+| Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; planning recall is deferred until `CRAB_OUT` reaches a fresh live lanelet projection or the exact-anchor fallback |
 | Manual Return while driving | same API | Cancels Nav2, closes motion authorization for `manual_return_preempt_hold_s=0.50 s`, then publishes one drop-zone route |
 | Already at drop zone | same API | Starts drop-zone yaw alignment before selected parking method |
 | Already charging | same API | Reports `already_charging`; does not move |
@@ -219,6 +233,13 @@ Both visible Return controls call the same API. Duplicate presses during the
 preemption hold or an active return are idempotent. The obsolete manual Parking
 ON/OFF endpoint is removed; final parking remains owned by the drop-zone state
 handoff and configured parking method.
+
+A campsite destination selected while charging is also idempotent. The UI
+backend creates one ROS timer only while the departure is pending, closes
+manual/mission/platform authorization, and reports `departure_delay_active` in
+snapshots. Timer expiry opens authorization and publishes one `EXIT`; Stop or
+shutdown destroys the timer first. This is event-driven and adds no permanent
+poll loop on the ARM64 target.
 
 The docking UI uses seven dynamic subscriptions only while its administrator
 tab is open. Lease changes wake ROS through a GuardCondition; a `1 Hz` timer is
@@ -264,6 +285,7 @@ gate; covariance changes the physical distance represented by sigma.
 | Rear monitoring JPEG | `2 Hz` | same |
 | LiDAR filtered/raster target | `10 Hz` | LiDAR config |
 | Radar raster/channels | `10 Hz` | radar config |
+| Front radar usable stop distance | `0.30 m` after each measured body echo | radar sensor/cost-grid YAML pair; sides remain `0.10 m` |
 | `enable_lidar_cost_grid` | `true` | launch defaults; this is classified fusion compatibility raster |
 | Direct raw LiDAR cost paint | `false` | LiDAR cost-grid file |
 | `enable_radar_cost_grid` | `true` | launch defaults |
@@ -285,6 +307,9 @@ gate; covariance changes the physical distance represented by sigma.
 | `enable_dds_shared_memory` | `false` | Full-graph DDS SHM remains off on Humble |
 | `enable_operator_telemetry` | `true` | Administrator live views available |
 | `operator_telemetry_stream_rate_hz` | `10 Hz` | Selected-view stream ceiling |
+| `external_simulator` | `false` | When true under `sim`, fake sensor pose follows fresh external odometry instead of integrating `cmd_vel` |
+| `external_simulator_odometry_topic` | `/odom` | Map-aligned external plant pose/twist input |
+| `external_simulator_odometry_timeout_s` | `0.5 s` | Pauses simulated sensor output when the external plant is stale |
 
 ## Validation-Only Runner Parameters
 
@@ -297,6 +322,7 @@ vehicle.
 | `ui_backend_base_url` | `http://127.0.0.1:18122` in the recorded run | Backend selected for the Return API check |
 | `normal_drive_lateral_limit_mps` | `0.02` | Fails a normal Nav2 run if maximum `|linear.y|` could select crab |
 | `expect_lidar_cost_grid` | `false` in the recorded optional-grid run | Keeps the disabled compatibility raster out of baseline requirements |
+| charging recall trigger | public `CHARGING` + parking `PARKED` | Validator no longer depends on presentation-specific cmd-gate text |
 
 ## Geometry And Coordinates
 
@@ -316,15 +342,17 @@ the selected map, not hand-editing only one consumer.
 ## Verification After A Change
 
 ```bash
+cd ~/camrod_ws/src
 ./setup_camrod.sh
-./colcon_build.sh --packages-select camrod_control camrod_platform camrod_ui camrod_bringup
+./colcon_build.sh --packages-select camrod_control camrod_planning camrod_sensing camrod_ui camrod_bringup
 
 diff -u camrod_control/config/control.yaml camrod_bringup/config/control/control.yaml
 diff -u camrod_control/config/parking.yaml camrod_bringup/config/control/parking.yaml
 # Ranger files intentionally retain steering-profile A/B differences. Verify
 # parallel_command_lateral_deadband_mps is 0.02 in both files.
 
-colcon test --packages-select camrod_control camrod_platform camrod_ui camrod_bringup
+cd ~/camrod_ws
+colcon test --packages-select camrod_control camrod_planning camrod_sensing camrod_ui camrod_bringup
 colcon test-result --verbose
 ```
 

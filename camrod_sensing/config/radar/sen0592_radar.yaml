@@ -35,10 +35,11 @@
 
     # 0x021F range level: 1≈0.5 m, 2≈1.5 m, 3≈2.5 m,
     #                     4≈3.5 m, 5≈5.0 m.
-    # HH_260807 - Use the shortest physical range on every channel to reduce
-    # distant floor/chassis multipath. Stop distance is applied downstream so
-    # raw measurements remain visible for self-echo diagnosis.
-    hardware_range_levels: [1, 1, 1, 1, 1, 1, 1]
+    # HH_260825 - FRONT1 needs 0.52 m from its sensor face to preserve the full
+    # measured body edge plus 0.30 m stop window, so front channels use level 2.
+    # Software acceptance below still rejects all returns beyond 0.55 m; the
+    # other channels keep level 1 to minimize floor/chassis multipath.
+    hardware_range_levels: [2, 2, 1, 1, 1, 1, 1]
 
     # =========================================================================
     # 3. SOFTWARE ACCEPTANCE  [STARTUP-ONLY]
@@ -52,10 +53,9 @@
 
     software_min_range_m: 0.02
     software_default_max_range_m: 0.50
-    # HH_260807 - Preserve the complete level-1 observation window. The
-    # independent cost-grid stop_candidate_max_ranges_m policy controls which
-    # per-channel measurements can stop motion while raw chassis echoes remain.
-    software_max_ranges_m: [0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50]
+    # HH_260825 - Front observation extends only 3 cm beyond the 0.52 m stop
+    # cutoff for diagnostics. Cost-grid limits remain the stop authority.
+    software_max_ranges_m: [0.55, 0.55, 0.50, 0.50, 0.50, 0.50, 0.50]
 
     # =========================================================================
     # 4. ROS OUTPUT
@@ -73,8 +73,8 @@
     # Every list below uses exactly this index order.
     #
     # idx  sensor   port  enabled  angle  HW range  SW max
-    #  0   FRONT1   USB0    yes      4       1      0.50 m
-    #  1   FRONT2   USB1    yes      4       1      0.50 m
+    #  0   FRONT1   USB0    yes      4       2      0.55 m
+    #  1   FRONT2   USB1    yes      4       2      0.55 m
     #  2   LEFT1    USB4    yes      4       1      0.50 m
     #  3   LEFT2    USB5    yes      4       1      0.50 m
     #  4   RIGHT1   USB2    yes      4       1      0.50 m

@@ -81,7 +81,9 @@ Unreferenced raw logs are intentionally excluded from source control.
 
 Package-guide files and structured release results are under
 `docs/assets/module-guides/<package>/{guide,evidence,test-results}/`. The
-checked-in inventory contains **81 PNGs and 20 GIFs** under `module-guides`; the former top-level
+<!-- HH_260825 - Include the v2.2.1 measured safety-handoff summary in the
+exact package-owned visual inventory. -->
+checked-in inventory contains **82 PNGs and 20 GIFs** under `module-guides`; the former top-level
 `test_result` content is organized under each package's `test-results/`
 directory. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.
@@ -162,10 +164,17 @@ acceptance. The live preemption run separately proves that outbound motion is
 zeroed before one fresh return route is issued; both frontend controls share
 that production endpoint.
 
+<!-- HH_260825 - Promote the current-lane Return, guarded charger departure,
+and front-radar live result into the cross-package visual index. -->
+![v2.2.1 current-lane, charging, and radar result](assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
+
 ## Key Measured Results
 
 | Module | Measurement | Result | Limit |
 |---|---|---|---|
+| Control/planning | v2.2.1 B8 live lanelet handoff | Projection distance `0.140 m`, old anchor error `0.231 m`, stopped hold `1.20 s`, current-start `reverse_shortest` | AMD64 simulation; physical steering pending |
+| UI/bringup | Charging departure dwell | Configured `7.0 s`, observed `6.996327111 s`; gates false, cancel `1`, EXIT `1`, no early goal | Physical charger clearance and warning pending |
+| Sensing/control | FRONT1 `0.300 m` continuous injection | Active evidence, cost `95`; front usable window `0.30 m` after body echo | Physical SEN0592 multipath and stop distance pending |
 | Bringup | Map-v17 B1-B10 endurance | `10/10`, `2210.611 s`, restart `0`; cycles 2-10 include full outbound/RETURN/parking/charging | Cycle 1 seeded; physical CAN/road pending |
 | Platform/bringup | Current normal-to-B8 run | Normal Nav2 `3.73 m`, maximum `linear.y=0.000 m/s`; then B8 same-anchor seven-phase `DONE`, IN/OUT path updates `2`, mixed-axis commands `0` | AMD64 simulation; physical wheel-mode acceptance pending |
 | Localization | 30-second stationary probe | Selected pose `20.000 Hz`, age p95 `1.83 ms` | No field ground truth or motion disturbance |

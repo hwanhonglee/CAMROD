@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+<!-- HH_260825 - Record current-lane campsite handoff, guarded charging
+departure, front-radar near-field authority, and external CARLA integration. -->
+## [v2.2.1-current-lane-charging-radar] - 2026-08-25 (HH_260825)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Campsite return | B1-B10 hand off within `0.15 m` of a fresh lanelet projection after a `1.20 s` zero hold; the route starts from current XY and the historical entry anchor is stale-data fallback |
+| Charging departure | Queues the next destination for `7.0 s` with all motion authorization false; observed `6.996327111 s`, one parking cancel, one station EXIT, and no early site goal |
+| Front radar | Extends only FRONT1/FRONT2 to a usable `0.30 m` range after measured body echoes, while preserving lanelet/`1.27 m` path-corridor clipping, side/rear `0.10 m`, and REAR quarantine |
+| Measured integration | B8 current-lane handoff, B2 charging recall, and continuous FRONT1 `0.300 m` injection all pass on the AMD64 full graph; physical and ARM64 acceptance remain open |
+| External simulation | Documents the new CARLA 4WS adapter, external-odometry plant ownership, stale timeout, selector contracts, source-only checks, and NullRHI image limitation |
+| Build hygiene | Replaces active README direct-colcon examples with `colcon_build.sh`, which keeps workspace artifacts out of `src/` |
+| Documentation | Adds v2.2.1 release notes, parameter ownership, machine-readable result, generated PNG/SVG, updated package guides, DONE record, and focused field TODOs |
+
+---
+
 <!-- HH_260819 - Record Return ownership, constrained-site forward routing,
 current B1-B13 evidence, and measured AMD64 scheduler impact. -->
 ## [v2.1.8-return-preemption-roadside-final] - 2026-08-19 (HH_260819)

@@ -115,6 +115,10 @@
     # grid evaluation remains the sole authority for stopping and releasing.
     radar_obstacle_evidence_topic: "/sensing/radar/obstacle_evidence"
     radar_obstacle_evidence_max_age_s: 0.50
+    # HH_260825 - FRONT1/FRONT2 may observe 0.30 m beyond their body echoes,
+    # but final stop authority is intersected with this 1.27 m local-path
+    # corridor. Charger departure bypasses static lanelet cost only; this
+    # dynamic radar corridor remains mandatory in every EXIT phase.
     front_dynamic_stop_use_local_path: true
     front_dynamic_path_width_m: 1.27
     front_dynamic_path_max_start_distance_m: 1.5

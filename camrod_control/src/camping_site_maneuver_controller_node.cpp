@@ -212,6 +212,18 @@ public:
         declare_parameter<double>("return_lateral_hysteresis_m", 0.10));
     return_steering_settle_s_ = std::abs(
         declare_parameter<double>("return_steering_settle_s", 1.20));
+    // HH_260825 - Normal campsite exit hands planning the live lanelet
+    // projection instead of forcing the robot back to the historical entry XY.
+    // The old exact-anchor sequencer remains available as a stale-projection
+    // fallback, preserving a deterministic recovery path if planning input dies.
+    enable_live_lanelet_return_handoff_ = declare_parameter<bool>(
+        "enable_live_lanelet_return_handoff", true);
+    return_lanelet_handoff_distance_m_ = std::max(
+        0.01, std::abs(declare_parameter<double>(
+                  "return_lanelet_handoff_distance_m", 0.15)));
+    return_lanelet_handoff_hold_s_ = std::max(
+        0.0, std::abs(declare_parameter<double>(
+                 "return_lanelet_handoff_hold_s", 1.20)));
     crab_return_sequencer_.setConfig(
         camrod_control::CampsiteCrabReturnConfig{
             return_lateral_transition_tolerance_m_,
@@ -1677,11 +1689,92 @@ private:
                : current_progress <= target_progress + progress_tolerance;
   }
 
+  std::optional<double> liveLaneletProjectionDistance() const {
+    if (!enable_live_lanelet_return_handoff_ || !poseIsFresh() ||
+        !lanelet_pose_.has_value()) {
+      return std::nullopt;
+    }
+    const double age_s = (now() - lanelet_pose_time_).seconds();
+    if (!camrod_control::campsiteLiveLaneletReturnHandoffEligible(
+            *last_pose_, *lanelet_pose_, age_s, pose_timeout_s_,
+            std::numeric_limits<double>::max())) {
+      return std::nullopt;
+    }
+    return poseDistance(*last_pose_, *lanelet_pose_);
+  }
+
+  std::optional<double> liveLaneletReturnDistance() const {
+    const auto distance_m = liveLaneletProjectionDistance();
+    return distance_m.has_value() &&
+                   *distance_m <= return_lanelet_handoff_distance_m_ + 1.0e-9
+               ? distance_m
+               : std::nullopt;
+  }
+
+  // A value is present only while the live projection owns the handoff:
+  // false means stationary steering-settle hold, true means route-ready.
+  std::optional<bool> observeLiveLaneletReturnHandoff() {
+    const auto distance_m = liveLaneletReturnDistance();
+    if (!distance_m.has_value()) {
+      if (return_lanelet_handoff_candidate_) {
+        RCLCPP_WARN(
+            get_logger(),
+            "live lanelet return handoff lost before hold completed; "
+            "resuming exact-anchor fallback");
+      }
+      return_lanelet_handoff_candidate_ = false;
+      return_lanelet_handoff_start_time_ =
+          rclcpp::Time(0, 0, RCL_ROS_TIME);
+      return std::nullopt;
+    }
+
+    if (!return_lanelet_handoff_candidate_) {
+      return_lanelet_handoff_candidate_ = true;
+      return_lanelet_handoff_start_time_ = now();
+      RCLCPP_INFO(
+          get_logger(),
+          "live lanelet return handoff candidate: distance=%.3fm hold=%.2fs "
+          "current=(%.3f,%.3f) projection=(%.3f,%.3f) anchor_error=%.3fm",
+          *distance_m, return_lanelet_handoff_hold_s_,
+          last_pose_->pose.position.x, last_pose_->pose.position.y,
+          lanelet_pose_->pose.position.x, lanelet_pose_->pose.position.y,
+          distanceTo(return_anchor_x_, return_anchor_y_));
+    }
+    publishZero();
+    return (now() - return_lanelet_handoff_start_time_).seconds() + 1.0e-9 >=
+           return_lanelet_handoff_hold_s_;
+  }
+
+  void finishReturnAtLiveLaneletHandoff() {
+    const double lanelet_distance_m =
+        lanelet_pose_.has_value() ? poseDistance(*last_pose_, *lanelet_pose_)
+                                  : std::numeric_limits<double>::infinity();
+    const std::string detail =
+        "live lanelet handoff current=(" +
+        fixed(last_pose_->pose.position.x) + "," +
+        fixed(last_pose_->pose.position.y) + ") projection=(" +
+        fixed(lanelet_pose_->pose.position.x) + "," +
+        fixed(lanelet_pose_->pose.position.y) + ") lateral_error=" +
+        fixed(lanelet_distance_m) + "m original_anchor_error=" +
+        fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m";
+    publishZero();
+    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+      setPhase(CampingSiteManeuverPhase::kDone,
+               detail + "; forward return loop requested");
+      publishReturnRequest("done_roadside_forward_live_lanelet");
+    } else {
+      setPhase(CampingSiteManeuverPhase::kDone, detail);
+      publishReturnRequest("done_live_lanelet");
+    }
+  }
+
   void setPhase(const CampingSiteManeuverPhase phase,
                 const std::string &detail) {
     phase_ = phase;
     phase_start_time_ = now();
     yaw_alignment_settling_.reset();
+    return_lanelet_handoff_candidate_ = false;
+    return_lanelet_handoff_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     if (phase_ == CampingSiteManeuverPhase::kIdle ||
         phase_ == CampingSiteManeuverPhase::kDone ||
         phase_ == CampingSiteManeuverPhase::kError) {
@@ -1706,9 +1799,15 @@ private:
     }
     if (phase_ == CampingSiteManeuverPhase::kCrabOut && last_pose_.has_value()) {
       crab_return_sequencer_.reset(now().seconds());
+      const auto live_distance_m = liveLaneletProjectionDistance();
+      const bool use_live_target =
+          live_distance_m.has_value() && lanelet_pose_.has_value();
       publishReversePath(last_pose_->pose.position.x,
-                         last_pose_->pose.position.y, return_anchor_x_,
-                         return_anchor_y_,
+                         last_pose_->pose.position.y,
+                         use_live_target ? lanelet_pose_->pose.position.x
+                                         : return_anchor_x_,
+                         use_live_target ? lanelet_pose_->pose.position.y
+                                         : return_anchor_y_,
                          camrod_control::yawFromPose(*last_pose_));
     }
     RCLCPP_INFO(get_logger(), "camping_site_maneuver_controller %s: %s",
@@ -2084,23 +2183,34 @@ private:
         publishReturnRequest("done_after_return_route_alignment");
       }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseOut) {
-      if (reverseOutReached()) {
+      const auto live_handoff = observeLiveLaneletReturnHandoff();
+      if (live_handoff.has_value() && *live_handoff) {
+        finishReturnAtLiveLaneletHandoff();
+      } else if (live_handoff.has_value()) {
+        // HH_260825 - Keep zero throughout the bounded lanelet handoff hold;
+        // do not let the legacy exact-anchor controller add another movement.
+      } else if (reverseOutReached()) {
         publishZero();
         setPhase(CampingSiteManeuverPhase::kDone,
-                 "returned to lanelet snap pose");
-        publishReturnRequest("done");
+                 "live lanelet pose unavailable; exact-anchor fallback reached");
+        publishReturnRequest("done_exact_anchor_fallback");
       } else if (elapsed >
                  crab_duration_s_ + reverse_return_timeout_margin_s_) {
-        setError("reverse return timeout before reaching lanelet snap pose");
+        setError("reverse return timeout before reaching live lanelet or fallback anchor");
       } else {
         publishReverseAlongAxis(
             camrod_control::normalizeAngle(entry_target_yaw_ + M_PI),
             return_anchor_x_, return_anchor_y_);
       }
     } else if (phase_ == CampingSiteManeuverPhase::kCrabOut) {
+      const auto live_handoff = observeLiveLaneletReturnHandoff();
       const double return_error =
           distanceTo(return_anchor_x_, return_anchor_y_);
-      if (camrod_control::campsiteCrabReturnMayComplete(
+      if (live_handoff.has_value() && *live_handoff) {
+        finishReturnAtLiveLaneletHandoff();
+      } else if (live_handoff.has_value()) {
+        // Stationary hold is published by observeLiveLaneletReturnHandoff().
+      } else if (camrod_control::campsiteCrabReturnMayComplete(
               crab_return_sequencer_.stage(), return_error,
               return_position_tolerance_m_)) {
         publishZero();
@@ -2109,19 +2219,20 @@ private:
           // narrow mapped lane. Preserve arrival heading, request the legal
           // forward loop, and resume ordinary body/footprint checks at DONE.
           setPhase(CampingSiteManeuverPhase::kDone,
-                   "roadside exit reached lanelet snap pose; forward return "
-                   "loop requested");
-          publishReturnRequest("done_roadside_forward");
+                   "live lanelet pose unavailable; roadside exact-anchor "
+                   "fallback reached; forward return loop requested");
+          publishReturnRequest("done_roadside_forward_exact_anchor_fallback");
         } else {
           setPhase(
               CampingSiteManeuverPhase::kDone,
-              "returned to lanelet snap pose anchor=" + return_anchor_source_ +
+              "live lanelet pose unavailable; exact-anchor fallback=" +
+                  return_anchor_source_ +
                   " error=" +
                   fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m");
-          publishReturnRequest("done");
+          publishReturnRequest("done_exact_anchor_fallback");
         }
       } else if (elapsed > crab_return_timeout_s_) {
-        setError("crab return timeout before reaching lanelet snap pose");
+        setError("crab return timeout before reaching live lanelet or fallback anchor");
       } else {
         publishCrabReturnToAnchor();
       }
@@ -2141,6 +2252,8 @@ private:
             1.0 / status_publish_rate_hz_) {
       return;
     }
+    const auto live_lanelet_projection_distance_m =
+        liveLaneletProjectionDistance();
     // HH_260721 - Entry, unload wait, return wait, and exit are normal
     // operating states.
     const uint8_t module_level = phase_ == CampingSiteManeuverPhase::kError
@@ -2173,6 +2286,16 @@ private:
             {"return_anchor_offset_m", fixed(return_anchor_offset_m_)},
             {"return_anchor_error_m",
              fixed(distanceTo(return_anchor_x_, return_anchor_y_))},
+            {"live_lanelet_handoff_enabled",
+             enable_live_lanelet_return_handoff_ ? "true" : "false"},
+            {"live_lanelet_projection_distance_m",
+             live_lanelet_projection_distance_m.has_value()
+                 ? fixed(*live_lanelet_projection_distance_m)
+                 : "unavailable"},
+            {"live_lanelet_handoff_distance_m",
+             fixed(return_lanelet_handoff_distance_m_)},
+            {"live_lanelet_handoff_holding",
+             return_lanelet_handoff_candidate_ ? "true" : "false"},
             {"crab_return_stage",
              camrod_control::campsiteCrabReturnStageName(
                  crab_return_sequencer_.stage())},
@@ -2215,6 +2338,9 @@ private:
   double return_lateral_transition_tolerance_m_{0.02};
   double return_lateral_hysteresis_m_{0.10};
   double return_steering_settle_s_{1.20};
+  bool enable_live_lanelet_return_handoff_{true};
+  double return_lanelet_handoff_distance_m_{0.15};
+  double return_lanelet_handoff_hold_s_{1.20};
   double crab_timeout_margin_s_{3.0};
   double crab_return_timeout_s_{90.0};
   double reverse_return_timeout_margin_s_{45.0};
@@ -2269,6 +2395,8 @@ private:
   rclcpp::Time site_goal_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time route_goal_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time lanelet_pose_time_{0, 0, RCL_ROS_TIME};
+  bool return_lanelet_handoff_candidate_{false};
+  rclcpp::Time return_lanelet_handoff_start_time_{0, 0, RCL_ROS_TIME};
   std::string site_goal_key_;
   rclcpp::Time phase_start_time_{0, 0, RCL_ROS_TIME};
   camrod_control::YawAlignmentSettling yaw_alignment_settling_;
