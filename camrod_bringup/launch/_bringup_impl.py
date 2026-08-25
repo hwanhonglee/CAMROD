@@ -597,6 +597,42 @@ def generate_launch_description():
             planning_state_machine_cfg_entry,
             'planning/planning_state_machine.yaml',
         )
+    nav2_bt_xml_nav_to_pose_cfg = cfg_get(
+        launch_cfg, 'planning/nav2_bt_xml_nav_to_pose', ''
+    )
+    nav2_bt_xml_nav_through_poses_cfg = cfg_get(
+        launch_cfg, 'planning/nav2_bt_xml_nav_through_poses', ''
+    )
+    nav2_bt_xml_nav_to_pose_default = (
+        resolve_cfg_file(
+            config_root_default,
+            nav2_bt_xml_nav_to_pose_cfg,
+            'planning/bt/navigate_to_pose_w_planner_selector.xml',
+        )
+        if str(nav2_bt_xml_nav_to_pose_cfg).strip()
+        else pkg_path(
+            'camrod_planning',
+            os.path.join(
+                'config', 'bt', 'navigate_to_pose_w_planner_selector.xml'
+            ),
+        )
+    )
+    nav2_bt_xml_nav_through_poses_default = (
+        resolve_cfg_file(
+            config_root_default,
+            nav2_bt_xml_nav_through_poses_cfg,
+            'planning/bt/navigate_through_poses_w_planner_selector.xml',
+        )
+        if str(nav2_bt_xml_nav_through_poses_cfg).strip()
+        else pkg_path(
+            'camrod_planning',
+            os.path.join(
+                'config',
+                'bt',
+                'navigate_through_poses_w_planner_selector.xml',
+            ),
+        )
+    )
     # HH_260720 - Use one canonical parking method key; removed backend/mode aliases.
     parking_method_default = str(
         cfg_get(launch_cfg, 'parking/method', 'reverse')
@@ -652,6 +688,26 @@ def generate_launch_description():
         # post-pass remains available, but running both paths races components.
         ('clean_on_shutdown', cfg_get(launch_cfg, 'runtime/clean_on_shutdown', False), 'Run an optional stale-process cleanup after bringup shutdown'),
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
+        (
+            'external_simulator',
+            cfg_get(launch_cfg, 'runtime/external_simulator', False),
+            'Follow an external physics simulator while retaining simulation-safe CAMROD modules',
+        ),
+        (
+            'external_simulator_odometry_topic',
+            cfg_get(launch_cfg, 'runtime/external_simulator_odometry_topic', '/odom'),
+            'Map-aligned nav_msgs/Odometry input used by the simulation sensor contract',
+        ),
+        (
+            'external_simulator_odometry_timeout_s',
+            cfg_get(launch_cfg, 'runtime/external_simulator_odometry_timeout_s', 0.5),
+            'Maximum external odometry age before simulated sensor output stops',
+        ),
+        (
+            'sim_publish_platform_status',
+            cfg_get(launch_cfg, 'runtime/sim_publish_platform_status', True),
+            'Let fake sensors own raw Ranger/BMS heartbeat topics in simulation',
+        ),
         # HH_260721 - Let charging tests opt into the hardware gate contract in simulation.
         (
             'sim_platform_status_enable',
@@ -774,6 +830,16 @@ def generate_launch_description():
             'planning_nav2_selected_controller',
             cfg_get(launch_cfg, 'planning/nav2_selected_controller', '__auto__'),
             'Nav2 controller selector ID override (__auto__|RPP|DWB|MPPI|Graceful|RotationShim)',
+        ),
+        (
+            'planning_nav2_bt_xml_nav_to_pose',
+            nav2_bt_xml_nav_to_pose_default,
+            'Optional BT XML override for NavigateToPose',
+        ),
+        (
+            'planning_nav2_bt_xml_nav_through_poses',
+            nav2_bt_xml_nav_through_poses_default,
+            'Optional BT XML override for NavigateThroughPoses',
         ),
         (
             'planning_state_machine_keypoints_yaml',
@@ -2058,6 +2124,15 @@ def generate_launch_description():
         # platform safety gate is enabled. ranger_platform_bridge remains the
         # sole normalized /platform/status publisher, matching the real graph.
         'publish_simulated_platform_status': 'true',
+        # External physics supplies the vehicle pose. The fake-sensor node still
+        # produces CAMROD's deterministic GNSS/IMU/obstacle test contracts, but
+        # derives them from that measured pose instead of integrating cmd_vel.
+        'motion_source': PythonExpression([
+            "'external_odometry' if str('", lc['external_simulator'],
+            "').lower() in ['1', 'true', 'yes', 'on'] else 'cmd_vel'",
+        ]),
+        'external_odometry_topic': lc['external_simulator_odometry_topic'],
+        'external_odometry_timeout_s': lc['external_simulator_odometry_timeout_s'],
         'map_path': lc['map_path'],
         'origin_lat': lc['origin_lat'],
         'origin_lon': lc['origin_lon'],
@@ -2068,6 +2143,11 @@ def generate_launch_description():
         'obstacle_direction': lc['sim_obstacle_direction'],
         'obstacle_lateral_offset': lc['sim_obstacle_lateral_offset'],
     }
+    # Keep the historical literal in the dictionary for source-contract
+    # compatibility, then route ownership through the explicit runtime switch.
+    fake_sensors_args['publish_simulated_platform_status'] = lc[
+        'sim_publish_platform_status'
+    ]
     apply_cfg_overrides(fake_sensors_args, sim_overrides)
 
     # HH_260707: When the opt-in component path is enabled, the front camera is
@@ -2344,6 +2424,10 @@ def generate_launch_description():
         # HH_260528: Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
+        'nav2_bt_xml_nav_to_pose': lc['planning_nav2_bt_xml_nav_to_pose'],
+        'nav2_bt_xml_nav_through_poses': lc[
+            'planning_nav2_bt_xml_nav_through_poses'
+        ],
     }
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_overrides['nav2_base_param_file'])
     set_if_not_empty(planning_args, 'nav2_vehicle_param_file', selected_nav2_vehicle_override)

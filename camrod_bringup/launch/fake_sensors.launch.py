@@ -198,6 +198,21 @@ def generate_launch_description():
         default_value='true',
         description='Publish deterministic raw CAN/BMS feedback in ordinary simulation',
     )
+    motion_source_arg = DeclareLaunchArgument(
+        'motion_source',
+        default_value='cmd_vel',
+        description='Vehicle motion source: cmd_vel | constant_speed | external_odometry',
+    )
+    external_odometry_topic_arg = DeclareLaunchArgument(
+        'external_odometry_topic',
+        default_value='/odom',
+        description='Map-aligned nav_msgs/Odometry input for external simulator mode',
+    )
+    external_odometry_timeout_arg = DeclareLaunchArgument(
+        'external_odometry_timeout_s',
+        default_value='0.5',
+        description='Stop simulated sensor output when external odometry exceeds this age',
+    )
     bringup_namespace_arg = DeclareLaunchArgument(
         'bringup_namespace',
         default_value='bringup',
@@ -283,6 +298,14 @@ def generate_launch_description():
                 'publish_simulated_platform_status': ParameterValue(
                     LaunchConfiguration('publish_simulated_platform_status'), value_type=bool
                 ),
+                'motion_source': LaunchConfiguration('motion_source'),
+                'external_odometry_topic': LaunchConfiguration(
+                    'external_odometry_topic'
+                ),
+                'external_odometry_timeout_s': ParameterValue(
+                    LaunchConfiguration('external_odometry_timeout_s'),
+                    value_type=float,
+                ),
             },
         ],
     )
@@ -318,6 +341,9 @@ def generate_launch_description():
         radar_grid_param_arg,
         fake_enable_cost_grids_arg,
         simulated_platform_status_arg,
+        motion_source_arg,
+        external_odometry_topic_arg,
+        external_odometry_timeout_arg,
         bringup_namespace_arg,
         sensing_namespace_arg,
         map_path_arg,

@@ -1,0 +1,8 @@
+/**:
+  ros__parameters:
+    # Single-anchor calibration for the accepted ranger_spawn.json pose.
+    # It maps that pose onto lanelet 4584 segment 6 and aligns its heading.
+    # This is an integration-test calibration, not a multi-point survey.
+    map_offset_x_m: 7.855611455645338
+    map_offset_y_m: 13.676196558868874
+    map_yaw_offset_rad: -0.05402607389329672

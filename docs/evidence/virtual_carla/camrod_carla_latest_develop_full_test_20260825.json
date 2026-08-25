@@ -1,0 +1,244 @@
+{
+  "schema": "camrod.carla.latest_develop_full_test.v1",
+  "test_date_local": "2026-08-25",
+  "timezone": "Asia/Seoul",
+  "status": "FUNCTIONAL_FULL_STACK_PASS_WITH_RENDERING_BLOCKED",
+  "formal_acceptance": false,
+  "claim_scope": {
+    "latest_camrod_develop_full_launch_started": true,
+    "navigate_through_poses_two_goal_succeeded": true,
+    "physical_ranger_actor_used": true,
+    "bt_navigator_active": true,
+    "canonical_selector_bt_used": true,
+    "ui_http_200_observed": true,
+    "rendered_rgb_accepted": false,
+    "yolo_or_camera_perception_accepted": false,
+    "all_features_formally_accepted": false,
+    "hardware_accepted": false,
+    "statement": "The latest CAMROD develop full launch completed one two-goal NavigateThroughPoses action through the CARLA Ranger actor under NullRHI. This is a bounded full-stack functional pass, not rendered-perception, all-mission, formal E2E, or hardware acceptance."
+  },
+  "runtime": {
+    "camrod_branch": "develop",
+    "camrod_git_sha": "0a81ccdace53fcf94aab9a1482dbae6cdbc07fd6",
+    "camrod_source_state": "The checkout is pinned to the latest develop commit plus an uncommitted local external-simulator, ThroughPoses-BT, selector-safety, and parking-sync patch. The commit alone does not reproduce this run.",
+    "ros_domain_id": 188,
+    "carla_version": "0.9.15",
+    "carla_host": "127.0.0.1",
+    "carla_port": 2000,
+    "rendering_mode": "NullRHI",
+    "actor": {
+      "id": 3,
+      "type_id": "vehicle.ranger.default"
+    },
+    "runtime_node_count": 98,
+    "bt_navigator_state": "active",
+    "robot_base_frame": "robot_center_link",
+    "ui": {
+      "url": "http://127.0.0.1:8010",
+      "http_status": 200
+    }
+  },
+  "installed_contract": {
+    "controller_launch_path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/install/carla_extended_ackermann_control/share/carla_extended_ackermann_control/full_stack.launch.py",
+    "controller_launch_sha256": "665f99f0265ca41c6edc16400d328a287db14c593eae72c601245dad840a8a63",
+    "controller_launch_layout": "share/<package>/full_stack.launch.py, without a launch subdirectory",
+    "camrod_full_launch_path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/launch/camrod_carla_full.launch.py",
+    "camrod_full_launch_sha256": "5b0c299ab8ba4394329f9c2fe11ad5ebe1dadfce3210ded7d9d9e91571c2ddfa",
+    "navigate_through_poses_bt_path": "/home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/config/bt/navigate_through_poses_w_planner_selector.xml",
+    "navigate_through_poses_bt_sha256": "5823279ecdaae8561f52d71826a991b6f755cf7da4bccd2f90afcee6f07f7167",
+    "adapter_compatibility_bt_path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/config/navigate_through_poses_w_camrod_selectors.xml",
+    "adapter_compatibility_bt_sha256": "5823279ecdaae8561f52d71826a991b6f755cf7da4bccd2f90afcee6f07f7167",
+    "runtime_parameter_observation": "The active /planning/bt_navigator default_nav_through_poses_bt_xml parameter resolved to the camrod_planning canonical installed path; the adapter copy is a byte-identical compatibility artifact.",
+    "planner_selector": "LaneletRoute",
+    "controller_selector": "RPP",
+    "goal_checker_selector": "goal_checker"
+  },
+  "startup_contract": {
+    "accepted_python_egg": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg",
+    "python_egg_cache_policy": "A fresh empty absolute directory created for each run with mktemp -d /tmp/camrod-carla-egg.XXXXXX",
+    "controller_share_preflight": "test -f \"$(ros2 pkg prefix --share carla_extended_ackermann_control)/full_stack.launch.py\"",
+    "full_launch_command": "ros2 launch camrod_carla_adapter camrod_carla_full.launch.py role_name:=ego_vehicle host:=127.0.0.1 port:=2000 accepted_carla_python_egg:=$CAMROD_CARLA_EGG python_egg_cache:=$CAMROD_CARLA_EGG_CACHE verified_baseline_manifest:=/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/ranger_ros_backend_gate_20260814T072019Z.json verified_physical_four_wheel_manifest:=/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/ranger_physical_4ws_acceptance_gate_20260823T084641Z.json extended_mode_backend:=PHYSX_FOUR_WHEEL_STEERING map_alignment_file:=/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/src/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml enable_plugin_api:=true enable_api_ui:=true enable_operator_ui_window:=true api_ui_port:=8010 operator_ui_window_url:=http://127.0.0.1:8010 rviz:=false enable_voice:=false",
+    "external_lifecycle_owners": [
+      "CARLA server",
+      "carla_ros_bridge",
+      "actor spawn"
+    ]
+  },
+  "navigate_through_poses": {
+    "status": "SUCCEEDED",
+    "elapsed_seconds": 8.641,
+    "start_localization_xy_m": [
+      43.8374084,
+      -24.7785203
+    ],
+    "goals_xy_m": [
+      [
+        45.145,
+        -24.045
+      ],
+      [
+        46.22,
+        -23.44
+      ]
+    ],
+    "remaining_distance_samples_m": [
+      2.3328,
+      1.7774,
+      0.8336,
+      0.1473,
+      0.0
+    ],
+    "recoveries": 0,
+    "final_localization_xy_m": [
+      46.44194665,
+      -23.31749954
+    ],
+    "final_vehicle_state": {
+      "speed_mps": 0.000092184,
+      "throttle": 0.0,
+      "brake": 1.0,
+      "hand_brake": true
+    },
+    "fresh_log_error_absence": {
+      "base_link_error": false,
+      "no_transform_error": false,
+      "unloaded_controller_error": false,
+      "gridbased_error": false,
+      "mppi_error": false,
+      "interpretation": "The fresh run did not reproduce the prior wrong-base-frame, stock-BT plugin-ID, or unloaded-controller failures."
+    }
+  },
+  "measurement_provenance": {
+    "navigate_through_poses_metrics": "Recorded from the bounded latest-develop live runtime observation summarized by this report.",
+    "fresh_launch_log_scope": "Binds the fresh full-launch startup/node diagnostics and checked error absence; the action metrics are not claimed to have been parsed exclusively from launch.log.",
+    "raw_action_transcript_path": null
+  },
+  "evidence": {
+    "fresh_ros_log_directory": "/home/hong/.ros/log/2026-08-25-13-18-28-530747-htop-2773430",
+    "fresh_launch_log": {
+      "path": "/home/hong/.ros/log/2026-08-25-13-18-28-530747-htop-2773430/launch.log",
+      "sha256": "01768bd0f8effb1b86eb63d786ae85f7fb02df3726127c780ec1cba8a4ce399f"
+    },
+    "ui_screenshot": {
+      "path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/camrod_carla_ui_latest_develop_20260825.png",
+      "sha256": "43a7231773721d53ef5518240aac8044e757eeb7fca87461de4c9a260de6d9d7",
+      "width_px": 1600,
+      "height_px": 1000,
+      "observation": "The UI shows Ready and a System warning caused by the current 5 Hz fake-sensor diagnostics."
+    },
+    "physical_baseline_gate": {
+      "path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/ranger_ros_backend_gate_20260814T072019Z.json",
+      "sha256": "a287b458bf8ca3f8e25e3be8acfb4d537f3493cc6d5c61e3f9198a7b1bc9bb31"
+    },
+    "physical_four_wheel_gate": {
+      "path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/ranger_physical_4ws_acceptance_gate_20260823T084641Z.json",
+      "sha256": "5987cc1c67125670d86170a422add4cde0fa9716ee6935bf5224790de258e534",
+      "status": "VERIFIED"
+    }
+  },
+  "cleanup": {
+    "completed": true,
+    "order": [
+      "CAMROD full launch",
+      "actor spawn",
+      "CARLA ROS bridge",
+      "CARLA server"
+    ],
+    "owned_actor_and_sensors_remaining_before_server_stop": 0,
+    "ports_2000_2001_listening_after_cleanup": false,
+    "ros_domain_188_node_count_after_cleanup": 0,
+    "unrelated_port_2100_was_not_signaled": true
+  },
+  "scenario_assets": {
+    "scope": "Historical 2026-08-23 measured-point/control visualizations, not camera frames and not a rendering of this latest two-goal run.",
+    "directory": "/home/hong/Downloads/ranger_vehicle_full_pipeline/reports/camrod_carla_scenarios_20260824",
+    "readme": "reports/camrod_carla_scenarios_20260824/README.md",
+    "manifest": "reports/camrod_carla_scenarios_20260824/manifest.json",
+    "overview_png": "reports/camrod_carla_scenarios_20260824/00_scenario_overview.png",
+    "all_scenarios_gif": "reports/camrod_carla_scenarios_20260824/00_all_scenarios.gif",
+    "historical_nav2_png": "reports/camrod_carla_scenarios_20260824/06_nav2_short_goal.png",
+    "historical_nav2_gif": "reports/camrod_carla_scenarios_20260824/06_nav2_short_goal.gif"
+  },
+  "limitations": {
+    "gpu_driver": {
+      "loaded_kernel_module_version": "580.173.02",
+      "userspace_library_version": "580.178.04",
+      "mismatch_present": true
+    },
+    "rendered_rgb": "Unavailable under NullRHI; front/rear RGB correctness was not accepted.",
+    "yolo_and_camera_perception": "Unavailable under NullRHI and not accepted. In addition, the current sim=true full bringup disables the CAMROD camera/YOLO pipeline; the CARLA relay publishes raw images while the existing YOLO launch expects compressed input. GPU repair alone will not make YOLO pass.",
+    "camera_pipeline_configuration": "A separate default-false CARLA raw-image YOLO profile is still required. It must select one transport, prevent duplicate obstacle publishers, and validate camera/LiDAR extrinsics, intrinsics, resolution, and timestamps before perception, parking, charging, or fusion acceptance.",
+    "canonical_physics_asset_evidence": "Canonical PA_Ranger promotion, file cohort, and clean persistence are VERIFIED, but the direct 5-body/4-constraint semantic inventory was taken from the Diagnostics candidate before promotion. Formal asset closure requires one read-only post-promotion DumpPhysicsAsset of the current canonical SK_Ranger/PA_Ranger with a pinned report hash.",
+    "ui_system_warning": "The screenshot contains a System warning from current 5 Hz fake-sensor diagnostics; this remains an open diagnostic disposition.",
+    "navigation_scope": "One initially aligned, two-goal static-lanelet action succeeded. Long or curved routes, disturbed starts, obstacles, parking, charging, and fault injection were not formally accepted by this run.",
+    "map_alignment": "The existing single-anchor alignment is not a multi-point survey acceptance.",
+    "shutdown_noise": "Most nodes exited cleanly, but the two physical controller wrappers and the external spawn/bridge wrappers emitted exit-code-1 double-rcl_shutdown errors; the UI backend emitted one shutdown-time Python-object conversion RuntimeError. No runtime unsafe-command symptom was observed, actor/sensors and owned ports were cleared, but clean-shutdown acceptance remains pending.",
+    "hardware": "No real Ranger CAN, actuator, BMS, sensor, or emergency-stop acceptance is claimed."
+  },
+  "regression_tests": {
+    "status": "PASS",
+    "completed_local": "2026-08-25T13:25:45+09:00",
+    "total_tests": 786,
+    "passed": 778,
+    "skipped": 8,
+    "errors": 0,
+    "failures": 0,
+    "packages": {
+      "camrod_control": {
+        "tests": 108,
+        "passed": 108,
+        "skipped": 0,
+        "ctest_suites": "3/3"
+      },
+      "camrod_planning": {
+        "tests": 64,
+        "passed": 56,
+        "skipped": 8,
+        "ctest_suites": "11/11"
+      },
+      "camrod_bringup": {
+        "tests": 287,
+        "passed": 287,
+        "skipped": 0,
+        "ctest_suites": "32/32"
+      },
+      "carla_extended_ackermann_control": {
+        "tests": 241,
+        "passed": 241,
+        "skipped": 0,
+        "runner": "python3 -m pytest",
+        "junit_path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/build/carla_extended_ackermann_control/pytest_latest_20260825.xml",
+        "junit_sha256": "1ec9fd9e085d0e4697f9fa2079412554d02268763e1d8a84458fbb99bc664e59"
+      },
+      "camrod_carla_adapter": {
+        "tests": 86,
+        "passed": 86,
+        "skipped": 0,
+        "runner": "colcon test / pytest",
+        "junit_path": "/home/hong/Downloads/ranger_vehicle_full_pipeline/carla_ws/build/camrod_carla_adapter/pytest.xml",
+        "junit_sha256": "30263cf076ae344ca1c3d00cdf0e514b5358bc7b3c07f86e2a6ad1a883663ebf"
+      }
+    },
+    "statement": "Final targeted builds and regressions for every modified CAMROD package plus the CARLA controller and adapter completed with zero failures. The eight skips are reported, not counted as passes."
+  },
+  "builds": {
+    "camrod_workspace_63_packages": "PASS",
+    "operator_ui_production_build": "PASS",
+    "operator_ui_npm_audit": {
+      "open_total": 40,
+      "low": 11,
+      "moderate": 7,
+      "high": 20,
+      "critical": 2,
+      "release_security_acceptance": false
+    },
+    "voice": {
+      "built_or_runtime_accepted": false,
+      "reason": "SDL2_mixer development dependency was unavailable; the live full launch used enable_voice=false."
+    }
+  },
+  "historical_context": {
+    "previous_report": "reports/camrod_carla_live_smoke_20260823T152312Z.json",
+    "previous_scope": "Earlier bounded mode smokes plus one 1.5 m NavigateToPose goal; retained as historical evidence and not substituted for this latest-develop full-launch run."
+  }
+}

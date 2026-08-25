@@ -128,7 +128,7 @@
     final_yaw_settle_hold_s: 0.8
     final_yaw_settle_max_rate_degps: 3.0
     final_insertion_start_distance_m: 0.993
-    parked_distance_from_tag_m: 1.03 # HH_260824
+    parked_distance_from_tag_m: 0.943
     tag_timeout_s: 0.5
     odometry_timeout_s: 0.5
     tag_wait_timeout_s: 10.0

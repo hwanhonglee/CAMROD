@@ -157,6 +157,45 @@ def normalize_angle(angle):
     return angle
 
 
+def external_odometry_state_from_message(msg):
+    """Validate and normalize one external simulator odometry sample."""
+    values = (
+        msg.pose.pose.position.x,
+        msg.pose.pose.position.y,
+        msg.pose.pose.position.z,
+        msg.pose.pose.orientation.x,
+        msg.pose.pose.orientation.y,
+        msg.pose.pose.orientation.z,
+        msg.pose.pose.orientation.w,
+        msg.twist.twist.linear.x,
+        msg.twist.twist.linear.y,
+        msg.twist.twist.angular.z,
+    )
+    if not all(math.isfinite(float(value)) for value in values):
+        raise ValueError("external simulator odometry contains non-finite values")
+    qx, qy, qz, qw = values[3:7]
+    quaternion_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if quaternion_norm < 1.0e-9:
+        raise ValueError("external simulator odometry has a zero quaternion")
+    qx /= quaternion_norm
+    qy /= quaternion_norm
+    qz /= quaternion_norm
+    qw /= quaternion_norm
+    yaw = math.atan2(
+        2.0 * (qw * qz + qx * qy),
+        1.0 - 2.0 * (qy * qy + qz * qz),
+    )
+    return (
+        float(values[0]),
+        float(values[1]),
+        float(values[2]),
+        normalize_angle(yaw),
+        float(values[7]),
+        float(values[8]),
+        float(values[9]),
+    )
+
+
 class FakeSensorPublisher(Node):
     # Implements `__init__` behavior.
     def __init__(self):
@@ -178,14 +217,28 @@ class FakeSensorPublisher(Node):
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 10.0).value
         self.loop = self.declare_parameter("loop", True).value
         # HH_260526: Replace use_cmd_vel_for_motion with explicit motion source mode.
-        # motion_source options: cmd_vel | constant_speed
+        # motion_source options: cmd_vel | constant_speed | external_odometry
         self.motion_source = str(self.declare_parameter("motion_source", "cmd_vel").value).strip().lower()
-        if self.motion_source not in {"cmd_vel", "constant_speed"}:
+        if self.motion_source not in {"cmd_vel", "constant_speed", "external_odometry"}:
             self.get_logger().warn(
                 f"Invalid motion_source='{self.motion_source}', fallback to 'cmd_vel'"
             )
             self.motion_source = "cmd_vel"
         self.motion_uses_cmd_vel = self.motion_source == "cmd_vel"
+        self.motion_uses_external_odometry = (
+            self.motion_source == "external_odometry"
+        )
+        self.external_odometry_topic = str(
+            self.declare_parameter("external_odometry_topic", "/odom").value
+        )
+        self.external_odometry_timeout_s = max(
+            0.05,
+            float(
+                self.declare_parameter(
+                    "external_odometry_timeout_s", 0.5
+                ).value
+            ),
+        )
         self.cmd_vel_motion_topic = str(
             # HH_260720 - Follow the direct control-to-Ranger command contract.
             self.declare_parameter("cmd_vel_motion_topic", "/control/cmd_vel").value
@@ -541,6 +594,9 @@ class FakeSensorPublisher(Node):
         self._last_nonzero_cmd_angular_z = 0.0
         self._last_nonzero_cmd_time = None
         self._last_dummy_lidar_cost_grid_pub_sec = 0.0
+        self._external_odometry_state = None
+        self._last_external_odometry_time = None
+        self._external_odometry_stale_logged = False
         # HH_260721 - Keep charger contact and departure timing explicit in simulation state.
         self._simulated_parking_wait_since = None
         self._simulated_charger_departure_since = None
@@ -613,6 +669,14 @@ class FakeSensorPublisher(Node):
         if self.motion_uses_cmd_vel:
             self.sub_cmd_vel = self.create_subscription(
                 AvgTwist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
+            )
+        self.sub_external_odometry = None
+        if self.motion_uses_external_odometry:
+            self.sub_external_odometry = self.create_subscription(
+                RosOdometry,
+                self.external_odometry_topic,
+                self._on_external_odometry,
+                10,
             )
         self.sub_initialpose = self.create_subscription(
             RosPoseWithCovarianceStamped,
@@ -688,6 +752,18 @@ class FakeSensorPublisher(Node):
             self._last_nonzero_cmd_linear_y = self._cmd_linear_y
             self._last_nonzero_cmd_angular_z = self._cmd_angular_z
             self._last_nonzero_cmd_time = self._last_cmd_time
+
+    def _on_external_odometry(self, msg: RosOdometry):
+        try:
+            state = external_odometry_state_from_message(msg)
+        except (TypeError, ValueError, OverflowError) as exc:
+            self.get_logger().error(
+                f"Rejected external simulator odometry: {exc}"
+            )
+            return
+        self._external_odometry_state = state
+        self._last_external_odometry_time = time.time()
+        self._external_odometry_stale_logged = False
 
     # HH_260721 - Convert reverse-parking contact phases into deterministic simulated charging.
     def _on_reverse_parking_status(self, msg: ModuleState):
@@ -1145,7 +1221,10 @@ class FakeSensorPublisher(Node):
         elapsed = now_sec - self._t0
         dt = max(1e-3, now_sec - self._last_timer_time)
         self._last_timer_time = now_sec
-        holding = elapsed < self.startup_hold_s
+        holding = (
+            elapsed < self.startup_hold_s
+            and not self.motion_uses_external_odometry
+        )
         lateral_speed = 0.0
         if self.freeze_motion or holding:
             motion_speed = 0.0
@@ -1168,7 +1247,33 @@ class FakeSensorPublisher(Node):
         else:
             motion_speed = self.speed_mps
 
-        if self.free_nav_mode_enabled:
+        if self.motion_uses_external_odometry:
+            external_age = (
+                float("inf")
+                if self._last_external_odometry_time is None
+                else now_sec - self._last_external_odometry_time
+            )
+            if (
+                self._external_odometry_state is None
+                or external_age > self.external_odometry_timeout_s
+            ):
+                if not self._external_odometry_stale_logged:
+                    self.get_logger().warn(
+                        "External simulator odometry unavailable or stale; "
+                        "sensor output paused"
+                    )
+                    self._external_odometry_stale_logged = True
+                return
+            (
+                x,
+                y,
+                z,
+                yaw,
+                motion_speed,
+                lateral_speed,
+                external_yaw_rate,
+            ) = self._external_odometry_state
+        elif self.free_nav_mode_enabled:
             # HH_260428: Free nav mode — body-frame cmd_vel integration.
             # Integrates linear.x, linear.y, and angular.z so Nav2 and parking
             # controllers can steer the simulated robot off the lanelet centerline.
@@ -1277,8 +1382,13 @@ class FakeSensorPublisher(Node):
         imu_msg.header.frame_id = self.base_frame_id
         imu_msg.orientation = yaw_to_ros_quaternion(yaw)
         # HH_260720 - Provide yaw rate to the default EKF wheel-input boundary.
-        yaw_rate = 0.0
-        if (not holding and not self._was_holding and
+        yaw_rate = (
+            external_yaw_rate
+            if self.motion_uses_external_odometry
+            else 0.0
+        )
+        if (not self.motion_uses_external_odometry and
+                not holding and not self._was_holding and
                 self._last_yaw is not None and self._last_yaw_time is not None):
             dt = max(1e-3, now_sec - self._last_yaw_time)
             dyaw = normalize_angle(yaw - self._last_yaw)

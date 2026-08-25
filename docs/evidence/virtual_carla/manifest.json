@@ -1,0 +1,112 @@
+{
+  "schema": "camrod.carla.scenario_visuals.v1",
+  "created_at_utc": "2026-08-24T06:49:27.968683+00:00",
+  "source_report": {
+    "path": "camrod_carla_live_smoke_20260823T152312Z.json",
+    "sha256": "5b96ab69db4f030c4948b1f710dc9a16da49d1170ccb719dec10c60b84619ebb",
+    "schema": "camrod.carla.live_functional_smoke.v1"
+  },
+  "rendering_scope": {
+    "camera_footage": false,
+    "live_measured_scenarios": [
+      "01_straight_ackermann",
+      "04_crab_lateral",
+      "05_zero_turn"
+    ],
+    "control_model_scenarios": [
+      "02_left_turn_ackermann_model",
+      "03_right_turn_ackermann_model"
+    ],
+    "endpoint_reconstruction_scenarios": [
+      "06_nav2_short_goal"
+    ],
+    "statement": "NullRHI produced no camera frames. These assets are deterministic technical visualizations, not rendered CARLA camera footage. Each asset labels its evidence scope."
+  },
+  "animation": {
+    "individual_frames": 42,
+    "frame_duration_ms": 80,
+    "canvas_px": [
+      1120,
+      630
+    ]
+  },
+  "files": [
+    {
+      "name": "00_all_scenarios.gif",
+      "bytes": 10459513,
+      "sha256": "aff05631b951d1573554d8f0114fd3f465846305292e10b27bdcdaee1a7dce04",
+      "frames": 252
+    },
+    {
+      "name": "00_scenario_overview.png",
+      "bytes": 330201,
+      "sha256": "ba24bec2ca5204d05ac5278b0f5e5cada0f2f4060aaf3e5c3e808786a56df670"
+    },
+    {
+      "name": "01_straight_ackermann.gif",
+      "bytes": 1587655,
+      "sha256": "e0c7252f1e2732acf509548f50ac50dee492c91afbf46a47cfb3d055aa109414",
+      "frames": 42
+    },
+    {
+      "name": "01_straight_ackermann.png",
+      "bytes": 52753,
+      "sha256": "46959c6b36e2cc0e549578cf4a69393543a78cb0d8cec97d55bba68d93e6483d"
+    },
+    {
+      "name": "02_left_turn_ackermann_model.gif",
+      "bytes": 1835271,
+      "sha256": "3a88d7bdfdd6ba1067e801e1010508996c5438212de4de13c8d09ffe35221357",
+      "frames": 42
+    },
+    {
+      "name": "02_left_turn_ackermann_model.png",
+      "bytes": 64082,
+      "sha256": "f062df7b287ef3915c4bb7048c3f44ec5162120344cc171346c33ee89a050443"
+    },
+    {
+      "name": "03_right_turn_ackermann_model.gif",
+      "bytes": 1832098,
+      "sha256": "6fcda03f670bc65257e16f77bac328982233e067f33d76669929538b4ec11d7f",
+      "frames": 42
+    },
+    {
+      "name": "03_right_turn_ackermann_model.png",
+      "bytes": 64144,
+      "sha256": "04f358c3c8b1f5f9c0a4ba03eaf61d7cc4fe9b417159accb92ff563b8c05209e"
+    },
+    {
+      "name": "04_crab_lateral.gif",
+      "bytes": 1641233,
+      "sha256": "efd6975ed07ced0cb17b8a4326868db3f8670f0936a99752fb755049b56b22d7",
+      "frames": 42
+    },
+    {
+      "name": "04_crab_lateral.png",
+      "bytes": 53053,
+      "sha256": "ce008f15410b1b88445a0f2fbf106e53367d92e83eb64b18bed25a4fdce1b0be"
+    },
+    {
+      "name": "05_zero_turn.gif",
+      "bytes": 1746930,
+      "sha256": "86af444c14413edf7ebd0ebbd30dd92647d4355d019562ef202d0c34d424676b",
+      "frames": 42
+    },
+    {
+      "name": "05_zero_turn.png",
+      "bytes": 61494,
+      "sha256": "0bf37efa0c07ed5854c97a5f641c4b07dd9d5ac89fa30fa0bcf774e41bb0e6e6"
+    },
+    {
+      "name": "06_nav2_short_goal.gif",
+      "bytes": 1816491,
+      "sha256": "18616c9af63bb92e8db95667e16347e50827543a56a4ab0ab366f70dc2a72f76",
+      "frames": 42
+    },
+    {
+      "name": "06_nav2_short_goal.png",
+      "bytes": 63830,
+      "sha256": "d38735f9383fdc9c53f3e86c2b06649fc162456c678295469221c562001e0819"
+    }
+  ]
+}

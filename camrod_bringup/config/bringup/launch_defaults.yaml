@@ -11,6 +11,14 @@ bringup:
     # clean_before_launch still clears stale processes before the next run.
     clean_on_shutdown: false
     sim: false
+    # Keep the full simulation graph but follow an external physics simulator
+    # instead of integrating /control/cmd_vel inside fake_sensor_publisher.
+    external_simulator: false
+    external_simulator_odometry_topic: /odom
+    external_simulator_odometry_timeout_s: 0.5
+    # Ordinary sim keeps the built-in raw Ranger/BMS heartbeat. External
+    # simulators can disable it when their adapter owns those two raw topics.
+    sim_publish_platform_status: true
     # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
     sim_platform_status_enable: false
     # HH_260810 - The managed operator UI now provides live map, paths,
@@ -144,6 +152,10 @@ bringup:
     nav2_selected_planner: LaneletRoute
     # HH_260625: RPP is the real-bringup default; MPPI remains selectable.
     nav2_selected_controller: RPP
+    # Empty keeps camrod_planning's package-owned selector BT defaults. These
+    # paths are explicit overrides for simulator/deployment profiles only.
+    nav2_bt_xml_nav_to_pose: ""
+    nav2_bt_xml_nav_through_poses: ""
 
     # ---- Per-planning-node parameter file overrides ----
     path_cost_grids_param_file: planning/path_cost_grids.yaml

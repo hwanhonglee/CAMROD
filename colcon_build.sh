@@ -237,6 +237,27 @@ set +u; source /opt/ros/humble/setup.bash; set -u
 
 # HH_260428: Sanitize stale install paths from prefix vars to avoid picking up
 # packages from a previous build that no longer exists on disk.
+#
+# The virtual/CARLA profile has two deliberate underlays outside this workspace:
+# the standard CARLA ROS bridge and the Ranger 4WS controller workspace.  Its
+# wrapper passes their install roots through CAMROD_EXTRA_PREFIX_ROOTS.  Keep
+# only descendants of those explicit roots; arbitrary ambient overlays (for
+# example a previously sourced Autoware workspace) remain rejected.
+_is_allowed_extra_prefix() {
+  local candidate="$1" root candidate_real root_real
+  local allowed_roots=()
+  candidate_real="$(readlink -m "${candidate}")"
+  IFS=':' read -r -a allowed_roots <<< "${CAMROD_EXTRA_PREFIX_ROOTS:-}"
+  for root in "${allowed_roots[@]}"; do
+    [[ -n "${root}" ]] || continue
+    root_real="$(readlink -m "${root}")"
+    case "${candidate_real}" in
+      "${root_real}"|"${root_real}"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 sanitize_path_var() {
   local var_name="$1"
   local raw="${!var_name:-}" out="" item pkg_name manifest
@@ -244,7 +265,11 @@ sanitize_path_var() {
   for item in "${parts[@]}"; do
     [[ -z "${item}" ]] && continue
     [[ -d "${item}" ]] || continue
-    if [[ "${item}" != /opt/ros/* && "${item}" != "${WS_ROOT}/install/"* ]]; then continue; fi
+    if [[ "${item}" != /opt/ros/* && \
+          "${item}" != "${WS_ROOT}/install/"* ]] && \
+       ! _is_allowed_extra_prefix "${item}"; then
+      continue
+    fi
     if [[ "${item}" == "${WS_ROOT}/install/"* ]]; then
       pkg_name="$(basename "${item}")"
       manifest="${item}/share/${pkg_name}/package.xml"
@@ -257,6 +282,10 @@ sanitize_path_var() {
 sanitize_path_var AMENT_PREFIX_PATH
 sanitize_path_var CMAKE_PREFIX_PATH
 sanitize_path_var COLCON_PREFIX_PATH
+
+if [[ -n "${CAMROD_EXTRA_PREFIX_ROOTS:-}" ]]; then
+  log "preserved approved extra prefix roots: ${CAMROD_EXTRA_PREFIX_ROOTS}"
+fi
 
 # HH_260721 - Reject the retired standalone ground-segmentation package instead
 # of silently building two identical copies on machines with stale source trees.
