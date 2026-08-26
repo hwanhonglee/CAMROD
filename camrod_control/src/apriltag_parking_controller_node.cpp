@@ -139,7 +139,7 @@ public:
       "parked_distance_from_tag_m", 0.943);
     tag_timeout_s_ = declare_parameter<double>("tag_timeout_s", 0.5);
     odometry_timeout_s_ = std::abs(declare_parameter<double>("odometry_timeout_s", 0.5));
-    tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 10.0);
+    tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 60.0);
     retry_forward_distance_m_ =
       declare_parameter<double>("retry_forward_distance_m", 1.0);
     max_retries_ = declare_parameter<int>("maximum_retries", 5);

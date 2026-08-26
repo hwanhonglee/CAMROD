@@ -236,6 +236,7 @@ current source and runtime contract below uses the updated `0.40 m` stop.
 | Condition | Controller phase | Public `/service/state` |
 |---|---|---|
 | Final pose not reached | active parking phase | `DROP_ZONE_PARKING` |
+| Tag missing before the `0.40 m` latch | `WAITING_FOR_TAG`, zero command for up to `60 s` | `DROP_ZONE_PARKING` |
 | Tag range `<= 0.40 m`; yaw correcting | `FINAL_YAW_ALIGNMENT` | `DROP_ZONE_PARKING` |
 | Yaw settled; CAN charge absent | `WAITING_FOR_CHARGING` | `WAITING_FOR_CHARGING` |
 | Parking complete; CAN charge true | `PARKED` | `CHARGING` |
@@ -253,6 +254,9 @@ charging contact commands zero from any active phase before the controller
 reports `PARKED`. Dynamic rotation obstacle protection remains enabled.
 The status message reports `configured_stop_tag_m`, `stop_reason`, and the exact
 `stop_trigger_tag_m`, so later Tag updates cannot obscure why translation ended.
+Before the `0.40 m` translation latch, a Tag sample older than `0.5 s` holds
+zero. A fresh valid target can resume within the `60 s` `WAITING_FOR_TAG`
+window; expiration enters `ERROR` and requires a new parking START.
 
 ## Campsite Sequencing Evidence
 

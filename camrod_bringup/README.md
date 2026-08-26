@@ -65,7 +65,7 @@ dwell, front radar near-field range, and external-simulator ownership. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
-| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
+| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; a stale Tag stops within `0.5 s` and may reacquire for `60 s`; charging feedback immediately commands zero |
 | Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes and are clipped by active lanelet plus the `1.27 m` path corridor; side/rear stay `0.10 m`; the GUI shows all seven streams |
 | Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | Operator window | WebKit fullscreen default |
