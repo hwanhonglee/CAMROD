@@ -27,7 +27,31 @@ def test_camera_range_thresholds_are_exact() -> None:
     assert parameters["final_yaw_angular_speed_radps"] == 0.20
     assert parameters["final_yaw_settle_hold_s"] == 0.8
     assert parameters["final_yaw_settle_max_rate_degps"] == 3.0
+    assert parameters["tag_timeout_s"] == 0.5
+    assert parameters["tag_wait_timeout_s"] == 60.0
     assert parameters["odometry_timeout_s"] == 0.5
+
+
+def test_tag_reacquisition_wait_is_one_minute_with_immediate_safe_stop() -> None:
+    """A stale tag stops quickly but remains recoverable for one minute."""
+    for config in (
+        CONTROL / "config/parking.yaml",
+        BRINGUP / "config/control/parking.yaml",
+    ):
+        parameters = _parameters(config)
+        assert parameters["tag_timeout_s"] == 0.5
+        assert parameters["tag_wait_timeout_s"] == 60.0
+
+    source = NODE.read_text(encoding="utf-8")
+    assert 'declare_parameter<double>("tag_timeout_s", 0.5)' in source
+    assert 'declare_parameter<double>("tag_wait_timeout_s", 60.0)' in source
+
+    waiting_block = source.split("case State::WAITING_FOR_TAG:", 1)[1].split(
+        "case State::TAG_GUIDED_REVERSE:", 1
+    )[0]
+    assert "stateElapsed() > tag_wait_timeout_s_" in waiting_block
+    assert "publishStop();" in waiting_block
+    assert "fail();" in waiting_block
 
 
 def test_parking_parameter_mirrors_are_exact() -> None:

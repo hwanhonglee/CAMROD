@@ -326,6 +326,7 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |

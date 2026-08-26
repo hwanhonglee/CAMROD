@@ -198,6 +198,8 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 | Final yaw | map/station policy | heading-only, raw maximum `0.20 rad/s` |
 | Yaw settling | controller-specific | `0.8 s`, maximum residual rate `3 deg/s` |
 | Final-yaw odometry freshness | controller-specific | `0.5 s`; stale input holds zero |
+| Tag sample freshness | controller-specific | `0.5 s`; stale input immediately holds zero |
+| Tag initial/reacquisition wait | controller-specific | `60.0 s` stopped wait before terminal `ERROR` |
 | `stop_when_charging` | `true` | `true` |
 | Charging required | `complete_without_charging: false` | `require_charging_for_completion: true` |
 | Charging wait | `45 s` | explicit stopped `WAITING_FOR_CHARGING` phase |
@@ -210,6 +212,9 @@ the UI `Tag distance` does; deprecated robot-center longitudinal parameters stay
 loadable but no longer own motion. After the `0.40 m` crossing, tag loss cannot
 restart insertion or retry translation. Controller status preserves the active
 `configured_stop_tag_m`, `stop_reason`, and exact `stop_trigger_tag_m` sample.
+Before that translation latch, a stale tag commands zero and enters
+`WAITING_FOR_TAG`; a fresh valid target may resume the maneuver for up to
+`60.0 s` before the controller enters terminal `ERROR`.
 Charging CAN feedback immediately publishes zero
 in any active final-parking phase, then the internal phase becomes
 `PARKED` and public state is `CHARGING`. Radar-backed dynamic rotation protection

@@ -132,7 +132,7 @@
 
     tag_timeout_s: 0.5
     odometry_timeout_s: 0.5
-    tag_wait_timeout_s: 10.0
+    tag_wait_timeout_s: 60.0
     retry_forward_distance_m: 1.0
     maximum_retries: 5
 

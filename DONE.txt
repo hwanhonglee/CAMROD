@@ -1093,6 +1093,16 @@ CAMROD 구현·검증 완료 기록
   `build/install/log`를 사용하도록 검증했다. 활성 package README의 직접 colcon
   명령도 wrapper로 변경해 `src/build`, `src/install`, `src/log` 재생성을 막았다.
 
+36. HH_260826: AprilTag stopped reacquisition window 60초 연장
+    [DONE-CODE, DONE-ARM64-BUILD, DONE-CONTRACT, FIELD-PENDING]
+- Tag sample freshness `0.5 s`와 즉시 zero command는 유지하고, translation
+  latch 이전 `WAITING_FOR_TAG`의 terminal ERROR 대기만 `10.0 -> 60.0 s`로
+  연장했다. fresh target ID가 돌아오면 기존 상태 전이로 guided reverse를 재개한다.
+- controller 기본값과 package/deployment YAML을 함께 변경하고 source contract로
+  고정했다. focused Python contract `31/31`, control CTest `110/110`, 증분
+  Release build control/bringup `2/2`를 통과했다. 실제 가림/오인식/60초 만료는
+  실차 검증 대상으로 남겼다.
+
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
   2026-07-31, 600.063초, 7채널 exact dummy, evidence active 0,
