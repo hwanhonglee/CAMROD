@@ -160,6 +160,14 @@ def generate_launch_description():
         default_value='/planning/mission_engage',
         description='Mission engage topic used by UI destination/camping-site buttons',
     )
+    manual_cmd_vel_ros_topic_arg = DeclareLaunchArgument(
+        'manual_cmd_vel_ros_topic',
+        default_value='',
+        description=(
+            'Dedicated operator Twist topic; empty disables UI manual drive '
+            '(CARLA/external-simulator opt-in)'
+        ),
+    )
     platform_drive_enable_topic_arg = DeclareLaunchArgument(
         'platform_drive_enable_topic',
         default_value='/platform/drive_enable',
@@ -273,6 +281,7 @@ def generate_launch_description():
             'ui_camping_site_operation_request_topic': '/ui/camping_site_operation_request',
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
+            'manual_cmd_vel_ros_topic': LaunchConfiguration('manual_cmd_vel_ros_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
             'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
@@ -425,6 +434,7 @@ def generate_launch_description():
         enable_campsite_occupancy_guard_arg,
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
+        manual_cmd_vel_ros_topic_arg,
         platform_drive_enable_topic_arg,
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,

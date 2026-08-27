@@ -1,6 +1,8 @@
 import math
+from pathlib import Path
 
 import pytest
+import yaml
 
 from camrod_carla_adapter.feedback_mapping import (
     PlanarTransform,
@@ -18,21 +20,30 @@ def _angle_difference(left, right):
     return math.atan2(math.sin(left - right), math.cos(left - right))
 
 
-def test_lane_anchor_maps_accepted_spawn_to_lanelet_centerline():
+def test_lane_anchor_maps_settled_physical_body_to_lanelet_centerline():
+    parameters = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "woraksan_lane_anchor_alignment.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
     transform = PlanarTransform(
-        x_m=7.855611455645338,
-        y_m=13.676196558868874,
-        yaw_rad=-0.05402607389329672,
+        x_m=parameters["map_offset_x_m"],
+        y_m=parameters["map_offset_y_m"],
+        yaw_rad=parameters["map_yaw_offset_rad"],
     )
-    source_yaw = math.radians(32.45613098144531)
+    # The current split-rigid Blueprint reports the chassis pose below after
+    # settling. Its actor spawn root is deliberately not used as localization.
+    source_yaw = 0.561320571169091
     position, orientation = transform_pose(
-        (38.00654220581055, -36.45695114135742, 7.181118011474609),
+        (38.726207733154297, -37.281283416748046, 3.179900169372559),
         quaternion_from_yaw(source_yaw),
         transform,
     )
     assert position[0] == pytest.approx(43.83803217408370, abs=1.0e-12)
     assert position[1] == pytest.approx(-24.779907458655806, abs=1.0e-12)
-    assert position[2] == pytest.approx(7.181118011474609)
+    assert position[2] == pytest.approx(3.179900169372559)
     expected_yaw = math.radians(29.360664963697495)
     assert _angle_difference(
         yaw_from_quaternion(orientation), expected_yaw) == pytest.approx(

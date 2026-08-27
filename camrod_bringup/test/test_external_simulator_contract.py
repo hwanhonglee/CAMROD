@@ -167,6 +167,9 @@ def test_dedicated_manual_command_boundary_is_opt_in():
     source = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
     ).read_text(encoding="utf-8")
+    ui_launch = (
+        REPO_ROOT / "camrod_ui" / "camrod_ui_robot" / "launch" / "ui.launch.py"
+    ).read_text(encoding="utf-8")
     assert "'control_manual_cmd_vel_ros_topic'" in source
     assert (
         "cfg_get(launch_cfg, 'control/manual_cmd_vel_ros_topic', '')"
@@ -176,3 +179,17 @@ def test_dedicated_manual_command_boundary_is_opt_in():
         "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
         in source
     )
+    # The empty develop/default value reaches both the safety gate and UI.  A
+    # simulator overlay must opt in before the backend creates a publisher or
+    # exposes the operator drive panel.
+    assert source.count(
+        "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
+    ) >= 2
+    assert (
+        "'manual_cmd_vel_ros_topic',\n"
+        "        default_value='',"
+    ) in ui_launch
+    assert (
+        "'manual_cmd_vel_ros_topic': LaunchConfiguration("
+        "'manual_cmd_vel_ros_topic')"
+    ) in ui_launch

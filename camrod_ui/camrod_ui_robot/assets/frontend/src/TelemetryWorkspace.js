@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ManualDrivePanel from './ManualDrivePanel';
 
 // HH_260810 - These tabs consolidate the former GNSS, radar, velocity, path,
 // and RViz operator viewers without changing the underlying ROS authorities.
@@ -414,6 +415,7 @@ function CameraView({ telemetry }) {
         <CameraFeed telemetry={telemetry} camera="front" label="Front camera" />
         <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" />
       </div>
+      <ManualDrivePanel />
     </div>
   );
 }

@@ -1882,6 +1882,12 @@ TEST(CommandSourceArbiter, FirstManualTwistLatchesAndBlocksNavAndGeneralRaw) {
             CommandSourceDecision::kAllow);
 }
 
+TEST(CommandSourceArbiter, OnlyManualInputBypassesRouteHeadingOverride) {
+  EXPECT_TRUE(appliesRouteHeadingAlignment(CommandInputSource::kNavigation));
+  EXPECT_TRUE(appliesRouteHeadingAlignment(CommandInputSource::kRaw));
+  EXPECT_FALSE(appliesRouteHeadingAlignment(CommandInputSource::kManual));
+}
+
 TEST(CommandSourceArbiter, MissionTakeoverAndManualDisengageResetOwnership) {
   CommandSourceArbiterConfig config;
   config.manual_input_enabled = true;

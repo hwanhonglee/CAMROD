@@ -1170,10 +1170,11 @@ private:
     if (const auto yaw_override = applyYawAlignment(command);
         yaw_override.has_value()) {
       command = *yaw_override;
-    } else if (const auto heading_override =
-                   applyRouteHeadingAlignment(command);
-               heading_override.has_value()) {
-      command = *heading_override;
+    } else if (appliesRouteHeadingAlignment(input_source)) {
+      if (const auto heading_override = applyRouteHeadingAlignment(command);
+          heading_override.has_value()) {
+        command = *heading_override;
+      }
     }
 
     // HH_260807 - Collision projection, route-recovery evidence and the
