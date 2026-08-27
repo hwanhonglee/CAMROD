@@ -33,9 +33,9 @@ class Nav2SelectorPolicyTest(unittest.TestCase):
     def test_manual_default_is_long_range_lanelet_planner(self) -> None:
         self.assertEqual(MODULE.DEFAULT_MANUAL_PLANNER_ID, "LaneletRoute")
 
-    def test_executable_fallbacks_are_reachable_production_ids(self) -> None:
-        self.assertEqual(MODULE.DEFAULT_REGULATED_PLANNER_ID, "LaneletRoute")
-        self.assertEqual(MODULE.DEFAULT_REGULATED_CONTROLLER_ID, "RPP")
+    def test_executable_fallbacks_match_develop_defaults(self) -> None:
+        self.assertEqual(MODULE.DEFAULT_REGULATED_PLANNER_ID, "NavFn")
+        self.assertEqual(MODULE.DEFAULT_REGULATED_CONTROLLER_ID, "MPPI")
 
     def test_manual_source_selects_manual_policy_as_one_tuple(self) -> None:
         source, recognized = MODULE.resolve_goal_source(" manual:rviz ")
@@ -167,50 +167,26 @@ class Nav2SelectorPolicyTest(unittest.TestCase):
         ):
             self.assertIn("DeclareLaunchArgument(\n            '" + argument, source)
             self.assertIn("                    '" + argument + "',", source)
-
-    def test_direct_lanelet_launch_uses_package_owned_multi_pose_tree(self) -> None:
-        source = LANELET_LAUNCH.read_text(encoding="utf-8")
+        self.assertIn("'nav2_bt_navigator'", source)
         self.assertIn(
-            "'navigate_through_poses_w_planner_selector.xml'", source
-        )
-        self.assertNotIn(
             "'navigate_through_poses_w_replanning_and_recovery.xml'", source
         )
 
-    def test_direct_lanelet_default_selector_ids_are_loaded_in_production(self) -> None:
+    def test_direct_lanelet_launch_uses_stock_multi_pose_tree(self) -> None:
+        source = LANELET_LAUNCH.read_text(encoding="utf-8")
+        self.assertIn(
+            "nav2_bt_share = get_package_share_directory('nav2_bt_navigator')",
+            source,
+        )
+        self.assertIn(
+            "'navigate_through_poses_w_replanning_and_recovery.xml'", source
+        )
+
+    def test_direct_lanelet_default_selector_ids_match_develop(self) -> None:
         planner_id, controller_id = LANELET_MODULE.infer_nav2_combo_ids(
             "disabled.yaml"
         )
-        planner_profile = yaml.safe_load(
-            (
-                PACKAGE_ROOT
-                / "config"
-                / "nav2_planner_profiles"
-                / "production.yaml"
-            ).read_text(encoding="utf-8")
-        )
-        controller_profile = yaml.safe_load(
-            (
-                PACKAGE_ROOT
-                / "config"
-                / "nav2_controller_profiles"
-                / "production.yaml"
-            ).read_text(encoding="utf-8")
-        )
-
-        self.assertEqual((planner_id, controller_id), ("LaneletRoute", "RPP"))
-        self.assertIn(
-            planner_id,
-            planner_profile["planner_server"]["ros__parameters"][
-                "planner_plugins"
-            ],
-        )
-        self.assertIn(
-            controller_id,
-            controller_profile["controller_server"]["ros__parameters"][
-                "controller_plugins"
-            ],
-        )
+        self.assertEqual((planner_id, controller_id), ("LaneletRoute", "MPPI"))
 
 
 if __name__ == "__main__":

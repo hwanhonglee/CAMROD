@@ -65,7 +65,7 @@ dwell, front radar near-field range, and external-simulator ownership. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
-| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`, then yaw-only/zero wait; charging feedback immediately commands zero |
+| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; a stale Tag stops within `0.5 s` and may reacquire for `60 s`; charging feedback immediately commands zero |
 | Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes and are clipped by active lanelet plus the `1.27 m` path corridor; side/rear stay `0.10 m`; the GUI shows all seven streams |
 | Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | External simulation | `external_simulator:=true` follows fresh map-aligned `/odom` instead of integrating `cmd_vel`; platform-status ownership stays explicit |
@@ -180,7 +180,8 @@ acceptance.
 | B1-B10 service endurance | PASS (10/10) | `2210.611 s`, restart 0; cycle 1 seeded site handoff, cycles 2-10 full charger departure/outbound/RETURN/park/charge |
 | Fixed-lookahead source profile | PASS (2/2) | B1/B2 in 422.848 s, zero restart; obstacle stop/resume, margin recovery, RETURN, park and charge |
 | Charger departure | PASS | B2/B3 left CHARGING through `DEPARTING_CHARGER`; stale charge contact did not close drive authorization |
-| v2.2.1 selected build/tests | PASS | Release build `6/6`; control `110`, planning `65` (skip `8`), sensing `117`, UI `110`, bringup `264`; errors/failures `0`; CARLA source `21/21` |
+| v2.2.1 selected build/tests | BUILD PASS / BASELINE TEST DEBT | Isolated Release build `5/5`; focused contracts `65/65`; 6 inherited/environment-sensitive bringup targets remain failing |
+| CARLA overlay verification | PASS | CARLA source contracts `21/21`; adapter Release build passed under its separate evidence boundary |
 | Historical map-v17 B2 boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |

@@ -43,14 +43,169 @@ STEP→FBX와 FBX→Blueprint는 CARLA 런타임 때 반복하지 않지만, 실
 - `scripts/virtual_carla`: portable 환경, setup, build, test, 명시적 실행 진입점
 - `colcon_build.sh`: CAMROD 전체 colcon build 및 production UI frontend build
 
-## 2. 전체 데이터 흐름
+## 2. 호환성 범위와 백엔드 프로파일
+
+이 절은 2026-08-27의 `origin/develop`과 `virtual/carla`를 비교한 호환성
+감사 결과다. 여기서 `ACKERMANN_ONLY`, `PLANAR_TWIST`, `PHYSICAL_4WS`는
+**호환성 분류 이름**이지 현재 `run.sh`의 subcommand나 launch enum이 아니다.
+현재 checked-in 실행 스크립트가 구현하는 것은 `PHYSICAL_4WS`뿐이며, 실제
+controller launch 값은 `extended_mode_backend:=PHYSX_FOUR_WHEEL_STEERING`이다.
+다른 두 분류 이름을 현재 CLI에 전달하면 안 된다.
+
+### 2.1 감사 기준과 core/overlay 원칙
+
+| 대상 | 감사 기준 | 확인된 범위 |
+|---|---|---|
+| CAMROD core | `origin/develop` `9756edf2d7aebf59cf8b635b5d8f5982bf6211aa` | 아래 표준 ROS 경계는 존재하지만 `camrod_carla_adapter`와 `scripts/virtual_carla`는 없음 |
+| CARLA overlay | `virtual/carla` 작업 트리(병합 전 원격 기준 `0b4adc7be455f280ee2340faca4c5288fed34ccf`) | 위 `origin/develop`을 병합하고 별도 adapter package, opt-in external-simulator bringup, physical 4WS runner를 추가 |
+| ROS bridge pin | upstream `c596934b430173a5713bc1ac191ff23ae8df9686` + Ranger patch set | stock topic/message 경계와 Ranger actor/PhysX lifecycle patch를 함께 사용 |
+| 현재 검증 조합 | ROS 2 Humble, CARLA 0.9.15 source, UE 4.26.x, Python 3.10 | 다른 ROS/CARLA/UE 조합은 이 문서가 승인하지 않음 |
+
+통합 원칙은 CAMROD core의 기본 topic과 알고리즘을 CARLA 전용으로 바꾸지 않고,
+시뮬레이터 변환을 adapter overlay에서 끝내는 것이다. `virtual/carla`의 core 파일이
+`origin/develop`과 byte-for-byte 동일한 것은 아니다. external simulator를 위해
+`external_simulator`, external odometry와 fake-sensor rate 인자가 추가돼 있지만,
+ordinary bringup 기본값은 각각 `false`, 내부 `cmd_vel` motion source와 기존 platform
+status owner를 유지한다. 즉 **기본 동작은 유지하고 CARLA full launch가 opt-in 인자를
+명시적으로 켠다**는 계약이다.
+
+병합 감사에서 최신 `develop`의 중복 parking YAML 두 개가 서로 달라 자체 mirror
+계약이 실패하는 문제도 확인했다. 이 브랜치는 실제 full bringup의 최신 heading/lateral
+gain(`0.9`/`1.5`)을 두 파일에 동일하게 유지하고, C++ 기본값과 robot-center frame
+계약에 맞지 않던 deprecated `parked_distance_from_tag_m`만 `0.943`으로 동기화한다.
+이는 CARLA 전용 tuning이 아니며 두 실행 경로의 upstream 설정 drift 수정이다.
+
+`origin/develop`에서 확인한 stable ROS 경계는 다음과 같다.
+
+| 용도 | CAMROD topic | ROS type | 소유자/조건 |
+|---|---|---|---|
+| Nav2 후보 명령 | `/control/nav2_cmd_vel_ros` | `geometry_msgs/msg/Twist` | planning → safety gate; simulator가 직접 구독하면 gate를 우회함 |
+| 최종 actuator 명령 | `/control/cmd_vel_ros` | `geometry_msgs/msg/Twist` | safety gate 출력; profile adapter가 여기서만 분기 |
+| 표준 odometry 입력 | `/odom` | `nav_msgs/msg/Odometry` | external simulator 또는 platform driver → `ranger_platform_bridge` |
+| 정규화 platform odometry | `/platform/status/odometry` | `avg_msgs/msg/AvgOdometry` | CAMROD 내부 경계; `ranger_platform_bridge`가 `/odom`을 변환 |
+| IMU | `/sensing/imu/data_ros` | `sensor_msgs/msg/Imu` | frame, covariance, clock와 freshness를 함께 맞춰야 함 |
+| GNSS fix | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/msg/NavSatFix` | datum/좌표계와 covariance가 필요함 |
+| raw LiDAR | `/sensing/lidar/vanjee/points_raw` | `sensor_msgs/msg/PointCloud2` | point fields, frame/TF와 rate를 검증해야 함 |
+| camera | `/sensing/camera/econ_{front,rear}/*` | `sensor_msgs/msg/Image`, `CameraInfo` 또는 `CompressedImage` | production consumer가 요구하는 raw/rect/compressed 형태가 서로 다름 |
+
+### 2.2 백엔드 호환성 행렬
+
+| 프로파일 | command mapping | feedback mapping | stock CARLA/ROS bridge | 현재 구현 및 제한 |
+|---|---|---|---|---|
+| `ACKERMANN_ONLY` | final `Twist` → `ackermann_msgs/msg/AckermannDrive` → `/carla/<role>/ackermann_cmd` | `/carla/<role>/odometry` `nav_msgs/msg/Odometry`; controller는 `/vehicle_status` `carla_msgs/msg/CarlaEgoVehicleStatus`와 `/vehicle_info` `carla_msgs/msg/CarlaEgoVehicleInfo`도 사용 | **가능**. stock `carla_ackermann_control`의 단일 steering/throttle/brake 경로 | 이 저장소에는 해당 Twist→stock-Ackermann adapter/runner가 아직 없음. `linear.y`, crab, zero-turn, pivot, 독립 rear steer와 wheel별 torque/telemetry는 표현할 수 없음 |
+| `PLANAR_TWIST` | `/control/cmd_vel_ros`의 `linear.x`, `linear.y`, `angular.z`를 simulator-native planar base에 전달 | map-aligned `nav_msgs/msg/Odometry`와 필요한 TF/sensor를 `/odom` 및 CAMROD 표준 경계로 반환 | **stock wheeled CARLA에는 불가**. stock bridge에는 holonomic vehicle용 planar `Twist` actuator가 없음 | 범용 simulator용 계약일 뿐, 현재 CARLA runner는 없음. simulator가 lateral translation과 in-place yaw를 명시적으로 지원할 때만 crab/zero-turn의 kinematic 시험 가능; wheel 물리 4WS 증거는 아님 |
+| `PHYSICAL_4WS` | final `Twist` → `carla_extended_ackermann_msgs/msg/ExtendedAckermannDrive` → `PhysicalFourWheelControl` → custom CARLA wheel API | standard odometry/sensor topics + `/carla/<role>/physical_four_wheel_status`; startup에 read-only PhysX substep snapshot 확인 | **제어는 불가**. stock bridge topic은 feedback에 재사용할 수 있지만 unmodified CARLA/bridge는 physical gate를 통과하지 못함 | 현재 `run.sh`가 구현한 유일한 profile. exact Ranger Blueprint, patched bridge/CARLA, custom messages/controller, 두 runtime gate가 모두 필요. actual wheel angle/torque의 continuous ROS feedback은 현재 없음 |
+
+stock Ackermann은 “CARLA와 CAMROD가 연결된다”는 최소 주행 경로이지 Ranger의
+4WS 동작과 동등하지 않다. `ackermann_msgs/msg/AckermannDrive`에는 lateral velocity,
+rear steering, drive mode 또는 wheel별 torque가 없다. 따라서 `linear.y`가 deadband를
+넘거나 CAMROD semantics가 crab/zero-turn/pivot을 요구하면 stop을 내고 diagnostic을
+올려야 한다. 이를 front-steer 포화값으로 근사하거나 일반 회전으로 조용히 바꾸면
+안 된다. 허용된 Dual-Ackermann 구간도 stock front-steer 차량의 wheelbase, steering
+sign, 속도/곡률 한계로 별도 변환·시험해야 한다.
+
+`PLANAR_TWIST`는 ROS message 수준에서 가장 단순하지만 CARLA physical vehicle의
+보편 기능이 아니다. actor pose를 순간이동시키거나 physics를 우회해 `Twist`를
+흉내 낸 결과는 navigation 알고리즘의 kinematic 시험에는 쓸 수 있어도
+`PHYSICAL_4WS` 또는 4WD traction 시험으로 기록하면 안 된다.
+
+### 2.3 profile별 필수 mapping
+
+모든 profile은 다음 연결을 명시적으로 소유해야 한다. topic 이름이 같아도 type,
+frame, clock 또는 QoS가 다르면 호환으로 간주하지 않는다.
+
+| 경계 | source → destination | 필수 조건 |
+|---|---|---|
+| 안전 명령 | `/control/nav2_cmd_vel_ros` → CAMROD safety gate → `/control/cmd_vel_ros` | engage/mission/estop, stale timeout과 zero publish를 유지; adapter를 Nav2 후보 topic에 직접 연결하지 않음 |
+| `ACKERMANN_ONLY` actuation | `/control/cmd_vel_ros` `Twist` → **추가 구현할 adapter** → `/carla/<role>/ackermann_cmd` `AckermannDrive` | only supported Dual-Ackermann input; `linear.y` 및 zero-turn/pivot 분류는 reject+stop; current `twist_to_4ws_node.py`는 message type이 달라 재사용/단순 remap할 수 없음 |
+| `PLANAR_TWIST` actuation | `/control/cmd_vel_ros` `Twist` → simulator planar command | simulator가 지원 축, body frame, 단위와 sign을 preflight에서 광고/검증; capability가 없으면 nonzero publish 금지 |
+| `PHYSICAL_4WS` actuation | `/control/cmd_vel_ros` → `/carla/<role>/extended_ackermann_cmd` → `/carla/<role>/physical_four_wheel_cmd` | `ExtendedAckermannDrive`/`PhysicalFourWheelControl` exact type, monotonically increasing sequence, `PhysicalFourWheelStatus` acknowledgement와 watchdog 필요 |
+| odometry | simulator odom → map alignment → `/odom` `nav_msgs/msg/Odometry` → `/platform/status/odometry` `AvgOdometry` | pose와 twist가 finite, quaternion normalized, `map`/`odom`/`robot_center_link` ownership이 단일하며 covariance와 freshness가 유효해야 함 |
+| identity | configured actor/robot → `<role>` topic namespace | 모든 CARLA topics가 같은 role을 사용. physical profile은 정확히 하나의 `vehicle.ranger.default`와 일치하는 actor ID까지 요구 |
+| sensor | simulator Image/CameraInfo/PointCloud2/Imu/NavSatFix → CAMROD canonical topics | calibration, optical/body frames, TF, timestamp, QoS, field layout와 consumer rate를 각각 검증 |
+| map | simulator world pose → `CAMROD_MAP_ALIGNMENT_FILE` → `CAMROD_LANELET_MAP` | spawn pose, SE(2) alignment와 lanelet map을 한 cohort로 승인; 다른 map/spawn에 기존 alignment 재사용 금지 |
+
+현재 `sensor_relay_node.py`는 Image/CameraInfo/PointCloud2를 copy/restamp하고 topic과
+일부 frame만 바꾼다. image rectification, compression, camera calibration 또는 LiDAR
+field 변환기는 아니다. 특히 CAMROD front production perception은
+`/sensing/camera/econ_front/image_rect/compressed`를 소비하지만 relay는 uncompressed
+`Image`까지만 발행한다. 따라서 stock CARLA sensor를 붙인 것만으로 full perception
+호환을 주장할 수 없다. current full launch는 CARLA IMU/GNSS relay도 꺼 두고,
+map-aligned `/odom`에서 10 Hz fake GNSS/IMU/readiness data를 파생한다. checked-in spawn
+JSON 역시 control-only이므로 rendered full-sensor profile은 별도 구현·검증 대상이다.
+
+### 2.4 capability fail-closed 계약
+
+backend 선택은 자동 fallback이 아니다. 시작 전에 profile을 하나 고정하고 아래
+capability가 전부 확인된 뒤에만 nonzero command를 허용한다.
+
+- `ACKERMANN_ONLY`: exact `/ackermann_cmd` type과 subscriber, `/vehicle_status`,
+  `/vehicle_info`, fresh odometry, 차량 geometry/steer limit를 확인한다. unsupported
+  planar component나 4WS mode가 오면 zero를 발행하고 상태를 ERROR로 만든다.
+- `PLANAR_TWIST`: simulator가 `linear.x`, `linear.y`, `angular.z` 각각과 body-frame
+  convention을 지원한다고 명시해야 한다. 표준 capability handshake가 없으므로
+  deployment config와 bounded preflight test가 둘 다 없으면 fail closed한다.
+- `PHYSICAL_4WS`: baseline/physical manifest deep validation, gate-bound egg/libcarla,
+  exact Blueprint/role/단일 actor, `set_wheel_physics_steer_angles_and_drive_torques`,
+  `reset_wheel_physics_steer_angles`, `get_wheel_physics_telemetry`, PhysX substep
+  telemetry와 `/physical_four_wheel_status`의 `ready=true`, accepted gate,
+  `independent_wheel_drive_available=true`를 모두 요구한다.
+- 어떤 profile도 feedback가 stale하거나 command/type/frame validation이 실패했을 때
+  마지막 nonzero 명령을 replay하지 않는다. zero publish와 backend별 brake/reset을
+  수행하고 operator가 원인을 해결한 뒤 명시적으로 다시 승인한다.
+- `PHYSICAL_4WS` 요청이 실패해도 `ACKERMANN_ONLY`로 내려가 움직이지 않는다. 그런
+  fallback은 Ranger 4WS 검증 범위를 바꾸므로 별도 operator 선택과 별도 test report가
+  필요하다.
+
+### 2.5 hard dependency 경계
+
+| 프로파일 | 반드시 필요한 것 | 필요하지 않거나 현재 없는 것 |
+|---|---|---|
+| `ACKERMANN_ONLY` | audited CARLA/bridge version pair, `ackermann_msgs`, `carla_msgs`, stock `carla_ackermann_control`, ego role, odometry pseudo-sensor, 별도 Twist→Ackermann adapter와 profile preflight | custom wheel RPC와 physical gate는 필요 없음. 그러나 이 저장소에는 adapter/runner가 아직 없음 |
+| `PLANAR_TWIST` | ROS 2 `geometry_msgs/msg/Twist`, map-aligned `nav_msgs/msg/Odometry`, TF/sensor contract를 제공하는 simulator plugin과 명시적 capability config | CARLA, UE, Ackermann 또는 Ranger wheel API는 필수가 아님. 현재 이 profile용 runner/preflight는 없음 |
+| `PHYSICAL_4WS` | Ranger pipeline의 exact UE/CARLA/Blueprint, patched ROS bridge, gate-bound Python egg/libcarla, custom message/controller/rqt overlay, baseline+physical gates, aligned map/spawn, live physical status | stock packaged CARLA나 unmodified upstream bridge로 대체할 수 없음 |
+
+현재 `camrod_carla_adapter/package.xml`은
+`carla_extended_ackermann_control`과 `carla_extended_ackermann_msgs`를 unconditional
+runtime dependency로 선언하고, `run.sh doctor`도 physical gates와 Ranger packages를
+항상 요구한다. 따라서 feedback node 일부가 standard message만 쓰더라도 현재 package와
+CLI 전체를 stock-only 또는 planar generic adapter라고 볼 수 없다. 두 profile을 실제로
+지원하려면 physical package와 분리된 adapter package/launch, profile별 dependency와
+preflight를 추가해야 한다.
+
+### 2.6 current `virtual/carla` bringup의 고정 전제
+
+현재 `camrod_carla_full.launch.py`와 `run.sh`는 generic launcher가 아니라 다음을
+명시한 하나의 deployment profile이다.
+
+- Ubuntu 22.04/ROS 2 Humble/Python 3.10, CARLA 0.9.15 source와 UE 4.26.x
+- patched ROS bridge pin과 Ranger ROS overlay의
+  `carla_extended_ackermann_{msgs,control}`, `rqt_extended_ackermann`
+- `vehicle.ranger.default`, role `ego_vehicle`, endpoint `127.0.0.1:2000`; physical
+  bridge는 이 endpoint 외 값을 현재 거부함
+- `sim=true`, `external_simulator=true`, external odometry `/odom`, timeout `0.5 s`
+- hardware Ranger driver off, `ranger_platform_bridge` on, fake platform status owner off
+- CAMROD readiness용 fake sensor rate `10 Hz`; platform heartbeat의 `5 Hz`와 별도
+- adapter node는 wall/reception time(`use_sim_time=false`)을 사용하고 CARLA bridge는
+  synchronous `0.05 s` step을 기본 사용하므로 모든 terminal의 clock 선택을 섞지 않음
+- Woraksan CARLA map, lanelet map, checked-in single-anchor SE(2) alignment와 exact
+  spawn pose. 다른 map은 alignment 재승인이 필요함
+- production UI에는 Node.js/npm build가 추가로 필요하지만 actuator ROS 경계 자체의
+  필수 dependency는 아님
+
+`ROS_DOMAIN_ID=188`, `rmw_cyclonedds_cpp`, synchronous mode와 UI port `8010`은 현재
+script 기본값이다. 프로토콜의 보편 상수는 아니지만 같은 run의 모든 terminal에서
+일치해야 한다. 이 pin 또는 topic/type 계약을 바꾼 조합은 `doctor`의 physical PASS나
+과거 evidence를 재사용하지 말고 profile별 build/interface/live 시험을 새로 수행한다.
+
+## 3. PHYSICAL_4WS 전체 데이터 흐름
 
 ```text
 UE 4.26 / CARLA 0.9.15 custom map
   ├─ vehicle.ranger.default Blueprint + four-wheel PhysX
   └─ CARLA Python physical-4WD v2 API
             │
-            ├── carla_ros_bridge ── camera/LiDAR/IMU/GNSS/odometry
+            ├── pinned carla_ros_bridge ── camera/LiDAR/IMU/GNSS/odometry
             │                              │
             │                     camrod_carla_adapter
             │                              │
@@ -75,14 +230,15 @@ UE 4.26 / CARLA 0.9.15 custom map
    계산한다.
 4. `physical_four_wheel_bridge`가 gate로 승인된 CARLA Python egg의
    `set_wheel_physics_steer_angles_and_drive_torques` API를 사용한다.
-5. 네 wheel의 실제 steering/torque telemetry와 CARLA odometry가 다시 CAMROD로
-   들어온다.
+5. CARLA odometry와 controller/physical bridge status가 다시 CAMROD로 들어온다.
+   bridge는 시작 시 read-only PhysX substep telemetry를 한 번 확인하지만, 현재 ROS
+   message는 네 wheel의 실제 steering angle/torque를 연속 측정해 발행하지 않는다.
 
 `camrod_carla_full.launch.py`는 CARLA server, ROS bridge 또는 actor를 소유하지
 않는다. 프로세스 수명과 실패 범위를 분리하기 위해 네 단계를 각각 다른 터미널에서
 시작한다.
 
-## 3. 기준 환경
+## 4. 기준 환경
 
 검증 기준 조합은 다음과 같다.
 
@@ -91,7 +247,7 @@ UE 4.26 / CARLA 0.9.15 custom map
 - Python 3.10
 - CARLA 0.9.15 source build와 프로젝트에 포함된 custom Woraksan map
 - Unreal Engine 4.26.x
-- Humble용 `carla_ros_bridge`
+- Humble용 `carla_ros_bridge` pin `c596934`와 Ranger lifecycle patch set
 - Node.js/npm: CAMROD production UI frontend build용
 - rendered 시험: 정상 NVIDIA driver와 Vulkan
 
@@ -99,7 +255,7 @@ UE 4.26 / CARLA 0.9.15 custom map
 camera UI, YOLO/perception 또는 시각 품질을 검증하지 못한다. `offscreen`도 실제
 렌더링이므로 NVIDIA/Vulkan이 필요하다.
 
-## 4. portable 디렉터리 계약
+## 5. portable 디렉터리 계약
 
 Ranger bootstrap이 기본적으로 만드는 런타임 트리는 다음과 같다.
 
@@ -110,7 +266,7 @@ $RANGER_CARLA_ROOT/
   .work/
     src/carla/                        # custom CARLA source/project
     src/UnrealEngine_4.26/            # UE 4.26
-    ros-bridge-ws/                    # standard CARLA ROS bridge
+    ros-bridge-ws/                    # pinned bridge + Ranger lifecycle patch
     evidence/
       ranger_ros_backend_gate.json
       ranger_physical_4ws_acceptance_gate.json
@@ -142,7 +298,7 @@ portable gate 파일이 없으면 실행은 실패한다. `reports/`의 과거 t
 Python egg를 다시 빌드하거나 위치를 바꿨다면 Ranger 저장소에서 gate를 새로 만들고
 검증해야 한다. egg 별칭 또는 해시가 다르면 fail closed가 정상이다.
 
-## 5. 최초 환경 준비와 빌드
+## 6. 최초 환경 준비와 빌드
 
 먼저 Ranger 저장소의 `docs/BUILD_AND_RUN.md`에 따라 UE, custom CARLA, ROS bridge,
 `ros_ws/src`, portable gate와 `config/environment.env`를 준비한다. 기본 work root는
@@ -227,7 +383,7 @@ CAMROD build wrapper는 `CAMROD_EXTRA_PREFIX_ROOTS`에 명시된 bridge와 Range
 하위만 보존한다. 임의의 ambient overlay는 제거한다. 따라서 터미널에 다른 Autoware
 workspace가 source되어 있어도 package가 조용히 잘못 resolve되는 것을 방지한다.
 
-## 6. 오프라인 시험
+## 7. 오프라인 시험
 
 빠른 source/스크립트 계약 시험:
 
@@ -258,7 +414,7 @@ CARLA 통합 관련 Ranger와 CAMROD package 시험:
 watchdog, feedback, 관련 CAMROD regression을 확인한다. 또한 `.gitmodules`와 Git
 mode `160000` 항목이 CAMROD에 다시 들어오면 실패한다.
 
-## 7. 런타임 사전 점검
+## 8. 런타임 사전 점검
 
 경로와 package graph를 확인한다.
 
@@ -297,7 +453,7 @@ export CARLA_WAIT_FOR_CONTROL_COMMAND=True
 
 이 선택으로 camera/perception PASS를 주장하면 안 된다.
 
-## 8. 실행 순서
+## 9. 실행 순서
 
 복사 가능한 현재 환경 명령을 먼저 볼 수 있다. 이 명령은 아무 프로세스도 시작하지
 않는다.
@@ -319,7 +475,7 @@ Terminal 1 — CARLA server:
 `nullrhi`는 `-nullrhi`를 선택한다. 이미 CARLA port가 listen 중이면 두 번째 server
 시작을 거부한다.
 
-Terminal 2 — standard ROS bridge:
+Terminal 2 — pinned CARLA ROS bridge:
 
 ```bash
 ./scripts/virtual_carla/run.sh bridge
@@ -385,7 +541,7 @@ camera/GNSS/IMU를 spawn하며 `VehicleControl.apply_control()`을 직접 호출
 동일 role actor 중복과 physical 4WS/CAMROD safety gate 우회를 만들 수 있으므로 이
 full-stack 시험에는 사용하지 않는다.
 
-선택 Terminal 6 — wheel telemetry monitor:
+선택 Terminal 6 — controller target/status monitor:
 
 ```bash
 source ./scripts/virtual_carla/env.sh
@@ -393,9 +549,16 @@ virtual_carla_source_ros true true
 ros2 run rqt_extended_ackermann rqt_extended_ackermann
 ```
 
+이 rqt 화면의 wheel schematic과 front/rear steering gauge는
+`ExtendedControlInfo.target_*`와 normalized controller output을 표시한다. 현재 widget은
+front/rear gauge의 current와 target 양쪽에 같은 target 값을 넣으므로 actual wheel
+encoder/PhysX angle 측정 화면이 아니다. speed/acceleration은 CARLA status/odometry에서
+오지만 wheel별 actual torque도 표시하지 않는다. 따라서 이 UI만으로 “각 wheel의 실제
+조향·torque가 명령을 추종했다”는 acceptance를 만들면 안 된다.
+
 종료는 Terminal 6 → 5 → 4 → 3 → 2 → 1의 역순이다.
 
-## 9. UI와 기능 확인
+## 10. UI와 기능 확인
 
 `camrod`가 정상 기동하면 기존 CAMROD production UI backend/frontend를 그대로
 사용한다.
@@ -412,7 +575,8 @@ http://127.0.0.1:8010
 - CARLA status와 ego odometry가 계속 갱신됨
 - physical four-wheel bridge가 gate/egg/actor를 모두 승인함
 - `/control/cmd_vel_ros`가 adapter watchdog 범위에서 처리됨
-- `/carla/ego_vehicle/extended_ackermann_cmd`와 wheel telemetry mode가 일치함
+- `/carla/ego_vehicle/extended_ackermann_cmd`, controller target mode와 physical bridge
+  sequence/status가 일치함. 이는 actual per-wheel angle/torque 측정과 구분함
 - CAMROD map/localization/planning/control diagnostics가 stale/fault가 아님
 - rendered full-sensor 시험에서 front/rear RGB와 LiDAR relay가 갱신됨
 - CAMROD UI가 HTTP 200이고 현재 모듈 상태를 표시함
@@ -429,7 +593,7 @@ heartbeat의 5 Hz launch 인자와 충돌하지 않는 전용 인자명을 사�
 빌드로 이미 떠 있는 프로세스에는 새 callback이 로드되지 않으므로 source 수정 후에는
 CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한다.
 
-## 10. 핵심 코드 위치
+## 11. 핵심 코드 위치
 
 | 역할 | 파일/패키지 |
 |---|---|
@@ -443,7 +607,7 @@ CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한�
 | CAMROD 알고리즘 | `camrod_sensing`, `camrod_localization`, `camrod_map`, `camrod_planning`, `camrod_control` |
 | production UI | `camrod_ui`; frontend는 `colcon_build.sh`가 npm build |
 
-## 11. 자주 발생하는 실패
+## 12. 자주 발생하는 실패
 
 - **package가 다른 workspace로 resolve됨**: 새 터미널에서 wrapper를 사용한다.
   `doctor`는 예상 install root 밖의 package를 거부한다.
@@ -465,7 +629,7 @@ CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한�
 - **map에서 경로가 어긋남**: CARLA spawn pose, lanelet map과 SE(2) alignment를 한
   세트로 다시 검증한다.
 
-## 12. 증거 범위
+## 13. 증거 범위
 
 [virtual CARLA 증거 인덱스](evidence/virtual_carla/README.md)에 PNG/GIF, UI
 screenshot과 live report가 정리되어 있다.

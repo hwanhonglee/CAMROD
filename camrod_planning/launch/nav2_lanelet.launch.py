@@ -48,10 +48,9 @@ def infer_nav2_combo_ids(combo_param_file: str) -> tuple[str, str]:
     # HH_260626: Default to the connected lanelet route when no combo profile
     # is selected; grid planners remain fallback/selectable.
     planner_id = 'LaneletRoute'
-    # HH_260825: Keep the inferred default reachable in the production profile.
-    # MPPI remains available through an explicit combo/all-profile selection,
-    # while the default production controller set loads RPP and RotationShim.
-    controller_id = 'RPP'
+    # HH_260618: Default controller is MPPI. Global path remains the reference,
+    # but local trajectory sampling/cost critics decide the actual cmd_vel.
+    controller_id = 'MPPI'
 
     # HH_260528: Keep mapping explicit so one combo file controls both selectors.
     planner_tokens = (
@@ -156,6 +155,7 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_planning')
+    nav2_bt_share = get_package_share_directory('nav2_bt_navigator')
     map_info_path = os.path.join(
         get_package_share_directory('camrod_map'),
         'config',
@@ -210,10 +210,9 @@ def generate_launch_description():
         pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector.xml'
     )
     default_nav_through_poses_bt_xml = os.path.join(
-        pkg_share,
-        'config',
-        'bt',
-        'navigate_through_poses_w_planner_selector.xml',
+        nav2_bt_share,
+        'behavior_trees',
+        'navigate_through_poses_w_replanning_and_recovery.xml',
     )
     # HH_260720 - Resolve the installed SmacLattice primitive without a host-specific path.
     default_lattice_filepath = os.path.join(

@@ -625,11 +625,10 @@ def generate_launch_description():
         )
         if str(nav2_bt_xml_nav_through_poses_cfg).strip()
         else pkg_path(
-            'camrod_planning',
+            'nav2_bt_navigator',
             os.path.join(
-                'config',
-                'bt',
-                'navigate_through_poses_w_planner_selector.xml',
+                'behavior_trees',
+                'navigate_through_poses_w_replanning_and_recovery.xml',
             ),
         )
     )

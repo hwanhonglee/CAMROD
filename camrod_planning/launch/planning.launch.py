@@ -178,9 +178,10 @@ def generate_launch_description():
         os.path.join('config', 'bt', 'navigate_to_pose_w_planner_selector.xml'),
     )
     nav2_bt_xml_nav_through_poses_default = pkg_share(
-        'camrod_planning',
+        'nav2_bt_navigator',
         os.path.join(
-            'config', 'bt', 'navigate_through_poses_w_planner_selector.xml'
+            'behavior_trees',
+            'navigate_through_poses_w_replanning_and_recovery.xml',
         ),
     )
 

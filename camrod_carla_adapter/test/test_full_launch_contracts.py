@@ -1,12 +1,32 @@
 """Contracts for the full CAMROD-on-CARLA composition."""
 
+import importlib.util
 from pathlib import Path
 
+from launch import LaunchContext
+from launch.utilities import perform_substitutions
 import yaml
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PACKAGE_ROOT.parent
+
+
+def _load_module(path):
+    spec = importlib.util.spec_from_file_location(
+        path.name.replace(".", "_"), str(path)
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _resolve_rate(module, primary_name, primary_value, legacy_value):
+    context = LaunchContext()
+    context.launch_configurations[primary_name] = primary_value
+    context.launch_configurations["publish_rate_hz"] = legacy_value
+    substitution = module._prefer_explicit_legacy_rate(primary_name)
+    return perform_substitutions(context, [substitution])
 
 
 def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
@@ -52,17 +72,68 @@ def test_fake_sensor_rate_isolated_from_platform_heartbeat_launch_scope():
         ).read_text(encoding="utf-8")
     )["bringup"]
 
+    assert '"platform_heartbeat_publish_rate_hz"' in heartbeat_launch
     assert (
-        'DeclareLaunchArgument("publish_rate_hz", default_value="5.0")'
+        '"platform_heartbeat_publish_rate_hz", default_value="5.0"'
+        in full_launch
+    )
+    assert (
+        '"platform_heartbeat_publish_rate_hz": LaunchConfiguration('
+        in full_launch
+    )
+    assert (
+        'DeclareLaunchArgument(\n            "publish_rate_hz",'
+        in heartbeat_launch
+    )
+    assert 'default_value="",' in heartbeat_launch
+    assert 'LaunchConfiguration("publish_rate_hz")' in heartbeat_launch
+    assert (
+        '"platform_heartbeat_publish_rate_hz"'
         in heartbeat_launch
     )
     assert '"sim_fake_sensor_publish_rate_hz": "10.0"' in full_launch
     assert "'fake_sensor_publish_rate_hz'" in fake_launch
-    assert "LaunchConfiguration('fake_sensor_publish_rate_hz')" in fake_launch
-    assert "LaunchConfiguration('publish_rate_hz')" not in fake_launch
+    assert "'fake_sensor_publish_rate_hz'\n    )" in fake_launch
+    assert "LaunchConfiguration('publish_rate_hz')" in fake_launch
+    assert "'publish_rate_hz',\n        default_value=''," in fake_launch
+    assert "PythonExpression([" in fake_launch
     assert "'sim_fake_sensor_publish_rate_hz'" in bringup_impl
     assert "'fake_sensor_publish_rate_hz': lc[" in bringup_impl
     assert defaults["sim"]["fake_sensor_publish_rate_hz"] == 10.0
+
+
+def test_rate_alias_defaults_do_not_cross_includes_and_legacy_is_supported():
+    heartbeat_module = _load_module(
+        PACKAGE_ROOT / "launch" / "platform_heartbeat.launch.py"
+    )
+    fake_module = _load_module(
+        REPO_ROOT / "camrod_bringup" / "launch" / "fake_sensors.launch.py"
+    )
+
+    assert _resolve_rate(
+        heartbeat_module,
+        "platform_heartbeat_publish_rate_hz",
+        "5.0",
+        "",
+    ) == "5.0"
+    assert _resolve_rate(
+        fake_module,
+        "fake_sensor_publish_rate_hz",
+        "10.0",
+        "",
+    ) == "10.0"
+    assert _resolve_rate(
+        heartbeat_module,
+        "platform_heartbeat_publish_rate_hz",
+        "5.0",
+        "7.5",
+    ) == "7.5"
+    assert _resolve_rate(
+        fake_module,
+        "fake_sensor_publish_rate_hz",
+        "10.0",
+        "12.0",
+    ) == "12.0"
 
 
 def test_subset_launch_forwards_multi_pose_selector_tree():
