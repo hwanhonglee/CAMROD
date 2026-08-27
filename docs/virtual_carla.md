@@ -159,6 +159,8 @@ ${EDITOR:-vi} config/environment.env
 ./bootstrap.sh doctor
 ./bootstrap.sh plan
 ./bootstrap.sh install-host
+# 동일 pin의 UE에 Ranger patch가 이미 적용된 기존 checkout이면 먼저:
+# ./bootstrap.sh adopt-ue
 ./bootstrap.sh fetch
 ./bootstrap.sh build
 ./bootstrap.sh test
@@ -166,7 +168,9 @@ ${EDITOR:-vi} config/environment.env
 ./bootstrap.sh gate-plan
 # gate-plan이 출력한 UE audit, drive, 6 PNG + 사람의 review, baseline gate,
 # live 4WS acceptance, physical gate 순서를 전부 수행한 뒤:
+./bootstrap.sh create-baseline
 ./bootstrap.sh verify-baseline
+./bootstrap.sh create-gate
 ./bootstrap.sh verify-gate
 ./bootstrap.sh verify-runtime
 ```
@@ -176,6 +180,9 @@ ${EDITOR:-vi} config/environment.env
 ```bash
 cd /data/camrod_ws/src
 git switch virtual/carla
+# ~/.bashrc 등에 남은 legacy CARLA package 경로가 config보다 우선하지 않게 한다.
+unset CARLA_ROOT UE_ROOT RANGER_UE_ROOT CARLA_PYTHON_EGG \
+  RANGER_CARLA_PYTHON_EGG CARLA_ROS_BRIDGE_WS RANGER_ROS_BRIDGE_WS
 export RANGER_CARLA_ROOT=/data/ranger-carla-4ws-pipeline
 ```
 
@@ -262,6 +269,12 @@ export CARLA_RENDER_MODE=offscreen
 ```
 
 `doctor`는 다음을 확인하고 하나라도 틀리면 non-zero로 종료한다.
+
+resolved 환경과 `caller environment > RANGER_ENV_FILE > derived defaults` 우선순위를
+오류보다 먼저 출력한다. template 경로나 packaged `CarlaUE4.sh` 경로가 source
+checkout 자리에 들어오면 configuration 단계에서 중단한다. 필수 파일이나 새 gate가
+없으면 뒤의 JSON/ROS/Python API/GPU 검사를 건너뛰므로, 같은 원인의 연쇄 오류나 Python
+traceback을 정상 진단으로 오해하지 않는다.
 
 - UE4Editor, CarlaUE4 project와 custom map `.umap`
 - Ranger spawn JSON과 `ego_vehicle` role

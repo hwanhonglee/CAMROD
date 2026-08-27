@@ -150,37 +150,41 @@ require_renderer() {
 }
 
 require_common_runtime_files() {
-  virtual_carla_require_var RANGER_CARLA_ROOT
-  virtual_carla_verify_gate_aliases
+  virtual_carla_require_var RANGER_CARLA_ROOT || return 1
+  virtual_carla_verify_gate_aliases || return 1
   virtual_carla_require_file \
-    "${RANGER_BASELINE_MANIFEST}" "Ranger baseline gate"
+    "${RANGER_BASELINE_MANIFEST}" "Ranger baseline gate" || return 1
   virtual_carla_require_file \
-    "${RANGER_PHYSICAL_MANIFEST}" "Ranger physical 4WS gate"
-  virtual_carla_require_file "${CARLA_PYTHON_EGG}" "CARLA Python egg"
+    "${RANGER_PHYSICAL_MANIFEST}" "Ranger physical 4WS gate" || return 1
   virtual_carla_require_file \
-    "${CAMROD_MAP_ALIGNMENT_FILE}" "CARLA-to-CAMROD map alignment"
-  virtual_carla_require_file "${CAMROD_LANELET_MAP}" "CAMROD lanelet map"
+    "${CARLA_PYTHON_EGG}" "CARLA Python egg" || return 1
   virtual_carla_require_file \
-    "${CAMROD_LAUNCH_DEFAULTS_FILE}" "CAMROD launch defaults"
+    "${CAMROD_MAP_ALIGNMENT_FILE}" "CARLA-to-CAMROD map alignment" || return 1
+  virtual_carla_require_file \
+    "${CAMROD_LANELET_MAP}" "CAMROD lanelet map" || return 1
+  virtual_carla_require_file \
+    "${CAMROD_LAUNCH_DEFAULTS_FILE}" "CAMROD launch defaults" || return 1
 }
 
 require_bridge_authorization_files() {
-  virtual_carla_require_var RANGER_CARLA_ROOT
+  virtual_carla_require_var RANGER_CARLA_ROOT || return 1
   virtual_carla_require_dir \
-    "${RANGER_ROS_BRIDGE_SOURCE}" "CARLA ROS bridge source"
+    "${RANGER_ROS_BRIDGE_SOURCE}" "CARLA ROS bridge source" || return 1
   virtual_carla_require_dir \
-    "${RANGER_EVIDENCE_ROOT}" "Ranger evidence root"
+    "${RANGER_EVIDENCE_ROOT}" "Ranger evidence root" || return 1
   virtual_carla_require_file \
-    "${RANGER_BASELINE_MANIFEST}" "Ranger baseline gate"
+    "${RANGER_BASELINE_MANIFEST}" "Ranger baseline gate" || return 1
   virtual_carla_require_file \
-    "${RANGER_PHYSICAL_MANIFEST}" "Ranger physical 4WS gate"
-  validate_gate_status "${RANGER_BASELINE_MANIFEST}" "baseline gate"
+    "${RANGER_PHYSICAL_MANIFEST}" "Ranger physical 4WS gate" || return 1
   validate_gate_status \
-    "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate"
+    "${RANGER_BASELINE_MANIFEST}" "baseline gate" || return 1
+  validate_gate_status \
+    "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate" || return 1
 }
 
 validate_spawn_file() {
-  virtual_carla_require_file "${RANGER_SPAWN_FILE}" "Ranger spawn JSON"
+  virtual_carla_require_file \
+    "${RANGER_SPAWN_FILE}" "Ranger spawn JSON" || return 1
   python3 - "${RANGER_SPAWN_FILE}" "${CARLA_ROLE_NAME}" <<'PY'
 import json
 from pathlib import Path
@@ -188,7 +192,10 @@ import sys
 
 path = Path(sys.argv[1])
 role = sys.argv[2]
-document = json.loads(path.read_text(encoding="utf-8"))
+try:
+    document = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"spawn JSON is unreadable or invalid: {path}: {error}") from None
 objects = document.get("objects", [])
 if not isinstance(objects, list) or not objects:
     raise SystemExit(f"spawn JSON has no objects: {path}")
@@ -199,6 +206,7 @@ PY
 
 validate_gate_status() {
   local manifest="$1" label="$2"
+  virtual_carla_require_file "${manifest}" "${label}" || return 1
   python3 - "${manifest}" "${label}" <<'PY'
 import json
 from pathlib import Path
@@ -206,7 +214,10 @@ import sys
 
 path = Path(sys.argv[1])
 label = sys.argv[2]
-document = json.loads(path.read_text(encoding="utf-8"))
+try:
+    document = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"{label} is unreadable or invalid: {path}: {error}") from None
 if document.get("status") != "VERIFIED":
     raise SystemExit(f"{label} status is not VERIFIED: {path}")
 PY
@@ -244,22 +255,67 @@ prepare_ros_carla_python() {
 }
 
 run_doctor() {
-  local failures=0 map_asset
+  local failures=0 configuration_failures=0 static_failures=0 map_asset
 
-  virtual_carla_print_environment
+  virtual_carla_print_environment >&2
   virtual_carla_require_var RANGER_CARLA_ROOT || failures=$((failures + 1))
   virtual_carla_require_dir \
-    "${RANGER_CARLA_ROOT}" "Ranger/CARLA repository" || failures=$((failures + 1))
+    "${RANGER_CARLA_ROOT}" "Ranger/CARLA repository" || \
+    configuration_failures=$((configuration_failures + 1))
+  case "${RANGER_UE_ROOT}" in
+    /absolute/path/to/*|/path/to/*)
+      virtual_carla_die \
+        "RANGER_UE_ROOT is still a template placeholder; edit ${RANGER_ENV_FILE} or export the intended path" || true
+      configuration_failures=$((configuration_failures + 1))
+      ;;
+  esac
+  if [[ -x "${CARLA_ROOT}/CarlaUE4.sh" && ! -f "${CARLA_UPROJECT}" ]]; then
+    virtual_carla_die \
+      "CARLA_ROOT points to a packaged runtime, not the pipeline source checkout: ${CARLA_ROOT}; unset the caller CARLA_ROOT or point it to RANGER_WORK_ROOT/src/carla" || true
+    configuration_failures=$((configuration_failures + 1))
+  fi
+  failures=$((failures + configuration_failures))
+  if [[ "${configuration_failures}" -ne 0 ]]; then
+    virtual_carla_die \
+      "doctor configuration phase failed; dependent file, gate, ROS and renderer checks were skipped" || true
+    return 1
+  fi
+
   virtual_carla_require_executable \
-    "${UE_EDITOR}" "UE4Editor" || failures=$((failures + 1))
+    "${UE_EDITOR}" "UE4Editor" || static_failures=$((static_failures + 1))
   virtual_carla_require_file \
-    "${CARLA_UPROJECT}" "CarlaUE4 project" || failures=$((failures + 1))
+    "${CARLA_UPROJECT}" "CarlaUE4 project" || static_failures=$((static_failures + 1))
   map_asset="$(virtual_carla_map_asset_file)"
   virtual_carla_require_file \
-    "${map_asset}" "CARLA custom map asset" || failures=$((failures + 1))
+    "${map_asset}" "CARLA custom map asset" || static_failures=$((static_failures + 1))
+  virtual_carla_require_file \
+    "${RANGER_SPAWN_FILE}" "Ranger spawn JSON" || static_failures=$((static_failures + 1))
+  require_common_runtime_files || static_failures=$((static_failures + 1))
+  virtual_carla_require_dir \
+    "${RANGER_ROS_BRIDGE_SOURCE}" "CARLA ROS bridge source" || \
+    static_failures=$((static_failures + 1))
+  virtual_carla_require_dir \
+    "${RANGER_EVIDENCE_ROOT}" "Ranger evidence root" || \
+    static_failures=$((static_failures + 1))
+  virtual_carla_require_file \
+    "${CARLA_ROS_BRIDGE_WS}/install/local_setup.bash" \
+    "CARLA ROS bridge install" || static_failures=$((static_failures + 1))
+  virtual_carla_require_file \
+    "${RANGER_ROS_WS}/install/local_setup.bash" \
+    "Ranger ROS install" || static_failures=$((static_failures + 1))
+  failures=$((failures + static_failures))
+  if [[ "${static_failures}" -ne 0 ]]; then
+    virtual_carla_die \
+      "doctor static prerequisite phase failed; dependent JSON, ROS, Python API and renderer checks were skipped" || true
+    virtual_carla_die "doctor found ${failures} failed check(s)" || true
+    return 1
+  fi
+
   validate_spawn_file || failures=$((failures + 1))
-  require_common_runtime_files || failures=$((failures + 1))
-  require_bridge_authorization_files || failures=$((failures + 1))
+  validate_gate_status \
+    "${RANGER_BASELINE_MANIFEST}" "baseline gate" || failures=$((failures + 1))
+  validate_gate_status \
+    "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate" || failures=$((failures + 1))
 
   if virtual_carla_source_ros true true; then
     virtual_carla_verify_package_prefix \
