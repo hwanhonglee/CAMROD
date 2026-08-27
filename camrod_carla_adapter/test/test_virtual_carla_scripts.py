@@ -855,6 +855,10 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "run.sh manual" in result.stdout
     assert "teleop_twist_keyboard" in result.stdout
     assert "cmd_vel:=/control/nav2_cmd_vel_ros" in result.stdout
+    assert "export RANGER_UE_ROOT=" in result.stdout
+    assert "export ROS_DOMAIN_ID=" in result.stdout
+    assert "export RMW_IMPLEMENTATION=" in result.stdout
+    assert "export CARLA_RENDER_MODE=" in result.stdout
     assert "No motion command" in result.stdout
 
 

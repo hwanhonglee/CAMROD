@@ -457,8 +457,12 @@ case "${subcommand}" in
     printf 'export RANGER_CARLA_ROOT=%q\n' "${RANGER_CARLA_ROOT}"
     printf 'export CARLA_ROOT=%q\n' "${CARLA_ROOT}"
     printf 'export UE_ROOT=%q\n' "${UE_ROOT}"
+    printf 'export RANGER_UE_ROOT=%q\n' "${RANGER_UE_ROOT}"
     printf 'export CARLA_ROS_BRIDGE_WS=%q\n' "${CARLA_ROS_BRIDGE_WS}"
-    printf 'export RANGER_ROS_WS=%q\n\n' "${RANGER_ROS_WS}"
+    printf 'export RANGER_ROS_WS=%q\n' "${RANGER_ROS_WS}"
+    printf 'export ROS_DOMAIN_ID=%q\n' "${ROS_DOMAIN_ID}"
+    printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION}"
+    printf 'export CARLA_RENDER_MODE=%q\n\n' "${CARLA_RENDER_MODE}"
     printf '# REQUIRED lifecycle order (four terminals)\n'
     printf '# Wait for each preceding stage to report success before continuing.\n'
     printf '%q server\n' "${script_dir}/run.sh"
