@@ -1,5 +1,5 @@
-CAMROD v2.2.1 미완료 실차 확인 목록
-갱신일: 2026-08-25 (Asia/Seoul)
+CAMROD v2.2.2 미완료 실차 확인 목록
+갱신일: 2026-08-26 (Asia/Seoul)
 
 # HH_260825 - Move the completed current-lane campsite handoff, event-driven
 # charger departure dwell, and front-radar range policy to DONE.txt while
@@ -30,6 +30,7 @@ CAMROD v2.2.1 미완료 실차 확인 목록
 - campsite return handoff: fresh live lanelet projection `<=0.15 m`, zero hold `1.20 s`
 - charging departure dwell: destination 접수 후 authorization OFF `7.0 s`
 - front radar usable stop window: measured body echo 뒤 `0.30 m`; side/rear `0.10 m`
+- AprilTag occlusion: stale `0.5 s`에서 zero, pre-latch reacquisition `60.0 s`
 - lanelet safety grid: `/map/cost_grid/lanelet_safety`, `0.05 m`
 - LiDAR cost grid/DDS-SHM: 운영 기본 OFF
 - checker/Nav2/system-core container: 운영 기본 ON

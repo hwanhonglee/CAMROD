@@ -13,10 +13,10 @@ from std_msgs.msg import String
 # manual arrival direction remains unrestricted without sacrificing long,
 # narrow-map connectivity or active-route sensor masks.
 DEFAULT_MANUAL_PLANNER_ID = "LaneletRoute"
-# Keep executable-alone fallbacks reachable in the default production plugin
-# profiles. Launch files may still select the opt-in planner/controller sets.
-DEFAULT_REGULATED_PLANNER_ID = "LaneletRoute"
-DEFAULT_REGULATED_CONTROLLER_ID = "RPP"
+# Preserve the develop-branch executable-alone fallbacks. Launch profiles may
+# still select LaneletRoute/RPP (as the CARLA overlay does) explicitly.
+DEFAULT_REGULATED_PLANNER_ID = "NavFn"
+DEFAULT_REGULATED_CONTROLLER_ID = "MPPI"
 
 
 def resolve_goal_source(requested: str) -> tuple[str, bool]:

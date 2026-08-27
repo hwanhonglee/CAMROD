@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from nav_msgs.msg import Odometry
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = (
@@ -99,6 +100,32 @@ def test_bringup_routes_external_plant_without_disabling_full_sim_graph():
     assert "('camrod_bringup', 'fake_sensors.launch.py'" in source
 
 
+def test_external_plant_is_opt_in_and_preserves_develop_defaults():
+    """Ordinary CAMROD must not inherit the CARLA runtime profile."""
+    launch_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+    fake_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "sim"
+            / "fake_sensors.yaml"
+        ).read_text(encoding="utf-8")
+    )["/bringup/fake_sensor_publisher"]["ros__parameters"]
+
+    assert launch_defaults["runtime"]["external_simulator"] is False
+    assert launch_defaults["runtime"]["sim_publish_platform_status"] is True
+    assert fake_defaults["motion_source"] == "cmd_vel"
+
+
 def test_bringup_forwards_optional_nav2_behavior_tree_overrides():
     source = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
@@ -126,3 +153,11 @@ def test_bringup_forwards_optional_nav2_behavior_tree_overrides():
         "'nav2_bt_xml_nav_through_poses': lc[\n"
         "            'planning_nav2_bt_xml_nav_through_poses'"
     ) in source
+
+
+def test_bringup_default_through_poses_tree_matches_develop():
+    source = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    assert "'nav2_bt_navigator'" in source
+    assert "'navigate_through_poses_w_replanning_and_recovery.xml'" in source

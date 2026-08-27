@@ -182,7 +182,8 @@ no second hold. This is not physical-road evidence.
 | Check | Result | Scope |
 |---|---|---|
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
-| v2.2.1 selected build/tests | **PASS** | Release build `6/6`; control `110`, planning `65` (skip `8`), sensing `117`, UI `110`, bringup `264`; errors/failures `0`; CARLA source contracts `21/21` |
+| v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
+| CARLA overlay verification | **PASS** | CARLA source contracts `21/21`; adapter Release build passed; see the dedicated virtual integration guide for its separate evidence boundary |
 | Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
@@ -326,6 +327,7 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, CARLA integration, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Virtual CARLA integration](docs/virtual_carla.md) | External Ranger/CARLA ownership, build/run gates, adapter topics, and bounded functional evidence |

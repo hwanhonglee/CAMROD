@@ -120,6 +120,9 @@ def generate_launch_description():
             "launch_platform_heartbeat", default_value="true"
         ),
         DeclareLaunchArgument(
+            "platform_heartbeat_publish_rate_hz", default_value="5.0"
+        ),
+        DeclareLaunchArgument(
             "map_alignment_file", default_value=alignment_config
         ),
         DeclareLaunchArgument(
@@ -222,6 +225,9 @@ def generate_launch_description():
         _include(
             platform_heartbeat_launch,
             {
+                "platform_heartbeat_publish_rate_hz": LaunchConfiguration(
+                    "platform_heartbeat_publish_rate_hz"
+                ),
                 "initial_soc": LaunchConfiguration("initial_soc"),
                 "initial_charging": LaunchConfiguration("initial_charging"),
                 "initial_estop": LaunchConfiguration("initial_estop"),

@@ -58,7 +58,9 @@ measurement, not adjusted solely to make simulation pass.
 | Charging recall | PASS: configured `7.0 s`, observed `6.996327111 s`; all three authorization gates false during dwell; parking cancel `1`, EXIT `1`, no early site goal |
 | FRONT1 range injection | PASS: continuous `0.300 m` `AvgRange` at `20 Hz` produced active obstacle evidence and cost `95` |
 | Focused departure/radar/assets contracts | PASS: `53/53` |
-| Fresh selected package tests | Control `110`, planning `65` (skip `8`), sensing `117`, UI `110`, bringup `264`; errors/failures `0` after inventory rerun |
+| CARLA-free isolated build | PASS: control/planning/sensing/UI/bringup `5/5` |
+| Focused CARLA-free contracts | PASS: `65/65` |
+| Full isolated test inventory | 6 bringup targets remain failing: inherited parking mirror/stale assertion debt plus worktree-root and Pillow environment limits; this release does not claim zero failures |
 | UI production bundle | PASS; current npm audit reports `40` inherited findings (`11` low, `7` moderate, `20` high, `2` critical) |
 | CARLA source contracts | PASS: `21/21` |
 | CARLA adapter Release build | PASS |
@@ -68,7 +70,6 @@ The measured campsite, charging, and radar record is under
 [`v2-2-1-safety-handoff-20260825`](assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md).
 The CARLA source/evidence boundary is documented in
 [`virtual_carla.md`](virtual_carla.md).
-
 ## Verification Commands
 
 ```bash

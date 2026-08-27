@@ -1085,11 +1085,13 @@ CAMROD 구현·검증 완료 기록
   제동거리와 ARM64 자원 합격은 TODO에 남겼다. 구조화 결과와 그림은
   `docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/`에
   보존했다.
-- canonical Release build는 control/planning/sensing/UI/bringup/CARLA adapter
-  `6/6`을 완료했다. fresh 결과는 control `110`, planning `65`(skip `8`),
-  sensing `117`, UI `110`, bringup `264`, error/failure 0이며 CARLA source
-  contract `21/21`도 통과했다. React production build는 성공했고 npm audit의
-  기존 dependency finding 40건(critical 2)은 강제 major upgrade 없이 공개했다.
+- canonical Release build는 control/planning/sensing/UI/bringup `5/5`를
+  완료했고 focused contract `65/65`가 통과했다. 전체 격리 실행에서는 v2.2.0부터
+  존재한 parking YAML mirror/test drift와 worktree/Pillow 환경 제한 때문에 bringup
+  target 6개가 실패했다. 이 결과를 zero-failure로 표시하지 않는다.
+- `colcon_build.sh`가 source checkout 위치와 관계없이 workspace root의
+  `build/install/log`를 사용하도록 검증했다. 활성 package README의 직접 colcon
+  명령도 wrapper로 변경해 `src/build`, `src/install`, `src/log` 재생성을 막았다.
 
 36. HH_260825: 외부 CARLA plant 연동과 source checkout 빌드 경계
     [DONE-CODE, DONE-AMD64-SOURCE-TEST, RENDERED-RGB-PENDING]
@@ -1098,14 +1100,19 @@ CAMROD 구현·검증 완료 기록
   bringup fake sensor는 `external_simulator=true`일 때 fresh 외부 odometry를 plant
   truth로 사용하고 stale `0.5 s` 이후 센서 발행을 정지한다. Nav2
   NavigateThroughPoses selector와 외부 underlay shell 계약도 함께 추가했다.
-- current-shell source-only contract `21/21`과 adapter Release build를 통과했다.
+- CARLA source-only contract `21/21`과 adapter Release build를 통과했다.
   커밋된 prior-overlay 결과는 `786` tests 중 `778` pass, `8` skip, failure 0이며
-  adapter는 `86/86`이다. 해당 환경의 CARLA NullRHI 때문에 rendered RGB는 아직
-  합격으로 주장하지 않는다.
-- `colcon_build.sh`가 source checkout 위치와 관계없이 workspace root의
-  `build/install/log`를 사용하도록 유지하고, 빈 allow-list 처리 오류를 수정했다.
-  활성 package README의 직접 colcon 명령도 wrapper로 변경해 `src/build`,
-  `src/install`, `src/log` 재생성을 막았다.
+  adapter는 `86/86`이다. CARLA NullRHI 결과는 rendered RGB 합격을 증명하지 않는다.
+
+37. HH_260826: AprilTag stopped reacquisition window 60초 연장
+    [DONE-CODE, DONE-ARM64-BUILD, DONE-CONTRACT, FIELD-PENDING]
+- Tag sample freshness `0.5 s`와 즉시 zero command는 유지하고, translation
+  latch 이전 `WAITING_FOR_TAG`의 terminal ERROR 대기만 `10.0 -> 60.0 s`로
+  연장했다. fresh target ID가 돌아오면 기존 상태 전이로 guided reverse를 재개한다.
+- controller 기본값과 package/deployment YAML을 함께 변경하고 source contract로
+  고정했다. focused Python contract `31/31`, control CTest `110/110`, 증분
+  Release build control/bringup `2/2`를 통과했다. 실제 가림/오인식/60초 만료는
+  실차 검증 대상으로 남겼다.
 
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:

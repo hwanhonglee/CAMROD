@@ -1,12 +1,23 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 import os
 import yaml
+
+
+def _prefer_explicit_legacy_rate(primary_argument):
+    """Use the deprecated generic rate only when it is explicitly non-empty."""
+    return PythonExpression([
+        "'",
+        LaunchConfiguration('publish_rate_hz'),
+        "'.strip() or '",
+        LaunchConfiguration(primary_argument),
+        "'",
+    ])
 
 
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
@@ -141,6 +152,14 @@ def generate_launch_description():
         default_value='10.0',
         description='Fake sensor publish rate (Hz)',
     )
+    legacy_publish_rate_arg = DeclareLaunchArgument(
+        'publish_rate_hz',
+        default_value='',
+        description=(
+            'Deprecated alias for fake_sensor_publish_rate_hz; '
+            'a non-empty value takes precedence'
+        ),
+    )
     loop_arg = DeclareLaunchArgument(
         'loop',
         default_value='true',
@@ -235,7 +254,12 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     lanelet_id = LaunchConfiguration('lanelet_id')
     speed_mps = LaunchConfiguration('speed_mps')
-    publish_rate = LaunchConfiguration('fake_sensor_publish_rate_hz')
+    # Keep old standalone invocations working without reintroducing the
+    # sibling-include collision: an empty legacy alias falls through to this
+    # launch file's unique 10 Hz argument.
+    publish_rate = _prefer_explicit_legacy_rate(
+        'fake_sensor_publish_rate_hz'
+    )
     loop = LaunchConfiguration('loop')
     frame_id = LaunchConfiguration('frame_id')
     base_frame_id = LaunchConfiguration('base_frame_id')
@@ -356,6 +380,7 @@ def generate_launch_description():
         lanelet_id_arg,
         speed_mps_arg,
         publish_rate_arg,
+        legacy_publish_rate_arg,
         loop_arg,
         frame_id_arg,
         base_frame_arg,

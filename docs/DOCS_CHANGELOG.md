@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+<!-- HH_260826 - Keep the fast AprilTag safety stop while extending the stopped
+target reacquisition window for field occlusion. -->
+## [v2.2.2-apriltag-reacquisition] - 2026-08-26 (HH_260826)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| AprilTag safety stop | A target sample older than `0.5 s` continues to command zero before the translation latch |
+| Reacquisition | Initial acquisition or pre-latch loss now waits stopped for `60.0 s` instead of `10.0 s`; a fresh valid target resumes, while expiry enters terminal `ERROR` |
+| Scope | GNSS, campsite return, charging departure, radar policy, and post-latch yaw alignment are unchanged |
+
+---
+
 <!-- HH_260825 - Record current-lane campsite handoff, guarded charging
 departure, front-radar near-field authority, and external CARLA integration. -->
 ## [v2.2.1-current-lane-charging-radar] - 2026-08-25 (HH_260825)
