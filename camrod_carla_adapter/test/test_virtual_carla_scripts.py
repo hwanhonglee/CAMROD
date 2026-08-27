@@ -205,6 +205,109 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "No motion command" in result.stdout
 
 
+def test_doctor_rejects_template_and_packaged_paths_without_traceback(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    config = ranger_root / "config"
+    packaged_carla = tmp_path / "CARLA_0.9.15"
+    config.mkdir(parents=True)
+    packaged_carla.mkdir()
+    (packaged_carla / "CarlaUE4.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    (packaged_carla / "CarlaUE4.sh").chmod(0o755)
+    (config / "environment.env").write_text(
+        "RANGER_UE_ROOT=/absolute/path/to/UnrealEngine-4.26.2\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment.update(
+        {
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CARLA_ROOT": str(packaged_carla),
+        }
+    )
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "doctor"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "CONFIG_PRECEDENCE=" in combined
+    assert "RANGER_UE_ROOT is still a template placeholder" in combined
+    assert "CARLA_ROOT points to a packaged runtime" in combined
+    assert "dependent file, gate, ROS and renderer checks were skipped" in combined
+    assert "Traceback" not in combined
+    assert "FileNotFoundError" not in combined
+
+
+def test_doctor_missing_gate_skips_dependent_semantic_checks(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    work_root = ranger_root / ".work"
+    ue_root = tmp_path / "UnrealEngine_4.26"
+    carla_root = work_root / "src" / "carla"
+    bridge_ws = work_root / "ros-bridge-ws"
+    ranger_ws = ranger_root / "ros_ws"
+    editor = ue_root / "Engine" / "Binaries" / "Linux" / "UE4Editor"
+    project = carla_root / "Unreal" / "CarlaUE4" / "CarlaUE4.uproject"
+    map_file = (
+        carla_root
+        / "Unreal"
+        / "CarlaUE4"
+        / "Content"
+        / "map_package"
+        / "Maps"
+        / "Woraksan_v1_0_3_parking_lot_hegiht_fit"
+        / "Woraksan_v1_0_3_parking_lot_hegiht_fit.umap"
+    )
+    for path in (
+        editor,
+        project,
+        map_file,
+        bridge_ws / "install" / "local_setup.bash",
+        ranger_ws / "install" / "local_setup.bash",
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n", encoding="utf-8")
+    editor.chmod(0o755)
+    (bridge_ws / "src" / "ros-bridge").mkdir(parents=True)
+    (work_root / "evidence").mkdir(parents=True)
+    (ranger_root / "config").mkdir(parents=True)
+    (ranger_root / "config" / "environment.env").write_text(
+        f"RANGER_WORK_ROOT={work_root}\n"
+        f"RANGER_UE_ROOT={ue_root}\n"
+        f"CARLA_ROOT={carla_root}\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment["RANGER_CARLA_ROOT"] = str(ranger_root)
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "doctor"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert f"missing Ranger baseline gate: {work_root}/evidence/" in combined
+    assert "dependent JSON, ROS, Python API and renderer checks were skipped" in combined
+    assert "CARLA Python API lacks" not in combined
+    assert "NVIDIA driver/GPU" not in combined
+    assert "Traceback" not in combined
+    assert "FileNotFoundError" not in combined
+
+
 def test_adapter_metadata_has_real_maintainer() -> None:
     package = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
     setup = (PACKAGE_ROOT / "setup.py").read_text(encoding="utf-8")
