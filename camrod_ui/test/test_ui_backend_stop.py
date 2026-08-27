@@ -1407,6 +1407,11 @@ class UiBackendStopTest(unittest.TestCase):
         backend._cancel_pending_manual_return_transition = (
             lambda source: events.append(("cancel_pending", source))
         )
+        backend._revoke_manual_drive = (
+            lambda reason, notify=True: events.append(
+                ("manual_revoke", reason, notify)
+            )
+        )
         backend._cancel_active_motion = (
             lambda source: events.append(("cancel_motion", source))
         )
@@ -1471,7 +1476,31 @@ class UiBackendStopTest(unittest.TestCase):
             # HH_260807 - Keep Humble's shutdown-only take_message race from
             # producing exit code 1 while preserving live RuntimeError failures.
             self.assertIn("except RuntimeError:", source)
-            self.assertIn("if rclpy.ok():\n            raise", source)
+            self.assertRegex(source, r"if rclpy\.ok\(\):\s+raise")
+
+    def test_backend_shutdown_keeps_ros_context_alive_for_manual_zero(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("from rclpy.signals import SignalHandlerOptions", source)
+        self.assertIn(
+            "rclpy.init(signal_handler_options=SignalHandlerOptions.NO)", source
+        )
+        self.assertIn(
+            "signal.signal(signal.SIGINT, _interrupt_for_ordered_shutdown)",
+            source,
+        )
+        self.assertIn(
+            "signal.signal(signal.SIGTERM, _interrupt_for_ordered_shutdown)",
+            source,
+        )
+        destroy_index = source.index("node.destroy_node()")
+        shutdown_index = source.index("rclpy.shutdown()", destroy_index)
+        self.assertLess(destroy_index, shutdown_index)
 
     def test_http_server_is_stopped_before_node_destruction(self) -> None:
         server = SimpleNamespace(should_exit=False)

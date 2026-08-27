@@ -1,8 +1,13 @@
 /**:
   ros__parameters:
-    # Single-anchor calibration for the accepted ranger_spawn.json pose.
-    # It maps that pose onto lanelet 4584 segment 6 and aligns its heading.
-    # This is an integration-test calibration, not a multi-point survey.
-    map_offset_x_m: 7.855611455645338
-    map_offset_y_m: 13.676196558868874
-    map_yaw_offset_rad: -0.05402607389329672
+    # Single-anchor calibration for the settled physical chassis odometry of
+    # the split-rigid Ranger Blueprint, not its nominal spawn-root transform.
+    # Live 2026-08-27 input (38.726207733154297, -37.281283416748046,
+    # yaw 32.161299682 deg) maps onto lanelet 4584 segment 6 at
+    # (43.8380321740837, -24.779907458655806, yaw 29.360664964 deg).
+    # The distinction matters because this Blueprint's physical body origin is
+    # offset from the actor spawn root. This remains a one-point integration
+    # calibration, not a surveyed global-map alignment.
+    map_offset_x_m: 6.979673792021728
+    map_offset_y_m: 14.34904187519156
+    map_yaw_offset_rad: -0.0488802969776283

@@ -25,6 +25,14 @@ enum class CommandInputSource
   kManual,
 };
 
+// Local-route heading correction is an autonomous Nav2/raw command transform.
+// A dedicated manual Twist bypasses only that correction; fixed yaw-zone locks,
+// authorization, and collision checks retain their historical behavior.
+constexpr bool appliesRouteHeadingAlignment(const CommandInputSource source)
+{
+  return source != CommandInputSource::kManual;
+}
+
 enum class CommandSourceDecision
 {
   kAllow,

@@ -155,6 +155,9 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     bringup = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
     ).read_text(encoding="utf-8")
+    ui_launch = (
+        REPO_ROOT / "camrod_ui" / "camrod_ui_robot" / "launch" / "ui.launch.py"
+    ).read_text(encoding="utf-8")
 
     assert (
         '"manual_input_topic": LaunchConfiguration("manual_cmd_vel_ros_topic")'
@@ -172,6 +175,13 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
         "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
         in bringup
     )
+    assert bringup.count(
+        "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
+    ) >= 2
+    assert (
+        "'manual_cmd_vel_ros_topic': LaunchConfiguration("
+        "'manual_cmd_vel_ros_topic')"
+    ) in ui_launch
 
     for filename in (
         "camrod_carla.launch.py",

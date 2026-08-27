@@ -125,6 +125,13 @@ frame, clock 또는 QoS가 다르면 호환으로 간주하지 않는다.
 | sensor | simulator Image/CameraInfo/PointCloud2/Imu/NavSatFix → CAMROD canonical topics | calibration, optical/body frames, TF, timestamp, QoS, field layout와 consumer rate를 각각 검증 |
 | map | simulator world pose → `CAMROD_MAP_ALIGNMENT_FILE` → `CAMROD_LANELET_MAP` | spawn pose, SE(2) alignment와 lanelet map을 한 cohort로 승인; 다른 map/spawn에 기존 alignment 재사용 금지 |
 
+현재 split-rigid Ranger Blueprint는 actor의 nominal spawn root와 물리 차체 odometry
+원점이 같지 않다. 따라서 `woraksan_lane_anchor_alignment.yaml`은 JSON의 nominal
+`spawn_point`가 아니라, settle 후 `/carla/ego_vehicle/odometry`로 측정한 물리 차체 pose를
+lanelet 4584 segment 6에 맞춘다. 파일 주석에 2026-08-27 입력 pose, 목표 pose와 SE(2)
+상수를 함께 기록했다. Blueprint root/rig를 다시 만들면 이 1점 calibration도 다시
+측정해야 하며 lanelet threshold를 낮춰 offset 문제를 숨기면 안 된다.
+
 `sensor_relay_node.py`는 CARLA Image/CameraInfo/PointCloud2를 CAMROD canonical topic과
 frame으로 copy/restamp한다. CARLA RGB camera는 distortion을 설정하지 않은 pinhole
 sensor이므로 동일 payload를 `image_raw`와 `image_rect` 경계에 제공한다. CARLA 전용
@@ -520,16 +527,43 @@ motion을 자동 전송하지 않는다. rendered mode에서는 시작 전에 CA
 bounded preflight로 확인한다. topic 이름만 존재하거나 one-shot/5 Hz이면 UI를 띄우지
 않고 각 stream의 측정 rate를 출력한다.
 
-선택 Terminal 5 — CAMROD safety gate를 통과하는 수동 키보드 조작:
+CAMROD UI 수동주행(권장):
+
+1. `http://127.0.0.1:8010`을 열고 관리자 진단 화면의 **카메라** 탭으로 이동한다.
+   현재 기본 UI에서는 화면 오른쪽 끝을 1.5초 누른 뒤 관리자 인증을 거친다.
+2. front/rear 영상 아래 **CARLA 수동주행** 패널에서 **수동주행 시작**을 한 번 누른다.
+   backend가 진행 중 Nav2 goal을 취소하고 mission engage를 닫은 뒤 manual engage와
+   platform drive-enable을 연다. 별도로 B1~B13이나 메인 ENGAGE를 누르지 않는다.
+3. 키보드 또는 화면 버튼을 **누르고 있는 동안만** 움직인다. 버튼/key-up 즉시 zero가
+   전송되며, 10 Hz heartbeat가 끊기면 backend 0.25초 deadman과 control gate 0.35초
+   watchdog이 순서대로 정지시킨다.
+
+| UI 키/버튼 | 동작 |
+|---|---|
+| `W` / `S`, `↑` / `↓` | 전진 / 후진 |
+| 전후진 중 `A` / `D`, `←` / `→` | 최소 1.0 m 반경의 Dual-Ackermann 좌/우 조향 |
+| 정지 중 `A` / `D`, `←` / `→` | 제자리 좌/우 회전 |
+| `Z` / `C` | 좌/우 crab; 전후진·회전과 동시에 누르면 fail-closed zero |
+| `Space` | 즉시 zero, 수동 권한은 유지 |
+| `Esc` 또는 **수동주행 종료** | zero 후 수동 권한 해제 |
+
+브라우저 focus 상실, 탭 숨김, WebSocket 끊김, 패널 이탈/종료에도 zero 후 권한을
+해제하며 재연결 뒤 자동 재출발하지 않는다. 이 패널은 CARLA composition이
+`/control/manual_cmd_vel_ros`를 명시한 경우에만 나타난다. 일반 `develop`/실차 CAMROD의
+UI와 기본 topic 계약은 바뀌지 않는다. 수동 입력도 E-stop, lanelet 차체 경계,
+동적 장애물과 충돌 cost, stale-command 검사를 그대로 통과해야 한다. 따라서 화면에
+`lanelet_physical_body_cost`가 표시되면 조작기가 고장 난 것이 아니라 안전 게이트가
+의도적으로 zero를 내는 상태다.
+
+선택 Terminal 5 — UI를 쓸 수 없을 때의 터미널 키보드 fallback:
 
 ```bash
 ./scripts/virtual_carla/run.sh manual
 ```
 
-`manual`은 다음 조건을 모두 다시 확인한 뒤에만
-`teleop_twist_keyboard`를 CARLA에서만 활성화되는 전용 입력
-`/control/manual_cmd_vel_ros`로 remap한다. 첫 수동 Twist가 도착하기 전에는 기존
-UI/Nav2 수동 goal 경로가 유지되며, 첫 Twist 이후에는 safety gate가 수동 입력 소유권을
+`manual`은 다음 조건을 모두 다시 확인한 뒤에만 `teleop_twist_keyboard`를 CARLA 전용
+입력 `/control/manual_cmd_vel_ros`로 remap한다. 첫 수동 Twist가 도착하기 전에는 기존
+UI/Nav2 goal 경로가 유지되며, 첫 Twist 이후에는 safety gate가 수동 입력 소유권을
 고정해 Nav2/일반 raw 명령이 수동 명령을 덮어쓰지 못하게 한다.
 
 - portable baseline/physical gate deep validation
@@ -541,9 +575,10 @@ UI/Nav2 수동 goal 경로가 유지되며, 첫 Twist 이후에는 safety gate�
   independent wheel drive, backend와 actor ID
 - 현재 CARLA Ranger actor ID와 physical 4WS bridge가 고정한 actor ID가 정확히 동일함
 
-명령 자체는 engage 또는 goal을 발행하지 않고, 키를 누르기 전에는 주행 명령도
-발행하지 않는다. UI에서 먼저 기존 goal을 **STOP**으로 취소한 뒤, 마지막 페이지의
-독립 **ENGAGE**를 눌러 수동 조작을 승인한다. B1~B13 목적지 버튼은 ENGAGE가 아니다.
+터미널 fallback 자체는 engage 또는 goal을 발행하지 않고, 키를 누르기 전에는 주행
+명령도 발행하지 않는다. UI에서 먼저 기존 goal을 **STOP**으로 취소한 뒤, 마지막
+페이지의 독립 **ENGAGE**를 눌러 수동 조작을 승인한다. B1~B13 목적지 버튼은 ENGAGE가
+아니다. 위의 카메라 탭 수동 패널은 이 순서를 한 번의 arm 동작으로 처리한다.
 mission ENGAGE가 켜지거나 독립 ENGAGE가 해제되면 safety gate는 즉시 zero를 내고 수동
 소유권을 해제한다. 기본 속도는 `0.20 m/s`, 회전 속도는 `0.20 rad/s`다.
 대각 조향 키의 `speed / turn = 1.0 m`는 Ranger 최소 회전 반경
@@ -644,6 +679,12 @@ CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한�
 - **actor는 생겼지만 physical status가 interlocked**: actor보다 CAMROD를 먼저 띄운
   경우다. CAMROD terminal만 종료하고 `server → bridge → spawn → camrod` 순서로 다시
   시작한다. `run.sh manual`은 `ready=false` 상태를 거부한다.
+- **목적지를 누르자 이동거리 0 m에서 `lanelet_physical_body_cost`로 정지**: 현재
+  `/localization/pose` 중심만 보지 말고 0.05 m lanelet safety grid 안의 전체 물리 차체를
+  확인한다. nominal spawn root를 정렬한 구버전 calibration은 split-rigid Blueprint의
+  chassis-origin offset 때문에 차체 일부를 cost 100에 놓을 수 있다. 최신
+  `woraksan_lane_anchor_alignment.yaml`을 build한 뒤 CAMROD를 재시작한다. 현재 보정의
+  기준 pose에서는 물리 차체 sample이 모두 cost 0이어야 한다.
 - **spawn만 재실행한 뒤 제어가 안 됨**: 새 actor ID와 기존 physical bridge binding이
   달라진 상태다. 실행 중인 CAMROD가 있으면 `spawn`을 다시 실행하지 않는다. 전체를
   역순으로 종료하고 정방향으로 재시작한다. `spawn`은 type과 무관하게 같은 role을 쓰는

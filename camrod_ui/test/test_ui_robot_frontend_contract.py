@@ -14,6 +14,7 @@ APP_SOURCE = (
 )
 APP_CSS = APP_SOURCE.with_name("App.css")
 TELEMETRY_SOURCE = APP_SOURCE.with_name("TelemetryWorkspace.js")
+MANUAL_DRIVE_SOURCE = APP_SOURCE.with_name("ManualDrivePanel.js")
 SERVICE_EVIDENCE_SOURCE = APP_SOURCE.with_name("ServiceEvidence.js")
 PUBLIC_ASSETS = APP_SOURCE.parents[1] / "public"
 
@@ -24,6 +25,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         cls.source = APP_SOURCE.read_text(encoding="utf-8")
         cls.css = APP_CSS.read_text(encoding="utf-8")
         cls.telemetry_source = TELEMETRY_SOURCE.read_text(encoding="utf-8")
+        cls.manual_drive_source = MANUAL_DRIVE_SOURCE.read_text(
+            encoding="utf-8"
+        )
         cls.service_evidence_source = SERVICE_EVIDENCE_SOURCE.read_text(
             encoding="utf-8"
         )
@@ -80,6 +84,28 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("keepalive: true", self.telemetry_source)
         self.assertIn("currentSocket.send('lease')", self.telemetry_source)
         self.assertIn("}, 4000);", self.telemetry_source)
+
+    def test_carla_manual_drive_is_hold_to_move_and_fail_closed(self) -> None:
+        self.assertIn("<ManualDrivePanel />", self.telemetry_source)
+        for token in (
+            "/ws/manual-drive",
+            "{ type, seq: sequenceRef.current, ...payload }",
+            "setInterval(sendDrive, 100)",
+            "window.addEventListener('keyup', keyUp)",
+            "window.addEventListener('blur', loseFocus)",
+            "window.addEventListener('pagehide', loseFocus)",
+            "document.addEventListener('visibilitychange', visibility)",
+            "socket.send(JSON.stringify({ type: 'disarm'",
+            "event.code === 4403",
+            "event.code === 4409",
+            "if (crab !== 0 && (forward !== 0 || turn !== 0))",
+            "send(manual.armed ? 'disarm' : 'arm')",
+        ):
+            self.assertIn(token, self.manual_drive_source)
+        for key in ("KeyW", "KeyA", "KeyS", "KeyD", "KeyZ", "KeyC"):
+            self.assertIn(key, self.manual_drive_source)
+        self.assertIn(".manual-drive-panel", self.css)
+        self.assertIn("touch-action: none", self.css)
 
     def test_admin_diagnostics_remain_available_across_service_screens(self) -> None:
         # HH_260810 - Arrival, return, and waiting transitions must not unmount

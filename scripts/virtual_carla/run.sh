@@ -12,15 +12,16 @@ Usage: run.sh <commands|server|bridge|spawn|camrod|manual|doctor>
   bridge    run the standard carla_ros_bridge
   spawn     spawn the configured Ranger actor/sensors
   camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
-  manual    keyboard Twist through CAMROD's safety gate and physical 4WS path
+  manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
 Required order in separate terminals: server -> bridge -> spawn -> camrod.
 Wait for each preceding stage to report success. The camrod stage refuses to
 start unless exactly one vehicle.ranger.default with CARLA_ROLE_NAME exists.
-Run manual only after camrod is healthy; it sends nothing until the operator
-presses a motion key and never engages the robot. Stop in reverse order. The
-lifecycle subcommands do not publish motion or send a Nav2 goal.
+After camrod is healthy, the preferred manual control is in the UI Admin >
+Camera tab. Run manual only as a terminal fallback; it sends nothing until the
+operator presses a motion key and never engages the robot. Stop in reverse
+order. The lifecycle subcommands do not publish motion or send a Nav2 goal.
 
 CARLA_RENDER_MODE is one of offscreen (default), onscreen, or nullrhi.
 Rendered modes default to the aligned checked-in full-sensor profile. NullRHI

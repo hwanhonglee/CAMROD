@@ -4522,3 +4522,242 @@ h1 {
   line-height: 1.75;
   margin: 0;
 }
+
+/* CARLA-only manual drive surface. The backend keeps this panel unavailable
+   when the dedicated manual Twist topic is not configured. */
+.manual-drive-panel {
+  margin-top: 1rem;
+  border: 2px solid #c5d4ca;
+  background: linear-gradient(145deg, #f8fbf9 0%, #edf4ef 100%);
+}
+
+.manual-drive-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.manual-drive-header h3 {
+  margin: 0 0 0.3rem;
+  color: #173f2a;
+  font-size: 1.25rem;
+}
+
+.manual-drive-header p {
+  margin: 0;
+  color: #5f6e64;
+  font-size: 0.82rem;
+}
+
+.manual-drive-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #b8c4bc;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  background: #fff;
+  color: #68756c;
+  font: 700 0.76rem/1 'Consolas', monospace;
+}
+
+.manual-drive-state span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #87938a;
+}
+
+.manual-drive-state.armed {
+  border-color: #d89b55;
+  background: #fff4e8;
+  color: #904f12;
+}
+
+.manual-drive-state.armed span {
+  background: #e27328;
+  box-shadow: 0 0 0 4px rgba(226, 115, 40, 0.16);
+}
+
+.manual-drive-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(340px, 1.2fr);
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.manual-drive-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border-radius: 16px;
+  background: #e5ede8;
+  touch-action: none;
+  user-select: none;
+}
+
+.manual-drive-pad-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.manual-drive-pad-row.crab {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.manual-drive-key {
+  width: 86px;
+  min-height: 68px;
+  border: 1px solid #aebdb3;
+  border-radius: 12px;
+  background: #fff;
+  color: #214b31;
+  font-size: 1.25rem;
+  font-weight: 800;
+  box-shadow: 0 3px 0 #9eada3;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.manual-drive-key small {
+  display: block;
+  margin-top: 0.18rem;
+  color: #68776d;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.manual-drive-key.stop {
+  width: 124px;
+  border-color: #d8a29b;
+  color: #9e3028;
+  box-shadow: 0 3px 0 #c99189;
+}
+
+.manual-drive-key.pressed,
+.manual-drive-key:active:not(:disabled) {
+  transform: translateY(3px);
+  border-color: #2f8050;
+  background: #d6f0df;
+  box-shadow: none;
+}
+
+.manual-drive-key:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.manual-drive-config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.manual-drive-arm {
+  width: 100%;
+  min-height: 58px;
+  border: 2px solid #2d6e40;
+  border-radius: 12px;
+  background: #2d6e40;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.manual-drive-arm.active {
+  border-color: #a8332b;
+  background: #be3c31;
+}
+
+.manual-drive-arm:disabled {
+  border-color: #aeb7b1;
+  background: #aeb7b1;
+  cursor: not-allowed;
+}
+
+.manual-drive-config label {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  color: #354b3c;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.manual-drive-config input[type='range'] {
+  width: 100%;
+  accent-color: #2d6e40;
+}
+
+.manual-drive-readout {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+}
+
+.manual-drive-readout span {
+  padding: 0.55rem;
+  border: 1px solid #d2dcd5;
+  border-radius: 9px;
+  background: #fff;
+  color: #607067;
+  font: 0.75rem/1.3 'Consolas', monospace;
+  text-align: center;
+}
+
+.manual-drive-readout b {
+  color: #173f2a;
+}
+
+.manual-drive-hint,
+.manual-drive-message {
+  margin: 0;
+  color: #627168;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.manual-drive-message {
+  min-height: 1.2rem;
+  color: #2d6e40;
+  font-weight: 700;
+}
+
+.manual-drive-message.error {
+  color: #b7352b;
+}
+
+@media (max-width: 1000px) {
+  .manual-drive-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .manual-drive-header,
+  .manual-drive-config label {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .manual-drive-key {
+    width: 74px;
+  }
+
+  .manual-drive-key.stop {
+    width: 104px;
+  }
+
+  .manual-drive-readout {
+    grid-template-columns: 1fr;
+  }
+}

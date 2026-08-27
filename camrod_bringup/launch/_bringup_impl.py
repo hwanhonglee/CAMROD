@@ -2619,6 +2619,9 @@ def generate_launch_description():
         'planning_engage_topic': lc['planning_engage_topic'],
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
+        # Empty in ordinary CAMROD. The CARLA overlay alone supplies the
+        # dedicated manual Twist topic, which makes the UI drive panel opt-in.
+        'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic'],
         'camping_site_maneuver_controller_operation_topic': '/control/camping_site_maneuver_controller/operation',
         # HH_260818 - Keep the manual-return planner handoff explicit across
         # the full-bringup -> UI launch boundary.

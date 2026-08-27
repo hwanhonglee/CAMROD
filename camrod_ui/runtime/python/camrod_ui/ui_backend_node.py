@@ -13,6 +13,7 @@ import io
 import json
 import math
 import os
+import signal
 import struct
 import threading
 import time
@@ -53,7 +54,7 @@ from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Path as NavPath
 from nav2_msgs.action import NavigateToPose
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
@@ -62,6 +63,7 @@ from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, Image as RosImage, Imu, NavSatFix, PointCloud2, Range
 from std_msgs.msg import String
@@ -72,6 +74,13 @@ from visualization_msgs.msg import Marker, MarkerArray
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
+from camrod_ui.manual_drive_policy import (
+    MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
+    ManualDriveCommand,
+    ManualDriveLease,
+    ManualDrivePolicy,
+    ManualDriveProtocolError,
+)
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
@@ -569,6 +578,16 @@ class ApiState:
 
 
 @dataclass
+class ManualDriveTransport:
+    """One generation-qualified WebSocket and its serialized send boundary."""
+
+    websocket: WebSocket
+    lease: ManualDriveLease
+    loop: asyncio.AbstractEventLoop
+    send_lock: asyncio.Lock
+
+
+@dataclass
 class MissionKeypoint:
     """Resolved keypoint for destination dispatch."""
 
@@ -674,6 +693,12 @@ class UiBackendNode(Node):
         self.manual_goal_pose_topic = str(
             self.declare_parameter("manual_goal_pose_topic", "/goal_pose").value
         )
+        # Dedicated manual Twist is opt-in. Ordinary CAMROD/develop launches
+        # leave this empty; the CARLA composition explicitly supplies the topic.
+        self.manual_cmd_vel_ros_topic = str(
+            self.declare_parameter("manual_cmd_vel_ros_topic", "").value
+        ).strip()
+        self.manual_drive_available = bool(self.manual_cmd_vel_ros_topic)
         self.platform_status_topic = str(
             self.declare_parameter("platform_status_topic", "/platform/status").value
         )
@@ -1052,6 +1077,16 @@ class UiBackendNode(Node):
         )
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
+        # FastAPI runs in its own thread while the deadman timer runs on the ROS
+        # executor. One re-entrant transition lock keeps arm/STOP/mission
+        # takeover and delayed WebSocket cleanup strictly ordered.
+        self._manual_drive_transition_lock = threading.RLock()
+        self._manual_drive_policy = ManualDrivePolicy(
+            available=self.manual_drive_available,
+            deadman_timeout_s=MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
+        )
+        self._manual_drive_transport: Optional[ManualDriveTransport] = None
+        self._manual_drive_shutdown_done = False
         self._runtime_policy = UiStatePolicy(
             self.readiness_required_modules,
             max_ready_localization_mode=self.max_ready_localization_mode,
@@ -1313,6 +1348,11 @@ class UiBackendNode(Node):
         self.pub_manual_goal_pose = self.create_publisher(
             PoseStamped, self.manual_goal_pose_topic, 10
         )
+        self.pub_manual_cmd_vel_ros = None
+        if self.manual_drive_available:
+            self.pub_manual_cmd_vel_ros = self.create_publisher(
+                Twist, self.manual_cmd_vel_ros_topic, 10
+            )
         self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
         # HH_260727 - Runtime tuning uses the standard ROS parameter services, so the UI
         # changes the driver immediately without restarting the platform.
@@ -1345,6 +1385,14 @@ class UiBackendNode(Node):
         self._telemetry_session_timer = self.create_timer(
             1.0, self._maintain_telemetry_session
         )
+        self._manual_drive_deadman_timer = None
+        if self.manual_drive_available:
+            # Check faster than the fixed 0.25 s UI deadman. Commands are not
+            # replayed here, so the independent 0.35 s control/adapter watchdogs
+            # remain effective if this callback ever stops running.
+            self._manual_drive_deadman_timer = self.create_timer(
+                0.05, self._on_manual_drive_deadman
+            )
         if self.enable_http_server:
             self._start_fastapi_server()
 
@@ -1364,6 +1412,7 @@ class UiBackendNode(Node):
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"manual_goal_pose_topic={self.manual_goal_pose_topic} "
+            f"manual_cmd_vel_ros_topic={self.manual_cmd_vel_ros_topic or '(disabled)'} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
             f"planning_lanelet_pose_topic={self.planning_lanelet_pose_topic} "
             f"roadside_arrival_offset={self.site_arrival_roadside_offset_m:.2f}m "
@@ -1451,11 +1500,219 @@ class UiBackendNode(Node):
         )
         return keypoints
 
+    def _manual_drive_state_payload(self) -> Dict[str, Any]:
+        with self._manual_drive_transition_lock:
+            state = self._manual_drive_policy.snapshot()
+        return {"type": "state", "manual_drive": state}
+
+    def _publish_manual_drive_command(
+        self, command: ManualDriveCommand
+    ) -> None:
+        publisher = self.pub_manual_cmd_vel_ros
+        if publisher is None:
+            return
+        message = Twist()
+        message.linear.x = float(command.linear_x)
+        message.linear.y = float(command.linear_y)
+        message.angular.z = float(command.angular_z)
+        publisher.publish(message)
+
+    def _publish_manual_drive_zero(self) -> None:
+        self._publish_manual_drive_command(ManualDriveCommand())
+
+    async def _send_manual_drive_payload(
+        self, transport: ManualDriveTransport, payload: Dict[str, Any]
+    ) -> None:
+        """Serialize all handler and ROS-timer sends for one WebSocket."""
+        async with transport.send_lock:
+            await transport.websocket.send_json(payload)
+
+    def _schedule_manual_drive_payload(
+        self, transport: Optional[ManualDriveTransport], payload: Dict[str, Any]
+    ) -> None:
+        if transport is None or transport.loop.is_closed():
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_manual_drive_payload(transport, payload),
+                transport.loop,
+            )
+        except RuntimeError:
+            return
+
+        def consume_result(completed: Any) -> None:
+            try:
+                completed.result()
+            except (RuntimeError, WebSocketDisconnect):
+                pass
+            except Exception as exc:  # noqa: BLE001
+                self.get_logger().debug(
+                    f"manual-drive websocket state send failed: {exc}"
+                )
+
+        future.add_done_callback(consume_result)
+
+    def _revoke_manual_drive(
+        self, reason: str, *, notify: bool = True
+    ) -> None:
+        """Publish zero and revoke manual authorization state, if enabled."""
+        if not self.manual_drive_available:
+            return
+        with self._manual_drive_transition_lock:
+            self._manual_drive_policy.revoke(reason)
+            transport = self._manual_drive_transport if notify else None
+            payload = {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+            self._publish_manual_drive_zero()
+        self._schedule_manual_drive_payload(transport, payload)
+
+    def _arm_manual_drive(
+        self, lease: ManualDriveLease, payload: Any
+    ) -> Dict[str, Any]:
+        """Atomically preempt all motion owners, then arm the manual boundary."""
+        with self._manual_drive_transition_lock:
+            # Validate before changing the running system, but consume seq only
+            # after the complete STOP/cancel transition has succeeded.
+            self._manual_drive_policy.validate_arm(lease, payload)
+            self._stop_active_service(source="ws_manual_drive_arm")
+            # Full STOP normally releases mission engage in the production UI
+            # profile. Publish the false boundary explicitly so opt-in standalone
+            # compositions have the same deterministic manual ownership order.
+            self._publish_mission_engage(
+                False, source="ws_manual_drive_arm:mission_release"
+            )
+            self._publish_manual_drive_zero()
+            self._manual_drive_policy.arm(lease, payload)
+            self._publish_engage(True, source="ws_manual_drive_arm")
+            return {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+
+    def _apply_manual_drive(
+        self, lease: ManualDriveLease, payload: Any
+    ) -> Dict[str, Any]:
+        with self._manual_drive_transition_lock:
+            command = self._manual_drive_policy.drive(
+                lease, payload, time.monotonic()
+            )
+            self._publish_manual_drive_command(command)
+            return {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+
+    def _disarm_manual_drive(
+        self, lease: ManualDriveLease, payload: Any
+    ) -> Dict[str, Any]:
+        with self._manual_drive_transition_lock:
+            self._manual_drive_policy.disarm(lease, payload)
+            self._publish_manual_drive_zero()
+            self._publish_engage(False, source="ws_manual_drive_disarm")
+            return {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+
+    def _fail_closed_manual_drive(
+        self, lease: ManualDriveLease, error: ManualDriveProtocolError
+    ) -> Dict[str, Any]:
+        """A malformed owner frame cannot leave the previous command active."""
+        with self._manual_drive_transition_lock:
+            if self._manual_drive_policy.lease_matches(lease):
+                self._manual_drive_policy.revoke(
+                    f"protocol_error:{error.error}"
+                )
+                self._publish_manual_drive_zero()
+                self._publish_engage(
+                    False, source=f"ws_manual_drive_error:{error.error}"
+                )
+            return {
+                "type": "error",
+                "error": error.error,
+                "message": str(error),
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+
+    def _disconnect_manual_drive(self, lease: ManualDriveLease) -> bool:
+        """Stop only the matching generation; stale finally blocks are inert."""
+        with self._manual_drive_transition_lock:
+            if not self._manual_drive_policy.disconnect(lease):
+                return False
+            if (
+                self._manual_drive_transport is not None
+                and self._manual_drive_transport.lease == lease
+            ):
+                self._manual_drive_transport = None
+            self._publish_manual_drive_zero()
+            self._publish_engage(False, source="ws_manual_drive_disconnect")
+            return True
+
+    def _on_manual_drive_deadman(self) -> None:
+        if not self.manual_drive_available:
+            return
+        with self._manual_drive_transition_lock:
+            if not self._manual_drive_policy.expire(time.monotonic()):
+                return
+            transport = self._manual_drive_transport
+            self._publish_manual_drive_zero()
+            self._publish_engage(False, source="manual_drive_deadman")
+            payload = {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+        self._schedule_manual_drive_payload(transport, payload)
+        self.get_logger().warn(
+            "manual-drive deadman expired after %.2fs; zero and disengage published"
+            % MANUAL_DRIVE_DEADMAN_TIMEOUT_S
+        )
+
+    def _shutdown_manual_drive(self) -> None:
+        if not self.manual_drive_available:
+            return
+        with self._manual_drive_transition_lock:
+            if self._manual_drive_shutdown_done:
+                return
+            self._manual_drive_shutdown_done = True
+            transport = self._manual_drive_transport
+            self._manual_drive_transport = None
+            self._manual_drive_policy.shutdown()
+            # Normal SIGINT/SIGTERM is handled by main() before the ROS context
+            # is closed, so the final zero and disengage reach the safety gate.
+            # External context shutdown cannot publish; in that race the gate's
+            # independent command watchdog remains the fail-safe backstop.
+            context = getattr(self, "context", None)
+            context_ok = context is None or rclpy.ok(context=context)
+            if context_ok:
+                try:
+                    self._publish_manual_drive_zero()
+                    self._publish_engage(False, source="manual_drive_shutdown")
+                except RuntimeError:
+                    if context is None or rclpy.ok(context=context):
+                        raise
+                    self.get_logger().warn(
+                        "ROS context closed during manual-drive shutdown; "
+                        "safety-gate watchdog will hold zero"
+                    )
+            else:
+                self.get_logger().warn(
+                    "ROS context already closed during manual-drive shutdown; "
+                    "safety-gate watchdog will hold zero"
+                )
+            payload = {
+                "type": "state",
+                "manual_drive": self._manual_drive_policy.snapshot(),
+            }
+        self._schedule_manual_drive_payload(transport, payload)
+
     def destroy_node(self) -> bool:
         # HH_260805 - Stop the HTTP event loop before ROS destroys callbacks and
         # publishers that in-flight FastAPI/WebSocket handlers may still access.
         self._cancel_pending_manual_return_transition("node_shutdown")
         self._cancel_pending_charging_departure_transition("node_shutdown")
+        self._shutdown_manual_drive()
         self._stop_fastapi_server()
         service_metrics = getattr(self, "_service_metrics", None)
         if service_metrics is not None:
@@ -4359,6 +4616,12 @@ class UiBackendNode(Node):
 
     def _stop_active_service(self, source: str) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        # Manual zero is the first boundary so HTTP STOP cannot wait behind
+        # Nav2/action cancellation or service-state bookkeeping.
+        self._revoke_manual_drive(
+            f"operator_stop:{source}",
+            notify=source != "ws_manual_drive_arm",
+        )
         self._cancel_pending_manual_return_transition(source)
         UiBackendNode._cancel_pending_charging_departure_transition(self, source)
         departure_states = {
@@ -4463,6 +4726,11 @@ class UiBackendNode(Node):
         )
 
     def _publish_mission_engage(self, enabled: bool, source: str) -> None:
+        if enabled:
+            # Mission takeover revokes the browser command before opening the
+            # mission gate. The C++ arbiter independently enforces the same
+            # ownership boundary at /planning/mission_engage.
+            self._revoke_manual_drive("mission_takeover")
         msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_mission_engage.publish(msg)
@@ -5225,6 +5493,96 @@ class UiBackendNode(Node):
                 with node._ws_clients_lock:
                     node._ws_clients.discard(ws)
 
+        @app.websocket("/ws/manual-drive")
+        async def manual_drive_websocket(ws: WebSocket) -> None:
+            """Single-owner, deadman-protected operator manual control."""
+            await ws.accept()
+            if not node.manual_drive_available:
+                await ws.send_json(node._manual_drive_state_payload())
+                await ws.close(code=4403, reason="manual drive disabled")
+                return
+
+            owner = object()
+            transport: Optional[ManualDriveTransport] = None
+            with node._manual_drive_transition_lock:
+                try:
+                    lease = node._manual_drive_policy.connect(owner)
+                except ManualDriveProtocolError as error:
+                    busy_payload = {
+                        "type": "error",
+                        "error": error.error,
+                        "message": str(error),
+                        "manual_drive": node._manual_drive_policy.snapshot(),
+                    }
+                else:
+                    transport = ManualDriveTransport(
+                        websocket=ws,
+                        lease=lease,
+                        loop=asyncio.get_running_loop(),
+                        send_lock=asyncio.Lock(),
+                    )
+                    node._manual_drive_transport = transport
+                    busy_payload = None
+
+            if busy_payload is not None:
+                # A rejected observer must never zero or revoke the active owner.
+                await ws.send_json(busy_payload)
+                await ws.close(code=4409, reason="manual drive busy")
+                return
+
+            assert transport is not None
+            await node._send_manual_drive_payload(
+                transport, node._manual_drive_state_payload()
+            )
+            try:
+                while True:
+                    raw = await ws.receive_text()
+                    try:
+                        payload = json.loads(raw)
+                        if not isinstance(payload, dict):
+                            raise ManualDriveProtocolError(
+                                "invalid_message",
+                                "manual-drive frame must be a JSON object",
+                            )
+                        frame_type = payload.get("type")
+                        if frame_type == "arm":
+                            response = node._arm_manual_drive(
+                                transport.lease, payload
+                            )
+                        elif frame_type == "drive":
+                            response = node._apply_manual_drive(
+                                transport.lease, payload
+                            )
+                        elif frame_type == "disarm":
+                            response = node._disarm_manual_drive(
+                                transport.lease, payload
+                            )
+                        else:
+                            raise ManualDriveProtocolError(
+                                "invalid_type",
+                                "manual-drive type must be arm, drive, or disarm",
+                            )
+                    except json.JSONDecodeError as exc:
+                        error = ManualDriveProtocolError(
+                            "invalid_json", f"invalid manual-drive JSON: {exc}"
+                        )
+                        response = node._fail_closed_manual_drive(
+                            transport.lease, error
+                        )
+                    except ManualDriveProtocolError as error:
+                        response = node._fail_closed_manual_drive(
+                            transport.lease, error
+                        )
+                    await node._send_manual_drive_payload(transport, response)
+            except WebSocketDisconnect:
+                pass
+            except (KeyError, RuntimeError) as exc:
+                node.get_logger().debug(
+                    f"manual-drive websocket disconnected: {exc}"
+                )
+            finally:
+                node._disconnect_manual_drive(transport.lease)
+
         # HH_260810 - Dedicated latest-value telemetry transport. Keeping this
         # separate from the mission command socket prevents high-rate operator
         # drawings from delaying safety/service control messages. Each socket
@@ -5465,28 +5823,41 @@ class UiBackendNode(Node):
         self._server_thread.start()
 
 
+def _interrupt_for_ordered_shutdown(_signum: int, _frame: Any) -> None:
+    """Leave the ROS context alive until manual-drive zero is published."""
+    raise KeyboardInterrupt
+
+
 def main() -> None:
-    rclpy.init()
-    node = UiBackendNode()
+    previous_sigint = signal.signal(signal.SIGINT, _interrupt_for_ordered_shutdown)
+    previous_sigterm = signal.signal(signal.SIGTERM, _interrupt_for_ordered_shutdown)
+    node: Optional[UiBackendNode] = None
     try:
-        rclpy.spin(node)
-    # HH_260805 - rclpy may report launch-driven SIGINT as either exception;
-    # both are normal shutdown paths and must leave launch with exit code 0.
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    # HH_260807 - Humble can race context shutdown with take_message conversion
-    # and raise RuntimeError instead of ExternalShutdownException. Suppress it
-    # only after the ROS context is down; operational RuntimeError still fails.
-    except RuntimeError:
-        if rclpy.ok():
-            raise
+        # Keep ROS's default signal hooks disabled: they invalidate publishers
+        # before destroy_node() can send the manual-drive stop command.
+        rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+        node = UiBackendNode()
+        try:
+            rclpy.spin(node)
+        # HH_260805 - launch-driven shutdown and terminal Ctrl+C are normal
+        # paths and must leave the process with exit code 0.
+        except (KeyboardInterrupt, ExternalShutdownException):
+            pass
+        # HH_260807 - Humble can race context shutdown with take_message
+        # conversion and raise RuntimeError. Suppress only after shutdown.
+        except RuntimeError:
+            if rclpy.ok():
+                raise
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         try:
             if rclpy.ok():
                 rclpy.shutdown()
         except Exception:
             pass
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 if __name__ == "__main__":
