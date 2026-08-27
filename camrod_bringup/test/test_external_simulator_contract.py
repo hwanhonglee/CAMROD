@@ -3,6 +3,7 @@
 import math
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from nav_msgs.msg import Odometry
@@ -46,6 +47,46 @@ def test_external_odometry_rejects_nonfinite_and_zero_quaternion():
     zero_quaternion.pose.pose.orientation.w = 0.0
     with pytest.raises(ValueError, match="zero quaternion"):
         FAKE_SENSOR.external_odometry_state_from_message(zero_quaternion)
+
+
+class _TimerHarness:
+    def __init__(self):
+        self.timer_period_ns = 200_000_000
+        self.reset_count = 0
+
+    def reset(self):
+        self.reset_count += 1
+
+
+def test_runtime_publish_rate_update_retimes_the_existing_timer():
+    timer = _TimerHarness()
+    node = SimpleNamespace(publish_rate_hz=5.0, timer=timer)
+
+    result = FAKE_SENSOR.FakeSensorPublisher._on_set_parameters(
+        node,
+        [SimpleNamespace(name="publish_rate_hz", value=10.0)],
+    )
+
+    assert result.successful is True
+    assert node.publish_rate_hz == 10.0
+    assert timer.timer_period_ns == 100_000_000
+    assert timer.reset_count == 1
+
+
+def test_runtime_publish_rate_update_rejects_invalid_rate_without_mutation():
+    timer = _TimerHarness()
+    node = SimpleNamespace(publish_rate_hz=5.0, timer=timer)
+
+    result = FAKE_SENSOR.FakeSensorPublisher._on_set_parameters(
+        node,
+        [SimpleNamespace(name="publish_rate_hz", value=float("nan"))],
+    )
+
+    assert result.successful is False
+    assert "finite and greater than zero" in result.reason
+    assert node.publish_rate_hz == 5.0
+    assert timer.timer_period_ns == 200_000_000
+    assert timer.reset_count == 0
 
 
 def test_bringup_routes_external_plant_without_disabling_full_sim_graph():
