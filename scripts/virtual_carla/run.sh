@@ -125,12 +125,14 @@ camrod_command() {
 }
 
 manual_command() {
+  # Keep diagonal teleop commands in Dual-Ackermann mode:
+  # radius = speed / turn = 1.0 m > Ranger minimum 0.810330349 m.
   MANUAL_COMMAND=(
     ros2 run teleop_twist_keyboard teleop_twist_keyboard
     --ros-args
     -r cmd_vel:=/control/nav2_cmd_vel_ros
     -p speed:=0.20
-    -p turn:=0.30
+    -p turn:=0.20
   )
 }
 
@@ -575,7 +577,7 @@ case "${subcommand}" in
     virtual_carla_log \
       "keys: i/, forward/reverse; u/o and m/. steer; j/l zero-turn; Shift+J/L crab; k or any unbound key stop; Ctrl-C exits with zero"
     virtual_carla_log \
-      "speed=0.20 m/s, turn=0.30 rad/s; keep the CARLA and wheel telemetry views visible"
+      "speed=0.20 m/s, turn=0.20 rad/s; diagonal keys keep a 1.0 m Ackermann radius; keep the CARLA and wheel telemetry views visible"
     exec "${MANUAL_COMMAND[@]}"
     ;;
   doctor)

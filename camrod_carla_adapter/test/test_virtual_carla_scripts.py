@@ -129,6 +129,9 @@ def test_manual_keyboard_path_is_fail_closed_and_uses_camrod_safety_gate() -> No
 
     assert "teleop_twist_keyboard" in source
     assert "cmd_vel:=/control/nav2_cmd_vel_ros" in source
+    assert "-p speed:=0.20" in source
+    assert "-p turn:=0.20" in source
+    assert "radius = speed / turn = 1.0 m" in source
     assert "validate_runtime_gates" in manual_case
     assert "validate_spawn_file" in manual_case
     assert "validate_ranger_actor_ready" in manual_case
