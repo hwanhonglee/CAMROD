@@ -23,8 +23,8 @@ presses a motion key and never engages the robot. Stop in reverse order. The
 lifecycle subcommands do not publish motion or send a Nav2 goal.
 
 CARLA_RENDER_MODE is one of offscreen (default), onscreen, or nullrhi.
-Set RANGER_SPAWN_FILE to an aligned full-sensor JSON for rendered perception;
-the default checked-in JSON is the control-only smoke profile.
+Rendered modes default to the aligned checked-in full-sensor profile. NullRHI
+defaults to the control-only smoke profile and cannot validate camera output.
 EOF
 }
 
@@ -114,6 +114,7 @@ camrod_command() {
     "map_alignment_file:=${CAMROD_MAP_ALIGNMENT_FILE}"
     "camrod_launch_defaults_file:=${CAMROD_LAUNCH_DEFAULTS_FILE}"
     "camrod_map_path:=${CAMROD_LANELET_MAP}"
+    "launch_sensor_relay:=${CAMROD_LAUNCH_SENSOR_RELAY}"
     enable_plugin_api:=true
     enable_api_ui:=true
     "enable_operator_ui_window:=${CAMROD_ENABLE_OPERATOR_WINDOW}"
@@ -130,7 +131,7 @@ manual_command() {
   MANUAL_COMMAND=(
     ros2 run teleop_twist_keyboard teleop_twist_keyboard
     --ros-args
-    -r cmd_vel:=/control/nav2_cmd_vel_ros
+    -r cmd_vel:=/control/manual_cmd_vel_ros
     -p speed:=0.20
     -p turn:=0.20
   )
@@ -167,6 +168,44 @@ require_renderer() {
   }
 }
 
+validate_render_timing_contract() {
+  local synchronous="${CARLA_SYNCHRONOUS_MODE,,}"
+  local wait_for_control="${CARLA_WAIT_FOR_CONTROL_COMMAND,,}"
+  if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
+    return 0
+  fi
+  case "${synchronous}" in
+    true|1|yes|on) ;;
+    *)
+      virtual_carla_die \
+        "rendered CARLA requires synchronous_mode=True for deterministic 10 Hz CAMROD sensors"
+      return 1
+      ;;
+  esac
+  case "${wait_for_control}" in
+    false|0|no|off) ;;
+    *)
+      virtual_carla_die \
+        "rendered CARLA requires synchronous_mode_wait_for_vehicle_control_command=False so camera/LiDAR can stream before CAMROD starts"
+      return 1
+      ;;
+  esac
+  python3 - "${CARLA_FIXED_DELTA_SECONDS}" <<'PY'
+import math
+import sys
+
+try:
+    delta = float(sys.argv[1])
+except ValueError:
+    delta = math.nan
+if not math.isfinite(delta) or delta <= 0.0 or delta > 0.1:
+    raise SystemExit(
+        "CARLA_FIXED_DELTA_SECONDS must be finite and in (0, 0.1] "
+        "for the rendered 10 Hz sensor contract"
+    )
+PY
+}
+
 require_common_runtime_files() {
   virtual_carla_require_var RANGER_CARLA_ROOT || return 1
   virtual_carla_verify_gate_aliases || return 1
@@ -198,37 +237,191 @@ require_bridge_authorization_files() {
 }
 
 validate_spawn_file() {
+  local accepted_control accepted_visual
+  accepted_control="${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/ranger_spawn_camrod_control_only.json"
+  accepted_visual="${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/ranger_spawn_camrod_full_sensors.json"
   virtual_carla_require_file \
     "${RANGER_SPAWN_FILE}" "Ranger spawn JSON" || return 1
+  virtual_carla_require_file \
+    "${accepted_control}" "accepted Ranger control-only spawn contract" || return 1
+  virtual_carla_require_file \
+    "${accepted_visual}" "accepted Ranger visual spawn contract" || return 1
   python3 - "${RANGER_SPAWN_FILE}" "${CARLA_ROLE_NAME}" \
-    vehicle.ranger.default <<'PY'
+    vehicle.ranger.default "${CARLA_RENDER_MODE}" \
+    "${accepted_control}" "${accepted_visual}" <<'PY'
 import json
+import math
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 role = sys.argv[2]
 expected_type = sys.argv[3]
-try:
-    document = json.loads(path.read_text(encoding="utf-8"))
-except (OSError, UnicodeError, json.JSONDecodeError) as error:
-    raise SystemExit(f"spawn JSON is unreadable or invalid: {path}: {error}") from None
-objects = document.get("objects", [])
-if not isinstance(objects, list) or not objects:
-    raise SystemExit(f"spawn JSON has no objects: {path}")
-matches = [
-    item for item in objects
-    if isinstance(item, dict) and item.get("id") == role
-]
-if len(matches) != 1:
-    raise SystemExit(
-        f"spawn JSON must have exactly one actor id {role!r}, "
-        f"found {len(matches)}: {path}")
-if matches[0].get("type") != expected_type:
+render_mode = sys.argv[4]
+control_path = Path(sys.argv[5])
+visual_path = Path(sys.argv[6])
+
+
+def load_document(document_path):
+    try:
+        return json.loads(document_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"spawn JSON is unreadable or invalid: {document_path}: {error}"
+        ) from None
+
+
+def select_vehicle(document, document_path):
+    objects = document.get("objects", [])
+    if not isinstance(objects, list) or not objects:
+        raise SystemExit(f"spawn JSON has no objects: {document_path}")
+    matches = [
+        item for item in objects
+        if isinstance(item, dict) and item.get("id") == role
+    ]
+    if len(matches) != 1:
+        raise SystemExit(
+            f"spawn JSON must have exactly one actor id {role!r}, "
+            f"found {len(matches)}: {document_path}")
+    return matches[0]
+
+
+def require_contract(actual, expected, label):
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            raise SystemExit(f"{label} must be an object: {path}")
+        for key, expected_value in expected.items():
+            if key not in actual:
+                raise SystemExit(f"{label}.{key} is missing: {path}")
+            require_contract(actual[key], expected_value, f"{label}.{key}")
+        return
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        try:
+            numeric = float(actual)
+        except (TypeError, ValueError):
+            numeric = math.nan
+        if not math.isfinite(numeric) or abs(numeric - float(expected)) > 1.0e-6:
+            raise SystemExit(
+                f"{label} breaks the accepted spawn/alignment cohort: "
+                f"expected {expected!r}, got {actual!r}: {path}")
+        return
+    if actual != expected:
+        raise SystemExit(
+            f"{label} breaks the accepted spawn/alignment cohort: "
+            f"expected {expected!r}, got {actual!r}: {path}")
+
+
+document = load_document(path)
+vehicle = select_vehicle(document, path)
+if vehicle.get("type") != expected_type:
     raise SystemExit(
         f"spawn JSON actor {role!r} type must be exactly "
-        f"{expected_type!r}, got {matches[0].get('type')!r}: {path}")
+        f"{expected_type!r}, got {vehicle.get('type')!r}: {path}")
+
+reference_path = control_path if render_mode == "nullrhi" else visual_path
+reference_vehicle = select_vehicle(load_document(reference_path), reference_path)
+require_contract(
+    vehicle.get("spawn_point"),
+    reference_vehicle.get("spawn_point"),
+    f"actor {role!r}.spawn_point",
+)
+target_sensors = vehicle.get("sensors", [])
+if not isinstance(target_sensors, list):
+    raise SystemExit(f"spawn JSON actor {role!r} has no sensor list: {path}")
+for expected_sensor in reference_vehicle.get("sensors", []):
+    sensor_id = expected_sensor.get("id")
+    sensor_matches = [
+        sensor for sensor in target_sensors
+        if isinstance(sensor, dict) and sensor.get("id") == sensor_id
+    ]
+    if len(sensor_matches) != 1:
+        profile = "control" if render_mode == "nullrhi" else "rendered"
+        raise SystemExit(
+            f"{profile} spawn JSON must contain exactly one {sensor_id!r}, "
+            f"found {len(sensor_matches)}: {path}")
+    require_contract(
+        sensor_matches[0], expected_sensor, f"sensor {sensor_id!r}"
+    )
 PY
+}
+
+validate_carla_sensor_streams() {
+  local status_code
+  if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
+    virtual_carla_log \
+      "NullRHI selected: skipping camera/LiDAR payload preflight"
+    return 0
+  fi
+  if timeout --signal=INT --kill-after=2s 12s \
+      python3 "${script_dir}/check_carla_sensor_streams.py" \
+        --role-name "${CARLA_ROLE_NAME}" \
+        --timeout-seconds 8; then
+    virtual_carla_log "CARLA camera/LiDAR payload preflight passed"
+    return 0
+  else
+    status_code=$?
+  fi
+  case "${status_code}" in
+    124|137)
+      virtual_carla_die \
+        "CARLA visual sensor preflight exceeded its hard 12s bound; keep bridge and spawn running, then retry camrod"
+      ;;
+    130)
+      virtual_carla_die "CARLA visual sensor preflight was interrupted"
+      ;;
+    *)
+      return "${status_code}"
+      ;;
+  esac
+  return 1
+}
+
+refuse_hot_respawn() {
+  local active_nodes status_code
+  if active_nodes="$(timeout --signal=INT --kill-after=1s 5s ros2 node list 2>&1)"; then
+    :
+  else
+    status_code=$?
+    virtual_carla_die \
+      "cannot verify whether CAMROD is active before spawn (ros2 node list exit=${status_code}): ${active_nodes}"
+    return 1
+  fi
+  if printf '%s\n' "${active_nodes}" | grep -Eq \
+      '/(camrod_twist_to_4ws|physical_four_wheel_bridge|ui_backend|carla_spawn_objects)$'; then
+    virtual_carla_die \
+      "CAMROD, physical 4WS, UI, or an existing spawn stage is active; duplicate/hot respawn would change the actor ID and break the controller binding. Stop manual -> camrod -> spawn before spawning again"
+    return 1
+  fi
+}
+
+validate_no_ranger_actor_present() {
+  local status_code
+  if timeout --signal=INT --kill-after=2s 8s \
+      python3 "${script_dir}/check_ranger_actor.py" \
+        --host "${CARLA_HOST}" \
+        --port "${CARLA_PORT}" \
+        --role-name "${CARLA_ROLE_NAME}" \
+        --accepted-python-egg "${CARLA_PYTHON_EGG}" \
+        --private-egg-cache "${PYTHON_EGG_CACHE}" \
+        --timeout-seconds 4 \
+        --expected-count 0; then
+    return 0
+  else
+    status_code=$?
+  fi
+  case "${status_code}" in
+    124|137)
+      virtual_carla_die \
+        "pre-spawn Ranger inventory check exceeded its hard 8s bound; verify the CARLA endpoint before retrying spawn"
+      ;;
+    130)
+      virtual_carla_die "pre-spawn Ranger inventory check was interrupted"
+      ;;
+    *)
+      return "${status_code}"
+      ;;
+  esac
+  return 1
 }
 
 validate_runtime_gates() {
@@ -241,31 +434,56 @@ validate_runtime_gates() {
 }
 
 validate_ranger_actor_ready() {
-  local cache_dir
+  local actor_id cache_dir status_code
   cache_dir="$(mktemp -d \
     "${TMPDIR:-/tmp}/camrod-carla-actor-preflight.XXXXXX")"
-  (
-    trap 'rm -rf -- "${cache_dir}"' EXIT
-    export PYTHON_EGG_CACHE="${cache_dir}"
-    export CARLA_PYTHON_EGG_CACHE="${cache_dir}"
-    export RANGER_PYTHON_EGG_CACHE="${cache_dir}"
-    virtual_carla_use_python_egg
-    PYTHONDONTWRITEBYTECODE=1 python3 \
-      "${script_dir}/check_ranger_actor.py" \
-      --host "${CARLA_HOST}" \
-      --port "${CARLA_PORT}" \
-      --role-name "${CARLA_ROLE_NAME}" \
-      --accepted-python-egg "${CARLA_PYTHON_EGG}" \
-      --private-egg-cache "${cache_dir}"
-  )
+  if actor_id="$(
+    (
+      trap 'rm -rf -- "${cache_dir}"' EXIT
+      export PYTHON_EGG_CACHE="${cache_dir}"
+      export CARLA_PYTHON_EGG_CACHE="${cache_dir}"
+      export RANGER_PYTHON_EGG_CACHE="${cache_dir}"
+      virtual_carla_use_python_egg || exit 1
+      PYTHONDONTWRITEBYTECODE=1 python3 \
+        "${script_dir}/check_ranger_actor.py" \
+        --host "${CARLA_HOST}" \
+        --port "${CARLA_PORT}" \
+        --role-name "${CARLA_ROLE_NAME}" \
+        --accepted-python-egg "${CARLA_PYTHON_EGG}" \
+        --private-egg-cache "${cache_dir}" \
+        --actor-id-only
+    )
+  )"; then
+    :
+  else
+    status_code=$?
+    return "${status_code}"
+  fi
+  if [[ ! "${actor_id}" =~ ^[1-9][0-9]*$ ]]; then
+    virtual_carla_die \
+      "Ranger actor preflight returned a malformed actor id: ${actor_id@Q}"
+    return 1
+  fi
+  RANGER_LIVE_ACTOR_ID="${actor_id}"
+  virtual_carla_log \
+    "Ranger actor preflight ready: actor_id=${RANGER_LIVE_ACTOR_ID} type=vehicle.ranger.default role_name=${CARLA_ROLE_NAME} endpoint=${CARLA_HOST}:${CARLA_PORT}"
 }
 
 validate_physical_bridge_ready() {
-  local status_code
-  if timeout --signal=INT --kill-after=2s 9s \
+  local actor_id status_code
+  if actor_id="$(timeout --signal=INT --kill-after=2s 9s \
       python3 "${script_dir}/check_physical_bridge_status.py" \
         --role-name "${CARLA_ROLE_NAME}" \
-        --timeout-seconds 5; then
+        --timeout-seconds 5 \
+        --actor-id-only)"; then
+    if [[ ! "${actor_id}" =~ ^[1-9][0-9]*$ ]]; then
+      virtual_carla_die \
+        "physical 4WS preflight returned a malformed actor id: ${actor_id@Q}"
+      return 1
+    fi
+    PHYSICAL_BRIDGE_ACTOR_ID="${actor_id}"
+    virtual_carla_log \
+      "physical 4WS bridge ready: role=${CARLA_ROLE_NAME} actor_id=${PHYSICAL_BRIDGE_ACTOR_ID} backend=PHYSX_FOUR_WHEEL_STEERING"
     return 0
   else
     status_code=$?
@@ -283,6 +501,24 @@ validate_physical_bridge_ready() {
       ;;
   esac
   return 1
+}
+
+validate_manual_actor_binding() {
+  local live_actor_id="${RANGER_LIVE_ACTOR_ID:-}"
+  local bridge_actor_id="${PHYSICAL_BRIDGE_ACTOR_ID:-}"
+  if [[ ! "${live_actor_id}" =~ ^[1-9][0-9]*$ || \
+        ! "${bridge_actor_id}" =~ ^[1-9][0-9]*$ ]]; then
+    virtual_carla_die \
+      "manual actor identity check is missing a valid live or bridge actor id; manual remains disabled"
+    return 1
+  fi
+  if [[ "${live_actor_id}" != "${bridge_actor_id}" ]]; then
+    virtual_carla_die \
+      "manual actor identity mismatch: live CARLA actor_id=${live_actor_id}, physical 4WS bridge actor_id=${bridge_actor_id}; manual remains disabled. Stop CAMROD completely, rerun ./scripts/virtual_carla/run.sh camrod, wait until ready, then retry manual"
+    return 1
+  fi
+  virtual_carla_log \
+    "manual actor identity matched: actor_id=${live_actor_id}"
 }
 
 validate_camrod_ui_manual_ready() {
@@ -399,6 +635,7 @@ run_doctor() {
   fi
 
   validate_spawn_file || failures=$((failures + 1))
+  validate_render_timing_contract || failures=$((failures + 1))
   validate_runtime_gates || failures=$((failures + 1))
 
   if virtual_carla_source_ros true true; then
@@ -501,6 +738,7 @@ case "${subcommand}" in
     ;;
   bridge)
     require_bridge_authorization_files
+    validate_render_timing_contract
     virtual_carla_verify_external_prefixes
     prepare_ros_carla_python bridge
     bridge_command
@@ -512,7 +750,9 @@ case "${subcommand}" in
     prepare_ros_carla_python spawn
     virtual_carla_verify_package_prefix \
       carla_spawn_objects "${CARLA_ROS_BRIDGE_WS}/install"
+    refuse_hot_respawn
     validate_spawn_file
+    validate_no_ranger_actor_present
     spawn_command
     virtual_carla_log "spawning configured Ranger actor (no motion command)"
     exec "${SPAWN_COMMAND[@]}"
@@ -528,7 +768,9 @@ case "${subcommand}" in
       camrod_ui "${CAMROD_WS_ROOT}/install"
     validate_runtime_gates
     validate_spawn_file
+    validate_render_timing_contract
     validate_ranger_actor_ready
+    validate_carla_sensor_streams
 
     if [[ -z "${CARLA_PYTHON_EGG_CACHE}" ]]; then
       CARLA_PYTHON_EGG_CACHE="$(
@@ -573,11 +815,15 @@ case "${subcommand}" in
     validate_ranger_actor_ready
     validate_camrod_ui_manual_ready
     validate_physical_bridge_ready
+    # Close the actor hot-respawn race between the initial actor preflight and
+    # the physical bridge status sample before allowing any keyboard command.
+    validate_ranger_actor_ready
+    validate_manual_actor_binding
     manual_command
     virtual_carla_log \
-      "manual input is safety-gated at /control/nav2_cmd_vel_ros"
+      "manual input is safety-gated at /control/manual_cmd_vel_ros"
     virtual_carla_log \
-      "UI: cancel any active goal with STOP, then press ENGAGE; this command never engages automatically"
+      "UI: cancel any active goal with STOP, then press the standalone ENGAGE on the last page (not a B1-B13 destination button); this command never engages automatically"
     virtual_carla_log \
       "keys: i/, forward/reverse; u/o and m/. steer; j/l zero-turn; Shift+J/L crab; k or any unbound key stop; Ctrl-C exits with zero"
     virtual_carla_log \

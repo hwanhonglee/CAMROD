@@ -148,6 +148,51 @@ def test_subset_launch_forwards_multi_pose_selector_tree():
     )
 
 
+def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
+    control_launch = (
+        REPO_ROOT / "camrod_control" / "launch" / "cmd_vel_safety_gate.launch.py"
+    ).read_text(encoding="utf-8")
+    bringup = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        '"manual_input_topic": LaunchConfiguration("manual_cmd_vel_ros_topic")'
+        in control_launch
+    )
+    assert (
+        'DeclareLaunchArgument("manual_cmd_vel_ros_topic", default_value="")'
+        in control_launch
+    )
+    assert (
+        "cfg_get(launch_cfg, 'control/manual_cmd_vel_ros_topic', '')"
+        in bringup
+    )
+    assert (
+        "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
+        in bringup
+    )
+
+    for filename in (
+        "camrod_carla.launch.py",
+        "camrod_carla_full.launch.py",
+    ):
+        source = (PACKAGE_ROOT / "launch" / filename).read_text(
+            encoding="utf-8"
+        )
+        assert '"manual_cmd_vel_ros_topic"' in source
+        assert 'default_value="/control/manual_cmd_vel_ros"' in source
+
+    subset = (
+        PACKAGE_ROOT / "launch" / "camrod_carla.launch.py"
+    ).read_text(encoding="utf-8")
+    full = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    assert '"manual_cmd_vel_ros_topic": LaunchConfiguration(' in subset
+    assert '"control_manual_cmd_vel_ros_topic": LaunchConfiguration(' in full
+
+
 def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():
     for filename in (
         "camrod_carla.launch.py",

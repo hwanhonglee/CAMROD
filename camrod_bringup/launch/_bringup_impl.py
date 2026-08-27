@@ -881,6 +881,11 @@ def generate_launch_description():
             'Standard Nav2 command boundary consumed by control',
         ),
         (
+            'control_manual_cmd_vel_ros_topic',
+            cfg_get(launch_cfg, 'control/manual_cmd_vel_ros_topic', ''),
+            'Optional dedicated operator Twist boundary consumed by control',
+        ),
+        (
             'control_cmd_vel_topic',
             cfg_get(launch_cfg, 'control/cmd_vel_topic', '/control/cmd_vel'),
             'Final cmd_vel topic published by the control safety gate',
@@ -2472,6 +2477,7 @@ def generate_launch_description():
         'cmd_vel_gate_enable': lc['control_cmd_vel_gate_enable'],
         'cmd_vel_raw_topic': lc['control_cmd_vel_raw_topic'],
         'navigation_cmd_vel_ros_topic': lc['control_navigation_cmd_vel_ros_topic'],
+        'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic'],
         'cmd_vel_output_topic': lc['control_cmd_vel_topic'],
         'cmd_vel_ros_output_topic': lc['control_cmd_vel_ros_topic'],
         'planning_engage_topic': lc['planning_engage_topic'],

@@ -123,6 +123,10 @@ def generate_launch_description():
             "platform_heartbeat_publish_rate_hz", default_value="5.0"
         ),
         DeclareLaunchArgument(
+            "manual_cmd_vel_ros_topic",
+            default_value="/control/manual_cmd_vel_ros",
+        ),
+        DeclareLaunchArgument(
             "map_alignment_file", default_value=alignment_config
         ),
         DeclareLaunchArgument(
@@ -260,6 +264,9 @@ def generate_launch_description():
                 "sim_publish_platform_status": "false",
                 "platform_ranger_driver_enable": "false",
                 "platform_ranger_bridge_enable": "true",
+                "control_manual_cmd_vel_ros_topic": LaunchConfiguration(
+                    "manual_cmd_vel_ros_topic"
+                ),
                 "planning_nav2_bt_xml_nav_through_poses": LaunchConfiguration(
                     "nav2_bt_xml_nav_through_poses"
                 ),

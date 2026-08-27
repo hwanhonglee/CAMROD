@@ -124,6 +124,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "launch_camrod_safety_gate", default_value="true"),
         DeclareLaunchArgument(
+            "manual_cmd_vel_ros_topic",
+            default_value="/control/manual_cmd_vel_ros",
+        ),
+        DeclareLaunchArgument(
             "nav2_selected_planner", default_value="LaneletRoute"),
         DeclareLaunchArgument(
             "nav2_selected_controller", default_value="RPP"),
@@ -258,6 +262,8 @@ def generate_launch_description():
                     "camrod_safety_gate_config"),
                 "cmd_vel_gate_enable": "true",
                 "navigation_cmd_vel_ros_topic": "/control/nav2_cmd_vel_ros",
+                "manual_cmd_vel_ros_topic": LaunchConfiguration(
+                    "manual_cmd_vel_ros_topic"),
                 "cmd_vel_ros_output_topic": "/control/cmd_vel_ros",
             },
             condition=IfCondition(launch_camrod_safety_gate),

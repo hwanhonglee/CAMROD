@@ -1831,6 +1831,125 @@ TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff) {
   EXPECT_EQ(arbiter.evaluate(true, 10.02), CommandSourceDecision::kAllow);
 }
 
+TEST(CommandSourceArbiter, DedicatedManualInputIsOptInAndRequiresManualOnlyEngage) {
+  CommandSourceArbiter default_arbiter;
+  default_arbiter.setEngagement(true, false);
+  EXPECT_EQ(default_arbiter.evaluate(CommandInputSource::kManual, 1.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(default_arbiter.evaluate(CommandInputSource::kNavigation, 1.0),
+            CommandSourceDecision::kAllow);
+
+  CommandSourceArbiterConfig config;
+  config.manual_input_enabled = true;
+  CommandSourceArbiter arbiter(config);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 2.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_FALSE(arbiter.manualSourceActive());
+
+  arbiter.setEngagement(true, true);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 2.1),
+            CommandSourceDecision::kIgnore);
+  EXPECT_FALSE(arbiter.manualSourceActive());
+
+  arbiter.setManeuverPhases("", "CRAB_IN", "", 3.0);
+  arbiter.setManeuverPhases("", "DONE", "", 4.0);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 4.1),
+            CommandSourceDecision::kIgnore);
+}
+
+TEST(CommandSourceArbiter, FirstManualTwistLatchesAndBlocksNavAndGeneralRaw) {
+  CommandSourceArbiterConfig config;
+  config.manual_input_enabled = true;
+  CommandSourceArbiter arbiter(config);
+  arbiter.setEngagement(true, false);
+
+  // Before a dedicated Twist arrives, existing UI manual Nav2 goals remain
+  // compatible with ordinary CAMROD.
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 1.0),
+            CommandSourceDecision::kAllow);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 1.0),
+            CommandSourceDecision::kAllow);
+  EXPECT_FALSE(arbiter.manualSourceActive());
+
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.1),
+            CommandSourceDecision::kAllow);
+  EXPECT_TRUE(arbiter.manualSourceActive());
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 1.2),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 1.2),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.2),
+            CommandSourceDecision::kAllow);
+}
+
+TEST(CommandSourceArbiter, MissionTakeoverAndManualDisengageResetOwnership) {
+  CommandSourceArbiterConfig config;
+  config.manual_input_enabled = true;
+  CommandSourceArbiter arbiter(config);
+  arbiter.setEngagement(true, false);
+  ASSERT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.0),
+            CommandSourceDecision::kAllow);
+
+  EXPECT_TRUE(arbiter.setEngagement(true, true));
+  EXPECT_FALSE(arbiter.manualSourceActive());
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.1),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 1.1),
+            CommandSourceDecision::kAllow);
+
+  arbiter.setEngagement(true, false);
+  ASSERT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.2),
+            CommandSourceDecision::kAllow);
+  EXPECT_TRUE(arbiter.setEngagement(false, false));
+  EXPECT_FALSE(arbiter.manualSourceActive());
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.3),
+            CommandSourceDecision::kIgnore);
+}
+
+TEST(CommandSourceArbiter, StaleManualOwnerKeepsCompetingSourcesFailClosed) {
+  CommandSourceArbiterConfig config;
+  config.manual_input_enabled = true;
+  CommandSourceArbiter arbiter(config);
+  arbiter.setEngagement(true, false);
+  ASSERT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.0),
+            CommandSourceDecision::kAllow);
+
+  // Source arbitration never times manual ownership out on behalf of another
+  // producer. The node's existing input watchdog therefore emits zero while
+  // ignored Nav2/raw traffic cannot refresh it or seize control.
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 100.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 100.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_TRUE(arbiter.manualSourceActive());
+}
+
+TEST(CommandSourceArbiter, ExplicitManeuverAlwaysHasHighestPriority) {
+  CommandSourceArbiterConfig config;
+  config.manual_input_enabled = true;
+  CommandSourceArbiter arbiter(config);
+  arbiter.setEngagement(true, false);
+  ASSERT_EQ(arbiter.evaluate(CommandInputSource::kManual, 1.0),
+            CommandSourceDecision::kAllow);
+
+  arbiter.setManeuverPhases("", "CRAB_IN", "", 2.0);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 2.0),
+            CommandSourceDecision::kAllow);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 2.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 2.0),
+            CommandSourceDecision::kIgnore);
+  EXPECT_TRUE(arbiter.manualSourceActive());
+
+  arbiter.setManeuverPhases("", "DONE", "", 3.0);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 3.49),
+            CommandSourceDecision::kHoldZero);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 3.50),
+            CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kManual, 3.50),
+            CommandSourceDecision::kAllow);
+}
+
 TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle) {
   CommandSourceArbiter arbiter;
   // HH_260807 - Parking is a third explicit owner. Nav2 must not interleave a
