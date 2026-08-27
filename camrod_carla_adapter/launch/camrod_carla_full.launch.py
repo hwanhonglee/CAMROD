@@ -246,6 +246,10 @@ def generate_launch_description():
                 "external_simulator": "true",
                 "external_simulator_odometry_topic": "/odom",
                 "external_simulator_odometry_timeout_s": "0.5",
+                # Keep fake GNSS/lidar/perception aligned with CAMROD's 10 Hz
+                # readiness contracts. This unique argument cannot inherit the
+                # platform heartbeat include's generic 5 Hz publish rate.
+                "sim_fake_sensor_publish_rate_hz": "10.0",
                 "sim_platform_status_enable": "true",
                 "sim_publish_platform_status": "false",
                 "platform_ranger_driver_enable": "false",

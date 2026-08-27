@@ -2,8 +2,11 @@
 
 from pathlib import Path
 
+import yaml
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = PACKAGE_ROOT.parent
 
 
 def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
@@ -23,6 +26,43 @@ def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
     assert '"enable_api_ui": LaunchConfiguration("enable_api_ui")' in source
     assert 'controller_share, "full_stack.launch.py"' in source
     assert 'controller_share, "launch", "full_stack.launch.py"' not in source
+
+
+def test_fake_sensor_rate_isolated_from_platform_heartbeat_launch_scope():
+    """A sibling 5 Hz include must not down-rate 10 Hz readiness topics."""
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    heartbeat_launch = (
+        PACKAGE_ROOT / "launch" / "platform_heartbeat.launch.py"
+    ).read_text(encoding="utf-8")
+    fake_launch = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "fake_sensors.launch.py"
+    ).read_text(encoding="utf-8")
+    bringup_impl = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+
+    assert (
+        'DeclareLaunchArgument("publish_rate_hz", default_value="5.0")'
+        in heartbeat_launch
+    )
+    assert '"sim_fake_sensor_publish_rate_hz": "10.0"' in full_launch
+    assert "'fake_sensor_publish_rate_hz'" in fake_launch
+    assert "LaunchConfiguration('fake_sensor_publish_rate_hz')" in fake_launch
+    assert "LaunchConfiguration('publish_rate_hz')" not in fake_launch
+    assert "'sim_fake_sensor_publish_rate_hz'" in bringup_impl
+    assert "'fake_sensor_publish_rate_hz': lc[" in bringup_impl
+    assert defaults["sim"]["fake_sensor_publish_rate_hz"] == 10.0
 
 
 def test_subset_launch_forwards_multi_pose_selector_tree():

@@ -279,10 +279,12 @@ traceback을 정상 진단으로 오해하지 않는다.
 - UE4Editor, CarlaUE4 project와 custom map `.umap`
 - Ranger spawn JSON과 `ego_vehicle` role
 - bridge, spawn, Ranger controller/rqt, CAMROD adapter/UI package prefix
-- portable baseline/physical gate의 `VERIFIED` 상태
+- portable baseline/physical gate를 Ranger 저장소의 canonical Python
+  validator로 재검증한 deep binding
 - gate-bound CARLA egg와 physical 4WD v2 Python method
 - lanelet map, SE(2) alignment, CAMROD launch defaults
-- rendered mode의 NVIDIA/Vulkan 상태
+- rendered mode의 NVIDIA 상태. `vulkaninfo`가 설치돼 있으면 Vulkan summary도
+  필수 통과하며, 도구 자체가 없을 때만 경고 후 생략
 - CARLA TCP port가 비었는지 또는 이미 사용 중인지
 
 GPU 고장 상태에서 control-only 진단을 선택했다면 명시적으로 다음을 사용한다.
@@ -345,7 +347,42 @@ egg cache를 지정하지 않으면 `camrod`가 실행 전용의 새 빈 절대 
 내용이 있는 cache는 거부한다. 이 단계는 controller와 전체 알고리즘/UI를 시작하지만
 motion을 자동 전송하지 않는다.
 
-선택 Terminal 5 — wheel telemetry monitor:
+선택 Terminal 5 — CAMROD safety gate를 통과하는 수동 키보드 조작:
+
+```bash
+./scripts/virtual_carla/run.sh manual
+```
+
+`manual`은 다음 조건을 모두 다시 확인한 뒤에만
+`teleop_twist_keyboard`를 `/control/nav2_cmd_vel_ros`로 remap한다.
+
+- portable baseline/physical gate deep validation
+- spawn JSON의 정확한 `vehicle.ranger.default`/role 계약
+- CARLA world에 정확히 하나인 현재 Ranger actor
+- `GET /ui/health`의 `ok=true`와 `GET /ui/state`의 `ready=true`,
+  `engaged=false`, `mission_phase=READY`, `mission_source=none`
+- `/carla/<role>/physical_four_wheel_status`의 `ready`, gate, PhysX substep,
+  independent wheel drive, backend와 actor ID
+
+명령 자체는 engage 또는 goal을 발행하지 않고, 키를 누르기 전에는 주행 명령도
+발행하지 않는다. UI에서 먼저 기존 goal을 **STOP**으로 취소한 뒤 **ENGAGE**를 눌러
+수동 조작을 승인한다. 기본 속도는 `0.20 m/s`, 회전 속도는 `0.30 rad/s`다.
+
+| 키 | 동작 |
+|---|---|
+| `i` / `,` | 직진 / 후진 |
+| `u`, `o` / `m`, `.` | 전진·후진 조향 |
+| `j` / `l` | 제자리 좌회전 / 우회전 |
+| `Shift+J` / `Shift+L` | 좌 crab / 우 crab |
+| `k` 또는 미지정 키 | 정지 |
+| `Ctrl-C` | zero를 보내고 teleop 종료 |
+
+CARLA의 `PythonAPI/examples/manual_control.py`는 기존 ego에 attach하지 않고 새 actor와
+camera/GNSS/IMU를 spawn하며 `VehicleControl.apply_control()`을 직접 호출한다. 따라서
+동일 role actor 중복과 physical 4WS/CAMROD safety gate 우회를 만들 수 있으므로 이
+full-stack 시험에는 사용하지 않는다.
+
+선택 Terminal 6 — wheel telemetry monitor:
 
 ```bash
 source ./scripts/virtual_carla/env.sh
@@ -353,7 +390,7 @@ virtual_carla_source_ros true true
 ros2 run rqt_extended_ackermann rqt_extended_ackermann
 ```
 
-종료는 Terminal 5 → 4 → 3 → 2 → 1의 역순이다.
+종료는 Terminal 6 → 5 → 4 → 3 → 2 → 1의 역순이다.
 
 ## 9. UI와 기능 확인
 
@@ -379,7 +416,15 @@ http://127.0.0.1:8010
 
 운영자가 UI 또는 Nav2 goal로 주행 시험을 시작하기 전 physical bridge의 armed 상태와
 정지 watchdog을 먼저 확인한다. 이 저장소의 실행 스크립트는 안전상 직진, 회전,
-crab, zero-turn 명령을 자동으로 보내지 않는다.
+crab, zero-turn 명령을 자동으로 보내지 않는다. `manual`도 키 입력을 기다리며 engage를
+자동으로 켜지 않는다.
+
+CAMROD의 GNSS/lidar/perception readiness 계약은 10 Hz다. CARLA full launch는 fake
+sensor rate를 `sim_fake_sensor_publish_rate_hz=10.0`으로 명시하고, fake-sensor include는
+heartbeat의 5 Hz launch 인자와 충돌하지 않는 전용 인자명을 사용한다. 실행 중 rate를
+바꾸는 경우에도 fake sensor node는 기존 rclpy timer의 period를 함께 변경한다. 이전
+빌드로 이미 떠 있는 프로세스에는 새 callback이 로드되지 않으므로 source 수정 후에는
+CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한다.
 
 ## 10. 핵심 코드 위치
 
@@ -405,6 +450,12 @@ crab, zero-turn 명령을 자동으로 보내지 않는다.
   빌드하고 portable gate를 재생성한다.
 - **CARLA는 켜졌지만 actor가 없음**: bridge 다음에 spawn을 실행하고 JSON의 actor
   `id`가 `CARLA_ROLE_NAME`과 같은지 확인한다.
+- **actor는 생겼지만 physical status가 interlocked**: actor보다 CAMROD를 먼저 띄운
+  경우다. CAMROD terminal만 종료하고 `server → bridge → spawn → camrod` 순서로 다시
+  시작한다. `run.sh manual`은 `ready=false` 상태를 거부한다.
+- **UI readiness가 5 Hz/10 Hz 사이에서 흔들림**: 최신 source를 build한 뒤 CAMROD를
+  재시작한다. heartbeat의 5 Hz가 fake sensors에 유출되던 launch-scope 충돌은 전용
+  `fake_sensor_publish_rate_hz` 인자로 차단돼 있다.
 - **UI는 보이나 camera가 stale**: control-only JSON 또는 NullRHI인지 확인한다.
 - **rendered server 시작 실패**: `nvidia-smi -L`과 `vulkaninfo --summary`를 먼저
   고친다. `nullrhi` 결과로 rendered 검증을 대체하지 않는다.

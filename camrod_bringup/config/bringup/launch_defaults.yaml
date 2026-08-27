@@ -705,6 +705,9 @@ bringup:
   # =========================================================================
   sim:
     lanelet_id: -1
+    # CAMROD's GNSS/lidar/perception readiness checkers expect 10 Hz. Keep
+    # this explicit and isolated from other included nodes' publish rates.
+    fake_sensor_publish_rate_hz: 10.0
     # Synthetic obstacle controls for cost-stop scenario tests.
     obstacle_offset: 12.0
     obstacle_height: 0.5

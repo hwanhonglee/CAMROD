@@ -1980,6 +1980,11 @@ def generate_launch_description():
         # (yaw_offset_deg, utm_origin_*, rotate_latlon_xy_by_yaw_offset).
 
         ('lanelet_id', cfg_get(launch_cfg, 'sim/lanelet_id', -1), 'Fake sensor lanelet id'),
+        (
+            'sim_fake_sensor_publish_rate_hz',
+            cfg_get(launch_cfg, 'sim/fake_sensor_publish_rate_hz', 10.0),
+            'Synthetic GNSS/lidar/perception publish rate (Hz)',
+        ),
         ('sim_obstacle_offset', cfg_get(launch_cfg, 'sim/obstacle_offset', 12.0), 'Fake obstacle offset distance (m)'),
         ('sim_obstacle_height', cfg_get(launch_cfg, 'sim/obstacle_height', 0.5), 'Fake obstacle height (m)'),
         ('sim_obstacle_direction', cfg_get(launch_cfg, 'sim/obstacle_direction', 'front'), 'Fake obstacle direction: front|left|right|rear'),
@@ -2143,6 +2148,9 @@ def generate_launch_description():
         'origin_lon': lc['origin_lon'],
         'origin_alt': lc['origin_alt'],
         'lanelet_id': lc['lanelet_id'],
+        'fake_sensor_publish_rate_hz': lc[
+            'sim_fake_sensor_publish_rate_hz'
+        ],
         'obstacle_offset': lc['sim_obstacle_offset'],
         'obstacle_height': lc['sim_obstacle_height'],
         'obstacle_direction': lc['sim_obstacle_direction'],

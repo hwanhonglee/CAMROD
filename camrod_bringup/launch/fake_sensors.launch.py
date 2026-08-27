@@ -133,8 +133,11 @@ def generate_launch_description():
         description='Fake vehicle speed (m/s)',
     )
     publish_rate_arg = DeclareLaunchArgument(
-        'publish_rate_hz',
-        # HH_260618: Match fake sensor launch override with YAML default to reduce sim topic load.
+        'fake_sensor_publish_rate_hz',
+        # Keep this name private to the fake-sensor include. Generic launch
+        # configuration names leak across nested includes; in the CARLA full
+        # composition, platform_heartbeat's 5 Hz argument otherwise overrides
+        # this node's 10 Hz diagnostics contract.
         default_value='10.0',
         description='Fake sensor publish rate (Hz)',
     )
@@ -232,7 +235,7 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     lanelet_id = LaunchConfiguration('lanelet_id')
     speed_mps = LaunchConfiguration('speed_mps')
-    publish_rate = LaunchConfiguration('publish_rate_hz')
+    publish_rate = LaunchConfiguration('fake_sensor_publish_rate_hz')
     loop = LaunchConfiguration('loop')
     frame_id = LaunchConfiguration('frame_id')
     base_frame_id = LaunchConfiguration('base_frame_id')

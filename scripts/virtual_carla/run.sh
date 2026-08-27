@@ -5,17 +5,22 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|spawn|camrod|doctor>
+Usage: run.sh <commands|server|bridge|spawn|camrod|manual|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
   bridge    run the standard carla_ros_bridge
   spawn     spawn the configured Ranger actor/sensors
   camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
+  manual    keyboard Twist through CAMROD's safety gate and physical 4WS path
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
-Start in separate terminals: server -> bridge -> spawn -> camrod.
-Stop in reverse order. No subcommand publishes motion or sends a Nav2 goal.
+Required order in separate terminals: server -> bridge -> spawn -> camrod.
+Wait for each preceding stage to report success. The camrod stage refuses to
+start unless exactly one vehicle.ranger.default with CARLA_ROLE_NAME exists.
+Run manual only after camrod is healthy; it sends nothing until the operator
+presses a motion key and never engages the robot. Stop in reverse order. The
+lifecycle subcommands do not publish motion or send a Nav2 goal.
 
 CARLA_RENDER_MODE is one of offscreen (default), onscreen, or nullrhi.
 Set RANGER_SPAWN_FILE to an aligned full-sensor JSON for rendered perception;
@@ -119,6 +124,16 @@ camrod_command() {
   )
 }
 
+manual_command() {
+  MANUAL_COMMAND=(
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard
+    --ros-args
+    -r cmd_vel:=/control/nav2_cmd_vel_ros
+    -p speed:=0.20
+    -p turn:=0.30
+  )
+}
+
 port_is_listening() {
   command -v ss >/dev/null 2>&1 || return 1
   ss -H -ltn 2>/dev/null | awk -v suffix=":${CARLA_PORT}" '
@@ -139,10 +154,11 @@ require_renderer() {
     virtual_carla_die "NVIDIA driver/GPU is not ready for rendered CARLA"
     return 1
   }
-  command -v vulkaninfo >/dev/null 2>&1 || {
-    virtual_carla_die "vulkaninfo is required for rendered CARLA"
-    return 1
-  }
+  if ! command -v vulkaninfo >/dev/null 2>&1; then
+    printf '%s\n' \
+      '[virtual_carla] WARNING: vulkaninfo is not installed; skipping the optional Vulkan summary preflight' >&2
+    return 0
+  fi
   vulkaninfo --summary >/dev/null 2>&1 || {
     virtual_carla_die "Vulkan is not ready for rendered CARLA"
     return 1
@@ -176,22 +192,21 @@ require_bridge_authorization_files() {
     "${RANGER_BASELINE_MANIFEST}" "Ranger baseline gate" || return 1
   virtual_carla_require_file \
     "${RANGER_PHYSICAL_MANIFEST}" "Ranger physical 4WS gate" || return 1
-  validate_gate_status \
-    "${RANGER_BASELINE_MANIFEST}" "baseline gate" || return 1
-  validate_gate_status \
-    "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate" || return 1
+  validate_runtime_gates || return 1
 }
 
 validate_spawn_file() {
   virtual_carla_require_file \
     "${RANGER_SPAWN_FILE}" "Ranger spawn JSON" || return 1
-  python3 - "${RANGER_SPAWN_FILE}" "${CARLA_ROLE_NAME}" <<'PY'
+  python3 - "${RANGER_SPAWN_FILE}" "${CARLA_ROLE_NAME}" \
+    vehicle.ranger.default <<'PY'
 import json
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 role = sys.argv[2]
+expected_type = sys.argv[3]
 try:
     document = json.loads(path.read_text(encoding="utf-8"))
 except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -199,28 +214,98 @@ except (OSError, UnicodeError, json.JSONDecodeError) as error:
 objects = document.get("objects", [])
 if not isinstance(objects, list) or not objects:
     raise SystemExit(f"spawn JSON has no objects: {path}")
-if not any(item.get("id") == role for item in objects if isinstance(item, dict)):
-    raise SystemExit(f"spawn JSON has no actor id {role!r}: {path}")
+matches = [
+    item for item in objects
+    if isinstance(item, dict) and item.get("id") == role
+]
+if len(matches) != 1:
+    raise SystemExit(
+        f"spawn JSON must have exactly one actor id {role!r}, "
+        f"found {len(matches)}: {path}")
+if matches[0].get("type") != expected_type:
+    raise SystemExit(
+        f"spawn JSON actor {role!r} type must be exactly "
+        f"{expected_type!r}, got {matches[0].get('type')!r}: {path}")
 PY
 }
 
-validate_gate_status() {
-  local manifest="$1" label="$2"
-  virtual_carla_require_file "${manifest}" "${label}" || return 1
-  python3 - "${manifest}" "${label}" <<'PY'
-import json
-from pathlib import Path
-import sys
+validate_runtime_gates() {
+  local validator_source
+  validator_source="${RANGER_ROS_WS}/src/carla_extended_ackermann_control/src"
+  python3 "${script_dir}/validate_runtime_gates.py" \
+    --validator-source "${validator_source}" \
+    --baseline-manifest "${RANGER_BASELINE_MANIFEST}" \
+    --physical-manifest "${RANGER_PHYSICAL_MANIFEST}"
+}
 
-path = Path(sys.argv[1])
-label = sys.argv[2]
-try:
-    document = json.loads(path.read_text(encoding="utf-8"))
-except (OSError, UnicodeError, json.JSONDecodeError) as error:
-    raise SystemExit(f"{label} is unreadable or invalid: {path}: {error}") from None
-if document.get("status") != "VERIFIED":
-    raise SystemExit(f"{label} status is not VERIFIED: {path}")
-PY
+validate_ranger_actor_ready() {
+  local cache_dir
+  cache_dir="$(mktemp -d \
+    "${TMPDIR:-/tmp}/camrod-carla-actor-preflight.XXXXXX")"
+  (
+    trap 'rm -rf -- "${cache_dir}"' EXIT
+    export PYTHON_EGG_CACHE="${cache_dir}"
+    export CARLA_PYTHON_EGG_CACHE="${cache_dir}"
+    export RANGER_PYTHON_EGG_CACHE="${cache_dir}"
+    virtual_carla_use_python_egg
+    PYTHONDONTWRITEBYTECODE=1 python3 \
+      "${script_dir}/check_ranger_actor.py" \
+      --host "${CARLA_HOST}" \
+      --port "${CARLA_PORT}" \
+      --role-name "${CARLA_ROLE_NAME}" \
+      --accepted-python-egg "${CARLA_PYTHON_EGG}" \
+      --private-egg-cache "${cache_dir}"
+  )
+}
+
+validate_physical_bridge_ready() {
+  local status_code
+  if timeout --signal=INT --kill-after=2s 9s \
+      python3 "${script_dir}/check_physical_bridge_status.py" \
+        --role-name "${CARLA_ROLE_NAME}" \
+        --timeout-seconds 5; then
+    return 0
+  else
+    status_code=$?
+  fi
+  case "${status_code}" in
+    124|137)
+      virtual_carla_die \
+        "physical 4WS status preflight exceeded its hard 9s bound and was killed; start server -> bridge -> spawn -> camrod, then retry manual"
+      ;;
+    130)
+      virtual_carla_die "physical 4WS status preflight was interrupted"
+      ;;
+    *)
+      return "${status_code}"
+      ;;
+  esac
+  return 1
+}
+
+validate_camrod_ui_manual_ready() {
+  local status_code
+  if timeout --signal=INT --kill-after=2s 7s \
+      python3 "${script_dir}/check_camrod_ui_manual_ready.py" \
+        --base-url "${CAMROD_UI_URL}" \
+        --timeout-seconds 2; then
+    return 0
+  else
+    status_code=$?
+  fi
+  case "${status_code}" in
+    124|137)
+      virtual_carla_die \
+        "CAMROD UI manual preflight exceeded its hard 7s bound and was killed; verify ${CAMROD_UI_URL}, press STOP, then retry manual"
+      ;;
+    130)
+      virtual_carla_die "CAMROD UI manual preflight was interrupted"
+      ;;
+    *)
+      return "${status_code}"
+      ;;
+  esac
+  return 1
 }
 
 validate_carla_python_api() {
@@ -312,10 +397,7 @@ run_doctor() {
   fi
 
   validate_spawn_file || failures=$((failures + 1))
-  validate_gate_status \
-    "${RANGER_BASELINE_MANIFEST}" "baseline gate" || failures=$((failures + 1))
-  validate_gate_status \
-    "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate" || failures=$((failures + 1))
+  validate_runtime_gates || failures=$((failures + 1))
 
   if virtual_carla_source_ros true true; then
     virtual_carla_verify_package_prefix \
@@ -367,6 +449,7 @@ case "${subcommand}" in
       CARLA_PYTHON_EGG_CACHE='<fresh-empty-absolute-directory>'
     fi
     camrod_command
+    manual_command
 
     printf '# Export once in every terminal (adjust overrides as needed)\n'
     printf 'export RANGER_CARLA_ROOT=%q\n' "${RANGER_CARLA_ROOT}"
@@ -374,11 +457,14 @@ case "${subcommand}" in
     printf 'export UE_ROOT=%q\n' "${UE_ROOT}"
     printf 'export CARLA_ROS_BRIDGE_WS=%q\n' "${CARLA_ROS_BRIDGE_WS}"
     printf 'export RANGER_ROS_WS=%q\n\n' "${RANGER_ROS_WS}"
-    printf '# Recommended copyable lifecycle commands (four terminals)\n'
+    printf '# REQUIRED lifecycle order (four terminals)\n'
+    printf '# Wait for each preceding stage to report success before continuing.\n'
     printf '%q server\n' "${script_dir}/run.sh"
     printf '%q bridge\n' "${script_dir}/run.sh"
     printf '%q spawn\n' "${script_dir}/run.sh"
     printf '%q camrod\n\n' "${script_dir}/run.sh"
+    printf '# Optional after CAMROD and physical 4WS status are healthy\n'
+    printf '%q manual\n\n' "${script_dir}/run.sh"
 
     printf '# Expanded server command\n'
     print_command "${SERVER_COMMAND[@]}"
@@ -388,6 +474,8 @@ case "${subcommand}" in
     print_command "${SPAWN_COMMAND[@]}"
     printf '\n# Expanded CAMROD command; run.sh creates the fresh egg cache\n'
     print_command "${CAMROD_COMMAND[@]}"
+    printf '\n# Expanded guarded keyboard command (manual preflight runs first)\n'
+    print_command "${MANUAL_COMMAND[@]}"
     printf '\n# No motion command or navigation goal is emitted here.\n'
     ;;
   server)
@@ -432,9 +520,9 @@ case "${subcommand}" in
       camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
     virtual_carla_verify_package_prefix \
       camrod_ui "${CAMROD_WS_ROOT}/install"
-    validate_gate_status "${RANGER_BASELINE_MANIFEST}" "baseline gate"
-    validate_gate_status \
-      "${RANGER_PHYSICAL_MANIFEST}" "physical 4WS gate"
+    validate_runtime_gates
+    validate_spawn_file
+    validate_ranger_actor_ready
 
     if [[ -z "${CARLA_PYTHON_EGG_CACHE}" ]]; then
       CARLA_PYTHON_EGG_CACHE="$(
@@ -462,6 +550,33 @@ case "${subcommand}" in
     virtual_carla_log \
       "no motion is sent; arm and command only after runtime gates are healthy"
     exec "${CAMROD_COMMAND[@]}"
+    ;;
+  manual)
+    [[ -t 0 ]] || virtual_carla_die \
+      "manual requires an interactive terminal (TTY)"
+    require_common_runtime_files
+    virtual_carla_source_ros true true
+    virtual_carla_verify_package_prefix \
+      teleop_twist_keyboard "/opt/ros/${ROS_DISTRO}"
+    virtual_carla_verify_package_prefix \
+      carla_extended_ackermann_control "${RANGER_ROS_WS}/install"
+    virtual_carla_verify_package_prefix \
+      camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
+    validate_runtime_gates
+    validate_spawn_file
+    validate_ranger_actor_ready
+    validate_camrod_ui_manual_ready
+    validate_physical_bridge_ready
+    manual_command
+    virtual_carla_log \
+      "manual input is safety-gated at /control/nav2_cmd_vel_ros"
+    virtual_carla_log \
+      "UI: cancel any active goal with STOP, then press ENGAGE; this command never engages automatically"
+    virtual_carla_log \
+      "keys: i/, forward/reverse; u/o and m/. steer; j/l zero-turn; Shift+J/L crab; k or any unbound key stop; Ctrl-C exits with zero"
+    virtual_carla_log \
+      "speed=0.20 m/s, turn=0.30 rad/s; keep the CARLA and wheel telemetry views visible"
+    exec "${MANUAL_COMMAND[@]}"
     ;;
   doctor)
     run_doctor
