@@ -1,5 +1,6 @@
 """Portable, non-mutating contracts for the virtual CARLA entrypoints."""
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +16,7 @@ GATE_VALIDATOR = SCRIPT_ROOT / "validate_runtime_gates.py"
 ACTOR_PREFLIGHT = SCRIPT_ROOT / "check_ranger_actor.py"
 PHYSICAL_PREFLIGHT = SCRIPT_ROOT / "check_physical_bridge_status.py"
 UI_MANUAL_PREFLIGHT = SCRIPT_ROOT / "check_camrod_ui_manual_ready.py"
+SENSOR_PREFLIGHT = SCRIPT_ROOT / "check_carla_sensor_streams.py"
 SCRIPTS = ("env.sh", "setup.sh", "build.sh", "test.sh", "run.sh")
 VIRTUAL_ENV_KEYS = (
     "RANGER_CARLA_ROOT",
@@ -24,6 +26,7 @@ VIRTUAL_ENV_KEYS = (
     "RANGER_EVIDENCE_ROOT",
     "RANGER_BASELINE_MANIFEST",
     "RANGER_PHYSICAL_MANIFEST",
+    "RANGER_SPAWN_FILE",
     "RANGER_CARLA_PYTHON_EGG",
     "RANGER_PYTHON_EGG_CACHE",
     "CARLA_ROOT",
@@ -31,6 +34,11 @@ VIRTUAL_ENV_KEYS = (
     "RANGER_ROS_BRIDGE_WS",
     "CARLA_PYTHON_EGG",
     "CARLA_PYTHON_EGG_CACHE",
+    "CARLA_RENDER_MODE",
+    "CARLA_SYNCHRONOUS_MODE",
+    "CARLA_WAIT_FOR_CONTROL_COMMAND",
+    "CARLA_FIXED_DELTA_SECONDS",
+    "CAMROD_LAUNCH_SENSOR_RELAY",
     # env.sh derives these from CARLA_ROOT/UE_ROOT.  Clear parent-shell
     # values in fixture subprocesses so a real local project cannot mask the
     # deliberately incomplete temporary CARLA/UE trees under test.
@@ -74,6 +82,7 @@ def test_entrypoints_are_executable_and_parse() -> None:
         ACTOR_PREFLIGHT,
         PHYSICAL_PREFLIGHT,
         UI_MANUAL_PREFLIGHT,
+        SENSOR_PREFLIGHT,
     ):
         source = path.read_text(encoding="utf-8")
         compile(source, str(path), "exec")
@@ -98,6 +107,7 @@ def test_scripts_and_composition_launches_embed_no_developer_home() -> None:
         ACTOR_PREFLIGHT,
         PHYSICAL_PREFLIGHT,
         UI_MANUAL_PREFLIGHT,
+        SENSOR_PREFLIGHT,
     ]
     paths += [
         PACKAGE_ROOT / "launch" / "camrod_carla.launch.py",
@@ -128,7 +138,9 @@ def test_manual_keyboard_path_is_fail_closed_and_uses_camrod_safety_gate() -> No
     manual_case = source.split("  manual)\n", 1)[1].split("    ;;\n", 1)[0]
 
     assert "teleop_twist_keyboard" in source
-    assert "cmd_vel:=/control/nav2_cmd_vel_ros" in source
+    assert "cmd_vel:=/control/manual_cmd_vel_ros" in source
+    assert "standalone ENGAGE on the last page" in source
+    assert "not a B1-B13 destination button" in source
     assert "-p speed:=0.20" in source
     assert "-p turn:=0.20" in source
     assert "radius = speed / turn = 1.0 m" in source
@@ -137,6 +149,8 @@ def test_manual_keyboard_path_is_fail_closed_and_uses_camrod_safety_gate() -> No
     assert "validate_ranger_actor_ready" in manual_case
     assert "validate_camrod_ui_manual_ready" in manual_case
     assert "validate_physical_bridge_ready" in manual_case
+    assert "validate_manual_actor_binding" in manual_case
+    assert manual_case.count("validate_ranger_actor_ready") == 2
     assert manual_case.index("validate_ranger_actor_ready") < manual_case.index(
         "validate_camrod_ui_manual_ready"
     )
@@ -144,6 +158,9 @@ def test_manual_keyboard_path_is_fail_closed_and_uses_camrod_safety_gate() -> No
         "validate_camrod_ui_manual_ready"
     ) < manual_case.index("validate_physical_bridge_ready")
     assert manual_case.index("validate_physical_bridge_ready") < manual_case.index(
+        "validate_manual_actor_binding"
+    )
+    assert manual_case.index("validate_manual_actor_binding") < manual_case.index(
         "manual_command"
     )
     assert "physical_four_wheel_status" in physical_source
@@ -197,6 +214,55 @@ def test_physical_status_validator_accepts_only_fully_ready_bound_actor() -> Non
     }
 
     assert module.validate_status(status, "ego_vehicle") == 42
+    assert module.format_success(42, "ego_vehicle", True) == "42"
+    assert "actor_id=42" in module.format_success(42, "ego_vehicle", False)
+
+
+def test_manual_actor_binding_guard_matches_or_fails_closed() -> None:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    function = "validate_manual_actor_binding() {\n" + source.split(
+        "validate_manual_actor_binding() {\n", 1
+    )[1].split("\n}\n", 1)[0] + "\n}\n"
+    harness = f"""
+set -euo pipefail
+virtual_carla_log() {{ printf '[virtual_carla] %s\\n' "$*"; }}
+virtual_carla_die() {{ printf '[virtual_carla] ERROR: %s\\n' "$*" >&2; return 1; }}
+{function}
+validate_manual_actor_binding
+"""
+
+    matching_environment = os.environ.copy()
+    matching_environment.update(
+        {"RANGER_LIVE_ACTOR_ID": "41", "PHYSICAL_BRIDGE_ACTOR_ID": "41"}
+    )
+    matching = subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=matching_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert matching.returncode == 0, matching.stderr
+    assert "manual actor identity matched: actor_id=41" in matching.stdout
+
+    mismatched_environment = os.environ.copy()
+    mismatched_environment.update(
+        {"RANGER_LIVE_ACTOR_ID": "42", "PHYSICAL_BRIDGE_ACTOR_ID": "41"}
+    )
+    mismatched = subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=mismatched_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert mismatched.returncode != 0
+    assert "live CARLA actor_id=42" in mismatched.stderr
+    assert "physical 4WS bridge actor_id=41" in mismatched.stderr
+    assert "manual remains disabled" in mismatched.stderr
+    assert "rerun ./scripts/virtual_carla/run.sh camrod" in mismatched.stderr
 
 
 def test_physical_status_validator_rejects_interlock_with_lifecycle_hint() -> None:
@@ -277,14 +343,16 @@ def test_ui_manual_validator_rejects_not_ready_or_active_mission() -> None:
 def test_camrod_requires_spawn_contract_and_live_actor_before_main_cache() -> None:
     source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
     assert "spawn JSON must have exactly one actor id" in source
-    assert 'matches[0].get("type") != expected_type' in source
-    assert "vehicle.ranger.default <<'PY'" in source
+    assert 'vehicle.get("type") != expected_type' in source
+    assert '"${accepted_control}" "${accepted_visual}" <<\'PY\'' in source
+    assert "breaks the accepted spawn/alignment cohort" in source
     camrod_case = source.split("  camrod)\n", 1)[1].split("    ;;\n", 1)[0]
     gate_index = camrod_case.index("validate_runtime_gates")
     spawn_index = camrod_case.index("validate_spawn_file")
     actor_index = camrod_case.index("validate_ranger_actor_ready")
+    sensor_index = camrod_case.index("validate_carla_sensor_streams")
     main_cache_index = camrod_case.index('if [[ -z "${CARLA_PYTHON_EGG_CACHE}" ]]')
-    assert gate_index < spawn_index < actor_index < main_cache_index
+    assert gate_index < spawn_index < actor_index < sensor_index < main_cache_index
 
     preflight_function = source.split(
         "validate_ranger_actor_ready() {\n", 1
@@ -295,6 +363,188 @@ def test_camrod_requires_spawn_contract_and_live_actor_before_main_cache() -> No
     assert 'export RANGER_PYTHON_EGG_CACHE="${cache_dir}"' in preflight_function
     assert "virtual_carla_use_python_egg" in preflight_function
     assert "check_ranger_actor.py" in preflight_function
+
+
+def _run_spawn_contract_validator(
+    spawn_file: Path, render_mode: str
+) -> subprocess.CompletedProcess:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    function = "validate_spawn_file() {\n" + source.split(
+        "validate_spawn_file() {\n", 1
+    )[1].split("\n}\n", 1)[0] + "\n}\n"
+    harness = f"""
+set -euo pipefail
+virtual_carla_require_file() {{ [[ -f "$1" ]]; }}
+{function}
+validate_spawn_file
+"""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "RANGER_SPAWN_FILE": str(spawn_file),
+            "CARLA_ROLE_NAME": "ego_vehicle",
+            "CARLA_RENDER_MODE": render_mode,
+            "CAMROD_SRC_ROOT": str(SRC_ROOT),
+        }
+    )
+    return subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_spawn_contract_requires_visual_payload_actors_only_when_rendered(
+    tmp_path: Path,
+) -> None:
+    control_only = (
+        PACKAGE_ROOT / "config" / "ranger_spawn_camrod_control_only.json"
+    )
+    full_sensors = (
+        PACKAGE_ROOT / "config" / "ranger_spawn_camrod_full_sensors.json"
+    )
+
+    rendered_control = _run_spawn_contract_validator(
+        control_only, "offscreen"
+    )
+    assert rendered_control.returncode != 0
+    assert "rendered spawn JSON must contain exactly one 'rgb_view'" in (
+        rendered_control.stderr
+    )
+
+    nullrhi_control = _run_spawn_contract_validator(control_only, "nullrhi")
+    assert nullrhi_control.returncode == 0, nullrhi_control.stderr
+
+    rendered_full = _run_spawn_contract_validator(full_sensors, "onscreen")
+    assert rendered_full.returncode == 0, rendered_full.stderr
+
+    wrong_pose = tmp_path / "wrong-pose.json"
+    wrong_pose_document = json.loads(full_sensors.read_text(encoding="utf-8"))
+    ranger = next(
+        item
+        for item in wrong_pose_document["objects"]
+        if item.get("id") == "ego_vehicle"
+    )
+    ranger["spawn_point"]["x"] = 0.0
+    wrong_pose.write_text(json.dumps(wrong_pose_document), encoding="utf-8")
+    rejected_pose = _run_spawn_contract_validator(wrong_pose, "offscreen")
+    assert rejected_pose.returncode != 0
+    assert "breaks the accepted spawn/alignment cohort" in rejected_pose.stderr
+
+
+def _run_hot_respawn_guard(
+    node_list: str, *, list_exit: int = 0
+) -> subprocess.CompletedProcess:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    function = "refuse_hot_respawn() {\n" + source.split(
+        "refuse_hot_respawn() {\n", 1
+    )[1].split("\n}\n", 1)[0] + "\n}\n"
+    harness = f"""
+set -uo pipefail
+virtual_carla_die() {{ printf '[virtual_carla] ERROR: %s\\n' "$*" >&2; return 1; }}
+timeout() {{ printf '%s\\n' "${{FAKE_NODE_LIST}}"; return "${{FAKE_LIST_EXIT}}"; }}
+{function}
+refuse_hot_respawn
+"""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "FAKE_NODE_LIST": node_list,
+            "FAKE_LIST_EXIT": str(list_exit),
+        }
+    )
+    return subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_spawn_refuses_hot_respawn_and_unknown_ros_graph_state() -> None:
+    idle = _run_hot_respawn_guard("/carla_ros_bridge")
+    assert idle.returncode == 0, idle.stderr
+
+    active = _run_hot_respawn_guard(
+        "/carla_ros_bridge\n/carla/ego_vehicle/physical_four_wheel_bridge"
+    )
+    assert active.returncode != 0
+    assert "hot respawn would change the actor ID" in active.stderr
+
+    duplicate_spawn = _run_hot_respawn_guard("/carla_spawn_objects")
+    assert duplicate_spawn.returncode != 0
+    assert "duplicate/hot respawn" in duplicate_spawn.stderr
+
+    unknown = _run_hot_respawn_guard("graph unavailable", list_exit=124)
+    assert unknown.returncode != 0
+    assert "cannot verify whether CAMROD is active" in unknown.stderr
+    assert "exit=124" in unknown.stderr
+
+
+def _run_render_timing_contract(
+    *,
+    render_mode: str = "offscreen",
+    synchronous: str = "True",
+    wait_for_control: str = "False",
+    fixed_delta: str = "0.05",
+) -> subprocess.CompletedProcess:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    function = "validate_render_timing_contract() {\n" + source.split(
+        "validate_render_timing_contract() {\n", 1
+    )[1].split("\n}\n", 1)[0] + "\n}\n"
+    harness = f"""
+set -uo pipefail
+virtual_carla_die() {{ printf '[virtual_carla] ERROR: %s\\n' "$*" >&2; return 1; }}
+{function}
+validate_render_timing_contract
+"""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "CARLA_RENDER_MODE": render_mode,
+            "CARLA_SYNCHRONOUS_MODE": synchronous,
+            "CARLA_WAIT_FOR_CONTROL_COMMAND": wait_for_control,
+            "CARLA_FIXED_DELTA_SECONDS": fixed_delta,
+        }
+    )
+    return subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rendered_timing_contract_prevents_sensor_startup_deadlocks():
+    accepted = _run_render_timing_contract()
+    assert accepted.returncode == 0, accepted.stderr
+
+    waiting = _run_render_timing_contract(wait_for_control="True")
+    assert waiting.returncode != 0
+    assert "wait_for_vehicle_control_command=False" in waiting.stderr
+
+    asynchronous = _run_render_timing_contract(synchronous="False")
+    assert asynchronous.returncode != 0
+    assert "requires synchronous_mode=True" in asynchronous.stderr
+
+    slow_tick = _run_render_timing_contract(fixed_delta="0.2")
+    assert slow_tick.returncode != 0
+    assert "CARLA_FIXED_DELTA_SECONDS" in slow_tick.stderr
+
+    nullrhi = _run_render_timing_contract(
+        render_mode="nullrhi",
+        synchronous="False",
+        wait_for_control="True",
+        fixed_delta="1.0",
+    )
+    assert nullrhi.returncode == 0, nullrhi.stderr
 
 
 def _write_fake_carla_egg(path: Path) -> None:
@@ -323,10 +573,20 @@ class World:
                 Actor(20, "vehicle.ranger.default", "another_role"),
                 Actor(21, "vehicle.other.default", role),
             ]
+        if mode == "empty":
+            return [
+                Actor(22, "vehicle.ranger.default", "another_role"),
+                Actor(23, "vehicle.other.default", "another_role"),
+            ]
         if mode == "many":
             return [
                 Actor(31, "vehicle.ranger.default", role),
                 Actor(32, "vehicle.ranger.default", role),
+            ]
+        if mode == "mixed":
+            return [
+                Actor(33, "vehicle.ranger.default", role),
+                Actor(34, "vehicle.other.default", role),
             ]
         return [Actor(41, "vehicle.ranger.default", role)]
 
@@ -356,6 +616,8 @@ def _run_actor_preflight(
     *,
     accepted_egg: Path | None = None,
     timeout_seconds: str = "0.05",
+    actor_id_only: bool = False,
+    expected_count: int = 1,
 ) -> subprocess.CompletedProcess:
     egg = tmp_path / "fake-carla.egg"
     if not egg.exists():
@@ -372,23 +634,28 @@ def _run_actor_preflight(
             "FAKE_CARLA_ROLE": "ego_vehicle",
         }
     )
+    arguments = [
+        sys.executable,
+        str(ACTOR_PREFLIGHT),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "2000",
+        "--role-name",
+        "ego_vehicle",
+        "--accepted-python-egg",
+        str(accepted_egg or egg),
+        "--private-egg-cache",
+        str(cache),
+        "--timeout-seconds",
+        timeout_seconds,
+        "--expected-count",
+        str(expected_count),
+    ]
+    if actor_id_only:
+        arguments.append("--actor-id-only")
     return subprocess.run(
-        [
-            sys.executable,
-            str(ACTOR_PREFLIGHT),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "2000",
-            "--role-name",
-            "ego_vehicle",
-            "--accepted-python-egg",
-            str(accepted_egg or egg),
-            "--private-egg-cache",
-            str(cache),
-            "--timeout-seconds",
-            timeout_seconds,
-        ],
+        arguments,
         cwd=SRC_ROOT,
         env=environment,
         check=False,
@@ -405,6 +672,33 @@ def test_actor_preflight_accepts_exactly_one_bound_ranger(tmp_path: Path) -> Non
     assert "actor_id=41" in result.stdout
     assert "type=vehicle.ranger.default" in result.stdout
     assert "role_name=ego_vehicle" in result.stdout
+
+
+def test_actor_preflight_actor_id_only_is_machine_readable(tmp_path: Path) -> None:
+    result = _run_actor_preflight(tmp_path, "one", actor_id_only=True)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "41\n"
+    assert result.stderr == ""
+
+
+def test_actor_preflight_requires_empty_inventory_before_spawn(
+    tmp_path: Path,
+) -> None:
+    empty = _run_actor_preflight(tmp_path, "empty", expected_count=0)
+    assert empty.returncode == 0, empty.stderr
+    assert "Ranger actor inventory ready for spawn" in empty.stdout
+    assert "count=0" in empty.stdout
+
+    existing = _run_actor_preflight(tmp_path, "one", expected_count=0)
+    assert existing.returncode != 0
+    assert "pre-existing actor" in existing.stderr
+    assert "refusing duplicate spawn" in existing.stderr
+
+    wrong_type = _run_actor_preflight(tmp_path, "zero", expected_count=0)
+    assert wrong_type.returncode != 0
+    assert "vehicle.other.default" in wrong_type.stderr
+    assert "refusing duplicate spawn" in wrong_type.stderr
 
 
 def test_actor_preflight_retries_transient_empty_inventory(
@@ -440,12 +734,12 @@ def test_actor_preflight_polls_persistent_zero_until_deadline(
 ) -> None:
     result = _run_actor_preflight(
         tmp_path,
-        "zero",
+        "empty",
         timeout_seconds="0.45",
     )
 
     assert result.returncode != 0
-    assert "found 0 exact Ranger actors" in result.stderr
+    assert "found 0 actors using the required Ranger role" in result.stderr
     assert "after 2 actor inventory poll" in result.stderr or (
         "after 3 actor inventory poll" in result.stderr
     )
@@ -458,8 +752,10 @@ def test_actor_preflight_rejects_endpoint_zero_and_duplicate_actor(
 ) -> None:
     expected_messages = {
         "endpoint": "cannot read CARLA endpoint 127.0.0.1:2000",
-        "zero": "found 0 exact Ranger actors",
-        "many": "found 2 exact Ranger actors",
+        "empty": "found 0 actors using the required Ranger role",
+        "zero": "has type='vehicle.other.default'",
+        "many": "found 2 actors using required role_name",
+        "mixed": "found 2 actors using required role_name",
     }
     for mode, expected in expected_messages.items():
         result = _run_actor_preflight(tmp_path, mode)
@@ -799,6 +1095,42 @@ printf '%s\\0' \
     ]
 
 
+def test_env_selects_visual_relay_only_for_rendered_modes(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+printf '%s\n%s\n' "$RANGER_SPAWN_FILE" "$CAMROD_LAUNCH_SENSOR_RELAY"
+"""
+
+    rendered = _bash(
+        script,
+        environment={
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CARLA_RENDER_MODE": "offscreen",
+        },
+    )
+    assert rendered.stdout.splitlines() == [
+        str(PACKAGE_ROOT / "config" / "ranger_spawn_camrod_full_sensors.json"),
+        "true",
+    ]
+
+    nullrhi = _bash(
+        script,
+        environment={
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CARLA_RENDER_MODE": "nullrhi",
+        },
+    )
+    assert nullrhi.stdout.splitlines() == [
+        str(PACKAGE_ROOT / "config" / "ranger_spawn_camrod_control_only.json"),
+        "false",
+    ]
+
+
 def test_ranger_environment_file_loads_but_shell_override_wins(
     tmp_path: Path,
 ) -> None:
@@ -850,11 +1182,12 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "carla_ros_bridge.launch.py" in result.stdout
     assert "carla_spawn_objects.launch.py" in result.stdout
     assert "camrod_carla_full.launch.py" in result.stdout
+    assert "launch_sensor_relay:=true" in result.stdout
     assert "# REQUIRED lifecycle order (four terminals)" in result.stdout
     assert "Wait for each preceding stage to report success" in result.stdout
     assert "run.sh manual" in result.stdout
     assert "teleop_twist_keyboard" in result.stdout
-    assert "cmd_vel:=/control/nav2_cmd_vel_ros" in result.stdout
+    assert "cmd_vel:=/control/manual_cmd_vel_ros" in result.stdout
     assert "export RANGER_UE_ROOT=" in result.stdout
     assert "export ROS_DOMAIN_ID=" in result.stdout
     assert "export RMW_IMPLEMENTATION=" in result.stdout

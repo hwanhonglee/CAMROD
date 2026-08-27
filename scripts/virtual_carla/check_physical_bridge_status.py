@@ -75,7 +75,22 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role-name", required=True)
     parser.add_argument("--timeout-seconds", type=_positive_timeout, default=5.0)
+    parser.add_argument(
+        "--actor-id-only",
+        action="store_true",
+        help="print only the positive bridge-bound CARLA actor id on success",
+    )
     return parser
+
+
+def format_success(actor_id: int, role_name: str, actor_id_only: bool) -> str:
+    """Format either the human-readable or machine-readable success result."""
+    if actor_id_only:
+        return str(actor_id)
+    return (
+        "[virtual_carla] physical 4WS bridge ready: "
+        f"role={role_name} actor_id={actor_id} backend={EXPECTED_BACKEND}"
+    )
 
 
 def check_live_status(role_name: str, timeout_seconds: float) -> int:
@@ -174,10 +189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
-    print(
-        "[virtual_carla] physical 4WS bridge ready: "
-        f"role={role_name} actor_id={actor_id} backend={EXPECTED_BACKEND}"
-    )
+    print(format_success(actor_id, role_name, args.actor_id_only))
     return 0
 
 

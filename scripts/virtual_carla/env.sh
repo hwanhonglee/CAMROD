@@ -49,6 +49,7 @@ _virtual_carla_config_names=(
   RANGER_BASELINE_MANIFEST
   RANGER_PHYSICAL_MANIFEST
   RANGER_SPAWN_FILE
+  CAMROD_LAUNCH_SENSOR_RELAY
 )
 declare -A _virtual_carla_explicit_values=()
 for _virtual_carla_name in "${_virtual_carla_config_names[@]}"; do
@@ -126,7 +127,25 @@ export CARLA_PYTHON_EGG_CACHE="${CARLA_PYTHON_EGG_CACHE:-${RANGER_PYTHON_EGG_CAC
 export RANGER_EVIDENCE_ROOT="${RANGER_EVIDENCE_ROOT:-${RANGER_WORK_ROOT:+${RANGER_WORK_ROOT}/evidence}}"
 export RANGER_BASELINE_MANIFEST="${RANGER_BASELINE_MANIFEST:-${RANGER_EVIDENCE_ROOT:+${RANGER_EVIDENCE_ROOT}/ranger_ros_backend_gate.json}}"
 export RANGER_PHYSICAL_MANIFEST="${RANGER_PHYSICAL_MANIFEST:-${RANGER_EVIDENCE_ROOT:+${RANGER_EVIDENCE_ROOT}/ranger_physical_4ws_acceptance_gate.json}}"
-export RANGER_SPAWN_FILE="${RANGER_SPAWN_FILE:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/ranger_spawn_camrod_control_only.json}"
+if [[ -z "${RANGER_SPAWN_FILE:-}" ]]; then
+  if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
+    RANGER_SPAWN_FILE="${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/ranger_spawn_camrod_control_only.json"
+  else
+    # Rendered CARLA must own deterministic camera/LiDAR actors.  Topic relays
+    # cannot populate the CAMROD UI when the upstream sensors were never
+    # spawned, even if the topic names themselves are configured correctly.
+    RANGER_SPAWN_FILE="${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/ranger_spawn_camrod_full_sensors.json"
+  fi
+fi
+export RANGER_SPAWN_FILE
+if [[ -z "${CAMROD_LAUNCH_SENSOR_RELAY:-}" ]]; then
+  if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
+    CAMROD_LAUNCH_SENSOR_RELAY=false
+  else
+    CAMROD_LAUNCH_SENSOR_RELAY=true
+  fi
+fi
+export CAMROD_LAUNCH_SENSOR_RELAY
 export CAMROD_MAP_ALIGNMENT_FILE="${CAMROD_MAP_ALIGNMENT_FILE:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml}"
 export CAMROD_LANELET_MAP="${CAMROD_LANELET_MAP:-${CAMROD_SRC_ROOT}/lanelet2_maps.osm}"
 export CAMROD_LAUNCH_DEFAULTS_FILE="${CAMROD_LAUNCH_DEFAULTS_FILE:-${CAMROD_SRC_ROOT}/camrod_bringup/config/bringup/launch_defaults.yaml}"
@@ -311,6 +330,11 @@ RANGER_CARLA_PYTHON_EGG=${RANGER_CARLA_PYTHON_EGG}
 CARLA_PYTHON_EGG=${CARLA_PYTHON_EGG}
 CARLA endpoint=${CARLA_HOST}:${CARLA_PORT}
 CARLA map=${CARLA_UE_MAP}
+CARLA render mode=${CARLA_RENDER_MODE}
+CARLA synchronous=${CARLA_SYNCHRONOUS_MODE}
+CARLA wait for control=${CARLA_WAIT_FOR_CONTROL_COMMAND}
+CARLA fixed delta seconds=${CARLA_FIXED_DELTA_SECONDS}
+CAMROD sensor relay=${CAMROD_LAUNCH_SENSOR_RELAY}
 CAMROD lanelet map=${CAMROD_LANELET_MAP}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
 RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}

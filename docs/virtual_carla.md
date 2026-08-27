@@ -116,7 +116,7 @@ frame, clock 또는 QoS가 다르면 호환으로 간주하지 않는다.
 
 | 경계 | source → destination | 필수 조건 |
 |---|---|---|
-| 안전 명령 | `/control/nav2_cmd_vel_ros` → CAMROD safety gate → `/control/cmd_vel_ros` | engage/mission/estop, stale timeout과 zero publish를 유지; adapter를 Nav2 후보 topic에 직접 연결하지 않음 |
+| 안전 명령 | Nav2 `/control/nav2_cmd_vel_ros` 또는 CARLA 전용 수동 `/control/manual_cmd_vel_ros` → CAMROD safety gate → `/control/cmd_vel_ros` | engage/mission/estop, command owner, stale timeout과 zero publish를 유지; actuator adapter를 후보 topic에 직접 연결하지 않음 |
 | `ACKERMANN_ONLY` actuation | `/control/cmd_vel_ros` `Twist` → **추가 구현할 adapter** → `/carla/<role>/ackermann_cmd` `AckermannDrive` | only supported Dual-Ackermann input; `linear.y` 및 zero-turn/pivot 분류는 reject+stop; current `twist_to_4ws_node.py`는 message type이 달라 재사용/단순 remap할 수 없음 |
 | `PLANAR_TWIST` actuation | `/control/cmd_vel_ros` `Twist` → simulator planar command | simulator가 지원 축, body frame, 단위와 sign을 preflight에서 광고/검증; capability가 없으면 nonzero publish 금지 |
 | `PHYSICAL_4WS` actuation | `/control/cmd_vel_ros` → `/carla/<role>/extended_ackermann_cmd` → `/carla/<role>/physical_four_wheel_cmd` | `ExtendedAckermannDrive`/`PhysicalFourWheelControl` exact type, monotonically increasing sequence, `PhysicalFourWheelStatus` acknowledgement와 watchdog 필요 |
@@ -125,14 +125,18 @@ frame, clock 또는 QoS가 다르면 호환으로 간주하지 않는다.
 | sensor | simulator Image/CameraInfo/PointCloud2/Imu/NavSatFix → CAMROD canonical topics | calibration, optical/body frames, TF, timestamp, QoS, field layout와 consumer rate를 각각 검증 |
 | map | simulator world pose → `CAMROD_MAP_ALIGNMENT_FILE` → `CAMROD_LANELET_MAP` | spawn pose, SE(2) alignment와 lanelet map을 한 cohort로 승인; 다른 map/spawn에 기존 alignment 재사용 금지 |
 
-현재 `sensor_relay_node.py`는 Image/CameraInfo/PointCloud2를 copy/restamp하고 topic과
-일부 frame만 바꾼다. image rectification, compression, camera calibration 또는 LiDAR
-field 변환기는 아니다. 특히 CAMROD front production perception은
-`/sensing/camera/econ_front/image_rect/compressed`를 소비하지만 relay는 uncompressed
-`Image`까지만 발행한다. 따라서 stock CARLA sensor를 붙인 것만으로 full perception
-호환을 주장할 수 없다. current full launch는 CARLA IMU/GNSS relay도 꺼 두고,
-map-aligned `/odom`에서 10 Hz fake GNSS/IMU/readiness data를 파생한다. checked-in spawn
-JSON 역시 control-only이므로 rendered full-sensor profile은 별도 구현·검증 대상이다.
+`sensor_relay_node.py`는 CARLA Image/CameraInfo/PointCloud2를 CAMROD canonical topic과
+frame으로 copy/restamp한다. CARLA RGB camera는 distortion을 설정하지 않은 pinhole
+sensor이므로 동일 payload를 `image_raw`와 `image_rect` 경계에 제공한다. CARLA 전용
+relay 노드가 같은 callback 안에서 JPEG quality 80으로 front
+`image_rect/compressed`와 rear `image_raw/compressed`도 만든다. 별도 republish 프로세스가
+없어 원시·압축 frame의 수명과 종료 순서도 하나로 유지된다. 실제 렌즈 calibration이나
+distortion이 있는 다른 camera에 이 무변환 rectified 계약을 재사용하면 안 된다.
+LiDAR relay는 point field 자체를 변환하지 않으며, canonical mount를 사용한 visual
+profile에서 header를 `lidar_link`로 고정한다. current full launch는 CARLA IMU/GNSS
+relay를 꺼 두고 map-aligned `/odom`에서 10 Hz fake GNSS/IMU/readiness data를 파생한다.
+relay의 raw/JPEG/LiDAR stale 또는 JPEG 변환 오류는 전용 status와 표준 `/diagnostics`에
+동시에 발행한다.
 
 ### 2.4 capability fail-closed 계약
 
@@ -288,7 +292,7 @@ $RANGER_CARLA_ROOT/
 | `RANGER_CARLA_PYTHON_EGG` | Ranger gate가 고정한 CARLA egg |
 | `CARLA_PYTHON_EGG` | 위 egg와 동일해야 하는 CAMROD launch alias |
 | `RANGER_PYTHON_EGG_CACHE` | 실행마다 새로 만든 빈 절대 경로 |
-| `RANGER_SPAWN_FILE` | actor/sensor JSON; 기본은 control-only smoke 구성 |
+| `RANGER_SPAWN_FILE` | actor/sensor JSON; rendered mode는 정렬된 `ranger_spawn_camrod_full_sensors.json`, `nullrhi`는 control-only smoke가 기본 |
 | `CAMROD_LANELET_MAP` | CAMROD lanelet2 `.osm` |
 | `CAMROD_MAP_ALIGNMENT_FILE` | CARLA↔CAMROD SE(2) alignment YAML |
 | `CARLA_RENDER_MODE` | `offscreen`, `onscreen`, `nullrhi` |
@@ -481,17 +485,27 @@ Terminal 2 — pinned CARLA ROS bridge:
 ./scripts/virtual_carla/run.sh bridge
 ```
 
+Rendered mode는 sensor payload가 CAMROD보다 먼저 준비돼야 하므로
+`CARLA_SYNCHRONOUS_MODE=True`, `CARLA_WAIT_FOR_CONTROL_COMMAND=False`,
+`0 < CARLA_FIXED_DELTA_SECONDS <= 0.1`을 강제한다. 예전 control-only 명령의
+`CARLA_WAIT_FOR_CONTROL_COMMAND=True`를 rendered 시험에 재사용하면 시작 전 sensor
+preflight와 tick이 서로 기다리므로 bridge 단계에서 거부한다.
+
 Terminal 3 — Ranger actor와 sensor:
 
 ```bash
 ./scripts/virtual_carla/run.sh spawn
 ```
 
-기본 `RANGER_SPAWN_FILE`은 checked-in control-only smoke 구성이다. 현재 저장소에는
-Woraksan CAMROD pose에 정렬된 full-sensor JSON이 없다. RGB/LiDAR와 production
-perception 시험용 파일은 ego pose와 SE(2) alignment를 함께 검증해 별도 생성해야 한다.
-generic Ranger sensor-suite JSON으로 단순 교체하거나 spawn pose를 바꾸고 기존
-alignment로 navigation 성공을 주장해서는 안 된다.
+`offscreen`/`onscreen`의 기본 `RANGER_SPAWN_FILE`은 checked-in
+`ranger_spawn_camrod_full_sensors.json`이다. 검증된 Woraksan ego pose는 control-only와
+동일하고, CAMROD URDF 장착 좌표의 `rgb_view`, `rgb_rear`, `lidar_front`를 각각 10 Hz로
+생성한다. `nullrhi`는 렌더링 센서를 검증할 수 없으므로 control-only JSON을 선택하고
+CAMROD sensor relay도 시작하지 않는다.
+다른 JSON으로 override하려면 accepted control sensor 전체(collision, lane invasion,
+GNSS, IMU, odometry, control), 세 visual sensor의 type/rate/장착값, exact ego pose의
+spawn/alignment cohort를 모두 만족해야 한다. generic Ranger sensor-suite의 `(0,0)`
+pose로 단순 교체하고 기존 alignment로 navigation 성공을 주장해서는 안 된다.
 
 Terminal 4 — physical 4WS + full CAMROD + production UI:
 
@@ -501,7 +515,10 @@ Terminal 4 — physical 4WS + full CAMROD + production UI:
 
 egg cache를 지정하지 않으면 `camrod`가 실행 전용의 새 빈 절대 경로를 만든다. 이미
 내용이 있는 cache는 거부한다. 이 단계는 controller와 전체 알고리즘/UI를 시작하지만
-motion을 자동 전송하지 않는다.
+motion을 자동 전송하지 않는다. rendered mode에서는 시작 전에 CARLA front/rear image,
+두 CameraInfo와 LiDAR가 각각 1초 이상 관찰 구간에서 최소 8 Hz payload를 유지하는지도
+bounded preflight로 확인한다. topic 이름만 존재하거나 one-shot/5 Hz이면 UI를 띄우지
+않고 각 stream의 측정 rate를 출력한다.
 
 선택 Terminal 5 — CAMROD safety gate를 통과하는 수동 키보드 조작:
 
@@ -510,7 +527,10 @@ motion을 자동 전송하지 않는다.
 ```
 
 `manual`은 다음 조건을 모두 다시 확인한 뒤에만
-`teleop_twist_keyboard`를 `/control/nav2_cmd_vel_ros`로 remap한다.
+`teleop_twist_keyboard`를 CARLA에서만 활성화되는 전용 입력
+`/control/manual_cmd_vel_ros`로 remap한다. 첫 수동 Twist가 도착하기 전에는 기존
+UI/Nav2 수동 goal 경로가 유지되며, 첫 Twist 이후에는 safety gate가 수동 입력 소유권을
+고정해 Nav2/일반 raw 명령이 수동 명령을 덮어쓰지 못하게 한다.
 
 - portable baseline/physical gate deep validation
 - spawn JSON의 정확한 `vehicle.ranger.default`/role 계약
@@ -519,10 +539,13 @@ motion을 자동 전송하지 않는다.
   `engaged=false`, `mission_phase=READY`, `mission_source=none`
 - `/carla/<role>/physical_four_wheel_status`의 `ready`, gate, PhysX substep,
   independent wheel drive, backend와 actor ID
+- 현재 CARLA Ranger actor ID와 physical 4WS bridge가 고정한 actor ID가 정확히 동일함
 
 명령 자체는 engage 또는 goal을 발행하지 않고, 키를 누르기 전에는 주행 명령도
-발행하지 않는다. UI에서 먼저 기존 goal을 **STOP**으로 취소한 뒤 **ENGAGE**를 눌러
-수동 조작을 승인한다. 기본 속도는 `0.20 m/s`, 회전 속도는 `0.20 rad/s`다.
+발행하지 않는다. UI에서 먼저 기존 goal을 **STOP**으로 취소한 뒤, 마지막 페이지의
+독립 **ENGAGE**를 눌러 수동 조작을 승인한다. B1~B13 목적지 버튼은 ENGAGE가 아니다.
+mission ENGAGE가 켜지거나 독립 ENGAGE가 해제되면 safety gate는 즉시 zero를 내고 수동
+소유권을 해제한다. 기본 속도는 `0.20 m/s`, 회전 속도는 `0.20 rad/s`다.
 대각 조향 키의 `speed / turn = 1.0 m`는 Ranger 최소 회전 반경
 `0.810330349 m`보다 크므로 Dual-Ackermann으로 분류된다. `j`/`l`처럼 선속도가
 0인 키만 제자리 회전으로 분류된다.
@@ -600,6 +623,7 @@ CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한�
 | Twist→4WS mode/limit/watchdog | `camrod_carla_adapter/src/camrod_carla_adapter/command_mapping.py`, `twist_to_4ws_node.py` |
 | CARLA odometry/좌표 alignment | `feedback_bridge_node.py`, `config/woraksan_lane_anchor_alignment.yaml` |
 | camera/LiDAR topic 변환 | `sensor_relay_node.py`, `sensor_relay.launch.py` |
+| aligned visual sensor spawn/preflight | `config/ranger_spawn_camrod_full_sensors.json`, `scripts/virtual_carla/check_carla_sensor_streams.py` |
 | simulated Ranger 상태 heartbeat | `carla_platform_heartbeat_node.py` |
 | 전체 CAMROD/UI 조합 | `launch/camrod_carla_full.launch.py` |
 | 부분 map/localization/planning 조합 | `launch/camrod_carla.launch.py` |
@@ -620,10 +644,16 @@ CAMROD를 재빌드·재시작하고 `ros2 topic hz`로 새 주기를 확인한�
 - **actor는 생겼지만 physical status가 interlocked**: actor보다 CAMROD를 먼저 띄운
   경우다. CAMROD terminal만 종료하고 `server → bridge → spawn → camrod` 순서로 다시
   시작한다. `run.sh manual`은 `ready=false` 상태를 거부한다.
+- **spawn만 재실행한 뒤 제어가 안 됨**: 새 actor ID와 기존 physical bridge binding이
+  달라진 상태다. 실행 중인 CAMROD가 있으면 `spawn`을 다시 실행하지 않는다. 전체를
+  역순으로 종료하고 정방향으로 재시작한다. `spawn`은 type과 무관하게 같은 role을 쓰는
+  기존 actor가 하나라도 있으면 거부하고, `manual`은 두 actor ID가 다르면 fail closed한다.
 - **UI readiness가 5 Hz/10 Hz 사이에서 흔들림**: 최신 source를 build한 뒤 CAMROD를
   재시작한다. heartbeat의 5 Hz가 fake sensors에 유출되던 launch-scope 충돌은 전용
   `fake_sensor_publish_rate_hz` 인자로 차단돼 있다.
-- **UI는 보이나 camera가 stale**: control-only JSON 또는 NullRHI인지 확인한다.
+- **UI는 보이나 camera가 stale/NO FRAME**: rendered 기본 visual JSON인지 확인하고,
+  `camrod` preflight가 열거한 `/carla/ego_vehicle/{rgb_view,rgb_rear,lidar_front}` payload를
+  확인한다. NullRHI/control-only 결과로 camera PASS를 주장하지 않는다.
 - **rendered server 시작 실패**: `nvidia-smi -L`과 `vulkaninfo --summary`를 먼저
   고친다. `nullrhi` 결과로 rendered 검증을 대체하지 않는다.
 - **map에서 경로가 어긋남**: CARLA spawn pose, lanelet map과 SE(2) alignment를 한

@@ -92,6 +92,7 @@ def check_actor(
     port: int,
     role_name: str,
     timeout_seconds: float,
+    expected_count: int = 1,
 ) -> int:
     endpoint = f"{host}:{port}"
     deadline = time.monotonic() + timeout_seconds
@@ -113,24 +114,52 @@ def check_actor(
         except Exception as error:
             last_endpoint_error = f"{type(error).__name__}: {error}"
         else:
-            matches = []
+            role_actors = []
             for actor in actors:
                 type_id, actor_role, actor_id = _actor_identity(actor)
-                if type_id == EXACT_RANGER_BLUEPRINT and actor_role == role_name:
-                    matches.append(actor_id)
+                if actor_role == role_name:
+                    role_actors.append((actor_id, type_id))
 
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                actor_ids = ",".join(
-                    str(actor_id) for actor_id in sorted(matches)
+            if expected_count == 0:
+                if not role_actors:
+                    return 0
+                identities = ",".join(
+                    f"{actor_id}:{type_id}"
+                    for actor_id, type_id in sorted(role_actors)
                 )
                 raise ActorPreflightError(
-                    f"found {len(matches)} exact Ranger actors at {endpoint} "
-                    f"(type={EXACT_RANGER_BLUEPRINT!r}, "
-                    f"role_name={role_name!r}, actor_ids=[{actor_ids}]); "
-                    "remove duplicate actors and run the spawn stage exactly "
-                    f"once. {LIFECYCLE_HINT}"
+                    f"found {len(role_actors)} pre-existing actor(s) using "
+                    f"role_name={role_name!r} at {endpoint} "
+                    f"(actor_id:type=[{identities}]); "
+                    "refusing duplicate spawn. Stop CAMROD and the old spawn "
+                    f"stage or restart CARLA before spawning again. {LIFECYCLE_HINT}"
+                )
+            if len(role_actors) == 1:
+                actor_id, type_id = role_actors[0]
+                if type_id != EXACT_RANGER_BLUEPRINT:
+                    raise ActorPreflightError(
+                        f"actor using required role_name={role_name!r} at "
+                        f"{endpoint} has type={type_id!r}, expected exact "
+                        f"{EXACT_RANGER_BLUEPRINT!r}; remove the conflicting "
+                        f"ego actor and repeat the lifecycle. {LIFECYCLE_HINT}"
+                    )
+                if actor_id <= 0:
+                    raise ActorPreflightError(
+                        "exact Ranger actor reported an invalid actor id at "
+                        f"{endpoint} (actor_id={actor_id!r}); restart CARLA "
+                        f"and repeat the lifecycle. {LIFECYCLE_HINT}"
+                    )
+                return actor_id
+            if len(role_actors) > 1:
+                identities = ",".join(
+                    f"{actor_id}:{type_id}"
+                    for actor_id, type_id in sorted(role_actors)
+                )
+                raise ActorPreflightError(
+                    f"found {len(role_actors)} actors using required "
+                    f"role_name={role_name!r} at {endpoint} "
+                    f"(actor_id:type=[{identities}]); remove every duplicate "
+                    f"ego actor and run spawn exactly once. {LIFECYCLE_HINT}"
                 )
 
         remaining = deadline - time.monotonic()
@@ -149,7 +178,7 @@ def check_actor(
     if last_endpoint_error:
         endpoint_detail = f" Last transient endpoint error: {last_endpoint_error}."
     raise ActorPreflightError(
-        "found 0 exact Ranger actors at "
+        "found 0 actors using the required Ranger role at "
         f"{endpoint} after {inventory_polls} actor inventory poll(s) within "
         f"{timeout_seconds:g}s (type={EXACT_RANGER_BLUEPRINT!r}, "
         f"role_name={role_name!r}); the spawn stage has not completed."
@@ -187,7 +216,43 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--accepted-python-egg", required=True, type=Path)
     parser.add_argument("--private-egg-cache", required=True, type=Path)
     parser.add_argument("--timeout-seconds", type=_positive_timeout, default=5.0)
+    parser.add_argument(
+        "--expected-count",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="require zero actors before spawn or one actor before CAMROD",
+    )
+    parser.add_argument(
+        "--actor-id-only",
+        action="store_true",
+        help="print only the positive CARLA actor id on success",
+    )
     return parser
+
+
+def format_success(
+    actor_id: int,
+    role_name: str,
+    host: str,
+    port: int,
+    actor_id_only: bool,
+    expected_count: int = 1,
+) -> str:
+    """Format either the human-readable or machine-readable success result."""
+    if expected_count == 0:
+        return (
+            "[virtual_carla] Ranger actor inventory ready for spawn: "
+            f"count=0 type={EXACT_RANGER_BLUEPRINT} "
+            f"role_name={role_name} endpoint={host}:{port}"
+        )
+    if actor_id_only:
+        return str(actor_id)
+    return (
+        "[virtual_carla] Ranger actor preflight ready: "
+        f"actor_id={actor_id} type={EXACT_RANGER_BLUEPRINT} "
+        f"role_name={role_name} endpoint={host}:{port}"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -197,6 +262,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ActorPreflightError("CARLA host must not be empty")
         if not args.role_name.strip():
             raise ActorPreflightError("CARLA role name must not be empty")
+        if args.actor_id_only and args.expected_count != 1:
+            raise ActorPreflightError(
+                "--actor-id-only requires --expected-count 1"
+            )
         accepted_egg = _regular_file(
             args.accepted_python_egg, "gate-bound CARLA Python egg"
         )
@@ -210,6 +279,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.port,
             args.role_name,
             args.timeout_seconds,
+            args.expected_count,
         )
     except ActorPreflightError as error:
         print(f"[virtual_carla] ERROR: Ranger actor preflight: {error}", file=sys.stderr)
@@ -223,9 +293,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     print(
-        "[virtual_carla] Ranger actor preflight ready: "
-        f"actor_id={actor_id} type={EXACT_RANGER_BLUEPRINT} "
-        f"role_name={args.role_name} endpoint={args.host}:{args.port}"
+        format_success(
+            actor_id,
+            args.role_name,
+            args.host,
+            args.port,
+            args.actor_id_only,
+            args.expected_count,
+        )
     )
     return 0
 

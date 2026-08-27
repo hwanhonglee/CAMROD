@@ -161,3 +161,18 @@ def test_bringup_default_through_poses_tree_matches_develop():
     ).read_text(encoding="utf-8")
     assert "'nav2_bt_navigator'" in source
     assert "'navigate_through_poses_w_replanning_and_recovery.xml'" in source
+
+
+def test_dedicated_manual_command_boundary_is_opt_in():
+    source = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    assert "'control_manual_cmd_vel_ros_topic'" in source
+    assert (
+        "cfg_get(launch_cfg, 'control/manual_cmd_vel_ros_topic', '')"
+        in source
+    )
+    assert (
+        "'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic']"
+        in source
+    )

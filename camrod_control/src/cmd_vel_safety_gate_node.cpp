@@ -200,6 +200,8 @@ public:
         declare_parameter<std::string>("input_topic", "/control/cmd_vel_raw");
     navigation_input_topic_ = declare_parameter<std::string>(
         "navigation_input_topic", "/control/nav2_cmd_vel_ros");
+    manual_input_topic_ =
+        declare_parameter<std::string>("manual_input_topic", "");
     output_topic_ =
         declare_parameter<std::string>("output_topic", "/control/cmd_vel");
     ros_output_topic_ = declare_parameter<std::string>("ros_output_topic",
@@ -227,6 +229,14 @@ public:
                   "engage_topic matched state_topic; using /planning/engage");
       engage_topic_ = "/planning/engage";
     }
+    if (!manual_input_topic_.empty() &&
+        (manual_input_topic_ == input_topic_ ||
+         manual_input_topic_ == navigation_input_topic_ ||
+         manual_input_topic_ == output_topic_ ||
+         manual_input_topic_ == ros_output_topic_)) {
+      throw std::invalid_argument(
+          "manual_input_topic must be empty or a dedicated command topic");
+    }
 
     loadGatePolicyConfig();
     loadChargingMissionOverrideConfig();
@@ -245,10 +255,14 @@ public:
     loadYawAlignmentZones();
     publishState();
     RCLCPP_INFO(get_logger(),
-                "cmd_vel safety gate ready: maneuver_in=%s nav2_in=%s out=%s "
-                "driver_out=%s",
+                "cmd_vel safety gate ready: maneuver_in=%s nav2_in=%s "
+                "manual_in=%s out=%s driver_out=%s",
                 input_topic_.c_str(), navigation_input_topic_.c_str(),
-                output_topic_.c_str(), ros_output_topic_.c_str());
+                manual_input_topic_.empty()
+                    ? "disabled"
+                    : manual_input_topic_.c_str(),
+                output_topic_.c_str(),
+                ros_output_topic_.c_str());
   }
 
 private:
@@ -759,7 +773,11 @@ private:
     // RotationShim/RPP sequencing remains entirely inside the Nav2 owner.
     command_source_arbiter_config_.maneuver_release_hold_s =
         declare_parameter<double>("maneuver_command_release_hold_s", 0.5);
+    command_source_arbiter_config_.manual_input_enabled =
+        !manual_input_topic_.empty();
     command_source_arbiter_.setConfig(command_source_arbiter_config_);
+    command_source_arbiter_.setEngagement(
+        gate_policy_.manualEnabled(), gate_policy_.missionEnabled());
 
     enable_gnss_recovery_hold_ =
         declare_parameter<bool>("enable_gnss_recovery_hold", true);
@@ -804,18 +822,38 @@ private:
     command_subscription_ = create_subscription<avg_msgs::msg::AvgTwist>(
         input_topic_, 10,
         [this](const avg_msgs::msg::AvgTwist::SharedPtr message) {
-          onCommand(*message, false);
+          onCommand(*message, CommandInputSource::kRaw);
         });
     navigation_command_subscription_ =
         create_subscription<geometry_msgs::msg::Twist>(
             navigation_input_topic_, 10,
             [this](const geometry_msgs::msg::Twist::SharedPtr message) {
-              onCommand(twistFromRos(*message), true);
+              onCommand(twistFromRos(*message),
+                        CommandInputSource::kNavigation);
             });
+    if (!manual_input_topic_.empty()) {
+      manual_command_subscription_ =
+          create_subscription<geometry_msgs::msg::Twist>(
+              manual_input_topic_, 10,
+              [this](const geometry_msgs::msg::Twist::SharedPtr message) {
+                onCommand(twistFromRos(*message), CommandInputSource::kManual);
+              });
+    }
     manual_engage_subscription_ = create_subscription<avg_msgs::msg::AvgBool>(
         engage_topic_, 10,
         [this](const avg_msgs::msg::AvgBool::SharedPtr message) {
           gate_policy_.setManualEngage(message->data);
+          const bool manual_owner_released =
+              command_source_arbiter_.setEngagement(
+                  gate_policy_.manualEnabled(), gate_policy_.missionEnabled());
+          if (!manual_input_topic_.empty() && !message->data) {
+            // A manual disengage is an immediate command boundary even when a
+            // mission engage happens to keep the general gate authorized.
+            publishZero();
+          }
+          if (manual_owner_released) {
+            logCommandSourceHold("manual command ownership released", nowSec());
+          }
           if (!gate_policy_.planningEngaged()) {
             // HH_260729 - Operator cancel is authoritative. Clear the local
             // hold display while the planning side retains the goal for a
@@ -832,6 +870,18 @@ private:
         mission_engage_topic_, 10,
         [this](const avg_msgs::msg::AvgBool::SharedPtr message) {
           gate_policy_.setMissionEngage(message->data);
+          const bool manual_owner_released =
+              command_source_arbiter_.setEngagement(
+                  gate_policy_.manualEnabled(), gate_policy_.missionEnabled());
+          if (!manual_input_topic_.empty() && message->data) {
+            // Mission takeover must not wait for either command stream's next
+            // sample before stopping the manually-controlled motion.
+            publishZero();
+          }
+          if (manual_owner_released) {
+            logCommandSourceHold(
+                "mission engage released manual command ownership", nowSec());
+          }
           if (!message->data) {
             charging_mission_override_.cancel();
           }
@@ -1044,14 +1094,20 @@ private:
   }
 
   void onCommand(avg_msgs::msg::AvgTwist command,
-                 const bool navigation_source) {
+                 const CommandInputSource input_source) {
     const double now_sec = nowSec();
+    const bool navigation_source =
+        input_source == CommandInputSource::kNavigation;
     const auto source_decision =
-        command_source_arbiter_.evaluate(navigation_source, now_sec);
+        command_source_arbiter_.evaluate(input_source, now_sec);
     if (source_decision == CommandSourceDecision::kIgnore) {
-      // HH_260806 - The active maneuver publishes its own raw command. Do not
-      // interleave Nav2 zeros or forward velocity with crab/zero-turn output.
-      logCommandSourceHold("Nav2 ignored while maneuver owns cmd_vel", now_sec);
+      const std::string source_name =
+          input_source == CommandInputSource::kManual
+              ? "manual"
+              : input_source == CommandInputSource::kNavigation ? "Nav2"
+                                                                : "raw";
+      logCommandSourceHold(
+          source_name + " ignored by active command owner", now_sec);
       return;
     }
     // HH_260806 - A command intentionally held during the finite ownership
@@ -2406,6 +2462,7 @@ private:
 
   std::string input_topic_;
   std::string navigation_input_topic_;
+  std::string manual_input_topic_;
   std::string output_topic_;
   std::string ros_output_topic_;
   std::string engage_topic_;
@@ -2534,6 +2591,8 @@ private:
       command_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr
       navigation_command_subscription_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr
+      manual_command_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr
       manual_engage_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr

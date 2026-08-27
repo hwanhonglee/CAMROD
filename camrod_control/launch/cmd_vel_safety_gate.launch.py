@@ -34,6 +34,7 @@ def _create_gate_node(context):
     parameter_overrides = {
         "input_topic": LaunchConfiguration("cmd_vel_raw_topic"),
         "navigation_input_topic": LaunchConfiguration("navigation_cmd_vel_ros_topic"),
+        "manual_input_topic": LaunchConfiguration("manual_cmd_vel_ros_topic"),
         "output_topic": LaunchConfiguration("cmd_vel_output_topic"),
         "ros_output_topic": LaunchConfiguration("cmd_vel_ros_output_topic"),
         "engage_topic": LaunchConfiguration("planning_engage_topic"),
@@ -93,6 +94,10 @@ def generate_launch_description():
                 "navigation_cmd_vel_ros_topic",
                 default_value="/control/nav2_cmd_vel_ros",
             ),
+            # Empty by default: ordinary CAMROD retains its existing Nav2/raw
+            # command ownership. External simulators may opt into a dedicated
+            # operator Twist boundary.
+            DeclareLaunchArgument("manual_cmd_vel_ros_topic", default_value=""),
             DeclareLaunchArgument("cmd_vel_output_topic", default_value="/control/cmd_vel"),
             DeclareLaunchArgument(
                 "cmd_vel_ros_output_topic", default_value="/control/cmd_vel_ros"

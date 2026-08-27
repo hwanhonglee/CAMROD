@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _role_topic(suffix):
@@ -34,6 +35,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "lidar_input", default_value=_role_topic("/lidar_front")
         ),
+        DeclareLaunchArgument("front_frame_id", default_value="camera_front"),
+        DeclareLaunchArgument("rear_frame_id", default_value="camera_rear"),
+        DeclareLaunchArgument("lidar_frame_id", default_value="lidar_link"),
+        DeclareLaunchArgument("preserve_lidar_frame", default_value="false"),
+        DeclareLaunchArgument(
+            "launch_image_compression", default_value="true"
+        ),
+        DeclareLaunchArgument("jpeg_quality", default_value="80"),
         Node(
             package="camrod_carla_adapter",
             executable="carla_sensor_relay",
@@ -45,6 +54,19 @@ def generate_launch_description():
                 "rear_image_input": LaunchConfiguration("rear_image_input"),
                 "rear_info_input": LaunchConfiguration("rear_info_input"),
                 "lidar_input": LaunchConfiguration("lidar_input"),
+                "front_frame_id": LaunchConfiguration("front_frame_id"),
+                "rear_frame_id": LaunchConfiguration("rear_frame_id"),
+                "lidar_frame_id": LaunchConfiguration("lidar_frame_id"),
+                "preserve_lidar_frame": LaunchConfiguration(
+                    "preserve_lidar_frame"
+                ),
+                "publish_compressed_images": ParameterValue(
+                    LaunchConfiguration("launch_image_compression"),
+                    value_type=bool,
+                ),
+                "jpeg_quality": ParameterValue(
+                    LaunchConfiguration("jpeg_quality"), value_type=int
+                ),
                 "use_sim_time": False,
             }],
         ),
