@@ -8,19 +8,37 @@
     input_imu_topic: "/carla/ego_vehicle/imu"
     output_imu_topic: "/sensing/imu/data_ros"
     input_gnss_topic: "/carla/ego_vehicle/gnss"
+    input_gnss_right_topic: "/carla/ego_vehicle/gnss_right"
     output_gnss_topic: "/sensing/gnss/ublox_gps_node/fix"
+    output_gnss_navpvt_topic: "/sensing/gnss/ublox_gps_node/navpvt"
+    output_gnss_navcov_topic: "/sensing/gnss/navcov"
+    output_gnss_relpos_topic: "/sensing/gnss/navrelposned"
+    output_gnss_heading_topic: "/sensing/gnss/navheading"
     status_topic: "/camrod_carla/feedback_bridge/status"
 
     map_frame_id: "map"
     odom_frame_id: "odom"
     base_frame_id: "robot_center_link"
-    imu_frame_id: "robot_center_link"
-    gnss_frame_id: "robot_center_link"
+    imu_frame_id: "imu_link"
+    gnss_frame_id: "gnss_link"
+    gnss_heading_frame_id: "gnss_link"
 
     publish_platform_odometry: true
     publish_metric_pose: true
     relay_imu: true
     relay_gnss: true
+    # Populate the hardware-shaped UI topics only from actual CARLA sources:
+    # left/right GNSS, CARLA odometry, and CARLA IMU. The adapter explicitly
+    # leaves unsupported satellite/RTK fields in their no-solution state.
+    publish_gnss_ui_compat: true
+    gnss_pair_timeout_sec: 0.5
+    gnss_pair_position_std_m: 0.1
+    gnss_moving_speed_threshold_mps: 0.02
+    # CARLA exposes GNSS position but no dual-antenna heading. Adapt the actual
+    # CARLA IMU yaw to CAMROD's receiver-heading contract (+90 deg here, -90
+    # deg in the unchanged localization input adapter).
+    publish_gnss_heading_from_imu: true
+    gnss_heading_yaw_bias_rad: 1.5707963267948966
     stamp_with_reception_time: true
     feedback_timeout_sec: 0.5
 

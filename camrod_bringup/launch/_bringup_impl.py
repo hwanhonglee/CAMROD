@@ -676,6 +676,20 @@ def generate_launch_description():
         if str(map_info_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default')
         else resolve_cfg_file(config_root_default, map_info_cfg_entry, 'map/map_info.yaml')
     )
+    # Preserve the configured production adapter as the ordinary default while
+    # exposing one launch boundary for simulator-specific localization inputs.
+    # The full CARLA composition uses this boundary to select its map-aligned
+    # metric-pose adapter without mutating the shared launch-defaults YAML.
+    localization_adapter_param_file_default = resolve_cfg_override(
+        config_root_default,
+        cfg_get(
+            launch_cfg,
+            'localization/adapter_param_file',
+            '__module_default__',
+        ),
+    ) or pkg_path(
+        'camrod_localization', 'config/source/input_adapter.yaml'
+    )
 
     # High-level arguments only.
     arg_specs = [
@@ -706,6 +720,48 @@ def generate_launch_description():
             'sim_publish_platform_status',
             cfg_get(launch_cfg, 'runtime/sim_publish_platform_status', True),
             'Let fake sensors own raw Ranger/BMS heartbeat topics in simulation',
+        ),
+        (
+            'sim_publish_fake_radar_ranges',
+            cfg_get(launch_cfg, 'runtime/sim_publish_fake_radar_ranges', True),
+            'Let fake sensors own canonical seven-channel radar topics in simulation',
+        ),
+        (
+            'sim_publish_fake_gnss',
+            cfg_get(launch_cfg, 'runtime/sim_publish_fake_gnss', True),
+            'Let fake sensors own canonical GNSS topics in simulation',
+        ),
+        (
+            'sim_publish_fake_imu',
+            cfg_get(launch_cfg, 'runtime/sim_publish_fake_imu', True),
+            'Let fake sensors own canonical IMU topics in simulation',
+        ),
+        (
+            'sim_publish_fake_lidar_obstacle_cloud',
+            cfg_get(
+                launch_cfg,
+                'runtime/sim_publish_fake_lidar_obstacle_cloud',
+                True,
+            ),
+            'Let fake sensors own filtered LiDAR and obstacle topics in simulation',
+        ),
+        (
+            'sim_publish_velocity_converter_output',
+            cfg_get(
+                launch_cfg,
+                'runtime/sim_publish_velocity_converter_output',
+                True,
+            ),
+            'Let fake sensors publish a deterministic velocity converter output',
+        ),
+        (
+            'sim_publish_dummy_lidar_cost_grid',
+            cfg_get(
+                launch_cfg,
+                'runtime/sim_publish_dummy_lidar_cost_grid',
+                True,
+            ),
+            'Let fake sensors publish a deterministic free LiDAR cost grid',
         ),
         # HH_260721 - Let charging tests opt into the hardware gate contract in simulation.
         (
@@ -795,6 +851,11 @@ def generate_launch_description():
         ('localization_enable_filter', cfg_get(launch_cfg, 'localization/enable_filter', True), 'Enable localization filter launch'),
         ('localization_enable_monitor', cfg_get(launch_cfg, 'localization/enable_monitor', True), 'Enable localization monitor launch'),
         ('localization_enable_map_helper', cfg_get(launch_cfg, 'localization/enable_map_helper', True), 'Enable localization map_helper launch'),
+        (
+            'localization_adapter_param_file',
+            localization_adapter_param_file_default,
+            'Localization input-adapter parameter file override',
+        ),
 
         # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
@@ -884,6 +945,26 @@ def generate_launch_description():
             'control_manual_cmd_vel_ros_topic',
             cfg_get(launch_cfg, 'control/manual_cmd_vel_ros_topic', ''),
             'Optional dedicated operator Twist boundary consumed by control',
+        ),
+        (
+            'control_manual_drive_linear_limit_mps',
+            cfg_get(launch_cfg, 'control/manual_drive_linear_limit_mps', 0.20),
+            'Maximum operator forward/reverse speed before the final safety gate',
+        ),
+        (
+            'control_manual_drive_lateral_limit_mps',
+            cfg_get(launch_cfg, 'control/manual_drive_lateral_limit_mps', 0.20),
+            'Maximum operator crab speed before the final safety gate',
+        ),
+        (
+            'control_manual_drive_angular_limit_radps',
+            cfg_get(launch_cfg, 'control/manual_drive_angular_limit_radps', 0.20),
+            'Maximum operator yaw rate before the final safety gate',
+        ),
+        (
+            'control_manual_drive_deadman_timeout_s',
+            cfg_get(launch_cfg, 'control/manual_drive_deadman_timeout_s', 0.25),
+            'Maximum UI command-heartbeat gap before manual disengage',
         ),
         (
             'control_cmd_vel_topic',
@@ -1691,6 +1772,15 @@ def generate_launch_description():
             'Diagnostics config profile name',
         ),
         (
+            'diagnostics_profile_fallback',
+            cfg_get(
+                launch_cfg,
+                'system/diagnostics_profile_fallback',
+                'default',
+            ),
+            'Comma-separated sparse diagnostics profile fallback order',
+        ),
+        (
             'system_checker_param_file',
             cfg_get(launch_cfg, 'system/system_checker_param_file', '__module_default__'),
             'System checker graph manifest YAML path (__module_default__ selects hardware/sim automatically)',
@@ -1739,6 +1829,15 @@ def generate_launch_description():
             'operator_telemetry_stream_rate_hz',
             cfg_get(launch_cfg, 'system/operator_telemetry_stream_rate_hz', 10.0),
             'Maximum selected operator telemetry stream rate in Hz',
+        ),
+        (
+            'operator_telemetry_camera_raw_fallback_enabled',
+            cfg_get(
+                launch_cfg,
+                'system/operator_telemetry_camera_raw_fallback_enabled',
+                True,
+            ),
+            'Subscribe to raw operator camera topics as compressed-stream fallback',
         ),
         (
             'enable_guest_ui',
@@ -2138,9 +2237,21 @@ def generate_launch_description():
         # platform safety gate is enabled. ranger_platform_bridge remains the
         # sole normalized /platform/status publisher, matching the real graph.
         'publish_simulated_platform_status': 'true',
-        # External physics supplies the vehicle pose. The fake-sensor node still
-        # produces CAMROD's deterministic GNSS/IMU/obstacle test contracts, but
-        # derives them from that measured pose instead of integrating cmd_vel.
+        'publish_fake_radar_ranges': lc['sim_publish_fake_radar_ranges'],
+        'publish_fake_gnss': lc['sim_publish_fake_gnss'],
+        'publish_fake_imu': lc['sim_publish_fake_imu'],
+        'publish_fake_lidar_obstacle_cloud': lc[
+            'sim_publish_fake_lidar_obstacle_cloud'
+        ],
+        'publish_velocity_converter_output': lc[
+            'sim_publish_velocity_converter_output'
+        ],
+        'publish_dummy_lidar_cost_grid': lc[
+            'sim_publish_dummy_lidar_cost_grid'
+        ],
+        # External physics supplies the vehicle pose. Individual source switches
+        # above decide whether this helper owns any deterministic sensor topics;
+        # CARLA disables them all while retaining the external motion fixture.
         'motion_source': PythonExpression([
             "'external_odometry' if str('", lc['external_simulator'],
             "').lower() in ['1', 'true', 'yes', 'on'] else 'cmd_vel'",
@@ -2399,6 +2510,12 @@ def generate_launch_description():
         'map_path': lc['map_path'],
     }
     apply_cfg_overrides(localization_args, localization_overrides)
+    # This explicit launch argument is the final composition boundary. Its
+    # default is the same configured production file applied above, while a
+    # CARLA include can safely replace only the input-source contract.
+    localization_args['adapter_param_file'] = lc[
+        'localization_adapter_param_file'
+    ]
     if 'drop_zones_yaml' not in localization_args:
         # HH_260623 - Keep localization map helper aligned with planning/parking drop-zone semantics.
         localization_args['drop_zones_yaml'] = lc['planning_state_machine_keypoints_yaml']
@@ -2536,6 +2653,7 @@ def generate_launch_description():
         # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
         # checks do not block planning/control validation.
         'config_profile': diagnostics_profile_runtime,
+        'config_profile_fallback': lc['diagnostics_profile_fallback'],
         # HH_260630 - Match graph-readiness manifest to the same hardware/sim mode
         # as diagnostics_profile; hardware driver nodes are not required in sim.
         'system_checker_param_file': system_checker_param_runtime,
@@ -2594,6 +2712,9 @@ def generate_launch_description():
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],
         'operator_telemetry_stream_rate_hz': lc['operator_telemetry_stream_rate_hz'],
+        'operator_telemetry_camera_raw_fallback_enabled': lc[
+            'operator_telemetry_camera_raw_fallback_enabled'
+        ],
         'enable_ui_guest': lc['enable_guest_ui'],
         'guest_host': lc['guest_ui_host'],
         'guest_port': lc['guest_ui_port'],
@@ -2622,6 +2743,18 @@ def generate_launch_description():
         # Empty in ordinary CAMROD. The CARLA overlay alone supplies the
         # dedicated manual Twist topic, which makes the UI drive panel opt-in.
         'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic'],
+        'manual_drive_linear_limit_mps': lc[
+            'control_manual_drive_linear_limit_mps'
+        ],
+        'manual_drive_lateral_limit_mps': lc[
+            'control_manual_drive_lateral_limit_mps'
+        ],
+        'manual_drive_angular_limit_radps': lc[
+            'control_manual_drive_angular_limit_radps'
+        ],
+        'manual_drive_deadman_timeout_s': lc[
+            'control_manual_drive_deadman_timeout_s'
+        ],
         'camping_site_maneuver_controller_operation_topic': '/control/camping_site_maneuver_controller/operation',
         # HH_260818 - Keep the manual-return planner handoff explicit across
         # the full-bringup -> UI launch boundary.

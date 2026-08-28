@@ -78,6 +78,7 @@ from camrod_ui.manual_drive_policy import (
     MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
     ManualDriveCommand,
     ManualDriveLease,
+    ManualDriveLimits,
     ManualDrivePolicy,
     ManualDriveProtocolError,
 )
@@ -699,6 +700,32 @@ class UiBackendNode(Node):
             self.declare_parameter("manual_cmd_vel_ros_topic", "").value
         ).strip()
         self.manual_drive_available = bool(self.manual_cmd_vel_ros_topic)
+        # The browser only sends a normalized scale.  The ROS backend owns the
+        # physical command envelope, so a CARLA launch can expose an adjustable
+        # Ranger-safe range without letting a client forge an arbitrary Twist.
+        self.manual_drive_limits = ManualDriveLimits(
+            linear_x_mps=float(
+                self.declare_parameter(
+                    "manual_drive_linear_limit_mps", 0.20
+                ).value
+            ),
+            lateral_y_mps=float(
+                self.declare_parameter(
+                    "manual_drive_lateral_limit_mps", 0.20
+                ).value
+            ),
+            angular_z_radps=float(
+                self.declare_parameter(
+                    "manual_drive_angular_limit_radps", 0.20
+                ).value
+            ),
+        )
+        self.manual_drive_deadman_timeout_s = float(
+            self.declare_parameter(
+                "manual_drive_deadman_timeout_s",
+                MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
+            ).value
+        )
         self.platform_status_topic = str(
             self.declare_parameter("platform_status_topic", "/platform/status").value
         )
@@ -1012,6 +1039,16 @@ class UiBackendNode(Node):
             0.1,
             float(self.declare_parameter("telemetry_camera_min_period_s", 0.1).value),
         )
+        # Compressed images are the primary operator-UI transport.  Keep the
+        # raw-image fallback enabled for ordinary CAMROD deployments whose
+        # camera driver may not publish JPEG, while allowing simulator
+        # compositions with guaranteed compressed relays to avoid receiving
+        # and copying the same high-bandwidth frame twice.
+        self.telemetry_camera_raw_fallback_enabled = bool(
+            self.declare_parameter(
+                "telemetry_camera_raw_fallback_enabled", True
+            ).value
+        )
         self.telemetry_camera_fallback_max_width = max(
             320,
             int(self.declare_parameter(
@@ -1083,7 +1120,8 @@ class UiBackendNode(Node):
         self._manual_drive_transition_lock = threading.RLock()
         self._manual_drive_policy = ManualDrivePolicy(
             available=self.manual_drive_available,
-            deadman_timeout_s=MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
+            limits=self.manual_drive_limits,
+            deadman_timeout_s=self.manual_drive_deadman_timeout_s,
         )
         self._manual_drive_transport: Optional[ManualDriveTransport] = None
         self._manual_drive_shutdown_done = False
@@ -1387,7 +1425,7 @@ class UiBackendNode(Node):
         )
         self._manual_drive_deadman_timer = None
         if self.manual_drive_available:
-            # Check faster than the fixed 0.25 s UI deadman. Commands are not
+            # Check faster than the configured UI lease. Commands are not
             # replayed here, so the independent 0.35 s control/adapter watchdogs
             # remain effective if this callback ever stops running.
             self._manual_drive_deadman_timer = self.create_timer(
@@ -1413,6 +1451,7 @@ class UiBackendNode(Node):
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"manual_goal_pose_topic={self.manual_goal_pose_topic} "
             f"manual_cmd_vel_ros_topic={self.manual_cmd_vel_ros_topic or '(disabled)'} "
+            f"manual_drive_limits={self.manual_drive_limits.as_dict()} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
             f"planning_lanelet_pose_topic={self.planning_lanelet_pose_topic} "
             f"roadside_arrival_offset={self.site_arrival_roadside_offset_m:.2f}m "
@@ -1584,7 +1623,7 @@ class UiBackendNode(Node):
                 False, source="ws_manual_drive_arm:mission_release"
             )
             self._publish_manual_drive_zero()
-            self._manual_drive_policy.arm(lease, payload)
+            self._manual_drive_policy.arm(lease, payload, time.monotonic())
             self._publish_engage(True, source="ws_manual_drive_arm")
             return {
                 "type": "state",
@@ -1619,12 +1658,15 @@ class UiBackendNode(Node):
     def _fail_closed_manual_drive(
         self, lease: ManualDriveLease, error: ManualDriveProtocolError
     ) -> Dict[str, Any]:
-        """A malformed owner frame cannot leave the previous command active."""
+        """An invalid or expired owner frame cannot preserve authorization."""
         with self._manual_drive_transition_lock:
             if self._manual_drive_policy.lease_matches(lease):
-                self._manual_drive_policy.revoke(
-                    f"protocol_error:{error.error}"
+                reason = (
+                    "deadman_timeout"
+                    if error.error == "manual_drive_deadman_expired"
+                    else f"protocol_error:{error.error}"
                 )
+                self._manual_drive_policy.revoke(reason)
                 self._publish_manual_drive_zero()
                 self._publish_engage(
                     False, source=f"ws_manual_drive_error:{error.error}"
@@ -1666,7 +1708,7 @@ class UiBackendNode(Node):
         self._schedule_manual_drive_payload(transport, payload)
         self.get_logger().warn(
             "manual-drive deadman expired after %.2fs; zero and disengage published"
-            % MANUAL_DRIVE_DEADMAN_TIMEOUT_S
+            % self._manual_drive_policy.deadman_timeout_s
         )
 
     def _shutdown_manual_drive(self) -> None:
@@ -2001,28 +2043,37 @@ class UiBackendNode(Node):
                 ))
 
         if wants("camera"):
-            subscriptions.extend([
+            subscriptions.append(
                 self.create_subscription(
                     CompressedImage, self.telemetry_topics["front_camera"],
                     lambda message: self._on_telemetry_camera("front", message),
                     sensor_qos,
-                ),
+                )
+            )
+            if self.telemetry_camera_raw_fallback_enabled:
+                subscriptions.append(self.create_subscription(
+                    RosImage, self.telemetry_topics["front_camera_raw"],
+                    lambda message: self._on_telemetry_raw_camera("front", message),
+                    sensor_qos,
+                ))
+
+        # The Docking view normally shows the AprilTag detector overlay.  CARLA
+        # maps without a placed tag still have a real rear camera, so subscribe
+        # to that canonical stream as an explicit UI fallback in this view.
+        if wants("camera", "docking"):
+            subscriptions.append(
                 self.create_subscription(
                     CompressedImage, self.telemetry_topics["rear_camera"],
                     lambda message: self._on_telemetry_camera("rear", message),
                     sensor_qos,
-                ),
-                self.create_subscription(
-                    RosImage, self.telemetry_topics["front_camera_raw"],
-                    lambda message: self._on_telemetry_raw_camera("front", message),
-                    sensor_qos,
-                ),
-                self.create_subscription(
+                )
+            )
+            if self.telemetry_camera_raw_fallback_enabled:
+                subscriptions.append(self.create_subscription(
                     RosImage, self.telemetry_topics["rear_camera_raw"],
                     lambda message: self._on_telemetry_raw_camera("rear", message),
                     sensor_qos,
-                ),
-            ])
+                ))
 
         if wants("docking"):
             subscriptions.extend([

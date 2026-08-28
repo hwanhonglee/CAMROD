@@ -4526,17 +4526,31 @@ h1 {
 /* CARLA-only manual drive surface. The backend keeps this panel unavailable
    when the dedicated manual Twist topic is not configured. */
 .manual-drive-panel {
-  margin-top: 1rem;
+  flex: 0 0 auto;
+  max-height: min(46vh, 430px);
+  margin: 0 0.7rem 0.7rem;
+  padding: 0.65rem;
+  overflow: auto;
   border: 2px solid #c5d4ca;
   background: linear-gradient(145deg, #f8fbf9 0%, #edf4ef 100%);
 }
 
+.manual-drive-panel.collapsed {
+  max-height: 3.8rem;
+  padding: 0.45rem 0.65rem;
+  overflow: hidden;
+}
+
 .manual-drive-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.manual-drive-panel.collapsed .manual-drive-header {
+  margin-bottom: 0;
 }
 
 .manual-drive-header h3 {
@@ -4549,6 +4563,84 @@ h1 {
   margin: 0;
   color: #5f6e64;
   font-size: 0.82rem;
+}
+
+.manual-drive-panel.collapsed .manual-drive-title p {
+  display: none;
+}
+
+.manual-drive-compact-status {
+  display: none;
+  align-items: center;
+  gap: 0.65rem;
+  color: #5d6c62;
+  font: 0.72rem/1 'Consolas', monospace;
+  white-space: nowrap;
+}
+
+.manual-drive-panel.collapsed .manual-drive-compact-status {
+  display: flex;
+}
+
+.manual-drive-compact-status strong {
+  color: #245c38;
+}
+
+.manual-drive-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.manual-drive-compact-actions {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.manual-drive-panel.collapsed .manual-drive-compact-actions {
+  display: flex;
+}
+
+.manual-drive-compact-stop,
+.manual-drive-compact-disarm {
+  min-height: 34px;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #c1877f;
+  border-radius: 7px;
+  background: #fff3f1;
+  color: #922d25;
+  font: 800 0.72rem/1 'Consolas', monospace;
+  cursor: pointer;
+}
+
+.manual-drive-compact-disarm {
+  border-color: #a8332b;
+  background: #be3c31;
+  color: #fff;
+}
+
+.manual-drive-compact-stop:disabled,
+.manual-drive-compact-disarm:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.manual-drive-toggle {
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #73917d;
+  border-radius: 7px;
+  background: #fff;
+  color: #245c38;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.manual-drive-toggle:hover {
+  background: #e5f1e9;
 }
 
 .manual-drive-state {
@@ -4581,11 +4673,67 @@ h1 {
   box-shadow: 0 0 0 4px rgba(226, 115, 40, 0.16);
 }
 
+.manual-drive-state.pending {
+  border-color: #7497bd;
+  background: #edf5ff;
+  color: #315f91;
+}
+
+.manual-drive-state.pending span {
+  background: #4d83ba;
+  box-shadow: 0 0 0 4px rgba(77, 131, 186, 0.16);
+}
+
 .manual-drive-layout {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(340px, 1.2fr);
   gap: 1.25rem;
   align-items: center;
+}
+
+.manual-drive-layout[hidden] {
+  display: none;
+}
+
+.manual-drive-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.manual-drive-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.manual-drive-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 44px;
+  border: 1px solid #aebdb3;
+  border-radius: 10px;
+  background: #fff;
+  color: #4e6355;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: default;
+}
+
+.manual-drive-mode small {
+  color: #68776d;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.manual-drive-mode.active {
+  border-color: #2f8050;
+  background: #d6f0df;
+  color: #173f2a;
+  box-shadow: inset 0 0 0 1px #2f8050;
 }
 
 .manual-drive-pad {
@@ -4607,8 +4755,7 @@ h1 {
 }
 
 .manual-drive-pad-row.crab {
-  width: 100%;
-  margin-top: 0.35rem;
+  margin-top: 0.2rem;
 }
 
 .manual-drive-key {
@@ -4654,6 +4801,15 @@ h1 {
   box-shadow: none;
 }
 
+.manual-drive-mode-help {
+  min-height: 1.1rem;
+  margin: 0.15rem 0 0;
+  color: #53675a;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .manual-drive-config {
   display: flex;
   flex-direction: column;
@@ -4685,7 +4841,7 @@ h1 {
 
 .manual-drive-config label {
   display: grid;
-  grid-template-columns: 110px 1fr;
+  grid-template-columns: minmax(180px, auto) 1fr;
   align-items: center;
   color: #354b3c;
   font-size: 0.84rem;
@@ -4695,6 +4851,11 @@ h1 {
 .manual-drive-config input[type='range'] {
   width: 100%;
   accent-color: #2d6e40;
+}
+
+.manual-drive-limits {
+  color: #627168;
+  font: 0.72rem/1.45 'Consolas', monospace;
 }
 
 .manual-drive-readout {
@@ -4742,11 +4903,23 @@ h1 {
 }
 
 @media (max-width: 620px) {
-  .manual-drive-header,
   .manual-drive-config label {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .manual-drive-panel.expanded .manual-drive-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manual-drive-panel.collapsed .manual-drive-compact-status span {
+    display: none;
+  }
+
+  .manual-drive-panel.collapsed .manual-drive-title {
+    display: none;
   }
 
   .manual-drive-key {
@@ -4755,6 +4928,10 @@ h1 {
 
   .manual-drive-key.stop {
     width: 104px;
+  }
+
+  .manual-drive-mode-selector {
+    grid-template-columns: 1fr;
   }
 
   .manual-drive-readout {

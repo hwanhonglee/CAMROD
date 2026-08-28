@@ -131,6 +131,11 @@
     # =========================================================================
     # HH_260630: Keep LiDAR and radar fake obstacle sources independently
     # switchable so sim safety tests can isolate each cost-grid input.
+    # External-simulator overlays also disable GNSS/IMU ownership so the
+    # canonical UI topics contain simulator sensor messages, not pose-derived
+    # synthetic substitutes. Ordinary simulation leaves every switch enabled.
+    publish_fake_gnss: true
+    publish_fake_imu: true
     publish_fake_lidar_obstacle_cloud: true
     publish_fake_radar_ranges: true
     fake_radar_min_range_m: 0.02

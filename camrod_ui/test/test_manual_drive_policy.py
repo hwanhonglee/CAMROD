@@ -28,6 +28,7 @@ def control_frame(frame_type: str, seq: int) -> dict:
 def drive_frame(
     seq: int,
     *,
+    mode: str = "ackermann",
     forward: int = 0,
     turn: int = 0,
     crab: int = 0,
@@ -36,6 +37,7 @@ def drive_frame(
     return {
         "type": "drive",
         "seq": seq,
+        "mode": mode,
         "forward": forward,
         "turn": turn,
         "crab": crab,
@@ -49,7 +51,7 @@ class ManualDriveValidationTest(unittest.TestCase):
             callback()
         self.assertEqual(context.exception.error, error)
 
-    def test_server_limits_are_fixed_at_safe_carla_test_values(self) -> None:
+    def test_default_server_limits_remain_conservative(self) -> None:
         _, command = validate_drive_frame(
             drive_frame(1, forward=1, turn=1, scale=1.0)
         )
@@ -61,19 +63,36 @@ class ManualDriveValidationTest(unittest.TestCase):
             abs(command.linear_x) / abs(command.angular_z), 1.0
         )
 
-    def test_server_envelope_cannot_be_configured_above_fixed_limits(self) -> None:
-        for field in (
-            "linear_x_mps",
-            "lateral_y_mps",
-            "angular_z_radps",
+    def test_server_envelope_accepts_audited_carla_adapter_limits(self) -> None:
+        limits = ManualDriveLimits(
+            linear_x_mps=1.40,
+            lateral_y_mps=1.00,
+            angular_z_radps=0.7853,
+        )
+        _, command = validate_drive_frame(
+            drive_frame(2, forward=1, turn=-1, scale=0.5), limits
+        )
+        self.assertAlmostEqual(command.linear_x, 0.70)
+        self.assertAlmostEqual(command.angular_z, -0.39265)
+
+        _, crab = validate_drive_frame(
+            drive_frame(3, mode="crab", crab=1, scale=0.25), limits
+        )
+        self.assertAlmostEqual(crab.linear_y, 0.25)
+
+    def test_server_envelope_rejects_values_above_adapter_limits(self) -> None:
+        for field, invalid in (
+            ("linear_x_mps", 1.400001),
+            ("lateral_y_mps", 1.000001),
+            ("angular_z_radps", 0.785301),
         ):
             with self.subTest(field=field):
                 with self.assertRaises(ValueError):
-                    ManualDriveLimits(**{field: 0.200001})
+                    ManualDriveLimits(**{field: invalid})
 
     def test_scale_can_only_reduce_server_limits(self) -> None:
         _, command = validate_drive_frame(
-            drive_frame(2, crab=1, scale=0.10)
+            drive_frame(2, mode="crab", crab=1, scale=0.10)
         )
         self.assertAlmostEqual(command.linear_x, 0.0)
         self.assertAlmostEqual(command.linear_y, 0.02)
@@ -87,15 +106,51 @@ class ManualDriveValidationTest(unittest.TestCase):
             {"linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0},
         )
 
-    def test_crab_cannot_be_mixed_with_forward_or_turn(self) -> None:
+    def test_axes_must_match_explicit_mode(self) -> None:
         for frame in (
-            drive_frame(4, turn=1, crab=-1, scale=0.5),
-            drive_frame(4, forward=1, crab=1, scale=0.5),
+            drive_frame(4, mode="ackermann", turn=1, scale=0.5),
+            drive_frame(4, mode="ackermann", forward=1, crab=1, scale=0.5),
+            drive_frame(4, mode="zero_turn", forward=1, turn=1, scale=0.5),
+            drive_frame(4, mode="zero_turn", crab=1, scale=0.5),
+            drive_frame(4, mode="crab", forward=1, scale=0.5),
+            drive_frame(4, mode="crab", turn=1, scale=0.5),
         ):
             with self.subTest(frame=frame):
                 self.assert_protocol_error(
                     "conflicting_mode",
                     lambda frame=frame: validate_drive_frame(frame),
+                )
+
+    def test_each_explicit_mode_maps_to_only_its_axes(self) -> None:
+        _, ackermann = validate_drive_frame(
+            drive_frame(10, mode="ackermann", forward=1, turn=-1)
+        )
+        self.assertEqual(ackermann.linear_y, 0.0)
+        self.assertGreater(ackermann.linear_x, 0.0)
+        self.assertLess(ackermann.angular_z, 0.0)
+
+        _, zero_turn = validate_drive_frame(
+            drive_frame(11, mode="zero_turn", turn=1)
+        )
+        self.assertEqual(zero_turn.linear_x, 0.0)
+        self.assertEqual(zero_turn.linear_y, 0.0)
+        self.assertGreater(zero_turn.angular_z, 0.0)
+
+        _, crab = validate_drive_frame(
+            drive_frame(12, mode="crab", crab=-1)
+        )
+        self.assertEqual(crab.linear_x, 0.0)
+        self.assertLess(crab.linear_y, 0.0)
+        self.assertEqual(crab.angular_z, 0.0)
+
+    def test_invalid_mode_is_rejected(self) -> None:
+        for invalid in ("", "turn", "ACKERMANN", None, 1):
+            with self.subTest(invalid=invalid):
+                self.assert_protocol_error(
+                    "invalid_mode",
+                    lambda invalid=invalid: validate_drive_frame(
+                        drive_frame(13, mode=invalid)
+                    ),
                 )
 
     def test_directions_are_exact_discrete_integers(self) -> None:
@@ -197,7 +252,7 @@ class ManualDriveSessionTest(unittest.TestCase):
                 self.lease, drive_frame(1, forward=1), 10.0
             ),
         )
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 10.0)
         command = self.policy.drive(
             self.lease, drive_frame(2, forward=1), 10.0
         )
@@ -214,11 +269,37 @@ class ManualDriveSessionTest(unittest.TestCase):
             self.policy.validate_arm(self.lease, control_frame("arm", 10)),
             10,
         )
-        self.policy.arm(self.lease, control_frame("arm", 10))
+        self.policy.arm(self.lease, control_frame("arm", 10), 10.0)
         self.assertTrue(self.policy.snapshot()["armed"])
 
-    def test_zero_drive_releases_hold_without_disarming(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+    def test_arm_starts_deadman_before_the_first_drive_frame(self) -> None:
+        self.policy.arm(self.lease, control_frame("arm", 1), 15.0)
+        state = self.policy.snapshot()
+        self.assertTrue(state["armed"])
+        self.assertFalse(state["holding"])
+        self.assertFalse(
+            self.policy.expire(
+                15.0 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S - 1e-6
+            )
+        )
+        self.assertTrue(
+            self.policy.expire(15.0 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S)
+        )
+        self.assertEqual(self.policy.snapshot()["reason"], "deadman_timeout")
+
+    def test_arm_rejects_invalid_time_without_consuming_the_sequence(self) -> None:
+        self.assert_protocol_error(
+            "invalid_time",
+            lambda: self.policy.arm(
+                self.lease, control_frame("arm", 1), math.nan
+            ),
+        )
+        self.assertFalse(self.policy.snapshot()["armed"])
+        self.policy.arm(self.lease, control_frame("arm", 1), 16.0)
+        self.assertTrue(self.policy.snapshot()["armed"])
+
+    def test_zero_drive_releases_hold_and_refreshes_armed_heartbeat(self) -> None:
+        self.policy.arm(self.lease, control_frame("arm", 1), 20.0)
         self.policy.drive(
             self.lease, drive_frame(2, forward=1, scale=0.5), 20.0
         )
@@ -227,10 +308,56 @@ class ManualDriveSessionTest(unittest.TestCase):
         self.assertTrue(state["armed"])
         self.assertFalse(state["holding"])
         self.assertEqual(state["reason"], "released")
-        self.assertFalse(self.policy.expire(100.0))
+        self.assertFalse(
+            self.policy.expire(20.1 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S - 1e-6)
+        )
+        self.policy.drive(self.lease, drive_frame(4, scale=0.5), 20.3)
+        self.assertFalse(
+            self.policy.expire(20.3 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S - 1e-6)
+        )
+        self.assertTrue(
+            self.policy.expire(20.3 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S)
+        )
+        expired = self.policy.snapshot()
+        self.assertFalse(expired["armed"])
+        self.assertFalse(expired["holding"])
+        self.assertEqual(expired["reason"], "deadman_timeout")
+
+    def test_late_drive_cannot_renew_an_expired_deadline(self) -> None:
+        for late_frame in (
+            drive_frame(3, forward=-1),
+            drive_frame(3),
+            drive_frame(2),
+        ):
+            with self.subTest(late_frame=late_frame):
+                policy = ManualDrivePolicy(available=True)
+                lease = policy.connect(object())
+                policy.arm(lease, control_frame("arm", 1), 50.0)
+                policy.drive(lease, drive_frame(2, forward=1), 50.0)
+
+                with self.assertRaises(ManualDriveProtocolError) as context:
+                    policy.drive(
+                        lease,
+                        late_frame,
+                        50.0 + MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
+                    )
+
+                self.assertEqual(
+                    context.exception.error,
+                    "manual_drive_deadman_expired",
+                )
+                state = policy.snapshot()
+                self.assertTrue(state["connected"])
+                self.assertFalse(state["armed"])
+                self.assertFalse(state["holding"])
+                self.assertEqual(state["reason"], "deadman_timeout")
+                self.assertEqual(
+                    state["command"],
+                    {"linear_x": 0.0, "linear_y": 0.0, "angular_z": 0.0},
+                )
 
     def test_deadman_expires_at_250_ms_and_revokes_arm(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 100.0)
         self.policy.drive(
             self.lease, drive_frame(2, forward=1), 100.0
         )
@@ -247,8 +374,16 @@ class ManualDriveSessionTest(unittest.TestCase):
         self.assertEqual(state["command"]["linear_x"], 0.0)
         self.assertFalse(self.policy.expire(101.0))
 
+    def test_custom_deadman_extends_only_the_ui_lease(self) -> None:
+        policy = ManualDrivePolicy(available=True, deadman_timeout_s=0.75)
+        lease = policy.connect(object())
+        policy.arm(lease, control_frame("arm", 1), 100.0)
+        policy.drive(lease, drive_frame(2, forward=1), 100.0)
+        self.assertFalse(policy.expire(100.749999))
+        self.assertTrue(policy.expire(100.75))
+
     def test_nonfinite_deadman_sample_fails_closed(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 100.0)
         self.policy.drive(
             self.lease, drive_frame(2, forward=1), 100.0
         )
@@ -260,9 +395,9 @@ class ManualDriveSessionTest(unittest.TestCase):
         self.assertEqual(state["reason"], "deadman_timeout")
 
     def test_disarm_is_sequenced_and_keeps_connection(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 30.0)
         self.policy.drive(
-            self.lease, drive_frame(2, turn=-1), 30.0
+            self.lease, drive_frame(2, mode="zero_turn", turn=-1), 30.0
         )
         self.policy.disarm(self.lease, control_frame("disarm", 3))
         state = self.policy.snapshot()
@@ -272,7 +407,7 @@ class ManualDriveSessionTest(unittest.TestCase):
         self.assertEqual(state["reason"], "client_disarm")
 
     def test_external_revoke_requires_a_fresh_rearm_sequence(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 40.0)
         self.policy.drive(
             self.lease, drive_frame(2, forward=1), 40.0
         )
@@ -283,11 +418,11 @@ class ManualDriveSessionTest(unittest.TestCase):
                 self.lease, drive_frame(3, forward=1), 40.1
             ),
         )
-        self.policy.arm(self.lease, control_frame("arm", 3))
+        self.policy.arm(self.lease, control_frame("arm", 3), 40.1)
         self.assertTrue(self.policy.snapshot()["armed"])
 
     def test_second_owner_is_rejected_without_changing_active_state(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 0.0)
         self.assert_protocol_error(
             "manual_drive_busy", lambda: self.policy.connect(object())
         )
@@ -297,7 +432,7 @@ class ManualDriveSessionTest(unittest.TestCase):
         old_lease = self.lease
         self.assertTrue(self.policy.disconnect(old_lease))
         new_lease = self.policy.connect(object())
-        self.policy.arm(new_lease, control_frame("arm", 1))
+        self.policy.arm(new_lease, control_frame("arm", 1), 0.0)
         self.assertFalse(self.policy.disconnect(old_lease))
         state = self.policy.snapshot()
         self.assertTrue(state["connected"])
@@ -308,7 +443,7 @@ class ManualDriveSessionTest(unittest.TestCase):
         old_lease = self.lease
         self.policy.disconnect(old_lease)
         new_lease = self.policy.connect(object())
-        self.policy.arm(new_lease, control_frame("arm", 1))
+        self.policy.arm(new_lease, control_frame("arm", 1), 50.0)
         for callback in (
             lambda: self.policy.drive(
                 old_lease, drive_frame(2, forward=1), 50.0
@@ -321,9 +456,9 @@ class ManualDriveSessionTest(unittest.TestCase):
         self.assertTrue(self.policy.snapshot()["armed"])
 
     def test_shutdown_clears_owner_command_and_authorization(self) -> None:
-        self.policy.arm(self.lease, control_frame("arm", 1))
+        self.policy.arm(self.lease, control_frame("arm", 1), 60.0)
         self.policy.drive(
-            self.lease, drive_frame(2, crab=1), 60.0
+            self.lease, drive_frame(2, mode="crab", crab=1), 60.0
         )
         self.policy.shutdown()
         state = self.policy.snapshot()

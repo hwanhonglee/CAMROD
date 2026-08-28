@@ -50,6 +50,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_gnss_topic", default_value=_role_topic("/gnss")),
         DeclareLaunchArgument(
+            "carla_gnss_right_topic",
+            default_value=_role_topic("/gnss_right"),
+        ),
+        DeclareLaunchArgument(
             "platform_odometry_topic",
             default_value="/platform/status/odometry",
             description=(
@@ -109,6 +113,9 @@ def generate_launch_description():
                     "input_imu_topic": LaunchConfiguration("carla_imu_topic"),
                     "input_gnss_topic": LaunchConfiguration(
                         "carla_gnss_topic"),
+                    "input_gnss_right_topic": LaunchConfiguration(
+                        "carla_gnss_right_topic"
+                    ),
                     "platform_odometry_topic": LaunchConfiguration(
                         "platform_odometry_topic"),
                     "publish_platform_odometry": ParameterValue(

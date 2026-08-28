@@ -14,11 +14,18 @@ from typing import Any, Dict, Mapping, Optional
 
 
 MANUAL_DRIVE_DEADMAN_TIMEOUT_S = 0.25
-MANUAL_DRIVE_LINEAR_LIMIT_MPS = 0.20
-MANUAL_DRIVE_LATERAL_LIMIT_MPS = 0.20
-MANUAL_DRIVE_ANGULAR_LIMIT_RADPS = 0.20
+# Ordinary CAMROD keeps the original conservative envelope.  The CARLA
+# composition may opt into the audited Ranger adapter limits below, without
+# changing the production/default launch contract.
+MANUAL_DRIVE_DEFAULT_LINEAR_LIMIT_MPS = 0.20
+MANUAL_DRIVE_DEFAULT_LATERAL_LIMIT_MPS = 0.20
+MANUAL_DRIVE_DEFAULT_ANGULAR_LIMIT_RADPS = 0.20
+MANUAL_DRIVE_MAX_LINEAR_LIMIT_MPS = 1.40
+MANUAL_DRIVE_MAX_LATERAL_LIMIT_MPS = 1.00
+MANUAL_DRIVE_MAX_ANGULAR_LIMIT_RADPS = 0.7853
 MANUAL_DRIVE_MINIMUM_SCALE = 0.10
 MANUAL_DRIVE_MAXIMUM_SCALE = 1.00
+MANUAL_DRIVE_MODES = frozenset({"ackermann", "zero_turn", "crab"})
 
 
 class ManualDriveProtocolError(ValueError):
@@ -33,15 +40,15 @@ class ManualDriveProtocolError(ValueError):
 class ManualDriveLimits:
     """Server-owned command envelope; browser values can only scale it down."""
 
-    linear_x_mps: float = MANUAL_DRIVE_LINEAR_LIMIT_MPS
-    lateral_y_mps: float = MANUAL_DRIVE_LATERAL_LIMIT_MPS
-    angular_z_radps: float = MANUAL_DRIVE_ANGULAR_LIMIT_RADPS
+    linear_x_mps: float = MANUAL_DRIVE_DEFAULT_LINEAR_LIMIT_MPS
+    lateral_y_mps: float = MANUAL_DRIVE_DEFAULT_LATERAL_LIMIT_MPS
+    angular_z_radps: float = MANUAL_DRIVE_DEFAULT_ANGULAR_LIMIT_RADPS
 
     def __post_init__(self) -> None:
         maxima = {
-            "linear_x_mps": MANUAL_DRIVE_LINEAR_LIMIT_MPS,
-            "lateral_y_mps": MANUAL_DRIVE_LATERAL_LIMIT_MPS,
-            "angular_z_radps": MANUAL_DRIVE_ANGULAR_LIMIT_RADPS,
+            "linear_x_mps": MANUAL_DRIVE_MAX_LINEAR_LIMIT_MPS,
+            "lateral_y_mps": MANUAL_DRIVE_MAX_LATERAL_LIMIT_MPS,
+            "angular_z_radps": MANUAL_DRIVE_MAX_ANGULAR_LIMIT_RADPS,
         }
         for name, maximum in maxima.items():
             value = float(getattr(self, name))
@@ -148,6 +155,15 @@ def _parse_scale(value: Any) -> float:
     return parsed
 
 
+def _parse_mode(value: Any) -> str:
+    if not isinstance(value, str) or value not in MANUAL_DRIVE_MODES:
+        raise ManualDriveProtocolError(
+            "invalid_mode",
+            "mode must be exactly 'ackermann', 'zero_turn', or 'crab'",
+        )
+    return value
+
+
 def validate_control_frame(
     payload: Any, expected_type: str
 ) -> int:
@@ -167,25 +183,31 @@ def validate_drive_frame(
     """Validate one discrete drive frame and derive its bounded command."""
     frame = _require_object(payload)
     _require_exact_keys(
-        frame, {"type", "seq", "forward", "turn", "crab", "scale"}
+        frame, {"type", "seq", "mode", "forward", "turn", "crab", "scale"}
     )
     if frame["type"] != "drive":
         raise ManualDriveProtocolError(
             "invalid_type", "expected manual-drive frame type 'drive'"
         )
     sequence = _parse_sequence(frame["seq"])
+    mode = _parse_mode(frame["mode"])
     forward = _parse_direction("forward", frame["forward"])
     turn = _parse_direction("turn", frame["turn"])
     crab = _parse_direction("crab", frame["crab"])
     scale = _parse_scale(frame["scale"])
 
-    # CARLA's Ranger classifier gives lateral motion priority.  Accepting turn
-    # at the same time would silently discard the requested yaw mode, so reject
-    # the ambiguous frame and let the backend publish a fail-closed zero.
-    if crab != 0 and (forward != 0 or turn != 0):
+    # The mode is explicit so an A/D-only command cannot silently change from
+    # Ackermann steering into zero-turn, and Crab cannot steal precedence from
+    # another axis in the CARLA Ranger mapper.
+    mode_conflict = (
+        (mode == "ackermann" and (crab != 0 or (turn != 0 and forward == 0)))
+        or (mode == "zero_turn" and (forward != 0 or crab != 0))
+        or (mode == "crab" and (forward != 0 or turn != 0))
+    )
+    if mode_conflict:
         raise ManualDriveProtocolError(
             "conflicting_mode",
-            "crab cannot be combined with forward or turn",
+            f"drive axes do not match explicit mode {mode!r}",
         )
 
     envelope = limits if limits is not None else ManualDriveLimits()
@@ -269,14 +291,26 @@ class ManualDrivePolicy:
         return sequence
 
     def arm(
-        self, lease: ManualDriveLease, payload: Any
+        self,
+        lease: ManualDriveLease,
+        payload: Any,
+        now_monotonic: float,
     ) -> None:
         self._require_lease(lease)
         sequence = validate_control_frame(payload, "arm")
         self._require_new_sequence(sequence)
+        now = float(now_monotonic)
+        if not math.isfinite(now):
+            raise ManualDriveProtocolError(
+                "invalid_time", "manual-drive monotonic timestamp is invalid"
+            )
         self._last_sequence = sequence
         self._armed = True
         self._clear_motion()
+        # Authorization starts aging immediately.  A browser that disappears
+        # after arm but before its first zero/motion heartbeat cannot leave the
+        # manual gate armed indefinitely.
+        self._deadline = now + self.deadman_timeout_s
         self._reason = "armed"
 
     def drive(
@@ -287,17 +321,28 @@ class ManualDrivePolicy:
             raise ManualDriveProtocolError(
                 "manual_drive_not_armed", "arm manual drive before sending motion"
             )
-        sequence, command = validate_drive_frame(payload, self.limits)
-        self._require_new_sequence(sequence)
         now = float(now_monotonic)
         if not math.isfinite(now):
             raise ManualDriveProtocolError(
                 "invalid_time", "manual-drive monotonic timestamp is invalid"
             )
+        # Check the existing lease deadline before validating or accepting this
+        # frame.  If the ROS timer was delayed, a frame arriving at/after the
+        # deadline must not renew the expired authorization or restart motion.
+        if self._expire_deadline(now):
+            raise ManualDriveProtocolError(
+                "manual_drive_deadman_expired",
+                "manual-drive heartbeat expired; arm again before driving",
+            )
+        sequence, command = validate_drive_frame(payload, self.limits)
+        self._require_new_sequence(sequence)
         self._last_sequence = sequence
         self._command = command
         self._holding = command.moving
-        self._deadline = now + self.deadman_timeout_s if command.moving else None
+        # Zero is a release command, not a lease release.  The browser sends it
+        # as a 10-Hz heartbeat while armed, so it refreshes the same deadline
+        # without claiming that the operator is holding a motion direction.
+        self._deadline = now + self.deadman_timeout_s
         self._reason = "driving" if command.moving else "released"
         return command
 
@@ -320,15 +365,15 @@ class ManualDrivePolicy:
 
     def expire(self, now_monotonic: float) -> bool:
         now = float(now_monotonic)
-        if (
-            not self._armed
-            or not self._holding
-            or self._deadline is None
-        ):
+        return self._expire_deadline(now)
+
+    def _expire_deadline(self, now_monotonic: float) -> bool:
+        if not self._armed or self._deadline is None:
             return False
-        # A corrupted clock sample must not preserve the last non-zero command.
+        # A corrupted clock sample must not preserve manual authorization.
         # ``time.monotonic()`` is finite in normal operation; treating any
-        # impossible value as expired keeps the safety boundary fail-closed.
+        # impossible value as expired keeps the authorization fail-closed.
+        now = float(now_monotonic)
         if math.isfinite(now) and now < self._deadline:
             return False
         self._armed = False

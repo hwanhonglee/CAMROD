@@ -113,14 +113,26 @@ def _parse_checker_component_groups(value: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(requested))
 
 
-def _profile_param_file(config_dir: str, default_dir: str, category: str, param_file: str) -> str:
-    # HH_260617: Diagnostics profiles may override only the files they need.
-    # Missing profile files fall back to `default` so sim can relax hardware-only
-    # checks without duplicating every checker configuration.
-    profile_path = os.path.join(config_dir, category, param_file)
-    if os.path.exists(profile_path):
-        return profile_path
-    return os.path.join(default_dir, category, param_file)
+def _profile_param_file(
+    config_dir: str,
+    fallback_dirs,
+    category: str,
+    param_file: str,
+) -> str:
+    """Resolve a sparse diagnostics profile through an ordered fallback chain."""
+    candidates = [config_dir]
+    if isinstance(fallback_dirs, (list, tuple)):
+        candidates.extend(fallback_dirs)
+    else:
+        candidates.append(fallback_dirs)
+    candidates = list(dict.fromkeys(str(path) for path in candidates if path))
+    for directory in candidates:
+        profile_path = os.path.join(directory, category, param_file)
+        if os.path.exists(profile_path):
+            return profile_path
+    # Preserve the previous deterministic missing-file path in the eventual
+    # error message if an installation is incomplete.
+    return os.path.join(candidates[-1], category, param_file)
 
 
 def _flatten_ros_parameters(params: dict, prefix: str = "") -> dict:
@@ -408,6 +420,9 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     pkg_prefix = get_package_prefix("camrod_system")
     module_namespace = LaunchConfiguration("module_namespace").perform(context)
     config_profile = LaunchConfiguration("config_profile").perform(context)
+    config_profile_fallback = LaunchConfiguration(
+        "config_profile_fallback"
+    ).perform(context)
     enable_checkers = _as_bool(LaunchConfiguration("enable_checkers").perform(context))
     use_checker_components = _as_bool(
         LaunchConfiguration("use_checker_components").perform(context)
@@ -441,8 +456,24 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     if not os.path.isdir(config_root):
         config_root = os.path.join(pkg_share_dir, "config", "diagnostics")
     profile_dir = os.path.join(config_root, config_profile)
-    default_dir = os.path.join(config_root, "default")
-    config_dir = profile_dir if os.path.isdir(profile_dir) else default_dir
+    fallback_profiles = [
+        item.strip()
+        for item in config_profile_fallback.split(",")
+        if item.strip()
+    ]
+    if "default" not in fallback_profiles:
+        fallback_profiles.append("default")
+    fallback_dirs = [
+        os.path.join(config_root, profile)
+        for profile in fallback_profiles
+        if os.path.isdir(os.path.join(config_root, profile))
+    ]
+    default_dir = tuple(fallback_dirs)
+    config_dir = (
+        profile_dir
+        if os.path.isdir(profile_dir)
+        else default_dir[0]
+    )
 
     compose_system_core = enable_system_tools and use_system_tools_container
     if not enable_checkers:
@@ -547,6 +578,14 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='system'),
         DeclareLaunchArgument('config_profile', default_value='default'),
+        DeclareLaunchArgument(
+            'config_profile_fallback',
+            default_value='default',
+            description=(
+                'Comma-separated sparse-profile fallback order; CARLA uses '
+                'sim,default so non-overridden checks retain simulation rules'
+            ),
+        ),
         DeclareLaunchArgument(
             'diagnostics_config_root',
             default_value=pkg_share('camrod_system', os.path.join('config', 'diagnostics')),

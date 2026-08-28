@@ -19,6 +19,15 @@ bringup:
     # Ordinary sim keeps the built-in raw Ranger/BMS heartbeat. External
     # simulators can disable it when their adapter owns those two raw topics.
     sim_publish_platform_status: true
+    # Ordinary CAMROD simulation owns deterministic sensor sources. External
+    # adapters disable these individually when a simulator supplies the same
+    # canonical sensor boundary.
+    sim_publish_fake_gnss: true
+    sim_publish_fake_imu: true
+    sim_publish_fake_lidar_obstacle_cloud: true
+    sim_publish_fake_radar_ranges: true
+    sim_publish_velocity_converter_output: true
+    sim_publish_dummy_lidar_cost_grid: true
     # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
     sim_platform_status_enable: false
     # HH_260810 - The managed operator UI now provides live map, paths,
@@ -289,6 +298,15 @@ bringup:
     cmd_vel_topic: /control/cmd_vel
     # HH_260720 - Standard ROS commands exist only at Nav2 and Ranger boundaries.
     navigation_cmd_vel_ros_topic: /control/nav2_cmd_vel_ros
+    # Empty keeps manual drive absent from ordinary CAMROD.  External-simulator
+    # compositions may opt in and widen only these server-owned UI limits.
+    manual_cmd_vel_ros_topic: ''
+    manual_drive_linear_limit_mps: 0.20
+    manual_drive_lateral_limit_mps: 0.20
+    manual_drive_angular_limit_radps: 0.20
+    # Browser lease only; downstream safety/adapter stale-command watchdogs
+    # independently own the physical non-zero stop boundary.
+    manual_drive_deadman_timeout_s: 0.25
     cmd_vel_ros_topic: /control/cmd_vel_ros
     engage_topic: /planning/engage
     mission_engage_topic: /planning/mission_engage
@@ -603,6 +621,9 @@ bringup:
     # callbacks to keep teardown deterministic.
     checker_component_threads: 1
     diagnostics_profile: default
+    # Sparse profiles normally fall back directly to hardware defaults.
+    # External simulator overlays may select sim,default explicitly.
+    diagnostics_profile_fallback: default
     # HH_260630 - __module_default__ selects camrod_system/config/system_checker.yaml
     # in hardware mode and system_checker_sim.yaml when sim:=true.
     system_checker_param_file: __module_default__
@@ -628,6 +649,10 @@ bringup:
     # HH_260810 - Selected-view latest-value stream ceiling. Ten Hz follows the
     # camera target while remaining bounded for the 8-core ARM64 deployment.
     operator_telemetry_stream_rate_hz: 10.0
+    # Production cameras are not required to publish compressed frames, so the
+    # generic profile retains the UI backend's raw-image JPEG fallback. CARLA
+    # overrides only this value because its relay guarantees compressed topics.
+    operator_telemetry_camera_raw_fallback_enabled: true
     # HH_260803 - Serve the guest workflow with the same scenario backend.
     enable_guest_ui: true
     guest_ui_host: 0.0.0.0

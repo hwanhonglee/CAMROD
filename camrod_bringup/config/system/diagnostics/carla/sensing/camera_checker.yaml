@@ -1,0 +1,33 @@
+# CARLA rendered-camera contract. Sensor actors are authored at 800x600 and
+# wall-clock cadence may fall below simulation cadence under GPU load.
+/system/camera_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    camera_names: ["econ_front", "econ_rear"]
+
+    econ_front:
+      image_topic: "/sensing/camera/econ_front/image_rect/compressed"
+      image_type: "compressed"
+      camera_info_topic: "/sensing/camera/econ_front/camera_info"
+      expected_fps: 2.0
+      fps_warn_ratio: 0.7
+      fps_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      expected_width: 800
+      expected_height: 600
+      expected_encoding: ""
+
+    econ_rear:
+      # CARLA relay already produces this JPEG from the real rear actor.  The
+      # checker only needs cadence/dimensions, so subscribing to the 1.9 MB raw
+      # frame would add avoidable DDS and callback load to manual UI sessions.
+      image_topic: "/sensing/camera/econ_rear/image_raw/compressed"
+      image_type: "compressed"
+      camera_info_topic: "/sensing/camera/econ_rear/camera_info"
+      expected_fps: 2.0
+      fps_warn_ratio: 0.7
+      fps_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      expected_width: 800
+      expected_height: 600
+      expected_encoding: ""

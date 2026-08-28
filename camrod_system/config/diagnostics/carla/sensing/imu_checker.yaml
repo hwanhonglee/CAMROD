@@ -1,0 +1,13 @@
+# Actual CARLA IMU actor relayed through the standard ROS sensor boundary.
+/system/imu_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    imu_names: ["main"]
+    main:
+      topic: "/sensing/imu/data"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      accel_magnitude_warn: 30.0
+      accel_magnitude_error: 50.0

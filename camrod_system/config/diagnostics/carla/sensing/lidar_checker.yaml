@@ -1,0 +1,23 @@
+# Both canonical clouds mirror the same actual CARLA ray-cast LiDAR sample.
+/system/lidar_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    lidar_names: ["main", "filtered"]
+    main:
+      topic: "/sensing/lidar/vanjee/points_raw"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_point_count: 1
+      max_point_count: 0
+      max_nan_ratio: 0.0
+    filtered:
+      topic: "/sensing/lidar/points_filtered"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_point_count: 1
+      max_point_count: 0
+      max_nan_ratio: 0.0

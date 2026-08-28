@@ -415,7 +415,6 @@ function CameraView({ telemetry }) {
         <CameraFeed telemetry={telemetry} camera="front" label="Front camera" />
         <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" />
       </div>
-      <ManualDrivePanel />
     </div>
   );
 }
@@ -1038,6 +1037,16 @@ function DockingView({ telemetry }) {
   const reverse = controllers.reverse_parking || {};
   const april = controllers.apriltag_parking || {};
   const mission = telemetry.mission || {};
+  // The AprilTag detector is optional in CARLA.  Prefer its annotated debug
+  // frame when it is genuinely live; otherwise keep the operator's docking
+  // view useful with the canonical rear camera instead of showing NO FRAME.
+  const dockingCamera = telemetry.cameras?.docking || {};
+  const dockingSource = sourceState(telemetry, 'camera.docking', 3);
+  const hasFreshDockingDebug = dockingCamera.available === true && dockingSource.state === 'live';
+  const dockingCameraName = hasFreshDockingDebug ? 'docking' : 'rear';
+  const dockingCameraLabel = hasFreshDockingDebug
+    ? 'Docking camera · AprilTag debug'
+    : 'Docking camera · CARLA rear fallback';
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
@@ -1062,6 +1071,7 @@ function DockingView({ telemetry }) {
     <div className="telemetry-view telemetry-docking-view">
       <div className="telemetry-source-row">
         <SourcePill telemetry={telemetry} source="camera.docking" label="AprilTag debug" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.rear" label="CARLA rear fallback" staleAfter={3} />
         <SourcePill telemetry={telemetry} source="docking.tag_detected" label="Tag detection" />
         <SourcePill telemetry={telemetry} source="docking.tag_pose" label="Tag pose" />
         <SourcePill telemetry={telemetry} source="platform.velocity" label="Charging CAN" />
@@ -1080,7 +1090,7 @@ function DockingView({ telemetry }) {
         <div className={`docking-command-status ${commandStatus.tone}`}>{commandStatus.message || '명령 대기'}</div>
       </div>
       <div className="docking-layout">
-        <CameraFeed telemetry={telemetry} camera="docking" label="AprilTag docking debug" />
+        <CameraFeed telemetry={telemetry} camera={dockingCameraName} label={dockingCameraLabel} />
         <section className="telemetry-section docking-status-section">
           <SectionHeader title="Docking state" meta={mission.service_state_name || 'service state unavailable'} />
           <div className="docking-state-banner">
@@ -1272,6 +1282,7 @@ export default function TelemetryWorkspace({ activeTab }) {
         {connectionError && <em>{connectionError}</em>}
       </div>
       {view}
+      <ManualDrivePanel />
     </div>
   );
 }

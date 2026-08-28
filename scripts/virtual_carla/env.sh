@@ -33,6 +33,16 @@ fi
 # environment contract.
 export RANGER_ENV_FILE="${RANGER_ENV_FILE:-${RANGER_CARLA_ROOT:+${RANGER_CARLA_ROOT}/config/environment.env}}"
 _virtual_carla_config_names=(
+  CAMROD_CYCLONEDDS_CONFIG
+  CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES
+  CAMROD_MANUAL_LINEAR_LIMIT_MPS
+  CAMROD_MANUAL_LATERAL_LIMIT_MPS
+  CAMROD_MANUAL_ANGULAR_LIMIT_RADPS
+  CAMROD_MANUAL_DEADMAN_TIMEOUT_S
+  CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ
+  CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
+  CAMROD_CARLA_SENSOR_MIN_RATE_HZ
+  CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
   RANGER_WORK_ROOT
   RANGER_ROS_WS
   CARLA_ROOT
@@ -155,6 +165,28 @@ export CAMROD_UI_URL="${CAMROD_UI_URL:-http://127.0.0.1:${CAMROD_UI_PORT}}"
 export CAMROD_ENABLE_OPERATOR_WINDOW="${CAMROD_ENABLE_OPERATOR_WINDOW:-true}"
 export CAMROD_ENABLE_VOICE="${CAMROD_ENABLE_VOICE:-false}"
 export CAMROD_ENABLE_RVIZ="${CAMROD_ENABLE_RVIZ:-false}"
+export CAMROD_MANUAL_LINEAR_LIMIT_MPS="${CAMROD_MANUAL_LINEAR_LIMIT_MPS:-1.40}"
+export CAMROD_MANUAL_LATERAL_LIMIT_MPS="${CAMROD_MANUAL_LATERAL_LIMIT_MPS:-1.00}"
+export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS="${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS:-0.7853}"
+export CAMROD_MANUAL_DEADMAN_TIMEOUT_S="${CAMROD_MANUAL_DEADMAN_TIMEOUT_S:-0.75}"
+# Five wall-clock JPEG frames per camera are sufficient for the operator view
+# and leave CPU headroom for the independent 10 Hz manual command heartbeat.
+# Raw frames remain available to algorithms, but the CARLA relay caps their
+# publication when a consumer is actually present.
+export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ="${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ:-5.0}"
+export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ="${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ:-10.0}"
+export CAMROD_CARLA_SENSOR_MIN_RATE_HZ="${CAMROD_CARLA_SENSOR_MIN_RATE_HZ:-2.0}"
+export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS="${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS:-3.0}"
+
+# One checked-in CycloneDDS transport contract is shared by every virtual-CARLA
+# ROS process.  Raw 800x600 BGRA frames are fragmented across DDS UDP packets;
+# allowing individual terminals to inherit different ambient DDS settings can
+# make small CameraInfo messages work while the image stream silently stalls.
+export CAMROD_CYCLONEDDS_CONFIG="${CAMROD_CYCLONEDDS_CONFIG:-${CAMROD_SRC_ROOT}/cyclonedds.xml}"
+CAMROD_CYCLONEDDS_CONFIG="$(readlink -m "${CAMROD_CYCLONEDDS_CONFIG}")"
+export CAMROD_CYCLONEDDS_CONFIG
+export CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES="${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES:-20971520}"
+export CYCLONEDDS_URI="file://${CAMROD_CYCLONEDDS_CONFIG}"
 
 _virtual_carla_prefix_roots=()
 if [[ -n "${CARLA_ROS_BRIDGE_WS}" ]]; then
@@ -202,6 +234,62 @@ virtual_carla_require_executable() {
   [[ -x "${path}" ]] || virtual_carla_die "missing ${label}: ${path}"
 }
 
+virtual_carla_require_dds_transport() {
+  local required_floor=20971520
+  local required="${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}"
+  local key current failures=0
+
+  virtual_carla_require_file \
+    "${CAMROD_CYCLONEDDS_CONFIG}" "CAMROD CycloneDDS config" || return 1
+  if [[ "${RMW_IMPLEMENTATION}" != "rmw_cyclonedds_cpp" ]]; then
+    virtual_carla_die \
+      "virtual CARLA camera transport requires RMW_IMPLEMENTATION=rmw_cyclonedds_cpp (got ${RMW_IMPLEMENTATION})"
+    return 1
+  fi
+  if [[ ! "${required}" =~ ^[0-9]+$ || "${required}" -lt "${required_floor}" ]]; then
+    virtual_carla_die \
+      "CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES must be an integer >= ${required_floor} (got ${required})"
+    return 1
+  fi
+  if [[ "${CYCLONEDDS_URI}" != "file://${CAMROD_CYCLONEDDS_CONFIG}" ]]; then
+    virtual_carla_die \
+      "CYCLONEDDS_URI must select ${CAMROD_CYCLONEDDS_CONFIG} (got ${CYCLONEDDS_URI})"
+    return 1
+  fi
+  command -v sysctl >/dev/null 2>&1 || {
+    virtual_carla_die "sysctl is required to validate DDS camera socket buffers"
+    return 1
+  }
+
+  for key in net.core.rmem_max net.core.wmem_max; do
+    current="$(sysctl -n "${key}" 2>/dev/null)" || {
+      virtual_carla_die "could not read kernel setting ${key}"
+      failures=$((failures + 1))
+      continue
+    }
+    if [[ ! "${current}" =~ ^[0-9]+$ ]]; then
+      virtual_carla_die \
+        "kernel setting ${key} is not an integer (got ${current})"
+      failures=$((failures + 1))
+      continue
+    fi
+    if (( current < required )); then
+      virtual_carla_die \
+        "kernel setting ${key}=${current} is below the DDS camera minimum ${required}"
+      failures=$((failures + 1))
+    fi
+  done
+
+  if (( failures > 0 )); then
+    printf '%s\n' \
+      "[virtual_carla] ACTION: sudo sysctl -w net.core.rmem_max=${required} net.core.wmem_max=${required}" \
+      "[virtual_carla] Persist both values in /etc/sysctl.d/99-camrod-carla-dds.conf before opening the ROS terminals again." >&2
+    return 1
+  fi
+  virtual_carla_log \
+    "DDS camera transport ready: ${CYCLONEDDS_URI}, socket buffers >= ${required} bytes"
+}
+
 virtual_carla_source_ros() {
   local include_camrod="${1:-false}"
   local include_ranger="${2:-true}"
@@ -238,6 +326,15 @@ virtual_carla_source_ros() {
   [[ "${restore_nounset}" -eq 1 ]] && set -u
 
   export ROS_DOMAIN_ID RMW_IMPLEMENTATION CAMROD_EXTRA_PREFIX_ROOTS
+  export CAMROD_CYCLONEDDS_CONFIG CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES
+  export CYCLONEDDS_URI
+  export CAMROD_MANUAL_LINEAR_LIMIT_MPS CAMROD_MANUAL_LATERAL_LIMIT_MPS
+  export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS
+  export CAMROD_MANUAL_DEADMAN_TIMEOUT_S
+  export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ
+  export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
+  export CAMROD_CARLA_SENSOR_MIN_RATE_HZ
+  export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
 }
 
 virtual_carla_use_python_egg() {
@@ -338,6 +435,17 @@ CAMROD sensor relay=${CAMROD_LAUNCH_SENSOR_RELAY}
 CAMROD lanelet map=${CAMROD_LANELET_MAP}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
 RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}
+CAMROD CycloneDDS config=${CAMROD_CYCLONEDDS_CONFIG}
+CYCLONEDDS_URI=${CYCLONEDDS_URI}
+DDS socket buffer minimum bytes=${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}
+CAMROD manual linear limit mps=${CAMROD_MANUAL_LINEAR_LIMIT_MPS}
+CAMROD manual lateral limit mps=${CAMROD_MANUAL_LATERAL_LIMIT_MPS}
+CAMROD manual angular limit radps=${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}
+CAMROD manual UI deadman timeout seconds=${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}
+CARLA compressed image maximum wall rate hz=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}
+CARLA raw image maximum wall rate hz=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}
+CARLA visual sensor minimum wall rate hz=${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}
+CARLA visual sensor maximum sample age seconds=${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}
 EOF
 }
 

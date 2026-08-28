@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -63,6 +64,21 @@ def test_visual_profile_preserves_the_accepted_actor_and_control_sensors():
             "sensor.lidar.ray_cast",
             pytest.approx((0.76336, 0.0, 0.59538)),
         ),
+        (
+            "gnss",
+            "sensor.other.gnss",
+            pytest.approx((0.0, 0.45, 0.0)),
+        ),
+        (
+            "gnss_right",
+            "sensor.other.gnss",
+            pytest.approx((0.0, -0.45, 0.0)),
+        ),
+        (
+            "imu",
+            "sensor.other.imu",
+            pytest.approx((0.688, 0.0, 0.756)),
+        ),
     ),
 )
 def test_visual_profile_has_one_canonical_ten_hz_sensor(
@@ -97,11 +113,19 @@ def test_relay_owns_canonical_frames_and_compressed_topics_in_carla_overlay():
         'default_value="camera_front"',
         'default_value="camera_rear"',
         'default_value="lidar_link"',
+        'default_value="/sensing/lidar/vanjee/points_raw"',
+        'default_value="/sensing/lidar/points_filtered"',
         'default_value="false"',
         'DeclareLaunchArgument("jpeg_quality", default_value="80")',
+        '"compressed_image_max_rate_hz",',
+        '"raw_image_max_rate_hz",',
+        'default_value="10.0"',
         'LaunchConfiguration("launch_image_compression")',
         'value_type=bool',
         'LaunchConfiguration("jpeg_quality"), value_type=int',
+        'LaunchConfiguration("compressed_image_max_rate_hz")',
+        'LaunchConfiguration("raw_image_max_rate_hz")',
+        'value_type=float',
     ):
         assert expected in launch_source
 
@@ -116,13 +140,49 @@ def test_relay_owns_canonical_frames_and_compressed_topics_in_carla_overlay():
         / "camrod_carla_adapter"
         / "sensor_relay_node.py"
     ).read_text(encoding="utf-8")
-    assert "self.create_publisher(Image, topic, 10)" in relay_source
-    assert "CompressedImage, self.front_compressed_output, 10" in relay_source
-    assert "CompressedImage, self.rear_compressed_output, 10" in relay_source
+    assert "camera_input_qos = QoSProfile(" in relay_source
+    assert "camera_output_qos = QoSProfile(" in relay_source
+    assert "depth=2" in relay_source
+    assert "depth=1" in relay_source
+    assert "reliability=ReliabilityPolicy.RELIABLE" in relay_source
+    assert "Image, topic, camera_output_qos" in relay_source
+    assert (
+        "CompressedImage, self.front_compressed_output, camera_output_qos"
+        in relay_source
+    )
+    assert (
+        "CompressedImage, self.rear_compressed_output, camera_output_qos"
+        in relay_source
+    )
+    assert "Image, self.front_image_input, self._on_front_image," in relay_source
+    assert "payload = np.frombuffer(message.data" in relay_source
+    assert "def _publish_raw_image(" in relay_source
+    assert "publisher.get_subscription_count() > 0" in relay_source
+    assert "Image, self.rear_image_input, self._on_rear_image," in relay_source
+    assert relay_source.count("camera_input_qos,") == 2
     assert "def encode_image_jpeg" in relay_source
+    assert "publisher.get_subscription_count() <= 0" in relay_source
+    assert "def active_stream_ages" in relay_source
     assert 'output.format = "jpeg"' in relay_source
     assert 'DiagnosticArray, "/diagnostics", 10' in relay_source
     assert "self._diagnostics_publisher.publish(array)" in relay_source
+    assert "self._lidar_publishers = [" in relay_source
+    assert "for publisher in self._lidar_publishers:" in relay_source
+    assert '"obstacle_cloud_output", "/perception/obstacles"' in relay_source
+
+
+def test_virtual_carla_cyclonedds_config_reserves_both_socket_directions():
+    root = ET.parse(REPO_ROOT / "cyclonedds.xml").getroot()
+    minimums = {
+        element.tag.rsplit("}", 1)[-1]: element.attrib.get("min")
+        for element in root.iter()
+        if element.tag.rsplit("}", 1)[-1]
+        in {"SocketReceiveBufferSize", "SocketSendBufferSize"}
+    }
+    assert minimums == {
+        "SocketReceiveBufferSize": "20MiB",
+        "SocketSendBufferSize": "20MiB",
+    }
 
 
 def test_sensor_stream_preflight_requires_payloads_from_all_five_inputs():
@@ -139,8 +199,8 @@ def test_sensor_stream_preflight_requires_payloads_from_all_five_inputs():
         assert suffix in source
     assert "qos_profile_sensor_data" in source
     assert "message.step <= 0" in source
-    assert 'default=8.0' in source
+    assert 'default=2.0' in source
+    assert 'default=3.0' in source
     assert 'default=1.0' in source
-    assert 'default=0.5' in source
     assert 'metric["stream_ready"]' in source
     assert "encode_image_jpeg(message, 80)" in source

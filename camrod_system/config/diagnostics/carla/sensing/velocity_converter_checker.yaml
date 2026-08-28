@@ -1,0 +1,13 @@
+# The real converter is driven by CARLA IMU plus CARLA-backed platform velocity.
+/system/velocity_converter_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    velocity_topic: "/platform/status/velocity"
+    imu_topic: "/sensing/imu/data"
+    output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+    velocity_stale_timeout_s: 3.0
+    imu_stale_timeout_s: 3.0
+    output_stale_timeout_s: 3.0
+    expected_output_hz: 2.0
+    hz_warn_ratio: 0.7
+    hz_error_ratio: 0.4

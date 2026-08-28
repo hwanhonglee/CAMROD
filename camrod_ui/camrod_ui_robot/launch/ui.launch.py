@@ -87,6 +87,14 @@ def generate_launch_description():
         default_value='10.0',
         description='Maximum selected-view WebSocket refresh rate in Hz',
     )
+    operator_telemetry_camera_raw_fallback_enabled_arg = DeclareLaunchArgument(
+        'operator_telemetry_camera_raw_fallback_enabled',
+        default_value='true',
+        description=(
+            'Subscribe to raw front/rear images when compressed operator '
+            'camera streams may be unavailable'
+        ),
+    )
     enable_ui_guest_arg = DeclareLaunchArgument(
         'enable_ui_guest',
         default_value='true',
@@ -166,6 +174,29 @@ def generate_launch_description():
         description=(
             'Dedicated operator Twist topic; empty disables UI manual drive '
             '(CARLA/external-simulator opt-in)'
+        ),
+    )
+    manual_drive_linear_limit_mps_arg = DeclareLaunchArgument(
+        'manual_drive_linear_limit_mps',
+        default_value='0.20',
+        description='Server-owned maximum operator forward/reverse Twist speed',
+    )
+    manual_drive_lateral_limit_mps_arg = DeclareLaunchArgument(
+        'manual_drive_lateral_limit_mps',
+        default_value='0.20',
+        description='Server-owned maximum operator crab Twist speed',
+    )
+    manual_drive_angular_limit_radps_arg = DeclareLaunchArgument(
+        'manual_drive_angular_limit_radps',
+        default_value='0.20',
+        description='Server-owned maximum operator yaw-rate command',
+    )
+    manual_drive_deadman_timeout_s_arg = DeclareLaunchArgument(
+        'manual_drive_deadman_timeout_s',
+        default_value='0.25',
+        description=(
+            'Maximum browser command-heartbeat gap before UI manual drive '
+            'publishes zero and disengages'
         ),
     )
     platform_drive_enable_topic_arg = DeclareLaunchArgument(
@@ -272,6 +303,12 @@ def generate_launch_description():
                 LaunchConfiguration('operator_telemetry_stream_rate_hz'),
                 value_type=float,
             ),
+            'telemetry_camera_raw_fallback_enabled': ParameterValue(
+                LaunchConfiguration(
+                    'operator_telemetry_camera_raw_fallback_enabled'
+                ),
+                value_type=bool,
+            ),
             # HH_260617: UI follows the system namespace for aggregated diagnostics.
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             # HH_260721 - Consume the platform-neutral operational service lifecycle.
@@ -282,6 +319,22 @@ def generate_launch_description():
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'manual_cmd_vel_ros_topic': LaunchConfiguration('manual_cmd_vel_ros_topic'),
+            'manual_drive_linear_limit_mps': ParameterValue(
+                LaunchConfiguration('manual_drive_linear_limit_mps'),
+                value_type=float,
+            ),
+            'manual_drive_lateral_limit_mps': ParameterValue(
+                LaunchConfiguration('manual_drive_lateral_limit_mps'),
+                value_type=float,
+            ),
+            'manual_drive_angular_limit_radps': ParameterValue(
+                LaunchConfiguration('manual_drive_angular_limit_radps'),
+                value_type=float,
+            ),
+            'manual_drive_deadman_timeout_s': ParameterValue(
+                LaunchConfiguration('manual_drive_deadman_timeout_s'),
+                value_type=float,
+            ),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
             'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
@@ -420,6 +473,7 @@ def generate_launch_description():
         ui_port_arg,
         enable_operator_telemetry_arg,
         operator_telemetry_stream_rate_hz_arg,
+        operator_telemetry_camera_raw_fallback_enabled_arg,
         enable_ui_guest_arg,
         guest_host_arg,
         guest_port_arg,
@@ -435,6 +489,10 @@ def generate_launch_description():
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
         manual_cmd_vel_ros_topic_arg,
+        manual_drive_linear_limit_mps_arg,
+        manual_drive_lateral_limit_mps_arg,
+        manual_drive_angular_limit_radps_arg,
+        manual_drive_deadman_timeout_s_arg,
         platform_drive_enable_topic_arg,
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,

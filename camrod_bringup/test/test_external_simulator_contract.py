@@ -100,6 +100,18 @@ def test_bringup_routes_external_plant_without_disabling_full_sim_graph():
     assert "('camrod_bringup', 'fake_sensors.launch.py'" in source
 
 
+def test_fake_sensor_publishers_release_external_sensor_topic_ownership():
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert 'self.declare_parameter("publish_fake_gnss", True)' in source
+    assert 'self.declare_parameter("publish_fake_imu", True)' in source
+    assert "if self.publish_fake_gnss:" in source
+    assert "if self.publish_fake_imu:" in source
+    assert "if self.publish_fake_lidar_obstacle_cloud:" in source
+    assert "self.pub_navsat = None" in source
+    assert "self.pub_imu_ros = None" in source
+    assert "self.pub_lidar_filtered = None" in source
+
+
 def test_external_plant_is_opt_in_and_preserves_develop_defaults():
     """Ordinary CAMROD must not inherit the CARLA runtime profile."""
     launch_defaults = yaml.safe_load(
@@ -123,6 +135,19 @@ def test_external_plant_is_opt_in_and_preserves_develop_defaults():
 
     assert launch_defaults["runtime"]["external_simulator"] is False
     assert launch_defaults["runtime"]["sim_publish_platform_status"] is True
+    for key in (
+        "sim_publish_fake_gnss",
+        "sim_publish_fake_imu",
+        "sim_publish_fake_lidar_obstacle_cloud",
+        "sim_publish_fake_radar_ranges",
+        "sim_publish_velocity_converter_output",
+        "sim_publish_dummy_lidar_cost_grid",
+    ):
+        assert launch_defaults["runtime"][key] is True
+    assert fake_defaults["publish_fake_gnss"] is True
+    assert fake_defaults["publish_fake_imu"] is True
+    assert fake_defaults["publish_fake_lidar_obstacle_cloud"] is True
+    assert fake_defaults["publish_fake_radar_ranges"] is True
     assert fake_defaults["motion_source"] == "cmd_vel"
 
 
@@ -193,3 +218,14 @@ def test_dedicated_manual_command_boundary_is_opt_in():
         "'manual_cmd_vel_ros_topic': LaunchConfiguration("
         "'manual_cmd_vel_ros_topic')"
     ) in ui_launch
+    assert "'control_manual_drive_deadman_timeout_s'" in source
+    assert (
+        "cfg_get(launch_cfg, 'control/manual_drive_deadman_timeout_s', 0.25)"
+        in source
+    )
+    assert (
+        "'manual_drive_deadman_timeout_s': lc[\n"
+        "            'control_manual_drive_deadman_timeout_s'"
+        in source
+    )
+    assert "'manual_drive_deadman_timeout_s'" in ui_launch
