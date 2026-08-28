@@ -1,0 +1,35 @@
+/carla_radar_relay:
+  ros__parameters:
+    # The standard CARLA ROS bridge publishes sensor.other.radar as
+    # sensor_msgs/PointCloud2 with a float32 field named `Range`.
+    channel_names: [front1, front2, left1, left2, right1, right2, rear]
+    output_topics:
+      - /sensing/radar/front1/range
+      - /sensing/radar/front2/range
+      - /sensing/radar/left1/range
+      - /sensing/radar/left2/range
+      - /sensing/radar/right1/range
+      - /sensing/radar/right2/range
+      - /sensing/radar/rear/range
+    standard_output_topics:
+      - /sensing/radar/front1/range_ros
+      - /sensing/radar/front2/range_ros
+      - /sensing/radar/left1/range_ros
+      - /sensing/radar/left2/range_ros
+      - /sensing/radar/right1/range_ros
+      - /sensing/radar/right2/range_ros
+      - /sensing/radar/rear/range_ros
+    frame_ids:
+      - radar_front1_link
+      - radar_front2_link
+      - radar_left1_link
+      - radar_left2_link
+      - radar_right1_link
+      - radar_right2_link
+      - radar_rear_link
+    min_ranges_m: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+    max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
+    field_of_views_rad: [0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26]
+    no_return_epsilon_m: 0.001
+    stamp_with_reception_time: true
+    stream_timeout_sec: 3.0

@@ -1,0 +1,14 @@
+# Fused obstacle cloud is produced from the actual CARLA LiDAR input.
+/system/perception_obstacle_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    obstacle_names: ["fused_obstacles"]
+    fused_obstacles:
+      topic: "/perception/obstacles"
+      type: "PointCloud2"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_count: 0
+      max_count: 0

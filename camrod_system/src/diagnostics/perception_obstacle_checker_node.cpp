@@ -160,8 +160,13 @@ protected:
 
       } else {
         // PointCloud2 (기본)
+        // LiDAR/obstacle clouds are sensor-data streams and may legitimately
+        // be published BEST_EFFORT (CARLA and the production LiDAR path both
+        // use that contract).  A reliable-only diagnostic subscriber is QoS
+        // incompatible and falsely reports "No topic messages" even while the
+        // safety consumer receives the cloud.
         src->pc2_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
-          src->topic, rclcpp::QoS(10),
+          src->topic, rclcpp::SensorDataQoS(),
           [this, src](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
             std::lock_guard<std::mutex> lock(src->mtx);
             const auto now     = this->now();

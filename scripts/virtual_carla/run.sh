@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|spawn|camrod|manual|doctor>
+Usage: run.sh <commands|server|bridge|spawn|camrod|manual|audit-sensors|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
@@ -13,6 +13,8 @@ Usage: run.sh <commands|server|bridge|spawn|camrod|manual|doctor>
   spawn     spawn the configured Ranger actor/sensors
   camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
   manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
+  audit-sensors
+            prove all 32 CARLA-source/UI sensor streams and 13 actors live
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
 Required order in separate terminals: server -> bridge -> spawn -> camrod.
@@ -116,6 +118,12 @@ camrod_command() {
     "camrod_launch_defaults_file:=${CAMROD_LAUNCH_DEFAULTS_FILE}"
     "camrod_map_path:=${CAMROD_LANELET_MAP}"
     "launch_sensor_relay:=${CAMROD_LAUNCH_SENSOR_RELAY}"
+    "compressed_image_max_rate_hz:=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}"
+    "raw_image_max_rate_hz:=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}"
+    "manual_drive_linear_limit_mps:=${CAMROD_MANUAL_LINEAR_LIMIT_MPS}"
+    "manual_drive_lateral_limit_mps:=${CAMROD_MANUAL_LATERAL_LIMIT_MPS}"
+    "manual_drive_angular_limit_radps:=${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}"
+    "manual_drive_deadman_timeout_s:=${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}"
     enable_plugin_api:=true
     enable_api_ui:=true
     "enable_operator_ui_window:=${CAMROD_ENABLE_OPERATOR_WINDOW}"
@@ -135,6 +143,24 @@ manual_command() {
     -r cmd_vel:=/control/manual_cmd_vel_ros
     -p speed:=0.20
     -p turn:=0.20
+  )
+}
+
+run_sensor_source_audit() {
+  local cache_dir
+  cache_dir="$(mktemp -d \
+    "${TMPDIR:-/tmp}/camrod-carla-sensor-audit.XXXXXX")"
+  (
+    trap 'rm -rf -- "${cache_dir}"' EXIT
+    export PYTHON_EGG_CACHE="${cache_dir}"
+    export CARLA_PYTHON_EGG_CACHE="${cache_dir}"
+    export RANGER_PYTHON_EGG_CACHE="${cache_dir}"
+    virtual_carla_use_python_egg
+    ros2 run camrod_carla_adapter carla_sensor_source_audit \
+      --role-name "${CARLA_ROLE_NAME}" \
+      --host "${CARLA_HOST}" \
+      --port "${CARLA_PORT}" \
+      --actor-policy require
   )
 }
 
@@ -353,10 +379,13 @@ validate_carla_sensor_streams() {
       "NullRHI selected: skipping camera/LiDAR payload preflight"
     return 0
   fi
-  if timeout --signal=INT --kill-after=2s 12s \
+  if timeout --signal=INT --kill-after=2s 16s \
       python3 "${script_dir}/check_carla_sensor_streams.py" \
         --role-name "${CARLA_ROLE_NAME}" \
-        --timeout-seconds 8; then
+        --timeout-seconds 12 \
+        --min-rate-hz "${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}" \
+        --max-sample-age-seconds \
+          "${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}"; then
     virtual_carla_log "CARLA camera/LiDAR payload preflight passed"
     return 0
   else
@@ -365,7 +394,7 @@ validate_carla_sensor_streams() {
   case "${status_code}" in
     124|137)
       virtual_carla_die \
-        "CARLA visual sensor preflight exceeded its hard 12s bound; keep bridge and spawn running, then retry camrod"
+        "CARLA visual sensor preflight exceeded its hard 16s bound; keep bridge and spawn running, then retry camrod"
       ;;
     130)
       virtual_carla_die "CARLA visual sensor preflight was interrupted"
@@ -605,6 +634,8 @@ run_doctor() {
     return 1
   fi
 
+  virtual_carla_require_dds_transport || \
+    static_failures=$((static_failures + 1))
   virtual_carla_require_executable \
     "${UE_EDITOR}" "UE4Editor" || static_failures=$((static_failures + 1))
   virtual_carla_require_file \
@@ -700,7 +731,33 @@ case "${subcommand}" in
     printf 'export RANGER_ROS_WS=%q\n' "${RANGER_ROS_WS}"
     printf 'export ROS_DOMAIN_ID=%q\n' "${ROS_DOMAIN_ID}"
     printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION}"
+    printf 'export CAMROD_CYCLONEDDS_CONFIG=%q\n' \
+      "${CAMROD_CYCLONEDDS_CONFIG}"
+    printf 'export CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES=%q\n' \
+      "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}"
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+    printf 'export CAMROD_MANUAL_LINEAR_LIMIT_MPS=%q\n' \
+      "${CAMROD_MANUAL_LINEAR_LIMIT_MPS}"
+    printf 'export CAMROD_MANUAL_LATERAL_LIMIT_MPS=%q\n' \
+      "${CAMROD_MANUAL_LATERAL_LIMIT_MPS}"
+    printf 'export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS=%q\n' \
+      "${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}"
+    printf 'export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=%q\n' \
+      "${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}"
+    printf 'export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ=%q\n' \
+      "${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}"
+    printf 'export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ=%q\n' \
+      "${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}"
+    printf 'export CAMROD_CARLA_SENSOR_MIN_RATE_HZ=%q\n' \
+      "${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}"
+    printf 'export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS=%q\n' \
+      "${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}"
     printf 'export CARLA_RENDER_MODE=%q\n\n' "${CARLA_RENDER_MODE}"
+    printf '# One-time host setup for fragmented raw camera frames\n'
+    printf 'sudo sysctl -w net.core.rmem_max=%q net.core.wmem_max=%q\n' \
+      "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}" \
+      "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}"
+    printf '# Persist both values in /etc/sysctl.d/99-camrod-carla-dds.conf\n\n'
     printf '# REQUIRED lifecycle order (four terminals)\n'
     printf '# Wait for each preceding stage to report success before continuing.\n'
     printf '%q server\n' "${script_dir}/run.sh"
@@ -709,6 +766,8 @@ case "${subcommand}" in
     printf '%q camrod\n\n' "${script_dir}/run.sh"
     printf '# Optional after CAMROD and physical 4WS status are healthy\n'
     printf '%q manual\n\n' "${script_dir}/run.sh"
+    printf '# Required live proof after opening a UI sensor tab\n'
+    printf '%q audit-sensors\n\n' "${script_dir}/run.sh"
 
     printf '# Expanded server command\n'
     print_command "${SERVER_COMMAND[@]}"
@@ -738,6 +797,7 @@ case "${subcommand}" in
     exec "${SERVER_COMMAND[@]}"
     ;;
   bridge)
+    virtual_carla_require_dds_transport
     require_bridge_authorization_files
     validate_render_timing_contract
     virtual_carla_verify_external_prefixes
@@ -747,6 +807,7 @@ case "${subcommand}" in
     exec "${BRIDGE_COMMAND[@]}"
     ;;
   spawn)
+    virtual_carla_require_dds_transport
     virtual_carla_verify_external_prefixes
     prepare_ros_carla_python spawn
     virtual_carla_verify_package_prefix \
@@ -759,6 +820,7 @@ case "${subcommand}" in
     exec "${SPAWN_COMMAND[@]}"
     ;;
   camrod)
+    virtual_carla_require_dds_transport
     require_common_runtime_files
     virtual_carla_source_ros true true
     virtual_carla_verify_package_prefix \
@@ -803,6 +865,7 @@ case "${subcommand}" in
   manual)
     [[ -t 0 ]] || virtual_carla_die \
       "manual requires an interactive terminal (TTY)"
+    virtual_carla_require_dds_transport
     require_common_runtime_files
     virtual_carla_source_ros true true
     virtual_carla_verify_package_prefix \
@@ -830,6 +893,19 @@ case "${subcommand}" in
     virtual_carla_log \
       "speed=0.20 m/s, turn=0.20 rad/s; diagonal keys keep a 1.0 m Ackermann radius; keep the CARLA and wheel telemetry views visible"
     exec "${MANUAL_COMMAND[@]}"
+    ;;
+  audit-sensors)
+    virtual_carla_require_dds_transport
+    require_common_runtime_files
+    virtual_carla_source_ros true true
+    virtual_carla_verify_package_prefix \
+      camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
+    validate_runtime_gates
+    validate_spawn_file
+    validate_ranger_actor_ready
+    virtual_carla_log \
+      "auditing actual CARLA actor ownership and every UI sensor stream"
+    run_sensor_source_audit
     ;;
   doctor)
     run_doctor

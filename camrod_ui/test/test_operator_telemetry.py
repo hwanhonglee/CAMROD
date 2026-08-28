@@ -23,7 +23,7 @@ from avg_msgs.msg import (  # noqa: E402
     AvgOccupancyGrid,
     AvgServiceState,
 )
-from sensor_msgs.msg import Image, PointCloud2, PointField  # noqa: E402
+from sensor_msgs.msg import CompressedImage, Image, PointCloud2, PointField  # noqa: E402
 from visualization_msgs.msg import Marker, MarkerArray  # noqa: E402
 
 from camrod_ui.ui_backend_node import (  # noqa: E402
@@ -470,6 +470,81 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertTrue(pruned["docking"]["is_charging"])
         self.assertTrue(pruned["cameras"]["docking"]["available"])
         self.assertEqual(pruned["lidar"]["points"], [])
+
+    def test_docking_view_subscribes_to_canonical_rear_camera_fallback(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('if wants("camera", "docking"):', source)
+        self.assertIn('self.telemetry_topics["rear_camera"]', source)
+        self.assertIn('self.telemetry_topics["rear_camera_raw"]', source)
+
+    def test_camera_raw_fallback_can_be_disabled_without_losing_jpeg_streams(
+        self,
+    ) -> None:
+        class Logger:
+            @staticmethod
+            def info(_message) -> None:
+                pass
+
+        def subscribed_topics(raw_fallback_enabled: bool):
+            subscriptions = []
+
+            def create_subscription(message_type, topic, _callback, _qos):
+                subscription = (message_type, topic)
+                subscriptions.append(subscription)
+                return subscription
+
+            backend = SimpleNamespace(
+                _telemetry_subscriptions=[],
+                _normalize_telemetry_view=UiBackendNode._normalize_telemetry_view,
+                _lock=threading.Lock(),
+                _telemetry_capture_active=False,
+                _telemetry_active_view="",
+                _telemetry={"session_active": False, "active_view": ""},
+                _reset_telemetry_source_timing_locked=lambda: None,
+                telemetry_camera_raw_fallback_enabled=raw_fallback_enabled,
+                telemetry_topics=TELEMETRY_TOPIC_DEFAULTS,
+                create_subscription=create_subscription,
+                get_logger=lambda: Logger(),
+            )
+            UiBackendNode._start_telemetry_subscriptions(backend, "camera")
+            return subscriptions
+
+        compressed_only = subscribed_topics(False)
+        with_raw_fallback = subscribed_topics(True)
+
+        self.assertEqual(
+            compressed_only,
+            [
+                (CompressedImage, TELEMETRY_TOPIC_DEFAULTS["front_camera"]),
+                (CompressedImage, TELEMETRY_TOPIC_DEFAULTS["rear_camera"]),
+            ],
+        )
+        self.assertIn(
+            (Image, TELEMETRY_TOPIC_DEFAULTS["front_camera_raw"]),
+            with_raw_fallback,
+        )
+        self.assertIn(
+            (Image, TELEMETRY_TOPIC_DEFAULTS["rear_camera_raw"]),
+            with_raw_fallback,
+        )
+
+    def test_ui_launch_keeps_raw_camera_fallback_enabled_by_default(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "camrod_ui_robot"
+            / "launch"
+            / "ui.launch.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "'operator_telemetry_camera_raw_fallback_enabled'", source
+        )
+        self.assertIn("'telemetry_camera_raw_fallback_enabled'", source)
 
     def test_tab_payload_prunes_unrelated_high_volume_sections(self) -> None:
         snapshot = UiBackendNode._new_telemetry_snapshot()

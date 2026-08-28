@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 
 import yaml
 
@@ -65,6 +66,35 @@ def test_component_group_parser_is_ordered_and_strict() -> None:
         raise AssertionError("unknown checker groups must fail at launch")
 
 
+def test_sparse_diagnostics_profiles_follow_ordered_fallback_chain() -> None:
+    launch = _load_system_launch()
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        carla = root / "carla"
+        sim = root / "sim"
+        default = root / "default"
+        for profile in (carla, sim, default):
+            (profile / "sensing").mkdir(parents=True)
+
+        sim_file = sim / "sensing" / "imu_checker.yaml"
+        default_file = default / "sensing" / "camera_checker.yaml"
+        sim_file.write_text("sim", encoding="utf-8")
+        default_file.write_text("default", encoding="utf-8")
+
+        assert launch._profile_param_file(
+            str(carla), (str(sim), str(default)), "sensing", "imu_checker.yaml"
+        ) == str(sim_file)
+        assert launch._profile_param_file(
+            str(carla), (str(sim), str(default)), "sensing", "camera_checker.yaml"
+        ) == str(default_file)
+
+        carla_file = carla / "sensing" / "imu_checker.yaml"
+        carla_file.write_text("carla", encoding="utf-8")
+        assert launch._profile_param_file(
+            str(carla), (str(sim), str(default)), "sensing", "imu_checker.yaml"
+        ) == str(carla_file)
+
+
 def test_composed_checkers_keep_standalone_entrypoints() -> None:
     """Composition must not remove per-checker field-debug commands."""
     launch = _load_system_launch()
@@ -88,12 +118,14 @@ def test_bringup_guards_and_forwards_checker_composition() -> None:
         "hardware_sensing,localization,autonomy_topics,planning_lifecycle"
     )
     assert system["checker_component_threads"] == 1
+    assert system["diagnostics_profile_fallback"] == "default"
 
     source = BRINGUP_IMPL.read_text(encoding="utf-8")
     assert "'use_system_tools_container': lc['use_system_tools_container']" in source
     assert "'use_checker_components': lc['use_checker_components']" in source
     assert "'checker_component_groups': lc['checker_component_groups']" in source
     assert "'checker_component_threads': lc['checker_component_threads']" in source
+    assert "'config_profile_fallback': lc['diagnostics_profile_fallback']" in source
 
     system_launch = SYSTEM_LAUNCH.read_text(encoding="utf-8")
     assert 'name="system_core_container"' in system_launch
@@ -101,3 +133,20 @@ def test_bringup_guards_and_forwards_checker_composition() -> None:
     assert 'package="camrod_runtime"' in system_launch
     assert 'executable="scoped_component_container"' in system_launch
     assert 'executable="scoped_component_container_mt"' not in system_launch
+
+
+def test_obstacle_cloud_checker_accepts_sensor_data_qos_publishers() -> None:
+    """A diagnostic checker must match BEST_EFFORT LiDAR/CARLA clouds."""
+    source = (
+        SRC_ROOT
+        / "camrod_system"
+        / "src"
+        / "diagnostics"
+        / "perception_obstacle_checker_node.cpp"
+    ).read_text(encoding="utf-8")
+
+    point_cloud_branch = source.split(
+        "// PointCloud2 (기본)", maxsplit=1
+    )[1].split("RCLCPP_INFO", maxsplit=1)[0]
+    assert "rclcpp::SensorDataQoS()" in point_cloud_branch
+    assert "src->topic, rclcpp::QoS(10)" not in point_cloud_branch

@@ -37,6 +37,9 @@ def test_role_topics_follow_non_default_vehicle_role():
     assert perform_substitutions(
         context, module._role_topic("/gnss")
     ) == "/carla/test_vehicle/gnss"
+    assert perform_substitutions(
+        context, module._role_topic("/gnss_right")
+    ) == "/carla/test_vehicle/gnss_right"
 
 
 def test_through_poses_bt_uses_loaded_selector_plugin_ids():

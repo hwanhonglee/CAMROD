@@ -1,0 +1,14 @@
+# Map-projected pose generated from the actual CARLA NavSatFix boundary.
+/system/localization_gnss_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    gnss_names: ["main"]
+    main:
+      topic: "/sensing/gnss/pose_with_covariance"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      cov_warn_threshold: 4.0
+      cov_error_threshold: 25.0
+      max_jump_m: 5.0

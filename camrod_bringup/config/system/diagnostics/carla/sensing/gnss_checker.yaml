@@ -1,0 +1,11 @@
+# Actual CARLA GNSS actor, evaluated in wall time rather than simulation ticks.
+/system/gnss_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    gnss_names: ["main"]
+    main:
+      topic: "/sensing/gnss/ublox_gps_node/fix"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0

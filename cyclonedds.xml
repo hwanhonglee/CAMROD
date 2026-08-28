@@ -12,7 +12,11 @@
       <MaxAutoParticipantIndex>1000</MaxAutoParticipantIndex>
     </Discovery>
     <Internal>
-      <SocketReceiveBufferSize min="10MB"/>
+      <!-- CARLA 800x600 BGRA camera frames are 1.92 MB each.  The bridge
+           publishes front and rear images concurrently, so keep both DDS
+           socket directions above the audited 20 MiB virtual-CARLA floor. -->
+      <SocketReceiveBufferSize min="20MiB"/>
+      <SocketSendBufferSize min="20MiB"/>
       <Watermarks>
         <WhcHigh>500kB</WhcHigh>
       </Watermarks>

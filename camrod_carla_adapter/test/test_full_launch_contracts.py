@@ -41,9 +41,15 @@ def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
     assert '"clean_before_launch": "false"' in source
     assert '"platform_odometry_topic": "/odom"' in source
     assert '"platform_ranger_bridge_enable": "true"' in source
+    assert '"diagnostics_profile": "carla"' in source
+    assert '"diagnostics_profile_fallback": "sim,default"' in source
     assert '"planning_nav2_bt_xml_nav_through_poses"' in source
     assert '"navigate_through_poses_w_planner_selector.xml"' in source
     assert '"enable_api_ui": LaunchConfiguration("enable_api_ui")' in source
+    assert (
+        '"operator_telemetry_camera_raw_fallback_enabled": "false"'
+        in source
+    )
     assert 'controller_share, "full_stack.launch.py"' in source
     assert 'controller_share, "launch", "full_stack.launch.py"' not in source
 
@@ -148,6 +154,55 @@ def test_subset_launch_forwards_multi_pose_selector_tree():
     )
 
 
+def test_full_launch_selects_carla_metric_localization_adapter_only():
+    """Full CARLA must reuse the accepted subset localization source profile."""
+    full = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    subset = (
+        PACKAGE_ROOT / "launch" / "camrod_carla.launch.py"
+    ).read_text(encoding="utf-8")
+    bringup = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    ordinary_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+    carla_params = yaml.safe_load(
+        (
+            PACKAGE_ROOT
+            / "config"
+            / "camrod_input_adapter_carla.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+
+    for source in (subset, full):
+        assert '"camrod_input_adapter_config"' in source
+        assert '"camrod_input_adapter_carla.yaml"' in source
+
+    assert (
+        '"localization_adapter_param_file": LaunchConfiguration('
+        in full
+    )
+    assert "'localization_adapter_param_file'," in bringup
+    assert (
+        "localization_args['adapter_param_file'] = lc["
+        in bringup
+    )
+    assert ordinary_defaults["localization"]["adapter_param_file"] == (
+        "localization/source/input_adapter.yaml"
+    )
+    assert carla_params["utm_pose_topic"] == "/camrod_carla/metric_pose"
+    assert carla_params["navsat_topic"] == "/camrod_carla/unused_navsat"
+    assert carla_params["enable_gnss_heading"] is False
+
+
 def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     control_launch = (
         REPO_ROOT / "camrod_control" / "launch" / "cmd_vel_safety_gate.launch.py"
@@ -201,6 +256,29 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     ).read_text(encoding="utf-8")
     assert '"manual_cmd_vel_ros_topic": LaunchConfiguration(' in subset
     assert '"control_manual_cmd_vel_ros_topic": LaunchConfiguration(' in full
+    for name, default in (
+        ("manual_drive_linear_limit_mps", "1.40"),
+        ("manual_drive_lateral_limit_mps", "1.00"),
+        ("manual_drive_angular_limit_radps", "0.7853"),
+        ("manual_drive_deadman_timeout_s", "0.75"),
+    ):
+        assert f'"{name}"' in full
+        assert f'"{default}"' in full
+        assert f'"control_{name}": LaunchConfiguration(' in full
+
+
+def test_full_carla_uses_hard_lanelet_costs_without_soft_inflation_deadlock():
+    """CARLA manual motion keeps lethal cost 100 while ignoring soft 85..99."""
+    full = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+
+    for argument in (
+        "control_cmd_vel_gate_cost_threshold",
+        "control_cmd_vel_gate_lanelet_safety_threshold",
+        "control_cmd_vel_gate_lanelet_safety_current_threshold",
+    ):
+        assert f'"{argument}": "100"' in full
 
 
 def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():
@@ -249,5 +327,142 @@ def test_sensor_relay_uses_camrod_canonical_topics():
         "/sensing/camera/econ_rear/image_rect",
         "/sensing/camera/econ_rear/camera_info",
         "/sensing/lidar/vanjee/points_raw",
+        "/sensing/lidar/points_filtered",
     ):
         assert topic in source
+
+
+def test_full_carla_composition_uses_only_actual_carla_ui_sensor_sources():
+    full = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    fake_launch = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "fake_sensors.launch.py"
+    ).read_text(encoding="utf-8")
+    relay_launch = (
+        PACKAGE_ROOT / "launch" / "sensor_relay.launch.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"relay_imu": "true"' in full
+    assert '"relay_gnss": "true"' in full
+    assert '"compressed_image_max_rate_hz"' in full
+    assert '"CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ", "5.0"' in full
+    assert '"CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ", "10.0"' in full
+    assert (
+        '"compressed_image_max_rate_hz": LaunchConfiguration('
+        in full
+    )
+    assert '"raw_image_max_rate_hz": LaunchConfiguration(' in full
+    for argument in (
+        "sim_publish_fake_gnss",
+        "sim_publish_fake_imu",
+        "sim_publish_fake_lidar_obstacle_cloud",
+        "sim_publish_fake_radar_ranges",
+        "sim_publish_velocity_converter_output",
+        "sim_publish_dummy_lidar_cost_grid",
+    ):
+        assert f'"{argument}": "false"' in full
+
+    for argument in (
+        "publish_fake_gnss",
+        "publish_fake_imu",
+        "publish_fake_lidar_obstacle_cloud",
+        "publish_fake_radar_ranges",
+        "publish_velocity_converter_output",
+        "publish_dummy_lidar_cost_grid",
+    ):
+        assert f"'{argument}'" in fake_launch
+
+    assert '"lidar_output"' in relay_launch
+    assert '"lidar_filtered_output"' in relay_launch
+    assert '"obstacle_cloud_output"' in relay_launch
+    assert 'default_value="/perception/obstacles"' in relay_launch
+
+    feedback_config = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "feedback_bridge.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/**"]["ros__parameters"]
+    assert feedback_config["publish_gnss_heading_from_imu"] is True
+    assert feedback_config["output_gnss_heading_topic"] == (
+        "/sensing/gnss/navheading"
+    )
+    assert feedback_config["gnss_heading_yaw_bias_rad"] == (
+        1.5707963267948966
+    )
+    assert feedback_config["imu_frame_id"] == "imu_link"
+    assert feedback_config["gnss_frame_id"] == "gnss_link"
+    assert feedback_config["input_gnss_right_topic"] == (
+        "/carla/ego_vehicle/gnss_right"
+    )
+    assert feedback_config["publish_gnss_ui_compat"] is True
+    assert feedback_config["output_gnss_navpvt_topic"] == (
+        "/sensing/gnss/ublox_gps_node/navpvt"
+    )
+    assert feedback_config["output_gnss_navcov_topic"] == (
+        "/sensing/gnss/navcov"
+    )
+    assert feedback_config["output_gnss_relpos_topic"] == (
+        "/sensing/gnss/navrelposned"
+    )
+
+
+def test_carla_diagnostics_match_rendered_sensor_contract():
+    root = (
+        REPO_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "system"
+        / "diagnostics"
+        / "carla"
+    )
+    camera = yaml.safe_load(
+        (root / "sensing" / "camera_checker.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/system/camera_checker"]["ros__parameters"]
+    assert camera["econ_front"]["expected_fps"] == 2.0
+    assert camera["econ_rear"]["expected_fps"] == 2.0
+    assert camera["econ_front"]["expected_width"] == 800
+    assert camera["econ_front"]["expected_height"] == 600
+    assert camera["econ_rear"]["image_type"] == "compressed"
+    assert camera["econ_rear"]["image_topic"] == (
+        "/sensing/camera/econ_rear/image_raw/compressed"
+    )
+    assert camera["econ_rear"]["expected_encoding"] == ""
+
+    aggregator = yaml.safe_load(
+        (root / "aggregator" / "diagnostics_config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    ignored = set(aggregator["global"]["ignored_names"])
+    for active_name in (
+        "camera_checker: /sensor/camera/econ_front",
+        "camera_checker: /sensor/camera/econ_rear",
+        "lidar_checker: /sensor/lidar/main",
+        "radar_checker: /sensor/radar/FRONT1",
+        "radar_checker: /sensor/radar/REAR",
+        "perception_obstacle_checker: /perception/obstacles/fused_obstacles",
+    ):
+        assert active_name not in ignored
+    assert (
+        "perception_obstacle_checker: /perception/obstacles/camera_detections"
+        in ignored
+    )
+
+    for filename, node_name, rate_key, stream_name in (
+        ("gnss_checker.yaml", "gnss_checker", "expected_hz", "main"),
+        ("imu_checker.yaml", "imu_checker", "expected_hz", "main"),
+        ("lidar_checker.yaml", "lidar_checker", "expected_hz", "main"),
+        (
+            "wheel_odometry_checker.yaml",
+            "wheel_odometry_checker",
+            "expected_hz",
+            "main",
+        ),
+    ):
+        params = yaml.safe_load(
+            (root / "sensing" / filename).read_text(encoding="utf-8")
+        )[f"/system/{node_name}"]["ros__parameters"]
+        assert params[stream_name][rate_key] == 2.0

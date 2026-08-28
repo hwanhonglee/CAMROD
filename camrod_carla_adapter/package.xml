@@ -11,6 +11,7 @@
 
   <depend>rclpy</depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>avg_msgs</exec_depend>
   <exec_depend>carla_extended_ackermann_control</exec_depend>
   <exec_depend>carla_extended_ackermann_msgs</exec_depend>
   <exec_depend>camrod_bringup</exec_depend>
@@ -28,8 +29,10 @@
   <exec_depend>robot_localization</exec_depend>
   <exec_depend>ranger_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>ublox_msgs</exec_depend>
 
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

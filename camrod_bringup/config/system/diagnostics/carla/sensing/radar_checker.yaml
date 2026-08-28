@@ -1,0 +1,83 @@
+# Seven actual CARLA radar actors. Port strings identify simulator provenance;
+# no dummy-active heartbeat is published in this composition.
+/system/radar_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    radar_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
+    FRONT1:
+      topic: "/sensing/radar/front1/range"
+      location: "front_right"
+      frame_id: "radar_front1_link"
+      port: "CARLA:/carla/ego_vehicle/radar_front1"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 1.5
+    FRONT2:
+      topic: "/sensing/radar/front2/range"
+      location: "front_left"
+      frame_id: "radar_front2_link"
+      port: "CARLA:/carla/ego_vehicle/radar_front2"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 1.5
+    LEFT1:
+      topic: "/sensing/radar/left1/range"
+      location: "left_front"
+      frame_id: "radar_left1_link"
+      port: "CARLA:/carla/ego_vehicle/radar_left1"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 0.8
+    LEFT2:
+      topic: "/sensing/radar/left2/range"
+      location: "left_rear"
+      frame_id: "radar_left2_link"
+      port: "CARLA:/carla/ego_vehicle/radar_left2"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 0.8
+    RIGHT1:
+      topic: "/sensing/radar/right1/range"
+      location: "right_front"
+      frame_id: "radar_right1_link"
+      port: "CARLA:/carla/ego_vehicle/radar_right1"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 0.8
+    RIGHT2:
+      topic: "/sensing/radar/right2/range"
+      location: "right_rear"
+      frame_id: "radar_right2_link"
+      port: "CARLA:/carla/ego_vehicle/radar_right2"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 0.8
+    REAR:
+      topic: "/sensing/radar/rear/range"
+      location: "rear_center"
+      frame_id: "radar_rear_link"
+      port: "CARLA:/carla/ego_vehicle/radar_rear"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_range_m: 0.02
+      max_range_m: 0.5

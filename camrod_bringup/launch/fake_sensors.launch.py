@@ -220,6 +220,54 @@ def generate_launch_description():
         default_value='true',
         description='Publish deterministic raw CAN/BMS feedback in ordinary simulation',
     )
+    publish_fake_radar_ranges_arg = DeclareLaunchArgument(
+        'publish_fake_radar_ranges',
+        default_value='true',
+        description=(
+            'Publish synthetic seven-channel radar ranges; external simulator '
+            'adapters that own those topics must set this false'
+        ),
+    )
+    publish_fake_gnss_arg = DeclareLaunchArgument(
+        'publish_fake_gnss',
+        default_value='true',
+        description=(
+            'Publish synthetic GNSS fix and heading topics; external simulator '
+            'adapters that own the GNSS boundary must set this false'
+        ),
+    )
+    publish_fake_imu_arg = DeclareLaunchArgument(
+        'publish_fake_imu',
+        default_value='true',
+        description=(
+            'Publish synthetic ROS and Avg IMU topics; external simulator '
+            'adapters that own the IMU boundary must set this false'
+        ),
+    )
+    publish_fake_lidar_obstacle_cloud_arg = DeclareLaunchArgument(
+        'publish_fake_lidar_obstacle_cloud',
+        default_value='true',
+        description=(
+            'Publish synthetic filtered LiDAR and obstacle clouds; external '
+            'simulator adapters that own LiDAR must set this false'
+        ),
+    )
+    publish_velocity_converter_output_arg = DeclareLaunchArgument(
+        'publish_velocity_converter_output',
+        default_value='true',
+        description=(
+            'Publish the synthetic velocity-converter output; set false when '
+            'the real converter consumes an external simulator IMU'
+        ),
+    )
+    publish_dummy_lidar_cost_grid_arg = DeclareLaunchArgument(
+        'publish_dummy_lidar_cost_grid',
+        default_value='true',
+        description=(
+            'Publish a synthetic free LiDAR cost grid; set false when the '
+            'actual LiDAR cost-grid pipeline is active'
+        ),
+    )
     motion_source_arg = DeclareLaunchArgument(
         'motion_source',
         default_value='cmd_vel',
@@ -325,6 +373,30 @@ def generate_launch_description():
                 'publish_simulated_platform_status': ParameterValue(
                     LaunchConfiguration('publish_simulated_platform_status'), value_type=bool
                 ),
+                'publish_fake_radar_ranges': ParameterValue(
+                    LaunchConfiguration('publish_fake_radar_ranges'),
+                    value_type=bool,
+                ),
+                'publish_fake_gnss': ParameterValue(
+                    LaunchConfiguration('publish_fake_gnss'),
+                    value_type=bool,
+                ),
+                'publish_fake_imu': ParameterValue(
+                    LaunchConfiguration('publish_fake_imu'),
+                    value_type=bool,
+                ),
+                'publish_fake_lidar_obstacle_cloud': ParameterValue(
+                    LaunchConfiguration('publish_fake_lidar_obstacle_cloud'),
+                    value_type=bool,
+                ),
+                'publish_velocity_converter_output': ParameterValue(
+                    LaunchConfiguration('publish_velocity_converter_output'),
+                    value_type=bool,
+                ),
+                'publish_dummy_lidar_cost_grid': ParameterValue(
+                    LaunchConfiguration('publish_dummy_lidar_cost_grid'),
+                    value_type=bool,
+                ),
                 'motion_source': LaunchConfiguration('motion_source'),
                 'external_odometry_topic': LaunchConfiguration(
                     'external_odometry_topic'
@@ -368,6 +440,12 @@ def generate_launch_description():
         radar_grid_param_arg,
         fake_enable_cost_grids_arg,
         simulated_platform_status_arg,
+        publish_fake_radar_ranges_arg,
+        publish_fake_gnss_arg,
+        publish_fake_imu_arg,
+        publish_fake_lidar_obstacle_cloud_arg,
+        publish_velocity_converter_output_arg,
+        publish_dummy_lidar_cost_grid_arg,
         motion_source_arg,
         external_odometry_topic_arg,
         external_odometry_timeout_arg,

@@ -54,6 +54,9 @@ def generate_launch_description():
     sensor_relay_launch = os.path.join(
         adapter_share, "launch", "sensor_relay.launch.py"
     )
+    radar_relay_launch = os.path.join(
+        adapter_share, "launch", "radar_relay.launch.py"
+    )
     platform_heartbeat_launch = os.path.join(
         adapter_share, "launch", "platform_heartbeat.launch.py"
     )
@@ -71,6 +74,9 @@ def generate_launch_description():
     )
     alignment_config = os.path.join(
         adapter_share, "config", "woraksan_lane_anchor_alignment.yaml"
+    )
+    input_adapter_config = os.path.join(
+        adapter_share, "config", "camrod_input_adapter_carla.yaml"
     )
     nav_through_poses_bt = os.path.join(
         planning_share,
@@ -117,6 +123,27 @@ def generate_launch_description():
         DeclareLaunchArgument("launch_vehicle_control", default_value="true"),
         DeclareLaunchArgument("launch_sensor_relay", default_value="true"),
         DeclareLaunchArgument(
+            "compressed_image_max_rate_hz",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ", "5.0"
+            ),
+            description=(
+                "Maximum wall-clock JPEG rate per CARLA camera; encoding is "
+                "also disabled when the compressed topic has no subscribers"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "raw_image_max_rate_hz",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ", "10.0"
+            ),
+            description=(
+                "Maximum wall-clock raw camera relay rate when a raw "
+                "consumer exists; no-subscriber payload publication is skipped"
+            ),
+        ),
+        DeclareLaunchArgument("launch_radar_relay", default_value="true"),
+        DeclareLaunchArgument(
             "launch_platform_heartbeat", default_value="true"
         ),
         DeclareLaunchArgument(
@@ -126,8 +153,46 @@ def generate_launch_description():
             "manual_cmd_vel_ros_topic",
             default_value="/control/manual_cmd_vel_ros",
         ),
+        # CARLA may use the complete audited Ranger adapter envelope.  These
+        # remain launch arguments so the operator can select a lower ceiling;
+        # ordinary CAMROD keeps the UI package's conservative 0.20 defaults.
+        DeclareLaunchArgument(
+            "manual_drive_linear_limit_mps",
+            default_value=os.environ.get(
+                "CAMROD_MANUAL_LINEAR_LIMIT_MPS", "1.40"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "manual_drive_lateral_limit_mps",
+            default_value=os.environ.get(
+                "CAMROD_MANUAL_LATERAL_LIMIT_MPS", "1.00"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "manual_drive_angular_limit_radps",
+            default_value=os.environ.get(
+                "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS", "0.7853"
+            ),
+        ),
+        # The downstream command gate still stops a stale physical command at
+        # 0.35 s.  This longer UI lease only prevents a loaded browser from
+        # repeatedly losing its arm state between otherwise valid heartbeats.
+        DeclareLaunchArgument(
+            "manual_drive_deadman_timeout_s",
+            default_value=os.environ.get(
+                "CAMROD_MANUAL_DEADMAN_TIMEOUT_S", "0.75"
+            ),
+            description=(
+                "CARLA UI heartbeat lease; downstream 0.35 s command "
+                "watchdogs remain the physical stop boundary"
+            ),
+        ),
         DeclareLaunchArgument(
             "map_alignment_file", default_value=alignment_config
+        ),
+        DeclareLaunchArgument(
+            "camrod_input_adapter_config",
+            default_value=input_adapter_config,
         ),
         DeclareLaunchArgument(
             "nav2_bt_xml_nav_through_poses",
@@ -215,16 +280,30 @@ def generate_launch_description():
                 "publish_metric_pose": "true",
                 "publish_ground_truth_localization": "false",
                 "publish_ground_truth_tf": "false",
-                # CAMROD's external-simulator fake-sensor contract derives
-                # GNSS/IMU from the same mapped CARLA pose; avoid duplicates.
-                "relay_imu": "false",
-                "relay_gnss": "false",
+                # CARLA's actual sensor actors own the canonical GNSS and IMU
+                # boundaries. The fake-sensor include is disabled for both
+                # below, so these relays are the sole publishers.
+                "relay_imu": "true",
+                "relay_gnss": "true",
             },
         ),
         _include(
             sensor_relay_launch,
-            {"role_name": LaunchConfiguration("role_name")},
+            {
+                "role_name": LaunchConfiguration("role_name"),
+                "compressed_image_max_rate_hz": LaunchConfiguration(
+                    "compressed_image_max_rate_hz"
+                ),
+                "raw_image_max_rate_hz": LaunchConfiguration(
+                    "raw_image_max_rate_hz"
+                ),
+            },
             condition=IfCondition(LaunchConfiguration("launch_sensor_relay")),
+        ),
+        _include(
+            radar_relay_launch,
+            {"role_name": LaunchConfiguration("role_name")},
+            condition=IfCondition(LaunchConfiguration("launch_radar_relay")),
         ),
         _include(
             platform_heartbeat_launch,
@@ -256,23 +335,70 @@ def generate_launch_description():
                 "external_simulator": "true",
                 "external_simulator_odometry_topic": "/odom",
                 "external_simulator_odometry_timeout_s": "0.5",
-                # Keep fake GNSS/lidar/perception aligned with CAMROD's 10 Hz
-                # readiness contracts. This unique argument cannot inherit the
-                # platform heartbeat include's generic 5 Hz publish rate.
+                # The remaining external-motion fixture keeps its deterministic
+                # 10 Hz cadence. All UI-visible fake sensor outputs are disabled
+                # below and replaced by CARLA relays.
                 "sim_fake_sensor_publish_rate_hz": "10.0",
                 "sim_platform_status_enable": "true",
                 "sim_publish_platform_status": "false",
+                # CARLA radar relay is the sole owner of canonical seven-range
+                # topics in this external-simulator composition.
+                "sim_publish_fake_radar_ranges": "false",
+                # Every UI-visible sensor topic must originate at a CARLA
+                # actor. Keep fake_sensor_publisher only for non-sensor
+                # simulation support (route state and platform fixtures).
+                "sim_publish_fake_gnss": "false",
+                "sim_publish_fake_imu": "false",
+                "sim_publish_fake_lidar_obstacle_cloud": "false",
+                "sim_publish_velocity_converter_output": "false",
+                "sim_publish_dummy_lidar_cost_grid": "false",
+                # CARLA wall-clock sensor cadence depends on rendered server
+                # load. Apply only CARLA sensor thresholds, then inherit every
+                # other simulation diagnostic before hardware defaults.
+                "diagnostics_profile": "carla",
+                "diagnostics_profile_fallback": "sim,default",
                 "platform_ranger_driver_enable": "false",
                 "platform_ranger_bridge_enable": "true",
+                # Match the accepted subset CARLA launch: localization consumes
+                # the already metric, map-aligned CARLA pose rather than applying
+                # the production GNSS projection to CARLA's NavSatFix stream.
+                "localization_adapter_param_file": LaunchConfiguration(
+                    "camrod_input_adapter_config"
+                ),
                 "control_manual_cmd_vel_ros_topic": LaunchConfiguration(
                     "manual_cmd_vel_ros_topic"
                 ),
+                "control_manual_drive_linear_limit_mps": LaunchConfiguration(
+                    "manual_drive_linear_limit_mps"
+                ),
+                "control_manual_drive_lateral_limit_mps": LaunchConfiguration(
+                    "manual_drive_lateral_limit_mps"
+                ),
+                "control_manual_drive_angular_limit_radps": LaunchConfiguration(
+                    "manual_drive_angular_limit_radps"
+                ),
+                "control_manual_drive_deadman_timeout_s": LaunchConfiguration(
+                    "manual_drive_deadman_timeout_s"
+                ),
+                # The live aligned CARLA spawn currently occupies lanelet
+                # inflation costs up to 98 but no hard/off-map cost 100 cells.
+                # CARLA's existing safety profile therefore uses 100 as the
+                # static boundary threshold: soft map inflation cannot make
+                # every forward manual command look blocked, while physical
+                # body, unknown-map and lethal cost 100 checks remain active.
+                "control_cmd_vel_gate_cost_threshold": "100",
+                "control_cmd_vel_gate_lanelet_safety_threshold": "100",
+                "control_cmd_vel_gate_lanelet_safety_current_threshold": "100",
                 "planning_nav2_bt_xml_nav_through_poses": LaunchConfiguration(
                     "nav2_bt_xml_nav_through_poses"
                 ),
                 "rviz": LaunchConfiguration("rviz"),
                 "enable_plugin_api": LaunchConfiguration("enable_plugin_api"),
                 "enable_api_ui": LaunchConfiguration("enable_api_ui"),
+                # CARLA sensor_relay guarantees bounded compressed front/rear
+                # streams. Do not also pull full raw images into ui_backend;
+                # this removes duplicate DDS copies and fallback JPEG work.
+                "operator_telemetry_camera_raw_fallback_enabled": "false",
                 "enable_operator_ui_window": LaunchConfiguration(
                     "enable_operator_ui_window"
                 ),

@@ -9,7 +9,13 @@ import numpy as np
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+    qos_profile_sensor_data,
+)
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image, PointCloud2
 
 
@@ -38,7 +44,11 @@ def encode_image_jpeg(message: Image, quality: int) -> bytes:
         raise ValueError(
             f"image step {step} is smaller than packed row {packed_row_bytes}"
         )
-    payload = np.frombuffer(bytes(message.data), dtype=np.uint8)
+    # ROS 2 exposes uint8[] as a buffer-compatible sequence.  Building an
+    # intermediate ``bytes`` object copied every 800x600x4 frame before OpenCV
+    # could even inspect it, which is especially expensive when CARLA advances
+    # faster than wall time.
+    payload = np.frombuffer(message.data, dtype=np.uint8)
     required_bytes = height * step
     if payload.size < required_bytes:
         raise ValueError(
@@ -106,6 +116,12 @@ class CarlaSensorRelayNode(Node):
         self.lidar_output = self.declare_parameter(
             "lidar_output", "/sensing/lidar/vanjee/points_raw"
         ).value
+        self.lidar_filtered_output = self.declare_parameter(
+            "lidar_filtered_output", "/sensing/lidar/points_filtered"
+        ).value
+        self.obstacle_cloud_output = self.declare_parameter(
+            "obstacle_cloud_output", "/perception/obstacles"
+        ).value
         self.front_compressed_output = self.declare_parameter(
             "front_compressed_output",
             "/sensing/camera/econ_front/image_rect/compressed",
@@ -122,6 +138,24 @@ class CarlaSensorRelayNode(Node):
         ).value)
         if not 1 <= self.jpeg_quality <= 100:
             raise ValueError("jpeg_quality must be in [1, 100]")
+        self.compressed_image_max_rate_hz = float(self.declare_parameter(
+            "compressed_image_max_rate_hz", 10.0
+        ).value)
+        if (
+            not math.isfinite(self.compressed_image_max_rate_hz)
+            or self.compressed_image_max_rate_hz <= 0.0
+        ):
+            raise ValueError(
+                "compressed_image_max_rate_hz must be finite and > 0"
+            )
+        self.raw_image_max_rate_hz = float(self.declare_parameter(
+            "raw_image_max_rate_hz", 10.0
+        ).value)
+        if (
+            not math.isfinite(self.raw_image_max_rate_hz)
+            or self.raw_image_max_rate_hz <= 0.0
+        ):
+            raise ValueError("raw_image_max_rate_hz must be finite and > 0")
         self.front_frame_id = self.declare_parameter(
             "front_frame_id", "camera_front_link"
         ).value
@@ -143,15 +177,30 @@ class CarlaSensorRelayNode(Node):
         if not math.isfinite(self.stream_timeout_sec) or self.stream_timeout_sec <= 0.0:
             raise ValueError("stream_timeout_sec must be finite and > 0")
 
+        # CARLA's ROS bridge offers the image streams reliably.  Retain at
+        # most two incoming frames so fragmented raw images can be completed
+        # without accumulating seconds of stale camera data under load.
+        camera_input_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=2,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        # Canonical raw/JPEG outputs are latest-frame views.  A reliable
+        # publisher works with both reliable and best-effort CAMROD consumers,
+        # while depth one bounds the large-image history in every relay writer.
+        camera_output_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         self._front_image_publishers = [
-            # CAMROD has both reliable and best-effort image consumers.  A
-            # reliable local publisher is compatible with both subscription
-            # policies; JPEG output is generated in this node below.
-            self.create_publisher(Image, topic, 10)
+            self.create_publisher(Image, topic, camera_output_qos)
             for topic in self.front_image_outputs
         ]
         self._rear_image_publishers = [
-            self.create_publisher(Image, topic, 10)
+            self.create_publisher(Image, topic, camera_output_qos)
             for topic in self.rear_image_outputs
         ]
         self._front_info_publisher = self.create_publisher(
@@ -164,19 +213,37 @@ class CarlaSensorRelayNode(Node):
         self._rear_compressed_publisher = None
         if self.publish_compressed_images:
             self._front_compressed_publisher = self.create_publisher(
-                CompressedImage, self.front_compressed_output, 10
+                CompressedImage, self.front_compressed_output, camera_output_qos
             )
             self._rear_compressed_publisher = self.create_publisher(
-                CompressedImage, self.rear_compressed_output, 10
+                CompressedImage, self.rear_compressed_output, camera_output_qos
             )
-        self._lidar_publisher = self.create_publisher(
-            PointCloud2, self.lidar_output, qos_profile_sensor_data
-        )
+        lidar_output_topics = []
+        for topic in (
+            self.lidar_output,
+            self.lidar_filtered_output,
+            self.obstacle_cloud_output,
+        ):
+            normalized = str(topic).strip()
+            if normalized and normalized not in lidar_output_topics:
+                lidar_output_topics.append(normalized)
+        if not lidar_output_topics:
+            raise ValueError("at least one LiDAR output topic must be configured")
+        # The CARLA point cloud is already expressed in the Ranger LiDAR
+        # frame. Mirror that same physical-simulation sample to CAMROD's raw UI,
+        # filtered-consumer, and LiDAR-only perception boundaries; no synthetic
+        # obstacle cloud is inserted in the CARLA composition.
+        self._lidar_publishers = [
+            self.create_publisher(
+                PointCloud2, topic, qos_profile_sensor_data
+            )
+            for topic in lidar_output_topics
+        ]
 
         self._subscriptions = [
             self.create_subscription(
                 Image, self.front_image_input, self._on_front_image,
-                qos_profile_sensor_data,
+                camera_input_qos,
             ),
             self.create_subscription(
                 CameraInfo, self.front_info_input, self._on_front_info,
@@ -184,7 +251,7 @@ class CarlaSensorRelayNode(Node):
             ),
             self.create_subscription(
                 Image, self.rear_image_input, self._on_rear_image,
-                qos_profile_sensor_data,
+                camera_input_qos,
             ),
             self.create_subscription(
                 CameraInfo, self.rear_info_input, self._on_rear_info,
@@ -207,6 +274,18 @@ class CarlaSensorRelayNode(Node):
                 "front_compressed": None,
                 "rear_compressed": None,
             })
+        self._compressed_publishers = {
+            "front_compressed": self._front_compressed_publisher,
+            "rear_compressed": self._rear_compressed_publisher,
+        }
+        self._last_compressed_publish_monotonic = {
+            "front_compressed": None,
+            "rear_compressed": None,
+        }
+        self._last_raw_publish_monotonic = {
+            "front_image": None,
+            "rear_image": None,
+        }
         self._compression_errors = {}
         self._status_publisher = self.create_publisher(
             DiagnosticArray, "/camrod_carla/sensor_relay/status", 10
@@ -223,12 +302,20 @@ class CarlaSensorRelayNode(Node):
         return output
 
     def _on_front_image(self, message):
-        output = copy.deepcopy(message)
+        # The subscription owns this deserialized message object.  Updating its
+        # local header cannot affect the CARLA publisher and avoids a second
+        # multi-megabyte payload copy on every callback.
+        output = message
         output.header = self._stamp(message.header)
         output.header.frame_id = self.front_frame_id
-        for publisher in self._front_image_publishers:
-            publisher.publish(output)
-        self._last_seen["front_image"] = time.monotonic()
+        now_monotonic = time.monotonic()
+        self._last_seen["front_image"] = now_monotonic
+        self._publish_raw_image(
+            output,
+            self._front_image_publishers,
+            "front_image",
+            now_monotonic,
+        )
         self._publish_compressed(
             output,
             self._front_compressed_publisher,
@@ -243,12 +330,17 @@ class CarlaSensorRelayNode(Node):
         self._last_seen["front_info"] = time.monotonic()
 
     def _on_rear_image(self, message):
-        output = copy.deepcopy(message)
+        output = message
         output.header = self._stamp(message.header)
         output.header.frame_id = self.rear_frame_id
-        for publisher in self._rear_image_publishers:
-            publisher.publish(output)
-        self._last_seen["rear_image"] = time.monotonic()
+        now_monotonic = time.monotonic()
+        self._last_seen["rear_image"] = now_monotonic
+        self._publish_raw_image(
+            output,
+            self._rear_image_publishers,
+            "rear_image",
+            now_monotonic,
+        )
         self._publish_compressed(
             output,
             self._rear_compressed_publisher,
@@ -263,15 +355,61 @@ class CarlaSensorRelayNode(Node):
         self._last_seen["rear_info"] = time.monotonic()
 
     def _on_lidar(self, message):
-        output = copy.deepcopy(message)
+        # As with Image, this callback owns the deserialized PointCloud2.  Keep
+        # one payload and publish it to the three canonical views.
+        output = message
         output.header = self._stamp(message.header)
         if not self.preserve_lidar_frame:
             output.header.frame_id = self.lidar_frame_id
-        self._lidar_publisher.publish(output)
+        for publisher in self._lidar_publishers:
+            publisher.publish(output)
         self._last_seen["lidar"] = time.monotonic()
+
+    def _publish_raw_image(
+        self, image, publishers, stream_name, now_monotonic
+    ):
+        """Publish at most one latest raw frame per wall-clock interval.
+
+        Publisher endpoints remain present for graph contracts, but no large
+        payload is serialized when no algorithm or fallback viewer subscribes.
+        """
+        active_publishers = [
+            publisher
+            for publisher in publishers
+            if publisher.get_subscription_count() > 0
+        ]
+        if not active_publishers:
+            self._last_raw_publish_monotonic[stream_name] = None
+            return
+        last_published = self._last_raw_publish_monotonic[stream_name]
+        minimum_interval = 1.0 / self.raw_image_max_rate_hz
+        if (
+            last_published is not None
+            and now_monotonic - last_published < minimum_interval
+        ):
+            return
+        for publisher in active_publishers:
+            publisher.publish(image)
+        self._last_raw_publish_monotonic[stream_name] = now_monotonic
 
     def _publish_compressed(self, image, publisher, stream_name):
         if publisher is None:
+            return
+        # CARLA may run faster than wall time, so a 10-Hz simulation sensor can
+        # deliver substantially more than ten frames each wall-clock second.
+        # JPEG encoding is only a UI transport and should consume no CPU when
+        # nobody is listening, then remain bounded while a viewer is active.
+        if publisher.get_subscription_count() <= 0:
+            self._last_compressed_publish_monotonic[stream_name] = None
+            self._compression_errors.pop(stream_name, None)
+            return
+        now_monotonic = time.monotonic()
+        last_published = self._last_compressed_publish_monotonic[stream_name]
+        minimum_interval = 1.0 / self.compressed_image_max_rate_hz
+        if (
+            last_published is not None
+            and now_monotonic - last_published < minimum_interval
+        ):
             return
         try:
             payload = encode_image_jpeg(image, self.jpeg_quality)
@@ -288,7 +426,8 @@ class CarlaSensorRelayNode(Node):
         output.format = "jpeg"
         output.data = payload
         publisher.publish(output)
-        self._last_seen[stream_name] = time.monotonic()
+        self._last_seen[stream_name] = now_monotonic
+        self._last_compressed_publish_monotonic[stream_name] = now_monotonic
         self._compression_errors.pop(stream_name, None)
 
     def stream_ages(self, now_monotonic):
@@ -299,8 +438,16 @@ class CarlaSensorRelayNode(Node):
             for name, seen in self._last_seen.items()
         }
 
+    def active_stream_ages(self, now_monotonic):
+        """Return only streams that are expected to produce messages now."""
+        ages = self.stream_ages(now_monotonic)
+        for stream_name, publisher in self._compressed_publishers.items():
+            if publisher is None or publisher.get_subscription_count() <= 0:
+                ages.pop(stream_name, None)
+        return ages
+
     def _publish_status(self):
-        ages = self.stream_ages(time.monotonic())
+        ages = self.active_stream_ages(time.monotonic())
         stale = [
             name for name, age in ages.items()
             if age < 0.0 or age > self.stream_timeout_sec

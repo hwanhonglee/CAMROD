@@ -86,26 +86,138 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("}, 4000);", self.telemetry_source)
 
     def test_carla_manual_drive_is_hold_to_move_and_fail_closed(self) -> None:
-        self.assertIn("<ManualDrivePanel />", self.telemetry_source)
+        self.assertEqual(self.telemetry_source.count("<ManualDrivePanel />"), 1)
+        camera_view = self.telemetry_source.split(
+            "function CameraView", 1
+        )[1].split("function pointList", 1)[0]
+        self.assertNotIn("<ManualDrivePanel />", camera_view)
+        self.assertRegex(
+            self.telemetry_source,
+            r"\{view\}\s*<ManualDrivePanel />",
+        )
         for token in (
             "/ws/manual-drive",
             "{ type, seq: sequenceRef.current, ...payload }",
             "setInterval(sendDrive, 100)",
             "window.addEventListener('keyup', keyUp)",
-            "window.addEventListener('blur', loseFocus)",
-            "window.addEventListener('pagehide', loseFocus)",
+            "window.addEventListener('blur', stopForBlur)",
+            "window.addEventListener('pagehide', disarmForPageLifecycle)",
             "document.addEventListener('visibilitychange', visibility)",
             "socket.send(JSON.stringify({ type: 'disarm'",
             "event.code === 4403",
             "event.code === 4409",
-            "if (crab !== 0 && (forward !== 0 || turn !== 0))",
-            "send(manual.armed ? 'disarm' : 'arm')",
+            "if (send('arm'))",
+            "send('disarm')",
+            "requestedLinearMps",
+            'step="0.05"',
         ):
             self.assertIn(token, self.manual_drive_source)
+        for mode in ("ackermann", "zero_turn", "crab"):
+            self.assertIn(mode, self.manual_drive_source)
+        for token in (
+            "const classifiedCommand = (pressed, currentMode)",
+            "const hasLongitudinal =",
+            "const hasTurn =",
+            "const hasCrab =",
+            "if (hasCrab && (hasLongitudinal || hasTurn))",
+            "mode: 'ackermann'",
+            "mode: 'zero_turn'",
+            "mode: 'crab'",
+            "mode: command.mode",
+            "mode,\n      forward: 0,\n      turn: 0,\n      crab: 0",
+            "if (!sendZero(previousMode)) return;",
+            "driveModeRef.current = command.mode;",
+            "forward === 0 ? 0 : turn",
+            "role=\"status\"",
+            "aria-label=\"자동 분류 주행 모드\"",
+            "모드 변경 시 자동 ZERO",
+            "const canTrackMotion = manualRef.current.armed || armPendingRef.current",
+            "if (!canTrackMotion) return",
+            "if (event.repeat || pressedRef.current.has(event.code)) return",
+            "if (manualRef.current.armed) sendDrive()",
+            "if (nextManual?.armed && armPendingRef.current)",
+            "armPendingRef.current = false",
+            "armPendingRef.current = true",
+            "수동주행 준비 중 · ARM ACK 대기",
+            "? { axis: 'Yaw', value: requestedAngularRadps, unit: 'rad/s' }",
+            "? { axis: 'Y', value: requestedLateralMps, unit: 'm/s' }",
+            ": { axis: 'X', value: requestedLinearMps, unit: 'm/s' }",
+            "속도 {activeSpeed.axis} {activeSpeed.value.toFixed(2)} {activeSpeed.unit}",
+        ):
+            self.assertIn(token, self.manual_drive_source)
+        mode_handoff = self.manual_drive_source.split(
+            "if (command.mode !== driveModeRef.current)", 1
+        )[1].split("send('drive'", 1)[0]
+        self.assertLess(
+            mode_handoff.index("sendZero(previousMode)"),
+            mode_handoff.index("driveModeRef.current = command.mode"),
+        )
+        self.assertLess(
+            mode_handoff.index("driveModeRef.current = command.mode"),
+            mode_handoff.rindex("return;"),
+        )
         for key in ("KeyW", "KeyA", "KeyS", "KeyD", "KeyZ", "KeyC"):
             self.assertIn(key, self.manual_drive_source)
         self.assertIn(".manual-drive-panel", self.css)
+        self.assertIn(".manual-drive-mode-selector", self.css)
+        self.assertIn(".manual-drive-mode.active", self.css)
+        self.assertIn(".manual-drive-state.pending", self.css)
         self.assertIn("touch-action: none", self.css)
+
+    def test_carla_manual_drive_is_a_collapsible_non_overlay_dock(self) -> None:
+        for token in (
+            "const [collapsed, setCollapsed] = useState(true)",
+            "collapsed ? 'collapsed' : 'expanded'",
+            'aria-expanded={!collapsed}',
+            'aria-controls="manual-drive-expanded-controls"',
+            'hidden={collapsed}',
+            "collapsed ? '제어 열기' : '제어 접기'",
+            "if (!collapsed) clearMotion(false)",
+            'onClick={toggleCollapsed}',
+            '>ZERO</button>',
+            '>DISARM</button>',
+        ):
+            self.assertIn(token, self.manual_drive_source)
+        collapse_handler = self.manual_drive_source.split(
+            "const toggleCollapsed = useCallback", 1
+        )[1].split("}, [clearMotion, collapsed]);", 1)[0]
+        self.assertLess(
+            collapse_handler.index("clearMotion(false)"),
+            collapse_handler.index("setCollapsed"),
+        )
+        for token in (
+            ".manual-drive-panel.collapsed",
+            ".manual-drive-layout[hidden]",
+            ".manual-drive-compact-actions",
+            "flex: 0 0 auto",
+            "max-height: min(46vh, 430px)",
+        ):
+            self.assertIn(token, self.css)
+
+    def test_carla_manual_drive_lifecycle_has_zero_and_disarm_boundaries(self) -> None:
+        for token in (
+            "if (!manualRef.current.armed || disarmPendingRef.current) return false",
+            "if (!manualRef.current.armed || disarmPendingRef.current) return",
+            "if (nextManual && !nextManual.armed)",
+            "const stopForBlur = () => clearMotion(false);",
+            "const disarmForPageLifecycle = () => clearMotion(true);",
+            "window.addEventListener('blur', stopForBlur)",
+            "window.addEventListener('pagehide', disarmForPageLifecycle)",
+            "if (document.hidden) disarmForPageLifecycle()",
+        ):
+            self.assertIn(token, self.manual_drive_source)
+
+        clear_motion = self.manual_drive_source.split(
+            "const clearMotion", 1
+        )[1].split("useEffect", 1)[0]
+        self.assertLess(
+            clear_motion.index("sendZero();"),
+            clear_motion.index("disarmPendingRef.current = true;"),
+        )
+        self.assertLess(
+            clear_motion.index("disarmPendingRef.current = true;"),
+            clear_motion.index("send('disarm');"),
+        )
 
     def test_admin_diagnostics_remain_available_across_service_screens(self) -> None:
         # HH_260810 - Arrival, return, and waiting transitions must not unmount
@@ -138,7 +250,13 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # from the managed UI without opening RViz or a separate browser tool.
         for token in (
             "/ui/manual_return",
-            'camera="docking"',
+            "const hasFreshDockingDebug =",
+            "dockingCamera.available === true",
+            "dockingSource.state === 'live'",
+            "hasFreshDockingDebug ? 'docking' : 'rear'",
+            'source="camera.rear" label="CARLA rear fallback"',
+            "Docking camera · CARLA rear fallback",
+            "camera={dockingCameraName}",
             "DockingPathPlot",
             "tag_detected",
             "is_charging",

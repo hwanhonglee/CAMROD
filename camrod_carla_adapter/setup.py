@@ -48,6 +48,10 @@ setup(
             "camrod_carla_adapter.feedback_bridge_node:main",
             "carla_sensor_relay = "
             "camrod_carla_adapter.sensor_relay_node:main",
+            "carla_radar_relay = "
+            "camrod_carla_adapter.radar_relay_node:main",
+            "carla_sensor_source_audit = "
+            "camrod_carla_adapter.sensor_source_audit_node:main",
             "carla_platform_heartbeat = "
             "camrod_carla_adapter.carla_platform_heartbeat_node:main",
         ],

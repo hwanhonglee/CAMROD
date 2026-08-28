@@ -425,6 +425,17 @@ class FakeSensorPublisher(Node):
         self.publish_fake_lidar_obstacle_cloud = bool(
             self.declare_parameter("publish_fake_lidar_obstacle_cloud", True).value
         )
+        # External simulators can own the canonical raw sensor boundaries.
+        # Keep every switch enabled by default so ordinary CAMROD simulation
+        # retains its deterministic graph, while the CARLA overlay disables
+        # only the synthetic publishers it replaces with physical-simulation
+        # sensor messages.
+        self.publish_fake_gnss = bool(
+            self.declare_parameter("publish_fake_gnss", True).value
+        )
+        self.publish_fake_imu = bool(
+            self.declare_parameter("publish_fake_imu", True).value
+        )
         self.publish_fake_radar_ranges = bool(
             self.declare_parameter("publish_fake_radar_ranges", True).value
         )
@@ -621,15 +632,25 @@ class FakeSensorPublisher(Node):
             self._free_nav_yaw = yaw0
 
         # HH_260720 - Publish only raw simulated hardware streams with standard ROS types.
-        self.pub_navsat = self.create_publisher(
-            RosNavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10
-        )
-        self.pub_gnss_heading = self.create_publisher(
-            RosImu, "/sensing/gnss/navheading", 10
-        )
+        self.pub_navsat = None
+        self.pub_gnss_heading = None
+        if self.publish_fake_gnss:
+            self.pub_navsat = self.create_publisher(
+                RosNavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10
+            )
+            self.pub_gnss_heading = self.create_publisher(
+                RosImu, "/sensing/gnss/navheading", 10
+            )
         # HH_260720 - Sim exposes the same raw `_ros` boundary and generated stream as hardware.
-        self.pub_imu_ros = self.create_publisher(RosImu, "/sensing/imu/data_ros", 10)
-        self.pub_imu = self.create_publisher(AvgImu, "/sensing/imu/data", 10)
+        self.pub_imu_ros = None
+        self.pub_imu = None
+        if self.publish_fake_imu:
+            self.pub_imu_ros = self.create_publisher(
+                RosImu, "/sensing/imu/data_ros", 10
+            )
+            self.pub_imu = self.create_publisher(
+                AvgImu, "/sensing/imu/data", 10
+            )
         self.pub_wheel_bridge_in = self.create_publisher(
             RosOdometry, self.wheel_bridge_input_topic, 10
         )
@@ -643,12 +664,15 @@ class FakeSensorPublisher(Node):
         self.pub_dr_odom = self.create_publisher(
             AvgOdometry, self.dr_odometry_topic, odom_qos
         )
-        self.pub_obstacles = self.create_publisher(
-            RosPointCloud2, self.obstacle_cloud_topic, 10
-        )
-        self.pub_lidar_filtered = self.create_publisher(
-            RosPointCloud2, self.lidar_filtered_topic, 10
-        )
+        self.pub_obstacles = None
+        self.pub_lidar_filtered = None
+        if self.publish_fake_lidar_obstacle_cloud:
+            self.pub_obstacles = self.create_publisher(
+                RosPointCloud2, self.obstacle_cloud_topic, 10
+            )
+            self.pub_lidar_filtered = self.create_publisher(
+                RosPointCloud2, self.lidar_filtered_topic, 10
+            )
         self.pub_fake_radar_ranges = []
         self.pub_fake_radar_standard_ros_ranges = []
         if self.publish_fake_radar_ranges:
@@ -1370,7 +1394,7 @@ class FakeSensorPublisher(Node):
                 self.get_logger().warn(
                     f"[GNSS SIM] FAILURE at t={elapsed:.1f}s — NavSatFix publishing stopped"
                 )
-        if self._gnss_active:
+        if self.publish_fake_gnss and self._gnss_active:
             # Production subtracts 85 deg from the receiver heading. Add the
             # inverse bias here so its corrected simulated yaw equals body yaw.
             heading_msg = RosImu()
@@ -1408,8 +1432,9 @@ class FakeSensorPublisher(Node):
         imu_msg.linear_acceleration.x = 0.0
         imu_msg.linear_acceleration.y = 0.0
         imu_msg.linear_acceleration.z = 0.0
-        self.pub_imu_ros.publish(imu_msg)
-        self.pub_imu.publish(imu_from_ros(imu_msg))
+        if self.publish_fake_imu:
+            self.pub_imu_ros.publish(imu_msg)
+            self.pub_imu.publish(imu_from_ros(imu_msg))
 
         # HH_260720 - Feed one raw wheel source; platform/localization bridges own Avg outputs.
         wheel_msg = RosOdometry()
@@ -1503,7 +1528,11 @@ class FakeSensorPublisher(Node):
             RosPointField(name="z", offset=8, datatype=RosPointField.FLOAT32, count=1),
         ]
         cloud_msg = point_cloud2.create_cloud(raw_sensor_header, fields, obstacle_points)
-        if self.publish_fake_lidar_obstacle_cloud:
+        if (
+            self.publish_fake_lidar_obstacle_cloud
+            and self.pub_obstacles is not None
+            and self.pub_lidar_filtered is not None
+        ):
             self.pub_obstacles.publish(cloud_msg)
             self.pub_lidar_filtered.publish(cloud_msg)
         if self.publish_fake_radar_ranges:

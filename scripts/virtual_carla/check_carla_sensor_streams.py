@@ -232,12 +232,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--role-name", default="ego_vehicle")
     parser.add_argument("--timeout-seconds", type=float, default=8.0)
-    parser.add_argument("--min-rate-hz", type=float, default=8.0)
+    parser.add_argument("--min-rate-hz", type=float, default=2.0)
     parser.add_argument(
         "--min-observation-seconds", type=float, default=1.0
     )
     parser.add_argument(
-        "--max-sample-age-seconds", type=float, default=0.5
+        "--max-sample-age-seconds", type=float, default=3.0
     )
     return parser.parse_args()
 

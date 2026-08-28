@@ -1,0 +1,13 @@
+# Wheel odometry is derived from the actual CARLA vehicle odometry boundary.
+/system/wheel_odometry_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    wheel_names: ["main"]
+    main:
+      topic: "/localization/input/wheel_odometry"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      max_speed_warn_ms: 3.0
+      max_speed_error_ms: 5.0

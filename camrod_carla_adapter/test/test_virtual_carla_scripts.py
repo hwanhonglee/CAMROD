@@ -19,6 +19,16 @@ UI_MANUAL_PREFLIGHT = SCRIPT_ROOT / "check_camrod_ui_manual_ready.py"
 SENSOR_PREFLIGHT = SCRIPT_ROOT / "check_carla_sensor_streams.py"
 SCRIPTS = ("env.sh", "setup.sh", "build.sh", "test.sh", "run.sh")
 VIRTUAL_ENV_KEYS = (
+    "CAMROD_CYCLONEDDS_CONFIG",
+    "CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES",
+    "CAMROD_MANUAL_LINEAR_LIMIT_MPS",
+    "CAMROD_MANUAL_LATERAL_LIMIT_MPS",
+    "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS",
+    "CAMROD_MANUAL_DEADMAN_TIMEOUT_S",
+    "CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ",
+    "CAMROD_CARLA_SENSOR_MIN_RATE_HZ",
+    "CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS",
+    "CYCLONEDDS_URI",
     "RANGER_CARLA_ROOT",
     "RANGER_WORK_ROOT",
     "RANGER_ROS_WS",
@@ -1131,6 +1141,93 @@ printf '%s\n%s\n' "$RANGER_SPAWN_FILE" "$CAMROD_LAUNCH_SENSOR_RELAY"
     ]
 
 
+def test_env_applies_one_checked_in_cyclonedds_contract_to_every_ros_shell(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+printf '%s\n%s\n%s\n' \
+  "$CAMROD_CYCLONEDDS_CONFIG" \
+  "$CYCLONEDDS_URI" \
+  "$CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES"
+"""
+    result = _bash(
+        script,
+        environment={"RANGER_CARLA_ROOT": str(ranger_root)},
+    )
+    config = SRC_ROOT / "cyclonedds.xml"
+    assert result.stdout.splitlines() == [
+        str(config),
+        f"file://{config}",
+        "20971520",
+    ]
+    env_source = (SCRIPT_ROOT / "env.sh").read_text(encoding="utf-8")
+    source_ros = env_source.split("virtual_carla_source_ros() {", 1)[1].split(
+        "\n}", 1
+    )[0]
+    assert "export CYCLONEDDS_URI" in source_ros
+    assert "export CAMROD_CYCLONEDDS_CONFIG" in source_ros
+
+
+def test_dds_transport_preflight_accepts_twenty_mib_socket_buffers(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+sysctl() {{
+  case "$2" in
+    net.core.rmem_max) printf '%s\n' 20971520 ;;
+    net.core.wmem_max) printf '%s\n' 33554432 ;;
+    *) return 1 ;;
+  esac
+}}
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+virtual_carla_require_dds_transport
+"""
+    result = _bash(
+        script,
+        environment={"RANGER_CARLA_ROOT": str(ranger_root)},
+    )
+    assert "DDS camera transport ready" in result.stdout
+
+
+def test_dds_transport_preflight_rejects_low_buffers_with_exact_remedy(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+sysctl() {{
+  case "$2" in
+    net.core.rmem_max) printf '%s\n' 212992 ;;
+    net.core.wmem_max) printf '%s\n' 425984 ;;
+    *) return 1 ;;
+  esac
+}}
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+if virtual_carla_require_dds_transport; then
+  exit 90
+fi
+"""
+    result = _bash(
+        script,
+        environment={"RANGER_CARLA_ROOT": str(ranger_root)},
+    )
+    assert "net.core.rmem_max=212992" in result.stderr
+    assert "net.core.wmem_max=425984" in result.stderr
+    assert (
+        "sudo sysctl -w net.core.rmem_max=20971520 "
+        "net.core.wmem_max=20971520"
+    ) in result.stderr
+    assert "/etc/sysctl.d/99-camrod-carla-dds.conf" in result.stderr
+
+
 def test_ranger_environment_file_loads_but_shell_override_wins(
     tmp_path: Path,
 ) -> None:
@@ -1186,13 +1283,65 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "# REQUIRED lifecycle order (four terminals)" in result.stdout
     assert "Wait for each preceding stage to report success" in result.stdout
     assert "run.sh manual" in result.stdout
+    assert "run.sh audit-sensors" in result.stdout
     assert "teleop_twist_keyboard" in result.stdout
     assert "cmd_vel:=/control/manual_cmd_vel_ros" in result.stdout
     assert "export RANGER_UE_ROOT=" in result.stdout
     assert "export ROS_DOMAIN_ID=" in result.stdout
     assert "export RMW_IMPLEMENTATION=" in result.stdout
+    assert "export CAMROD_CYCLONEDDS_CONFIG=" in result.stdout
+    assert "export CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES=20971520" in result.stdout
+    assert "export CYCLONEDDS_URI=" in result.stdout
+    assert "export CAMROD_MANUAL_LINEAR_LIMIT_MPS=1.40" in result.stdout
+    assert "export CAMROD_MANUAL_LATERAL_LIMIT_MPS=1.00" in result.stdout
+    assert "export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS=0.7853" in result.stdout
+    assert "export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=0.75" in result.stdout
+    assert (
+        "export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ=5.0"
+        in result.stdout
+    )
+    assert "export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ=10.0" in result.stdout
+    assert "export CAMROD_CARLA_SENSOR_MIN_RATE_HZ=2.0" in result.stdout
+    assert (
+        "export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS=3.0"
+        in result.stdout
+    )
+    assert "manual_drive_linear_limit_mps:=1.40" in result.stdout
+    assert "manual_drive_lateral_limit_mps:=1.00" in result.stdout
+    assert "manual_drive_angular_limit_radps:=0.7853" in result.stdout
+    assert "manual_drive_deadman_timeout_s:=0.75" in result.stdout
+    assert "compressed_image_max_rate_hz:=5.0" in result.stdout
+    assert "raw_image_max_rate_hz:=10.0" in result.stdout
+    assert (
+        "sudo sysctl -w net.core.rmem_max=20971520 "
+        "net.core.wmem_max=20971520"
+    ) in result.stdout
     assert "export CARLA_RENDER_MODE=" in result.stdout
     assert "No motion command" in result.stdout
+
+
+def test_sensor_audit_is_fail_closed_on_actual_carla_actor_inventory() -> None:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    case_body = source.split("  audit-sensors)\n", 1)[1].split(
+        "    ;;\n", 1
+    )[0]
+    function_body = source.split("run_sensor_source_audit() {\n", 1)[1].split(
+        "\n}\n", 1
+    )[0]
+    assert "validate_ranger_actor_ready" in case_body
+    assert "carla_sensor_source_audit" in function_body
+    assert "--actor-policy require" in function_body
+
+
+def test_every_runtime_ros_terminal_and_doctor_fail_closed_on_dds_buffers() -> None:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    for stage in ("bridge", "spawn", "camrod", "manual", "audit-sensors"):
+        case_body = source.split(f"  {stage})\n", 1)[1].split("    ;;\n", 1)[0]
+        assert case_body.count("virtual_carla_require_dds_transport") == 1
+    doctor_body = source.split("run_doctor() {", 1)[1].split(
+        "\n}\n\ncase", 1
+    )[0]
+    assert doctor_body.count("virtual_carla_require_dds_transport") == 1
 
 
 def test_doctor_rejects_template_and_packaged_paths_without_traceback(
