@@ -1,0 +1,200 @@
+{
+  "schema": "camrod.virtual_carla.rendered_b12_round_trip.v1",
+  "status": "PASS",
+  "acceptance_class": "RENDERED_FUNCTIONAL_PASS",
+  "created_at_utc": "2026-08-30T20:03:03Z",
+  "execution_date_kst": "2026-08-31",
+  "scope": {
+    "world": "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+    "vehicle_type": "vehicle.ranger.default",
+    "role_name": "ego_vehicle",
+    "actor_id": 50,
+    "render_mode": "onscreen",
+    "operator_inputs": [
+      "one B12 dispatch in the production CAMROD UI",
+      "one Return request after WAITING_FOR_RETURN_REQUEST"
+    ],
+    "manual_drive_used": false,
+    "pose_teleport_used": false
+  },
+  "source_snapshot_before_final_commits": {
+    "camrod": {
+      "branch": "virtual/carla",
+      "head": "ecc3b9f9f0f4065440d0ff56cdb98a1c93f84e98",
+      "origin_head": "ecc3b9f9f0f4065440d0ff56cdb98a1c93f84e98"
+    },
+    "ranger_pipeline": {
+      "branch": "main",
+      "head": "5cf1ed9c4b68c130f8b082d71923fc869f676dba",
+      "origin_head": "5cf1ed9c4b68c130f8b082d71923fc869f676dba"
+    }
+  },
+  "runtime_gates_used_by_rendered_mission": {
+    "baseline_sha256": "e65e1ace88a8a1a0b1ec316083a9b7464bee1d4116f34dd063528a8942baa584",
+    "physical_4ws_sha256": "1f8d8e8b5b11d97ea5ff6a18725974037d184cdbd7fa038261eac3e5dd875188"
+  },
+  "mission_timeline_kst": [
+    {
+      "time": "03:55:13",
+      "event": "B12 dispatch accepted; 47.02 m outbound route started"
+    },
+    {
+      "time": "04:01:01",
+      "event": "CRAB_IN, UNLOAD_WAIT and WAITING_FOR_RETURN_REQUEST reached"
+    },
+    {
+      "time": "04:03:01",
+      "event": "Return accepted; CRAB_OUT completed and 47.32 m reverse_shortest route started"
+    },
+    {
+      "time": "04:07:43",
+      "event": "Drop Zone route goal reached; parking yaw alignment started"
+    },
+    {
+      "time": "04:08:10",
+      "event": "WAITING_FOR_CHARGING; station distance 0.251 m; speed 0.000 m/s"
+    },
+    {
+      "time": "04:08:21",
+      "event": "51 distinct frames and 10.00 s charging evidence; CHARGING(13) and PARKED"
+    }
+  ],
+  "final_alignment_proof": {
+    "carla_ros_odometry_xy_m": [-21.0796356, 30.5216637],
+    "se2_offset_xy_m": [6.9521841, 9.4901857],
+    "se2_yaw_rad": 0.0000008142811,
+    "camrod_metric_xy_m": [-14.1274763, 40.0118322],
+    "result": "CARLA odometry transformed by the checked-in SE(2) matches metric pose, GNSS localization input, EKF and UI coordinates"
+  },
+  "sensor_acceptance": {
+    "source_and_ui_streams": {
+      "passed": 32,
+      "expected": 32,
+      "failed": 0
+    },
+    "carla_source_actors": {
+      "passed": 13,
+      "expected": 13,
+      "failed": 0,
+      "composition": {
+        "rgb_camera": 2,
+        "lidar": 1,
+        "radar": 7,
+        "gnss": 2,
+        "imu": 1
+      }
+    },
+    "lidar": {
+      "model_scope": "forward-fixed solid-state approximation, not a mechanical 360 degree scanner",
+      "type": "sensor.lidar.ray_cast",
+      "horizontal_fov_deg": 120.0,
+      "horizontal_limits_deg": [-60.0, 60.0],
+      "vertical_fov_deg": 35.0,
+      "vertical_limits_deg": [-25.0, 10.0],
+      "channels": 16,
+      "points_per_second": 60000,
+      "range_m": 50.0,
+      "sensor_tick_s": 0.1,
+      "nominal_rate_hz": 10.0,
+      "rotation_frequency": 20.0,
+      "rotation_frequency_interpretation": "ray sampling phase within the configured 120 degree sector; it does not rotate the actor through 360 degrees",
+      "topic_chain": [
+        "/carla/ego_vehicle/lidar_front",
+        "/sensing/lidar/vanjee/points_raw",
+        "/sensing/lidar/points_filtered",
+        "/perception/obstacles",
+        "/sensing/cost_grid/lidar"
+      ],
+      "fake_points_generated": false,
+      "filter_behavior": "selects measured CARLA PointCloud2 records after road-plane and Ranger self-return rejection; it does not synthesize points"
+    },
+    "fake_owner_contract": {
+      "sim_publish_fake_lidar_obstacle_cloud": false,
+      "dummy_lidar_grid_enabled": false,
+      "result": "fake and dummy publishers did not own UI-visible camera, LiDAR, GNSS, IMU or radar boundaries"
+    }
+  },
+  "controller_delta_scope": {
+    "translation_cap_nm_per_wheel": 8.0,
+    "bridge_absolute_cap_nm_per_wheel": 20.0,
+    "ordinary_breakaway_floor_nm_per_wheel": 3.0,
+    "stall_floor_stage_1": {
+      "torque_nm_per_wheel": 5.5,
+      "delay_s": 0.5
+    },
+    "stall_floor_stage_2": {
+      "torque_nm_per_wheel": 6.0,
+      "delay_s": 1.0
+    },
+    "release_progress_mps": 0.045,
+    "activated_during_successful_rendered_mission": false,
+    "claim": "the mission proves route completion, not live activation of the 5.5/6.0 N.m stall stages"
+  },
+  "post_mission_source_refresh": {
+    "reason": "make controller, LiDAR, UI, spawn and synchronous bridge shutdown idempotent and fix the standalone sensor-suite config path",
+    "pipeline_offline_tests": {
+      "passed": 460,
+      "skipped": 3,
+      "failed": 0
+    },
+    "wheel_telemetry_source_tests": {
+      "passed": 8,
+      "failed": 0
+    },
+    "camrod_selected_package_tests": {
+      "total": 981,
+      "passed": 973,
+      "skipped": 8,
+      "failed": 0
+    },
+    "bridge_live_shutdown_retest": {
+      "pacer_rate_hz": 20.0,
+      "signals_sent": 1,
+      "exit_latency_s": 0.24,
+      "exit_code": 0,
+      "vehicle_spawned": false
+    },
+    "final_baseline_gate_sha256": "ca175c5a37888cab941970357b0bd333d167220ae34b3bb28b7ca96a9d7e469d",
+    "final_physical_4ws_gate_sha256": "87f83f0575f413ce4f3632ccf36c7a2b0ecf6917b2b476d1338d065834a198c9",
+    "runtime_deep_verification": "PASS",
+    "rendered_b12_mission_repeated_after_refresh": false
+  },
+  "artifacts": {
+    "summary_png": {
+      "path": "docs/evidence/virtual_carla/07_b12_round_trip_e2e.png",
+      "bytes": 1895197,
+      "sha256": "790ebb716e79051f3eb895b86afdaa37c17135bc8670f69511ceefeeea1be42b"
+    },
+    "summary_gif": {
+      "path": "docs/evidence/virtual_carla/07_b12_round_trip_e2e.gif",
+      "bytes": 7257990,
+      "sha256": "ecb4f9f863ea9425f2bfe6acd6f5b900eddb342ed4f125881ebaaac16a6be899"
+    },
+    "host_local_source_video": {
+      "path": "/tmp/camrod-b12-retune-clean-e2e-20260831.mp4",
+      "committed": false,
+      "bytes": 103808386,
+      "sha256": "f836742bf7035edf75ace0cf33f4755803a795aa998e3d47fb7794032f597f93",
+      "duration_s": 857,
+      "resolution": "1920x540",
+      "frame_rate_hz": 5.0,
+      "codec": "H.264"
+    }
+  },
+  "bound_source_hashes": {
+    "camrod_spawn_json": "8f5b5f844993886eaa6f93e1f56104006e02fc9ed40a9ab4c8edeee617643c34",
+    "camrod_full_launch": "e7e3d3944d7e33e14a85fea39be12ba3cbd2ed444cdeffc20dd7dce4c127f840",
+    "camrod_run_script": "f1c6f1fa36b7cb82981b5246a0954ff73c059fade223028c885588574c01de7c",
+    "pipeline_ros_bridge_patch": "b7d5b6be6196e4abd3765203efbba1a273aa56d9948e632ef01725dae007091a",
+    "pipeline_wheel_torque_control": "42e91214755986340774c3ccff1a21ff7ee42f6b4ee90b66562e01c54b794944",
+    "pipeline_standalone_stack_checker": "14c7ed269220608b62e7a2c960142f6d7ff0acc439b056d2a01bf7afd1eb8621"
+  },
+  "limitations": [
+    "This is a virtual CARLA result, not a physical Ranger hardware acceptance.",
+    "The successful rendered mission predates the post-mission shutdown/source refresh and was not repeated after that refresh.",
+    "The LiDAR matches field of view and cadence only; it does not reproduce an exact physical solid-state beam pattern, intensity response or noise model.",
+    "The custom /home/hong/carla checkout was not replaced or rebuilt from a clean official pinned tree during this result.",
+    "The successful mission did not activate the new 5.5/6.0 N.m translation-stall stages.",
+    "The host-local MP4 and ROS logs are not committed; the bound PNG and GIF are committed derivatives."
+  ]
+}

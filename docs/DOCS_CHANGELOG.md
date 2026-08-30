@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+<!-- HH_260831 - Record the virtual/carla rendered Ranger B12 round trip,
+real-CARLA sensor ownership, fixed-sector LiDAR, and controller-delta scope. -->
+## [virtual-carla-rendered-b12-e2e] - 2026-08-31 (HH_260831)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Rendered mission | Physical 4WS actor completed Drop Zone → B12 → Return → reverse parking → `CHARGING/PARKED` with one normal dispatch and one Return request, no manual drive or teleport |
+| Sensor ownership | `audit-sensors` passed source/UI streams `32/32` and CARLA actors `13/13`; fake/dummy owners do not publish the UI-visible camera/LiDAR/GNSS/IMU/radar boundaries |
+| LiDAR | Documents the forward fixed 120°×35° solid-state approximation and the real raw → road-plane nonground filter → Euclidean cluster → cost-grid chain |
+| Runtime shutdown | Makes LiDAR/UI/controller/spawn cleanup idempotent and bridge PAUSE waiting shutdown-aware; a live 20 Hz pacer race exits the bridge after one Ctrl-C in 0.24 s with code 0 |
+| Position proof | Records the exact Woraksan SE(2) transform from CARLA ROS odometry to CAMROD metric/EKF/UI pose, preventing cross-frame coordinates from being mistaken for fake localization |
+| B12 traction | Records the failed former 5.0 N·m floor and bounded 5.5/6.0 N·m controller delta; the successful E2E did not stall, so it is not claimed as a live floor-activation test |
+| Evidence boundary | Adds rendered desktop PNG/GIF and a dated report; real Ranger hardware, onboard semantic-camera acceptance, all-site endurance, and a clean official-pinned CARLA/UE rebuild remain outside this result |
+
+---
+
 <!-- HH_260826 - Keep the fast AprilTag safety stop while extending the stopped
 target reacquisition window for field occlusion. -->
 ## [v2.2.2-apriltag-reacquisition] - 2026-08-26 (HH_260826)

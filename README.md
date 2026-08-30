@@ -183,7 +183,7 @@ no second hold. This is not physical-road evidence.
 |---|---|---|
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
 | v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
-| CARLA overlay verification | **PASS** | CARLA source contracts `21/21`; adapter Release build passed; see the dedicated virtual integration guide for its separate evidence boundary |
+| CARLA overlay verification | **RENDERED E2E PASS** | source/UI streams `32/32`, CARLA sensor actors `13/13`; Drop Zone → B12 → return → reverse parking → `CHARGING` completed with the physical 4WS Ranger and no manual drive/teleport; see the dedicated virtual integration guide |
 | Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
