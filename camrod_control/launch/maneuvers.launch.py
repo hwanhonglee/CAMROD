@@ -32,6 +32,12 @@ def generate_launch_description():
         DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
         DeclareLaunchArgument("enable_camping_site_maneuver_controller", default_value="true"),
         DeclareLaunchArgument("enable_campsite_occupancy_guard", default_value="false"),
+        DeclareLaunchArgument(
+            "roadside_reverse_return_enable", default_value="false"
+        ),
+        DeclareLaunchArgument(
+            "roadside_reverse_handoff_distance_m", default_value="0.03"
+        ),
         DeclareLaunchArgument("enable_drop_zone_maneuver_controller", default_value="true"),
         DeclareLaunchArgument("enable_route_safety_recovery_controller", default_value="true"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
@@ -57,6 +63,21 @@ def generate_launch_description():
                     "enable_campsite_occupancy_guard": ParameterValue(
                         LaunchConfiguration("enable_campsite_occupancy_guard"),
                         value_type=bool,
+                    ),
+                    "roadside_reverse_return_enable": ParameterValue(
+                        LaunchConfiguration(
+                            "roadside_reverse_return_enable"
+                        ),
+                        value_type=bool,
+                    ),
+                    # HH_260830 - Keep the hardware 3 cm centerline contract,
+                    # while allowing CARLA to stop at its measured 10 cm
+                    # brake-safe handoff before a Terrain bank.
+                    "roadside_reverse_handoff_distance_m": ParameterValue(
+                        LaunchConfiguration(
+                            "roadside_reverse_handoff_distance_m"
+                        ),
+                        value_type=float,
                     ),
                 },
             ],

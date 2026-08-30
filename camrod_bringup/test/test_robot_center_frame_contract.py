@@ -334,6 +334,28 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
     assert parameters[
         "route_safety_recovery_progress_reset_distance_m"
     ] == pytest.approx(0.75)
+    assert parameters["route_safety_path_relative_recovery_enable"] is True
+    assert parameters["route_safety_path_full_route_topic"] == "/planning/global_path_avg"
+    assert parameters["route_safety_path_center_tolerance_m"] == pytest.approx(0.05)
+    assert parameters["route_safety_path_center_reentry_m"] == pytest.approx(0.08)
+    assert parameters["route_safety_path_heading_tolerance_deg"] == pytest.approx(5.0)
+    assert parameters["route_safety_path_max_age_s"] == pytest.approx(0.5)
+    assert parameters["route_safety_path_max_distance_m"] == pytest.approx(1.5)
+
+    gate_source = (
+        SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+    ).read_text(encoding="utf-8")
+    assert "create_subscription<avg_msgs::msg::AvgPath>" in gate_source
+    assert "rclcpp::QoS(1).reliable().transient_local()" in gate_source
+    assert "latest_full_route_ = *message;" in gate_source
+    assert "path_relative_local_path_insufficient_points" in gate_source
+    assert "path_relative_local_path_nonfinite" in gate_source
+    assert "path_relative_full_route_nonfinite" in gate_source
+    assert "*latest_full_route_, *pose" in gate_source
+    mission_callback = gate_source.index("onMissionRequest(")
+    mission_identity = gate_source.index("MissionRequestIdentity request;", mission_callback)
+    route_clear = gate_source.index("latest_full_route_.reset();", mission_callback)
+    assert route_clear < mission_identity
 
 
 def test_high_resolution_lanelet_safety_grid_and_nav2_owner_contract() -> None:

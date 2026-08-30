@@ -50,8 +50,303 @@ def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
         '"operator_telemetry_camera_raw_fallback_enabled": "false"'
         in source
     )
+    assert (
+        '"CAMROD_CARLA_UI_TF_LATEST_FALLBACK_TOLERANCE_S", "0.075"'
+        in source
+    )
+    assert (
+        '"operator_telemetry_tf_latest_fallback_tolerance_s": ('
+        in source
+    )
     assert 'controller_share, "full_stack.launch.py"' in source
     assert 'controller_share, "launch", "full_stack.launch.py"' not in source
+
+
+def test_full_launch_defaults_carla_route_heading_to_production_profile():
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    production_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+
+    assert '"CAMROD_CARLA_ROUTE_HEADING_ERROR_ENTER_DEG", "75.0"' in full_launch
+    assert '"CAMROD_CARLA_ROUTE_HEADING_LOOKAHEAD_M", "2.0"' in full_launch
+    assert (
+        '"control_cmd_vel_gate_route_heading_lookahead_m": ('
+        in full_launch
+    )
+    assert (
+        '"control_cmd_vel_gate_route_heading_error_enter_deg": ('
+        in full_launch
+    )
+    assert (
+        production_defaults["control"][
+            "cmd_vel_gate_route_heading_error_enter_deg"
+        ]
+        == 75.0
+    )
+    assert (
+        production_defaults["control"][
+            "cmd_vel_gate_route_heading_error_exit_deg"
+        ]
+        == 5.0
+    )
+    assert (
+        production_defaults["control"][
+            "cmd_vel_gate_route_heading_lookahead_m"
+        ]
+        == 2.0
+    )
+
+
+def test_full_carla_opts_into_reverse_roadside_return_without_changing_production():
+    """CARLA alone exits and retraces in reverse through typed opt-ins."""
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    production_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]
+
+    assert (
+        '"CAMROD_CARLA_ROADSIDE_REVERSE_RETURN_ENABLE", "true"'
+        in full_launch
+    )
+    assert (
+        '"control_camping_site_roadside_reverse_return_enable": ('
+        in full_launch
+    )
+    assert (
+        'LaunchConfiguration(\n'
+        '                        "carla_roadside_reverse_return_enable"\n'
+        "                    )"
+        in full_launch
+    )
+    assert (
+        '"CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.10"'
+        in full_launch
+    )
+    assert (
+        '"control_camping_site_roadside_reverse_handoff_distance_m": ('
+        in full_launch
+    )
+    assert (
+        'LaunchConfiguration(\n'
+        '                        "carla_roadside_reverse_handoff_distance_m"\n'
+        "                    )"
+        in full_launch
+    )
+    assert "Exit a CARLA roadside campsite, preserve its outbound yaw" in full_launch
+    assert '"planning_nav2_runtime_override_param_file": (' in full_launch
+    assert '"control_cmd_vel_gate_lanelet_safety_check_reverse": "true"' in full_launch
+    assert (
+        production_defaults["control"][
+            "camping_site_roadside_reverse_return_enable"
+        ]
+        is False
+    )
+    assert (
+        production_defaults["control"][
+            "camping_site_roadside_reverse_handoff_distance_m"
+        ]
+        == 0.03
+    )
+
+
+def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
+    """CARLA uses a bounded reverse profile without mutating production Nav2."""
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    overlay_path = PACKAGE_ROOT / "config" / "nav2_carla_reverse_return.yaml"
+    overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    rpp = overlay["controller_server"]["ros__parameters"]["RPP"]
+
+    assert rpp == {
+        "allow_reversing": True,
+        "use_rotate_to_heading": False,
+        "desired_linear_vel": 0.20,
+        "use_velocity_scaled_lookahead_dist": False,
+        "lookahead_dist": 0.80,
+        "min_lookahead_dist": 0.80,
+        "max_lookahead_dist": 0.80,
+        "regulated_linear_scaling_min_speed": 0.20,
+    }
+
+    production_vehicle = yaml.safe_load(
+        (REPO_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    production_rpp = production_vehicle["controller_server"]["ros__parameters"]["RPP"]
+    assert production_rpp["allow_reversing"] is False
+    assert production_rpp["use_rotate_to_heading"] is False
+    assert production_rpp["desired_linear_vel"] == 1.111111
+    assert production_rpp["use_velocity_scaled_lookahead_dist"] is False
+    assert production_rpp["lookahead_dist"] == 1.2
+    assert production_rpp["min_lookahead_dist"] == 1.1
+    assert production_rpp["max_lookahead_dist"] == 2.0
+    assert production_rpp["regulated_linear_scaling_min_speed"] == 0.333333
+
+    production_gate_scale = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]["control"]["cmd_vel_gate_speed_scale"]
+    assert production_gate_scale == 0.5
+    assert (
+        '"CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE", "1.0"'
+        in full_launch
+    )
+    assert (
+        '"control_cmd_vel_gate_speed_scale": LaunchConfiguration('
+        in full_launch
+    )
+    assert (
+        rpp["regulated_linear_scaling_min_speed"] * 1.0
+        == 0.20
+    )
+
+
+def test_carla_nav2_radius_stabilizer_is_opt_in_and_above_adapter_boundary():
+    """CARLA removes radius chatter without changing production/manual paths."""
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    adapter = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "command_adapter.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/**"]["ros__parameters"]
+    production_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "bringup"
+            / "launch_defaults.yaml"
+        ).read_text(encoding="utf-8")
+    )["bringup"]["control"]
+    package_gate = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_control"
+            / "config"
+            / "cmd_vel_safety_gate.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+    bringup_gate = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "control"
+            / "cmd_vel_safety_gate.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
+
+    carla_radius = 0.82
+    assert carla_radius > adapter["minimum_turn_radius_m"]
+    assert (
+        '"CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M",\n'
+        '                "0.82",'
+    ) in full_launch
+    assert (
+        '"control_cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m": ('
+        in full_launch
+    )
+    assert (
+        production_defaults[
+            "cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m"
+        ]
+        == 0.0
+    )
+    assert package_gate["navigation_minimum_ackermann_turn_radius_m"] == 0.0
+    assert bringup_gate["navigation_minimum_ackermann_turn_radius_m"] == 0.0
+
+
+def test_carla_parking_reaches_station_before_emulating_charger_contact():
+    """CARLA may widen the cap, but contact still needs pose/motion evidence."""
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    overlay = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "parking_carla.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/parking/reverse_parking_controller"]["ros__parameters"]
+    production = yaml.safe_load(
+        (REPO_ROOT / "camrod_control" / "config" / "parking.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/parking/reverse_parking_controller"]["ros__parameters"]
+
+    assert overlay == {"maximum_reverse_distance_m": 4.2}
+    assert production["maximum_reverse_distance_m"] == 1.5
+    assert production["complete_without_charging"] is False
+    assert '"launch_charging_contact_emulator", default_value="true"' in full_launch
+    assert '"parking_runtime_override_param_file": LaunchConfiguration(' in full_launch
+    assert '"carla_charging_contact_position_tolerance_m"' in full_launch
+    assert '"carla_charging_contact_speed_tolerance_mps"' in full_launch
+    assert '"carla_charging_contact_state_timeout_s"' in full_launch
+    assert '"state_timeout_s": LaunchConfiguration(' in full_launch
+
+
+def test_charging_contact_rate_isolated_from_heartbeat_legacy_alias():
+    """An empty sibling ``publish_rate_hz`` must not disable contact launch."""
+    charging_launch = (
+        PACKAGE_ROOT / "launch" / "charging_contact_emulator.launch.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"charging_contact_publish_rate_hz"' in charging_launch
+    assert 'default_value="/planning/state_machine/state"' in charging_launch
+    assert 'DeclareLaunchArgument("state_timeout_s", default_value="2.0")' in charging_launch
+    assert 'DeclareLaunchArgument("publish_rate_hz"' not in charging_launch
+    assert (
+        'LaunchConfiguration(\n'
+        '                        "charging_contact_publish_rate_hz"\n'
+        '                    )'
+        in charging_launch
+    )
+
+
+def test_reverse_runtime_overlay_is_forwarded_last_without_production_mutation():
+    """Bringup forwards the sparse overlay through planning into Nav2's final chain."""
+    bringup_source = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    planning_source = (
+        REPO_ROOT / "camrod_planning" / "launch" / "planning.launch.py"
+    ).read_text(encoding="utf-8")
+    nav2_source = (
+        REPO_ROOT / "camrod_planning" / "launch" / "nav2_lanelet.launch.py"
+    ).read_text(encoding="utf-8")
+
+    assert "'planning_nav2_runtime_override_param_file'," in bringup_source
+    assert "'nav2_runtime_override_param_file': lc[" in bringup_source
+    assert "'nav2_runtime_override_param_file'," in planning_source
+    assert "nav2_runtime_override_params = RewrittenYaml(" in nav2_source
+    chain_start = nav2_source.index("nav2_param_chain = [")
+    runtime_index = nav2_source.index("nav2_runtime_override_params,", chain_start)
+    immutable_index = nav2_source.index("force_base_link_overrides,", chain_start)
+    assert runtime_index < immutable_index
 
 
 def test_fake_sensor_rate_isolated_from_platform_heartbeat_launch_scope():
@@ -310,6 +605,10 @@ def test_composition_launches_forward_the_explicit_camrod_map_path():
         )
         assert '"camrod_map_path", default_value=camrod_map_path' in source
         assert '"map_path": LaunchConfiguration("camrod_map_path")' in source
+        assert '"config", "woraksan_carla_lanelet2.osm"' in source
+        assert (
+            '"CAMROD_LANELET_MAP", default=virtual_lanelet_map' in source
+        )
 
 
 def test_sensor_relay_uses_camrod_canonical_topics():
@@ -327,9 +626,10 @@ def test_sensor_relay_uses_camrod_canonical_topics():
         "/sensing/camera/econ_rear/image_rect",
         "/sensing/camera/econ_rear/camera_info",
         "/sensing/lidar/vanjee/points_raw",
-        "/sensing/lidar/points_filtered",
     ):
         assert topic in source
+    assert "/sensing/lidar/points_filtered" not in source
+    assert "/perception/obstacles" not in source
 
 
 def test_full_carla_composition_uses_only_actual_carla_ui_sensor_sources():
@@ -341,6 +641,9 @@ def test_full_carla_composition_uses_only_actual_carla_ui_sensor_sources():
     ).read_text(encoding="utf-8")
     relay_launch = (
         PACKAGE_ROOT / "launch" / "sensor_relay.launch.py"
+    ).read_text(encoding="utf-8")
+    lidar_processing_launch = (
+        PACKAGE_ROOT / "launch" / "carla_lidar_processing.launch.py"
     ).read_text(encoding="utf-8")
 
     assert '"relay_imu": "true"' in full
@@ -374,9 +677,12 @@ def test_full_carla_composition_uses_only_actual_carla_ui_sensor_sources():
         assert f"'{argument}'" in fake_launch
 
     assert '"lidar_output"' in relay_launch
-    assert '"lidar_filtered_output"' in relay_launch
-    assert '"obstacle_cloud_output"' in relay_launch
-    assert 'default_value="/perception/obstacles"' in relay_launch
+    assert '"lidar_filtered_output"' not in relay_launch
+    assert '"obstacle_cloud_output"' not in relay_launch
+    assert 'executable="carla_lidar_filter"' in lidar_processing_launch
+    assert 'executable="obstacle_lidar_node"' in lidar_processing_launch
+    assert '"publish_cluster_cloud": True' in lidar_processing_launch
+    assert '"perception_enable_lidar_obstacle": "false"' in full
 
     feedback_config = yaml.safe_load(
         (PACKAGE_ROOT / "config" / "feedback_bridge.yaml").read_text(

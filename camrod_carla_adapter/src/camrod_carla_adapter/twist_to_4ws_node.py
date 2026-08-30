@@ -4,9 +4,11 @@ import math
 import time
 
 import rclpy
+from avg_msgs.msg import ModuleState
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from carla_extended_ackermann_msgs.msg import ExtendedAckermannDrive
 
@@ -14,10 +16,12 @@ from camrod_carla_adapter.command_mapping import (
     MappingConfig,
     command_age_timed_out,
     map_planar_twist,
+    recovery_breakaway_is_authorized,
     stop_command,
     validate_adapter_timing,
     validate_planar_axes,
     validate_ranger_contract,
+    validate_recovery_breakaway_contract,
 )
 
 
@@ -35,6 +39,10 @@ class TwistToFourWSNode(Node):
         ).value
         self.status_topic = self.declare_parameter(
             "status_topic", "/camrod_carla/command_adapter/status").value
+        self.recovery_breakaway_status_topic = self.declare_parameter(
+            "recovery_breakaway_status_topic",
+            "/control/route_safety_recovery_controller/status",
+        ).value
         self.base_frame_id = self.declare_parameter(
             "base_frame_id", "robot_center_link").value
 
@@ -46,6 +54,21 @@ class TwistToFourWSNode(Node):
             "zero_publish_rate_hz", 10.0).value)
         self.unsupported_axis_tolerance = float(self.declare_parameter(
             "unsupported_axis_tolerance", 1.0e-6).value)
+        self.recovery_breakaway_status_timeout_sec = float(
+            self.declare_parameter(
+                "recovery_breakaway_status_timeout_sec", 0.30
+            ).value
+        )
+        self.recovery_breakaway_target_minimum_mps = float(
+            self.declare_parameter(
+                "recovery_breakaway_target_minimum_mps", 0.04
+            ).value
+        )
+        self.recovery_breakaway_target_maximum_mps = float(
+            self.declare_parameter(
+                "recovery_breakaway_target_maximum_mps", 0.06
+            ).value
+        )
         self.config = MappingConfig(
             lateral_deadband_mps=float(self.declare_parameter(
                 "lateral_deadband_mps", 0.02).value),
@@ -76,6 +99,16 @@ class TwistToFourWSNode(Node):
         self.command_subscription = self.create_subscription(
             Twist, self.input_topic, self._on_twist, 10)
 
+        recovery_status_qos = QoSProfile(depth=1)
+        recovery_status_qos.reliability = ReliabilityPolicy.RELIABLE
+        recovery_status_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.recovery_status_subscription = self.create_subscription(
+            ModuleState,
+            self.recovery_breakaway_status_topic,
+            self._on_recovery_status,
+            recovery_status_qos,
+        )
+
         self._last_valid_receive_monotonic = None
         self._last_zero_publish_monotonic = None
         self._last_status_publish_monotonic = None
@@ -83,12 +116,21 @@ class TwistToFourWSNode(Node):
         self._detail = "no valid CAMROD Twist received"
         self._last_command = stop_command(self._detail)
         self._pure_crab_warning_emitted = False
+        self._last_recovery_operating_state = ""
+        self._last_recovery_status_receive_monotonic = None
 
         self.watchdog_timer = self.create_timer(
             1.0 / self.watchdog_rate_hz, self._watchdog_tick)
         self.get_logger().info(
-            "CAMROD adapter ready: %s -> %s; timeout=%.3fs"
-            % (self.input_topic, self.output_topic, self.input_timeout_sec)
+            "CAMROD adapter ready: %s -> %s; timeout=%.3fs; "
+            "recovery authority=%s/%.2fs"
+            % (
+                self.input_topic,
+                self.output_topic,
+                self.input_timeout_sec,
+                self.recovery_breakaway_status_topic,
+                self.recovery_breakaway_status_timeout_sec,
+            )
         )
 
     def _validate_timing(self):
@@ -97,6 +139,36 @@ class TwistToFourWSNode(Node):
             self.watchdog_rate_hz,
             self.zero_publish_rate_hz,
             self.unsupported_axis_tolerance,
+        )
+        validate_recovery_breakaway_contract(
+            self.recovery_breakaway_status_timeout_sec,
+            self.recovery_breakaway_target_minimum_mps,
+            self.recovery_breakaway_target_maximum_mps,
+        )
+
+    def _on_recovery_status(self, message):
+        """Cache only an authenticated, healthy recovery-controller state."""
+
+        self._last_recovery_status_receive_monotonic = time.monotonic()
+        if (
+            message.module_name == "route_safety_recovery_controller"
+            and int(message.level) == int(ModuleState.OK)
+        ):
+            self._last_recovery_operating_state = message.operating_state
+        else:
+            self._last_recovery_operating_state = ""
+
+    def _recovery_breakaway_is_authorized(self, command, now=None):
+        if self._last_recovery_status_receive_monotonic is None:
+            return False
+        return recovery_breakaway_is_authorized(
+            command,
+            self._last_recovery_operating_state,
+            self._last_recovery_status_receive_monotonic,
+            time.monotonic() if now is None else now,
+            self.recovery_breakaway_status_timeout_sec,
+            self.recovery_breakaway_target_minimum_mps,
+            self.recovery_breakaway_target_maximum_mps,
         )
 
     def _on_twist(self, message):
@@ -185,6 +257,9 @@ class TwistToFourWSNode(Node):
         message.crab_angle = float(command.crab_angle)
         message.rear_steering_angle = float(command.rear_steering_angle)
         message.yaw_rate_cmd = float(command.yaw_rate_cmd)
+        message.recovery_breakaway_authorized = bool(
+            self._recovery_breakaway_is_authorized(command)
+        )
         self.command_publisher.publish(message)
 
     def _publish_status(self, force=False):
@@ -228,6 +303,14 @@ class TwistToFourWSNode(Node):
             ),
             KeyValue(
                 key="saturated", value=str(self._last_command.saturated).lower()
+            ),
+            KeyValue(
+                key="recovery_breakaway_authorized",
+                value=str(
+                    self._recovery_breakaway_is_authorized(
+                        self._last_command, now
+                    )
+                ).lower(),
             ),
         ]
         array.status = [status]

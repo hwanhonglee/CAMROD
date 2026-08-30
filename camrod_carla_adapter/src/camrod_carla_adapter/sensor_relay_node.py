@@ -116,12 +116,6 @@ class CarlaSensorRelayNode(Node):
         self.lidar_output = self.declare_parameter(
             "lidar_output", "/sensing/lidar/vanjee/points_raw"
         ).value
-        self.lidar_filtered_output = self.declare_parameter(
-            "lidar_filtered_output", "/sensing/lidar/points_filtered"
-        ).value
-        self.obstacle_cloud_output = self.declare_parameter(
-            "obstacle_cloud_output", "/perception/obstacles"
-        ).value
         self.front_compressed_output = self.declare_parameter(
             "front_compressed_output",
             "/sensing/camera/econ_front/image_rect/compressed",
@@ -218,27 +212,22 @@ class CarlaSensorRelayNode(Node):
             self._rear_compressed_publisher = self.create_publisher(
                 CompressedImage, self.rear_compressed_output, camera_output_qos
             )
-        lidar_output_topics = []
-        for topic in (
-            self.lidar_output,
-            self.lidar_filtered_output,
-            self.obstacle_cloud_output,
-        ):
-            normalized = str(topic).strip()
-            if normalized and normalized not in lidar_output_topics:
-                lidar_output_topics.append(normalized)
-        if not lidar_output_topics:
-            raise ValueError("at least one LiDAR output topic must be configured")
-        # The CARLA point cloud is already expressed in the Ranger LiDAR
-        # frame. Mirror that same physical-simulation sample to CAMROD's raw UI,
-        # filtered-consumer, and LiDAR-only perception boundaries; no synthetic
-        # obstacle cloud is inserted in the CARLA composition.
-        self._lidar_publishers = [
-            self.create_publisher(
-                PointCloud2, topic, qos_profile_sensor_data
-            )
-            for topic in lidar_output_topics
-        ]
+        if not str(self.lidar_output).strip():
+            raise ValueError("lidar_output must be configured")
+        # CARLA is an external LiDAR *driver*, not a replacement for CAMROD's
+        # preprocessing and perception algorithms.  Publish one raw boundary
+        # only.  RELIABLE latest-frame QoS is intentional: the production
+        # LidarPreprocessor and RViz displays subscribe reliably, while
+        # best-effort sensor consumers can still match a reliable writer.
+        lidar_output_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=2,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self._lidar_publisher = self.create_publisher(
+            PointCloud2, self.lidar_output, lidar_output_qos
+        )
 
         self._subscriptions = [
             self.create_subscription(
@@ -355,14 +344,14 @@ class CarlaSensorRelayNode(Node):
         self._last_seen["rear_info"] = time.monotonic()
 
     def _on_lidar(self, message):
-        # As with Image, this callback owns the deserialized PointCloud2.  Keep
-        # one payload and publish it to the three canonical views.
+        # This callback owns the deserialized PointCloud2.  Only the canonical
+        # raw-driver boundary is mirrored here; filtered and obstacle topics are
+        # owned downstream by real CAMROD algorithms.
         output = message
         output.header = self._stamp(message.header)
         if not self.preserve_lidar_frame:
             output.header.frame_id = self.lidar_frame_id
-        for publisher in self._lidar_publishers:
-            publisher.publish(output)
+        self._lidar_publisher.publish(output)
         self._last_seen["lidar"] = time.monotonic()
 
     def _publish_raw_image(

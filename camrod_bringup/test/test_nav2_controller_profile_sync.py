@@ -536,10 +536,15 @@ def test_safety_gate_evaluates_the_final_scaled_command() -> None:
 
     # HH_260807 - The upstream RPP command is 1.111 m/s while the deployed
     # speed scale publishes 0.556 m/s. Safety evidence must use the latter.
-    assert "const auto evaluated_command = scaleCommand(command);" in source
+    assert "auto evaluated_command = scaleCommand(command);" in source
+    assert "navigation_source &&" in source
+    assert "constrainAckermannTurnRadius(" in source
     assert "motion_cost_stop_.evaluate(evaluated_command, now_sec)" in source
     assert "cost_decision, evaluated_command, now_sec" in source
     assert "publishCommand(evaluated_command);" in source
+    assert source.index("constrainAckermannTurnRadius(") < source.index(
+        "motion_cost_stop_.evaluate(evaluated_command, now_sec)"
+    )
 
 
 def test_classified_fusion_is_a_direct_two_meter_stop_source() -> None:

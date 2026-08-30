@@ -32,6 +32,10 @@ class StreamContract:
     type_name: str
     expected_publisher: str
     layer: str
+    # Clear-scene obstacle products are live, meaningful heartbeats even when
+    # they contain zero points. Source/raw LiDAR contracts leave this false so
+    # they still prove that the CARLA ray-cast sensor produced measurements.
+    allow_empty_pointcloud: bool = False
 
 
 @dataclass(frozen=True)
@@ -199,16 +203,18 @@ def build_stream_contracts(role_name: str = 'ego_vehicle') -> tuple[StreamContra
             'UI filtered LiDAR',
             '/sensing/lidar/points_filtered',
             'sensor_msgs/msg/PointCloud2',
-            'carla_sensor_relay',
+            'carla_lidar_filter',
             'canonical',
+            allow_empty_pointcloud=True,
         ),
         StreamContract(
             'ui.lidar.obstacles',
             'UI LiDAR obstacle cloud',
             '/perception/obstacles',
             'sensor_msgs/msg/PointCloud2',
-            'carla_sensor_relay',
+            'obstacle_lidar',
             'canonical',
+            allow_empty_pointcloud=True,
         ),
         StreamContract(
             'source.gnss',

@@ -14,13 +14,15 @@
 #include "avg_msgs/msg/avg_path.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
-#include "camrod_control/charging_mission_override.hpp"
+#include "camrod_control/ackermann_turn_radius_constraint.hpp"
 #include "camrod_control/bounded_recovery_attempt_policy.hpp"
+#include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/drop_zone_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
+#include "camrod_control/path_relative_route_recovery.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
@@ -31,33 +33,212 @@ namespace camrod_control {
 
 namespace {
 
+double degrees(const double value) { return value * M_PI / 180.0; }
+
+TEST(AckermannTurnRadiusConstraint, DisabledProfileIsExactIdentity) {
+  avg_msgs::msg::AvgTwist command;
+  command.linear.x = -0.0;
+  command.linear.y = 0.03;
+  command.linear.z = std::numeric_limits<double>::quiet_NaN();
+  command.angular.x = 0.4;
+  command.angular.y = -0.5;
+  command.angular.z = -0.123549;
+
+  const auto result = constrainAckermannTurnRadius(command, 0.0);
+  EXPECT_TRUE(result.valid);
+  EXPECT_FALSE(result.constrained);
+  EXPECT_TRUE(std::signbit(result.command.linear.x));
+  EXPECT_DOUBLE_EQ(result.command.linear.y, command.linear.y);
+  EXPECT_TRUE(std::isnan(result.command.linear.z));
+  EXPECT_DOUBLE_EQ(result.command.angular.x, command.angular.x);
+  EXPECT_DOUBLE_EQ(result.command.angular.y, command.angular.y);
+  EXPECT_DOUBLE_EQ(result.command.angular.z, command.angular.z);
+}
+
+TEST(AckermannTurnRadiusConstraint,
+     FinalScaledNavArcStaysInsideAcceptedEnvelope) {
+  avg_msgs::msg::AvgTwist final_command;
+  final_command.linear.x = 0.05;
+  final_command.angular.z = -0.0617745;
+
+  const auto result = constrainAckermannTurnRadius(final_command, 0.82);
+  ASSERT_TRUE(result.valid);
+  ASSERT_TRUE(result.constrained);
+  EXPECT_DOUBLE_EQ(result.command.linear.x, final_command.linear.x);
+  EXPECT_DOUBLE_EQ(result.command.linear.y, 0.0);
+  EXPECT_NEAR(result.command.angular.z, -0.05 / 0.82, 1.0e-12);
+  EXPECT_GE(std::abs(result.command.linear.x / result.command.angular.z),
+            0.82);
+}
+
+TEST(AckermannTurnRadiusConstraint,
+     UsesFinalLateralDeadbandAndPreservesExplicitModes) {
+  avg_msgs::msg::AvgTwist scaled_mixed_arc;
+  scaled_mixed_arc.linear.x = 0.05;
+  // A raw 0.03 command becomes 0.015 after the production 0.5 scale.  The
+  // adapter therefore does not classify this final command as CRAB.
+  scaled_mixed_arc.linear.y = 0.015;
+  scaled_mixed_arc.angular.z = 0.0617745;
+  EXPECT_TRUE(
+      constrainAckermannTurnRadius(scaled_mixed_arc, 0.82).constrained);
+
+  auto crab = scaled_mixed_arc;
+  crab.linear.y = std::nextafter(0.02, 1.0);
+  const auto crab_result = constrainAckermannTurnRadius(crab, 0.82);
+  EXPECT_FALSE(crab_result.constrained);
+  EXPECT_DOUBLE_EQ(crab_result.command.angular.z, crab.angular.z);
+
+  auto pure_yaw = scaled_mixed_arc;
+  pure_yaw.linear.x = 0.0;
+  const auto yaw_result = constrainAckermannTurnRadius(pure_yaw, 0.82);
+  EXPECT_FALSE(yaw_result.constrained);
+  EXPECT_DOUBLE_EQ(yaw_result.command.angular.z, pure_yaw.angular.z);
+
+  auto straight = scaled_mixed_arc;
+  straight.angular.z = std::nextafter(1.0e-6, 0.0);
+  const auto straight_result =
+      constrainAckermannTurnRadius(straight, 0.82);
+  EXPECT_FALSE(straight_result.constrained);
+  EXPECT_DOUBLE_EQ(straight_result.command.angular.z, straight.angular.z);
+}
+
+TEST(AckermannTurnRadiusConstraint,
+     NudgesOnlyBoundaryArcsAndPreservesReverseSigns) {
+  avg_msgs::msg::AvgTwist far_tight;
+  far_tight.linear.x = 0.10;
+  far_tight.angular.z = 0.20; // 0.50 m: intentional ZERO_TURN selection.
+  const auto tight_result = constrainAckermannTurnRadius(far_tight, 0.82);
+  EXPECT_FALSE(tight_result.constrained);
+  EXPECT_DOUBLE_EQ(tight_result.command.angular.z, far_tight.angular.z);
+
+  avg_msgs::msg::AvgTwist reverse;
+  reverse.linear.x = -0.10;
+  reverse.angular.z = 0.123549;
+  const auto reverse_result = constrainAckermannTurnRadius(reverse, 0.82);
+  ASSERT_TRUE(reverse_result.constrained);
+  EXPECT_LT(reverse_result.command.linear.x, 0.0);
+  EXPECT_GT(reverse_result.command.angular.z, 0.0);
+  EXPECT_NEAR(reverse_result.command.angular.z, 0.10 / 0.82, 1.0e-12);
+}
+
+TEST(AckermannTurnRadiusConstraint, ActiveProfileRejectsNonfinitePlanarInput) {
+  avg_msgs::msg::AvgTwist command;
+  command.linear.x = std::numeric_limits<double>::infinity();
+  command.angular.z = 0.1;
+  const auto result = constrainAckermannTurnRadius(command, 0.82);
+  EXPECT_FALSE(result.valid);
+  EXPECT_FALSE(result.constrained);
+}
+
 TEST(BoundedRecoveryAttemptPolicy, RetriesAttemptWithoutRemovingTotalEnvelope) {
   const BoundedRecoveryAttemptLimits limits{10.0, 0.40, 50, 90.0, 1.50};
-  EXPECT_EQ(
-      EvaluateBoundedRecoveryAttempt(limits, 1, 10.0, 0.10, 10.0, 0.10),
-      BoundedRecoveryAction::kRetry);
-  EXPECT_EQ(
-      EvaluateBoundedRecoveryAttempt(limits, 12, 1.0, 0.05, 89.0, 1.49),
-      BoundedRecoveryAction::kContinue);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(limits, 1, 10.0, 0.10, 10.0, 0.10),
+            BoundedRecoveryAction::kRetry);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(limits, 12, 1.0, 0.05, 89.0, 1.49),
+            BoundedRecoveryAction::kContinue);
 }
 
 TEST(BoundedRecoveryAttemptPolicy, TotalTravelAndTimeRemainFinalStops) {
   const BoundedRecoveryAttemptLimits limits{10.0, 0.40, 50, 90.0, 1.50};
-  EXPECT_EQ(
-      EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 90.0, 0.50),
-      BoundedRecoveryAction::kFinalHold);
-  EXPECT_EQ(
-      EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 30.0, 1.50),
-      BoundedRecoveryAction::kFinalHold);
-  EXPECT_EQ(
-      EvaluateBoundedRecoveryAttempt(limits, 50, 10.0, 0.10, 80.0, 0.50),
-      BoundedRecoveryAction::kFinalHold);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 90.0, 0.50),
+            BoundedRecoveryAction::kFinalHold);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(limits, 4, 1.0, 0.10, 30.0, 1.50),
+            BoundedRecoveryAction::kFinalHold);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(limits, 50, 10.0, 0.10, 80.0, 0.50),
+            BoundedRecoveryAction::kFinalHold);
 }
 
-double degrees(const double value) { return value * M_PI / 180.0; }
+TEST(BoundedRecoveryCandidatePolicy, ExactGateZeroIsAValidFailClosedHold) {
+  const avg_msgs::msg::AvgTwist zero;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(zero),
+            BoundedRecoveryCandidateDisposition::kZeroHold);
 
-avg_msgs::msg::AvgPoseStamped makeMotionPose(
-    const double x, const double y, const double yaw_degrees) {
+  // A zero hold is an exact gate sentinel, not a blanket relaxation of the
+  // controller's minimum translational recovery speed.
+  auto subthreshold = zero;
+  subthreshold.linear.x = 0.01;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(subthreshold),
+            BoundedRecoveryCandidateDisposition::kInvalid);
+  auto pure_yaw = zero;
+  pure_yaw.angular.z = 0.10;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(pure_yaw),
+            BoundedRecoveryCandidateDisposition::kInvalid);
+}
+
+TEST(BoundedRecoveryCandidatePolicy, MotionLimitsRemainFailClosed) {
+  avg_msgs::msg::AvgTwist crab;
+  crab.linear.y = 0.10;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(crab),
+            BoundedRecoveryCandidateDisposition::kMotion);
+  avg_msgs::msg::AvgTwist reverse_yaw;
+  reverse_yaw.linear.x = -0.10;
+  reverse_yaw.angular.z = 0.10;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(reverse_yaw),
+            BoundedRecoveryCandidateDisposition::kMotion);
+  reverse_yaw.angular.z = 0.151;
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(reverse_yaw),
+            BoundedRecoveryCandidateDisposition::kInvalid);
+
+  auto nonfinite = crab;
+  nonfinite.linear.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidate(nonfinite),
+            BoundedRecoveryCandidateDisposition::kInvalid);
+}
+
+TEST(BoundedRecoveryAttemptPolicy,
+     YawEnvelopeAllowsOnlyCorrectionTowardAttemptStart) {
+  const double limit = degrees(12.0);
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermitted(degrees(11.9), 0.10, limit));
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermitted(degrees(13.0), -0.10, limit));
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermitted(degrees(13.0), 0.10, limit));
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermitted(degrees(-13.0), 0.10, limit));
+  EXPECT_FALSE(
+      BoundedRecoveryYawCommandPermitted(degrees(-13.0), -0.10, limit));
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermitted(degrees(13.0), 0.0, limit));
+
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermitted(
+      std::numeric_limits<double>::quiet_NaN(), -0.10, limit));
+}
+
+TEST(BoundedRecoveryAttemptPolicy, ExactZeroPausesAttemptAndEpisodeClocks) {
+  const BoundedRecoveryAttemptLimits limits{10.0, 0.40, 50, 90.0, 1.50};
+  BoundedRecoveryZeroHoldClock clock;
+
+  // Two seconds of authorized motion followed by two minutes of an exact-zero
+  // gate sentinel remains attempt 1 with two active seconds consumed.
+  clock.begin(2.0, false);
+  EXPECT_TRUE(clock.active());
+  EXPECT_NEAR(clock.episodeElapsed(122.0, 0.0), 2.0, 1.0e-9);
+  EXPECT_NEAR(clock.attemptElapsed(122.0, 0.0), 2.0, 1.0e-9);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(
+                limits, 1, clock.attemptElapsed(122.0, 0.0), 0.05,
+                clock.episodeElapsed(122.0, 0.0), 0.05),
+            BoundedRecoveryAction::kContinue);
+
+  clock.resume(122.0);
+  EXPECT_FALSE(clock.active());
+  EXPECT_NEAR(clock.attemptElapsed(129.9, 0.0), 9.9, 1.0e-9);
+  EXPECT_EQ(EvaluateBoundedRecoveryAttempt(
+                limits, 1, clock.attemptElapsed(130.0, 0.0), 0.05,
+                clock.episodeElapsed(130.0, 0.0), 0.05),
+            BoundedRecoveryAction::kRetry);
+}
+
+TEST(BoundedRecoveryAttemptPolicy, ZeroAlsoPausesAnActiveRetryDwell) {
+  BoundedRecoveryZeroHoldClock clock;
+  clock.begin(0.20, true);
+  EXPECT_NEAR(clock.retryElapsed(120.20, 0.0), 0.20, 1.0e-9);
+  clock.resume(120.20);
+  EXPECT_NEAR(clock.retryElapsed(120.50, 0.0), 0.50, 1.0e-9);
+
+  // An invalid nonzero candidate never calls begin(), so its wall time still
+  // reaches the ordinary final episode limit.
+  clock.reset();
+  EXPECT_NEAR(clock.episodeElapsed(90.0, 0.0), 90.0, 1.0e-9);
+}
+
+avg_msgs::msg::AvgPoseStamped makeMotionPose(const double x, const double y,
+                                             const double yaw_degrees) {
   avg_msgs::msg::AvgPoseStamped pose;
   pose.pose.position.x = x;
   pose.pose.position.y = y;
@@ -119,8 +300,7 @@ TEST(MotionGeometry,
   EXPECT_DOUBLE_EQ(stopped.second, 0.0);
 }
 
-TEST(MotionGeometry,
-     CampsiteReturnUsesPureCrabBeforeStraightDriftCorrection) {
+TEST(MotionGeometry, CampsiteReturnUsesPureCrabBeforeStraightDriftCorrection) {
   const auto lateral = bodyAxisPrioritizedTranslationTowardTarget(
       0.0, 0.0, 0.0, 1.0, 1.0, 0.5, 4.0, 0.04);
   EXPECT_DOUBLE_EQ(lateral.first, 0.0);
@@ -155,24 +335,22 @@ TEST(MotionGeometry, RestartedTurnaroundUsesCurrentHeadingAndSameMapAnchor) {
   EXPECT_DOUBLE_EQ(anchor.pose.position.y, 0.0);
 }
 
-TEST(MotionGeometry, AutomaticCampsiteEntryUsesLaneletYawButRestartUsesLiveYaw) {
+TEST(MotionGeometry,
+     AutomaticCampsiteEntryUsesLaneletYawButRestartUsesLiveYaw) {
   constexpr double live_yaw = -58.38 * M_PI / 180.0;
   constexpr double lanelet_yaw = -66.42 * M_PI / 180.0;
 
-  const auto automatic =
-      selectCampsiteEntryYaw(live_yaw, lanelet_yaw, true);
+  const auto automatic = selectCampsiteEntryYaw(live_yaw, lanelet_yaw, true);
   EXPECT_EQ(automatic.source, CampsiteEntryYawSource::kLaneletSnap);
   EXPECT_NEAR(automatic.yaw_rad, lanelet_yaw, 1.0e-12);
 
-  const auto restarted =
-      selectCampsiteEntryYaw(live_yaw, lanelet_yaw, false);
+  const auto restarted = selectCampsiteEntryYaw(live_yaw, lanelet_yaw, false);
   EXPECT_EQ(restarted.source, CampsiteEntryYawSource::kLivePoseFallback);
   EXPECT_NEAR(restarted.yaw_rad, live_yaw, 1.0e-12);
 
   const auto missing_snap =
       selectCampsiteEntryYaw(live_yaw, std::nullopt, true);
-  EXPECT_EQ(missing_snap.source,
-            CampsiteEntryYawSource::kLivePoseFallback);
+  EXPECT_EQ(missing_snap.source, CampsiteEntryYawSource::kLivePoseFallback);
   EXPECT_NEAR(missing_snap.yaw_rad, live_yaw, 1.0e-12);
 }
 
@@ -191,36 +369,36 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
   // camrod_planning/config/camping_sites.yaml. Signed values catch both a yaw
   // reversal and the reported B6 live-yaw axial skew.
   constexpr std::array<Fixture, 13> fixtures{{
-      {22.357515191, -6.908337803, 25.8687, -5.13869, -63.251744,
-       3.931930, 3.931930, false},
-      {22.454856615, -7.101474235, 19.566, -8.55747, -63.251706,
-       -3.235030, 3.235030, false},
-      {19.772336735, -1.222936079, 23.3585, 0.427582, -65.285918,
-       3.947756, 3.947756, false},
-      {19.307410106, -0.152900333, 16.4276, -1.34999, -67.428154,
-       -3.118706, 3.118706, false},
-      {17.382903354, 4.336168303, 20.9591, 5.86183, -66.896141,
-       3.888036, 3.888036, false},
-      {16.786389776, 5.715787406, 13.9518, 4.47866, -66.421645,
-       -3.092795, 3.092795, false},
-      {15.085466253, 9.670478273, 18.6442, 11.1853, -66.942319,
-       3.867722, 3.867722, false},
-      {14.147071672, 11.827906846, 11.3705, 10.645, -66.924479,
-       -3.018049, 3.018049, false},
-      {12.679983302, 15.667433959, 16.3636, 17.1396, -68.215752,
-       3.966901, 3.966901, false},
-      {11.891069361, 17.727651240, 9.02731, 16.6389, -69.184081,
-       -3.063739, 3.063739, false},
-      {10.821530478, 20.516472190, 14.8445, 22.0782, -68.783648,
-       4.315470, 0.300000, true},
-      {10.103421888, 23.093735129, 6.85414, 22.4291, -78.439719,
-       -3.316560, 0.300000, true},
-      {9.626348588, 27.418616995, 0.610449, 27.604, -91.177942,
-       -9.017805, 0.300000, true},
+      {22.357515191, -6.908337803, 25.8687, -5.13869, -63.251744, 3.931930,
+       3.931930, false},
+      {22.454856615, -7.101474235, 19.566, -8.55747, -63.251706, -3.235030,
+       3.235030, false},
+      {19.772336735, -1.222936079, 23.3585, 0.427582, -65.285918, 3.947756,
+       3.947756, false},
+      {19.307410106, -0.152900333, 16.4276, -1.34999, -67.428154, -3.118706,
+       3.118706, false},
+      {17.382903354, 4.336168303, 20.9591, 5.86183, -66.896141, 3.888036,
+       3.888036, false},
+      {16.786389776, 5.715787406, 13.9518, 4.47866, -66.421645, -3.092795,
+       3.092795, false},
+      {15.085466253, 9.670478273, 18.6442, 11.1853, -66.942319, 3.867722,
+       3.867722, false},
+      {14.147071672, 11.827906846, 11.3705, 10.645, -66.924479, -3.018049,
+       3.018049, false},
+      {12.679983302, 15.667433959, 16.3636, 17.1396, -68.215752, 3.966901,
+       3.966901, false},
+      {11.891069361, 17.727651240, 9.02731, 16.6389, -69.184081, -3.063739,
+       3.063739, false},
+      {10.821530478, 20.516472190, 14.8445, 22.0782, -68.783648, 4.315470,
+       0.300000, true},
+      {10.103421888, 23.093735129, 6.85414, 22.4291, -78.439719, -3.316560,
+       0.300000, true},
+      {9.626348588, 27.418616995, 0.610449, 27.604, -91.177942, -9.017805,
+       0.300000, true},
   }};
 
   for (std::size_t index = 0; index < fixtures.size(); ++index) {
-    const auto & fixture = fixtures[index];
+    const auto &fixture = fixtures[index];
     SCOPED_TRACE("B" + std::to_string(index + 1U));
     avg_msgs::msg::AvgPoseStamped snap;
     snap.pose.position.x = fixture.snap_x;
@@ -236,14 +414,12 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
     const auto selected = selectCampsiteEntryYaw(
         normalizeAngle(snap_yaw + M_PI), yawFromPose(snap), true);
     ASSERT_EQ(selected.source, CampsiteEntryYawSource::kLaneletSnap);
-    EXPECT_NEAR(normalizeAngle(selected.yaw_rad - snap_yaw), 0.0,
-                degrees(0.2));
+    EXPECT_NEAR(normalizeAngle(selected.yaw_rad - snap_yaw), 0.0, degrees(0.2));
     const auto relative = relativeXyAtHeading(snap, site, selected.yaw_rad);
     EXPECT_NEAR(relative.first, 0.0, 0.01);
     EXPECT_NEAR(relative.second, fixture.signed_lateral_m, 0.02);
     const double direction = relative.second >= 0.0 ? 1.0 : -1.0;
-    EXPECT_DOUBLE_EQ(direction,
-                     fixture.signed_lateral_m >= 0.0 ? 1.0 : -1.0);
+    EXPECT_DOUBLE_EQ(direction, fixture.signed_lateral_m >= 0.0 ? 1.0 : -1.0);
     const double clamped_offset = clamp(std::abs(relative.second), 0.2, 7.0);
     const double operational_offset =
         fixture.roadside ? std::min(clamped_offset, 0.30) : clamped_offset;
@@ -258,8 +434,7 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
     const auto target_relative =
         relativeXyAtHeading(snap, target, selected.yaw_rad);
     EXPECT_NEAR(target_relative.first, 0.0, 1.0e-9);
-    EXPECT_NEAR(target_relative.second, direction * operational_offset,
-                1.0e-9);
+    EXPECT_NEAR(target_relative.second, direction * operational_offset, 1.0e-9);
     if (fixture.roadside) {
       EXPECT_FALSE(roadsideOperationalArrivalMatches(
           0.0, 0.0, direction * operational_offset, 0.60, 0.15));
@@ -267,8 +442,8 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
           0.59, direction * (operational_offset - 0.15),
           direction * operational_offset, 0.60, 0.15));
       EXPECT_FALSE(roadsideOperationalArrivalMatches(
-          0.61, direction * operational_offset,
-          direction * operational_offset, 0.60, 0.15));
+          0.61, direction * operational_offset, direction * operational_offset,
+          0.60, 0.15));
     }
   }
 }
@@ -325,8 +500,7 @@ TEST(MotionGeometry, B6RestartRequiresRealFreshFiniteSnapAnchor) {
   const double b5_yaw = degrees(-66.896141);
   adjacent_b5_snap.pose.orientation.z = std::sin(b5_yaw * 0.5);
   adjacent_b5_snap.pose.orientation.w = std::cos(b5_yaw * 0.5);
-  EXPECT_FALSE(campsiteAdoptAnchorsCorrelated(
-      snap, adjacent_b5_snap, 0.90));
+  EXPECT_FALSE(campsiteAdoptAnchorsCorrelated(snap, adjacent_b5_snap, 0.90));
   EXPECT_TRUE(campsiteAdoptAnchorsCorrelated(snap, snap, 0.90));
 
   EXPECT_FALSE(campsiteAdoptAnchorIsFreshFinite(snap, site, 1.1, 1.0));
@@ -354,16 +528,16 @@ TEST(MotionGeometry, CampsiteLiveLaneletHandoffIgnoresLongitudinalEntryOffset) {
 
   // HH_260825 - The robot may leave a diagonal campsite exit metres away along
   // the lane. Only its 10 cm centerline distance decides route readiness.
-  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 0.1, 2.0, 0.15));
+  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                       0.1, 2.0, 0.15));
   current.pose.position.x = 25.0;
   live_lanelet.pose.position.x = 25.0;
-  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 0.1, 2.0, 0.15));
+  EXPECT_TRUE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                       0.1, 2.0, 0.15));
 
   current.pose.position.y = 4.16;
-  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 0.1, 2.0, 0.15));
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                        0.1, 2.0, 0.15));
 }
 
 TEST(MotionGeometry, CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame) {
@@ -372,15 +546,15 @@ TEST(MotionGeometry, CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame) {
   current.header.frame_id = "map";
   live_lanelet.header.frame_id = "map";
 
-  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 2.01, 2.0, 0.15));
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                        2.01, 2.0, 0.15));
   live_lanelet.header.frame_id = "odom";
-  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 0.1, 2.0, 0.15));
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                        0.1, 2.0, 0.15));
   live_lanelet.header.frame_id = "map";
   live_lanelet.pose.position.x = std::numeric_limits<double>::quiet_NaN();
-  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
-      current, live_lanelet, 0.1, 2.0, 0.15));
+  EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(current, live_lanelet,
+                                                        0.1, 2.0, 0.15));
 }
 
 TEST(MotionGeometry,
@@ -408,8 +582,7 @@ TEST(MotionGeometry,
   EXPECT_DOUBLE_EQ(jitter.linear_x_mps, 0.0);
   EXPECT_DOUBLE_EQ(jitter.linear_y_mps, 0.0);
 
-  const auto longitudinal =
-      sequencer.update(0.40, 0.018, 12.2, 0.50, 4.0);
+  const auto longitudinal = sequencer.update(0.40, 0.018, 12.2, 0.50, 4.0);
   EXPECT_EQ(longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
   EXPECT_TRUE(longitudinal.stage_changed);
   EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.50);
@@ -417,15 +590,13 @@ TEST(MotionGeometry,
 
   const auto still_longitudinal =
       sequencer.update(-0.10, -0.08, 12.3, 0.50, 4.0);
-  EXPECT_EQ(still_longitudinal.stage,
-            CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_EQ(still_longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
   EXPECT_DOUBLE_EQ(still_longitudinal.linear_x_mps, -0.40);
   EXPECT_DOUBLE_EQ(still_longitudinal.linear_y_mps, 0.0);
 
   // A real displacement beyond the hysteresis stops instead of initiating an
   // unbounded longitudinal/parallel steering oscillation.
-  const auto latch_fault =
-      sequencer.update(0.10, 0.121, 12.4, 0.50, 4.0);
+  const auto latch_fault = sequencer.update(0.10, 0.121, 12.4, 0.50, 4.0);
   EXPECT_TRUE(latch_fault.lateral_latch_exceeded);
   EXPECT_EQ(latch_fault.stage, CampsiteCrabReturnStage::kLongitudinal);
   EXPECT_DOUBLE_EQ(latch_fault.linear_x_mps, 0.0);
@@ -435,8 +606,8 @@ TEST(MotionGeometry,
 TEST(MotionGeometry, CampsiteReturnCannotCompleteBeforeSteeringSettles) {
   constexpr double radial_error_m = 0.03;
   constexpr double tolerance_m = 0.04;
-  EXPECT_FALSE(campsiteCrabReturnMayComplete(
-      CampsiteCrabReturnStage::kLateral, radial_error_m, tolerance_m));
+  EXPECT_FALSE(campsiteCrabReturnMayComplete(CampsiteCrabReturnStage::kLateral,
+                                             radial_error_m, tolerance_m));
   EXPECT_FALSE(campsiteCrabReturnMayComplete(
       CampsiteCrabReturnStage::kSteeringSettle, radial_error_m, tolerance_m));
   EXPECT_TRUE(campsiteCrabReturnMayComplete(
@@ -446,7 +617,8 @@ TEST(MotionGeometry, CampsiteReturnCannotCompleteBeforeSteeringSettles) {
       std::numeric_limits<double>::quiet_NaN(), tolerance_m));
 }
 
-TEST(MotionGeometry, CampsiteReturnRejectsNonFiniteInputsWithoutAdvancingStage) {
+TEST(MotionGeometry,
+     CampsiteReturnRejectsNonFiniteInputsWithoutAdvancingStage) {
   CampsiteCrabReturnSequencer sequencer(
       CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
   sequencer.reset(0.0);
@@ -488,8 +660,7 @@ TEST(MotionGeometry,
   EXPECT_DOUBLE_EQ(lateral.linear_y_mps, -0.20);
   const auto settle = sequencer.update(0.05, -0.019, 2.0, 0.20, 4.0);
   EXPECT_EQ(settle.stage, CampsiteCrabReturnStage::kSteeringSettle);
-  const auto longitudinal =
-      sequencer.update(0.05, -0.019, 3.2, 0.20, 4.0);
+  const auto longitudinal = sequencer.update(0.05, -0.019, 3.2, 0.20, 4.0);
   EXPECT_EQ(longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
   EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.20);
   EXPECT_DOUBLE_EQ(longitudinal.linear_y_mps, 0.0);
@@ -815,62 +986,53 @@ TEST(ChargingMissionOverride, AcceptsOnlyFreshCampsiteRequestDuringCharging) {
   EXPECT_FALSE(policy.isActive(101.0));
 }
 
-TEST(DropZoneChargingDepartureAuthorization, AcceptsOnlyExactHealthyExitPhases) {
+TEST(DropZoneChargingDepartureAuthorization,
+     AcceptsOnlyExactHealthyExitPhases) {
   DropZoneChargingDepartureAuthorization authorization;
 
-  EXPECT_FALSE(authorization.observe(
-      "control", "exit_straight", true, 100.0,
-      std::optional<double>{100.0}));
+  EXPECT_FALSE(authorization.observe("control", "exit_straight", true, 100.0,
+                                     std::optional<double>{100.0}));
   EXPECT_FALSE(authorization.isActive(100.0));
-  EXPECT_FALSE(authorization.observe(
-      "control", "PARKED", true, 100.0,
-      std::optional<double>{100.0}));
-  EXPECT_FALSE(authorization.observe(
-      "drop_zone_maneuver_controller", "EXIT_STRAIGHT", true, 100.0,
-      std::optional<double>{100.0}));
-  EXPECT_TRUE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 100.0,
-      std::optional<double>{100.0}));
+  EXPECT_FALSE(authorization.observe("control", "PARKED", true, 100.0,
+                                     std::optional<double>{100.0}));
+  EXPECT_FALSE(authorization.observe("drop_zone_maneuver_controller",
+                                     "EXIT_STRAIGHT", true, 100.0,
+                                     std::optional<double>{100.0}));
+  EXPECT_TRUE(authorization.observe("control", "EXIT_STRAIGHT", true, 100.0,
+                                    std::optional<double>{100.0}));
   EXPECT_TRUE(authorization.isActive(100.5));
-  EXPECT_TRUE(authorization.observe(
-      "control", "ALIGN_EXIT_YAW", true, 101.0,
-      std::optional<double>{101.0}));
+  EXPECT_TRUE(authorization.observe("control", "ALIGN_EXIT_YAW", true, 101.0,
+                                    std::optional<double>{101.0}));
   EXPECT_TRUE(authorization.isActive(101.5));
 
   // Any unhealthy or unrelated heartbeat immediately revokes prior evidence.
-  EXPECT_FALSE(authorization.observe(
-      "control", "ALIGN_EXIT_YAW", false, 101.6,
-      std::optional<double>{101.6}));
+  EXPECT_FALSE(authorization.observe("control", "ALIGN_EXIT_YAW", false, 101.6,
+                                     std::optional<double>{101.6}));
   EXPECT_FALSE(authorization.isActive(101.6));
   EXPECT_TRUE(authorization.phase().empty());
 }
 
 TEST(DropZoneChargingDepartureAuthorization, HeartbeatAndSourceStampExpire) {
   DropZoneChargingDepartureAuthorization authorization;
-  ASSERT_TRUE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 10.0,
-      std::optional<double>{9.9}));
+  ASSERT_TRUE(authorization.observe("control", "EXIT_STRAIGHT", true, 10.0,
+                                    std::optional<double>{9.9}));
   EXPECT_TRUE(authorization.isActive(11.89));
   EXPECT_FALSE(authorization.isActive(12.01));
 
   // A newly received replayed or excessively future-dated status is invalid.
-  EXPECT_FALSE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 20.0,
-      std::optional<double>{17.9}));
-  EXPECT_FALSE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 20.0,
-      std::optional<double>{20.26}));
+  EXPECT_FALSE(authorization.observe("control", "EXIT_STRAIGHT", true, 20.0,
+                                     std::optional<double>{17.9}));
+  EXPECT_FALSE(authorization.observe("control", "EXIT_STRAIGHT", true, 20.0,
+                                     std::optional<double>{20.26}));
   EXPECT_TRUE(authorization.phase().empty());
 
   // Production rejects unstamped evidence.  Simulation can opt into explicit
   // receipt-only freshness without weakening the deployed default.
-  EXPECT_FALSE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 30.0));
+  EXPECT_FALSE(authorization.observe("control", "EXIT_STRAIGHT", true, 30.0));
   auto simulation_config = authorization.config();
   simulation_config.require_source_stamp = false;
   authorization.setConfig(simulation_config);
-  EXPECT_TRUE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 30.0));
+  EXPECT_TRUE(authorization.observe("control", "EXIT_STRAIGHT", true, 30.0));
   EXPECT_TRUE(authorization.isActive(31.9));
   EXPECT_FALSE(authorization.isActive(32.1));
 }
@@ -880,9 +1042,8 @@ TEST(DropZoneChargingDepartureAuthorization, InvalidConfigurationFailsClosed) {
   config.heartbeat_timeout_s = 0.0;
   EXPECT_FALSE(dropZoneChargingDepartureAuthorizationConfigIsValid(config));
   DropZoneChargingDepartureAuthorization authorization(config);
-  EXPECT_FALSE(authorization.observe(
-      "control", "EXIT_STRAIGHT", true, 1.0,
-      std::optional<double>{1.0}));
+  EXPECT_FALSE(authorization.observe("control", "EXIT_STRAIGHT", true, 1.0,
+                                     std::optional<double>{1.0}));
   EXPECT_FALSE(authorization.isActive(1.0));
 }
 
@@ -1070,6 +1231,855 @@ TEST(RouteSafetyRecovery, ResetsRegionalBudgetOnlyAfterSignedForwardProgress) {
   EXPECT_NEAR(recovery.lastProgressResetDistanceM(), 0.8, 1.0e-9);
   EXPECT_EQ(recovery.automaticReleasesInWindow(), 0);
   EXPECT_FALSE(recovery.automaticReleaseBlocked());
+}
+
+TEST(RouteSafetyRecovery, StartsContinuousClearOnlyAfterCenteredZeroHandoff) {
+  RouteSafetyRecoveryConfig config;
+  config.clear_required_s = 1.5;
+  RouteSafetyRecovery recovery(config);
+  const MotionCostStopDecision violation{true, false, true, false,
+                                         "lanelet_footprint_cost"};
+  const MotionCostStopDecision clear{};
+
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+  recovery.observeRecoveryMotion();
+  EXPECT_FALSE(recovery.updateProbe(clear, 2.0, false));
+  EXPECT_FALSE(recovery.updateProbe(clear, 10.0, true));
+  EXPECT_FALSE(recovery.updateProbe(clear, 11.49, true));
+  EXPECT_TRUE(recovery.updateProbe(clear, 11.50, true));
+}
+
+TEST(PathRelativeRouteRecovery, NearestSegmentUsesCamrodSignedCteConvention) {
+  const auto path = makePath({{-1.0, 0.0}, {1.0, 0.0}});
+  const auto left = nearestPathRelativeRouteRelation(
+      path, PlanarPose{0.0, 0.20, 0.0, "map", "test", 1.0}, 1.5);
+  const auto right = nearestPathRelativeRouteRelation(
+      path, PlanarPose{0.0, -0.20, 0.0, "map", "test", 1.0}, 1.5);
+
+  ASSERT_TRUE(left.valid);
+  ASSERT_TRUE(right.valid);
+  EXPECT_NEAR(left.signed_cte_m, 0.20, 1.0e-9);
+  EXPECT_NEAR(right.signed_cte_m, -0.20, 1.0e-9);
+  EXPECT_NEAR(left.heading_error_rad, 0.0, 1.0e-9);
+}
+
+TEST(PathRelativeRouteRecovery, EndpointGapDoesNotInflateSignedLateralCte) {
+  const auto path = makePath({{0.0, 0.0}, {1.0, 0.0}});
+  const auto relation = nearestPathRelativeRouteRelation(
+      path, PlanarPose{-2.0, 0.20, 0.0, "map", "test", 1.0}, 3.0);
+
+  ASSERT_TRUE(relation.valid);
+  EXPECT_NEAR(relation.distance_m, std::hypot(2.0, 0.20), 1.0e-9);
+  EXPECT_NEAR(relation.signed_cte_m, 0.20, 1.0e-9);
+  EXPECT_EQ(relation.segment_index, 0U);
+}
+
+TEST(PathRelativeRouteRecovery, V14PrunedEndpointKeepsAlongTrackGapOutOfCte) {
+  const auto pruned_local = makePath({{10.88441576605451, 45.23105197998866},
+                                      {10.934620925144722, 45.15105479693991}});
+  const auto relation = nearestPathRelativeRouteRelation(
+      pruned_local,
+      PlanarPose{9.453591169128085, 45.23050505837801,
+                 degrees(-58.70323472376115), "map", "v14", 1.0},
+      1.5);
+
+  ASSERT_TRUE(relation.valid);
+  EXPECT_NEAR(relation.distance_m, 1.4308247014546933, 1.0e-9);
+  EXPECT_NEAR(relation.signed_cte_m, -1.2122165893221672, 1.0e-9);
+  EXPECT_LT(std::abs(relation.signed_cte_m), relation.distance_m);
+
+  // The mission-scoped full route still contains the segment beside the
+  // vehicle. It is therefore the geometry authority for recovery, while the
+  // pruned local path above remains only the fresh active-route heartbeat.
+  const auto full_route = makePath({{8.930593383484288, 45.36212604659876},
+                                    {9.115447324912399, 45.43845924130104},
+                                    {9.301592829047975, 45.51160191892575},
+                                    {9.48773833318355, 45.58474459655046},
+                                    {9.678152459185945, 45.63078023162187},
+                                    {9.87776794904736, 45.6183844175144}});
+  const auto full_relation = nearestPathRelativeRouteRelation(
+      full_route,
+      PlanarPose{9.453591169128085, 45.23050505837801,
+                 degrees(-58.70323472376115), "map", "v14", 1.0},
+      1.5);
+  ASSERT_TRUE(full_relation.valid);
+  EXPECT_EQ(full_relation.segment_index, 2U);
+  EXPECT_NEAR(full_relation.distance_m, 0.3172124120277891, 1.0e-9);
+  EXPECT_NEAR(full_relation.signed_cte_m, -0.31721241202778777, 1.0e-9);
+  EXPECT_LT(std::abs(full_relation.signed_cte_m),
+            std::abs(relation.signed_cte_m));
+
+  PathRelativeRecoveryState state;
+  const MotionCostStopDecision clear{};
+  const PlanarPose initial_pose{9.453591169128085,
+                                45.23050505837801,
+                                degrees(-58.70323472376115),
+                                "map",
+                                "v14",
+                                1.0};
+  const auto moving = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), initial_pose, full_relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, {clear, clear, clear, clear, clear}, state);
+  ASSERT_TRUE(moving.available());
+  ASSERT_EQ(moving.kind, RouteRecoveryCandidateKind::kCrabLeft);
+
+  const PlanarPose blocked_pose{9.71416439707693,
+                                45.37307818352147,
+                                -0.9156015630838209,
+                                "map",
+                                "v14",
+                                2.0};
+  const auto blocked_relation =
+      nearestPathRelativeRouteRelation(full_route, blocked_pose, 1.5);
+  ASSERT_TRUE(blocked_relation.valid);
+  EXPECT_EQ(blocked_relation.segment_index, 4U);
+  EXPECT_NEAR(blocked_relation.signed_cte_m, -0.2549746164105237, 1.0e-9);
+  const MotionCostStopDecision planning_limited{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto fallback = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), blocked_pose, blocked_relation,
+      PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {planning_limited, clear, clear, clear, clear}, state);
+  ASSERT_TRUE(fallback.available());
+  EXPECT_EQ(fallback.kind, RouteRecoveryCandidateKind::kReverseYawLeft);
+  EXPECT_TRUE(state.motion_authorized);
+  EXPECT_FALSE(state.projection_limited_zero_commanded);
+  EXPECT_FALSE(pathRelativeRecoveryHandoffReady(state, blocked_relation,
+                                                PathRelativeRecoveryConfig{}));
+}
+
+TEST(PathRelativeRouteRecovery, SelectsWorldInwardCrabOnRotatedPath) {
+  const auto path = makePath({{0.0, -1.0}, {0.0, 1.0}});
+  const PlanarPose pose{-0.20, 0.0, M_PI_2, "map", "test", 1.0};
+  const auto relation = nearestPathRelativeRouteRelation(path, pose, 1.5);
+  ASSERT_TRUE(relation.valid);
+  ASSERT_GT(relation.signed_cte_m, 0.0);
+
+  PathRelativeRecoveryState state;
+  const MotionCostStopDecision clear{};
+  const auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, clear, clear, clear, clear}, state);
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabRight);
+  EXPECT_NEAR(selected.command.linear.y, -0.10, 1.0e-9);
+  EXPECT_TRUE(state.motion_authorized);
+
+  const PlanarPose opposite_pose{0.20, 0.0, M_PI_2, "map", "test", 1.0};
+  const auto opposite_relation =
+      nearestPathRelativeRouteRelation(path, opposite_pose, 1.5);
+  PathRelativeRecoveryState opposite_state;
+  const auto opposite = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), opposite_pose, opposite_relation,
+      PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, clear, clear, clear, clear}, opposite_state);
+  ASSERT_TRUE(opposite.available());
+  EXPECT_LT(opposite_relation.signed_cte_m, 0.0);
+  EXPECT_EQ(opposite.kind, RouteRecoveryCandidateKind::kCrabLeft);
+  EXPECT_NEAR(opposite.command.linear.y, 0.10, 1.0e-9);
+}
+
+TEST(PathRelativeRouteRecovery,
+     B12FullRouteNormalIsTheExactEvaluatedAndSelectedCommand) {
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = -0.1807094;
+  relation.tangent_x = -0.1467165179;
+  relation.tangent_y = -0.9891785801;
+  const PlanarPose pose{10.826, 43.603, degrees(-49.3), "map", "b12", 1.0};
+
+  const auto evaluated =
+      pathRelativeInwardNormalCrabCandidate(pose, relation, 0.10, 0.02);
+  ASSERT_TRUE(evaluated.available());
+  ASSERT_EQ(evaluated.kind, RouteRecoveryCandidateKind::kCrabLeft);
+  EXPECT_NEAR(evaluated.command.linear.x, 0.0756272603, 1.0e-9);
+  EXPECT_NEAR(evaluated.command.linear.y, 0.0654256639, 1.0e-9);
+  EXPECT_NEAR(
+      std::hypot(evaluated.command.linear.x, evaluated.command.linear.y), 0.10,
+      1.0e-12);
+  EXPECT_LE(std::hypot(evaluated.command.linear.x, evaluated.command.linear.y),
+            0.10);
+  const double controller_scale =
+      std::min(1.0, 0.10 / std::hypot(evaluated.command.linear.x,
+                                      evaluated.command.linear.y));
+  EXPECT_DOUBLE_EQ(controller_scale, 1.0);
+  EXPECT_DOUBLE_EQ(evaluated.command.linear.x * controller_scale,
+                   evaluated.command.linear.x);
+  EXPECT_DOUBLE_EQ(evaluated.command.linear.y * controller_scale,
+                   evaluated.command.linear.y);
+  EXPECT_NEAR(pathRelativeCteRate(evaluated.command, pose, relation), 0.10,
+              1.0e-10);
+  EXPECT_NEAR(pathRelativeInwardCrabProbeDistance(evaluated.command,
+                                                  evaluated.kind, pose,
+                                                  relation, 0.05, 0.25),
+              std::abs(relation.signed_cte_m), 1.0e-9);
+
+  const MotionCostStopDecision clear{};
+  PathRelativeRecoveryState state;
+  const auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, {clear, clear, clear, clear, clear}, state, 0.02, &evaluated);
+  ASSERT_TRUE(selected.available());
+  EXPECT_TRUE(pathRelativeCandidateCommandExactlyMatches(selected, evaluated));
+  EXPECT_DOUBLE_EQ(selected.command.linear.x, evaluated.command.linear.x);
+  EXPECT_DOUBLE_EQ(selected.command.linear.y, evaluated.command.linear.y);
+  EXPECT_DOUBLE_EQ(selected.command.angular.z, evaluated.command.angular.z);
+
+  const auto forward_trigger = command(0.10);
+  const double positive_dot =
+      forward_trigger.linear.x * selected.command.linear.x +
+      forward_trigger.linear.y * selected.command.linear.y;
+  EXPECT_GT(positive_dot, 0.0);
+  RouteSafetyRecovery generic_recovery;
+  const MotionCostStopDecision violation{true, false, true, false,
+                                         "lanelet_footprint_cost"};
+  ASSERT_TRUE(
+      generic_recovery.observeViolation(violation, forward_trigger, 1.0));
+  EXPECT_FALSE(
+      generic_recovery.permitsProjectedRecoveryCandidate(selected.command));
+
+  auto final_command = selected.command;
+  final_command.linear.x *= 0.5;
+  final_command.linear.y *= 0.5;
+  final_command.linear.z *= 0.5;
+  final_command.angular.x *= 0.5;
+  final_command.angular.y *= 0.5;
+  final_command.angular.z *= 0.5;
+  PathRelativeRecoveryCommandLatch latch;
+  ASSERT_TRUE(latch.authorize(selected, final_command, 10.0));
+  const auto authorization = latch.authorizationForRawCommand(
+      selected.command, selected.kind, 10.1, 0.75);
+  ASSERT_TRUE(authorization.has_value());
+  EXPECT_TRUE(pathRelativeTwistExactlyMatches(authorization->evaluated_command,
+                                              final_command));
+  EXPECT_TRUE(pathRelativeCommandStrictlyReducesAbsoluteCte(selected.command,
+                                                            pose, relation));
+
+  // An evaluation/publish mismatch is a hard zero, even when every supplied
+  // projection decision says clear.
+  auto mismatched = evaluated;
+  mismatched.command.linear.x += 1.0e-6;
+  PathRelativeRecoveryState mismatch_state;
+  const auto rejected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, {clear, clear, clear, clear, clear}, mismatch_state, 0.02,
+      &mismatched);
+  EXPECT_FALSE(rejected.available());
+  EXPECT_FALSE(mismatch_state.motion_authorized);
+  EXPECT_EQ(rejected.reason, "path_inward_evaluated_command_mismatch");
+}
+
+TEST(PathRelativeRouteRecovery,
+     ExactCommandLatchIsFreshStageBoundedAndRetainsOnlyOnePrevious) {
+  RouteRecoveryCandidate first;
+  first.kind = RouteRecoveryCandidateKind::kCrabLeft;
+  first.command = command(0.075, 0.065);
+  auto first_final = command(0.0375, 0.0325);
+
+  PathRelativeRecoveryCommandLatch latch;
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(first.command, first.kind, 10.0, 0.75)
+          .has_value());
+  ASSERT_TRUE(latch.authorize(first, first_final, 10.0));
+
+  auto raw_mismatch = first.command;
+  raw_mismatch.linear.x += 1.0e-6;
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(raw_mismatch, first.kind, 10.1, 0.75)
+          .has_value());
+  EXPECT_FALSE(latch
+                   .authorizationForRawCommand(avg_msgs::msg::AvgTwist{},
+                                               first.kind, 10.1, 0.75)
+                   .has_value());
+  EXPECT_FALSE(
+      latch
+          .authorizationForRawCommand(
+              first.command, RouteRecoveryCandidateKind::kCrabRight, 10.1, 0.75)
+          .has_value());
+
+  auto wrong_final = first_final;
+  wrong_final.linear.x += 1.0e-6;
+  const auto first_authorization =
+      latch.authorizationForRawCommand(first.command, first.kind, 10.1, 0.75);
+  ASSERT_TRUE(first_authorization.has_value());
+  EXPECT_FALSE(pathRelativeTwistExactlyMatches(
+      wrong_final, first_authorization->evaluated_command));
+
+  RouteRecoveryCandidate second = first;
+  second.command.linear.x -= 1.0e-4;
+  auto second_final = second.command;
+  second_final.linear.x *= 0.5;
+  second_final.linear.y *= 0.5;
+  ASSERT_TRUE(latch.authorize(second, second_final, 10.2));
+  // One freshly projected same-stage predecessor remains valid for the
+  // controller/publisher callback-order race.
+  EXPECT_TRUE(
+      latch.authorizationForRawCommand(first.command, first.kind, 10.3, 0.75)
+          .has_value());
+
+  RouteRecoveryCandidate third = second;
+  third.command.linear.x -= 1.0e-4;
+  auto third_final = third.command;
+  third_final.linear.x *= 0.5;
+  third_final.linear.y *= 0.5;
+  ASSERT_TRUE(latch.authorize(third, third_final, 10.4));
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(first.command, first.kind, 10.5, 0.75)
+          .has_value());
+  EXPECT_TRUE(
+      latch.authorizationForRawCommand(second.command, second.kind, 10.5, 0.75)
+          .has_value());
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(second.command, second.kind, 11.0, 0.75)
+          .has_value());
+
+  // speed_scale=0 and an explicit reset cannot leave an older authorization.
+  EXPECT_FALSE(latch.authorize(third, avg_msgs::msg::AvgTwist{}, 11.1));
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(third.command, third.kind, 11.1, 0.75)
+          .has_value());
+  ASSERT_TRUE(latch.authorize(third, third_final, 11.2));
+  latch.reset();
+  EXPECT_FALSE(
+      latch.authorizationForRawCommand(third.command, third.kind, 11.2, 0.75)
+          .has_value());
+
+  PathRelativeRecoveryCommandLatch invalid_scale_latch;
+  auto expanded = third.command;
+  expanded.linear.x *= 1.01;
+  expanded.linear.y *= 1.01;
+  EXPECT_FALSE(invalid_scale_latch.authorize(third, expanded, 12.0));
+  auto negative = third.command;
+  negative.linear.x *= -0.5;
+  negative.linear.y *= -0.5;
+  EXPECT_FALSE(invalid_scale_latch.authorize(third, negative, 12.1));
+  auto nonfinite = third_final;
+  nonfinite.linear.x = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(invalid_scale_latch.authorize(third, nonfinite, 12.2));
+}
+
+TEST(PathRelativeRouteRecovery,
+     B12CrabThenHeadingUsesExactForwardRightYawWithoutIncreasingCte) {
+  const PlanarPose pose{10.826, 43.603, degrees(-49.3), "map", "b12", 1.0};
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = -0.1807094;
+  relation.heading_error_rad = degrees(49.14);
+  relation.tangent_x = -0.1467165179;
+  relation.tangent_y = -0.9891785801;
+  const MotionCostStopDecision clear{};
+  const RouteRecoveryCandidateDecisions projected_clear{clear, clear, clear,
+                                                        clear, clear};
+
+  PathRelativeRecoveryState state;
+  const auto inward =
+      pathRelativeInwardNormalCrabCandidate(pose, relation, 0.10, 0.02);
+  const auto initial_heading =
+      pathRelativeHeadingCorrectionCandidate(pose, relation, 0.10, 0.10, 0.02);
+  const auto crab = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, projected_clear, state, 0.02, &inward, &initial_heading);
+  ASSERT_TRUE(crab.available());
+  ASSERT_EQ(crab.kind, RouteRecoveryCandidateKind::kCrabLeft);
+  ASSERT_TRUE(state.lateral_correction_active);
+
+  relation.signed_cte_m = -0.049;
+  const auto heading =
+      pathRelativeHeadingCorrectionCandidate(pose, relation, 0.10, 0.10, 0.02);
+  ASSERT_TRUE(heading.available());
+  EXPECT_EQ(heading.kind, RouteRecoveryCandidateKind::kReverseYawRight);
+  EXPECT_NEAR(heading.command.linear.x, 0.10, 1.0e-12);
+  EXPECT_DOUBLE_EQ(heading.command.linear.y, 0.0);
+  EXPECT_NEAR(heading.command.angular.z, -0.10, 1.0e-12);
+  EXPECT_NE(heading.reason.find("path_heading_forward_"), std::string::npos);
+  EXPECT_TRUE(pathRelativeCommandStrictlyReducesAbsoluteCte(heading.command,
+                                                            pose, relation));
+  EXPECT_TRUE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(heading.command,
+                                                            pose, relation));
+
+  auto generic_reverse_right_yaw = heading.command;
+  generic_reverse_right_yaw.linear.x = -0.10;
+  EXPECT_FALSE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(
+      generic_reverse_right_yaw, pose, relation));
+
+  const auto centered_state_seed = state;
+  const auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, projected_clear, state, 0.02, &inward, &heading);
+  ASSERT_TRUE(selected.available());
+  EXPECT_FALSE(state.lateral_correction_active);
+  EXPECT_TRUE(pathRelativeCandidateCommandExactlyMatches(selected, heading));
+
+  auto final_command = selected.command;
+  final_command.linear.x *= 0.5;
+  final_command.linear.y *= 0.5;
+  final_command.angular.z *= 0.5;
+  EXPECT_GT(std::hypot(final_command.linear.x, final_command.linear.y), 0.02);
+  EXPECT_NEAR(final_command.linear.x, 0.05, 1.0e-12);
+  EXPECT_NEAR(final_command.angular.z, -0.05, 1.0e-12);
+  const double final_turn_radius =
+      std::abs(final_command.linear.x / final_command.angular.z);
+  EXPECT_NEAR(final_turn_radius, 1.0, 1.0e-12);
+  EXPECT_GE(final_turn_radius, 0.810330349);
+  PathRelativeRecoveryCommandLatch latch;
+  ASSERT_TRUE(latch.authorize(selected, final_command, 10.0));
+  EXPECT_TRUE(latch
+                  .authorizationForRawCommand(selected.command, selected.kind,
+                                              10.1, 0.75)
+                  .has_value());
+
+  auto mismatched_heading = heading;
+  mismatched_heading.command.linear.x += 1.0e-6;
+  auto mismatch_state = centered_state_seed;
+  const auto mismatch = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, projected_clear, mismatch_state, 0.02, &inward,
+      &mismatched_heading);
+  EXPECT_FALSE(mismatch.available());
+  EXPECT_FALSE(mismatch_state.motion_authorized);
+  EXPECT_EQ(mismatch.reason, "path_heading_evaluated_command_mismatch");
+
+  const MotionCostStopDecision blocked{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  auto blocked_state = centered_state_seed;
+  const auto projection_blocked = selectPathRelativeRouteRecoveryCandidate(
+      command(0.0, 0.0, 0.20), pose, relation, PathRelativeRecoveryConfig{},
+      0.10, 0.10, {clear, clear, clear, clear, blocked}, blocked_state, 0.02,
+      &inward, &heading);
+  EXPECT_FALSE(projection_blocked.available());
+  EXPECT_FALSE(blocked_state.motion_authorized);
+}
+
+TEST(PathRelativeRouteRecovery,
+     ExactCenterAllowsOnlyZeroCteRateHeadingTranslation) {
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.0;
+  relation.heading_error_rad = degrees(30.0);
+  relation.tangent_x = 1.0;
+  relation.tangent_y = 0.0;
+  const PlanarPose pose{0.0, 0.0, degrees(30.0), "map", "center", 1.0};
+
+  EXPECT_FALSE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(command(0.05),
+                                                             pose, relation));
+  EXPECT_FALSE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(command(-0.05),
+                                                             pose, relation));
+  EXPECT_FALSE(
+      pathRelativeHeadingCorrectionCandidate(pose, relation, 0.10, 0.10, 0.02)
+          .available());
+
+  // This body-frame vector maps exactly onto the world path tangent.
+  const auto tangent_command =
+      command(0.05 * std::cos(pose.yaw), -0.05 * std::sin(pose.yaw));
+  EXPECT_TRUE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(tangent_command,
+                                                            pose, relation));
+
+  relation.tangent_x = 0.0;
+  EXPECT_FALSE(
+      pathRelativeHeadingCorrectionCandidate(pose, relation, 0.10, 0.10, 0.02)
+          .available());
+}
+
+TEST(PathRelativeRouteRecovery,
+     AdaptiveInwardCrabProbeTargetsCenterWithoutWeakeningOtherStages) {
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.127069;
+  const double path_yaw = degrees(-96.787);
+  relation.tangent_x = std::cos(path_yaw);
+  relation.tangent_y = std::sin(path_yaw);
+  const PlanarPose pose{10.180819, 33.184088, degrees(-83.005),
+                        "map",     "v16",     1.0};
+  const auto trigger = command(0.30);
+  const auto kind =
+      pathRelativeInwardCrabKind(trigger, pose, relation, 0.10, 0.02);
+  ASSERT_EQ(kind, RouteRecoveryCandidateKind::kCrabRight);
+  const auto raw_candidate =
+      pathRelativeInwardNormalCrabCandidate(pose, relation, 0.10, 0.02);
+  const auto scaled_candidate =
+      pathRelativeInwardNormalCrabCandidate(pose, relation, 0.05, 0.02);
+  ASSERT_TRUE(raw_candidate.available());
+  ASSERT_TRUE(scaled_candidate.available());
+  const auto &raw = raw_candidate.command;
+  const auto &scaled = scaled_candidate.command;
+  const double expected = relation.signed_cte_m;
+  const double raw_probe = pathRelativeInwardCrabProbeDistance(
+      raw, kind, pose, relation, 0.05, 0.25);
+  const double scaled_probe = pathRelativeInwardCrabProbeDistance(
+      scaled, kind, pose, relation, 0.05, 0.25);
+  EXPECT_NEAR(raw_probe, expected, 2.0e-4);
+  EXPECT_NEAR(scaled_probe, raw_probe, 1.0e-9);
+  EXPECT_GT(raw_probe, 0.125);
+  EXPECT_LT(raw_probe, 0.135);
+
+  relation.signed_cte_m = 0.50;
+  EXPECT_NEAR(pathRelativeInwardCrabProbeDistance(raw, kind, pose, relation,
+                                                  0.05, 0.25),
+              0.25, 1.0e-9);
+  relation.signed_cte_m = 0.01;
+  EXPECT_NEAR(pathRelativeInwardCrabProbeDistance(raw, kind, pose, relation,
+                                                  0.05, 0.25),
+              0.05, 1.0e-9);
+
+  // Reverse/yaw stages retain the configured full 0.25 m proof horizon.
+  relation.signed_cte_m = 0.127069;
+  const auto reverse = routeRecoveryDirection(
+      trigger, RouteRecoveryCandidateKind::kReverseYawRight, 0.10, 0.02, 0.10);
+  EXPECT_NEAR(pathRelativeInwardCrabProbeDistance(
+                  reverse, RouteRecoveryCandidateKind::kReverseYawRight, pose,
+                  relation, 0.05, 0.25),
+              0.25, 1.0e-9);
+}
+
+TEST(PathRelativeRouteRecovery, AdaptiveProbeIsSymmetricAcrossCteSign) {
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.tangent_x = 1.0;
+  relation.tangent_y = 0.0;
+  relation.signed_cte_m = -0.127;
+  const PlanarPose pose{0.0, -0.127, 0.0, "map", "test", 1.0};
+  const auto trigger = command(0.30);
+  const auto kind =
+      pathRelativeInwardCrabKind(trigger, pose, relation, 0.10, 0.02);
+  ASSERT_EQ(kind, RouteRecoveryCandidateKind::kCrabLeft);
+  const auto inward_candidate =
+      pathRelativeInwardNormalCrabCandidate(pose, relation, 0.10, 0.02);
+  ASSERT_TRUE(inward_candidate.available());
+  EXPECT_NEAR(pathRelativeInwardCrabProbeDistance(
+                  inward_candidate.command, kind, pose, relation, 0.05, 0.25),
+              0.127, 1.0e-9);
+}
+
+TEST(PathRelativeRouteRecovery, CentersWithFiveAndEightCentimeterHysteresis) {
+  PathRelativeRecoveryConfig config;
+  PathRelativeRecoveryState state;
+  const PlanarPose pose{0.0, 0.0, 0.0, "map", "test", 1.0};
+  const MotionCostStopDecision clear{};
+  const RouteRecoveryCandidateDecisions projected{clear, clear, clear, clear,
+                                                  clear};
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.tangent_x = 1.0;
+  relation.tangent_y = 0.0;
+
+  relation.signed_cte_m = 0.060;
+  auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected, state);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabRight);
+
+  relation.signed_cte_m = 0.049;
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected, state);
+  EXPECT_FALSE(selected.available());
+  EXPECT_TRUE(state.settle_zero_commanded);
+  EXPECT_FALSE(state.motion_authorized);
+
+  relation.signed_cte_m = 0.065;
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected, state);
+  EXPECT_FALSE(selected.available());
+  EXPECT_TRUE(state.settle_zero_commanded);
+
+  relation.signed_cte_m = 0.081;
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected, state);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabRight);
+}
+
+TEST(PathRelativeRouteRecovery, CentersLaterallyBeforeAligningYaw) {
+  PathRelativeRecoveryConfig config;
+  const PlanarPose pose{0.0, 0.0, 0.0, "map", "test", 1.0};
+  const MotionCostStopDecision clear{};
+  const RouteRecoveryCandidateDecisions projected{clear, clear, clear, clear,
+                                                  clear};
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.tangent_x = 1.0;
+
+  // Even a large heading error cannot skip the required inward crab while
+  // lateral error remains outside the center tolerance.
+  PathRelativeRecoveryState lateral_first_state;
+  relation.signed_cte_m = 0.20;
+  relation.heading_error_rad = degrees(30.0);
+  auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected,
+      lateral_first_state);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabRight);
+  EXPECT_NEAR(selected.command.angular.z, 0.0, 1.0e-9);
+
+  // Once centered, heading_error = pose - path chooses the reverse-yaw sign
+  // that reduces the error.
+  relation.signed_cte_m = 0.0;
+  PathRelativeRecoveryState positive_state;
+  relation.heading_error_rad = degrees(5.1);
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected,
+      positive_state);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverseYawRight);
+  EXPECT_NEAR(selected.command.angular.z, -0.10, 1.0e-9);
+
+  PathRelativeRecoveryState negative_state;
+  relation.heading_error_rad = degrees(-5.1);
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected,
+      negative_state);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverseYawLeft);
+  EXPECT_NEAR(selected.command.angular.z, 0.10, 1.0e-9);
+
+  PathRelativeRecoveryState tolerance_state;
+  relation.heading_error_rad = degrees(5.0);
+  selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, config, 0.10, 0.10, projected,
+      tolerance_state);
+  EXPECT_FALSE(selected.available());
+  EXPECT_TRUE(tolerance_state.settle_zero_commanded);
+}
+
+TEST(PathRelativeRouteRecovery, DoesNotFallBackWhenInwardCandidateIsBlocked) {
+  PathRelativeRecoveryState state;
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.20;
+  relation.tangent_x = 1.0;
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), PlanarPose{0.0, 0.20, 0.0, "map", "test", 1.0}, relation,
+      PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, blocked, clear, clear, clear}, state);
+
+  EXPECT_FALSE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kNone);
+  EXPECT_FALSE(state.motion_authorized);
+  EXPECT_NE(selected.reason.find("path_inward_crab_right_blocked"),
+            std::string::npos);
+}
+
+TEST(PathRelativeRouteRecovery,
+     PlanningLimitedCrabUsesClearNonOutwardCorrectSignReverseYaw) {
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision planning_limited{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  PathRelativeRecoveryConfig config;
+
+  PathRelativeRouteRelation positive;
+  positive.valid = true;
+  positive.signed_cte_m = 0.20;
+  positive.heading_error_rad = degrees(30.0);
+  positive.tangent_x = 1.0;
+  PathRelativeRecoveryState positive_state;
+  const auto right = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), PlanarPose{0.0, 0.20, degrees(30.0), "map", "test", 1.0},
+      positive, config, 0.10, 0.10,
+      {clear, planning_limited, clear, clear, clear}, positive_state);
+  ASSERT_TRUE(right.available());
+  EXPECT_EQ(right.kind, RouteRecoveryCandidateKind::kReverseYawRight);
+  EXPECT_LT(right.command.angular.z, 0.0);
+  EXPECT_TRUE(positive_state.lateral_correction_active);
+  EXPECT_TRUE(positive_state.motion_authorized);
+  EXPECT_FALSE(positive_state.projection_limited_zero_commanded);
+
+  PathRelativeRouteRelation negative;
+  negative.valid = true;
+  negative.signed_cte_m = -0.20;
+  negative.heading_error_rad = degrees(-30.0);
+  negative.tangent_x = 1.0;
+  PathRelativeRecoveryState negative_state;
+  const auto left = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), PlanarPose{0.0, -0.20, degrees(-30.0), "map", "test", 1.0},
+      negative, config, 0.10, 0.10,
+      {planning_limited, clear, clear, clear, clear}, negative_state);
+  ASSERT_TRUE(left.available());
+  EXPECT_EQ(left.kind, RouteRecoveryCandidateKind::kReverseYawLeft);
+  EXPECT_GT(left.command.angular.z, 0.0);
+  EXPECT_TRUE(negative_state.motion_authorized);
+}
+
+TEST(PathRelativeRouteRecovery,
+     PlanningLimitedYawFallbackKeepsEveryUnsafeAlternativeFailClosed) {
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision planning_limited{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.20;
+  relation.heading_error_rad = degrees(30.0);
+  relation.tangent_x = 1.0;
+  const PlanarPose pose{0.0, 0.20, degrees(30.0), "map", "test", 1.0};
+  const auto select_with = [&](const MotionCostStopDecision &crab,
+                               const MotionCostStopDecision &yaw) {
+    PathRelativeRecoveryState state;
+    return selectPathRelativeRouteRecoveryCandidate(
+        command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+        {clear, crab, clear, clear, yaw}, state);
+  };
+
+  const MotionCostStopDecision dynamic{true, true, false, false,
+                                       "dynamic_source_obstacle"};
+  EXPECT_FALSE(select_with(dynamic, clear).available());
+  const MotionCostStopDecision physical{
+      true, false, true, false,
+      "route_recovery_predicted_physical_body_footprint_cost"};
+  EXPECT_FALSE(select_with(physical, clear).available());
+  const MotionCostStopDecision stale{
+      true, false, true, true, "route_recovery_predicted_lanelet_grid_stale"};
+  EXPECT_FALSE(select_with(stale, clear).available());
+
+  const MotionCostStopDecision yaw_blocked{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  EXPECT_FALSE(select_with(planning_limited, yaw_blocked).available());
+  const MotionCostStopDecision internally_inconsistent_clear{
+      false, false, true, false, "inconsistent_lanelet_flag"};
+  EXPECT_FALSE(
+      select_with(planning_limited, internally_inconsistent_clear).available());
+
+  // A clear candidate in the wrong yaw slot cannot substitute for a blocked
+  // correct-sign heading correction.
+  PathRelativeRecoveryState wrong_sign_state;
+  const auto wrong_sign = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, planning_limited, clear, clear, yaw_blocked}, wrong_sign_state);
+  EXPECT_FALSE(wrong_sign.available());
+
+  avg_msgs::msg::AvgTwist outward;
+  outward.linear.x = -0.10;
+  EXPECT_FALSE(pathRelativeCommandDoesNotIncreaseAbsoluteCte(
+      outward, PlanarPose{0.0, 0.20, degrees(-30.0), "map", "test", 1.0},
+      relation));
+}
+
+TEST(PathRelativeRouteRecovery,
+     ProjectionLimitedZeroRequiresVerifiedCteProgressAndAlignedHeading) {
+  PathRelativeRecoveryState state;
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.30;
+  relation.tangent_x = 1.0;
+  const PlanarPose pose{0.0, 0.30, 0.0, "map", "test", 1.0};
+  const MotionCostStopDecision clear{};
+  const RouteRecoveryCandidateDecisions projected_clear{clear, clear, clear,
+                                                        clear, clear};
+
+  ASSERT_TRUE(selectPathRelativeRouteRecoveryCandidate(
+                  command(0.3), pose, relation, PathRelativeRecoveryConfig{},
+                  0.10, 0.10, projected_clear, state)
+                  .available());
+
+  MotionCostStopDecision planning_limited{
+      true, false, true, false,
+      "route_recovery_predicted_lanelet_footprint_cost"};
+  relation.signed_cte_m = 0.22;
+  const auto stopped = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, planning_limited, clear, clear, clear}, state);
+  EXPECT_FALSE(stopped.available());
+  EXPECT_TRUE(state.settle_zero_commanded);
+  EXPECT_TRUE(state.projection_limited_zero_commanded);
+  relation.heading_error_rad = degrees(14.0);
+  EXPECT_FALSE(pathRelativeRecoveryHandoffReady(state, relation,
+                                                PathRelativeRecoveryConfig{}));
+  relation.heading_error_rad = degrees(4.0);
+  EXPECT_TRUE(pathRelativeRecoveryHandoffReady(state, relation,
+                                               PathRelativeRecoveryConfig{}));
+
+  // Coasting back below the verified five-centimetre improvement revokes the
+  // handoff even though the previously commanded state was zero.
+  relation.signed_cte_m = 0.27;
+  EXPECT_FALSE(pathRelativeRecoveryHandoffReady(state, relation,
+                                                PathRelativeRecoveryConfig{}));
+}
+
+TEST(PathRelativeRouteRecovery,
+     DynamicOrPhysicalBlockCannotArmProjectionLimitedHandoff) {
+  const MotionCostStopDecision clear{};
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.30;
+  relation.tangent_x = 1.0;
+  const PlanarPose pose{0.0, 0.30, 0.0, "map", "test", 1.0};
+  const auto prime = [&](PathRelativeRecoveryState &state) {
+    return selectPathRelativeRouteRecoveryCandidate(
+        command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+        {clear, clear, clear, clear, clear}, state);
+  };
+
+  PathRelativeRecoveryState dynamic_state;
+  ASSERT_TRUE(prime(dynamic_state).available());
+  relation.signed_cte_m = 0.20;
+  const MotionCostStopDecision dynamic_block{true, true, false, false,
+                                             "dynamic_source_obstacle"};
+  selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, dynamic_block, clear, clear, clear}, dynamic_state);
+  EXPECT_FALSE(dynamic_state.settle_zero_commanded);
+  EXPECT_FALSE(dynamic_state.projection_limited_zero_commanded);
+
+  relation.signed_cte_m = 0.30;
+  PathRelativeRecoveryState physical_state;
+  ASSERT_TRUE(prime(physical_state).available());
+  relation.signed_cte_m = 0.20;
+  const MotionCostStopDecision physical_block{
+      true, false, true, false,
+      "route_recovery_predicted_physical_body_footprint_cost"};
+  selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, physical_block, clear, clear, clear}, physical_state);
+  EXPECT_FALSE(physical_state.settle_zero_commanded);
+  EXPECT_FALSE(physical_state.projection_limited_zero_commanded);
+}
+
+TEST(PathRelativeRouteRecovery, CteRegressionRevokesInwardMotion) {
+  PathRelativeRecoveryState state;
+  PathRelativeRouteRelation relation;
+  relation.valid = true;
+  relation.signed_cte_m = 0.20;
+  relation.tangent_x = 1.0;
+  const PlanarPose pose{0.0, 0.20, 0.0, "map", "test", 1.0};
+  const MotionCostStopDecision clear{};
+  ASSERT_TRUE(selectPathRelativeRouteRecoveryCandidate(
+                  command(0.3), pose, relation, PathRelativeRecoveryConfig{},
+                  0.10, 0.10, {clear, clear, clear, clear, clear}, state)
+                  .available());
+
+  relation.signed_cte_m = 0.24;
+  const auto regressed = selectPathRelativeRouteRecoveryCandidate(
+      command(0.3), pose, relation, PathRelativeRecoveryConfig{}, 0.10, 0.10,
+      {clear, clear, clear, clear, clear}, state);
+  EXPECT_FALSE(regressed.available());
+  EXPECT_FALSE(state.motion_authorized);
+  EXPECT_EQ(regressed.reason, "path_cte_regressed_beyond_hysteresis");
+}
+
+TEST(PathRelativeRouteRecovery, RejectsInvalidDegenerateAndRemoteEvidence) {
+  auto invalid = makePath({{0.0, 0.0}, {1.0, 0.0}});
+  invalid.poses[1].pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  const PlanarPose pose{0.0, 0.0, 0.0, "map", "test", 1.0};
+  EXPECT_FALSE(nearestPathRelativeRouteRelation(invalid, pose, 1.5).valid);
+
+  auto wrong_frame = makePath({{0.0, 0.0}, {1.0, 0.0}});
+  EXPECT_FALSE(
+      nearestPathRelativeRouteRelation(
+          wrong_frame, PlanarPose{0.0, 0.0, 0.0, "odom", "test", 1.0}, 1.5)
+          .valid);
+
+  const auto remote = makePath({{0.0, 0.0}, {1.0, 0.0}});
+  const auto remote_relation = nearestPathRelativeRouteRelation(
+      remote, PlanarPose{0.5, 2.0, 0.0, "map", "test", 1.0}, 1.5);
+  EXPECT_FALSE(remote_relation.valid);
+  EXPECT_EQ(remote_relation.reason, "path_relation_too_far");
 }
 
 TEST(RouteRecoveryCandidate, SelectsUniqueClearCrabSide) {
@@ -1831,7 +2841,8 @@ TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff) {
   EXPECT_EQ(arbiter.evaluate(true, 10.02), CommandSourceDecision::kAllow);
 }
 
-TEST(CommandSourceArbiter, DedicatedManualInputIsOptInAndRequiresManualOnlyEngage) {
+TEST(CommandSourceArbiter,
+     DedicatedManualInputIsOptInAndRequiresManualOnlyEngage) {
   CommandSourceArbiter default_arbiter;
   default_arbiter.setEngagement(true, false);
   EXPECT_EQ(default_arbiter.evaluate(CommandInputSource::kManual, 1.0),

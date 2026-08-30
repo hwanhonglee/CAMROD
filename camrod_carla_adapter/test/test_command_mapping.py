@@ -9,9 +9,11 @@ from camrod_carla_adapter.command_mapping import (
     MappingConfig,
     command_age_timed_out,
     map_planar_twist,
+    recovery_breakaway_is_authorized,
     validate_adapter_timing,
     validate_planar_axes,
     validate_ranger_contract,
+    validate_recovery_breakaway_contract,
 )
 
 
@@ -238,3 +240,70 @@ def test_adapter_timing_rejects_weaker_fail_closed_overrides(settings):
 
 def test_adapter_timing_allows_stricter_settings():
     validate_adapter_timing(0.1, 100.0, 20.0, 0.0)
+
+
+@pytest.mark.parametrize("state", ["CRAB_LEFT", "CRAB_RIGHT"])
+def test_fresh_recovery_crab_authorizes_only_narrow_breakaway_capability(
+        state):
+    lateral = 0.05 if state == "CRAB_LEFT" else -0.05
+    command = map_planar_twist(0.0, lateral, 0.0, CFG)
+    assert recovery_breakaway_is_authorized(
+        command, state, 10.0, 10.29) is True
+
+
+def test_recovery_breakaway_authority_fails_closed_for_wrong_source_or_age():
+    crab = map_planar_twist(0.0, 0.05, 0.0, CFG)
+    ackermann = map_planar_twist(0.05, 0.0, 0.0, CFG)
+    too_slow = map_planar_twist(0.0, 0.039, 0.0, CFG)
+    too_fast = map_planar_twist(0.0, 0.061, 0.0, CFG)
+    assert recovery_breakaway_is_authorized(
+        ackermann, "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        too_slow, "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        too_fast, "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        crab, "REVERSE", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        crab, "CRAB_LEFT", 10.0, math.nextafter(10.30, math.inf)) is False
+    assert recovery_breakaway_is_authorized(
+        crab, "CRAB_LEFT", None, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        crab, "CRAB_LEFT", 10.0, math.nan) is False
+
+
+def test_recovery_breakaway_status_must_match_pure_crab_direction():
+    left = map_planar_twist(0.0, 0.05, 0.0, CFG)
+    right = map_planar_twist(0.0, -0.05, 0.0, CFG)
+    assert recovery_breakaway_is_authorized(
+        left, "CRAB_RIGHT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        right, "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        replace(left, source_linear_y=0.0),
+        "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        replace(left, crab_angle=0.0),
+        "CRAB_LEFT", 10.0, 10.1) is False
+    assert recovery_breakaway_is_authorized(
+        replace(left, source_linear_x=1.1e-6),
+        "CRAB_LEFT", 10.0, 10.1) is False
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        (math.nextafter(0.30, math.inf), 0.04, 0.06),
+        (0.30, math.nextafter(0.04, 0.0), 0.06),
+        (0.30, 0.04, math.nextafter(0.06, math.inf)),
+        (0.30, 0.055, 0.05),
+    ],
+)
+def test_recovery_breakaway_contract_rejects_wider_or_empty_envelope(
+        settings):
+    with pytest.raises(ValueError):
+        validate_recovery_breakaway_contract(*settings)
+
+
+def test_recovery_breakaway_contract_allows_stricter_lease_and_window():
+    validate_recovery_breakaway_contract(0.10, 0.045, 0.055)

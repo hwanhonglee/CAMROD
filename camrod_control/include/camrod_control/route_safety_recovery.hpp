@@ -84,14 +84,22 @@ public:
     return true;
   }
 
-  bool updateProbe(const MotionCostStopDecision &decision,
-                   const double now_sec) {
+  bool updateProbe(const MotionCostStopDecision &decision, const double now_sec,
+                   const bool handoff_ready = true) {
     if (!active_) {
       return false;
     }
     latest_decision_ = decision;
     if (decision.blocked) {
       latest_reason_ = decision.reason;
+      clear_since_sec_.reset();
+      return false;
+    }
+    // Path-relative recovery must command and retain an explicit centered zero
+    // before the existing continuous-clear proof starts.  Keeping this input
+    // optional preserves the legacy policy for callers that do not own such a
+    // handoff condition.
+    if (!handoff_ready) {
       clear_since_sec_.reset();
       return false;
     }

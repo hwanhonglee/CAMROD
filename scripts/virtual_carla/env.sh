@@ -39,6 +39,8 @@ _virtual_carla_config_names=(
   CAMROD_MANUAL_LATERAL_LIMIT_MPS
   CAMROD_MANUAL_ANGULAR_LIMIT_RADPS
   CAMROD_MANUAL_DEADMAN_TIMEOUT_S
+  CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE
+  CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M
   CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ
   CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
   CAMROD_CARLA_SENSOR_MIN_RATE_HZ
@@ -56,6 +58,8 @@ _virtual_carla_config_names=(
   RANGER_PYTHON_EGG_CACHE
   CARLA_PYTHON_EGG
   CARLA_PYTHON_EGG_CACHE
+  CAMROD_CARLA_STEP_PACING
+  CAMROD_CARLA_STEP_PERIOD_SECONDS
   RANGER_BASELINE_MANIFEST
   RANGER_PHYSICAL_MANIFEST
   RANGER_SPAWN_FILE
@@ -114,9 +118,22 @@ export CARLA_HOST="${CARLA_HOST:-127.0.0.1}"
 export CARLA_PORT="${CARLA_PORT:-2000}"
 export CARLA_ROLE_NAME="${CARLA_ROLE_NAME:-ego_vehicle}"
 export CARLA_RENDER_MODE="${CARLA_RENDER_MODE:-offscreen}"
+export CARLA_RENDER_MAX_FPS="${CARLA_RENDER_MAX_FPS:-30}"
 export CARLA_FIXED_DELTA_SECONDS="${CARLA_FIXED_DELTA_SECONDS:-0.05}"
 export CARLA_SYNCHRONOUS_MODE="${CARLA_SYNCHRONOUS_MODE:-True}"
 export CARLA_WAIT_FOR_CONTROL_COMMAND="${CARLA_WAIT_FOR_CONTROL_COMMAND:-False}"
+if [[ -z "${CAMROD_CARLA_STEP_PACING:-}" ]]; then
+  if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
+    CAMROD_CARLA_STEP_PACING=False
+  else
+    # HH_260830 - fixed_delta_seconds fixes simulated time, not wall time.
+    # Keep the gate-bound upstream bridge unchanged and pace its public
+    # /carla/control PAUSE/STEP_ONCE contract from CAMROD instead.
+    CAMROD_CARLA_STEP_PACING=True
+  fi
+fi
+export CAMROD_CARLA_STEP_PACING
+export CAMROD_CARLA_STEP_PERIOD_SECONDS="${CAMROD_CARLA_STEP_PERIOD_SECONDS:-${CARLA_FIXED_DELTA_SECONDS}}"
 
 export CARLA_UE_MAP="${CARLA_UE_MAP:-/Game/map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/Woraksan_v1_0_3_parking_lot_hegiht_fit}"
 export CARLA_TOWN="${CARLA_TOWN:-map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/Woraksan_v1_0_3_parking_lot_hegiht_fit}"
@@ -157,7 +174,10 @@ if [[ -z "${CAMROD_LAUNCH_SENSOR_RELAY:-}" ]]; then
 fi
 export CAMROD_LAUNCH_SENSOR_RELAY
 export CAMROD_MAP_ALIGNMENT_FILE="${CAMROD_MAP_ALIGNMENT_FILE:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml}"
-export CAMROD_LANELET_MAP="${CAMROD_LANELET_MAP:-${CAMROD_SRC_ROOT}/lanelet2_maps.osm}"
+# HH_260830 - The production map's Road26 centerline cuts into CARLA Terrain.
+# Select the generated CARLA-only geometry by default while preserving an
+# explicit caller override for other worlds/map cohorts.
+export CAMROD_LANELET_MAP="${CAMROD_LANELET_MAP:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_carla_lanelet2.osm}"
 export CAMROD_LAUNCH_DEFAULTS_FILE="${CAMROD_LAUNCH_DEFAULTS_FILE:-${CAMROD_SRC_ROOT}/camrod_bringup/config/bringup/launch_defaults.yaml}"
 
 export CAMROD_UI_PORT="${CAMROD_UI_PORT:-8010}"
@@ -169,6 +189,15 @@ export CAMROD_MANUAL_LINEAR_LIMIT_MPS="${CAMROD_MANUAL_LINEAR_LIMIT_MPS:-1.40}"
 export CAMROD_MANUAL_LATERAL_LIMIT_MPS="${CAMROD_MANUAL_LATERAL_LIMIT_MPS:-1.00}"
 export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS="${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS:-0.7853}"
 export CAMROD_MANUAL_DEADMAN_TIMEOUT_S="${CAMROD_MANUAL_DEADMAN_TIMEOUT_S:-0.75}"
+# The CARLA Nav2 profile is already bounded to 0.20 m/s.  Preserve that exact
+# target at the final gate instead of inheriting CAMROD hardware's 0.5 scale.
+# This variable is consumed only by camrod_carla_full.launch.py; production
+# bringup and its checked-in 0.5 default remain unchanged.
+export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE="${CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE:-1.0}"
+# CARLA's Ranger adapter accepts 0.810330349 m.  Keep a 9.7 mm margin so
+# rounded RPP output cannot chatter between ACKERMANN and ZERO_TURN.  The full
+# launch applies this only to final Nav2 commands; normal CAMROD remains 0.0.
+export CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M="${CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M:-0.82}"
 # Five wall-clock JPEG frames per camera are sufficient for the operator view
 # and leave CPU headroom for the independent 10 Hz manual command heartbeat.
 # Raw frames remain available to algorithms, but the CARLA relay caps their
@@ -331,10 +360,13 @@ virtual_carla_source_ros() {
   export CAMROD_MANUAL_LINEAR_LIMIT_MPS CAMROD_MANUAL_LATERAL_LIMIT_MPS
   export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS
   export CAMROD_MANUAL_DEADMAN_TIMEOUT_S
+  export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE
+  export CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M
   export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ
   export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
   export CAMROD_CARLA_SENSOR_MIN_RATE_HZ
   export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
+  export CAMROD_CARLA_STEP_PACING CAMROD_CARLA_STEP_PERIOD_SECONDS
 }
 
 virtual_carla_use_python_egg() {
@@ -428,9 +460,12 @@ CARLA_PYTHON_EGG=${CARLA_PYTHON_EGG}
 CARLA endpoint=${CARLA_HOST}:${CARLA_PORT}
 CARLA map=${CARLA_UE_MAP}
 CARLA render mode=${CARLA_RENDER_MODE}
+CARLA render maximum fps=${CARLA_RENDER_MAX_FPS}
 CARLA synchronous=${CARLA_SYNCHRONOUS_MODE}
 CARLA wait for control=${CARLA_WAIT_FOR_CONTROL_COMMAND}
 CARLA fixed delta seconds=${CARLA_FIXED_DELTA_SECONDS}
+CAMROD CARLA step pacing=${CAMROD_CARLA_STEP_PACING}
+CAMROD CARLA step period seconds=${CAMROD_CARLA_STEP_PERIOD_SECONDS}
 CAMROD sensor relay=${CAMROD_LAUNCH_SENSOR_RELAY}
 CAMROD lanelet map=${CAMROD_LANELET_MAP}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
@@ -442,6 +477,8 @@ CAMROD manual linear limit mps=${CAMROD_MANUAL_LINEAR_LIMIT_MPS}
 CAMROD manual lateral limit mps=${CAMROD_MANUAL_LATERAL_LIMIT_MPS}
 CAMROD manual angular limit radps=${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}
 CAMROD manual UI deadman timeout seconds=${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}
+CARLA final cmd_vel speed scale=${CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE}
+CARLA Nav2 minimum Ackermann turn radius m=${CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M}
 CARLA compressed image maximum wall rate hz=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}
 CARLA raw image maximum wall rate hz=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}
 CARLA visual sensor minimum wall rate hz=${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}

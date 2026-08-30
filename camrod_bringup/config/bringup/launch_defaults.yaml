@@ -151,6 +151,9 @@ bringup:
     nav2_planner_plugins_param_file: planning/nav2_planner_profiles/production.yaml
     # HH_260805 - Construct only mission RPP and manual-goal RotationShim in production.
     nav2_controller_plugins_param_file: planning/nav2_controller_profiles/production.yaml
+    # Final sparse deployment overlay. Ordinary CAMROD resolves this sentinel
+    # to the package-owned empty profile; CARLA injects reverse RPP separately.
+    nav2_runtime_override_param_file: __module_default__
     # HH_260528: Selector IDs for PlannerSelector/ControllerSelector.
     # "__auto__" infers planner/controller from nav2_combo_param_file name.
     # Examples:
@@ -287,6 +290,12 @@ bringup:
     # HH_260818 - One switch controls YOLO tent occupancy in both UI admission
     # and the maneuver start gate. False preserves the current field workflow.
     enable_campsite_occupancy_guard: false
+    # Hardware keeps roadside sites on their one-way forward loop. A simulator
+    # launch may opt in to retrace the shortest lanelet route in reverse.
+    camping_site_roadside_reverse_return_enable: false
+    # Hardware keeps the audited 3 cm reverse-route centerline handoff. A
+    # simulator launch may widen this through the explicit launch boundary.
+    camping_site_roadside_reverse_handoff_distance_m: 0.03
     enable_drop_zone_maneuver_controller: true
     # HH_260803 / TODOLIST 12 - Execute only gate-approved bounded reverse/crab recovery.
     enable_route_safety_recovery_controller: true
@@ -544,6 +553,8 @@ bringup:
 
     # HH_260720 - Scale output before publishing /control/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
+    # Production is an exact no-op; CARLA full launch opts in explicitly.
+    cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m: 0.0
     # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
     cmd_vel_gate_input_timeout_s: 0.35
     cmd_vel_gate_zero_publish_rate_hz: 10.0
@@ -581,6 +592,9 @@ bringup:
     method: apriltag
     enable_parking: true
     param_file: __module_default__
+    # Final sparse deployment overlay. Production resolves the sentinel to an
+    # empty profile; simulator compositions can adjust plant-specific limits.
+    runtime_override_param_file: __module_default__
 
   # =========================================================================
   # 8. PERCEPTION
@@ -649,6 +663,9 @@ bringup:
     # HH_260810 - Selected-view latest-value stream ceiling. Ten Hz follows the
     # camera target while remaining bounded for the 8-core ARM64 deployment.
     operator_telemetry_stream_rate_hz: 10.0
+    # Production UI geometry requires exact-time TF. Simulator compositions
+    # may explicitly override this bounded future-stamp fallback tolerance.
+    operator_telemetry_tf_latest_fallback_tolerance_s: 0.0
     # Production cameras are not required to publish compressed frames, so the
     # generic profile retains the UI backend's raw-image JPEG fallback. CARLA
     # overrides only this value because its relay guarantees compressed topics.

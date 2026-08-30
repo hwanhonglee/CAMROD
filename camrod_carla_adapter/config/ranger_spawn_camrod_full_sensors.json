@@ -16,12 +16,12 @@
       "type": "vehicle.ranger.default",
       "id": "ego_vehicle",
       "spawn_point": {
-        "x": 38.00654220581055,
-        "y": -36.45695114135742,
-        "z": 7.181118011474609,
+        "x": -20.672548294067383,
+        "y": 33.95176696777344,
+        "z": 3.063404083251953,
         "roll": 0.0,
         "pitch": 0.0,
-        "yaw": 32.45613098144531
+        "yaw": 6.8785247802734375
       },
       "sensors": [
         {
@@ -73,7 +73,10 @@
           "upper_fov": 10.0,
           "lower_fov": -25.0,
           "horizontal_fov": 120.0,
-          "rotation_frequency": 10.0,
+          "rotation_frequency": 20.0,
+          "dropoff_general_rate": 0.0,
+          "dropoff_intensity_limit": 1.0,
+          "dropoff_zero_intensity": 0.0,
           "noise_stddev": 0.0,
           "sensor_tick": 0.1
         },

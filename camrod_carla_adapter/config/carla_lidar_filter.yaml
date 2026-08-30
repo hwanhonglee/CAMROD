@@ -1,0 +1,55 @@
+# CARLA-only real LiDAR nonground filter.
+#
+# The Ranger actor mounts lidar_front at z=0.59538 m. Live Woraksan road
+# returns measured -0.607..-0.596 m in lidar_link. The filter does not fabricate
+# obstacles: it robustly fits a local z=ax+by+c road plane to actual ray hits,
+# then retains measured points at least 0.08 m above that plane.
+/sensing/lidar/carla_lidar_filter:
+  ros__parameters:
+    input_topic: "/sensing/lidar/vanjee/points_raw"
+    output_topic: "/sensing/lidar/points_filtered"
+    expected_frame_id: "lidar_link"
+
+    # Match CAMROD's forward LiDAR obstacle/clustering envelope.
+    roi_x_min_m: 0.0
+    roi_x_max_m: 5.0
+    roi_y_min_m: -3.0
+    roi_y_max_m: 3.0
+    roi_z_min_m: -1.2
+    roi_z_max_m: 1.5
+
+    # Sensor geometry and robust local-plane fit.
+    expected_ground_z_m: -0.59538
+    ground_seed_z_tolerance_m: 0.8
+    ground_grid_size_m: 0.40
+    ground_inlier_threshold_m: 0.045
+    minimum_obstacle_height_m: 0.08
+    maximum_ground_slope_deg: 25.0
+    minimum_ground_seed_cells: 12
+    minimum_ground_inliers: 24
+    robust_fit_iterations: 4
+
+    # CARLA Ranger self-return exclusion, enabled only in this CARLA profile.
+    # The 2026-08-31 stationary live trace measured two symmetric Car-labelled
+    # query-geometry clusters in lidar_link:
+    #   x=0.5410..1.2553 m, |y|=0.6379..0.8910 m,
+    #   z=-0.5149..0.1206 m.
+    # Each bound adds roughly 5-6 cm for frame-to-frame numerical and pose
+    # variation. Using |y| creates separate left/right boxes and preserves the
+    # entire |y|<0.59 m center corridor, unlike a minimum-range filter that
+    # would hide a genuine close obstacle directly ahead. This is deliberately
+    # actor/extrinsic-specific: remeasure it if the Ranger collision asset or
+    # lidar_front mounting transform changes. A real return that overlaps one
+    # of these two narrow boxes cannot be distinguished from the self return
+    # and will be removed; the preserved center corridor limits that tradeoff.
+    self_return_mask_enabled: true
+    self_return_x_min_m: 0.49
+    self_return_x_max_m: 1.31
+    self_return_abs_y_min_m: 0.59
+    self_return_abs_y_max_m: 0.95
+    self_return_z_min_m: -0.57
+    self_return_z_max_m: 0.18
+
+    # RELIABLE latest-frame transport matches the CAMROD UI/RViz consumers and
+    # remains compatible with best-effort perception subscribers.
+    qos_depth: 2

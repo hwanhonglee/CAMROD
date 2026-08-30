@@ -98,6 +98,10 @@ private:
       start_yaw_ = start_pose_.has_value() ?
         std::optional<double>(poseYaw(*start_pose_)) : std::nullopt;
       cumulative_distance_m_ = 0.0;
+      attempt_distance_offset_m_ = 0.0;
+      attempt_yaw_offset_rad_ = 0.0;
+      motion_segment_observed_ = false;
+      zero_hold_clock_.reset();
       current_attempt_ = 1;
       retry_waiting_ = false;
       limit_reached_ = false;
@@ -111,6 +115,10 @@ private:
       start_yaw_.reset();
       current_attempt_ = 0;
       cumulative_distance_m_ = 0.0;
+      attempt_distance_offset_m_ = 0.0;
+      attempt_yaw_offset_rad_ = 0.0;
+      motion_segment_observed_ = false;
+      zero_hold_clock_.reset();
       retry_waiting_ = false;
       limit_reached_ = false;
       RCLCPP_INFO(get_logger(), "bounded route recovery released to Nav2");
@@ -164,13 +172,65 @@ private:
       1.0 - 2.0 * (q.y * q.y + q.z * q.z));
   }
 
-  double yawDisplacement() const
+  double signedYawDisplacement() const
   {
     if (!latest_pose_.has_value() || !start_yaw_.has_value()) {
-      return 0.0;
+      return std::atan2(
+        std::sin(attempt_yaw_offset_rad_),
+        std::cos(attempt_yaw_offset_rad_));
     }
     const double delta = poseYaw(*latest_pose_) - *start_yaw_;
-    return std::abs(std::atan2(std::sin(delta), std::cos(delta)));
+    const double total = attempt_yaw_offset_rad_ +
+      std::atan2(std::sin(delta), std::cos(delta));
+    return std::atan2(std::sin(total), std::cos(total));
+  }
+
+  double yawDisplacement() const
+  {
+    return std::abs(signedYawDisplacement());
+  }
+
+  double attemptDistance() const
+  {
+    return attempt_distance_offset_m_ + displacement();
+  }
+
+  void beginZeroHold(const rclcpp::Time & current_time)
+  {
+    if (zero_hold_clock_.active()) {
+      return;
+    }
+    if (motion_segment_observed_ && latest_pose_.has_value()) {
+      attempt_distance_offset_m_ += displacement();
+      if (start_yaw_.has_value()) {
+        const double delta = poseYaw(*latest_pose_) - *start_yaw_;
+        attempt_yaw_offset_rad_ = std::atan2(
+          std::sin(attempt_yaw_offset_rad_ + delta),
+          std::cos(attempt_yaw_offset_rad_ + delta));
+      }
+    }
+    if (latest_pose_.has_value()) {
+      start_pose_ = latest_pose_;
+      start_yaw_ = poseYaw(*latest_pose_);
+    }
+    motion_segment_observed_ = false;
+    zero_hold_clock_.begin(current_time.seconds(), retry_waiting_);
+  }
+
+  void resumeZeroHold(const rclcpp::Time & current_time)
+  {
+    if (!zero_hold_clock_.active()) {
+      return;
+    }
+    zero_hold_clock_.resume(current_time.seconds());
+    // Ignore passive terrain settling while the exact-zero sentinel owned the
+    // output, but preserve distance/yaw accumulated by earlier authorized
+    // motion in this bounded attempt.
+    if (latest_pose_.has_value()) {
+      start_pose_ = latest_pose_;
+      start_yaw_ = poseYaw(*latest_pose_);
+    }
+    motion_segment_observed_ = false;
   }
 
   void tick()
@@ -181,21 +241,45 @@ private:
     }
     const auto current_time = now();
     if ((current_time - last_gate_status_time_).seconds() > status_timeout_s_) {
+      resumeZeroHold(current_time);
       publishZero();
       publishStatus("SAFETY_HOLD", "gate_status_stale");
       return;
     }
     if (!poseFresh()) {
+      resumeZeroHold(current_time);
       publishZero();
       publishStatus("SAFETY_HOLD", "pose_missing_or_stale");
       return;
     }
     if ((current_time - last_candidate_time_).seconds() > candidate_timeout_s_) {
+      resumeZeroHold(current_time);
       publishZero();
       publishStatus("SAFETY_HOLD", "candidate_missing_or_stale");
       return;
     }
-    const double total_elapsed = (current_time - episode_start_time_).seconds();
+    if (limit_reached_) {
+      resumeZeroHold(current_time);
+      publishZero();
+      publishStatus("LIMIT_HOLD", recoveryDetail("bounded_recovery_limit_reached"));
+      return;
+    }
+
+    const auto candidate_disposition =
+      ClassifyBoundedRecoveryCandidate(candidate_);
+    if (candidate_disposition ==
+      BoundedRecoveryCandidateDisposition::kZeroHold)
+    {
+      beginZeroHold(current_time);
+      publishZero();
+      publishStatus(
+        "SAFETY_HOLD", recoveryDetail("gate_candidate_zero_hold"));
+      return;
+    }
+    resumeZeroHold(current_time);
+
+    const double total_elapsed = zero_hold_clock_.episodeElapsed(
+      current_time.seconds(), episode_start_time_.seconds());
     if (retry_waiting_) {
       if (total_elapsed >= maximum_total_duration_s_ ||
         cumulative_distance_m_ >= maximum_total_distance_m_)
@@ -205,7 +289,10 @@ private:
         publishStatus("LIMIT_HOLD", recoveryDetail("total_recovery_limit_reached"));
         return;
       }
-      if ((current_time - retry_wait_start_time_).seconds() < retry_pause_s_) {
+      if (zero_hold_clock_.retryElapsed(
+          current_time.seconds(), retry_wait_start_time_.seconds()) <
+        retry_pause_s_)
+      {
         publishZero();
         publishStatus("RETRY_WAIT", recoveryDetail("waiting_for_fresh_candidate"));
         return;
@@ -214,14 +301,20 @@ private:
       attempt_start_time_ = current_time;
       start_pose_ = latest_pose_;
       start_yaw_ = poseYaw(*latest_pose_);
+      attempt_distance_offset_m_ = 0.0;
+      attempt_yaw_offset_rad_ = 0.0;
+      motion_segment_observed_ = false;
+      zero_hold_clock_.resetAttempt();
+      zero_hold_clock_.resetRetry();
       retry_waiting_ = false;
       RCLCPP_WARN(
         get_logger(), "bounded route recovery retry %d/%d",
         current_attempt_, maximum_attempts_);
     }
 
-    const double elapsed = (current_time - attempt_start_time_).seconds();
-    const double distance = displacement();
+    const double elapsed = zero_hold_clock_.attemptElapsed(
+      current_time.seconds(), attempt_start_time_.seconds());
+    const double distance = attemptDistance();
     // HH_260818 - Sum one net displacement per bounded attempt instead of
     // every 20 Hz pose segment. Segment summation turns harmless localization
     // jitter into artificial travel and can exhaust the episode while stopped.
@@ -229,7 +322,7 @@ private:
     const auto limit_action = EvaluateBoundedRecoveryAttempt(
       attempt_limits_, current_attempt_, elapsed, distance, total_elapsed,
       total_distance);
-    if (limit_reached_ || limit_action == BoundedRecoveryAction::kFinalHold) {
+    if (limit_action == BoundedRecoveryAction::kFinalHold) {
       limit_reached_ = true;
       publishZero();
       publishStatus("LIMIT_HOLD", recoveryDetail("bounded_recovery_limit_reached"));
@@ -237,31 +330,47 @@ private:
     }
     if (limit_action == BoundedRecoveryAction::kRetry) {
       cumulative_distance_m_ = total_distance;
+      attempt_distance_offset_m_ = 0.0;
+      attempt_yaw_offset_rad_ = 0.0;
+      motion_segment_observed_ = false;
+      if (latest_pose_.has_value()) {
+        start_pose_ = latest_pose_;
+        start_yaw_ = poseYaw(*latest_pose_);
+      }
       retry_waiting_ = true;
       retry_wait_start_time_ = current_time;
+      zero_hold_clock_.resetRetry();
       publishZero();
       publishStatus("RETRY_WAIT", recoveryDetail("attempt_limit_reached"));
       return;
     }
 
-    const double norm = std::hypot(candidate_.linear.x, candidate_.linear.y);
-    if (norm < 0.02 || std::abs(candidate_.angular.z) > 0.15) {
+    if (candidate_disposition ==
+      BoundedRecoveryCandidateDisposition::kInvalid)
+    {
       publishZero();
       publishStatus("SAFETY_HOLD", "candidate_outside_bounded_twist");
       return;
     }
+    const double norm = std::hypot(candidate_.linear.x, candidate_.linear.y);
     avg_msgs::msg::AvgTwist command = candidate_;
     const double scale = std::min(1.0, maximum_speed_mps_ / norm);
     command.linear.x *= scale;
     command.linear.y *= scale;
     command.angular.z = std::clamp(
       command.angular.z, -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
-    // HH_260805 - After a small heading correction, continue only the reverse
-    // translation. The safety gate evaluates that modified command again.
-    if (yawDisplacement() >= maximum_yaw_change_rad_) {
+    // Keep the whole-attempt yaw envelope, while allowing a correction that
+    // reduces an offset already created by a preceding crab stage.  The old
+    // absolute-only clamp deleted that safe correction and converted it into
+    // a straight reverse command, which the gate then held at exact zero.
+    if (!BoundedRecoveryYawCommandPermitted(
+        signedYawDisplacement(), command.angular.z,
+        maximum_yaw_change_rad_))
+    {
       command.angular.z = 0.0;
     }
     command_publisher_->publish(command);
+    motion_segment_observed_ = true;
     const std::string motion = std::abs(command.linear.y) > std::abs(command.linear.x) ?
       (command.linear.y > 0.0 ? "CRAB_LEFT" : "CRAB_RIGHT") :
       command.angular.z > 1.0e-6 ? "REVERSE_YAW_LEFT" :
@@ -280,9 +389,12 @@ private:
            " attempt=" + std::to_string(current_attempt_) + "/" +
            std::to_string(maximum_attempts_) +
            " total_distance=" +
-           std::to_string(cumulative_distance_m_ + displacement()) +
+           std::to_string(cumulative_distance_m_ + attemptDistance()) +
            " total_elapsed=" +
-           std::to_string((now() - episode_start_time_).seconds());
+           std::to_string(zero_hold_clock_.episodeElapsed(
+             now().seconds(), episode_start_time_.seconds())) +
+           " zero_hold_elapsed=" +
+           std::to_string(zero_hold_clock_.zeroHoldElapsed(now().seconds()));
   }
 
   void publishZero()
@@ -329,6 +441,10 @@ private:
   BoundedRecoveryAttemptLimits attempt_limits_;
   int current_attempt_{0};
   double cumulative_distance_m_{0.0};
+  double attempt_distance_offset_m_{0.0};
+  double attempt_yaw_offset_rad_{0.0};
+  bool motion_segment_observed_{false};
+  BoundedRecoveryZeroHoldClock zero_hold_clock_;
   bool retry_waiting_{false};
   rclcpp::Time last_gate_status_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_candidate_time_{0, 0, RCL_ROS_TIME};

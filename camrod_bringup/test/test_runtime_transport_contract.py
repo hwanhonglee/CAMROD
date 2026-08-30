@@ -89,6 +89,12 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 10.0
     assert (
         defaults["system"][
+            "operator_telemetry_tf_latest_fallback_tolerance_s"
+        ]
+        == 0.0
+    )
+    assert (
+        defaults["system"][
             "operator_telemetry_camera_raw_fallback_enabled"
         ]
         is True
@@ -109,6 +115,10 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
         "'operator_telemetry_stream_rate_hz': "
         "lc['operator_telemetry_stream_rate_hz']"
     ) in bringup_source
+    assert (
+        "'operator_telemetry_tf_latest_fallback_tolerance_s': lc["
+        in bringup_source
+    )
     assert (
         "'operator_telemetry_camera_raw_fallback_enabled': lc["
         in bringup_source

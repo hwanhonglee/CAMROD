@@ -25,6 +25,14 @@ RANGER_MAX_INPUT_TIMEOUT_SEC = 0.35
 RANGER_MIN_WATCHDOG_RATE_HZ = 50.0
 RANGER_MIN_ZERO_PUBLISH_RATE_HZ = 10.0
 RANGER_MAX_UNSUPPORTED_AXIS_TOLERANCE = 1.0e-6
+RANGER_RECOVERY_BREAKAWAY_STATUS_TIMEOUT_SEC = 0.30
+RANGER_RECOVERY_BREAKAWAY_TARGET_MINIMUM_MPS = 0.04
+RANGER_RECOVERY_BREAKAWAY_TARGET_MAXIMUM_MPS = 0.06
+RANGER_RECOVERY_BREAKAWAY_LONGITUDINAL_TOLERANCE_MPS = 1.0e-6
+RECOVERY_BREAKAWAY_OPERATING_STATES = frozenset((
+    "CRAB_LEFT",
+    "CRAB_RIGHT",
+))
 _CONTRACT_ABS_TOLERANCE = 1.0e-12
 
 
@@ -166,6 +174,42 @@ def validate_adapter_timing(
         )
 
 
+def validate_recovery_breakaway_contract(
+    status_timeout_sec,
+    target_minimum_mps,
+    target_maximum_mps,
+):
+    """Reject recovery-authority settings that widen the audited envelope."""
+
+    values = tuple(float(value) for value in (
+        status_timeout_sec,
+        target_minimum_mps,
+        target_maximum_mps,
+    ))
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("recovery breakaway settings must be finite")
+    timeout, target_minimum, target_maximum = values
+    if not 0.0 < timeout <= RANGER_RECOVERY_BREAKAWAY_STATUS_TIMEOUT_SEC:
+        raise ValueError(
+            "recovery status timeout must be in (0, %.2f] s"
+            % RANGER_RECOVERY_BREAKAWAY_STATUS_TIMEOUT_SEC
+        )
+    if target_minimum < RANGER_RECOVERY_BREAKAWAY_TARGET_MINIMUM_MPS:
+        raise ValueError(
+            "recovery target minimum must be >= %.2f m/s"
+            % RANGER_RECOVERY_BREAKAWAY_TARGET_MINIMUM_MPS
+        )
+    if target_maximum > RANGER_RECOVERY_BREAKAWAY_TARGET_MAXIMUM_MPS:
+        raise ValueError(
+            "recovery target maximum must be <= %.2f m/s"
+            % RANGER_RECOVERY_BREAKAWAY_TARGET_MAXIMUM_MPS
+        )
+    if target_minimum > target_maximum:
+        raise ValueError(
+            "recovery target minimum must not exceed target maximum"
+        )
+
+
 @dataclass(frozen=True)
 class MappedCommand:
     """ROS-independent representation of ``ExtendedAckermannDrive``."""
@@ -188,6 +232,63 @@ def stop_command(reason="stop"):
     """Return the canonical fail-closed command."""
 
     return MappedCommand(mode=DriveMode.ACKERMANN, reason=str(reason))
+
+
+def recovery_breakaway_is_authorized(
+    command,
+    operating_state,
+    status_receive_monotonic,
+    now_monotonic,
+    status_timeout_sec=RANGER_RECOVERY_BREAKAWAY_STATUS_TIMEOUT_SEC,
+    target_minimum_mps=RANGER_RECOVERY_BREAKAWAY_TARGET_MINIMUM_MPS,
+    target_maximum_mps=RANGER_RECOVERY_BREAKAWAY_TARGET_MAXIMUM_MPS,
+):
+    """Authorize extra static-scrub torque for one fresh recovery CRAB.
+
+    The authorization is deliberately derived from a separate, short-lived
+    route-recovery status channel.  An ordinary CRAB command, a replayed
+    status, a stop, or a recovery command outside the audited 0.04--0.06 m/s
+    envelope therefore keeps the normal proportional controller unchanged.
+    """
+
+    validate_recovery_breakaway_contract(
+        status_timeout_sec,
+        target_minimum_mps,
+        target_maximum_mps,
+    )
+    if not isinstance(command, MappedCommand):
+        return False
+    if command.mode != DriveMode.CRAB:
+        return False
+    if str(operating_state) not in RECOVERY_BREAKAWAY_OPERATING_STATES:
+        return False
+    try:
+        received = float(status_receive_monotonic)
+        now = float(now_monotonic)
+        speed = abs(float(command.speed))
+        source_linear_x = float(command.source_linear_x)
+        source_linear_y = float(command.source_linear_y)
+        crab_angle = float(command.crab_angle)
+    except (TypeError, ValueError):
+        return False
+    if not all(math.isfinite(value) for value in (
+            received, now, speed, source_linear_x, source_linear_y,
+            crab_angle)):
+        return False
+    age = now - received
+    if age < 0.0 or age > float(status_timeout_sec):
+        return False
+    if not float(target_minimum_mps) <= speed <= float(target_maximum_mps):
+        return False
+    if (abs(source_linear_x)
+            > RANGER_RECOVERY_BREAKAWAY_LONGITUDINAL_TOLERANCE_MPS):
+        return False
+    expected_lateral_sign = (
+        1.0 if operating_state == "CRAB_LEFT" else -1.0)
+    return (
+        expected_lateral_sign * source_linear_y > 0.0
+        and expected_lateral_sign * crab_angle > 0.0
+    )
 
 
 def _clip(value, maximum):

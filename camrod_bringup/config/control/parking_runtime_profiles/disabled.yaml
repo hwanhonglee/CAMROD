@@ -1,0 +1,6 @@
+# Empty final parking overlay used by ordinary CAMROD.
+/parking/reverse_parking_controller:
+  ros__parameters: {}
+
+/parking/apriltag_parking_controller:
+  ros__parameters: {}

@@ -29,6 +29,7 @@ from sensor_msgs.msg import (
     Imu,
     NavSatFix,
     PointCloud2,
+    PointField,
     Range,
 )
 from ublox_msgs.msg import NavCOV, NavPVT, NavRELPOSNED9
@@ -51,6 +52,43 @@ def _finite(values) -> bool:
     return all(math.isfinite(float(value)) for value in values)
 
 
+def _validate_lidar_cloud(contract, message: PointCloud2) -> str:
+    """Validate nonempty source clouds and valid empty obstacle heartbeats."""
+    if not str(message.header.frame_id).strip():
+        return 'LiDAR frame_id is empty'
+    if message.height <= 0 or message.point_step <= 0:
+        return 'LiDAR height/point_step are not positive'
+
+    fields = {field.name.lower(): field for field in message.fields}
+    for name in ('x', 'y', 'z'):
+        field = fields.get(name)
+        if (
+            field is None
+            or field.datatype != PointField.FLOAT32
+            or field.count != 1
+            or field.offset < 0
+            or field.offset + 4 > message.point_step
+        ):
+            return f'LiDAR field {name!r} is not one in-record FLOAT32'
+
+    minimum_row_step = int(message.width) * int(message.point_step)
+    if message.row_step < minimum_row_step:
+        return 'LiDAR row_step is shorter than width * point_step'
+    minimum_payload_size = (
+        (int(message.height) - 1) * int(message.row_step)
+        + minimum_row_step
+    )
+    if len(message.data) < minimum_payload_size:
+        return 'LiDAR payload is shorter than its declared geometry'
+
+    if message.width == 0:
+        if not contract.allow_empty_pointcloud:
+            return 'LiDAR point cloud is empty'
+        if message.row_step != 0 or message.data:
+            return 'empty LiDAR point cloud has nonempty row/payload storage'
+    return ''
+
+
 def validate_message(contract, message) -> str:
     """Return an empty string for a structurally useful live UI payload."""
     if isinstance(message, CompressedImage):
@@ -70,8 +108,8 @@ def validate_message(contract, message) -> str:
             if 'range' not in fields:
                 return 'CARLA radar cloud has no Range field'
             # A fresh zero-detection radar cloud is a valid physical sample.
-        elif message.width * message.height <= 0 or not message.data:
-            return 'LiDAR point cloud is empty'
+        else:
+            return _validate_lidar_cloud(contract, message)
     elif isinstance(message, NavSatFix):
         if not _finite((message.latitude, message.longitude, message.altitude)):
             return 'GNSS coordinates are not finite'
@@ -217,7 +255,14 @@ def inspect_carla_actors(host, port, timeout_seconds, role_name):
     try:
         client = carla.Client(host, int(port))
         client.set_timeout(float(timeout_seconds))
-        actors = client.get_world().get_actors()
+        world = client.get_world()
+        # A fresh Python client starts with snapshot frame 0 even while the
+        # ROS bridge owns and ticks a synchronous CARLA world. In that state
+        # get_actors() returns an empty cached inventory and falsely reports
+        # every live sensor as missing. wait_for_tick() is passive (it does not
+        # advance the simulation) and hydrates the client's first snapshot.
+        world.wait_for_tick(float(timeout_seconds))
+        actors = world.get_actors()
     except Exception as error:  # CARLA raises version-specific RPC classes.
         return (), f'CARLA actor query failed at {host}:{port}: {error}'
 

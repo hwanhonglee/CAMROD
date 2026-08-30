@@ -1,8 +1,9 @@
 #pragma once
 
-// HH_260729 / TODOLIST 11-12 - Reissue only goals that actually aborted during
-// a route-safety hold, after the control gate has remained enabled for a
-// bounded clear delay.
+// HH_260729 / TODOLIST 11-12 - Reissue a retained Nav2 goal after an explicit
+// route-safety hold clears.  Nav2 may remain ACCEPTED/EXECUTING while the
+// command gate performs recovery, so an abort is not required to rebuild the
+// controller/path context from the corrected robot pose.
 
 #include <algorithm>
 #include <optional>
@@ -34,7 +35,9 @@ public:
   void resetForGoal()
   {
     route_hold_seen_ = false;
+    nav_active_ = false;
     nav_aborted_ = false;
+    nav_terminal_ = false;
     gate_enabled_ = false;
     clear_since_sec_.reset();
     reissue_count_ = 0;
@@ -60,28 +63,39 @@ public:
 
   void observeNavAborted()
   {
+    if (nav_terminal_) {
+      return;
+    }
+    nav_active_ = false;
     nav_aborted_ = true;
   }
 
-  void observeNavActiveOrSucceeded()
+  void observeNavActive()
   {
+    if (nav_terminal_) {
+      return;
+    }
+    nav_active_ = true;
     nav_aborted_ = false;
+  }
+
+  void observeNavSucceeded()
+  {
+    suppressTerminalGoal();
   }
 
   void observeNavCanceled()
   {
     // An operator cancellation is authoritative for the retained goal.  Do
-    // not let an earlier route hold/abort pair restart it after a later
+    // not let an earlier route hold/active pair restart it after a later
     // engage transition.  A newly published goal calls resetForGoal().
-    route_hold_seen_ = false;
-    nav_aborted_ = false;
-    gate_enabled_ = false;
-    clear_since_sec_.reset();
+    suppressTerminalGoal();
   }
 
   bool ready(const double now_sec) const
   {
-    if (!config_.enabled || !route_hold_seen_ || !nav_aborted_ || !gate_enabled_ ||
+    if (!config_.enabled || !route_hold_seen_ || (!nav_active_ && !nav_aborted_) ||
+      nav_terminal_ || !gate_enabled_ ||
       !clear_since_sec_.has_value())
     {
       return false;
@@ -102,18 +116,32 @@ public:
     ++reissue_count_;
     last_reissue_sec_ = now_sec;
     route_hold_seen_ = false;
+    nav_active_ = false;
     nav_aborted_ = false;
     clear_since_sec_.reset();
   }
 
   int reissueCount() const {return reissue_count_;}
   bool routeHoldSeen() const {return route_hold_seen_;}
+  bool navActive() const {return nav_active_;}
   bool navAborted() const {return nav_aborted_;}
 
 private:
+  void suppressTerminalGoal()
+  {
+    route_hold_seen_ = false;
+    nav_active_ = false;
+    nav_aborted_ = false;
+    nav_terminal_ = true;
+    gate_enabled_ = false;
+    clear_since_sec_.reset();
+  }
+
   RouteGoalRecoveryConfig config_;
   bool route_hold_seen_{false};
+  bool nav_active_{false};
   bool nav_aborted_{false};
+  bool nav_terminal_{false};
   bool gate_enabled_{false};
   std::optional<double> clear_since_sec_;
   int reissue_count_{0};

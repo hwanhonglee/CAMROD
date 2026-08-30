@@ -219,6 +219,34 @@
     # HH_260805 - Permit only a projected reverse-yaw stage after straight
     # reverse or before a unique safe crab direction becomes available.
     route_safety_auto_recovery_yaw_rate_radps: 0.10
+    # HH_260829 - Use the active route instead of clearance-side heuristics to
+    # choose the bounded escape. Positive CTE is left of the ordered full route;
+    # recovery therefore crabs right until the center tolerance is reached.
+    route_safety_path_relative_recovery_enable: true
+    # The local path remains the <=0.5 s active-route heartbeat, but its first
+    # point may be pruned far ahead on a turn. Compute recovery geometry from
+    # the mission-scoped full route and clear it on every new mission key.
+    route_safety_path_full_route_topic: "/planning/global_path_avg"
+    # The 5 cm value is also the minimum verified full-route CTE improvement
+    # before a planning-footprint-limited crab may settle at zero and begin the
+    # existing 1.5 s lanelet-clear proof. That handoff also requires the heading
+    # tolerance below. Physical/dynamic/stale blocks never qualify for it.
+    # Inward crab projection is derived from |CTE| and its world-frame inward
+    # rate, clamped to [0.05 m, the configured 0.25 m recovery horizon], so the
+    # endpoint proof targets route center instead of crossing to the opposite
+    # boundary. Reverse and reverse-yaw retain the complete 0.25 m horizon.
+    route_safety_path_center_tolerance_m: 0.05
+    # Once centered, retain zero through this wider band so localization noise
+    # cannot alternate left/right crab. Crossing 0.08 m explicitly re-enters.
+    route_safety_path_center_reentry_m: 0.08
+    # Lateral centering is always first. Only after entering the center band
+    # does a larger heading error select the projected reverse-yaw sign that
+    # reduces pose-yaw minus path-yaw; at/below 5 deg the gate settles at zero.
+    route_safety_path_heading_tolerance_deg: 5.0
+    # Missing, stale, frame-invalid, or remote local-path evidence is a zero
+    # command and cannot advance the 1.5 s route-clear handoff proof.
+    route_safety_path_max_age_s: 0.5
+    route_safety_path_max_distance_m: 1.5
     # HH_260803 - Lanelet raster is static/route-scoped and slower than the
     # 1 s dynamic obstacle grid; pose freshness remains independently 0.5 s.
     route_safety_lanelet_grid_max_age_s: 12.0
@@ -313,6 +341,10 @@
     # HH_260807 - Keep standalone control and full bringup on the same 2 km/h
     # profile: the active raw 1.111111 m/s cruise is halved at the final gate.
     speed_scale: 0.5
+    # Disabled for production. External simulator compositions may opt in to
+    # final Nav2 mode-boundary stabilization without changing manual,
+    # maneuver, CRAB, or ZERO_TURN commands.
+    navigation_minimum_ackermann_turn_radius_m: 0.0
     input_timeout_s: 0.35
     zero_publish_rate_hz: 10.0
     # HH_260806 - Hold only when an explicit zero-turn/crab owner releases
