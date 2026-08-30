@@ -21,7 +21,7 @@ from avg_msgs.msg import (  # noqa: E402
     ModuleState,
     MotionOperation,
 )
-from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
+from camrod_ui.ui_backend_node import ApiState, UiBackendNode  # noqa: E402
 
 
 class _FakeLogger:
@@ -102,6 +102,23 @@ class _FakeThread:
         self.alive = False
 
 
+class _ForceExitThread:
+    """Model uvicorn 0.15 waiting for a connection until force_exit."""
+
+    def __init__(self, server) -> None:
+        self.server = server
+        self.alive = True
+        self.join_timeouts = []
+
+    def is_alive(self) -> bool:
+        return self.alive
+
+    def join(self, timeout: float) -> None:
+        self.join_timeouts.append(timeout)
+        if self.server.force_exit:
+            self.alive = False
+
+
 class _FakeTimer:
 
     def __init__(self, period_s: float, callback) -> None:
@@ -157,10 +174,16 @@ class UiBackendStopTest(unittest.TestCase):
             _active_mission_site="B8",
             _latest_service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
             _latest_platform_is_charging=False,
+            publish_mission_engage_from_destination=True,
             planning_return_to_drop_zone_topic=(
                 "/planning/state_machine/return_to_drop_zone"
             ),
             pub_planning_return_to_drop_zone=Publisher(),
+            _publish_mission_engage=(
+                lambda enabled, source: events.append(
+                    ("mission_engage", enabled, source)
+                )
+            ),
             _publish_camping_site_maneuver_controller_return=(
                 lambda source: events.append(("site_exit", source))
             ),
@@ -178,8 +201,63 @@ class UiBackendStopTest(unittest.TestCase):
         action = UiBackendNode._request_return_to_drop_zone(backend, "test:manual")
 
         self.assertEqual(action, "site_exit_then_return")
-        self.assertEqual([event[0] for event in events], ["site_exit", "state"])
-        self.assertEqual(events[1][1], AvgServiceState.RETURNING_TO_DROP_ZONE)
+        self.assertEqual(
+            events,
+            [
+                ("mission_engage", True, "test:manual:site_exit_resume"),
+                ("site_exit", "test:manual:site_exit_first"),
+                (
+                    "state",
+                    AvgServiceState.RETURNING_TO_DROP_ZONE,
+                    "test:manual:site_exit_latched",
+                ),
+            ],
+        )
+
+    def test_manual_site_return_opens_platform_when_mission_engage_is_external(
+        self,
+    ) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _active_mission_site="B12",
+            _latest_service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+            _latest_platform_is_charging=False,
+            publish_mission_engage_from_destination=False,
+            _publish_platform_drive_enable=(
+                lambda enabled, source: events.append(
+                    ("platform_drive_enable", enabled, source)
+                )
+            ),
+            _publish_camping_site_maneuver_controller_return=(
+                lambda source: events.append(("site_exit", source))
+            ),
+            _publish_service_state=(
+                lambda state, source: events.append(("state", state, source))
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:external_engage"
+        )
+
+        self.assertEqual(action, "site_exit_then_return")
+        self.assertEqual(
+            events,
+            [
+                (
+                    "platform_drive_enable",
+                    True,
+                    "test:external_engage:site_exit_resume",
+                ),
+                ("site_exit", "test:external_engage:site_exit_first"),
+                (
+                    "state",
+                    AvgServiceState.RETURNING_TO_DROP_ZONE,
+                    "test:external_engage:site_exit_latched",
+                ),
+            ],
+        )
 
     def test_manual_return_during_normal_travel_preempts_with_planning_recall(self) -> None:
         events = []
@@ -1503,7 +1581,7 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertLess(destroy_index, shutdown_index)
 
     def test_http_server_is_stopped_before_node_destruction(self) -> None:
-        server = SimpleNamespace(should_exit=False)
+        server = SimpleNamespace(should_exit=False, force_exit=False)
         loop = _FakeLoop()
         thread = _FakeThread()
         backend = SimpleNamespace(
@@ -1518,8 +1596,36 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertTrue(backend._server_stop_requested.is_set())
         self.assertTrue(server.should_exit)
+        self.assertFalse(server.force_exit)
         self.assertEqual(loop.wake_calls, 1)
         self.assertEqual(thread.join_timeouts, [1.25])
+
+    def test_http_server_forces_only_connection_stuck_after_grace_period(self) -> None:
+        server = SimpleNamespace(should_exit=False, force_exit=False)
+        loop = _FakeLoop()
+        thread = _ForceExitThread(server)
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _server_stop_requested=threading.Event(),
+            _uvicorn_server=server,
+            _main_loop=loop,
+            _server_thread=thread,
+            get_logger=lambda: logger,
+        )
+
+        UiBackendNode._stop_fastapi_server(
+            backend,
+            join_timeout_s=0.25,
+            force_join_timeout_s=0.5,
+        )
+
+        self.assertTrue(backend._server_stop_requested.is_set())
+        self.assertTrue(server.should_exit)
+        self.assertTrue(server.force_exit)
+        self.assertEqual(loop.wake_calls, 2)
+        self.assertEqual(thread.join_timeouts, [0.25, 0.5])
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(logger.warning_messages, [])
 
     def test_cancel_uses_rclpy_call_async_and_cancels_every_motion_owner(self) -> None:
         backend = _FakeBackend()
@@ -1578,6 +1684,100 @@ class UiBackendStopTest(unittest.TestCase):
                 )
             ],
         )
+
+    def test_reconnect_service_payload_restores_active_arrival_site(self) -> None:
+        for service_state in (
+            AvgServiceState.UNLOAD_WAIT,
+            AvgServiceState.WAITING_FOR_RETURN_REQUEST,
+        ):
+            with self.subTest(service_state=int(service_state)):
+                backend = SimpleNamespace(
+                    _active_mission_site="B12",
+                    _state=ApiState(
+                        service_state=int(service_state),
+                        service_state_name="ARRIVAL_WAIT",
+                        service_state_description="Waiting at B12",
+                        # The destination can be cleared before the arrival edge.
+                        destination={"site": "", "run": False},
+                    ),
+                )
+
+                payload = UiBackendNode._service_state_payload_locked(backend)
+
+                self.assertEqual(payload["destination"], {"site": "", "run": False})
+                self.assertEqual(payload["site"], "B12")
+                self.assertEqual(payload["arrived"], "B12")
+
+    def test_reconnect_service_payload_falls_back_to_running_destination(self) -> None:
+        backend = SimpleNamespace(
+            _active_mission_site="",
+            _state=ApiState(
+                service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+                destination={"site": "B8", "run": True},
+            ),
+        )
+
+        payload = UiBackendNode._service_state_payload_locked(backend)
+
+        self.assertEqual(payload["site"], "B8")
+        self.assertEqual(payload["arrived"], "B8")
+
+    def test_non_arrival_service_payload_does_not_reopen_arrival_modal(self) -> None:
+        backend = SimpleNamespace(
+            _active_mission_site="B12",
+            _state=ApiState(
+                service_state=int(AvgServiceState.RETURN_WITH_CARGO),
+                destination={"site": "B12", "run": True},
+            ),
+        )
+
+        payload = UiBackendNode._service_state_payload_locked(backend)
+
+        self.assertEqual(payload["destination"], {"site": "B12", "run": True})
+        self.assertNotIn("site", payload)
+        self.assertNotIn("arrived", payload)
+
+    def test_http_snapshot_includes_same_active_arrival_context(self) -> None:
+        backend = SimpleNamespace(
+            _active_mission_site="B6",
+            _lock=threading.Lock(),
+            _state=ApiState(
+                service_state=int(AvgServiceState.UNLOAD_WAIT),
+                service_state_name="UNLOAD_WAIT",
+                service_state_description="Unload wait",
+                destination={"site": "", "run": False},
+            ),
+            _low_battery_return_pending=False,
+            _low_battery_return_started=False,
+            _low_battery_return_wait_notified=False,
+            _charging_departure_delay_pending=False,
+            charging_departure_delay_s=7.0,
+            low_battery_return_threshold_percent=35,
+        )
+
+        snapshot = UiBackendNode._snapshot(backend)
+
+        self.assertEqual(snapshot["destination"], {"site": "", "run": False})
+        self.assertEqual(snapshot["site"], "B6")
+        self.assertEqual(snapshot["arrived"], "B6")
+
+    def test_websocket_initial_state_uses_reconnect_service_payload(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+        initial_state = source.split("# Send initial state on connect.", 1)[1].split(
+            "try:", 1
+        )[0]
+
+        self.assertIn(
+            "service_payload = node._service_state_payload_locked()",
+            initial_state,
+        )
+        self.assertIn("await ws.send_json(service_payload)", initial_state)
 
     def test_battery_rejected_destination_does_not_become_active_site(self) -> None:
         metrics = _FakeServiceMetrics()

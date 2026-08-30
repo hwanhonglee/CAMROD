@@ -67,7 +67,7 @@ from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, Image as RosImage, Imu, NavSatFix, PointCloud2, Range
 from std_msgs.msg import String
-from tf2_ros import Buffer, TransformListener
+from tf2_ros import Buffer, ExtrapolationException, TransformListener
 from ublox_msgs.msg import NavCOV, NavPVT, NavRELPOSNED9
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -299,12 +299,29 @@ def _decimate_xy(points: List[tuple[float, float]], limit: int) -> List[List[flo
     ]
 
 
+def _transform_xy(
+    x: float,
+    y: float,
+    source_to_target_transform: tuple[float, float, float],
+) -> tuple[float, float]:
+    """Apply a planar TF transform expressed as target translation and yaw."""
+    tx, ty, yaw_rad = source_to_target_transform
+    cos_yaw = math.cos(yaw_rad)
+    sin_yaw = math.sin(yaw_rad)
+    return (
+        tx + cos_yaw * x - sin_yaw * y,
+        ty + sin_yaw * x + cos_yaw * y,
+    )
+
+
 def _sample_pointcloud_xy(
     message: PointCloud2,
     *,
     max_points: int,
     max_abs_xy_m: float,
     map_to_local_pose: Optional[tuple[float, float, float]] = None,
+    source_to_target_transform: Optional[tuple[float, float, float]] = None,
+    filter_before_transform: bool = False,
 ) -> List[List[float]]:
     """Read a bounded x/y subset without materializing the complete point cloud."""
     fields = {field.name: field for field in message.fields}
@@ -336,6 +353,10 @@ def _sample_pointcloud_xy(
             continue
         if not math.isfinite(x) or not math.isfinite(y):
             continue
+        if filter_before_transform and (
+            abs(x) > max_abs_xy_m or abs(y) > max_abs_xy_m
+        ):
+            continue
         if map_to_local_pose is not None:
             origin_x, origin_y, yaw_rad = map_to_local_pose
             delta_x = x - origin_x
@@ -344,7 +365,11 @@ def _sample_pointcloud_xy(
             sin_yaw = math.sin(yaw_rad)
             x = cos_yaw * delta_x + sin_yaw * delta_y
             y = -sin_yaw * delta_x + cos_yaw * delta_y
-        if abs(x) > max_abs_xy_m or abs(y) > max_abs_xy_m:
+        if source_to_target_transform is not None:
+            x, y = _transform_xy(x, y, source_to_target_transform)
+        if not filter_before_transform and (
+            abs(x) > max_abs_xy_m or abs(y) > max_abs_xy_m
+        ):
             continue
         samples.append([round(float(x), 3), round(float(y), 3)])
         if len(samples) >= limit:
@@ -416,6 +441,10 @@ def _marker_array_geometry(
     message: MarkerArray,
     *,
     max_points: int,
+    source_to_target_transforms: Optional[
+        Dict[str, tuple[float, float, float]]
+    ] = None,
+    target_frame_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Flatten RViz marker geometry into bounded browser points and outlines."""
     points: List[List[float]] = []
@@ -440,12 +469,18 @@ def _marker_array_geometry(
         sin_yaw = math.sin(yaw)
         tx = float(marker.pose.position.x)
         ty = float(marker.pose.position.y)
+        marker_frame_id = str(marker.header.frame_id or "").strip()
 
         def transform(x: float, y: float) -> List[float]:
-            return [
-                round(tx + cos_yaw * x - sin_yaw * y, 3),
-                round(ty + sin_yaw * x + cos_yaw * y, 3),
-            ]
+            marker_x = tx + cos_yaw * x - sin_yaw * y
+            marker_y = ty + sin_yaw * x + cos_yaw * y
+            if source_to_target_transforms is not None:
+                marker_x, marker_y = _transform_xy(
+                    marker_x,
+                    marker_y,
+                    source_to_target_transforms[marker_frame_id],
+                )
+            return [round(marker_x, 3), round(marker_y, 3)]
 
         transformed = [
             transform(float(point.x), float(point.y))
@@ -485,7 +520,7 @@ def _marker_array_geometry(
             break
 
     return {
-        "frame_id": frame_id,
+        "frame_id": target_frame_id or frame_id,
         "points": points,
         "polylines": polylines[:limit],
         "point_count": len(points),
@@ -548,6 +583,17 @@ def _encode_raw_image_jpeg(
     # encode must degrade to "no preview", never to a dead backend.
     except (ImportError, AttributeError, OSError, ValueError):
         return None
+
+
+@dataclass
+class _TelemetryPlanarTransform:
+    """Planar TF result plus browser-visible provenance and degradation state."""
+
+    xy_yaw: Optional[tuple[float, float, float]]
+    mode: str
+    age_s: Optional[float]
+    warning: str
+    error: str
 
 
 @dataclass
@@ -1023,6 +1069,19 @@ class UiBackendNode(Node):
             2.0,
             float(self.declare_parameter("telemetry_lidar_max_abs_xy_m", 12.0).value),
         )
+        tf_latest_tolerance = float(
+            self.declare_parameter(
+                "telemetry_tf_latest_fallback_tolerance_s", 0.0
+            ).value
+        )
+        # Exact-time TF remains the production default.  Simulator launch
+        # compositions may opt into a small, explicit bound when independently
+        # reception-stamped sensor and odometry callbacks arrive out of order.
+        self.telemetry_tf_latest_fallback_tolerance_s = (
+            min(0.25, tf_latest_tolerance)
+            if math.isfinite(tf_latest_tolerance) and tf_latest_tolerance > 0.0
+            else 0.0
+        )
         self.telemetry_max_map_points = max(
             500,
             int(self.declare_parameter("telemetry_max_map_points", 6000).value),
@@ -1169,6 +1228,7 @@ class UiBackendNode(Node):
         self._telemetry_last_cloud_decode: Dict[str, float] = defaultdict(float)
         self._telemetry_last_grid_decode: Dict[str, float] = defaultdict(float)
         self._telemetry_last_camera_encode: Dict[str, float] = defaultdict(float)
+        self._telemetry_tf_warning_last: Dict[str, float] = defaultdict(float)
         self._telemetry_last_trace_sample = 0.0
         self._readiness_log_last_sec = 0.0
         self._latest_arrival_pose: Optional[AvgPoseStamped] = None
@@ -1761,7 +1821,20 @@ class UiBackendNode(Node):
             service_metrics.close()
         return super().destroy_node()
 
-    def _stop_fastapi_server(self, join_timeout_s: float = 3.0) -> None:
+    def _stop_fastapi_server(
+        self,
+        join_timeout_s: float = 3.0,
+        force_join_timeout_s: float = 1.0,
+    ) -> None:
+        """Stop uvicorn gracefully, then bound its legacy connection wait.
+
+        Ubuntu 22.04 ships uvicorn 0.15.0.  Its graceful shutdown waits without
+        a timeout while any ASGI connection/task remains registered.  An open
+        operator WebSocket can therefore outlive the first ``should_exit``
+        request even after uvicorn has sent its disconnect event.  Preserve the
+        existing grace period, then use uvicorn's second-signal ``force_exit``
+        path so node destruction never abandons the daemon server thread.
+        """
         self._server_stop_requested.set()
         server = self._uvicorn_server
         if server is not None:
@@ -1782,9 +1855,21 @@ class UiBackendNode(Node):
         ):
             thread.join(timeout=max(0.0, float(join_timeout_s)))
             if thread.is_alive():
-                self.get_logger().warn(
-                    "ui backend fastapi thread did not stop before timeout"
-                )
+                # Equivalent to uvicorn receiving SIGINT/SIGTERM a second time.
+                # In 0.15 this breaks its otherwise unbounded connection/task
+                # loops; FastAPI has no lifespan cleanup handlers in this node.
+                if server is not None:
+                    server.force_exit = True
+                if loop is not None and loop.is_running():
+                    try:
+                        loop.call_soon_threadsafe(lambda: None)
+                    except RuntimeError:
+                        pass
+                thread.join(timeout=max(0.0, float(force_join_timeout_s)))
+                if thread.is_alive():
+                    self.get_logger().warn(
+                        "ui backend fastapi thread did not stop after forced shutdown"
+                    )
 
     def _compute_operation_mode(self, engaged: bool, ready: bool) -> str:
         if engaged and ready:
@@ -2518,6 +2603,157 @@ class UiBackendNode(Node):
         """Compatibility callback for callers using the original filtered name."""
         self._on_telemetry_cloud("filtered", message)
 
+    def _lookup_telemetry_xy_transform(
+        self,
+        *,
+        source_frame_id: str,
+        target_frame_id: str,
+        stamp: Any,
+    ) -> _TelemetryPlanarTransform:
+        """Resolve exact planar TF, with an opt-in bounded future fallback."""
+        source_frame_id = str(source_frame_id or "").strip()
+        target_frame_id = str(target_frame_id or "").strip()
+
+        def unavailable(error: str) -> _TelemetryPlanarTransform:
+            return _TelemetryPlanarTransform(
+                xy_yaw=None,
+                mode="unavailable",
+                age_s=None,
+                warning="",
+                error=error,
+            )
+
+        def planar(transform: Any) -> Optional[tuple[float, float, float]]:
+            translation = transform.transform.translation
+            yaw_deg = _quaternion_yaw_deg(transform.transform.rotation)
+            tx = _finite_or_none(translation.x)
+            ty = _finite_or_none(translation.y)
+            if tx is None or ty is None or yaw_deg is None:
+                return None
+            return (tx, ty, math.radians(yaw_deg))
+
+        if not source_frame_id:
+            return unavailable("source frame_id is empty")
+        if not target_frame_id:
+            return unavailable("target frame_id is empty")
+        if source_frame_id == target_frame_id:
+            return _TelemetryPlanarTransform(
+                xy_yaw=(0.0, 0.0, 0.0),
+                mode="exact",
+                age_s=0.0,
+                warning="",
+                error="",
+            )
+        try:
+            requested_time = Time.from_msg(stamp)
+        except Exception as exc:  # noqa: BLE001 - malformed ROS stamps vary.
+            return unavailable(f"invalid source timestamp: {type(exc).__name__}: {exc}")
+        if requested_time.nanoseconds <= 0:
+            return unavailable("source timestamp is zero; exact TF is required")
+        try:
+            transform = self._tf_buffer.lookup_transform(
+                target_frame_id,
+                source_frame_id,
+                requested_time,
+            )
+            xy_yaw = planar(transform)
+            if xy_yaw is None:
+                return unavailable("exact TF contains a non-finite planar transform")
+            return _TelemetryPlanarTransform(
+                xy_yaw=xy_yaw,
+                mode="exact",
+                age_s=0.0,
+                warning="",
+                error="",
+            )
+        except ExtrapolationException as exact_exc:
+            tolerance_s = float(
+                getattr(self, "telemetry_tf_latest_fallback_tolerance_s", 0.0)
+            )
+            if tolerance_s <= 0.0:
+                return unavailable(f"{type(exact_exc).__name__}: {exact_exc}")
+
+            # Time() requests the latest common time in the complete chain.
+            # It is used only to classify an exact-time extrapolation as the
+            # observed CARLA future-stamp race; past/stale data is never
+            # promoted to current map geometry.
+            try:
+                latest_transform = self._tf_buffer.lookup_transform(
+                    target_frame_id,
+                    source_frame_id,
+                    Time(),
+                )
+            except Exception as latest_exc:  # noqa: BLE001 - TF2 subclasses vary.
+                return unavailable(
+                    f"{type(exact_exc).__name__}: {exact_exc}; latest TF failed: "
+                    f"{type(latest_exc).__name__}: {latest_exc}"
+                )
+
+            try:
+                latest_time = Time.from_msg(latest_transform.header.stamp)
+            except Exception as latest_stamp_exc:  # noqa: BLE001
+                return unavailable(
+                    "latest TF has an invalid timestamp: "
+                    f"{type(latest_stamp_exc).__name__}: {latest_stamp_exc}"
+                )
+            if latest_time.nanoseconds <= 0:
+                return unavailable("latest TF timestamp is zero; fallback refused")
+
+            lag_s = (
+                requested_time.nanoseconds - latest_time.nanoseconds
+            ) / 1_000_000_000.0
+            if lag_s <= 0.0:
+                return unavailable(
+                    "exact TF extrapolation is not a future-stamp race: latest "
+                    f"TF is {-lag_s:.6f} s newer than the source timestamp"
+                )
+            if lag_s > tolerance_s:
+                return unavailable(
+                    f"latest TF lags the source timestamp by {lag_s:.6f} s, "
+                    f"exceeding the {tolerance_s:.6f} s fallback tolerance"
+                )
+
+            xy_yaw = planar(latest_transform)
+            if xy_yaw is None:
+                return unavailable("latest TF contains a non-finite planar transform")
+            age_s = round(lag_s, 6)
+            return _TelemetryPlanarTransform(
+                xy_yaw=xy_yaw,
+                mode="latest_fallback",
+                age_s=age_s,
+                warning=(
+                    "exact-time TF was ahead of the latest dynamic transform; "
+                    f"using bounded latest TF {age_s:.6f} s behind"
+                ),
+                error="",
+            )
+        except Exception as exc:  # noqa: BLE001 - TF2 exceptions vary by distro.
+            return unavailable(f"{type(exc).__name__}: {exc}")
+
+    def _warn_telemetry_tf_failure(
+        self,
+        *,
+        stream: str,
+        source_frame_id: str,
+        target_frame_id: str,
+        error: str,
+    ) -> None:
+        """Log actionable TF failures without flooding the ROS console."""
+        now = time.monotonic()
+        key = f"{stream}:{source_frame_id}->{target_frame_id}"
+        warning_times = getattr(self, "_telemetry_tf_warning_last", None)
+        if warning_times is None:
+            warning_times = defaultdict(float)
+            self._telemetry_tf_warning_last = warning_times
+        if now - warning_times[key] < 5.0:
+            return
+        warning_times[key] = now
+        self.get_logger().warning(
+            "operator telemetry TF unavailable: "
+            f"stream={stream} source={source_frame_id or '<empty>'} "
+            f"target={target_frame_id or '<empty>'} error={error}"
+        )
+
     def _on_telemetry_cloud(self, stream: str, message: PointCloud2) -> None:
         now = time.monotonic()
         if (
@@ -2526,27 +2762,47 @@ class UiBackendNode(Node):
         ):
             return
         self._telemetry_last_cloud_decode[stream] = now
-        map_to_local_pose = None
-        with self._lock:
-            current_pose = dict(self._telemetry["localization"]["pose"])
-        if stream != "obstacles" and message.header.frame_id == "map":
-            pose_x = _finite_or_none(current_pose.get("x"))
-            pose_y = _finite_or_none(current_pose.get("y"))
-            pose_yaw = _finite_or_none(current_pose.get("yaw_deg"))
-            if pose_x is not None and pose_y is not None and pose_yaw is not None:
-                map_to_local_pose = (pose_x, pose_y, math.radians(pose_yaw))
-        points = _sample_pointcloud_xy(
-            message,
-            max_points=self.telemetry_max_lidar_points,
-            max_abs_xy_m=self.telemetry_lidar_max_abs_xy_m,
-            map_to_local_pose=map_to_local_pose,
+        source_frame_id = str(message.header.frame_id or "").strip()
+        target_frame_id = (
+            "map" if stream == "obstacles" else "robot_center_link"
         )
+        transform_result = self._lookup_telemetry_xy_transform(
+            source_frame_id=source_frame_id,
+            target_frame_id=target_frame_id,
+            stamp=message.header.stamp,
+        )
+        source_to_target = transform_result.xy_yaw
+        if source_to_target is None:
+            self._warn_telemetry_tf_failure(
+                stream=f"cloud.{stream}",
+                source_frame_id=source_frame_id,
+                target_frame_id=target_frame_id,
+                error=transform_result.error,
+            )
+            points: List[List[float]] = []
+        else:
+            points = _sample_pointcloud_xy(
+                message,
+                max_points=self.telemetry_max_lidar_points,
+                max_abs_xy_m=self.telemetry_lidar_max_abs_xy_m,
+                source_to_target_transform=source_to_target,
+                # Map coordinates are usually much larger than the local
+                # display radius. Bound obstacle samples in their sensor frame
+                # before applying map<-sensor, then publish the map result.
+                filter_before_transform=(target_frame_id == "map"),
+            )
         payload = {
-            "frame_id": (
-                "robot_center_link" if map_to_local_pose is not None
-                else message.header.frame_id
-            ),
-            "source_frame_id": message.header.frame_id,
+            # Never label untransformed sensor coordinates as a browser target
+            # frame. An empty frame plus the explicit target/error keeps the UI
+            # from rendering plausible-looking but spatially false evidence.
+            "frame_id": target_frame_id if source_to_target is not None else "",
+            "source_frame_id": source_frame_id,
+            "target_frame_id": target_frame_id,
+            "transform_available": source_to_target is not None,
+            "transform_mode": transform_result.mode,
+            "transform_age_s": transform_result.age_s,
+            "transform_warning": transform_result.warning,
+            "transform_error": transform_result.error,
             "points": points,
             "point_count": int(message.width) * max(1, int(message.height)),
             "sample_count": len(points),
@@ -2636,10 +2892,98 @@ class UiBackendNode(Node):
             self._touch_telemetry_locked(f"camera.{camera}.raw", now)
 
     def _on_telemetry_obstacle_boxes(self, message: MarkerArray) -> None:
-        geometry = _marker_array_geometry(
-            message,
-            max_points=self.telemetry_max_grid_cells,
+        active_markers = [
+            marker for marker in message.markers
+            if marker.action not in {Marker.DELETE, Marker.DELETEALL}
+        ]
+        source_frames = sorted({
+            str(marker.header.frame_id or "").strip()
+            for marker in active_markers
+        })
+        transforms: Dict[str, tuple[float, float, float]] = {}
+        transform_results: Dict[str, _TelemetryPlanarTransform] = {}
+        failed_transform: Optional[_TelemetryPlanarTransform] = None
+        for source_frame_id in source_frames:
+            marker = next(
+                marker for marker in active_markers
+                if str(marker.header.frame_id or "").strip() == source_frame_id
+            )
+            transform_result = self._lookup_telemetry_xy_transform(
+                source_frame_id=source_frame_id,
+                target_frame_id="map",
+                stamp=marker.header.stamp,
+            )
+            source_to_map = transform_result.xy_yaw
+            if source_to_map is None:
+                failed_transform = transform_result
+                self._warn_telemetry_tf_failure(
+                    stream="obstacle_boxes",
+                    source_frame_id=source_frame_id,
+                    target_frame_id="map",
+                    error=transform_result.error,
+                )
+                break
+            transforms[source_frame_id] = source_to_map
+            transform_results[source_frame_id] = transform_result
+
+        transform_available = not active_markers or (
+            failed_transform is None and len(transforms) == len(source_frames)
         )
+        if transform_available:
+            geometry = _marker_array_geometry(
+                message,
+                max_points=self.telemetry_max_grid_cells,
+                source_to_target_transforms=transforms if active_markers else None,
+                target_frame_id="map",
+            )
+        else:
+            geometry = {
+                "frame_id": "",
+                "points": [],
+                "polylines": [],
+                "point_count": 0,
+                "outline_count": 0,
+                "cleared": False,
+            }
+        if not active_markers:
+            transform_mode = "not_required"
+            transform_age_s: Optional[float] = 0.0
+            transform_warning = ""
+            transform_error = ""
+        elif failed_transform is not None:
+            transform_mode = failed_transform.mode
+            transform_age_s = failed_transform.age_s
+            transform_warning = failed_transform.warning
+            transform_error = failed_transform.error
+        else:
+            transform_mode = (
+                "latest_fallback"
+                if any(
+                    result.mode == "latest_fallback"
+                    for result in transform_results.values()
+                )
+                else "exact"
+            )
+            transform_age_s = max(
+                result.age_s or 0.0 for result in transform_results.values()
+            )
+            transform_warning = "; ".join(
+                result.warning
+                for result in transform_results.values()
+                if result.warning
+            )
+            transform_error = ""
+
+        geometry.update({
+            "source_frame_id": source_frames[0] if len(source_frames) == 1 else "",
+            "source_frame_ids": source_frames,
+            "target_frame_id": "map",
+            "transform_available": transform_available,
+            "transform_mode": transform_mode,
+            "transform_age_s": transform_age_s,
+            "transform_warning": transform_warning,
+            "transform_error": transform_error,
+        })
         with self._lock:
             self._telemetry["perception"]["obstacle_boxes"] = geometry
             self._touch_telemetry_locked("perception.boxes")
@@ -4429,6 +4773,21 @@ class UiBackendNode(Node):
             int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
             int(AvgServiceState.RETURN_WITH_CARGO),
         }:
+            # HH_260830 - Arrival states deliberately disarm both mission
+            # engage and the platform drive gate.  Re-open that authorization
+            # *before* asking the campsite controller to start CRAB_OUT.
+            # _publish_service_state() updates _latest_service_state
+            # synchronously, so relying on the echoed RETURNING_TO_DROP_ZONE
+            # callback skips its edge-triggered re-arm path and leaves every
+            # valid exit command blocked in STANDBY until the 90 s timeout.
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(
+                    True, source=f"{source}:site_exit_resume"
+                )
+            else:
+                self._publish_platform_drive_enable(
+                    True, source=f"{source}:site_exit_resume"
+                )
             self._publish_camping_site_maneuver_controller_return(
                 source=f"{source}:site_exit_first"
             )
@@ -5110,9 +5469,40 @@ class UiBackendNode(Node):
         )
         return payload
 
+    def _service_state_payload_locked(self) -> Dict[str, Any]:
+        """Build reconnect-safe service context while ``_lock`` is held."""
+        destination = dict(self._state.destination)
+        payload: Dict[str, Any] = {
+            "service_state": self._state.service_state,
+            "service_state_name": self._state.service_state_name,
+            "service_state_description": self._state.service_state_description,
+            "destination": destination,
+        }
+
+        # HH_260830 - Arrival notifications are edge-triggered broadcasts.  A
+        # browser reconnecting during unloading or WAIT_RETURN therefore needs
+        # the active site repeated in its initial service payload.  Prefer the
+        # mission latch because the public destination can already have been
+        # cleared by a departure/status acknowledgement.
+        if self._state.service_state in {
+            int(AvgServiceState.UNLOAD_WAIT),
+            int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+        }:
+            active_site = str(
+                getattr(self, "_active_mission_site", "") or ""
+            ).strip()
+            if not active_site and bool(destination.get("run", False)):
+                active_site = str(destination.get("site", "") or "").strip()
+            if active_site:
+                payload["site"] = active_site
+                payload["arrived"] = active_site
+
+        return payload
+
     def _snapshot(self) -> Dict[str, Any]:
         with self._lock:
-            return {
+            service_payload = UiBackendNode._service_state_payload_locked(self)
+            snapshot = {
                 "engaged": self._state.engaged,
                 "ready": self._state.ready,
                 "headlight": self._state.headlight,
@@ -5125,10 +5515,12 @@ class UiBackendNode(Node):
                 "system_health": self._state.system_health,
                 "mission_phase": self._state.mission_phase,
                 "mission_source": self._state.mission_source,
-                "service_state": self._state.service_state,
-                "service_state_name": self._state.service_state_name,
-                "service_state_description": self._state.service_state_description,
-                "destination": dict(self._state.destination),
+                "service_state": service_payload["service_state"],
+                "service_state_name": service_payload["service_state_name"],
+                "service_state_description": service_payload[
+                    "service_state_description"
+                ],
+                "destination": service_payload["destination"],
                 "battery_percentage": self._state.battery_percentage,
                 # HH_260724 - Initial UI snapshots carry the active battery policy state,
                 # not only edge-triggered websocket updates.
@@ -5148,6 +5540,10 @@ class UiBackendNode(Node):
                 "minimum_battery_percentage": self.low_battery_return_threshold_percent,
                 "occupied_sites": list(self._state.occupied_sites),
             }
+            for key in ("site", "arrived"):
+                if key in service_payload:
+                    snapshot[key] = service_payload[key]
+            return snapshot
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
 
@@ -5431,9 +5827,7 @@ class UiBackendNode(Node):
                 system_health = node._state.system_health
                 mission_phase = node._state.mission_phase
                 mission_source = node._state.mission_source
-                service_state = node._state.service_state
-                service_state_name = node._state.service_state_name
-                service_state_description = node._state.service_state_description
+                service_payload = node._service_state_payload_locked()
                 occupied_sites = list(node._state.occupied_sites)
             await ws.send_json({"states": states})
             await ws.send_json({"occupied_sites": occupied_sites})
@@ -5447,11 +5841,7 @@ class UiBackendNode(Node):
             if battery >= 0:
                 await ws.send_json({"battery": battery})
             await ws.send_json({"system_health": system_health})
-            await ws.send_json({
-                "service_state": service_state,
-                "service_state_name": service_state_name,
-                "service_state_description": service_state_description,
-            })
+            await ws.send_json(service_payload)
 
             try:
                 while True:

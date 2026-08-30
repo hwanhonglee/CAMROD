@@ -87,6 +87,16 @@ def generate_launch_description():
         default_value='10.0',
         description='Maximum selected-view WebSocket refresh rate in Hz',
     )
+    operator_telemetry_tf_latest_fallback_tolerance_s_arg = (
+        DeclareLaunchArgument(
+            'operator_telemetry_tf_latest_fallback_tolerance_s',
+            default_value='0.0',
+            description=(
+                'Maximum latest-TF age accepted only after a future exact-time '
+                'extrapolation; zero preserves exact-only production behavior'
+            ),
+        )
+    )
     operator_telemetry_camera_raw_fallback_enabled_arg = DeclareLaunchArgument(
         'operator_telemetry_camera_raw_fallback_enabled',
         default_value='true',
@@ -303,6 +313,12 @@ def generate_launch_description():
                 LaunchConfiguration('operator_telemetry_stream_rate_hz'),
                 value_type=float,
             ),
+            'telemetry_tf_latest_fallback_tolerance_s': ParameterValue(
+                LaunchConfiguration(
+                    'operator_telemetry_tf_latest_fallback_tolerance_s'
+                ),
+                value_type=float,
+            ),
             'telemetry_camera_raw_fallback_enabled': ParameterValue(
                 LaunchConfiguration(
                     'operator_telemetry_camera_raw_fallback_enabled'
@@ -473,6 +489,7 @@ def generate_launch_description():
         ui_port_arg,
         enable_operator_telemetry_arg,
         operator_telemetry_stream_rate_hz_arg,
+        operator_telemetry_tf_latest_fallback_tolerance_s_arg,
         operator_telemetry_camera_raw_fallback_enabled_arg,
         enable_ui_guest_arg,
         guest_host_arg,
