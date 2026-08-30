@@ -1,13 +1,16 @@
 /**:
   ros__parameters:
-    # Single-anchor calibration for the settled physical chassis odometry of
-    # the split-rigid Ranger Blueprint, not its nominal spawn-root transform.
-    # Live 2026-08-27 input (38.726207733154297, -37.281283416748046,
-    # yaw 32.161299682 deg) maps onto lanelet 4584 segment 6 at
-    # (43.8380321740837, -24.779907458655806, yaw 29.360664964 deg).
-    # The distinction matters because this Blueprint's physical body origin is
-    # offset from the actor spawn root. This remains a one-point integration
-    # calibration, not a surveyed global-map alignment.
-    map_offset_x_m: 6.979673792021728
-    map_offset_y_m: 14.34904187519156
-    map_yaw_offset_rad: -0.0488802969776283
+    # Global Woraksan alignment from the authoritative coordinate metadata:
+    #   CARLA XODR tmerc origin: lat=36.84365921662408,
+    #                            lon=128.0926425448933
+    #   CAMROD lanelet LocalCartesian origin: lat=36.8435737,
+    #                                         lon=128.0925646
+    # This SE(2) maps ROS-convention CARLA/XODR odometry into the CAMROD map.
+    # It is not a one-point fit to an arbitrary spawn or a settled actor pose.
+    # A 1 m eastward XODR baseline gives the small meridian-convergence yaw.
+    # The checked-in Ranger spawn is XODR Road 12/lane 2/s=2.0, whose mapped
+    # point (-13.72039181, 43.44193585) is inside lanelet 751, 3.8 m in front
+    # of the drop-zone center and connected to every configured campsite.
+    map_offset_x_m: 6.952184129722062
+    map_offset_y_m: 9.490185712639594
+    map_yaw_offset_rad: 8.142811119961662e-7

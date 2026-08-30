@@ -1,0 +1,26 @@
+# CARLA-only runtime overlay for constrained roadside returns.
+#
+# The production vehicle profile intentionally remains forward-only. Woraksan
+# B11-B13 do not contain Ranger's 180-degree swept envelope, so the simulator
+# composition keeps the outbound body yaw and retraces the inverted Lanelet2
+# route in reverse. RPP must not rotate-to-heading when reversing is enabled.
+controller_server:
+  ros__parameters:
+    RPP:
+      allow_reversing: true
+      use_rotate_to_heading: false
+      # HH_260830 - The B12 -> drop-zone reverse route contains a narrow S bend
+      # at lanelets 2744/2720.  The inherited 1.5..3.5 m velocity-scaled
+      # preview let RPP accelerate to ~0.50 m/s while commanding only
+      # ~0.185 rad/s, although the recorded bend requires ~0.82 rad/m.  Keep
+      # this CARLA-only profile below the measured 0.226 m/s kinematic bound;
+      # production Nav2 values remain in camrod_bringup unchanged.
+      desired_linear_vel: 0.20
+      use_velocity_scaled_lookahead_dist: false
+      lookahead_dist: 0.80
+      min_lookahead_dist: 0.80
+      max_lookahead_dist: 0.80
+      # camrod_carla_full.launch.py applies the CARLA-only unity final-gate
+      # scale, so this bounded 0.20 m/s floor reaches the physical adapter
+      # unchanged. Ordinary CAMROD keeps its production 0.5 scale.
+      regulated_linear_scaling_min_speed: 0.20

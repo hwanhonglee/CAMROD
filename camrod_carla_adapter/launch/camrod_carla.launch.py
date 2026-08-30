@@ -65,6 +65,8 @@ def generate_launch_description():
         adapter_share, "config", "camrod_safety_gate_carla.yaml")
     alignment_config = os.path.join(
         adapter_share, "config", "woraksan_lane_anchor_alignment.yaml")
+    virtual_lanelet_map = os.path.join(
+        adapter_share, "config", "woraksan_carla_lanelet2.osm")
     ekf_sim_config = os.path.join(
         localization_share, "config", "filter", "ekf_sim.yaml")
     gnss_reattach_sim_config = os.path.join(
@@ -92,7 +94,8 @@ def generate_launch_description():
     python_egg_cache = _environment_path(
         "CARLA_PYTHON_EGG_CACHE"
     ) or _environment_path("RANGER_PYTHON_EGG_CACHE")
-    camrod_map_path = _environment_path("CAMROD_LANELET_MAP")
+    camrod_map_path = _environment_path(
+        "CAMROD_LANELET_MAP", default=virtual_lanelet_map)
     alignment_config = _environment_path(
         "CAMROD_MAP_ALIGNMENT_FILE", default=alignment_config
     )

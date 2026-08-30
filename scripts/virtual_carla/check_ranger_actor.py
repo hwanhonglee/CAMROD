@@ -100,6 +100,7 @@ def check_actor(
     attempts = 0
     inventory_polls = 0
     last_endpoint_error = ""
+    last_inventory_detail = "no CARLA actor inventory received"
 
     while time.monotonic() < deadline:
         attempts += 1
@@ -109,18 +110,38 @@ def check_actor(
             remaining = max(0.001, deadline - time.monotonic())
             client.set_timeout(min(1.0, remaining))
             world = client.get_world()
+            snapshot = world.get_snapshot()
+            frame = int(getattr(snapshot, "frame", 0))
             actors = list(world.get_actors())
             inventory_polls += 1
         except Exception as error:
             last_endpoint_error = f"{type(error).__name__}: {error}"
         else:
-            role_actors = []
-            for actor in actors:
-                type_id, actor_role, actor_id = _actor_identity(actor)
-                if actor_role == role_name:
-                    role_actors.append((actor_id, type_id))
+            identities = [_actor_identity(actor) for actor in actors]
+            role_actors = [
+                (actor_id, type_id)
+                for type_id, actor_role, actor_id in identities
+                if actor_role == role_name
+            ]
 
-            if expected_count == 0:
+            if frame <= 0:
+                last_inventory_detail = (
+                    f"snapshot frame={frame} is not synchronized "
+                    f"(actor_count={len(actors)})"
+                )
+            elif expected_count == 0 and not actors:
+                last_inventory_detail = (
+                    f"snapshot frame={frame} returned an empty actor inventory"
+                )
+            elif expected_count == 0 and not any(
+                type_id and actor_id > 0
+                for type_id, _, actor_id in identities
+            ):
+                last_inventory_detail = (
+                    f"snapshot frame={frame} returned no valid actor identities "
+                    f"(actor_count={len(actors)})"
+                )
+            elif expected_count == 0:
                 if not role_actors:
                     return 0
                 identities = ",".join(
@@ -134,7 +155,7 @@ def check_actor(
                     "refusing duplicate spawn. Stop CAMROD and the old spawn "
                     f"stage or restart CARLA before spawning again. {LIFECYCLE_HINT}"
                 )
-            if len(role_actors) == 1:
+            elif len(role_actors) == 1:
                 actor_id, type_id = role_actors[0]
                 if type_id != EXACT_RANGER_BLUEPRINT:
                     raise ActorPreflightError(
@@ -150,7 +171,7 @@ def check_actor(
                         f"and repeat the lifecycle. {LIFECYCLE_HINT}"
                     )
                 return actor_id
-            if len(role_actors) > 1:
+            elif len(role_actors) > 1:
                 identities = ",".join(
                     f"{actor_id}:{type_id}"
                     for actor_id, type_id in sorted(role_actors)
@@ -172,6 +193,20 @@ def check_actor(
             f"cannot read CARLA endpoint {endpoint} within "
             f"{timeout_seconds:g}s after {attempts} attempt(s); "
             f"last error: {last_error}. {LIFECYCLE_HINT}"
+        )
+
+    if expected_count == 0:
+        endpoint_detail = ""
+        if last_endpoint_error:
+            endpoint_detail = (
+                f" Last transient endpoint error: {last_endpoint_error}."
+            )
+        raise ActorPreflightError(
+            "CARLA actor inventory did not synchronize before duplicate-spawn "
+            f"validation at {endpoint} after {inventory_polls} poll(s) within "
+            f"{timeout_seconds:g}s; last sample: {last_inventory_detail}. "
+            "A frame-0 or empty inventory is never accepted as proof that no "
+            f"Ranger exists.{endpoint_detail} {LIFECYCLE_HINT}"
         )
 
     endpoint_detail = ""

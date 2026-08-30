@@ -257,8 +257,9 @@ public:
       declare_parameter<double>("pose_jump_reissue_distance_m", 1.5);
     pose_jump_reissue_min_interval_s_ =
       declare_parameter<double>("pose_jump_reissue_min_interval_s", 1.0);
-    // HH_260729 - Recover only a retained goal that Nav2 aborted while the
-    // command gate explicitly reported ROUTE_SAFETY_HOLD.
+    // HH_260729 - Rebuild a retained Nav2 goal/path after the command gate
+    // explicitly transitions through ROUTE_SAFETY_HOLD and back to ENABLED.
+    // Nav2 normally remains EXECUTING while the gate performs recovery.
     route_goal_recovery_config_.enabled = declare_parameter<bool>(
       "reissue_active_goal_after_route_recovery", true);
     route_goal_recovery_status_topic_ = declare_parameter<std::string>(
@@ -586,7 +587,7 @@ private:
     }
     if (latest_status->status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
       active_goal_nav2_succeeded_ = true;
-      route_goal_recovery_.observeNavActiveOrSucceeded();
+      route_goal_recovery_.observeNavSucceeded();
       markActiveGoalReached("nav2_status");
       if (sequential_goal_release_enable_) {
         releasePendingGoalIfReady();
@@ -605,7 +606,7 @@ private:
       latest_status->status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
       latest_status->status == action_msgs::msg::GoalStatus::STATUS_EXECUTING)
     {
-      route_goal_recovery_.observeNavActiveOrSucceeded();
+      route_goal_recovery_.observeNavActive();
     }
   }
 
@@ -615,8 +616,7 @@ private:
       return;
     }
     const bool route_hold = msg->operating_state == "ROUTE_SAFETY_HOLD";
-    const bool gate_enabled =
-      msg->operating_state == "ENABLED" || msg->operating_state == "DEPARTING_CHARGER";
+    const bool gate_enabled = msg->operating_state == "ENABLED";
     route_goal_recovery_.observeRouteHold(route_hold, gate_enabled, now().seconds());
   }
 
@@ -630,7 +630,8 @@ private:
     }
 
     // HH_260729 - Reissue the exact snapped goal and source. It remains the
-    // same mission; only Nav2's aborted action/path context is replaced.
+    // same mission; only Nav2's retained controller/path context is replaced.
+    const bool nav_was_aborted = route_goal_recovery_.navAborted();
     auto goal_pose = active_released_goal_;
     goal_pose.header.stamp = get_clock()->now();
     publishGoalSource(active_goal_policy_source_);
@@ -643,8 +644,9 @@ private:
 
     RCLCPP_WARN(
       get_logger(),
-      "goal_snapper: route safety recovered after Nav2 ABORTED; "
+      "goal_snapper: route safety recovered with Nav2 %s; "
       "reissued retained %s goal (%.2f, %.2f), attempt=%d",
+      nav_was_aborted ? "ABORTED" : "ACCEPTED/EXECUTING",
       active_goal_policy_source_.c_str(),
       goal_pose.pose.position.x, goal_pose.pose.position.y,
       route_goal_recovery_.reissueCount());

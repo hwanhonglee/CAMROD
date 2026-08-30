@@ -5,11 +5,12 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|spawn|camrod|manual|audit-sensors|doctor>
+Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|manual|audit-sensors|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
   bridge    run the standard carla_ros_bridge
+  pacer     pace the gate-bound synchronous bridge at real-time 20 Hz
   spawn     spawn the configured Ranger actor/sensors
   camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
   manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
@@ -17,13 +18,15 @@ Usage: run.sh <commands|server|bridge|spawn|camrod|manual|audit-sensors|doctor>
             prove all 32 CARLA-source/UI sensor streams and 13 actors live
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
-Required order in separate terminals: server -> bridge -> spawn -> camrod.
+Required order in separate terminals: server -> bridge -> pacer -> spawn -> camrod.
 Wait for each preceding stage to report success. The camrod stage refuses to
 start unless exactly one vehicle.ranger.default with CARLA_ROLE_NAME exists.
 After camrod is healthy, the preferred manual control is in the UI Admin >
 Camera tab. Run manual only as a terminal fallback; it sends nothing until the
 operator presses a motion key and never engages the robot. Stop in reverse
-order. The lifecycle subcommands do not publish motion or send a Nav2 goal.
+order except keep pacer alive while stopping bridge: camrod -> spawn -> bridge
+-> pacer -> server. The lifecycle subcommands do not publish vehicle motion or
+send a Nav2 goal; pacer only controls simulation time.
 
 CARLA_RENDER_MODE is one of offscreen (default), onscreen, or nullrhi.
 Rendered modes default to the aligned checked-in full-sensor profile. NullRHI
@@ -72,8 +75,15 @@ server_command() {
     -FullStdOutLogOutput
   )
   case "${CARLA_RENDER_MODE}" in
-    offscreen) SERVER_COMMAND+=( -RenderOffScreen ) ;;
-    onscreen) ;;
+    offscreen)
+      SERVER_COMMAND+=(
+        -RenderOffScreen
+        "-ExecCmds=t.MaxFPS ${CARLA_RENDER_MAX_FPS}"
+      )
+      ;;
+    onscreen)
+      SERVER_COMMAND+=( "-ExecCmds=t.MaxFPS ${CARLA_RENDER_MAX_FPS}" )
+      ;;
     nullrhi) SERVER_COMMAND+=( -nullrhi ) ;;
     *)
       virtual_carla_die \
@@ -85,14 +95,30 @@ server_command() {
 
 bridge_command() {
   BRIDGE_COMMAND=(
-    ros2 launch carla_ros_bridge carla_ros_bridge.launch.py
-    "host:=${CARLA_HOST}"
-    "port:=${CARLA_PORT}"
-    "ego_vehicle_role_name:=${CARLA_ROLE_NAME}"
-    "town:=${CARLA_TOWN}"
-    "synchronous_mode:=${CARLA_SYNCHRONOUS_MODE}"
-    "synchronous_mode_wait_for_vehicle_control_command:=${CARLA_WAIT_FOR_CONTROL_COMMAND}"
-    "fixed_delta_seconds:=${CARLA_FIXED_DELTA_SECONDS}"
+    ros2 run carla_ros_bridge bridge
+    --ros-args
+    --log-level warn
+    -r __node:=carla_ros_bridge
+    -p use_sim_time:=true
+    -p "host:=${CARLA_HOST}"
+    -p "port:=${CARLA_PORT}"
+    -p timeout:=30
+    -p passive:=false
+    -p "ego_vehicle_role_name:=${CARLA_ROLE_NAME}"
+    -p "town:=${CARLA_TOWN}"
+    -p "synchronous_mode:=${CARLA_SYNCHRONOUS_MODE}"
+    -p "synchronous_mode_wait_for_vehicle_control_command:=${CARLA_WAIT_FOR_CONTROL_COMMAND}"
+    -p "fixed_delta_seconds:=${CARLA_FIXED_DELTA_SECONDS}"
+    -p register_all_sensors:=true
+  )
+}
+
+pacer_command() {
+  PACER_COMMAND=(
+    ros2 run camrod_carla_adapter carla_step_pacer
+    --ros-args
+    "-p" "step_period_s:=${CAMROD_CARLA_STEP_PERIOD_SECONDS}"
+    "-p" "expected_fixed_delta_seconds:=${CARLA_FIXED_DELTA_SECONDS}"
   )
 }
 
@@ -198,6 +224,7 @@ require_renderer() {
 validate_render_timing_contract() {
   local synchronous="${CARLA_SYNCHRONOUS_MODE,,}"
   local wait_for_control="${CARLA_WAIT_FOR_CONTROL_COMMAND,,}"
+  local step_pacing="${CAMROD_CARLA_STEP_PACING,,}"
   if [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]]; then
     return 0
   fi
@@ -217,7 +244,15 @@ validate_render_timing_contract() {
       return 1
       ;;
   esac
-  python3 - "${CARLA_FIXED_DELTA_SECONDS}" <<'PY'
+  case "${step_pacing}" in
+    true|1|yes|on) ;;
+    *)
+      virtual_carla_die \
+        "rendered CARLA requires CAMROD_CARLA_STEP_PACING=True so fixed_delta_seconds also runs at 1x wall time"
+      return 1
+      ;;
+  esac
+  python3 - "${CARLA_FIXED_DELTA_SECONDS}" <<'PY' || return 1
 import math
 import sys
 
@@ -231,6 +266,68 @@ if not math.isfinite(delta) or delta <= 0.0 or delta > 0.1:
         "for the rendered 10 Hz sensor contract"
     )
 PY
+
+  python3 - "${CARLA_RENDER_MAX_FPS}" <<'PY' || return 1
+import math
+import sys
+
+try:
+    maximum_fps = float(sys.argv[1])
+except ValueError:
+    maximum_fps = math.nan
+if not math.isfinite(maximum_fps) or maximum_fps < 10.0 or maximum_fps > 60.0:
+    raise SystemExit(
+        "CARLA_RENDER_MAX_FPS must be finite and in [10, 60] so rendered "
+        "sensor output remains usable without saturating the operator GPU"
+    )
+PY
+
+  python3 - "${CARLA_FIXED_DELTA_SECONDS}" \
+    "${CAMROD_CARLA_STEP_PERIOD_SECONDS}" <<'PY' || return 1
+import math
+import sys
+
+try:
+    fixed_delta = float(sys.argv[1])
+    step_period = float(sys.argv[2])
+except ValueError:
+    fixed_delta = step_period = math.nan
+if (
+    not math.isfinite(step_period)
+    or step_period <= 0.0
+    or abs(step_period - fixed_delta) > 1.0e-4
+):
+    raise SystemExit(
+        "CAMROD_CARLA_STEP_PERIOD_SECONDS must match "
+        "CARLA_FIXED_DELTA_SECONDS within 0.0001 s for 1x pacing"
+    )
+PY
+}
+
+validate_step_pacer_ready() {
+  if [[ "${CAMROD_CARLA_STEP_PACING,,}" =~ ^(false|0|no|off)$ ]]; then
+    [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]] && return 0
+    virtual_carla_die "CARLA step pacing cannot be disabled in rendered mode"
+    return 1
+  fi
+
+  local deadline=$((SECONDS + 10)) response="" summary=""
+  while (( SECONDS < deadline )); do
+    response="$(
+      timeout 2s ros2 service call \
+        /virtual_carla/step_pacer/health std_srvs/srv/Trigger '{}' 2>&1
+    )" || true
+    if grep -q 'success=True' <<<"${response}"; then
+      summary="$(grep -o 'message=.*' <<<"${response}" | tail -n 1)"
+      virtual_carla_log "CARLA real-time step pacer ready${summary:+: ${summary}}"
+      return 0
+    fi
+    sleep 0.10
+  done
+  summary="$(tail -n 3 <<<"${response}" | tr '\n' ' ')"
+  virtual_carla_die \
+    "CARLA step pacer is not ready; start './scripts/virtual_carla/run.sh pacer' after bridge and wait for its ready message${summary:+; last response: ${summary}}"
+  return 1
 }
 
 require_common_runtime_files() {
@@ -425,16 +522,130 @@ refuse_hot_respawn() {
 }
 
 validate_no_ranger_actor_present() {
-  local status_code
+  local status_code sync_timeout_seconds="${1:-4}"
   if timeout --signal=INT --kill-after=2s 8s \
-      python3 "${script_dir}/check_ranger_actor.py" \
-        --host "${CARLA_HOST}" \
-        --port "${CARLA_PORT}" \
-        --role-name "${CARLA_ROLE_NAME}" \
-        --accepted-python-egg "${CARLA_PYTHON_EGG}" \
-        --private-egg-cache "${PYTHON_EGG_CACHE}" \
-        --timeout-seconds 4 \
-        --expected-count 0; then
+      env PYTHONDONTWRITEBYTECODE=1 python3 - \
+        "${script_dir}" \
+        "${CARLA_HOST}" \
+        "${CARLA_PORT}" \
+        "${CARLA_ROLE_NAME}" \
+        "${CARLA_PYTHON_EGG}" \
+        "${PYTHON_EGG_CACHE}" \
+        "${sync_timeout_seconds}" <<'PY'
+from pathlib import Path
+import sys
+import time
+
+script_dir = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(script_dir))
+import check_ranger_actor as preflight  # pylint: disable=wrong-import-position
+
+host = sys.argv[2]
+port_text = sys.argv[3]
+role_name = sys.argv[4]
+accepted_egg_path = Path(sys.argv[5])
+private_cache_path = Path(sys.argv[6])
+timeout_text = sys.argv[7]
+
+try:
+    port = int(port_text)
+    timeout_seconds = float(timeout_text)
+    accepted_egg = preflight._regular_file(  # pylint: disable=protected-access
+        accepted_egg_path, "gate-bound CARLA Python egg"
+    )
+    private_cache = preflight._directory(  # pylint: disable=protected-access
+        private_cache_path, "private actor-preflight egg cache"
+    )
+    carla = preflight._load_bound_carla(  # pylint: disable=protected-access
+        accepted_egg, private_cache
+    )
+
+    endpoint = f"{host}:{port}"
+    deadline = time.monotonic() + timeout_seconds
+    client = carla.Client(host, port)
+    polls = 0
+    last_detail = "no CARLA sample received"
+    while time.monotonic() < deadline:
+        polls += 1
+        try:
+            remaining = max(0.001, deadline - time.monotonic())
+            client.set_timeout(min(1.0, remaining))
+            world = client.get_world()
+            snapshot = world.get_snapshot()
+            frame = int(getattr(snapshot, "frame", 0))
+            actors = list(world.get_actors())
+        except Exception as error:  # A transient first connection stays pending.
+            last_detail = f"{type(error).__name__}: {error}"
+        else:
+            identities = [
+                preflight._actor_identity(actor)  # pylint: disable=protected-access
+                for actor in actors
+            ]
+            if frame <= 0:
+                last_detail = (
+                    f"snapshot frame={frame} is not synchronized "
+                    f"(actor_count={len(actors)})"
+                )
+            elif not actors:
+                last_detail = (
+                    f"snapshot frame={frame} returned an empty actor inventory"
+                )
+            elif not any(
+                type_id and actor_id > 0
+                for type_id, _, actor_id in identities
+            ):
+                last_detail = (
+                    f"snapshot frame={frame} returned no valid actor identities "
+                    f"(actor_count={len(actors)})"
+                )
+            else:
+                role_actors = [
+                    (actor_id, type_id)
+                    for type_id, actor_role, actor_id in identities
+                    if actor_role == role_name
+                ]
+                if role_actors:
+                    identity_text = ",".join(
+                        f"{actor_id}:{type_id}"
+                        for actor_id, type_id in sorted(role_actors)
+                    )
+                    raise preflight.ActorPreflightError(
+                        f"found {len(role_actors)} pre-existing actor(s) using "
+                        f"role_name={role_name!r} at {endpoint} "
+                        f"(actor_id:type=[{identity_text}]); refusing duplicate "
+                        "spawn. Stop CAMROD and the old spawn stage or restart "
+                        f"CARLA before spawning again. {preflight.LIFECYCLE_HINT}"
+                    )
+                print(
+                    preflight.format_success(
+                        0, role_name, host, port, False, expected_count=0
+                    )
+                )
+                raise SystemExit(0)
+
+        remaining = deadline - time.monotonic()
+        if remaining > 0.0:
+            time.sleep(min(preflight.ACTOR_POLL_INTERVAL_SECONDS, remaining))
+
+    raise preflight.ActorPreflightError(
+        "CARLA actor inventory did not synchronize before duplicate-spawn "
+        f"validation at {endpoint} after {polls} poll(s) within "
+        f"{timeout_seconds:g}s; last sample: {last_detail}. A frame-0 or empty "
+        "inventory is never accepted as proof that no Ranger exists. "
+        f"{preflight.LIFECYCLE_HINT}"
+    )
+except preflight.ActorPreflightError as error:
+    print(f"[virtual_carla] ERROR: Ranger actor preflight: {error}", file=sys.stderr)
+    raise SystemExit(1) from None
+except Exception as error:  # Unexpected CARLA data must also fail closed.
+    print(
+        "[virtual_carla] ERROR: Ranger actor preflight failed closed: "
+        f"{type(error).__name__}: {error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from None
+PY
+  then
     return 0
   else
     status_code=$?
@@ -715,6 +926,7 @@ case "${subcommand}" in
     virtual_carla_require_var RANGER_CARLA_ROOT
     server_command
     bridge_command
+    pacer_command
     spawn_command
     if [[ -z "${CARLA_PYTHON_EGG_CACHE}" ]]; then
       CARLA_PYTHON_EGG_CACHE='<fresh-empty-absolute-directory>'
@@ -744,6 +956,8 @@ case "${subcommand}" in
       "${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}"
     printf 'export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=%q\n' \
       "${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}"
+    printf 'export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE=%q\n' \
+      "${CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE}"
     printf 'export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ=%q\n' \
       "${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}"
     printf 'export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ=%q\n' \
@@ -753,15 +967,21 @@ case "${subcommand}" in
     printf 'export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS=%q\n' \
       "${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}"
     printf 'export CARLA_RENDER_MODE=%q\n\n' "${CARLA_RENDER_MODE}"
+    printf 'export CARLA_RENDER_MAX_FPS=%q\n' "${CARLA_RENDER_MAX_FPS}"
+    printf 'export CAMROD_CARLA_STEP_PACING=%q\n' \
+      "${CAMROD_CARLA_STEP_PACING}"
+    printf 'export CAMROD_CARLA_STEP_PERIOD_SECONDS=%q\n\n' \
+      "${CAMROD_CARLA_STEP_PERIOD_SECONDS}"
     printf '# One-time host setup for fragmented raw camera frames\n'
     printf 'sudo sysctl -w net.core.rmem_max=%q net.core.wmem_max=%q\n' \
       "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}" \
       "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}"
     printf '# Persist both values in /etc/sysctl.d/99-camrod-carla-dds.conf\n\n'
-    printf '# REQUIRED lifecycle order (four terminals)\n'
+    printf '# REQUIRED lifecycle order (five terminals)\n'
     printf '# Wait for each preceding stage to report success before continuing.\n'
     printf '%q server\n' "${script_dir}/run.sh"
     printf '%q bridge\n' "${script_dir}/run.sh"
+    printf '%q pacer\n' "${script_dir}/run.sh"
     printf '%q spawn\n' "${script_dir}/run.sh"
     printf '%q camrod\n\n' "${script_dir}/run.sh"
     printf '# Optional after CAMROD and physical 4WS status are healthy\n'
@@ -773,6 +993,8 @@ case "${subcommand}" in
     print_command "${SERVER_COMMAND[@]}"
     printf '\n# Expanded ROS bridge command (after sourcing validated overlays)\n'
     print_command "${BRIDGE_COMMAND[@]}"
+    printf '\n# Expanded 1x wall-time pacer command\n'
+    print_command "${PACER_COMMAND[@]}"
     printf '\n# Expanded actor spawn command\n'
     print_command "${SPAWN_COMMAND[@]}"
     printf '\n# Expanded CAMROD command; run.sh creates the fresh egg cache\n'
@@ -806,10 +1028,27 @@ case "${subcommand}" in
     virtual_carla_log "starting standard CARLA ROS bridge"
     exec "${BRIDGE_COMMAND[@]}"
     ;;
+  pacer)
+    virtual_carla_require_dds_transport
+    validate_render_timing_contract
+    port_is_listening || virtual_carla_die \
+      "CARLA server is not listening on ${CARLA_HOST}:${CARLA_PORT}"
+    virtual_carla_source_ros true true
+    virtual_carla_verify_package_prefix \
+      carla_msgs "${CARLA_ROS_BRIDGE_WS}/install"
+    virtual_carla_verify_package_prefix \
+      camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
+    pacer_command
+    virtual_carla_log \
+      "acquiring bridge PAUSE and pacing CARLA at 1x wall time; wait for ready before spawn"
+    exec "${PACER_COMMAND[@]}"
+    ;;
   spawn)
     virtual_carla_require_dds_transport
     virtual_carla_verify_external_prefixes
     prepare_ros_carla_python spawn
+    validate_render_timing_contract
+    validate_step_pacer_ready
     virtual_carla_verify_package_prefix \
       carla_spawn_objects "${CARLA_ROS_BRIDGE_WS}/install"
     refuse_hot_respawn
@@ -832,6 +1071,7 @@ case "${subcommand}" in
     validate_runtime_gates
     validate_spawn_file
     validate_render_timing_contract
+    validate_step_pacer_ready
     validate_ranger_actor_ready
     validate_carla_sensor_streams
 
@@ -877,6 +1117,7 @@ case "${subcommand}" in
     validate_runtime_gates
     validate_spawn_file
     validate_ranger_actor_ready
+    validate_step_pacer_ready
     validate_camrod_ui_manual_ready
     validate_physical_bridge_ready
     # Close the actor hot-respawn race between the initial actor preflight and
@@ -903,6 +1144,7 @@ case "${subcommand}" in
     validate_runtime_gates
     validate_spawn_file
     validate_ranger_actor_ready
+    validate_step_pacer_ready
     virtual_carla_log \
       "auditing actual CARLA actor ownership and every UI sensor stream"
     run_sensor_source_audit

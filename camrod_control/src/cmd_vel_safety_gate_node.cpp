@@ -30,12 +30,14 @@
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/planning_mission_key.hpp"
+#include "camrod_control/ackermann_turn_radius_constraint.hpp"
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/drop_zone_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
+#include "camrod_control/path_relative_route_recovery.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
@@ -53,6 +55,12 @@ namespace camrod_control {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+// These strict boundaries mirror camrod_carla_adapter/command_mapping.py.
+// Keeping them local to the opt-in Nav2 finalizer avoids changing production
+// manual/maneuver source classification.
+constexpr double kRangerLateralDeadbandMps = 0.02;
+constexpr double kRangerAngularEpsilonRadps = 1.0e-6;
+constexpr double kMaximumAckermannRadiusCorrectionM = 0.02;
 
 std::string join(const std::vector<std::string> &values,
                  const std::string &separator) {
@@ -115,6 +123,35 @@ routeRecoveryConfigError(const RouteSafetyRecoveryConfig &config,
   if (!std::isfinite(log_interval_s) || log_interval_s < 0.1 ||
       log_interval_s > 60.0) {
     return "route_safety_recovery_log_interval_s must be in [0.1, 60.0]";
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string>
+pathRelativeRecoveryConfigError(const PathRelativeRecoveryConfig &config) {
+  if (!std::isfinite(config.center_tolerance_m) ||
+      config.center_tolerance_m < 0.01 || config.center_tolerance_m > 0.25) {
+    return "route_safety_path_center_tolerance_m must be in [0.01, 0.25]";
+  }
+  if (!std::isfinite(config.center_reentry_m) ||
+      config.center_reentry_m <= config.center_tolerance_m ||
+      config.center_reentry_m > 0.50) {
+    return "route_safety_path_center_reentry_m must be greater than center "
+           "tolerance and at most 0.50";
+  }
+  if (!std::isfinite(config.heading_tolerance_rad) ||
+      config.heading_tolerance_rad < 1.0 * kPi / 180.0 ||
+      config.heading_tolerance_rad > 20.0 * kPi / 180.0) {
+    return "route_safety_path_heading_tolerance_deg must be in [1.0, 20.0]";
+  }
+  if (!std::isfinite(config.path_max_age_s) || config.path_max_age_s < 0.05 ||
+      config.path_max_age_s > 5.0) {
+    return "route_safety_path_max_age_s must be in [0.05, 5.0]";
+  }
+  if (!std::isfinite(config.maximum_relation_distance_m) ||
+      config.maximum_relation_distance_m < 0.10 ||
+      config.maximum_relation_distance_m > 4.0) {
+    return "route_safety_path_max_distance_m must be in [0.10, 4.0]";
   }
   return std::nullopt;
 }
@@ -258,11 +295,9 @@ public:
                 "cmd_vel safety gate ready: maneuver_in=%s nav2_in=%s "
                 "manual_in=%s out=%s driver_out=%s",
                 input_topic_.c_str(), navigation_input_topic_.c_str(),
-                manual_input_topic_.empty()
-                    ? "disabled"
-                    : manual_input_topic_.c_str(),
-                output_topic_.c_str(),
-                ros_output_topic_.c_str());
+                manual_input_topic_.empty() ? "disabled"
+                                            : manual_input_topic_.c_str(),
+                output_topic_.c_str(), ros_output_topic_.c_str());
   }
 
 private:
@@ -321,9 +356,8 @@ private:
     // until physical station exit completes.  Authorize only fresh, healthy
     // progress from the drop-zone controller so charging contact cannot
     // deadlock that exit; planning identity remains a separate concern.
-    drop_zone_departure_authorization_config_.enabled =
-        declare_parameter<bool>("allow_drop_zone_departure_while_charging",
-                                true);
+    drop_zone_departure_authorization_config_.enabled = declare_parameter<bool>(
+        "allow_drop_zone_departure_while_charging", true);
     drop_zone_departure_authorization_config_.heartbeat_timeout_s =
         declare_parameter<double>("drop_zone_departure_status_timeout_s", 2.0);
     drop_zone_departure_authorization_config_.future_tolerance_s =
@@ -412,8 +446,8 @@ private:
                           "cost_stop_classified_source_labels", "fusion"),
                       {"fusion"});
     motion_cost_stop_config_.classified_front_lookahead_m =
-        declare_parameter<double>(
-          "cost_stop_classified_front_lookahead_m", 2.0);
+        declare_parameter<double>("cost_stop_classified_front_lookahead_m",
+                                  2.0);
     // HH_260729 - The radar grid is intentionally kept as one lightweight
     // occupancy grid. Receive its parallel diagnostic provenance so stop logs
     // can identify the exact channel without changing any stop decision.
@@ -624,6 +658,20 @@ private:
         declare_parameter<double>("route_safety_auto_recovery_speed_mps", 0.10);
     route_safety_candidate_yaw_rate_radps_ = declare_parameter<double>(
         "route_safety_auto_recovery_yaw_rate_radps", 0.10);
+    path_relative_recovery_config_.enabled = declare_parameter<bool>(
+        "route_safety_path_relative_recovery_enable", true);
+    path_relative_recovery_config_.center_tolerance_m =
+        declare_parameter<double>("route_safety_path_center_tolerance_m", 0.05);
+    path_relative_recovery_config_.center_reentry_m =
+        declare_parameter<double>("route_safety_path_center_reentry_m", 0.08);
+    path_relative_recovery_config_.heading_tolerance_rad =
+        declare_parameter<double>("route_safety_path_heading_tolerance_deg",
+                                  5.0) *
+        kPi / 180.0;
+    path_relative_recovery_config_.path_max_age_s =
+        declare_parameter<double>("route_safety_path_max_age_s", 0.5);
+    path_relative_recovery_config_.maximum_relation_distance_m =
+        declare_parameter<double>("route_safety_path_max_distance_m", 1.5);
     if (!std::isfinite(route_safety_candidate_speed_mps_) ||
         route_safety_candidate_speed_mps_ < 0.02 ||
         route_safety_candidate_speed_mps_ > 0.10) {
@@ -640,6 +688,10 @@ private:
         motion_cost_stop_config_.min_translation_mps;
     if (const auto error = routeRecoveryConfigError(
             route_safety_recovery_config_, route_safety_log_interval_s_)) {
+      throw std::runtime_error(*error);
+    }
+    if (const auto error =
+            pathRelativeRecoveryConfigError(path_relative_recovery_config_)) {
       throw std::runtime_error(*error);
     }
     route_safety_recovery_.setConfig(route_safety_recovery_config_);
@@ -695,8 +747,8 @@ private:
             "FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,"
             "RETRY_FORWARD_EXIT"),
         {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
-         "final_reverse_insertion", "final_yaw_alignment", "waiting_for_charging",
-         "retry_forward_exit"});
+         "final_reverse_insertion", "final_yaw_alignment",
+         "waiting_for_charging", "retry_forward_exit"});
     motion_cost_stop_config_.parking_lanelet_bypass_phases = parseLabelSet(
         declare_parameter<std::string>(
             "parking_controller_lanelet_bypass_phases",
@@ -706,8 +758,8 @@ private:
             "FINAL_REVERSE_INSERTION,FINAL_YAW_ALIGNMENT,WAITING_FOR_CHARGING,"
             "RETRY_FORWARD_EXIT"),
         {"reverse_approach", "waiting_for_tag", "tag_guided_reverse",
-         "final_reverse_insertion", "final_yaw_alignment", "waiting_for_charging",
-         "retry_forward_exit"});
+         "final_reverse_insertion", "final_yaw_alignment",
+         "waiting_for_charging", "retry_forward_exit"});
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 
@@ -724,6 +776,8 @@ private:
         declare_parameter<bool>("enable_route_heading_alignment", true);
     route_heading_path_topic_ = declare_parameter<std::string>(
         "route_heading_path_topic", "/planning/local_path");
+    route_safety_full_route_topic_ = declare_parameter<std::string>(
+        "route_safety_path_full_route_topic", "/planning/global_path_avg");
     route_heading_frame_id_ =
         declare_parameter<std::string>("route_heading_frame_id", "map");
     route_heading_min_cmd_x_mps_ =
@@ -766,6 +820,15 @@ private:
     publish_zero_when_blocked_ =
         declare_parameter<bool>("publish_zero_when_blocked", true);
     speed_scale_ = declare_parameter<double>("speed_scale", 1.0);
+    navigation_minimum_ackermann_turn_radius_m_ = declare_parameter<double>(
+        "navigation_minimum_ackermann_turn_radius_m", 0.0);
+    if (!std::isfinite(navigation_minimum_ackermann_turn_radius_m_) ||
+        navigation_minimum_ackermann_turn_radius_m_ < 0.0 ||
+        navigation_minimum_ackermann_turn_radius_m_ > 10.0) {
+      throw std::invalid_argument(
+          "navigation_minimum_ackermann_turn_radius_m must be finite and in "
+          "[0, 10]");
+    }
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
     zero_publish_rate_hz_ =
         declare_parameter<double>("zero_publish_rate_hz", 10.0);
@@ -776,8 +839,8 @@ private:
     command_source_arbiter_config_.manual_input_enabled =
         !manual_input_topic_.empty();
     command_source_arbiter_.setConfig(command_source_arbiter_config_);
-    command_source_arbiter_.setEngagement(
-        gate_policy_.manualEnabled(), gate_policy_.missionEnabled());
+    command_source_arbiter_.setEngagement(gate_policy_.manualEnabled(),
+                                          gate_policy_.missionEnabled());
 
     enable_gnss_recovery_hold_ =
         declare_parameter<bool>("enable_gnss_recovery_hold", true);
@@ -863,6 +926,7 @@ private:
                 RouteRecoveryCandidateKind::kNone;
             route_safety_triggered_by_navigation_ = false;
             route_safety_retry_latched_logged_ = false;
+            resetPathRelativeRecoveryState();
           }
           onAuthorizationChanged("manual_engage");
         });
@@ -891,6 +955,7 @@ private:
                 RouteRecoveryCandidateKind::kNone;
             route_safety_triggered_by_navigation_ = false;
             route_safety_retry_latched_logged_ = false;
+            resetPathRelativeRecoveryState();
           }
           onAuthorizationChanged("mission_engage");
         });
@@ -899,6 +964,22 @@ private:
             mission_request_topic_, 10,
             std::bind(&CmdVelSafetyGateNode::onMissionRequest, this,
                       std::placeholders::_1));
+
+    if (route_safety_recovery_config_.enabled) {
+      full_route_subscription_ = create_subscription<avg_msgs::msg::AvgPath>(
+          route_safety_full_route_topic_,
+          rclcpp::QoS(1).reliable().transient_local(),
+          [this](const avg_msgs::msg::AvgPath::SharedPtr message) {
+            latest_full_route_ = *message;
+            if (route_safety_recovery_.active()) {
+              // A replaced route revokes the prior path-relative stage until
+              // the next fully projected candidate is selected.
+              resetPathRelativeRecoveryState();
+              last_path_relative_reason_ = "path_full_route_updated";
+              publishZero();
+            }
+          });
+    }
 
     if (require_platform_drive_enable_) {
       platform_drive_subscription_ =
@@ -1083,11 +1164,13 @@ private:
     }
     if (enable_route_heading_alignment_ ||
         motion_cost_stop_config_.lanelet_front_use_local_path ||
-        motion_cost_stop_config_.dynamic_front_use_local_path) {
+        motion_cost_stop_config_.dynamic_front_use_local_path ||
+        route_safety_recovery_config_.enabled) {
       route_path_subscription_ = create_subscription<avg_msgs::msg::AvgPath>(
           route_heading_path_topic_, 10,
           [this](const avg_msgs::msg::AvgPath::SharedPtr message) {
             latest_path_ = *message;
+            latest_path_receive_sec_ = nowSec();
             motion_cost_stop_.setLocalPath(*message);
           });
     }
@@ -1102,12 +1185,11 @@ private:
         command_source_arbiter_.evaluate(input_source, now_sec);
     if (source_decision == CommandSourceDecision::kIgnore) {
       const std::string source_name =
-          input_source == CommandInputSource::kManual
-              ? "manual"
-              : input_source == CommandInputSource::kNavigation ? "Nav2"
-                                                                : "raw";
-      logCommandSourceHold(
-          source_name + " ignored by active command owner", now_sec);
+          input_source == CommandInputSource::kManual       ? "manual"
+          : input_source == CommandInputSource::kNavigation ? "Nav2"
+                                                            : "raw";
+      logCommandSourceHold(source_name + " ignored by active command owner",
+                           now_sec);
       return;
     }
     // HH_260806 - A command intentionally held during the finite ownership
@@ -1121,6 +1203,9 @@ private:
       return;
     }
     bool opposite_route_recovery = false;
+    bool path_relative_exact_route_recovery = false;
+    std::optional<PathRelativeRecoveryCommandAuthorization>
+        path_relative_command_authorization;
     refreshMotionCostStopPose();
 
     // HH_260729 - Do not let a zero or changed Nav2 command redefine the route
@@ -1137,7 +1222,40 @@ private:
         return;
       }
       if (route_safety_recovery_.active() &&
-          !route_safety_recovery_.permitsProjectedRecoveryCandidate(command)) {
+          path_relative_recovery_config_.enabled) {
+        // Path-relative recovery may have a positive dot product with the
+        // original trigger. It is admitted only as the exact, fresh command
+        // whose full projection was latched by publishRouteSafetyCandidate().
+        // Current/previous handles callback ordering, not arbitrary history;
+        // both remain tied to the active stage and current CTE direction.
+        const auto evidence = currentPathRelativeEvidence(now_sec);
+        path_relative_command_authorization =
+            path_relative_recovery_command_latch_.authorizationForRawCommand(
+                command, latched_route_recovery_candidate_, now_sec,
+                kPathRelativeCommandLatchMaxAgeS);
+        const bool crab_stage = latched_route_recovery_candidate_ ==
+                                    RouteRecoveryCandidateKind::kCrabLeft ||
+                                latched_route_recovery_candidate_ ==
+                                    RouteRecoveryCandidateKind::kCrabRight;
+        const bool current_direction_safe =
+            evidence.has_value() &&
+            (crab_stage ? pathRelativeCommandStrictlyReducesAbsoluteCte(
+                              command, evidence->first, evidence->second)
+                        : pathRelativeCommandDoesNotIncreaseAbsoluteCte(
+                              command, evidence->first, evidence->second));
+        if (!path_relative_recovery_state_.motion_authorized ||
+            !path_relative_command_authorization.has_value() ||
+            !current_direction_safe) {
+          publishZero();
+          logRouteSafetyHold(now_sec);
+          return;
+        }
+        path_relative_exact_route_recovery = true;
+      } else if (route_safety_recovery_.active() &&
+                 !route_safety_recovery_.permitsProjectedRecoveryCandidate(
+                     command)) {
+        // Preserve the generic route-recovery opposite/orthogonal rule when
+        // path-relative recovery is disabled.
         publishZero();
         logRouteSafetyHold(now_sec);
         return;
@@ -1167,31 +1285,77 @@ private:
       return;
     }
 
-    if (const auto yaw_override = applyYawAlignment(command);
-        yaw_override.has_value()) {
-      command = *yaw_override;
-    } else if (appliesRouteHeadingAlignment(input_source)) {
-      if (const auto heading_override = applyRouteHeadingAlignment(command);
-          heading_override.has_value()) {
-        command = *heading_override;
+    // Path-relative selection already owns both lateral and heading stages.
+    // Applying a generic alignment override here would turn a projected exact
+    // command into a different, unprojected one.
+    if (!path_relative_exact_route_recovery) {
+      if (const auto yaw_override = applyYawAlignment(command);
+          yaw_override.has_value()) {
+        command = *yaw_override;
+      } else if (appliesRouteHeadingAlignment(input_source)) {
+        if (const auto heading_override = applyRouteHeadingAlignment(command);
+            heading_override.has_value()) {
+          command = *heading_override;
+        }
       }
     }
 
     // HH_260807 - Collision projection, route-recovery evidence and the
     // published command must describe the same final speed-scaled motion.
-    const auto evaluated_command = scaleCommand(command);
-    if (opposite_route_recovery &&
-        !route_safety_recovery_.permitsProjectedRecoveryCandidate(
-            evaluated_command)) {
-      publishZero();
-      logRouteSafetyHold(now_sec);
-      return;
+    auto evaluated_command = scaleCommand(command);
+    if (navigation_source &&
+        navigation_minimum_ackermann_turn_radius_m_ > 0.0) {
+      // HH_260830 - Shape only the final, speed-scaled Nav2 command.  The
+      // adapter classifies CRAB and ZERO_TURN using absolute final deadbands,
+      // so shaping raw input would disagree whenever speed_scale changes that
+      // classification.  The same finalized command is evaluated and then
+      // published below; manual and maneuver commands retain exact semantics.
+      const auto radius_constraint = constrainAckermannTurnRadius(
+          evaluated_command, navigation_minimum_ackermann_turn_radius_m_,
+          kRangerLateralDeadbandMps, kRangerAngularEpsilonRadps,
+          motion_cost_stop_config_.min_translation_mps,
+          kMaximumAckermannRadiusCorrectionM);
+      if (!radius_constraint.valid) {
+        publishZero();
+        RCLCPP_ERROR_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "non-finite Nav2 command rejected by Ackermann envelope");
+        return;
+      }
+      if (radius_constraint.constrained) {
+        evaluated_command = radius_constraint.command;
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "CARLA Nav2 Ackermann boundary stabilized: radius %.6f -> %.6f "
+            "m, final=(x=%.3f,y=%.3f,wz=%.6f)",
+            radius_constraint.original_radius_m,
+            navigation_minimum_ackermann_turn_radius_m_,
+            evaluated_command.linear.x, evaluated_command.linear.y,
+            evaluated_command.angular.z);
+      }
+    }
+    if (opposite_route_recovery) {
+      const bool evaluated_authorized =
+          path_relative_exact_route_recovery
+              ? path_relative_command_authorization.has_value() &&
+                    pathRelativeTwistExactlyMatches(
+                        evaluated_command,
+                        path_relative_command_authorization->evaluated_command)
+              : route_safety_recovery_.permitsProjectedRecoveryCandidate(
+                    evaluated_command);
+      if (!evaluated_authorized) {
+        publishZero();
+        logRouteSafetyHold(now_sec);
+        return;
+      }
     }
     const auto cost_decision =
         opposite_route_recovery
             ? motion_cost_stop_.evaluateRouteRecoveryCommand(
                   evaluated_command, now_sec,
-                  route_safety_recovery_.oppositeRecoveryProbeDistance(),
+                  routeRecoveryProbeDistanceForCommand(
+                      evaluated_command, latched_route_recovery_candidate_,
+                      now_sec),
                   route_safety_recovery_.poseMaxAge())
             : motion_cost_stop_.evaluate(evaluated_command, now_sec);
     const bool route_hold_started = route_safety_recovery_.observeViolation(
@@ -1206,6 +1370,7 @@ private:
     if (route_hold_started) {
       route_safety_triggered_by_navigation_ = navigation_source;
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+      resetPathRelativeRecoveryState();
       if (route_safety_recovery_.automaticReleaseBlocked()) {
         route_safety_retry_latched_logged_ = true;
         RCLCPP_ERROR(
@@ -1274,6 +1439,7 @@ private:
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
       route_safety_triggered_by_navigation_ = false;
       route_safety_retry_latched_logged_ = false;
+      resetPathRelativeRecoveryState();
       motion_cost_stop_.clearTransientHold();
       last_route_safety_log_sec_ = -1.0e9;
       publishZero();
@@ -1304,6 +1470,132 @@ private:
     RCLCPP_INFO(get_logger(), "cmd_vel source arbitration: %s", reason.c_str());
   }
 
+  using PathRelativeEvidence = std::pair<PlanarPose, PathRelativeRouteRelation>;
+
+  std::optional<PathRelativeEvidence>
+  currentPathRelativeEvidence(const double now_sec,
+                              std::string *reason = nullptr) {
+    const auto fail = [reason](const std::string &detail) {
+      if (reason != nullptr) {
+        *reason = detail;
+      }
+      return std::optional<PathRelativeEvidence>{};
+    };
+    if (!latest_path_.has_value()) {
+      return fail("path_relative_local_path_missing");
+    }
+    const double path_age_s = now_sec - latest_path_receive_sec_;
+    if (latest_path_receive_sec_ <= 0.0 || !std::isfinite(path_age_s) ||
+        path_age_s < 0.0 ||
+        path_age_s > path_relative_recovery_config_.path_max_age_s) {
+      return fail("path_relative_local_path_stale");
+    }
+    if (latest_path_->poses.size() < 2U) {
+      return fail("path_relative_local_path_insufficient_points");
+    }
+    const std::string local_path_frame = latest_path_->header.frame_id;
+    if (local_path_frame.empty()) {
+      return fail("path_relative_local_path_frame_missing");
+    }
+    const bool local_path_finite =
+        std::all_of(latest_path_->poses.begin(), latest_path_->poses.end(),
+                    [](const avg_msgs::msg::AvgPoseStamped &route_pose) {
+                      return std::isfinite(route_pose.pose.position.x) &&
+                             std::isfinite(route_pose.pose.position.y);
+                    });
+    if (!local_path_finite) {
+      return fail("path_relative_local_path_nonfinite");
+    }
+    if (!latest_full_route_.has_value()) {
+      return fail("path_relative_full_route_missing_for_current_mission");
+    }
+    if (latest_full_route_->poses.size() < 2U) {
+      return fail("path_relative_full_route_insufficient_points");
+    }
+    const std::string path_frame = latest_full_route_->header.frame_id;
+    if (path_frame.empty()) {
+      return fail("path_relative_full_route_frame_missing");
+    }
+    if (local_path_frame != path_frame) {
+      return fail("path_relative_local_and_full_route_frame_mismatch");
+    }
+    const bool full_route_finite = std::all_of(
+        latest_full_route_->poses.begin(), latest_full_route_->poses.end(),
+        [](const avg_msgs::msg::AvgPoseStamped &route_pose) {
+          return std::isfinite(route_pose.pose.position.x) &&
+                 std::isfinite(route_pose.pose.position.y);
+        });
+    if (!full_route_finite) {
+      return fail("path_relative_full_route_nonfinite");
+    }
+    const auto pose = resolvePose(path_frame);
+    if (!pose.has_value()) {
+      return fail("path_relative_pose_missing_or_untransformable");
+    }
+    const double pose_age_s = now_sec - pose->observation_sec;
+    if (pose->observation_sec <= 0.0 || !std::isfinite(pose_age_s) ||
+        pose_age_s < 0.0 || pose_age_s > route_safety_recovery_.poseMaxAge()) {
+      return fail("path_relative_pose_stale");
+    }
+    if (pose->frame_id.empty() || pose->frame_id != path_frame) {
+      return fail("path_relative_pose_frame_mismatch");
+    }
+    const auto relation = nearestPathRelativeRouteRelation(
+        *latest_full_route_, *pose,
+        path_relative_recovery_config_.maximum_relation_distance_m);
+    if (!relation.valid) {
+      return fail(relation.reason);
+    }
+    if (reason != nullptr) {
+      *reason = relation.reason;
+    }
+    return PathRelativeEvidence{*pose, relation};
+  }
+
+  double routeRecoveryProbeDistanceForCommand(
+      const avg_msgs::msg::AvgTwist &command,
+      const RouteRecoveryCandidateKind kind,
+      const std::optional<PathRelativeEvidence> &evidence) const {
+    const double configured_probe =
+        route_safety_recovery_.oppositeRecoveryProbeDistance();
+    if (!path_relative_recovery_config_.enabled || !evidence.has_value()) {
+      return configured_probe;
+    }
+    return pathRelativeInwardCrabProbeDistance(command, kind, evidence->first,
+                                               evidence->second, 0.05,
+                                               configured_probe);
+  }
+
+  double
+  routeRecoveryProbeDistanceForCommand(const avg_msgs::msg::AvgTwist &command,
+                                       const RouteRecoveryCandidateKind kind,
+                                       const double now_sec) {
+    return routeRecoveryProbeDistanceForCommand(
+        command, kind, currentPathRelativeEvidence(now_sec));
+  }
+
+  bool pathRelativeHandoffReady(const double now_sec) {
+    if (!path_relative_recovery_config_.enabled) {
+      return true;
+    }
+    const auto evidence = currentPathRelativeEvidence(now_sec);
+    if (!evidence.has_value()) {
+      return false;
+    }
+    return pathRelativeRecoveryHandoffReady(path_relative_recovery_state_,
+                                            evidence->second,
+                                            path_relative_recovery_config_);
+  }
+
+  void resetPathRelativeRecoveryState() {
+    path_relative_recovery_state_.reset();
+    path_relative_recovery_command_latch_.reset();
+    last_path_relative_relation_.reset();
+    last_path_relative_reason_ = "path_recovery_idle";
+    last_path_crab_left_probe_m_ = std::numeric_limits<double>::quiet_NaN();
+    last_path_crab_right_probe_m_ = std::numeric_limits<double>::quiet_NaN();
+  }
+
   void refreshRouteSafetyRecovery(const double now_sec) {
     if (!route_safety_recovery_.active()) {
       return;
@@ -1312,9 +1604,11 @@ private:
     const auto decision = motion_cost_stop_.evaluateLaneletRecovery(
         route_safety_recovery_.triggerCommand(), now_sec,
         route_safety_recovery_.poseMaxAge());
-    if (route_safety_recovery_.updateProbe(decision, now_sec)) {
+    const bool handoff_ready = pathRelativeHandoffReady(now_sec);
+    if (route_safety_recovery_.updateProbe(decision, now_sec, handoff_ready)) {
       route_safety_triggered_by_navigation_ = false;
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+      resetPathRelativeRecoveryState();
       RCLCPP_INFO(
           get_logger(),
           "route safety hold released after continuous fresh lanelet clear; "
@@ -1373,6 +1667,15 @@ private:
 
   void
   onMissionRequest(const avg_msgs::msg::PlanningMissionKey::SharedPtr message) {
+    // AvgPath has no mission identity. Drop the old full-route cache before
+    // any mission-specific handling so recovery can never use the previous
+    // destination while the new global route is being generated.
+    latest_full_route_.reset();
+    resetPathRelativeRecoveryState();
+    if (route_safety_recovery_.active()) {
+      last_path_relative_reason_ = "path_full_route_waiting_for_new_mission";
+      publishZero();
+    }
     MissionRequestIdentity request;
     request.mission_key = message->mission_key;
     request.source = message->source;
@@ -1595,11 +1898,9 @@ private:
         " charging=" +
         std::string(charging_mission_override_.charging() ? "true" : "false") +
         " charging_departure_auth=" +
-        std::string(mission_charging_override_active
-                        ? "mission_key"
-                    : drop_zone_status_override_active
-                        ? "drop_zone_status"
-                        : "none") +
+        std::string(mission_charging_override_active   ? "mission_key"
+                    : drop_zone_status_override_active ? "drop_zone_status"
+                                                       : "none") +
         " drop_zone_auth_phase=" +
         (drop_zone_departure_authorization_.phase().empty()
              ? "none"
@@ -1619,6 +1920,38 @@ private:
         " recovery_candidate=" +
         routeRecoveryCandidateName(recovery_candidate.kind) +
         " recovery_reason=" + recovery_candidate.reason;
+    if (route_safety_recovery_.active() &&
+        path_relative_recovery_config_.enabled) {
+      status.message +=
+          " path_recovery_reason=" + last_path_relative_reason_ +
+          " path_centering=" +
+          std::string(path_relative_recovery_state_.lateral_correction_active
+                          ? "true"
+                          : "false") +
+          " path_settle_zero=" +
+          std::string(path_relative_recovery_state_.settle_zero_commanded
+                          ? "true"
+                          : "false") +
+          " path_projection_limited_zero=" +
+          std::string(
+              path_relative_recovery_state_.projection_limited_zero_commanded
+                  ? "true"
+                  : "false") +
+          " path_crab_left_probe_m=" + fixed(last_path_crab_left_probe_m_, 3) +
+          " path_crab_right_probe_m=" + fixed(last_path_crab_right_probe_m_, 3);
+      if (last_path_relative_relation_.has_value()) {
+        status.message +=
+            " path_cte_m=" +
+            fixed(last_path_relative_relation_->signed_cte_m, 3) +
+            " path_initial_abs_cte_m=" +
+            fixed(path_relative_recovery_state_.initial_absolute_cte_m, 3) +
+            " path_best_abs_cte_m=" +
+            fixed(path_relative_recovery_state_.best_absolute_cte_m, 3) +
+            " path_heading_error_deg=" +
+            fixed(last_path_relative_relation_->heading_error_rad * 180.0 / kPi,
+                  2);
+      }
+    }
     const auto &route_contact = route_safety_recovery_.latestDecision();
     if (route_safety_recovery_.active() &&
         route_contact.lanelet_contact_valid) {
@@ -1650,53 +1983,152 @@ private:
         (!route_safety_recovery_.automaticReleaseBlocked() ||
          route_safety_recovery_.latestDecision().blocked)) {
       const auto &trigger = route_safety_recovery_.triggerCommand();
-      const auto left_command =
+      const auto controller_stable = [this](const auto &command) {
+        return path_relative_recovery_config_.enabled
+                   ? pathRelativeControllerStableCommand(
+                         command, route_safety_candidate_speed_mps_)
+                   : command;
+      };
+      const auto left_command = controller_stable(
           routeRecoveryDirection(trigger, RouteRecoveryCandidateKind::kCrabLeft,
                                  route_safety_candidate_speed_mps_,
-                                 motion_cost_stop_config_.min_translation_mps);
-      const auto right_command = routeRecoveryDirection(
+                                 motion_cost_stop_config_.min_translation_mps));
+      const auto right_command = controller_stable(routeRecoveryDirection(
           trigger, RouteRecoveryCandidateKind::kCrabRight,
           route_safety_candidate_speed_mps_,
-          motion_cost_stop_config_.min_translation_mps);
-      const auto reverse_command =
+          motion_cost_stop_config_.min_translation_mps));
+      const auto reverse_command = controller_stable(
           routeRecoveryDirection(trigger, RouteRecoveryCandidateKind::kReverse,
                                  route_safety_candidate_speed_mps_,
-                                 motion_cost_stop_config_.min_translation_mps);
-      const auto reverse_yaw_left_command = routeRecoveryDirection(
-          trigger, RouteRecoveryCandidateKind::kReverseYawLeft,
-          route_safety_candidate_speed_mps_,
-          motion_cost_stop_config_.min_translation_mps,
-          route_safety_candidate_yaw_rate_radps_);
-      const auto reverse_yaw_right_command = routeRecoveryDirection(
-          trigger, RouteRecoveryCandidateKind::kReverseYawRight,
-          route_safety_candidate_speed_mps_,
-          motion_cost_stop_config_.min_translation_mps,
-          route_safety_candidate_yaw_rate_radps_);
+                                 motion_cost_stop_config_.min_translation_mps));
+      const auto reverse_yaw_left_command =
+          controller_stable(routeRecoveryDirection(
+              trigger, RouteRecoveryCandidateKind::kReverseYawLeft,
+              route_safety_candidate_speed_mps_,
+              motion_cost_stop_config_.min_translation_mps,
+              route_safety_candidate_yaw_rate_radps_));
+      const auto reverse_yaw_right_command =
+          controller_stable(routeRecoveryDirection(
+              trigger, RouteRecoveryCandidateKind::kReverseYawRight,
+              route_safety_candidate_speed_mps_,
+              motion_cost_stop_config_.min_translation_mps,
+              route_safety_candidate_yaw_rate_radps_));
+      std::optional<PathRelativeEvidence> path_evidence;
+      std::string evidence_reason;
+      if (path_relative_recovery_config_.enabled) {
+        path_evidence = currentPathRelativeEvidence(now_sec, &evidence_reason);
+      }
+      RouteRecoveryCandidate evaluated_inward_candidate;
+      RouteRecoveryCandidate evaluated_heading_candidate;
+      if (path_evidence.has_value()) {
+        evaluated_inward_candidate = pathRelativeInwardNormalCrabCandidate(
+            path_evidence->first, path_evidence->second,
+            route_safety_candidate_speed_mps_,
+            motion_cost_stop_config_.min_translation_mps);
+        evaluated_heading_candidate = pathRelativeHeadingCorrectionCandidate(
+            path_evidence->first, path_evidence->second,
+            route_safety_candidate_speed_mps_,
+            route_safety_candidate_yaw_rate_radps_,
+            motion_cost_stop_config_.min_translation_mps);
+      }
+      // The selected route-normal candidate must be the exact object whose
+      // complete sweep is evaluated.  The other crab side stays available only
+      // as diagnostic projection evidence; it cannot replace the inward side.
+      const auto &left_projected_command =
+          evaluated_inward_candidate.kind ==
+                  RouteRecoveryCandidateKind::kCrabLeft
+              ? evaluated_inward_candidate.command
+              : left_command;
+      const auto &right_projected_command =
+          evaluated_inward_candidate.kind ==
+                  RouteRecoveryCandidateKind::kCrabRight
+              ? evaluated_inward_candidate.command
+              : right_command;
+      const auto &reverse_yaw_left_projected_command =
+          evaluated_heading_candidate.kind ==
+                  RouteRecoveryCandidateKind::kReverseYawLeft
+              ? evaluated_heading_candidate.command
+              : reverse_yaw_left_command;
+      const auto &reverse_yaw_right_projected_command =
+          evaluated_heading_candidate.kind ==
+                  RouteRecoveryCandidateKind::kReverseYawRight
+              ? evaluated_heading_candidate.command
+              : reverse_yaw_right_command;
       const auto evaluate = [this,
-                             now_sec](const avg_msgs::msg::AvgTwist &command) {
+                             now_sec](const avg_msgs::msg::AvgTwist &command,
+                                      const double probe_distance_m) {
         return motion_cost_stop_.evaluateRouteRecoveryCommand(
-            command, now_sec,
-            route_safety_recovery_.oppositeRecoveryProbeDistance(),
+            command, now_sec, probe_distance_m,
             route_safety_recovery_.poseMaxAge());
       };
-      const auto left_decision = evaluate(left_command);
-      const auto right_decision = evaluate(right_command);
-      const auto reverse_decision = evaluate(reverse_command);
-      const auto reverse_yaw_left_decision = evaluate(reverse_yaw_left_command);
+      const double configured_probe =
+          route_safety_recovery_.oppositeRecoveryProbeDistance();
+      const double left_probe = routeRecoveryProbeDistanceForCommand(
+          left_projected_command, RouteRecoveryCandidateKind::kCrabLeft,
+          path_evidence);
+      const double right_probe = routeRecoveryProbeDistanceForCommand(
+          right_projected_command, RouteRecoveryCandidateKind::kCrabRight,
+          path_evidence);
+      last_path_crab_left_probe_m_ = left_probe;
+      last_path_crab_right_probe_m_ = right_probe;
+      const auto left_decision = evaluate(left_projected_command, left_probe);
+      const auto right_decision =
+          evaluate(right_projected_command, right_probe);
+      const auto reverse_decision = evaluate(reverse_command, configured_probe);
+      const auto reverse_yaw_left_decision =
+          evaluate(reverse_yaw_left_projected_command, configured_probe);
       const auto reverse_yaw_right_decision =
-          evaluate(reverse_yaw_right_command);
-      selected = continueAdaptiveRouteRecoveryCandidate(
-          trigger, latched_route_recovery_candidate_,
-          route_safety_candidate_speed_mps_,
-          route_safety_candidate_yaw_rate_radps_,
-          RouteRecoveryCandidateDecisions{
-              left_decision, right_decision, reverse_decision,
-              reverse_yaw_left_decision, reverse_yaw_right_decision},
-          motion_cost_stop_config_.min_translation_mps);
+          evaluate(reverse_yaw_right_projected_command, configured_probe);
+      const RouteRecoveryCandidateDecisions projected_decisions{
+          left_decision, right_decision, reverse_decision,
+          reverse_yaw_left_decision, reverse_yaw_right_decision};
+      if (path_relative_recovery_config_.enabled) {
+        if (!path_evidence.has_value()) {
+          // A gap in the active-route/pose proof breaks CTE progress
+          // continuity. Start any later recovery from its new measured CTE;
+          // never carry an earlier best value across stale evidence.
+          resetPathRelativeRecoveryState();
+          last_path_relative_reason_ = evidence_reason;
+          selected.reason = evidence_reason;
+        } else {
+          last_path_relative_relation_ = path_evidence->second;
+          selected = selectPathRelativeRouteRecoveryCandidate(
+              trigger, path_evidence->first, path_evidence->second,
+              path_relative_recovery_config_, route_safety_candidate_speed_mps_,
+              route_safety_candidate_yaw_rate_radps_, projected_decisions,
+              path_relative_recovery_state_,
+              motion_cost_stop_config_.min_translation_mps,
+              &evaluated_inward_candidate, &evaluated_heading_candidate);
+          last_path_relative_reason_ = selected.reason;
+        }
+      } else {
+        selected = continueAdaptiveRouteRecoveryCandidate(
+            trigger, latched_route_recovery_candidate_,
+            route_safety_candidate_speed_mps_,
+            route_safety_candidate_yaw_rate_radps_, projected_decisions,
+            motion_cost_stop_config_.min_translation_mps);
+      }
+      if (selected.available() && path_relative_recovery_config_.enabled &&
+          !path_relative_recovery_command_latch_.authorize(
+              selected, scaleCommand(selected.command), now_sec)) {
+        path_relative_recovery_state_.motion_authorized = false;
+        selected.kind = RouteRecoveryCandidateKind::kNone;
+        selected.command = avg_msgs::msg::AvgTwist{};
+        selected.reason = "path_recovery_exact_command_latch_rejected";
+      }
       if (selected.available()) {
         // HH_260805 - Retain the active stage but permit only a newly projected
         // safe crab/reverse-yaw transition; total execution limits stay global.
         latched_route_recovery_candidate_ = selected.kind;
+      } else {
+        latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+        if (path_relative_recovery_config_.enabled) {
+          path_relative_recovery_command_latch_.reset();
+          // Stop at the final gate immediately. The bounded controller will
+          // receive the same zero candidate, while the raw-command race guard
+          // prevents its previous stage from overwriting this boundary.
+          publishZero();
+        }
       }
     } else {
       selected.reason = route_safety_recovery_.automaticReleaseBlocked()
@@ -1704,6 +2136,16 @@ private:
                         : route_safety_recovery_.active()
                             ? "non_navigation_trigger"
                             : "route_hold_inactive";
+      if (path_relative_recovery_config_.enabled &&
+          route_safety_recovery_.active()) {
+        path_relative_recovery_state_.motion_authorized = false;
+        path_relative_recovery_command_latch_.reset();
+        latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+        publishZero();
+      }
+      if (!route_safety_recovery_.active()) {
+        resetPathRelativeRecoveryState();
+      }
     }
     route_safety_candidate_publisher_->publish(selected.command);
     return selected;
@@ -2159,8 +2601,11 @@ private:
     // atomic update cannot partly mutate the active safety policy before being
     // rejected.
     auto route_candidate = route_safety_recovery_config_;
+    auto path_relative_candidate = path_relative_recovery_config_;
     double route_log_interval_candidate = route_safety_log_interval_s_;
     double route_yaw_rate_candidate = route_safety_candidate_yaw_rate_radps_;
+    double navigation_minimum_ackermann_turn_radius_candidate =
+        navigation_minimum_ackermann_turn_radius_m_;
     for (const auto &parameter : parameters) {
       const std::string &name = parameter.get_name();
       if (name == "route_safety_recovery_clear_required_s") {
@@ -2182,6 +2627,24 @@ private:
         route_log_interval_candidate = parameter.as_double();
       } else if (name == "route_safety_auto_recovery_yaw_rate_radps") {
         route_yaw_rate_candidate = parameter.as_double();
+      } else if (name == "route_safety_path_relative_recovery_enable") {
+        path_relative_candidate.enabled = parameter.as_bool();
+      } else if (name == "route_safety_path_center_tolerance_m") {
+        path_relative_candidate.center_tolerance_m = parameter.as_double();
+      } else if (name == "route_safety_path_center_reentry_m") {
+        path_relative_candidate.center_reentry_m = parameter.as_double();
+      } else if (name == "route_safety_path_heading_tolerance_deg") {
+        path_relative_candidate.heading_tolerance_rad =
+            parameter.as_double() * kPi / 180.0;
+      } else if (name == "route_safety_path_max_age_s") {
+        path_relative_candidate.path_max_age_s = parameter.as_double();
+      } else if (name == "route_safety_path_max_distance_m") {
+        path_relative_candidate.maximum_relation_distance_m =
+            parameter.as_double();
+      } else if (name ==
+                 "navigation_minimum_ackermann_turn_radius_m") {
+        navigation_minimum_ackermann_turn_radius_candidate =
+            parameter.as_double();
       }
     }
     if (const auto error = routeRecoveryConfigError(
@@ -2199,13 +2662,39 @@ private:
           "route_safety_auto_recovery_yaw_rate_radps must be in [0.02, 0.15]";
       return result;
     }
+    if (const auto error =
+            pathRelativeRecoveryConfigError(path_relative_candidate)) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason = *error;
+      return result;
+    }
+    if (!std::isfinite(navigation_minimum_ackermann_turn_radius_candidate) ||
+        navigation_minimum_ackermann_turn_radius_candidate < 0.0 ||
+        navigation_minimum_ackermann_turn_radius_candidate > 10.0) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason =
+          "navigation_minimum_ackermann_turn_radius_m must be finite and in "
+          "[0, 10]";
+      return result;
+    }
 
     bool recreate_timeout_timer = false;
     bool reload_yaw_zones = false;
+    bool reset_path_relative_state = false;
+    bool reset_path_relative_command_latch = false;
     for (const auto &parameter : parameters) {
       const std::string &name = parameter.get_name();
       if (name == "speed_scale") {
         speed_scale_ = parameter.as_double();
+        reset_path_relative_command_latch = true;
+      } else if (name ==
+                 "navigation_minimum_ackermann_turn_radius_m") {
+        navigation_minimum_ackermann_turn_radius_m_ = parameter.as_double();
+        // Never let a command admitted under the previous final envelope
+        // continue across an atomic runtime retune.
+        reset_path_relative_command_latch = true;
       } else if (name == "input_timeout_s") {
         input_timeout_s_ = parameter.as_double();
       } else if (name == "zero_publish_rate_hz") {
@@ -2320,6 +2809,27 @@ private:
         route_safety_log_interval_s_ = parameter.as_double();
       } else if (name == "route_safety_auto_recovery_yaw_rate_radps") {
         route_safety_candidate_yaw_rate_radps_ = parameter.as_double();
+      } else if (name == "route_safety_path_relative_recovery_enable") {
+        path_relative_recovery_config_.enabled = parameter.as_bool();
+        reset_path_relative_state = true;
+      } else if (name == "route_safety_path_center_tolerance_m") {
+        path_relative_recovery_config_.center_tolerance_m =
+            parameter.as_double();
+        reset_path_relative_state = true;
+      } else if (name == "route_safety_path_center_reentry_m") {
+        path_relative_recovery_config_.center_reentry_m = parameter.as_double();
+        reset_path_relative_state = true;
+      } else if (name == "route_safety_path_heading_tolerance_deg") {
+        path_relative_recovery_config_.heading_tolerance_rad =
+            parameter.as_double() * kPi / 180.0;
+        reset_path_relative_state = true;
+      } else if (name == "route_safety_path_max_age_s") {
+        path_relative_recovery_config_.path_max_age_s = parameter.as_double();
+        reset_path_relative_state = true;
+      } else if (name == "route_safety_path_max_distance_m") {
+        path_relative_recovery_config_.maximum_relation_distance_m =
+            parameter.as_double();
+        reset_path_relative_state = true;
       } else if (name == "enable_speed_dependent_lookahead") {
         motion_cost_stop_config_.use_speed_dependent_lookahead =
             parameter.as_bool();
@@ -2360,6 +2870,15 @@ private:
     route_safety_recovery_config_.minimum_translation_mps =
         motion_cost_stop_config_.min_translation_mps;
     route_safety_recovery_.setConfig(route_safety_recovery_config_);
+    if (reset_path_relative_state) {
+      resetPathRelativeRecoveryState();
+      publishZero();
+    } else if (reset_path_relative_command_latch) {
+      // A previously projected raw/final pair cannot survive a scale retune.
+      // The next state tick must project and latch a fresh pair.
+      path_relative_recovery_command_latch_.reset();
+      publishZero();
+    }
     if (recreate_timeout_timer) {
       recreateCommandTimeoutTimer();
     }
@@ -2453,6 +2972,7 @@ private:
       drop_zone_departure_authorization_config_;
   MotionCostStopConfig motion_cost_stop_config_;
   RouteSafetyRecoveryConfig route_safety_recovery_config_;
+  PathRelativeRecoveryConfig path_relative_recovery_config_;
   CommandSourceArbiterConfig command_source_arbiter_config_;
   CmdVelGatePolicy gate_policy_;
   ChargingMissionOverride charging_mission_override_;
@@ -2486,6 +3006,7 @@ private:
   std::string pose_source_preference_;
   std::string robot_base_frame_;
   std::string route_heading_path_topic_;
+  std::string route_safety_full_route_topic_;
   std::string route_heading_frame_id_;
   std::string yaw_alignment_frame_id_;
   std::string yaw_alignment_zones_file_;
@@ -2518,6 +3039,8 @@ private:
   bool route_safety_triggered_by_navigation_{false};
   RouteRecoveryCandidateKind latched_route_recovery_candidate_{
       RouteRecoveryCandidateKind::kNone};
+  PathRelativeRecoveryState path_relative_recovery_state_;
+  PathRelativeRecoveryCommandLatch path_relative_recovery_command_latch_;
   bool route_safety_retry_latched_logged_{false};
   bool command_input_stale_{false};
   bool yaw_zone_satisfied_{false};
@@ -2526,6 +3049,7 @@ private:
   int gnss_recovery_source_mode_min_{2};
   int gnss_recovery_target_mode_{0};
   double speed_scale_{1.0};
+  double navigation_minimum_ackermann_turn_radius_m_{0.0};
   double input_timeout_s_{0.35};
   double zero_publish_rate_hz_{10.0};
   double cost_stop_latch_log_interval_s_{1.0};
@@ -2533,6 +3057,10 @@ private:
   double route_safety_log_interval_s_{1.0};
   double route_safety_candidate_speed_mps_{0.10};
   double route_safety_candidate_yaw_rate_radps_{0.10};
+  static constexpr double kPathRelativeCommandLatchMaxAgeS = 0.75;
+  double last_path_crab_left_probe_m_{std::numeric_limits<double>::quiet_NaN()};
+  double last_path_crab_right_probe_m_{
+      std::numeric_limits<double>::quiet_NaN()};
   double radar_obstacle_evidence_max_age_s_{0.50};
   double route_heading_min_cmd_x_mps_{0.03};
   double route_heading_lateral_cmd_epsilon_mps_{0.02};
@@ -2553,6 +3081,7 @@ private:
   double last_route_safety_log_sec_{-1.0e9};
   double last_command_source_log_sec_{-1.0e9};
   double radar_obstacle_evidence_receive_sec_{-1.0e9};
+  double latest_path_receive_sec_{-1.0e9};
   bool radar_obstacle_evidence_received_{false};
 
   std::vector<std::string> additional_estop_topics_;
@@ -2569,6 +3098,9 @@ private:
   double latest_pose_receive_sec_{0.0};
   double latest_odometry_receive_sec_{0.0};
   std::optional<avg_msgs::msg::AvgPath> latest_path_;
+  std::optional<avg_msgs::msg::AvgPath> latest_full_route_;
+  std::optional<PathRelativeRouteRelation> last_path_relative_relation_;
+  std::string last_path_relative_reason_{"path_recovery_idle"};
   std::string last_cost_reason_;
   std::string planning_boundary_topic_;
 
@@ -2628,6 +3160,8 @@ private:
       odometry_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr
       route_path_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr
+      full_route_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgString>::SharedPtr
       radar_obstacle_evidence_subscription_;
   std::vector<rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr>

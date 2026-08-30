@@ -1,4 +1,7 @@
-# Both canonical clouds mirror the same actual CARLA ray-cast LiDAR sample.
+# The raw stream proves that the CARLA ray-cast sensor itself is alive and
+# non-empty.  The filtered stream is an obstacle-only result, so zero points is
+# a valid clear-scene measurement; its publication rate/staleness checks still
+# detect a stopped processing chain.
 /system/lidar_checker:
   ros__parameters:
     publish_rate_hz: 1.0
@@ -18,6 +21,6 @@
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4
       stale_timeout_s: 3.0
-      min_point_count: 1
+      min_point_count: 0
       max_point_count: 0
       max_nan_ratio: 0.0

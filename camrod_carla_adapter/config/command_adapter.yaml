@@ -5,6 +5,15 @@
     status_topic: "/camrod_carla/command_adapter/status"
     base_frame_id: "robot_center_link"
 
+    # A separate transient-local ModuleState proves that a narrow CRAB really
+    # belongs to the bounded route-safety recovery controller.  This short
+    # lease authorizes only the downstream stall-qualified torque floor; it
+    # never changes normal/manual CRAB authority.
+    recovery_breakaway_status_topic: "/control/route_safety_recovery_controller/status"
+    recovery_breakaway_status_timeout_sec: 0.30
+    recovery_breakaway_target_minimum_mps: 0.04
+    recovery_breakaway_target_maximum_mps: 0.06
+
     # Match CAMROD Ranger mode selection exactly at the command boundary.
     lateral_deadband_mps: 0.02
     angular_epsilon_radps: 0.000001

@@ -632,6 +632,25 @@ def generate_launch_description():
             ),
         )
     )
+    nav2_runtime_override_cfg = cfg_get(
+        launch_cfg,
+        'planning/nav2_runtime_override_param_file',
+        '__module_default__',
+    )
+    nav2_runtime_override_param_default = (
+        pkg_path(
+            'camrod_planning',
+            os.path.join('config', 'nav2_combo_profiles', 'disabled.yaml'),
+        )
+        if str(nav2_runtime_override_cfg).strip() in (
+            '', '__module_default__', 'module_default', 'default'
+        )
+        else resolve_cfg_file(
+            config_root_default,
+            nav2_runtime_override_cfg,
+            'planning/nav2_combo_profiles/disabled.yaml',
+        )
+    )
     # HH_260720 - Use one canonical parking method key; removed backend/mode aliases.
     parking_method_default = str(
         cfg_get(launch_cfg, 'parking/method', 'reverse')
@@ -649,6 +668,25 @@ def generate_launch_description():
             parking_cfg_entry,
             'control/parking.yaml',
         )
+    parking_runtime_override_cfg = cfg_get(
+        launch_cfg,
+        'parking/runtime_override_param_file',
+        '__module_default__',
+    )
+    parking_runtime_override_param_default = (
+        pkg_path(
+            'camrod_control',
+            os.path.join('config', 'parking_runtime_profiles', 'disabled.yaml'),
+        )
+        if str(parking_runtime_override_cfg).strip() in (
+            '', '__module_default__', 'module_default', 'default'
+        )
+        else resolve_cfg_file(
+            config_root_default,
+            parking_runtime_override_cfg,
+            'control/parking_runtime_profiles/disabled.yaml',
+        )
+    )
     apriltag_cfg_entry = cfg_get(
         launch_cfg,
         'perception/apriltag_param_file',
@@ -689,6 +727,23 @@ def generate_launch_description():
         ),
     ) or pkg_path(
         'camrod_localization', 'config/source/input_adapter.yaml'
+    )
+    # Keep the ordinary CAMROD sensing profile as the default, but expose the
+    # LiDAR raster parameter file as an explicit composition boundary.  An
+    # IncludeLaunchDescription argument is evaluated after this Python launch
+    # description is generated, so relying only on build_cfg_override_map()
+    # would silently retain the launch-defaults YAML.  External simulators such
+    # as CARLA need this boundary because their real ray-cast cloud contains
+    # road returns that are not present in CAMROD's classified obstacle cloud.
+    lidar_cost_grid_param_file_default = resolve_cfg_override(
+        config_root_default,
+        cfg_get(
+            launch_cfg,
+            'sensing/lidar_cost_grid_param_file',
+            '__module_default__',
+        ),
+    ) or pkg_path(
+        'camrod_sensing', 'config/lidar/cost_grid.yaml'
     )
 
     # High-level arguments only.
@@ -856,6 +911,11 @@ def generate_launch_description():
             localization_adapter_param_file_default,
             'Localization input-adapter parameter file override',
         ),
+        (
+            'lidar_cost_grid_param_file',
+            lidar_cost_grid_param_file_default,
+            'LiDAR obstacle-cost raster parameter file override',
+        ),
 
         # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
@@ -890,6 +950,11 @@ def generate_launch_description():
             'planning_nav2_selected_controller',
             cfg_get(launch_cfg, 'planning/nav2_selected_controller', '__auto__'),
             'Nav2 controller selector ID override (__auto__|RPP|DWB|MPPI|Graceful|RotationShim)',
+        ),
+        (
+            'planning_nav2_runtime_override_param_file',
+            nav2_runtime_override_param_default,
+            'Final sparse Nav2 runtime overlay; ordinary CAMROD uses an empty profile',
         ),
         (
             'planning_nav2_bt_xml_nav_to_pose',
@@ -1721,6 +1786,15 @@ def generate_launch_description():
             'Speed scale applied to all cmd_vel output (0.0-1.0)',
         ),
         (
+            'control_cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m',
+                0.0,
+            ),
+            'Opt-in final Nav2 Ackermann mode-boundary radius (0 disables)',
+        ),
+        (
             'control_cmd_vel_gate_input_timeout_s',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_input_timeout_s', 0.35),
             'Publish zero when raw planning cmd_vel input is stale for this many seconds',
@@ -1829,6 +1903,15 @@ def generate_launch_description():
             'operator_telemetry_stream_rate_hz',
             cfg_get(launch_cfg, 'system/operator_telemetry_stream_rate_hz', 10.0),
             'Maximum selected operator telemetry stream rate in Hz',
+        ),
+        (
+            'operator_telemetry_tf_latest_fallback_tolerance_s',
+            cfg_get(
+                launch_cfg,
+                'system/operator_telemetry_tf_latest_fallback_tolerance_s',
+                0.0,
+            ),
+            'Bounded latest-TF fallback for future-stamped operator geometry',
         ),
         (
             'operator_telemetry_camera_raw_fallback_enabled',
@@ -2025,6 +2108,24 @@ def generate_launch_description():
         ('enable_camping_site_maneuver_controller', cfg_get(launch_cfg, 'control/enable_camping_site_maneuver_controller', True), 'Enable campsite crab/rotate control node'),
         # HH_260818 - Keep UI admission and control start checks on one policy.
         ('enable_campsite_occupancy_guard', cfg_get(launch_cfg, 'control/enable_campsite_occupancy_guard', False), 'Block confirmed semantic tent sites before campsite entry'),
+        (
+            'control_camping_site_roadside_reverse_return_enable',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_roadside_reverse_return_enable',
+                False,
+            ),
+            'Allow roadside campsites to exit first and follow the reverse-shortest route without a 180-degree turn',
+        ),
+        (
+            'control_camping_site_roadside_reverse_handoff_distance_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_roadside_reverse_handoff_distance_m',
+                0.03,
+            ),
+            'Live lanelet centerline distance for a roadside reverse-route handoff',
+        ),
         ('enable_drop_zone_maneuver_controller', cfg_get(launch_cfg, 'control/enable_drop_zone_maneuver_controller', True), 'Enable drop-zone exit/yaw control node'),
         ('enable_route_safety_recovery_controller', cfg_get(launch_cfg, 'control/enable_route_safety_recovery_controller', True), 'Enable bounded route-safety reverse/crab owner'),
         ('control_param_file', control_param_default, 'Control maneuver parameter YAML path'),
@@ -2049,6 +2150,11 @@ def generate_launch_description():
         ('control_cmd_vel_gate_critical_battery_stop_enabled', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_stop_enabled', True), 'Block at critical BMS SOC'),
         ('control_cmd_vel_gate_critical_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_percentage', 0.20), 'Critical BMS SOC ratio'),
         ('parking_param_file', parking_param_default, 'Parking parameter YAML path'),
+        (
+            'parking_runtime_override_param_file',
+            parking_runtime_override_param_default,
+            'Final sparse parking-controller runtime overlay',
+        ),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
         ('map_info_file', map_info_launch_default, 'Map info YAML path used by map/localization'),
@@ -2431,6 +2537,12 @@ def generate_launch_description():
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).
     }
     apply_cfg_overrides(sensing_args, sensing_overrides)
+    # This is deliberately applied after the defaults-file override map.  It
+    # makes a parent composition's launch argument authoritative while leaving
+    # ordinary CAMROD launches on their existing production YAML.
+    sensing_args['lidar_cost_grid_param_file'] = lc[
+        'lidar_cost_grid_param_file'
+    ]
 
     perception_args = {
         'module_namespace': lc['perception_namespace'],
@@ -2558,6 +2670,9 @@ def generate_launch_description():
         # HH_260528: Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
+        'nav2_runtime_override_param_file': lc[
+            'planning_nav2_runtime_override_param_file'
+        ],
         'nav2_bt_xml_nav_to_pose': lc['planning_nav2_bt_xml_nav_to_pose'],
         'nav2_bt_xml_nav_through_poses': lc[
             'planning_nav2_bt_xml_nav_through_poses'
@@ -2671,6 +2786,12 @@ def generate_launch_description():
         'control_namespace': lc['control_namespace'],
         'enable_camping_site_maneuver_controller': lc['enable_camping_site_maneuver_controller'],
         'enable_campsite_occupancy_guard': lc['enable_campsite_occupancy_guard'],
+        'roadside_reverse_return_enable': lc[
+            'control_camping_site_roadside_reverse_return_enable'
+        ],
+        'roadside_reverse_handoff_distance_m': lc[
+            'control_camping_site_roadside_reverse_handoff_distance_m'
+        ],
         'enable_drop_zone_maneuver_controller': lc['enable_drop_zone_maneuver_controller'],
         'enable_route_safety_recovery_controller': lc['enable_route_safety_recovery_controller'],
         'command_topic': lc['control_cmd_vel_raw_topic'],
@@ -2688,6 +2809,9 @@ def generate_launch_description():
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
         'parameter_file': lc['parking_param_file'],
+        'runtime_override_parameter_file': lc[
+            'parking_runtime_override_param_file'
+        ],
         'apriltag_parameter_file': lc['apriltag_param_file'],
         'launch_apriltag_detector': regular_apriltag_detector_enable,
     }
@@ -2712,6 +2836,9 @@ def generate_launch_description():
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],
         'operator_telemetry_stream_rate_hz': lc['operator_telemetry_stream_rate_hz'],
+        'operator_telemetry_tf_latest_fallback_tolerance_s': lc[
+            'operator_telemetry_tf_latest_fallback_tolerance_s'
+        ],
         'operator_telemetry_camera_raw_fallback_enabled': lc[
             'operator_telemetry_camera_raw_fallback_enabled'
         ],

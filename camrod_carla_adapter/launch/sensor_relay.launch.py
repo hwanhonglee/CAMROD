@@ -39,14 +39,6 @@ def generate_launch_description():
             "lidar_output",
             default_value="/sensing/lidar/vanjee/points_raw",
         ),
-        DeclareLaunchArgument(
-            "lidar_filtered_output",
-            default_value="/sensing/lidar/points_filtered",
-        ),
-        DeclareLaunchArgument(
-            "obstacle_cloud_output",
-            default_value="/perception/obstacles",
-        ),
         DeclareLaunchArgument("front_frame_id", default_value="camera_front"),
         DeclareLaunchArgument("rear_frame_id", default_value="camera_rear"),
         DeclareLaunchArgument("lidar_frame_id", default_value="lidar_link"),
@@ -82,12 +74,6 @@ def generate_launch_description():
                 "rear_info_input": LaunchConfiguration("rear_info_input"),
                 "lidar_input": LaunchConfiguration("lidar_input"),
                 "lidar_output": LaunchConfiguration("lidar_output"),
-                "lidar_filtered_output": LaunchConfiguration(
-                    "lidar_filtered_output"
-                ),
-                "obstacle_cloud_output": LaunchConfiguration(
-                    "obstacle_cloud_output"
-                ),
                 "front_frame_id": LaunchConfiguration("front_frame_id"),
                 "rear_frame_id": LaunchConfiguration("rear_frame_id"),
                 "lidar_frame_id": LaunchConfiguration("lidar_frame_id"),

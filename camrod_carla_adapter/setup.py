@@ -28,7 +28,8 @@ setup(
             os.path.join("share", PACKAGE_NAME, "config"),
             glob("config/*.yaml")
             + glob("config/*.json")
-            + glob("config/*.xml"),
+            + glob("config/*.xml")
+            + glob("config/*.osm"),
         ),
     ],
     install_requires=["setuptools"],
@@ -48,12 +49,18 @@ setup(
             "camrod_carla_adapter.feedback_bridge_node:main",
             "carla_sensor_relay = "
             "camrod_carla_adapter.sensor_relay_node:main",
+            "carla_lidar_filter = "
+            "camrod_carla_adapter.lidar_filter_node:main",
             "carla_radar_relay = "
             "camrod_carla_adapter.radar_relay_node:main",
             "carla_sensor_source_audit = "
             "camrod_carla_adapter.sensor_source_audit_node:main",
             "carla_platform_heartbeat = "
             "camrod_carla_adapter.carla_platform_heartbeat_node:main",
+            "carla_charging_contact_emulator = "
+            "camrod_carla_adapter.charging_contact_emulator_node:main",
+            "carla_step_pacer = "
+            "camrod_carla_adapter.carla_step_pacer_node:main",
         ],
     },
 )

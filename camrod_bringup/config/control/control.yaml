@@ -49,6 +49,10 @@
     # HH_260819 - B11-B13 remain immediately beside the narrow road: cap the
     # lateral service offset at 0.30 m and skip the on-site zero-turn.
     roadside_max_lateral_offset_m: 0.30
+    # Production keeps B11-B13 on the legal forward loop. Simulator-specific
+    # launch files may explicitly leave the site first and follow the inverted
+    # shortest route in reverse without turning in the constrained corridor.
+    roadside_reverse_return_enable: false
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.
@@ -87,6 +91,9 @@
     # If the live projection is stale, the exact-anchor sequence remains fallback.
     enable_live_lanelet_return_handoff: true
     return_lanelet_handoff_distance_m: 0.15
+    # Reverse RPP restores ordinary footprint checks: reach the lane center
+    # before applying the small outbound-yaw correction.
+    roadside_reverse_handoff_distance_m: 0.03
     return_lanelet_handoff_hold_s: 1.20
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0

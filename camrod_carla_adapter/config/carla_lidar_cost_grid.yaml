@@ -1,0 +1,51 @@
+# CARLA-specific LiDAR safety raster.
+#
+# This profile consumes the CARLA-only Euclidean cluster cloud. Ground removal
+# happens before clustering in carla_lidar_filter, so the old z=0.15 raw-road
+# workaround is intentionally removed. Keep the production -0.55 m lower bound
+# to retain low physical obstacles while excluding any residual road returns.
+/sensing/lidar/lidar_cost_grid:
+  ros__parameters:
+    input_topic: "/perception/obstacles"
+    input_topics:
+      - "/perception/obstacles"
+
+    raw_lidar_cost_enabled: false
+    raw_lidar_input_topics:
+      - "/sensing/lidar/points_filtered"
+      - "/sensing/lidar/filtered_cloud"
+
+    output_topic: "/sensing/cost_grid/lidar"
+    base_frame_id: "robot_center_link"
+    output_frame_id: "map"
+
+    resolution: 0.10
+    width: 180
+    height: 180
+    origin_x: -9.0
+    origin_y: -9.0
+
+    free_value: 0
+    unknown_value: -1
+    min_cost: 65
+    max_cost: 95
+    cost_range_min_m: 0.4
+    cost_range_max_m: 9.0
+    obstacle_radius_m: 0.20
+
+    cloud_min_z_m: -0.55
+    cloud_max_z_m: 1.00
+    ego_clear_radius_m: 0.55
+
+    route_lanelet_filter_enable: true
+    route_lanelet_mask_topic: "/map/cost_grid/route_lanelet_mask"
+    route_lanelet_margin_m: 0.35
+    route_lanelet_allowed_max_cost: 50
+    route_lanelet_mask_max_age_s: 2.5
+    route_lanelet_filter_fail_open_when_robot_outside: true
+
+    max_message_age_s: 1.50
+    publish_rate_hz: 10.0
+    rebuild_min_pose_delta_m: 0.05
+    publish_lidar_status: false
+    lidar_status_topic: "/sensing/lidar/status"

@@ -20,7 +20,7 @@ def _angle_difference(left, right):
     return math.atan2(math.sin(left - right), math.cos(left - right))
 
 
-def test_lane_anchor_maps_settled_physical_body_to_lanelet_centerline():
+def _woraksan_transform():
     parameters = yaml.safe_load(
         (
             Path(__file__).resolve().parents[1]
@@ -28,23 +28,36 @@ def test_lane_anchor_maps_settled_physical_body_to_lanelet_centerline():
             / "woraksan_lane_anchor_alignment.yaml"
         ).read_text(encoding="utf-8")
     )["/**"]["ros__parameters"]
-    transform = PlanarTransform(
+    return PlanarTransform(
         x_m=parameters["map_offset_x_m"],
         y_m=parameters["map_offset_y_m"],
         yaw_rad=parameters["map_yaw_offset_rad"],
     )
-    # The current split-rigid Blueprint reports the chassis pose below after
-    # settling. Its actor spawn root is deliberately not used as localization.
-    source_yaw = 0.561320571169091
+
+
+def test_woraksan_alignment_maps_xodr_origin_from_georeferences():
+    transform = _woraksan_transform()
     position, orientation = transform_pose(
-        (38.726207733154297, -37.281283416748046, 3.179900169372559),
-        quaternion_from_yaw(source_yaw),
+        (0.0, 0.0, 0.0), quaternion_from_yaw(0.0), transform)
+    assert position == pytest.approx(
+        (6.952184129722062, 9.490185712639594, 0.0), abs=1.0e-12)
+    assert yaw_from_quaternion(orientation) == pytest.approx(
+        8.142811119961662e-7, abs=1.0e-15)
+
+
+def test_woraksan_drop_zone_spawn_maps_inside_lanelet_751():
+    transform = _woraksan_transform()
+    # CARLA XODR Road 12/lane 2/s=2.0 is a road-center start just ahead of the
+    # drop zone. The test locks the spawn/alignment cohort used by navigation.
+    position, orientation = transform_pose(
+        (-20.672548294067383, 33.95176696777344, 3.063404083251953),
+        quaternion_from_yaw(math.radians(6.8785247802734375)),
         transform,
     )
-    assert position[0] == pytest.approx(43.83803217408370, abs=1.0e-12)
-    assert position[1] == pytest.approx(-24.779907458655806, abs=1.0e-12)
-    assert position[2] == pytest.approx(3.179900169372559)
-    expected_yaw = math.radians(29.360664963697495)
+    assert position[0] == pytest.approx(-13.720391810621027, abs=1.0e-12)
+    assert position[1] == pytest.approx(43.441935847136165, abs=1.0e-12)
+    assert position[2] == pytest.approx(3.063404083251953)
+    expected_yaw = math.radians(6.8785247802734375) + 8.142811119961662e-7
     assert _angle_difference(
         yaw_from_quaternion(orientation), expected_yaw) == pytest.approx(
             0.0, abs=1.0e-12)

@@ -203,6 +203,12 @@ def generate_launch_description():
     default_controller_plugins_param = os.path.join(
         pkg_share, 'config', 'nav2_controller_profiles', 'production.yaml'
     )
+    # HH_260830 - A final sparse overlay lets an external simulator select
+    # runtime-only controller capabilities without copying or mutating the
+    # production vehicle profile. The default is an existing empty overlay.
+    default_runtime_override_param = os.path.join(
+        pkg_share, 'config', 'nav2_combo_profiles', 'disabled.yaml'
+    )
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
     # HH_260626: Default BT uses PlannerSelector; selector default is LaneletRoute.
     # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
@@ -267,6 +273,14 @@ def generate_launch_description():
         description=(
             'Controller loading profile; production loads mission RPP and the '
             'manual-goal RotationShim only'
+        ),
+    )
+    nav2_runtime_override_param_arg = DeclareLaunchArgument(
+        'nav2_runtime_override_param_file',
+        default_value=default_runtime_override_param,
+        description=(
+            'Final sparse Nav2 runtime overlay; production defaults to an '
+            'empty profile and simulator compositions may opt in explicitly'
         ),
     )
     nav2_selected_planner_arg = DeclareLaunchArgument(
@@ -387,6 +401,9 @@ def generate_launch_description():
     nav2_controller_plugins_param_file = LaunchConfiguration(
         'nav2_controller_plugins_param_file'
     )
+    nav2_runtime_override_param_file = LaunchConfiguration(
+        'nav2_runtime_override_param_file'
+    )
     enable_path_cost_grids = LaunchConfiguration('enable_path_cost_grids')
     path_cost_grids_param_file = LaunchConfiguration('path_cost_grids_param_file')
     map_path = LaunchConfiguration('map_path')
@@ -472,6 +489,12 @@ def generate_launch_description():
         param_rewrites=nav2_frame_rewrites,
         convert_types=True,
     )
+    nav2_runtime_override_params = RewrittenYaml(
+        source_file=nav2_runtime_override_param_file,
+        root_key='planning',
+        param_rewrites=nav2_frame_rewrites,
+        convert_types=True,
+    )
 
     # -------------------------------------------------------------------------
     # Critical safety guard:
@@ -541,6 +564,9 @@ def generate_launch_description():
         # available in base YAML without constructing their runtime instances.
         nav2_planner_plugins_params,
         nav2_controller_plugins_params,
+        # HH_260830 - Apply simulator/deployment policy last, but keep the
+        # immutable base-frame safety overrides authoritative below it.
+        nav2_runtime_override_params,
         force_base_link_overrides,
     ]
 
@@ -795,6 +821,7 @@ def generate_launch_description():
         nav2_combo_param_arg,
         nav2_planner_plugins_param_arg,
         nav2_controller_plugins_param_arg,
+        nav2_runtime_override_param_arg,
         nav2_selected_planner_arg,
         nav2_selected_controller_arg,
         nav2_regulated_goal_checker_arg,

@@ -25,9 +25,12 @@ VIRTUAL_ENV_KEYS = (
     "CAMROD_MANUAL_LATERAL_LIMIT_MPS",
     "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS",
     "CAMROD_MANUAL_DEADMAN_TIMEOUT_S",
+    "CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE",
     "CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ",
     "CAMROD_CARLA_SENSOR_MIN_RATE_HZ",
     "CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS",
+    "CAMROD_LANELET_MAP",
+    "CAMROD_MAP_ALIGNMENT_FILE",
     "CYCLONEDDS_URI",
     "RANGER_CARLA_ROOT",
     "RANGER_WORK_ROOT",
@@ -45,8 +48,11 @@ VIRTUAL_ENV_KEYS = (
     "CARLA_PYTHON_EGG",
     "CARLA_PYTHON_EGG_CACHE",
     "CARLA_RENDER_MODE",
+    "CARLA_RENDER_MAX_FPS",
     "CARLA_SYNCHRONOUS_MODE",
     "CARLA_WAIT_FOR_CONTROL_COMMAND",
+    "CAMROD_CARLA_STEP_PACING",
+    "CAMROD_CARLA_STEP_PERIOD_SECONDS",
     "CARLA_FIXED_DELTA_SECONDS",
     "CAMROD_LAUNCH_SENSOR_RELAY",
     # env.sh derives these from CARLA_ROOT/UE_ROOT.  Clear parent-shell
@@ -134,9 +140,12 @@ def test_runtime_runner_contains_no_automatic_motion_client() -> None:
     forbidden = (
         "ros2 topic pub",
         "ros2 action send_goal",
-        "ros2 service call",
     )
     assert not any(token in source for token in forbidden)
+    # The only service CLI use is a read-only Trigger health probe.  Motion,
+    # engage, goal and bridge PLAY/PAUSE are owned by their dedicated nodes.
+    assert source.count("ros2 service call") == 1
+    assert "/virtual_carla/step_pacer/health std_srvs/srv/Trigger" in source
     assert "prepare_ros_carla_python bridge" in source
     assert "prepare_ros_carla_python spawn" in source
 
@@ -501,7 +510,10 @@ def _run_render_timing_contract(
     render_mode: str = "offscreen",
     synchronous: str = "True",
     wait_for_control: str = "False",
+    step_pacing: str = "True",
+    step_period: str = "0.05",
     fixed_delta: str = "0.05",
+    render_max_fps: str = "30",
 ) -> subprocess.CompletedProcess:
     source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
     function = "validate_render_timing_contract() {\n" + source.split(
@@ -519,7 +531,10 @@ validate_render_timing_contract
             "CARLA_RENDER_MODE": render_mode,
             "CARLA_SYNCHRONOUS_MODE": synchronous,
             "CARLA_WAIT_FOR_CONTROL_COMMAND": wait_for_control,
+            "CAMROD_CARLA_STEP_PACING": step_pacing,
+            "CAMROD_CARLA_STEP_PERIOD_SECONDS": step_period,
             "CARLA_FIXED_DELTA_SECONDS": fixed_delta,
+            "CARLA_RENDER_MAX_FPS": render_max_fps,
         }
     )
     return subprocess.run(
@@ -544,14 +559,28 @@ def test_rendered_timing_contract_prevents_sensor_startup_deadlocks():
     assert asynchronous.returncode != 0
     assert "requires synchronous_mode=True" in asynchronous.stderr
 
+    unpaced = _run_render_timing_contract(step_pacing="False")
+    assert unpaced.returncode != 0
+    assert "CAMROD_CARLA_STEP_PACING=True" in unpaced.stderr
+
+    wrong_period = _run_render_timing_contract(step_period="0.10")
+    assert wrong_period.returncode != 0
+    assert "CAMROD_CARLA_STEP_PERIOD_SECONDS" in wrong_period.stderr
+
     slow_tick = _run_render_timing_contract(fixed_delta="0.2")
     assert slow_tick.returncode != 0
     assert "CARLA_FIXED_DELTA_SECONDS" in slow_tick.stderr
+
+    uncapped_renderer = _run_render_timing_contract(render_max_fps="0")
+    assert uncapped_renderer.returncode != 0
+    assert "CARLA_RENDER_MAX_FPS" in uncapped_renderer.stderr
 
     nullrhi = _run_render_timing_contract(
         render_mode="nullrhi",
         synchronous="False",
         wait_for_control="True",
+        step_pacing="False",
+        step_period="1.0",
         fixed_delta="1.0",
     )
     assert nullrhi.returncode == 0, nullrhi.stderr
@@ -562,6 +591,7 @@ def _write_fake_carla_egg(path: Path) -> None:
 import os
 
 _inventory_calls = 0
+_snapshot_calls = 0
 _world_calls = 0
 
 class Actor:
@@ -570,13 +600,27 @@ class Actor:
         self.type_id = type_id
         self.attributes = {"role_name": role_name}
 
+class Snapshot:
+    def __init__(self, frame):
+        self.frame = frame
+
 class World:
+    def get_snapshot(self):
+        global _snapshot_calls
+        _snapshot_calls += 1
+        mode = os.environ.get("FAKE_CARLA_MODE", "one")
+        if mode == "frame_zero_transient" and _snapshot_calls == 1:
+            return Snapshot(0)
+        return Snapshot(42 + _snapshot_calls)
+
     def get_actors(self):
         global _inventory_calls
         _inventory_calls += 1
         mode = os.environ.get("FAKE_CARLA_MODE", "one")
         role = os.environ.get("FAKE_CARLA_ROLE", "ego_vehicle")
-        if mode == "transient" and _inventory_calls == 1:
+        if mode in ("transient", "frame_zero_transient") and _inventory_calls == 1:
+            return []
+        if mode == "blank":
             return []
         if mode == "zero":
             return [
@@ -674,6 +718,55 @@ def _run_actor_preflight(
     )
 
 
+def _run_spawn_inventory_guard(
+    tmp_path: Path,
+    mode: str,
+    *,
+    timeout_seconds: str = "0.5",
+) -> subprocess.CompletedProcess:
+    source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    function = "validate_no_ranger_actor_present() {\n" + source.split(
+        "validate_no_ranger_actor_present() {\n", 1
+    )[1].split("\n}\n", 1)[0] + "\n}\n"
+    egg = tmp_path / "fake-carla.egg"
+    if not egg.exists():
+        _write_fake_carla_egg(egg)
+    cache = tmp_path / f"spawn-cache-{mode}"
+    cache.mkdir()
+    harness = f"""
+set -uo pipefail
+script_dir={str(SCRIPT_ROOT)!r}
+CARLA_HOST=127.0.0.1
+CARLA_PORT=2000
+CARLA_ROLE_NAME=ego_vehicle
+CARLA_PYTHON_EGG={str(egg)!r}
+PYTHON_EGG_CACHE={str(cache)!r}
+export CARLA_HOST CARLA_PORT CARLA_ROLE_NAME CARLA_PYTHON_EGG
+export PYTHON_EGG_CACHE
+virtual_carla_die() {{ printf '[virtual_carla] ERROR: %s\\n' "$*" >&2; return 1; }}
+{function}
+validate_no_ranger_actor_present {timeout_seconds!r}
+"""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PYTHONPATH": str(egg),
+            "PYTHON_EGG_CACHE": str(cache),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "FAKE_CARLA_MODE": mode,
+            "FAKE_CARLA_ROLE": "ego_vehicle",
+        }
+    )
+    return subprocess.run(
+        ["bash", "-c", harness],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_actor_preflight_accepts_exactly_one_bound_ranger(tmp_path: Path) -> None:
     result = _run_actor_preflight(tmp_path, "one")
 
@@ -709,6 +802,91 @@ def test_actor_preflight_requires_empty_inventory_before_spawn(
     assert wrong_type.returncode != 0
     assert "vehicle.other.default" in wrong_type.stderr
     assert "refusing duplicate spawn" in wrong_type.stderr
+
+
+def test_actor_preflight_empty_check_waits_past_transient_inventory(
+    tmp_path: Path,
+) -> None:
+    for mode in ("frame_zero_transient", "transient"):
+        result = _run_actor_preflight(
+            tmp_path,
+            mode,
+            expected_count=0,
+            timeout_seconds="0.5",
+        )
+
+        assert result.returncode != 0
+        assert "pre-existing actor" in result.stderr
+        assert "refusing duplicate spawn" in result.stderr
+        assert "inventory ready for spawn" not in result.stdout
+
+
+def test_actor_preflight_empty_check_rejects_persistently_blank_inventory(
+    tmp_path: Path,
+) -> None:
+    result = _run_actor_preflight(
+        tmp_path,
+        "blank",
+        expected_count=0,
+        timeout_seconds="0.45",
+    )
+
+    assert result.returncode != 0
+    assert "actor inventory did not synchronize" in result.stderr
+    assert "empty actor inventory" in result.stderr
+    assert "never accepted as proof that no Ranger exists" in result.stderr
+    assert "inventory ready for spawn" not in result.stdout
+
+
+def test_spawn_inventory_guard_waits_past_frame_zero_before_accepting_zero(
+    tmp_path: Path,
+) -> None:
+    result = _run_spawn_inventory_guard(
+        tmp_path,
+        "frame_zero_transient",
+    )
+
+    assert result.returncode != 0
+    assert "pre-existing actor" in result.stderr
+    assert "refusing duplicate spawn" in result.stderr
+    assert "inventory ready for spawn" not in result.stdout
+
+
+def test_spawn_inventory_guard_waits_past_empty_first_inventory(
+    tmp_path: Path,
+) -> None:
+    result = _run_spawn_inventory_guard(tmp_path, "transient")
+
+    assert result.returncode != 0
+    assert "pre-existing actor" in result.stderr
+    assert "refusing duplicate spawn" in result.stderr
+    assert "inventory ready for spawn" not in result.stdout
+
+
+def test_spawn_inventory_guard_accepts_synchronized_non_target_inventory(
+    tmp_path: Path,
+) -> None:
+    result = _run_spawn_inventory_guard(tmp_path, "empty")
+
+    assert result.returncode == 0, result.stderr
+    assert "Ranger actor inventory ready for spawn" in result.stdout
+    assert "count=0" in result.stdout
+
+
+def test_spawn_inventory_guard_fails_closed_on_persistently_empty_inventory(
+    tmp_path: Path,
+) -> None:
+    result = _run_spawn_inventory_guard(
+        tmp_path,
+        "blank",
+        timeout_seconds="0.45",
+    )
+
+    assert result.returncode != 0
+    assert "actor inventory did not synchronize" in result.stderr
+    assert "empty actor inventory" in result.stderr
+    assert "never accepted as proof that no Ranger exists" in result.stderr
+    assert "inventory ready for spawn" not in result.stdout
 
 
 def test_actor_preflight_retries_transient_empty_inventory(
@@ -1141,6 +1319,35 @@ printf '%s\n%s\n' "$RANGER_SPAWN_FILE" "$CAMROD_LAUNCH_SENSOR_RELAY"
     ]
 
 
+def test_env_selects_virtual_map_by_default_and_preserves_override(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+printf '%s\n' "$CAMROD_LANELET_MAP"
+"""
+    default_result = _bash(
+        script,
+        environment={"RANGER_CARLA_ROOT": str(ranger_root)},
+    )
+    assert default_result.stdout.strip() == str(
+        PACKAGE_ROOT / "config" / "woraksan_carla_lanelet2.osm"
+    )
+
+    explicit_map = tmp_path / "caller-map.osm"
+    override_result = _bash(
+        script,
+        environment={
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CAMROD_LANELET_MAP": str(explicit_map),
+        },
+    )
+    assert override_result.stdout.strip() == str(explicit_map)
+
+
 def test_env_applies_one_checked_in_cyclonedds_contract_to_every_ros_shell(
     tmp_path: Path,
 ) -> None:
@@ -1274,13 +1481,14 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    for command in ("server", "bridge", "spawn", "camrod"):
+    for command in ("server", "bridge", "pacer", "spawn", "camrod"):
         assert f"run.sh {command}" in result.stdout
-    assert "carla_ros_bridge.launch.py" in result.stdout
+    assert "ros2 run carla_ros_bridge bridge" in result.stdout
+    assert "--log-level warn" in result.stdout
     assert "carla_spawn_objects.launch.py" in result.stdout
     assert "camrod_carla_full.launch.py" in result.stdout
     assert "launch_sensor_relay:=true" in result.stdout
-    assert "# REQUIRED lifecycle order (four terminals)" in result.stdout
+    assert "# REQUIRED lifecycle order (five terminals)" in result.stdout
     assert "Wait for each preceding stage to report success" in result.stdout
     assert "run.sh manual" in result.stdout
     assert "run.sh audit-sensors" in result.stdout
@@ -1296,6 +1504,7 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "export CAMROD_MANUAL_LATERAL_LIMIT_MPS=1.00" in result.stdout
     assert "export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS=0.7853" in result.stdout
     assert "export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=0.75" in result.stdout
+    assert "export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE=1.0" in result.stdout
     assert (
         "export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ=5.0"
         in result.stdout
@@ -1317,6 +1526,11 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
         "net.core.wmem_max=20971520"
     ) in result.stdout
     assert "export CARLA_RENDER_MODE=" in result.stdout
+    assert "export CARLA_RENDER_MAX_FPS=30" in result.stdout
+    assert "export CAMROD_CARLA_STEP_PACING=True" in result.stdout
+    assert "export CAMROD_CARLA_STEP_PERIOD_SECONDS=0.05" in result.stdout
+    assert "carla_step_pacer" in result.stdout
+    assert "synchronous_mode_wall_time_pacing" not in result.stdout
     assert "No motion command" in result.stdout
 
 

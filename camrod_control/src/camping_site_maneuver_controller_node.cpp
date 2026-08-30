@@ -56,6 +56,9 @@ enum class CampingSiteManeuverPhase {
   // HH_260721 - Rotate at the lanelet snap pose after leaving a constrained
   // roadside stop.
   kAlignReturnRouteYaw,
+  // HH_260830 - Correct only accumulated crab yaw before a reverse-path
+  // handoff. This is explicitly not the historical 180-degree turnaround.
+  kAlignOutboundLaneYaw,
   kReverseOut,
   kCrabOut,
   kDone,
@@ -99,6 +102,8 @@ std::string phaseName(const CampingSiteManeuverPhase phase) {
     return "ALIGN_RETRACE_YAW";
   case CampingSiteManeuverPhase::kAlignReturnRouteYaw:
     return "ALIGN_RETURN_ROUTE_YAW";
+  case CampingSiteManeuverPhase::kAlignOutboundLaneYaw:
+    return "ALIGN_OUTBOUND_LANE_YAW";
   case CampingSiteManeuverPhase::kReverseOut:
     return "REVERSE_OUT";
   case CampingSiteManeuverPhase::kCrabOut:
@@ -194,6 +199,13 @@ public:
     // bays. Keep their lateral reach and speed independently constrained.
     roadside_maximum_lateral_offset_m_ = std::abs(
         declare_parameter<double>("roadside_max_lateral_offset_m", 0.30));
+    // HH_260830 - Some simulator maps cannot safely carry the long one-way
+    // roadside return loop. Keep the production roadside policy as the
+    // default, but allow an explicitly selected simulator composition to
+    // leave the constrained site first and drive the validated shortest
+    // return route in reverse without attempting an unsafe 180-degree turn.
+    roadside_reverse_return_enable_ = declare_parameter<bool>(
+        "roadside_reverse_return_enable", false);
     default_lateral_direction_ =
         declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ =
@@ -221,6 +233,12 @@ public:
     return_lanelet_handoff_distance_m_ = std::max(
         0.01, std::abs(declare_parameter<double>(
                   "return_lanelet_handoff_distance_m", 0.15)));
+    // HH_260830 - The reverse handoff restores the ordinary Nav2 planning
+    // footprint. Live 5 cm raster audit requires at least 38 mm of additional
+    // inward crab from the old handoff; 30 mm CTE gives a bounded margin.
+    roadside_reverse_handoff_distance_m_ = std::max(
+        0.01, std::abs(declare_parameter<double>(
+                  "roadside_reverse_handoff_distance_m", 0.03)));
     return_lanelet_handoff_hold_s_ = std::max(
         0.0, std::abs(declare_parameter<double>(
                  "return_lanelet_handoff_hold_s", 1.20)));
@@ -496,6 +514,7 @@ private:
            phase_ == CampingSiteManeuverPhase::kWaitReturn ||
            phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
            phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
+           phase_ == CampingSiteManeuverPhase::kAlignOutboundLaneYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
            phase_ == CampingSiteManeuverPhase::kCrabOut;
   }
@@ -514,6 +533,7 @@ private:
            phase_ == CampingSiteManeuverPhase::kRotate180 ||
            phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
            phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
+           phase_ == CampingSiteManeuverPhase::kAlignOutboundLaneYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
            phase_ == CampingSiteManeuverPhase::kCrabOut;
   }
@@ -938,8 +958,10 @@ private:
     // already at a site.
     active_service_mode_ = adopted_service_mode;
     last_auto_key_ = "adopt:" + key + ":" + fixed(now().seconds(), 3);
-    // HH_260818 - The current pose is already the post-turn heading. Reconstruct
-    // the entry heading so ALIGN_RETRACE_YAW confirms, rather than repeats, it.
+    // HH_260830 - A roadside WAIT_RETURN pose has not turned yet: both the
+    // production forward loop and the CARLA exit-first turnaround preserve
+    // the entry heading until CRAB_OUT reaches the lanelet anchor. Ordinary
+    // turnaround sites have already turned, so reconstruct their entry yaw.
     start_yaw_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop
                      ? current_yaw
                      : camrod_control::normalizeAngle(current_yaw - M_PI);
@@ -1002,6 +1024,16 @@ private:
     return active_service_mode_ == CampsiteServiceMode::kRoadsideStop
                ? roadside_crab_speed_mps_
                : crab_speed_mps_;
+  }
+
+  bool roadsideForwardLoopActive() const {
+    return active_service_mode_ == CampsiteServiceMode::kRoadsideStop &&
+           !roadside_reverse_return_enable_;
+  }
+
+  bool roadsideReverseReturnActive() const {
+    return active_service_mode_ == CampsiteServiceMode::kRoadsideStop &&
+           roadside_reverse_return_enable_;
   }
 
   void ensureGoalPairForAutoStart(const std::string &key) {
@@ -1541,12 +1573,15 @@ private:
 
   void beginReturnExit(const std::string &reason) {
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-      // HH_260819 - Leave constrained terrain at the original heading. B11-B13
-      // hand planning a forward one-way loop only after CRAB_OUT reaches the
-      // shared lane anchor; no zero-turn is attempted in the narrow lane.
+      // HH_260830 - Always leave B11-B13 at the original heading. Production
+      // requests its forward loop at the shared lane anchor; the CARLA-only
+      // policy preserves that yaw and follows the inverted route in reverse.
       target_yaw_ = start_yaw_;
       setPhase(CampingSiteManeuverPhase::kCrabOut,
-               reason + "; roadside exit before forward return loop");
+               reason +
+                   (roadsideForwardLoopActive()
+                        ? "; roadside exit before forward return loop"
+                        : "; roadside exit before reverse route handoff"));
     } else if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
@@ -1705,8 +1740,17 @@ private:
 
   std::optional<double> liveLaneletReturnDistance() const {
     const auto distance_m = liveLaneletProjectionDistance();
+    // HH_260830 - A reverse Nav2 handoff immediately restores the ordinary
+    // planning footprint. Require the body to reach the configured exact
+    // anchor tolerance first; the general 0.15 m handoff is intentionally
+    // retained for production's forward-loop and normal site policies.
+    const double handoff_distance_m =
+        roadsideReverseReturnActive()
+            ? std::min(return_lanelet_handoff_distance_m_,
+                       roadside_reverse_handoff_distance_m_)
+            : return_lanelet_handoff_distance_m_;
     return distance_m.has_value() &&
-                   *distance_m <= return_lanelet_handoff_distance_m_ + 1.0e-9
+                   *distance_m <= handoff_distance_m + 1.0e-9
                ? distance_m
                : std::nullopt;
   }
@@ -1758,10 +1802,20 @@ private:
         fixed(lanelet_distance_m) + "m original_anchor_error=" +
         fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m";
     publishZero();
-    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+    if (roadsideForwardLoopActive()) {
       setPhase(CampingSiteManeuverPhase::kDone,
                detail + "; forward return loop requested");
       publishReturnRequest("done_roadside_forward_live_lanelet");
+    } else if (roadsideReverseReturnActive()) {
+      // HH_260830 - Live Woraksan clearance measurements prove that neither
+      // the B12 anchor nor the first 20 m of the return corridor can contain
+      // Ranger's 0.947 m swept turn radius. Preserve the outbound body yaw and
+      // let reverse-capable RPP follow the inverted lanelet path instead.
+      target_yaw_ = start_yaw_;
+      rotate_direction_sign_ = 0.0;
+      rotate_direction_label_ = "outbound_lane_before_reverse";
+      setPhase(CampingSiteManeuverPhase::kAlignOutboundLaneYaw,
+               detail + "; align outbound lane yaw before reverse route");
     } else {
       setPhase(CampingSiteManeuverPhase::kDone, detail);
       publishReturnRequest("done_live_lanelet");
@@ -2137,12 +2191,16 @@ private:
     } else if (phase_ == CampingSiteManeuverPhase::kCrabIn) {
       if (entryReached()) {
         publishZero();
-        // HH_260721 - Keep the route heading at constrained roadside service
-        // poses.
+        // HH_260830 - Keep the route heading at every constrained roadside
+        // service pose. The CARLA-only return preserves this yaw throughout
+        // reverse path tracking; no on-site or post-exit turn is attempted.
         if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
           target_yaw_ = start_yaw_;
           setPhase(CampingSiteManeuverPhase::kUnloadWait,
-                   "roadside service pose reached; zero-turn skipped");
+                   roadsideForwardLoopActive()
+                       ? "roadside service pose reached; zero-turn skipped"
+                       : "roadside service pose reached; reverse return "
+                         "deferred until lanelet exit");
         } else {
           setPhase(CampingSiteManeuverPhase::kRotate180,
                    "crab entry pose reached");
@@ -2182,6 +2240,14 @@ private:
                  "aligned with reversed route at lanelet snap pose");
         publishReturnRequest("done_after_return_route_alignment");
       }
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignOutboundLaneYaw) {
+      if (publishRotate()) {
+        setPhase(CampingSiteManeuverPhase::kDone,
+                 "outbound lane yaw aligned; reverse route requested "
+                 "without turnaround");
+        publishReturnRequest(
+            "done_roadside_reverse_after_outbound_alignment");
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseOut) {
       const auto live_handoff = observeLiveLaneletReturnHandoff();
       if (live_handoff.has_value() && *live_handoff) {
@@ -2214,7 +2280,7 @@ private:
               crab_return_sequencer_.stage(), return_error,
               return_position_tolerance_m_)) {
         publishZero();
-        if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+        if (roadsideForwardLoopActive()) {
           // HH_260819 - B11-B13 cannot safely zero-turn inside the current
           // narrow mapped lane. Preserve arrival heading, request the legal
           // forward loop, and resume ordinary body/footprint checks at DONE.
@@ -2222,6 +2288,14 @@ private:
                    "live lanelet pose unavailable; roadside exact-anchor "
                    "fallback reached; forward return loop requested");
           publishReturnRequest("done_roadside_forward_exact_anchor_fallback");
+        } else if (roadsideReverseReturnActive()) {
+          target_yaw_ = start_yaw_;
+          rotate_direction_sign_ = 0.0;
+          rotate_direction_label_ = "outbound_lane_before_reverse_fallback";
+          setPhase(
+              CampingSiteManeuverPhase::kAlignOutboundLaneYaw,
+              "live lanelet pose unavailable; roadside exact-anchor "
+              "fallback reached; align outbound lane yaw before reverse route");
         } else {
           setPhase(
               CampingSiteManeuverPhase::kDone,
@@ -2238,9 +2312,11 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kDone) {
       publishReturnRequest(
-          active_service_mode_ == CampsiteServiceMode::kRoadsideStop
+          roadsideForwardLoopActive()
               ? "done_roadside_forward_retry"
-              : "done_retry");
+              : roadsideReverseReturnActive()
+                    ? "done_roadside_reverse_retry"
+                    : "done_retry");
     }
     publishStatus(false);
   }
@@ -2262,6 +2338,11 @@ private:
     const std::string message =
         "phase=" + phaseName(phase_) +
         " service_mode=" + serviceModeName(active_service_mode_) +
+        " roadside_return=" +
+        (roadsideForwardLoopActive()
+             ? "forward_loop"
+             : roadsideReverseReturnActive() ? "reverse_without_turnaround"
+                                             : "turnaround") +
         " crab_speed_mps=" + fixed(activeCrabSpeedMps()) +
         " return_published=" + (return_published_ ? "True" : "False") +
         " return_ack=" + (return_acknowledged_ ? "True" : "False");
@@ -2278,6 +2359,14 @@ private:
         diagnostic_level, message,
         {
             {"phase", phaseName(phase_)},
+            {"roadside_reverse_return_enable",
+             roadside_reverse_return_enable_ ? "true" : "false"},
+            {"roadside_return_policy",
+             roadsideForwardLoopActive()
+                 ? "forward_loop"
+                 : roadsideReverseReturnActive()
+                       ? "reverse_without_turnaround"
+                       : "turnaround"},
             {"cmd_vel_topic", command_topic_},
             {"crab_duration_s", fixed(crab_duration_s_)},
             {"crab_offset_m", fixed(crab_offset_m_)},
@@ -2293,7 +2382,10 @@ private:
                  ? fixed(*live_lanelet_projection_distance_m)
                  : "unavailable"},
             {"live_lanelet_handoff_distance_m",
-             fixed(return_lanelet_handoff_distance_m_)},
+             fixed(roadsideReverseReturnActive()
+                       ? std::min(return_lanelet_handoff_distance_m_,
+                                  roadside_reverse_handoff_distance_m_)
+                       : return_lanelet_handoff_distance_m_)},
             {"live_lanelet_handoff_holding",
              return_lanelet_handoff_candidate_ ? "true" : "false"},
             {"crab_return_stage",
@@ -2329,6 +2421,7 @@ private:
   double minimum_lateral_offset_m_{0.2};
   double maximum_lateral_offset_m_{7.0};
   double roadside_maximum_lateral_offset_m_{0.30};
+  bool roadside_reverse_return_enable_{false};
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
   double roadside_crab_speed_mps_{0.20};
@@ -2340,6 +2433,7 @@ private:
   double return_steering_settle_s_{1.20};
   bool enable_live_lanelet_return_handoff_{true};
   double return_lanelet_handoff_distance_m_{0.15};
+  double roadside_reverse_handoff_distance_m_{0.03};
   double return_lanelet_handoff_hold_s_{1.20};
   double crab_timeout_margin_s_{3.0};
   double crab_return_timeout_s_{90.0};

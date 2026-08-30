@@ -8,15 +8,30 @@ import re
 import time
 
 import cv2
+import numpy as np
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
 
 from camrod_carla_adapter.sensor_relay_node import encode_image_jpeg
+from camrod_carla_adapter.lidar_filter_node import pointcloud_xyz_and_records
 
 
 ROLE_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def lidar_azimuth_extent_deg(message: PointCloud2) -> tuple[float, float]:
+    """Return the finite horizontal ray extent from one CARLA frame."""
+    xyz, _records = pointcloud_xyz_and_records(message)
+    finite = np.isfinite(xyz[:, 0]) & np.isfinite(xyz[:, 1])
+    nonzero = np.hypot(xyz[:, 0], xyz[:, 1]) > 1e-6
+    usable = xyz[finite & nonzero]
+    if usable.shape[0] == 0:
+        raise ValueError("point cloud has no finite horizontal returns")
+    azimuth = np.degrees(np.arctan2(usable[:, 1], usable[:, 0]))
+    return float(np.min(azimuth)), float(np.max(azimuth))
 
 
 class SensorStreamProbe(Node):
@@ -166,6 +181,21 @@ class SensorStreamProbe(Node):
                 "front_lidar", "invalid point cloud payload or field layout"
             )
             return
+        try:
+            azimuth_min_deg, azimuth_max_deg = lidar_azimuth_extent_deg(message)
+        except ValueError as error:
+            self._reject("front_lidar", str(error))
+            return
+        # This actor emulates a forward solid-state scanner with a fixed
+        # -60..+60 degree horizontal FOV. A left-only or right-only frame means
+        # CARLA's rotation_frequency is mismatched with the 0.05 s world step.
+        if azimuth_min_deg > -55.0 or azimuth_max_deg < 55.0:
+            self._reject(
+                "front_lidar",
+                "incomplete fixed FOV: "
+                f"azimuth=[{azimuth_min_deg:.2f},{azimuth_max_deg:.2f}] deg",
+            )
+            return
         self._accept(
             "front_lidar",
             {
@@ -173,6 +203,8 @@ class SensorStreamProbe(Node):
                 "height": int(message.height),
                 "point_step": int(message.point_step),
                 "bytes": len(message.data),
+                "azimuth_min_deg": round(azimuth_min_deg, 3),
+                "azimuth_max_deg": round(azimuth_max_deg, 3),
             },
         )
 
@@ -239,6 +271,11 @@ def parse_args():
     parser.add_argument(
         "--max-sample-age-seconds", type=float, default=3.0
     )
+    parser.add_argument(
+        "--emit-ready-signal",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser.parse_args()
 
 
@@ -284,11 +321,19 @@ def main():
         arguments.min_observation_seconds,
         arguments.max_sample_age_seconds,
     )
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
     deadline = time.monotonic() + arguments.timeout_seconds
     interrupted = False
     try:
+        # The opt-in marker lets the subprocess shutdown contract test wait
+        # until ROS initialization and all subscriptions are complete.  It is
+        # intentionally hidden and disabled in normal launch output so the
+        # successful stdout payload remains one JSON document.
+        if arguments.emit_ready_signal:
+            print("CARLA_SENSOR_PREFLIGHT_READY", flush=True)
         while time.monotonic() < deadline and not node.complete():
-            rclpy.spin_once(node, timeout_sec=0.1)
+            executor.spin_once(timeout_sec=0.1)
         accepted = node.complete()
         missing = {
             name: topic
@@ -353,6 +398,8 @@ def main():
     except KeyboardInterrupt:
         interrupted = True
     finally:
+        executor.remove_node(node)
+        executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

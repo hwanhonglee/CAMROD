@@ -1,12 +1,18 @@
 """Behavioral tests for the bounded CARLA visual-stream preflight."""
 
 import importlib.util
+import math
 import os
 from pathlib import Path
+import select
 import signal
+import struct
 import subprocess
 import sys
 import time
+
+import pytest
+from sensor_msgs.msg import PointCloud2, PointField
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -69,6 +75,45 @@ def test_invalid_latest_payload_revokes_an_earlier_valid_stream():
     assert not probe.complete()
 
 
+def _azimuth_cloud(angles_deg):
+    message = PointCloud2()
+    message.height = 1
+    message.width = len(angles_deg)
+    message.fields = [
+        PointField(name=name, offset=offset, datatype=PointField.FLOAT32, count=1)
+        for name, offset in (("x", 0), ("y", 4), ("z", 8), ("intensity", 12))
+    ]
+    message.point_step = 16
+    message.row_step = message.width * message.point_step
+    message.data = b"".join(
+        struct.pack(
+            "<ffff",
+            2.0 * math.cos(math.radians(angle)),
+            2.0 * math.sin(math.radians(angle)),
+            -0.5,
+            1.0,
+        )
+        for angle in angles_deg
+    )
+    return message
+
+
+def test_lidar_extent_rejects_alternating_half_scan_regression():
+    module = _load_probe_module()
+
+    assert module.lidar_azimuth_extent_deg(
+        _azimuth_cloud((-60.0, 0.0, 60.0))
+    ) == pytest.approx((-60.0, 60.0), abs=1e-5)
+    left_extent = module.lidar_azimuth_extent_deg(
+        _azimuth_cloud((-60.0, -30.0, 0.0))
+    )
+    right_extent = module.lidar_azimuth_extent_deg(
+        _azimuth_cloud((0.0, 30.0, 60.0))
+    )
+    assert left_extent[1] < 55.0
+    assert right_extent[0] > -55.0
+
+
 def test_sigint_exits_130_without_double_shutdown_traceback():
     environment = os.environ.copy()
     environment["ROS_DOMAIN_ID"] = "227"
@@ -80,6 +125,7 @@ def test_sigint_exits_130_without_double_shutdown_traceback():
             "20",
             "--min-observation-seconds",
             "1",
+            "--emit-ready-signal",
         ],
         cwd=REPO_ROOT,
         env=environment,
@@ -87,9 +133,13 @@ def test_sigint_exits_130_without_double_shutdown_traceback():
         stderr=subprocess.PIPE,
         text=True,
     )
-    time.sleep(0.5)
+    readable, _, _ = select.select([process.stdout], [], [], 5.0)
+    assert readable, "sensor preflight did not finish ROS initialization"
+    ready_line = process.stdout.readline().strip()
+    assert ready_line == "CARLA_SENSOR_PREFLIGHT_READY"
     process.send_signal(signal.SIGINT)
-    stdout, stderr = process.communicate(timeout=5.0)
+    remaining_stdout, stderr = process.communicate(timeout=5.0)
+    stdout = ready_line + "\n" + remaining_stdout
 
     assert process.returncode == 130, (stdout, stderr)
     assert "Traceback" not in stderr

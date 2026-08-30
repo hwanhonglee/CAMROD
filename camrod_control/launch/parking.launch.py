@@ -18,6 +18,10 @@ def generate_launch_description():
     default_parameter_file = package_path(
         "camrod_control", os.path.join("config", "parking.yaml")
     )
+    default_runtime_override_parameter_file = package_path(
+        "camrod_control",
+        os.path.join("config", "parking_runtime_profiles", "disabled.yaml"),
+    )
     default_apriltag_parameter_file = package_path(
         "camrod_perception",
         os.path.join("config", "apriltag_parking_detector.yaml"),
@@ -30,6 +34,14 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("parking_namespace", default_value="parking"),
         DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
+        DeclareLaunchArgument(
+            "runtime_override_parameter_file",
+            default_value=default_runtime_override_parameter_file,
+            description=(
+                "Final sparse parking-controller overlay; the default file "
+                "contains no parameter overrides"
+            ),
+        ),
         DeclareLaunchArgument(
             "apriltag_parameter_file",
             default_value=default_apriltag_parameter_file,
@@ -70,6 +82,7 @@ def generate_launch_description():
             output="screen",
             parameters=[
                 LaunchConfiguration("parameter_file"),
+                LaunchConfiguration("runtime_override_parameter_file"),
                 {
                     "command_topic": LaunchConfiguration("command_topic"),
                     "vehicle_pose_topic": LaunchConfiguration("vehicle_pose_topic"),
@@ -88,6 +101,7 @@ def generate_launch_description():
             output="screen",
             parameters=[
                 LaunchConfiguration("parameter_file"),
+                LaunchConfiguration("runtime_override_parameter_file"),
                 {
                     "command_topic": LaunchConfiguration("command_topic"),
                 },
