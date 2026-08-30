@@ -181,7 +181,7 @@ acceptance.
 | Fixed-lookahead source profile | PASS (2/2) | B1/B2 in 422.848 s, zero restart; obstacle stop/resume, margin recovery, RETURN, park and charge |
 | Charger departure | PASS | B2/B3 left CHARGING through `DEPARTING_CHARGER`; stale charge contact did not close drive authorization |
 | v2.2.1 selected build/tests | BUILD PASS / BASELINE TEST DEBT | Isolated Release build `5/5`; focused contracts `65/65`; 6 inherited/environment-sensitive bringup targets remain failing |
-| CARLA overlay verification | PASS | CARLA source contracts `21/21`; adapter Release build passed under its separate evidence boundary |
+| CARLA overlay verification | RENDERED E2E PASS | source/UI streams `32/32`, CARLA sensor actors `13/13`; physical 4WS Ranger completed Drop Zone → B12 → return → reverse parking → `CHARGING` without manual drive/teleport |
 | Historical map-v17 B2 boundary recovery | PASS (3/3) | `REVERSE_YAW_RIGHT`, mission complete, 1.5 s clear proof, no second hold or retry latch |
 | Persistent obstacle on 3.0 m lane | SAFE-HOLD PASS | One no-path preflight, no selector/ABORT loop, original mission resumed after clear |
 | Exact campsite crab policy | AMD64 SIM + UNIT PASS | Fresh map-v22 B1 completed every site phase through `DONE`; observed `CRAB_OUT` raw command was `x=0`, `y=0.666667`, and the route-anchor error was `0.04 m`; physical wheel settling remains pending |
