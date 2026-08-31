@@ -1,0 +1,1118 @@
+{
+  "schema": "camrod.virtual_carla.camping_site_matrix.v1",
+  "status": "PASS",
+  "created_at_utc": "2026-08-31T19:57:54Z",
+  "scope": {
+    "selected_sites": [
+      "B1"
+    ],
+    "unattempted_sites": [
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "B6",
+      "B7",
+      "B8",
+      "B9",
+      "B10",
+      "B11",
+      "B12",
+      "B13"
+    ],
+    "motion_commands_sent": true,
+    "pose_teleport_used": false,
+    "fake_sensor_data_used": false,
+    "ui_endpoints": {
+      "dispatch": "POST /ui/destination?site=Bx&run=true",
+      "return": "POST /ui/manual_return",
+      "stop": "POST /ui/stop"
+    }
+  },
+  "active_configuration": {
+    "camping_sites_yaml": "/home/hong/camrod_ws/src/camrod_planning/config/camping_sites.yaml",
+    "drop_zones_yaml": "/home/hong/camrod_ws/src/camrod_bringup/config/map/drop_zones.yaml",
+    "sha256": {
+      "camping_sites": "2380ce4f336b9b3257551c79380298caa4159df607a6cc1c4285fc0a6e04fc48",
+      "drop_zones": "c7a28639ed01a8e9591f2e4ce2c9dbba2c3c9f091317a0a101bcbbcf029edf33"
+    },
+    "drop_zone": {
+      "source_id": "dz_area_2320",
+      "x_m": -14.2347,
+      "y_m": 39.7863,
+      "z_m": 0.0,
+      "yaw_deg": -82.2127
+    }
+  },
+  "sites": [
+    {
+      "site": "B1",
+      "source_id": "dz_area_1353",
+      "service_mode": "turnaround",
+      "target_pose": {
+        "x_m": 25.8687,
+        "y_m": -5.13869,
+        "z_m": 0.0,
+        "yaw_deg": 23.7451
+      },
+      "status": "PASS",
+      "started_at_utc": "2026-08-31T19:57:54Z",
+      "finished_at_utc": "2026-08-31T20:09:45Z",
+      "elapsed_s": 710.787,
+      "milestones": [
+        {
+          "at_utc": "2026-08-31T19:57:55Z",
+          "elapsed_s": 0.969,
+          "event": "live dispatch preflight",
+          "observation": {
+            "service_state": null,
+            "pose": {
+              "x_m": -13.720485264407044,
+              "y_m": 43.442618666252905,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": -20.67264175415039,
+              "y_m": 33.952449798583984,
+              "z_m": -0.9378153681755066,
+              "speed_mps": 6.877061943326132e-08
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 9807,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=516.6 current_yaw_deg=6.88 target_yaw_deg=0.00 yaw_error_deg=-6.88 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=disabled_zero_default detail=initialized return_published=False return_ack=False"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "IDLE",
+                "message": "phase=IDLE charging=False"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "STANDBY",
+              "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [],
+              "service_state_names": [],
+              "site_phases": [
+                "IDLE"
+              ],
+              "parking_phases": [
+                "reverse:IDLE"
+              ],
+              "drop_zone_phases": [
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 11,
+              "cmd_vel_max_component_sum": 0.0,
+              "motion_command_observed": false,
+              "carla_odometry_samples": 19,
+              "carla_odometry_distance_m": 0.0,
+              "physical_status_samples": 29
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T19:57:55Z",
+          "elapsed_s": 0.995,
+          "event": "dispatch accepted",
+          "observation": {
+            "service_state": null,
+            "pose": {
+              "x_m": -13.720485264407044,
+              "y_m": 43.442618666252905,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": -20.67264175415039,
+              "y_m": 33.952449798583984,
+              "z_m": -0.9378153681755066,
+              "speed_mps": 6.877061943326132e-08
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 9807,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=516.6 current_yaw_deg=6.88 target_yaw_deg=0.00 yaw_error_deg=-6.88 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=disabled_zero_default detail=initialized return_published=False return_ack=False"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "IDLE",
+                "message": "phase=IDLE charging=False"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "STANDBY",
+              "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [],
+              "service_state_names": [],
+              "site_phases": [
+                "IDLE"
+              ],
+              "parking_phases": [
+                "reverse:IDLE"
+              ],
+              "drop_zone_phases": [
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 11,
+              "cmd_vel_max_component_sum": 0.0,
+              "motion_command_observed": false,
+              "carla_odometry_samples": 19,
+              "carla_odometry_distance_m": 0.0,
+              "physical_status_samples": 29
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T20:02:00Z",
+          "elapsed_s": 246.374,
+          "event": "WAITING_FOR_RETURN_REQUEST with ordered WAIT_RETURN phase",
+          "observation": {
+            "service_state": {
+              "state": 11,
+              "state_name": "WAITING_FOR_RETURN_REQUEST",
+              "description": "camping_site_maneuver_controller:WAIT_RETURN:waiting external return command"
+            },
+            "pose": {
+              "x_m": 25.902794380818044,
+              "y_m": -5.226829109674971,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": 18.950597763061523,
+              "y_m": -14.71703052520752,
+              "z_m": 1.4797810316085815,
+              "speed_mps": 2.2336154733578645e-07
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 14449,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "WAIT_RETURN",
+              "message": "phase=WAIT_RETURN service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=0.0 current_yaw_deg=120.59 target_yaw_deg=116.75 yaw_error_deg=-3.84 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=waiting external return command return_published=False return_ack=False"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "IDLE",
+                "message": "phase=IDLE charging=False"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "STANDBY",
+              "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [
+                1,
+                5,
+                6,
+                11
+              ],
+              "service_state_names": [
+                "MOVING_TO_SITE",
+                "SITE_ENTRY",
+                "UNLOAD_WAIT",
+                "WAITING_FOR_RETURN_REQUEST"
+              ],
+              "site_phases": [
+                "IDLE",
+                "ALIGN_ENTRY_YAW",
+                "CRAB_IN",
+                "ROTATE_180",
+                "UNLOAD_WAIT",
+                "WAIT_RETURN"
+              ],
+              "parking_phases": [
+                "reverse:IDLE"
+              ],
+              "drop_zone_phases": [
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY",
+                "ENABLED",
+                "STANDBY"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 4561,
+              "cmd_vel_max_component_sum": 0.739726,
+              "motion_command_observed": true,
+              "carla_odometry_samples": 4661,
+              "carla_odometry_distance_m": 83.018798,
+              "physical_status_samples": 6992
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T20:02:00Z",
+          "elapsed_s": 246.39,
+          "event": "return request accepted",
+          "observation": {
+            "service_state": {
+              "state": 11,
+              "state_name": "WAITING_FOR_RETURN_REQUEST",
+              "description": "camping_site_maneuver_controller:WAIT_RETURN:waiting external return command"
+            },
+            "pose": {
+              "x_m": 25.902794380818044,
+              "y_m": -5.226829109674971,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": 18.950597763061523,
+              "y_m": -14.71703052520752,
+              "z_m": 1.4797810316085815,
+              "speed_mps": 2.2336154733578645e-07
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 14449,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "WAIT_RETURN",
+              "message": "phase=WAIT_RETURN service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=0.0 current_yaw_deg=120.59 target_yaw_deg=116.75 yaw_error_deg=-3.84 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=waiting external return command return_published=False return_ack=False"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "IDLE",
+                "message": "phase=IDLE charging=False"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "STANDBY",
+              "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [
+                1,
+                5,
+                6,
+                11
+              ],
+              "service_state_names": [
+                "MOVING_TO_SITE",
+                "SITE_ENTRY",
+                "UNLOAD_WAIT",
+                "WAITING_FOR_RETURN_REQUEST"
+              ],
+              "site_phases": [
+                "IDLE",
+                "ALIGN_ENTRY_YAW",
+                "CRAB_IN",
+                "ROTATE_180",
+                "UNLOAD_WAIT",
+                "WAIT_RETURN"
+              ],
+              "parking_phases": [
+                "reverse:IDLE"
+              ],
+              "drop_zone_phases": [
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY",
+                "ENABLED",
+                "STANDBY"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 4561,
+              "cmd_vel_max_component_sum": 0.739726,
+              "motion_command_observed": true,
+              "carla_odometry_samples": 4661,
+              "carla_odometry_distance_m": 83.018798,
+              "physical_status_samples": 6992
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T20:09:33Z",
+          "elapsed_s": 699.273,
+          "event": "WAITING_FOR_CHARGING at Drop Zone",
+          "observation": {
+            "service_state": {
+              "state": 12,
+              "state_name": "WAITING_FOR_CHARGING",
+              "description": "reverse_parking_controller:WAIT_FOR_CHARGING:station reverse axis reached; waiting for charging"
+            },
+            "pose": {
+              "x_m": -14.053661906197236,
+              "y_m": 40.05080217022618,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": -0.41079965590024836,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.013026129813246266
+            },
+            "carla_odometry": {
+              "x_m": -21.006595611572266,
+              "y_m": 30.57551383972168,
+              "z_m": -0.9378148317337036,
+              "speed_mps": 0.3133875253086132
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 23033,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "DONE",
+              "message": "phase=DONE service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=442.0 current_yaw_deg=92.67 target_yaw_deg=116.75 yaw_error_deg=24.08 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=live lanelet handoff current=(22.60,-7.07) projection=(22.47,-7.13) lateral_error=0.15m original_anchor_error=0.29m return_published=True return_ack=True"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "REVERSE_APPROACH",
+                "message": "phase=REVERSE_APPROACH charging=False"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "ENABLED",
+              "message": "state=ENABLED reasons=none charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [
+                1,
+                5,
+                6,
+                11,
+                9,
+                10,
+                12
+              ],
+              "service_state_names": [
+                "MOVING_TO_SITE",
+                "SITE_ENTRY",
+                "UNLOAD_WAIT",
+                "WAITING_FOR_RETURN_REQUEST",
+                "RETURN_WITH_CARGO",
+                "DROP_ZONE_PARKING",
+                "WAITING_FOR_CHARGING"
+              ],
+              "site_phases": [
+                "IDLE",
+                "ALIGN_ENTRY_YAW",
+                "CRAB_IN",
+                "ROTATE_180",
+                "UNLOAD_WAIT",
+                "WAIT_RETURN",
+                "ALIGN_RETRACE_YAW",
+                "CRAB_OUT",
+                "DONE"
+              ],
+              "parking_phases": [
+                "reverse:IDLE",
+                "reverse:REVERSE_APPROACH"
+              ],
+              "drop_zone_phases": [
+                "IDLE",
+                "ALIGN_PARKING_YAW",
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY",
+                "ENABLED",
+                "STANDBY",
+                "ENABLED"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 13322,
+              "cmd_vel_max_component_sum": 0.739726,
+              "motion_command_observed": true,
+              "carla_odometry_samples": 13243,
+              "carla_odometry_distance_m": 170.189183,
+              "physical_status_samples": 19867
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T20:09:45Z",
+          "elapsed_s": 710.774,
+          "event": "PARKED and CHARGING",
+          "observation": {
+            "service_state": {
+              "state": 13,
+              "state_name": "CHARGING",
+              "description": "reverse_parking_controller:PARKED:charging detected"
+            },
+            "pose": {
+              "x_m": -14.052780759388956,
+              "y_m": 40.03264150628851,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": -21.004940032958984,
+              "y_m": 30.54247283935547,
+              "z_m": -0.9378145933151245,
+              "speed_mps": 7.445790781166078e-08
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 23251,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "DONE",
+              "message": "phase=DONE service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=453.1 current_yaw_deg=93.04 target_yaw_deg=116.75 yaw_error_deg=23.71 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=live lanelet handoff current=(22.60,-7.07) projection=(22.47,-7.13) lateral_error=0.15m original_anchor_error=0.29m return_published=True return_ack=True"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "PARKED",
+                "message": "phase=PARKED charging=True"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "CHARGING",
+              "message": "state=CHARGING reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,charging charging=true charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [
+                1,
+                5,
+                6,
+                11,
+                9,
+                10,
+                12,
+                13
+              ],
+              "service_state_names": [
+                "MOVING_TO_SITE",
+                "SITE_ENTRY",
+                "UNLOAD_WAIT",
+                "WAITING_FOR_RETURN_REQUEST",
+                "RETURN_WITH_CARGO",
+                "DROP_ZONE_PARKING",
+                "WAITING_FOR_CHARGING",
+                "CHARGING"
+              ],
+              "site_phases": [
+                "IDLE",
+                "ALIGN_ENTRY_YAW",
+                "CRAB_IN",
+                "ROTATE_180",
+                "UNLOAD_WAIT",
+                "WAIT_RETURN",
+                "ALIGN_RETRACE_YAW",
+                "CRAB_OUT",
+                "DONE"
+              ],
+              "parking_phases": [
+                "reverse:IDLE",
+                "reverse:REVERSE_APPROACH",
+                "reverse:WAIT_FOR_CHARGING",
+                "reverse:PARKED"
+              ],
+              "drop_zone_phases": [
+                "IDLE",
+                "ALIGN_PARKING_YAW",
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY",
+                "ENABLED",
+                "STANDBY",
+                "ENABLED",
+                "STANDBY",
+                "CHARGING"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 13570,
+              "cmd_vel_max_component_sum": 0.739726,
+              "motion_command_observed": true,
+              "carla_odometry_samples": 13462,
+              "carla_odometry_distance_m": 170.222831,
+              "physical_status_samples": 20194
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        },
+        {
+          "at_utc": "2026-08-31T20:09:45Z",
+          "elapsed_s": 710.787,
+          "event": "PASS; return error=0.306 m",
+          "observation": {
+            "service_state": {
+              "state": 13,
+              "state_name": "CHARGING",
+              "description": "reverse_parking_controller:PARKED:charging detected"
+            },
+            "pose": {
+              "x_m": -14.052780759388956,
+              "y_m": 40.03264150628851,
+              "z_m": 0.0
+            },
+            "cmd_vel": {
+              "linear_x_mps": 0.0,
+              "linear_y_mps": 0.0,
+              "angular_z_radps": 0.0
+            },
+            "carla_odometry": {
+              "x_m": -21.004940032958984,
+              "y_m": 30.54247283935547,
+              "z_m": -0.9378145933151245,
+              "speed_mps": 7.445790781166078e-08
+            },
+            "physical": {
+              "actor_id": 130,
+              "ready": true,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_gate_accepted": true,
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "physx_substep_control_verified": true,
+              "physx_substep_threshold_mps": 5.0,
+              "physx_substep_low_count": 9,
+              "physx_substep_high_count": 1,
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "last_applied_sequence": 23251,
+              "independent_wheel_drive_available": true,
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+              "reason": "physical steering/torque command applied"
+            },
+            "site": {
+              "level": 0,
+              "operating_state": "DONE",
+              "message": "phase=DONE service_mode=turnaround roadside_return=turnaround crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=453.1 current_yaw_deg=93.04 target_yaw_deg=116.75 yaw_error_deg=23.71 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=live lanelet handoff current=(22.60,-7.07) projection=(22.47,-7.13) lateral_error=0.15m original_anchor_error=0.29m return_published=True return_ack=True"
+            },
+            "parking": {
+              "reverse": {
+                "level": 0,
+                "operating_state": "PARKED",
+                "message": "phase=PARKED charging=True"
+              }
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+            },
+            "gate": {
+              "level": 0,
+              "operating_state": "CHARGING",
+              "message": "state=CHARGING reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,charging charging=true charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+            },
+            "sequences": {
+              "service_state_ids": [
+                1,
+                5,
+                6,
+                11,
+                9,
+                10,
+                12,
+                13
+              ],
+              "service_state_names": [
+                "MOVING_TO_SITE",
+                "SITE_ENTRY",
+                "UNLOAD_WAIT",
+                "WAITING_FOR_RETURN_REQUEST",
+                "RETURN_WITH_CARGO",
+                "DROP_ZONE_PARKING",
+                "WAITING_FOR_CHARGING",
+                "CHARGING"
+              ],
+              "site_phases": [
+                "IDLE",
+                "ALIGN_ENTRY_YAW",
+                "CRAB_IN",
+                "ROTATE_180",
+                "UNLOAD_WAIT",
+                "WAIT_RETURN",
+                "ALIGN_RETRACE_YAW",
+                "CRAB_OUT",
+                "DONE"
+              ],
+              "parking_phases": [
+                "reverse:IDLE",
+                "reverse:REVERSE_APPROACH",
+                "reverse:WAIT_FOR_CHARGING",
+                "reverse:PARKED"
+              ],
+              "drop_zone_phases": [
+                "IDLE",
+                "ALIGN_PARKING_YAW",
+                "IDLE"
+              ],
+              "gate_states": [
+                "STANDBY",
+                "ENABLED",
+                "STANDBY",
+                "ENABLED",
+                "STANDBY",
+                "CHARGING"
+              ]
+            },
+            "motion_metrics": {
+              "cmd_vel_samples": 13570,
+              "cmd_vel_max_component_sum": 0.739726,
+              "motion_command_observed": true,
+              "carla_odometry_samples": 13462,
+              "carla_odometry_distance_m": 170.222831,
+              "physical_status_samples": 20194
+            },
+            "physical_identity": {
+              "actor_id": 130,
+              "api_version": "carla.physx_four_wheel_steer_torque.v2",
+              "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+              "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+              "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+              "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+              "wheel_torque_safety_cap_nm": 20.0,
+              "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+              "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+              "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+            }
+          }
+        }
+      ],
+      "failure_reason": "",
+      "start_localization_pose": {
+        "x_m": -13.720485264407044,
+        "y_m": 43.442618666252905,
+        "z_m": 0.0
+      },
+      "arrival_localization_pose": {
+        "x_m": 25.902794380818044,
+        "y_m": -5.226829109674971,
+        "z_m": 0.0
+      },
+      "site_phase_sequence": [
+        "IDLE",
+        "ALIGN_ENTRY_YAW",
+        "CRAB_IN",
+        "ROTATE_180",
+        "UNLOAD_WAIT",
+        "WAIT_RETURN",
+        "ALIGN_RETRACE_YAW",
+        "CRAB_OUT",
+        "DONE"
+      ],
+      "service_state_sequence": [
+        "MOVING_TO_SITE",
+        "SITE_ENTRY",
+        "UNLOAD_WAIT",
+        "WAITING_FOR_RETURN_REQUEST",
+        "RETURN_WITH_CARGO",
+        "DROP_ZONE_PARKING",
+        "WAITING_FOR_CHARGING",
+        "CHARGING"
+      ],
+      "drop_zone_phase_sequence": [
+        "IDLE",
+        "ALIGN_PARKING_YAW",
+        "IDLE"
+      ],
+      "parking_phase_sequence": [
+        "reverse:IDLE",
+        "reverse:REVERSE_APPROACH",
+        "reverse:WAIT_FOR_CHARGING",
+        "reverse:PARKED"
+      ],
+      "motion_metrics": {
+        "cmd_vel_samples": 13570,
+        "cmd_vel_max_component_sum": 0.739726,
+        "motion_command_observed": true,
+        "carla_odometry_samples": 13462,
+        "carla_odometry_distance_m": 170.222831,
+        "physical_status_samples": 20194
+      },
+      "final_service_state": {
+        "state": 13,
+        "state_name": "CHARGING",
+        "description": "reverse_parking_controller:PARKED:charging detected"
+      },
+      "final_parking_status": {
+        "reverse": {
+          "level": 0,
+          "operating_state": "PARKED",
+          "message": "phase=PARKED charging=True"
+        }
+      },
+      "final_drop_zone_status": {
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+      },
+      "final_gate_status": {
+        "level": 0,
+        "operating_state": "CHARGING",
+        "message": "state=CHARGING reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,charging charging=true charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+      },
+      "final_physical_four_wheel_status": {
+        "actor_id": 130,
+        "ready": true,
+        "api_version": "carla.physx_four_wheel_steer_torque.v2",
+        "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+        "physical_gate_accepted": true,
+        "physical_manifest_sha256": "672695cfe8de4edfdf666df53584f7d107ec93af0dbeb839c610a3c2ccc5ad39",
+        "physx_substep_control_verified": true,
+        "physx_substep_threshold_mps": 5.0,
+        "physx_substep_low_count": 9,
+        "physx_substep_high_count": 1,
+        "production_authorization_sha256": "fd8f055de74d2d2dbb7f40429424bddb0989d73b7d416ce5357372dd6f816a21",
+        "ros_integration_sha256": "30da52c34e17e8f700e722f19bf228a95076f38f226f65765ebaba1563fb8014",
+        "last_applied_sequence": 23251,
+        "independent_wheel_drive_available": true,
+        "wheel_torque_safety_cap_nm": 20.0,
+        "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+        "imported_libcarla_path": "/tmp/camrod-carla-egg.IRDSZG/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+        "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+        "reason": "physical steering/torque command applied"
+      },
+      "final_localization_pose": {
+        "x_m": -14.052780759388956,
+        "y_m": 40.03264150628851,
+        "z_m": 0.0
+      },
+      "final_carla_odometry": {
+        "x_m": -21.004940032958984,
+        "y_m": 30.54247283935547,
+        "z_m": -0.9378145933151245,
+        "speed_mps": 7.445790781166078e-08
+      },
+      "drop_zone_error_m": 0.3062331592512381,
+      "parking_confirmed": true,
+      "charging_confirmed": true,
+      "start_service_state_source": "cold_start_volatile_topic_unpublished",
+      "start_drop_zone_error_m": 3.692300500161163,
+      "actor_id": 130,
+      "dispatch_response": {
+        "success": true,
+        "destination": {
+          "site": "B1",
+          "run": true
+        },
+        "dispatch": {
+          "site": "B1",
+          "run": true,
+          "mission_key": "camping_site_1",
+          "goal_pose_published": true,
+          "message": "ok"
+        }
+      },
+      "return_response": {
+        "success": true,
+        "message": "site_exit_then_return",
+        "action": "site_exit_then_return",
+        "service_state": 3
+      }
+    }
+  ],
+  "runtime_observation_contract": {
+    "required_topics": [
+      "/service/state",
+      "/localization/pose",
+      "/control/cmd_vel",
+      "/carla/ego_vehicle/odometry",
+      "/carla/ego_vehicle/physical_four_wheel_status",
+      "/control/camping_site_maneuver_controller/status"
+    ],
+    "status_topics": [
+      "/parking/reverse_parking_controller/status",
+      "/parking/apriltag_parking_controller/status",
+      "/control/drop_zone_maneuver_controller/status",
+      "/control/cmd_vel_safety_gate/status"
+    ],
+    "sensor_policy": "a fresh 32-stream/13-actor CARLA source audit is required; this runner neither publishes nor synthesizes sensor data",
+    "readiness_policy": "physical actor id and strict PHYSX_FOUR_WHEEL_STEERING readiness must remain unchanged for the whole mission"
+  },
+  "report_path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/camrod_camping_site_matrix/20260831T195751Z/camping_site_matrix.json",
+  "sensor_source_audit": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/camrod_camping_site_matrix/20260831T195751Z/sensor_source_audit.json",
+    "sha256": "97360bdfc8f78806be9ff57fd9cf7c871a6380c34f617e863f67b410db758ae7",
+    "status": "PASS",
+    "summary": {
+      "streams_checked": 32,
+      "stream_failures": 0,
+      "actors_checked": 13,
+      "actor_failures": 0
+    },
+    "age_s_at_matrix_start": 0.188
+  },
+  "runtime": {
+    "started_at_utc": "2026-08-31T19:57:54Z",
+    "ui_url": "http://127.0.0.1:8010",
+    "carla_town": "map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit_camrod_b1_v3/Woraksan_v1_0_3_parking_lot_hegiht_fit_camrod_b1_v3",
+    "carla_ue_map": "/Game/map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit_camrod_b1_v3/Woraksan_v1_0_3_parking_lot_hegiht_fit_camrod_b1_v3",
+    "ros_domain_id": "5",
+    "rmw_implementation": "rmw_cyclonedds_cpp",
+    "phase_timeout_s": 900.0,
+    "start_drop_zone_tolerance_m": 5.0,
+    "drop_zone_tolerance_m": 3.0,
+    "motion_path": "UI REST -> CAMROD planning -> CAMROD control -> CARLA physical 4WS bridge",
+    "finished_at_utc": "2026-08-31T20:09:45Z"
+  }
+}
