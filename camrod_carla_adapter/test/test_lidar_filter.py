@@ -206,6 +206,39 @@ def test_self_return_mask_preserves_close_center_and_outside_obstacles():
     assert np.all(keep[-close_real_obstacles.shape[0] :])
 
 
+def test_self_return_mask_covers_crab_pose_leak_but_preserves_center():
+    ground, _obstacle = _ground_and_obstacle()
+    crab_pose_self_returns = np.array(
+        [
+            [0.45, -0.77, -0.25],
+            [0.45, 0.77, -0.25],
+            [0.48, -0.80, -0.20],
+            [0.48, 0.80, -0.20],
+        ]
+    )
+    close_center_obstacles = np.array(
+        [
+            [0.45, 0.00, -0.25],
+            [0.48, -0.40, -0.20],
+            [0.48, 0.40, -0.20],
+        ]
+    )
+    points = np.vstack((ground, crab_pose_self_returns, close_center_obstacles))
+    config = replace(LidarFilterConfig(), self_return_mask_enabled=True)
+
+    keep, _plane, removed_count = nonground_mask_with_diagnostics(points, config)
+
+    assert removed_count == crab_pose_self_returns.shape[0]
+    candidate_start = -(
+        crab_pose_self_returns.shape[0] + close_center_obstacles.shape[0]
+    )
+    candidate_end = -close_center_obstacles.shape[0]
+    assert not np.any(
+        keep[candidate_start:candidate_end]
+    )
+    assert np.all(keep[-close_center_obstacles.shape[0] :])
+
+
 def test_default_disabled_self_return_mask_is_production_neutral():
     ground, _obstacle = _ground_and_obstacle()
     self_returns = _measured_ranger_self_returns()

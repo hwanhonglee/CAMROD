@@ -156,6 +156,11 @@ public:
     // HH_260720 - Keep intermediate snap candidates away from the camping-site controller input.
     auxiliary_input_goal_topic_ =
       declare_parameter<std::string>("auxiliary_input_goal_topic", "");
+    // Optional source-aware input for a return route that must use a controller
+    // profile different from ordinary regulated/forward missions.  It is empty
+    // by default, so the production vehicle path and topic graph are unchanged.
+    reverse_auxiliary_input_goal_topic_ =
+      declare_parameter<std::string>("reverse_auxiliary_input_goal_topic", "");
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
     // HH_260317 Publish ROS-native snapped goal for Nav2 consumers.
     output_goal_topic_ros_ = declare_parameter<std::string>(
@@ -188,6 +193,15 @@ public:
       "component_max_expansion_nodes", 5000);
     current_pose_topic_ = declare_parameter<std::string>(
       "current_pose_topic", "/planning/lanelet_pose");
+    // The lanelet-snapped pose remains the default jump source so ordinary
+    // CAMROD deployments keep their existing single-subscription topic graph.
+    // Simulator profiles may opt into raw localization to avoid treating a
+    // lanelet projection discontinuity as a physical vehicle teleport.
+    pose_jump_check_topic_ = declare_parameter<std::string>(
+      "pose_jump_check_topic", "");
+    if (pose_jump_check_topic_.empty()) {
+      pose_jump_check_topic_ = current_pose_topic_;
+    }
     current_lanelet_search_radius_ = declare_parameter<double>(
       "current_lanelet_search_radius", 12.0);
     component_update_min_period_s_ = declare_parameter<double>(
@@ -341,6 +355,15 @@ public:
         auxiliary_input_goal_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onAuxGoal, this, std::placeholders::_1));
     }
+    if (
+      !reverse_auxiliary_input_goal_topic_.empty() &&
+      reverse_auxiliary_input_goal_topic_ != input_goal_topic_ &&
+      reverse_auxiliary_input_goal_topic_ != auxiliary_input_goal_topic_)
+    {
+      sub_reverse_aux_goal_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
+        reverse_auxiliary_input_goal_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onReverseAuxGoal, this, std::placeholders::_1));
+    }
 
     if (
       restrict_to_connected_lanelet_component_ ||
@@ -351,6 +374,14 @@ public:
       sub_current_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         current_pose_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onCurrentPose, this, std::placeholders::_1));
+    }
+    if (
+      reissue_active_goal_on_pose_jump_ &&
+      pose_jump_check_topic_ != current_pose_topic_)
+    {
+      sub_pose_jump_check_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
+        pose_jump_check_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onPoseJumpCheck, this, std::placeholders::_1));
     }
     if (restrict_to_cost_grid_component_) {
       sub_cost_grid_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
@@ -384,17 +415,21 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "goal_snapper ready: map=%s regulated_input=%s manual_input=%s aux_input=%s "
+      "reverse_aux_input=%s "
       "output(avg)=%s output(ros)=%s source=%s lane_component=%s "
-      "cost_grid_component=%s routable_only=%s sequential_release=%s",
+      "cost_grid_component=%s routable_only=%s sequential_release=%s pose_jump_check=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
       manual_input_goal_topic_.empty() ? "(disabled)" : manual_input_goal_topic_.c_str(),
       auxiliary_input_goal_topic_.empty() ? "(disabled)" : auxiliary_input_goal_topic_.c_str(),
+      reverse_auxiliary_input_goal_topic_.empty() ?
+      "(disabled)" : reverse_auxiliary_input_goal_topic_.c_str(),
       output_goal_topic_.c_str(), output_goal_topic_ros_.c_str(),
       output_goal_source_topic_.c_str(),
       restrict_to_connected_lanelet_component_ ? "enabled" : "disabled",
       restrict_to_cost_grid_component_ ? "enabled" : "disabled",
       routable_lanelet_only_ ? "enabled" : "disabled",
-      sequential_goal_release_enable_ ? "enabled" : "disabled");
+      sequential_goal_release_enable_ ? "enabled" : "disabled",
+      pose_jump_check_topic_.c_str());
   }
 
 private:
@@ -497,20 +532,20 @@ private:
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
     const double now_sec = this->get_clock()->now().seconds();
-    const bool has_previous_pose = has_pose_jump_check_pose_;
-    const double pose_jump_distance = has_previous_pose ?
-      std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_) :
-      0.0;
-    last_pose_jump_check_x_ = px;
-    last_pose_jump_check_y_ = py;
-    has_pose_jump_check_pose_ = true;
 
     latest_current_pose_x_ = px;
     latest_current_pose_y_ = py;
     has_latest_current_pose_ = true;
+    // Reached-state fallback belongs to the current lanelet pose regardless
+    // of which topic supplies physical jump detection. In separate-source
+    // mode the raw stream may be absent, invalid, or reseeding after a frame
+    // change while the robot still completes its active route normally.
+    updateActiveGoalReachedFromPose();
     rebuildCostGridComponent();
     releasePendingGoalIfReady();
-    maybeReissueActiveGoalOnPoseJump(pose_jump_distance, now_sec);
+    if (pose_jump_check_topic_ == current_pose_topic_) {
+      processPoseJumpCheck(*msg, now_sec);
+    }
 
     if (!restrict_to_connected_lanelet_component_ || !routing_graph_) {
       return;
@@ -544,6 +579,42 @@ private:
     last_component_pose_x_ = px;
     last_component_pose_y_ = py;
     last_component_update_sec_ = now_sec;
+  }
+
+  // Handles the optional raw-localization jump source without changing the
+  // lanelet pose used for component selection and reached-state evaluation.
+  void onPoseJumpCheck(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
+  {
+    processPoseJumpCheck(*msg, this->get_clock()->now().seconds());
+  }
+
+  void processPoseJumpCheck(
+    const avg_msgs::msg::AvgPoseStamped & msg, const double now_sec)
+  {
+    const double px = msg.pose.position.x;
+    const double py = msg.pose.position.y;
+    if (!std::isfinite(px) || !std::isfinite(py)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: ignored non-finite pose-jump checkpoint on %s",
+        pose_jump_check_topic_.c_str());
+      return;
+    }
+
+    const std::string & frame_id = msg.header.frame_id;
+    if (!has_pose_jump_check_pose_ || frame_id != last_pose_jump_check_frame_id_) {
+      has_pose_jump_check_pose_ = true;
+      last_pose_jump_check_frame_id_ = frame_id;
+      last_pose_jump_check_x_ = px;
+      last_pose_jump_check_y_ = py;
+      return;
+    }
+
+    const double pose_jump_distance =
+      std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_);
+    last_pose_jump_check_x_ = px;
+    last_pose_jump_check_y_ = py;
+    maybeReissueActiveGoalOnPoseJump(pose_jump_distance, now_sec);
   }
 
   // Handles Nav2 lanelet cost-grid updates used for reachable goal filtering.
@@ -801,10 +872,20 @@ private:
   // log label to prove that return/drop-zone routing did not come from UI/RViz.
   void onAuxGoal(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
-    snapAvgGoal(*msg, "aux_avg");
+    snapAvgGoal(*msg, "aux_avg", "regulated");
   }
 
-  void snapAvgGoal(const avg_msgs::msg::AvgPoseStamped & msg, const char * source_label)
+  // A CARLA reverse return enters through its own transient-local source policy
+  // before the snapped goal is released.  This lets the selector choose the
+  // dedicated RPPReverse plugin without changing ordinary regulated RPP.
+  void onReverseAuxGoal(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
+  {
+    snapAvgGoal(*msg, "reverse_aux_avg", "regulated_reverse");
+  }
+
+  void snapAvgGoal(
+    const avg_msgs::msg::AvgPoseStamped & msg, const char * source_label,
+    const std::string & policy_source)
   {
     const double px = msg.pose.position.x;
     const double py = msg.pose.position.y;
@@ -833,7 +914,7 @@ private:
     out.pose.position.z = snapped_z;
     out.pose.orientation = yawToQuat(nearest.heading);
     handleSnappedGoal(
-      out, px, py, std::sqrt(nearest.sq_dist), source_label, "regulated");
+      out, px, py, std::sqrt(nearest.sq_dist), source_label, policy_source);
   }
 
   // Handles the `onGoalRos` callback.
@@ -1257,7 +1338,13 @@ private:
       return;
     }
     std_msgs::msg::String source;
-    source.data = policy_source == "manual" ? "manual" : "regulated";
+    if (policy_source == "manual") {
+      source.data = "manual";
+    } else if (policy_source == "regulated_reverse") {
+      source.data = "regulated_reverse";
+    } else {
+      source.data = "regulated";
+    }
     pub_goal_source_->publish(source);
   }
 
@@ -1572,6 +1659,7 @@ private:
   std::string input_goal_topic_;
   std::string manual_input_goal_topic_;
   std::string auxiliary_input_goal_topic_;
+  std::string reverse_auxiliary_input_goal_topic_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
   std::string output_goal_source_topic_;
@@ -1626,6 +1714,7 @@ private:
   double active_released_sec_{0.0};
   // HH_260619 - Previous pose checkpoint for per-callback jump distance measurement.
   bool has_pose_jump_check_pose_{false};
+  std::string last_pose_jump_check_frame_id_;
   double last_pose_jump_check_x_{0.0};
   double last_pose_jump_check_y_{0.0};
   double last_pose_jump_reissue_sec_{0.0};
@@ -1636,6 +1725,7 @@ private:
   bool component_include_lane_changes_{true};
   int component_max_expansion_nodes_{5000};
   std::string current_pose_topic_;
+  std::string pose_jump_check_topic_;
   double current_lanelet_search_radius_{12.0};
   double component_update_min_period_s_{0.2};
   double component_update_min_displacement_m_{0.5};
@@ -1677,7 +1767,9 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_manual_goal_ros_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_aux_goal_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_reverse_aux_goal_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_current_pose_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_jump_check_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_cost_grid_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr sub_route_recovery_status_;

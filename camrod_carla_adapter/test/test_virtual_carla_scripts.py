@@ -17,7 +17,15 @@ ACTOR_PREFLIGHT = SCRIPT_ROOT / "check_ranger_actor.py"
 PHYSICAL_PREFLIGHT = SCRIPT_ROOT / "check_physical_bridge_status.py"
 UI_MANUAL_PREFLIGHT = SCRIPT_ROOT / "check_camrod_ui_manual_ready.py"
 SENSOR_PREFLIGHT = SCRIPT_ROOT / "check_carla_sensor_streams.py"
-SCRIPTS = ("env.sh", "setup.sh", "build.sh", "test.sh", "run.sh")
+UI_EVIDENCE_CAPTURE = SCRIPT_ROOT / "capture_ui_evidence.sh"
+SCRIPTS = (
+    "env.sh",
+    "setup.sh",
+    "build.sh",
+    "test.sh",
+    "run.sh",
+    "capture_ui_evidence.sh",
+)
 VIRTUAL_ENV_KEYS = (
     "CAMROD_CYCLONEDDS_CONFIG",
     "CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES",
@@ -105,7 +113,13 @@ def test_entrypoints_are_executable_and_parse() -> None:
 
 
 def test_help_is_available_without_external_workspaces() -> None:
-    for filename in ("setup.sh", "build.sh", "test.sh", "run.sh"):
+    for filename in (
+        "setup.sh",
+        "build.sh",
+        "test.sh",
+        "run.sh",
+        "capture_ui_evidence.sh",
+    ):
         result = subprocess.run(
             [str(SCRIPT_ROOT / filename), "--help"],
             cwd="/tmp",
@@ -114,6 +128,176 @@ def test_help_is_available_without_external_workspaces() -> None:
             text=True,
         )
         assert "Usage:" in result.stdout
+
+
+def test_ui_evidence_capture_defaults_to_a_non_mutating_plan(tmp_path) -> None:
+    output_dir = tmp_path / "must-not-be-created"
+    environment = os.environ.copy()
+    environment.pop("DISPLAY", None)
+    environment.pop("XAUTHORITY", None)
+
+    result = subprocess.run(
+        [str(UI_EVIDENCE_CAPTURE), "--output-dir", str(output_dir)],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "PLAN ONLY" in result.stdout
+    assert "no window query, directory creation, or capture occurred" in result.stdout
+    assert not output_dir.exists()
+
+
+def test_ui_evidence_capture_requires_explicit_safe_output_directory(tmp_path) -> None:
+    missing = subprocess.run(
+        [str(UI_EVIDENCE_CAPTURE), "capture"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert missing.returncode != 0
+    assert "capture requires --output-dir" in missing.stderr
+
+    relative = subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            "relative-evidence",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert relative.returncode != 0
+    assert "--output-dir must be absolute" in relative.stderr
+    assert not (tmp_path / "relative-evidence").exists()
+
+    occupied_dir = tmp_path / "occupied"
+    occupied_dir.mkdir()
+    (occupied_dir / "existing-evidence.txt").write_text("keep\n", encoding="utf-8")
+    occupied = subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            str(occupied_dir),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert occupied.returncode != 0
+    assert "must be empty" in occupied.stderr
+    assert (occupied_dir / "existing-evidence.txt").read_text() == "keep\n"
+
+
+def test_ui_evidence_capture_validates_fake_x11_geometry_without_writes(
+    tmp_path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_xwininfo = fake_bin / "xwininfo"
+    fake_xwininfo.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "-root -tree" ]]; then
+  cat <<'EOF'
+     0x100001 "CarlaUE4 (64-bit Development)": ()  960x540+0+0  +0+0
+     0x200002 "CAMROD Operator UI": ()  960x540+960+0  +960+0
+EOF
+  exit 0
+fi
+if [[ "$*" == "-id 0x100001" ]]; then
+  title='CarlaUE4 (64-bit Development)'; x=0
+elif [[ "$*" == "-id 0x200002" ]]; then
+  title='CAMROD Operator UI'; x=960
+else
+  exit 2
+fi
+cat <<EOF
+xwininfo: Window id: ${2} "${title}"
+  Absolute upper-left X:  ${x}
+  Absolute upper-left Y:  0
+  Width: 960
+  Height: 540
+  Map State: IsViewable
+EOF
+""",
+        encoding="utf-8",
+    )
+    fake_xwininfo.chmod(0o755)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "DISPLAY": ":99",
+            "PATH": f"{fake_bin}:{environment['PATH']}",
+        }
+    )
+    environment.pop("XAUTHORITY", None)
+
+    result = subprocess.run(
+        [str(UI_EVIDENCE_CAPTURE), "validate"],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "geometry VERIFIED: carla=0x100001 960x540+0+0" in result.stdout
+    assert "geometry VERIFIED: ui=0x200002 960x540+960+0" in result.stdout
+    assert "single desktop capture region=1920x540+0+0 gap=0px" in result.stdout
+    assert "validation only; no files were written" in result.stdout
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["bin"]
+
+    wrong_ids = subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "validate",
+            "--carla-window-id",
+            "0x200002",
+            "--ui-window-id",
+            "0x100001",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert wrong_ids.returncode != 0
+    assert "does not contain expected" in wrong_ids.stderr
+
+
+def test_ui_evidence_capture_is_visual_only_and_records_provenance() -> None:
+    source = UI_EVIDENCE_CAPTURE.read_text(encoding="utf-8")
+
+    assert "ACTION=\"plan\"" in source
+    assert "validate_side_by_side_geometry" in source
+    assert "CarlaUE4 must be left of CAMROD Operator UI" in source
+    assert "-f x11grab" in source
+    assert "ffmpeg -n" in source
+    assert "-vsync vfr" in source
+    assert "-fps_mode" not in source
+    assert "carla_camrod_desktop.mp4" in source
+    assert "representative_contact_sheet.png" in source
+    assert "representative_motion.gif" in source
+    assert "capture_manifest.json" in source
+    assert "sha256sums.txt" in source
+    assert '"windows_post_composited": False' in source
+    assert '"ai_generated_or_enhanced": False' in source
+    assert '"vehicle_motion_or_ui_input_sent_by_capture": False' in source
+    assert '"status": "PASS"' in source
+    assert '"unoccluded_window_pixels_validated": False' in source
+    assert '"same_titles_and_geometry_before_after_capture": True' in source
+    assert "window title/geometry changed during capture" in source
+    assert "captured duration does not match request" in source
+    assert "ros2 topic pub" not in source
+    assert "ros2 action send_goal" not in source
+    assert "xdotool" not in source
+    assert "wmctrl" not in source
 
 
 def test_scripts_and_composition_launches_embed_no_developer_home() -> None:
@@ -1492,6 +1676,8 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "Wait for each preceding stage to report success" in result.stdout
     assert "run.sh manual" in result.stdout
     assert "run.sh audit-sensors" in result.stdout
+    assert "run.sh camping-sites-plan" in result.stdout
+    assert "run.sh camping-sites" in result.stdout
     assert "teleop_twist_keyboard" in result.stdout
     assert "cmd_vel:=/control/manual_cmd_vel_ros" in result.stdout
     assert "export RANGER_UE_ROOT=" in result.stdout
@@ -1549,7 +1735,10 @@ def test_sensor_audit_is_fail_closed_on_actual_carla_actor_inventory() -> None:
 
 def test_every_runtime_ros_terminal_and_doctor_fail_closed_on_dds_buffers() -> None:
     source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
-    for stage in ("bridge", "spawn", "camrod", "manual", "audit-sensors"):
+    for stage in (
+        "bridge", "spawn", "camrod", "manual", "audit-sensors",
+        "camping-sites",
+    ):
         case_body = source.split(f"  {stage})\n", 1)[1].split("    ;;\n", 1)[0]
         assert case_body.count("virtual_carla_require_dds_transport") == 1
     doctor_body = source.split("run_doctor() {", 1)[1].split(

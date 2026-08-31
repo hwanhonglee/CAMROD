@@ -3377,6 +3377,23 @@ h1 {
   gap: 0.28rem;
 }
 
+.lidar-raw-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.12rem 0.35rem;
+  border: 1px solid #c9d0cb;
+  border-radius: 0.28rem;
+  background: #f4f6f4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lidar-raw-toggle input {
+  margin: 0;
+  accent-color: #3b8f59;
+}
+
 .telemetry-legend-row i {
   width: 1rem;
   height: 0.22rem;

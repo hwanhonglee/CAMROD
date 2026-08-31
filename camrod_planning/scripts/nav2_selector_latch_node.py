@@ -24,6 +24,8 @@ def resolve_goal_source(requested: str) -> tuple[str, bool]:
     normalized = str(requested).strip().lower()
     if normalized.startswith("manual"):
         return ("manual", True)
+    if normalized.startswith("regulated_reverse"):
+        return ("regulated_reverse", True)
     if normalized.startswith("regulated"):
         return ("regulated", True)
     return ("regulated", False)
@@ -34,9 +36,14 @@ def selector_ids_for_source(
     *,
     regulated: tuple[str, str, str],
     manual: tuple[str, str, str],
+    regulated_reverse: tuple[str, str, str] | None = None,
 ) -> tuple[str, str, str]:
     """Select planner, controller, and goal-checker IDs as one policy."""
-    return manual if source == "manual" else regulated
+    if source == "manual":
+        return manual
+    if source == "regulated_reverse" and regulated_reverse is not None:
+        return regulated_reverse
+    return regulated
 
 
 class Nav2SelectorLatchNode(Node):
@@ -54,6 +61,11 @@ class Nav2SelectorLatchNode(Node):
         self._regulated_controller_id = str(
             self.declare_parameter(
                 "controller_id", DEFAULT_REGULATED_CONTROLLER_ID
+            ).value
+        ).strip()
+        self._reverse_controller_id = str(
+            self.declare_parameter(
+                "reverse_controller_id", self._regulated_controller_id
             ).value
         ).strip()
         # HH_260730 / TODOLIST 7 - Both sources use the connected route by
@@ -144,6 +156,11 @@ class Nav2SelectorLatchNode(Node):
                 self._manual_planner_id,
                 self._manual_controller_id,
                 self._manual_goal_checker_id,
+            ),
+            regulated_reverse=(
+                self._regulated_planner_id,
+                self._reverse_controller_id,
+                self._regulated_goal_checker_id,
             ),
         )
 

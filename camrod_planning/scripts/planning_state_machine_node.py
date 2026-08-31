@@ -150,6 +150,14 @@ class PlanningStateMachineNode(Node):
                 "auto_goal_snapper_input_topic", "/planning/auto_goal_raw"
             ).value
         )
+        # Optional return-only input.  CARLA enables this so the goal snapper
+        # can publish ``regulated_reverse`` before releasing a drop-zone goal;
+        # production leaves it empty and retains the ordinary regulated path.
+        self.reverse_auto_goal_snapper_input_topic = str(
+            self.declare_parameter(
+                "reverse_auto_goal_snapper_input_topic", ""
+            ).value
+        )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/state_machine/state").value
         )
@@ -384,6 +392,11 @@ class PlanningStateMachineNode(Node):
             self.pub_auto_goal_snapper = self.create_publisher(
                 AvgPoseStamped, self.auto_goal_snapper_input_topic, 10
             )
+        self.pub_reverse_auto_goal_snapper = None
+        if self.reverse_auto_goal_snapper_input_topic:
+            self.pub_reverse_auto_goal_snapper = self.create_publisher(
+                AvgPoseStamped, self.reverse_auto_goal_snapper_input_topic, 10
+            )
         self.pub_drop_zone_goal_raw = None
         if self.drop_zone_goal_raw_topic:
             # HH_260720 - Publish the exact station pose as a generated internal contract.
@@ -468,6 +481,7 @@ class PlanningStateMachineNode(Node):
             f"goal_source={self.goal_source_topic} "
             f"raw_goal={self.raw_goal_topic if self.enable_raw_drop_zone_goal_match else '(disabled)'} "
             f"auto_goal_snapper_input={self.auto_goal_snapper_input_topic or '(disabled)'} "
+            f"reverse_auto_goal_snapper_input={self.reverse_auto_goal_snapper_input_topic or '(disabled)'} "
             f"drop_zone_id={self.drop_zone_id} "
             f"drop_zone_goal_raw={self.drop_zone_goal_raw_topic or '(disabled)'} "
             f"drop_zone_goal_raw_ros={self.drop_zone_goal_raw_ros_topic or '(disabled)'} "
@@ -1346,7 +1360,19 @@ class PlanningStateMachineNode(Node):
         msg.pose.orientation.z = math.sin(yaw * 0.5)
         msg.pose.orientation.w = math.cos(yaw * 0.5)
 
-        if self.pub_auto_goal_snapper is None:
+        reverse_publisher = getattr(self, "pub_reverse_auto_goal_snapper", None)
+        use_reverse_input = (
+            key_name == self.return_mission_key and reverse_publisher is not None
+        )
+        goal_publisher = (
+            reverse_publisher if use_reverse_input else self.pub_auto_goal_snapper
+        )
+        goal_topic = (
+            self.reverse_auto_goal_snapper_input_topic
+            if use_reverse_input
+            else self.auto_goal_snapper_input_topic
+        )
+        if goal_publisher is None:
             self.get_logger().error(
                 "auto-goal rejected: source-aware goal_snapper input is disabled"
             )
@@ -1356,12 +1382,13 @@ class PlanningStateMachineNode(Node):
         # emits `regulated` and waits for selector settlement before its route goal.
         self._pending_mission_key_request = key_name
         self._pending_mission_key_time = now
-        self.pub_auto_goal_snapper.publish(msg)
+        goal_publisher.publish(msg)
         if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
             self._publish_drop_zone_goal_raw_for_keypoint(kp)
         self.get_logger().info(
             "published regulated auto-goal through goal_snapper: "
-            f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
+            f"key={key_name} source={source} topic={goal_topic} "
+            f"policy={'regulated_reverse' if use_reverse_input else 'regulated'} "
             f"drop_zone_id={kp.source_id or kp.name} yaw={kp.yaw_deg:.1f}deg "
             f"xy=({kp.x:.2f},{kp.y:.2f})"
         )

@@ -101,6 +101,7 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
     combo_file = LaunchConfiguration('nav2_combo_param_file').perform(context)
     requested_planner = LaunchConfiguration('nav2_selected_planner').perform(context)
     requested_controller = LaunchConfiguration('nav2_selected_controller').perform(context)
+    reverse_controller = LaunchConfiguration('nav2_reverse_controller').perform(context).strip()
     regulated_goal_checker = LaunchConfiguration(
         'nav2_regulated_goal_checker'
     ).perform(context)
@@ -138,6 +139,9 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
             parameters=[{
                 'planner_id': planner_id,
                 'controller_id': controller_id,
+                # Empty/default resolves to the ordinary regulated controller;
+                # CARLA opts into its separately configured RPPReverse plugin.
+                'reverse_controller_id': reverse_controller or controller_id,
                 'regulated_goal_checker_id': regulated_goal_checker,
                 'manual_planner_id': manual_planner,
                 'manual_controller_id': manual_controller,
@@ -316,6 +320,14 @@ def generate_launch_description():
         'nav2_manual_controller',
         default_value='RotationShim',
         description='Controller selector ID for manual RViz goals',
+    )
+    nav2_reverse_controller_arg = DeclareLaunchArgument(
+        'nav2_reverse_controller',
+        default_value='',
+        description=(
+            'Controller selector ID for regulated_reverse goals; empty keeps '
+            'the ordinary regulated controller'
+        ),
     )
     nav2_manual_goal_checker_arg = DeclareLaunchArgument(
         'nav2_manual_goal_checker',
@@ -827,6 +839,7 @@ def generate_launch_description():
         nav2_regulated_goal_checker_arg,
         nav2_manual_planner_arg,
         nav2_manual_controller_arg,
+        nav2_reverse_controller_arg,
         nav2_manual_goal_checker_arg,
         nav2_goal_source_topic_arg,
         enable_path_cost_grids_arg,

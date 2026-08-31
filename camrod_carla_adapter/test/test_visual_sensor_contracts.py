@@ -283,7 +283,7 @@ def test_carla_lidar_processing_owns_filtered_and_cluster_boundaries():
     assert filter_config["expected_ground_z_m"] == pytest.approx(-0.59538)
     assert filter_config["minimum_obstacle_height_m"] == pytest.approx(0.08)
     assert filter_config["self_return_mask_enabled"] is True
-    assert filter_config["self_return_x_min_m"] == pytest.approx(0.49)
+    assert filter_config["self_return_x_min_m"] == pytest.approx(0.40)
     assert filter_config["self_return_x_max_m"] == pytest.approx(1.31)
     assert filter_config["self_return_abs_y_min_m"] == pytest.approx(0.59)
     assert filter_config["self_return_abs_y_max_m"] == pytest.approx(0.95)

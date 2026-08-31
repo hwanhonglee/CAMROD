@@ -67,8 +67,7 @@ TEST(AckermannTurnRadiusConstraint,
   EXPECT_DOUBLE_EQ(result.command.linear.x, final_command.linear.x);
   EXPECT_DOUBLE_EQ(result.command.linear.y, 0.0);
   EXPECT_NEAR(result.command.angular.z, -0.05 / 0.82, 1.0e-12);
-  EXPECT_GE(std::abs(result.command.linear.x / result.command.angular.z),
-            0.82);
+  EXPECT_GE(std::abs(result.command.linear.x / result.command.angular.z), 0.82);
 }
 
 TEST(AckermannTurnRadiusConstraint,
@@ -79,8 +78,7 @@ TEST(AckermannTurnRadiusConstraint,
   // adapter therefore does not classify this final command as CRAB.
   scaled_mixed_arc.linear.y = 0.015;
   scaled_mixed_arc.angular.z = 0.0617745;
-  EXPECT_TRUE(
-      constrainAckermannTurnRadius(scaled_mixed_arc, 0.82).constrained);
+  EXPECT_TRUE(constrainAckermannTurnRadius(scaled_mixed_arc, 0.82).constrained);
 
   auto crab = scaled_mixed_arc;
   crab.linear.y = std::nextafter(0.02, 1.0);
@@ -96,8 +94,7 @@ TEST(AckermannTurnRadiusConstraint,
 
   auto straight = scaled_mixed_arc;
   straight.angular.z = std::nextafter(1.0e-6, 0.0);
-  const auto straight_result =
-      constrainAckermannTurnRadius(straight, 0.82);
+  const auto straight_result = constrainAckermannTurnRadius(straight, 0.82);
   EXPECT_FALSE(straight_result.constrained);
   EXPECT_DOUBLE_EQ(straight_result.command.angular.z, straight.angular.z);
 }
@@ -599,6 +596,99 @@ TEST(MotionGeometry,
   const auto latch_fault = sequencer.update(0.10, 0.121, 12.4, 0.50, 4.0);
   EXPECT_TRUE(latch_fault.lateral_latch_exceeded);
   EXPECT_EQ(latch_fault.stage, CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(latch_fault.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(latch_fault.linear_y_mps, 0.0);
+}
+
+TEST(MotionGeometry,
+     B1RotationEntryCenteringRemovesMeasuredNavHandoffResidualByAxis) {
+  CampsiteCrabReturnSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(0.0);
+
+  // The 2026-08-31 live B1 run stopped 17.2 cm from the authored target:
+  // 4.7 cm remained on the crab axis and 16.5 cm on the body longitudinal
+  // axis. Continue pure crab first; a diagonal shortcut would mix 4WS modes.
+  const auto lateral = sequencer.update(0.165, 0.047, 0.0, 0.12, 4.0);
+  EXPECT_EQ(lateral.stage, CampsiteCrabReturnStage::kLateral);
+  EXPECT_DOUBLE_EQ(lateral.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(lateral.linear_y_mps, 0.12);
+
+  const auto settle = sequencer.update(0.165, 0.019, 0.5, 0.12, 4.0);
+  EXPECT_EQ(settle.stage, CampsiteCrabReturnStage::kSteeringSettle);
+  EXPECT_DOUBLE_EQ(settle.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(settle.linear_y_mps, 0.0);
+  EXPECT_FALSE(campsiteCrabReturnMayComplete(settle.stage,
+                                             std::hypot(0.040, 0.019), 0.05));
+
+  const auto longitudinal = sequencer.update(0.165, 0.019, 1.7, 0.12, 4.0);
+  EXPECT_EQ(longitudinal.stage, CampsiteCrabReturnStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.12);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_y_mps, 0.0);
+
+  EXPECT_TRUE(campsiteCrabReturnMayComplete(sequencer.stage(),
+                                            std::hypot(0.040, 0.019), 0.05));
+}
+
+TEST(MotionGeometry,
+     B1EntryAnchorPrecenteringRunsLongitudinalSettleLateralInFixedFrame) {
+  CampsiteEntryAnchorCenteringSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(0.0);
+
+  // Reproduce the measured B1 residual, but correct the route-longitudinal
+  // component first. The dedicated wrapper ends in parallel/lateral steering
+  // so CRAB_IN can take ownership without another wheel-mode transition.
+  const auto longitudinal = sequencer.update(0.165, 0.047, 0.0, 0.12, 4.0);
+  EXPECT_EQ(longitudinal.stage,
+            CampsiteEntryAnchorCenteringStage::kLongitudinal);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_x_mps, 0.12);
+  EXPECT_DOUBLE_EQ(longitudinal.linear_y_mps, 0.0);
+
+  const auto settle = sequencer.update(0.019, 0.047, 0.5, 0.12, 4.0);
+  EXPECT_EQ(settle.stage,
+            CampsiteEntryAnchorCenteringStage::kSteeringSettle);
+  EXPECT_TRUE(settle.stage_changed);
+  EXPECT_DOUBLE_EQ(settle.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(settle.linear_y_mps, 0.0);
+  EXPECT_FALSE(campsiteEntryAnchorCenteringMayComplete(
+      settle.stage, std::hypot(0.019, 0.040), 0.05));
+
+  // A fixed-frame longitudinal jitter inside the 12 cm latch envelope cannot
+  // request straight steering again while the steady settle clock is active.
+  const auto jitter = sequencer.update(0.08, 0.047, 1.0, 0.12, 4.0);
+  EXPECT_EQ(jitter.stage,
+            CampsiteEntryAnchorCenteringStage::kSteeringSettle);
+  EXPECT_FALSE(jitter.stage_changed);
+  EXPECT_DOUBLE_EQ(jitter.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(jitter.linear_y_mps, 0.0);
+
+  const auto lateral = sequencer.update(0.019, 0.047, 1.7, 0.12, 4.0);
+  EXPECT_EQ(lateral.stage, CampsiteEntryAnchorCenteringStage::kLateral);
+  EXPECT_TRUE(lateral.stage_changed);
+  EXPECT_DOUBLE_EQ(lateral.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(lateral.linear_y_mps, 0.12);
+  EXPECT_TRUE(campsiteEntryAnchorCenteringMayComplete(
+      sequencer.stage(), std::hypot(0.019, 0.040), 0.05));
+}
+
+TEST(MotionGeometry,
+     B1EntryAnchorPrecenteringLatchFailsClosedWithoutModeChatter) {
+  CampsiteEntryAnchorCenteringSequencer sequencer(
+      CampsiteCrabReturnConfig{0.02, 0.10, 1.20});
+  sequencer.reset(0.0);
+  EXPECT_EQ(sequencer.update(0.019, -0.20, 0.0, 0.12, 4.0).stage,
+            CampsiteEntryAnchorCenteringStage::kSteeringSettle);
+  const auto negative_lateral =
+      sequencer.update(0.019, -0.20, 1.2, 0.12, 4.0);
+  EXPECT_EQ(negative_lateral.stage,
+            CampsiteEntryAnchorCenteringStage::kLateral);
+  EXPECT_DOUBLE_EQ(negative_lateral.linear_x_mps, 0.0);
+  EXPECT_DOUBLE_EQ(negative_lateral.linear_y_mps, -0.12);
+
+  const auto latch_fault = sequencer.update(0.121, -0.20, 1.3, 0.12, 4.0);
+  EXPECT_EQ(latch_fault.stage, CampsiteEntryAnchorCenteringStage::kLateral);
+  EXPECT_TRUE(latch_fault.longitudinal_latch_exceeded);
   EXPECT_DOUBLE_EQ(latch_fault.linear_x_mps, 0.0);
   EXPECT_DOUBLE_EQ(latch_fault.linear_y_mps, 0.0);
 }

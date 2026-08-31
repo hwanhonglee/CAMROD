@@ -33,6 +33,47 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_camping_site_maneuver_controller", default_value="true"),
         DeclareLaunchArgument("enable_campsite_occupancy_guard", default_value="false"),
         DeclareLaunchArgument(
+            "crab_approach_slowdown_distance_m", default_value="0"
+        ),
+        DeclareLaunchArgument(
+            "crab_approach_min_speed_mps", default_value="0"
+        ),
+        DeclareLaunchArgument("rotate_180_timeout_s", default_value="0"),
+        DeclareLaunchArgument(
+            "camping_site_entry_position_tolerance_m", default_value="0.15"
+        ),
+        DeclareLaunchArgument(
+            "camping_site_rotate_entry_max_position_error_m",
+            default_value="0",
+        ),
+        DeclareLaunchArgument(
+            "entry_anchor_centering_max_initial_error_m", default_value="0"
+        ),
+        DeclareLaunchArgument(
+            "entry_anchor_centering_max_speed_mps", default_value="0.12"
+        ),
+        DeclareLaunchArgument(
+            "entry_anchor_centering_timeout_s", default_value="15"
+        ),
+        DeclareLaunchArgument(
+            "entry_anchor_centering_tolerance_m", default_value="0.05"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_max_heading_drift_deg", default_value="0"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_max_cross_track_error_m", default_value="0"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_body_yaw_compensation_deg", default_value="0"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_body_yaw_alignment_tolerance_deg", default_value="0.5"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_body_yaw_alignment_timeout_s", default_value="15"
+        ),
+        DeclareLaunchArgument(
             "roadside_reverse_return_enable", default_value="false"
         ),
         DeclareLaunchArgument(
@@ -63,6 +104,82 @@ def generate_launch_description():
                     "enable_campsite_occupancy_guard": ParameterValue(
                         LaunchConfiguration("enable_campsite_occupancy_guard"),
                         value_type=bool,
+                    ),
+                    "crab_approach_slowdown_distance_m": ParameterValue(
+                        LaunchConfiguration(
+                            "crab_approach_slowdown_distance_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "crab_approach_min_speed_mps": ParameterValue(
+                        LaunchConfiguration("crab_approach_min_speed_mps"),
+                        value_type=float,
+                    ),
+                    "rotate_180_timeout_s": ParameterValue(
+                        LaunchConfiguration("rotate_180_timeout_s"),
+                        value_type=float,
+                    ),
+                    "entry_position_tolerance_m": ParameterValue(
+                        LaunchConfiguration(
+                            "camping_site_entry_position_tolerance_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "rotate_entry_max_position_error_m": ParameterValue(
+                        LaunchConfiguration(
+                            "camping_site_rotate_entry_max_position_error_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "entry_anchor_centering_max_initial_error_m": ParameterValue(
+                        LaunchConfiguration(
+                            "entry_anchor_centering_max_initial_error_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "entry_anchor_centering_max_speed_mps": ParameterValue(
+                        LaunchConfiguration(
+                            "entry_anchor_centering_max_speed_mps"
+                        ),
+                        value_type=float,
+                    ),
+                    "entry_anchor_centering_timeout_s": ParameterValue(
+                        LaunchConfiguration("entry_anchor_centering_timeout_s"),
+                        value_type=float,
+                    ),
+                    "entry_anchor_centering_tolerance_m": ParameterValue(
+                        LaunchConfiguration(
+                            "entry_anchor_centering_tolerance_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "crab_entry_max_heading_drift_deg": ParameterValue(
+                        LaunchConfiguration("crab_entry_max_heading_drift_deg"),
+                        value_type=float,
+                    ),
+                    "crab_entry_max_cross_track_error_m": ParameterValue(
+                        LaunchConfiguration(
+                            "crab_entry_max_cross_track_error_m"
+                        ),
+                        value_type=float,
+                    ),
+                    "crab_entry_body_yaw_compensation_deg": ParameterValue(
+                        LaunchConfiguration(
+                            "crab_entry_body_yaw_compensation_deg"
+                        ),
+                        value_type=float,
+                    ),
+                    "crab_entry_body_yaw_alignment_tolerance_deg": ParameterValue(
+                        LaunchConfiguration(
+                            "crab_entry_body_yaw_alignment_tolerance_deg"
+                        ),
+                        value_type=float,
+                    ),
+                    "crab_entry_body_yaw_alignment_timeout_s": ParameterValue(
+                        LaunchConfiguration(
+                            "crab_entry_body_yaw_alignment_timeout_s"
+                        ),
+                        value_type=float,
                     ),
                     "roadside_reverse_return_enable": ParameterValue(
                         LaunchConfiguration(

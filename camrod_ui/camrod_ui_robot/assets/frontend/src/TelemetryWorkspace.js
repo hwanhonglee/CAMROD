@@ -235,10 +235,13 @@ function radarArcPoints(mount, distance, fov) {
   return points;
 }
 
-function ProximityPlot({ telemetry }) {
+function ProximityPlot({ telemetry, showRawLidar = false }) {
   const channels = telemetry.radar?.channels || {};
   const filtered = telemetry.lidar?.streams?.filtered?.points || telemetry.lidar?.points || [];
-  const raw = telemetry.lidar?.streams?.raw?.points || [];
+  // CARLA's ray-cast source can include returns from the simulated Ranger
+  // mesh.  Keep that raw stream available for diagnostics, but never mix it
+  // into the normal operator view unless the operator explicitly enables it.
+  const raw = showRawLidar ? (telemetry.lidar?.streams?.raw?.points || []) : [];
   const planning = telemetry.footprint?.planning_points?.length
     ? telemetry.footprint.planning_points : (telemetry.footprint?.points || []);
   const width = 680;
@@ -306,6 +309,7 @@ function ProximityView({ telemetry }) {
   const lidarSource = sourceState(telemetry, 'lidar.filtered');
   const filtered = telemetry.lidar?.streams?.filtered || telemetry.lidar || {};
   const raw = telemetry.lidar?.streams?.raw || {};
+  const [showRawLidar, setShowRawLidar] = useState(false);
   return (
     <div className="telemetry-view telemetry-proximity-view">
       <div className="telemetry-source-row">
@@ -318,11 +322,23 @@ function ProximityView({ telemetry }) {
       </div>
       <div className="telemetry-proximity-layout">
         <section className="telemetry-section telemetry-plot-section">
-          <SectionHeader title="Top-down proximity" meta={`Filtered ${filtered.sample_count || 0} / ${filtered.point_count || 0}`} />
-          <ProximityPlot telemetry={telemetry} />
+          <SectionHeader
+            title="Top-down proximity"
+            meta={`Filtered ${filtered.sample_count || 0} / ${filtered.point_count || 0} · Raw overlay ${showRawLidar ? 'ON' : 'OFF'}`}
+          />
+          <ProximityPlot telemetry={telemetry} showRawLidar={showRawLidar} />
           <div className="telemetry-legend-row">
             <span><i className="legend-lidar" />LiDAR sample</span>
-            <span><i className="legend-lidar-raw" />LiDAR raw</span>
+            <label className="lidar-raw-toggle">
+              <input
+                type="checkbox"
+                checked={showRawLidar}
+                onChange={event => setShowRawLidar(event.target.checked)}
+                aria-label="진단용 원시 LiDAR 오버레이"
+              />
+              <i className="legend-lidar-raw" />
+              진단용 원시 LiDAR
+            </label>
             <span><i className="legend-radar-hit" />Radar return</span>
             <span><i className="legend-body" />Physical body</span>
             <span><i className="legend-margin" />Planning boundary</span>

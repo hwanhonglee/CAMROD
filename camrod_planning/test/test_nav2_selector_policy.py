@@ -63,6 +63,19 @@ class Nav2SelectorPolicyTest(unittest.TestCase):
         self.assertEqual(source, "regulated")
         self.assertEqual(selected, ("SmacLattice", "MPPI", "goal_checker"))
 
+    def test_regulated_reverse_selects_only_the_reverse_controller(self) -> None:
+        source, recognized = MODULE.resolve_goal_source("regulated_reverse:return")
+        selected = MODULE.selector_ids_for_source(
+            source,
+            regulated=("LaneletRoute", "RPP", "goal_checker"),
+            manual=("LaneletRoute", "RotationShim", "manual_goal_checker"),
+            regulated_reverse=("LaneletRoute", "RPPReverse", "goal_checker"),
+        )
+
+        self.assertTrue(recognized)
+        self.assertEqual(source, "regulated_reverse")
+        self.assertEqual(selected, ("LaneletRoute", "RPPReverse", "goal_checker"))
+
     def test_unknown_source_fails_closed_to_regulated_policy(self) -> None:
         source, recognized = MODULE.resolve_goal_source("unexpected")
         selected = MODULE.selector_ids_for_source(

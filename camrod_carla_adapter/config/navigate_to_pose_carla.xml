@@ -1,0 +1,47 @@
+<!-- CARLA-only NavigateToPose tree.
+
+  This mirrors CAMROD's production planner/controller selector tree except for
+  the generic Nav2 Spin recovery.  A 90-degree in-place spin is not a safe
+  recovery for the 1.59 x 1.27 m Ranger inside Woraksan's 1.69 m lanelets:
+  the physical footprint necessarily touches a lane boundary and the CAMROD
+  route-safety gate correctly rejects it.  Clearing, bounded waiting and the
+  existing low-speed BackUp recovery remain safety-gated.  Production CAMROD
+  continues to use its original tree.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateGoalLocked">
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector_ros"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector_ros"/>
+        <GoalCheckerSelector selected_goal_checker="{selected_goal_checker}" default_goal_checker="goal_checker" topic_name="/planning/goal_checker_selector_ros"/>
+        <GoalUpdatedController>
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
+            <Sequence name="ClearGlobalCostmapAndSettle-Context">
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <Wait wait_duration="0.4"/>
+            </Sequence>
+          </RecoveryNode>
+        </GoalUpdatedController>
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" goal_checker_id="{selected_goal_checker}"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <Wait wait_duration="0.4"/>
+          </Sequence>
+          <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

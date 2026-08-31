@@ -28,6 +28,10 @@ def generate_launch_description():
             'planning_state_machine_camping_sites_yaml',
             default_value=pkg_share('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
         ),
+        DeclareLaunchArgument(
+            'planning_state_machine_reverse_auto_goal_snapper_input_topic',
+            default_value='',
+        ),
 
         Node(
             package='camrod_planning',
@@ -44,6 +48,9 @@ def generate_launch_description():
                 {
                     'keypoints_yaml': LaunchConfiguration('planning_state_machine_keypoints_yaml'),
                     'camping_sites_yaml': LaunchConfiguration('planning_state_machine_camping_sites_yaml'),
+                    'reverse_auto_goal_snapper_input_topic': LaunchConfiguration(
+                        'planning_state_machine_reverse_auto_goal_snapper_input_topic'
+                    ),
                 },
             ],
             condition=IfCondition(LaunchConfiguration('enable_state_machine')),
