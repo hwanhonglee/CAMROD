@@ -109,6 +109,18 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("TelemetryWorkspace", self.source)
         self.assertIn("diag-tab-bar", self.css)
 
+    def test_raw_lidar_overlay_is_explicitly_opt_in(self) -> None:
+        """The normal view must not paint CARLA/physical self returns."""
+        for token in (
+            "showRawLidar = false",
+            "const [showRawLidar, setShowRawLidar] = useState(false)",
+            "showRawLidar ? (telemetry.lidar?.streams?.raw?.points || []) : []",
+            'aria-label="진단용 원시 LiDAR 오버레이"',
+            "Raw overlay ${showRawLidar ? 'ON' : 'OFF'}",
+        ):
+            self.assertIn(token, self.telemetry_source)
+        self.assertIn(".lidar-raw-toggle", self.css)
+
     def test_operator_telemetry_lease_is_closed_on_unmount(self) -> None:
         self.assertIn("/ws/telemetry?view=${view}", self.telemetry_source)
         self.assertIn("/api/telemetry/session?active=true", self.telemetry_source)

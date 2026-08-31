@@ -952,6 +952,38 @@ def generate_launch_description():
             'Nav2 controller selector ID override (__auto__|RPP|DWB|MPPI|Graceful|RotationShim)',
         ),
         (
+            'planning_nav2_reverse_controller',
+            cfg_get(launch_cfg, 'planning/nav2_reverse_controller', ''),
+            'Optional controller selector ID for source-aware reverse routes',
+        ),
+        (
+            'planning_goal_snapper_reverse_auxiliary_input_goal_topic',
+            cfg_get(
+                launch_cfg,
+                'planning/goal_snapper_reverse_auxiliary_input_goal_topic',
+                '',
+            ),
+            'Optional source-aware goal-snapper input for reverse routes',
+        ),
+        (
+            'planning_goal_snapper_pose_jump_check_topic',
+            cfg_get(
+                launch_cfg,
+                'planning/goal_snapper_pose_jump_check_topic',
+                '',
+            ),
+            'Optional raw pose source for active-goal jump detection',
+        ),
+        (
+            'planning_state_machine_reverse_auto_goal_snapper_input_topic',
+            cfg_get(
+                launch_cfg,
+                'planning/state_machine_reverse_auto_goal_snapper_input_topic',
+                '',
+            ),
+            'Optional planning-state-machine output for reverse auto goals',
+        ),
+        (
             'planning_nav2_runtime_override_param_file',
             nav2_runtime_override_param_default,
             'Final sparse Nav2 runtime overlay; ordinary CAMROD uses an empty profile',
@@ -2109,6 +2141,132 @@ def generate_launch_description():
         # HH_260818 - Keep UI admission and control start checks on one policy.
         ('enable_campsite_occupancy_guard', cfg_get(launch_cfg, 'control/enable_campsite_occupancy_guard', False), 'Block confirmed semantic tent sites before campsite entry'),
         (
+            'control_camping_site_crab_approach_slowdown_distance_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_approach_slowdown_distance_m',
+                0.0,
+            ),
+            'Distance over which campsite crab entry may slow down; zero disables the override',
+        ),
+        (
+            'control_camping_site_crab_approach_min_speed_mps',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_approach_min_speed_mps',
+                0.0,
+            ),
+            'Minimum campsite crab-entry speed while approach slowdown is active',
+        ),
+        (
+            'control_camping_site_rotate_180_timeout_s',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_rotate_180_timeout_s',
+                0.0,
+            ),
+            'Wall-clock campsite 180-degree rotation timeout; zero disables it',
+        ),
+        (
+            'control_camping_site_entry_position_tolerance_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_entry_position_tolerance_m',
+                0.15,
+            ),
+            'Campsite crab-entry position tolerance',
+        ),
+        (
+            'control_camping_site_rotate_entry_max_position_error_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_rotate_entry_max_position_error_m',
+                0.0,
+            ),
+            'Maximum position error allowed before campsite rotation; zero disables it',
+        ),
+        (
+            'control_camping_site_entry_anchor_centering_max_initial_error_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_entry_anchor_centering_max_initial_error_m',
+                0.0,
+            ),
+            'Maximum initial route-anchor error recoverable before crab entry; zero disables centering',
+        ),
+        (
+            'control_camping_site_entry_anchor_centering_max_speed_mps',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_entry_anchor_centering_max_speed_mps',
+                0.12,
+            ),
+            'Maximum axis-by-axis route-anchor centering speed before crab entry',
+        ),
+        (
+            'control_camping_site_entry_anchor_centering_timeout_s',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_entry_anchor_centering_timeout_s',
+                15.0,
+            ),
+            'Wall-clock timeout for route-anchor centering before crab entry',
+        ),
+        (
+            'control_camping_site_entry_anchor_centering_tolerance_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_entry_anchor_centering_tolerance_m',
+                0.05,
+            ),
+            'Radial route-anchor tolerance required before crab entry',
+        ),
+        (
+            'control_camping_site_crab_entry_max_heading_drift_deg',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_max_heading_drift_deg',
+                0.0,
+            ),
+            'Maximum crab-entry heading drift; zero disables the guard',
+        ),
+        (
+            'control_camping_site_crab_entry_max_cross_track_error_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_max_cross_track_error_m',
+                0.0,
+            ),
+            'Maximum crab-entry cross-track error; zero disables the guard',
+        ),
+        (
+            'control_camping_site_crab_entry_body_yaw_compensation_deg',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_body_yaw_compensation_deg',
+                0.0,
+            ),
+            'Direction-signed crab-entry body-yaw compensation; zero disables it',
+        ),
+        (
+            'control_camping_site_crab_entry_body_yaw_alignment_tolerance_deg',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_body_yaw_alignment_tolerance_deg',
+                0.5,
+            ),
+            'Yaw tolerance for the stationary crab-entry body alignment',
+        ),
+        (
+            'control_camping_site_crab_entry_body_yaw_alignment_timeout_s',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_body_yaw_alignment_timeout_s',
+                15.0,
+            ),
+            'Wall-clock timeout for the stationary crab-entry body alignment',
+        ),
+        (
             'control_camping_site_roadside_reverse_return_enable',
             cfg_get(
                 launch_cfg,
@@ -2670,6 +2828,16 @@ def generate_launch_description():
         # HH_260528: Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
+        'nav2_reverse_controller': lc['planning_nav2_reverse_controller'],
+        'goal_snapper_reverse_auxiliary_input_goal_topic': lc[
+            'planning_goal_snapper_reverse_auxiliary_input_goal_topic'
+        ],
+        'goal_snapper_pose_jump_check_topic': lc[
+            'planning_goal_snapper_pose_jump_check_topic'
+        ],
+        'planning_state_machine_reverse_auto_goal_snapper_input_topic': lc[
+            'planning_state_machine_reverse_auto_goal_snapper_input_topic'
+        ],
         'nav2_runtime_override_param_file': lc[
             'planning_nav2_runtime_override_param_file'
         ],
@@ -2786,6 +2954,48 @@ def generate_launch_description():
         'control_namespace': lc['control_namespace'],
         'enable_camping_site_maneuver_controller': lc['enable_camping_site_maneuver_controller'],
         'enable_campsite_occupancy_guard': lc['enable_campsite_occupancy_guard'],
+        'crab_approach_slowdown_distance_m': lc[
+            'control_camping_site_crab_approach_slowdown_distance_m'
+        ],
+        'crab_approach_min_speed_mps': lc[
+            'control_camping_site_crab_approach_min_speed_mps'
+        ],
+        'rotate_180_timeout_s': lc[
+            'control_camping_site_rotate_180_timeout_s'
+        ],
+        'camping_site_entry_position_tolerance_m': lc[
+            'control_camping_site_entry_position_tolerance_m'
+        ],
+        'camping_site_rotate_entry_max_position_error_m': lc[
+            'control_camping_site_rotate_entry_max_position_error_m'
+        ],
+        'entry_anchor_centering_max_initial_error_m': lc[
+            'control_camping_site_entry_anchor_centering_max_initial_error_m'
+        ],
+        'entry_anchor_centering_max_speed_mps': lc[
+            'control_camping_site_entry_anchor_centering_max_speed_mps'
+        ],
+        'entry_anchor_centering_timeout_s': lc[
+            'control_camping_site_entry_anchor_centering_timeout_s'
+        ],
+        'entry_anchor_centering_tolerance_m': lc[
+            'control_camping_site_entry_anchor_centering_tolerance_m'
+        ],
+        'crab_entry_max_heading_drift_deg': lc[
+            'control_camping_site_crab_entry_max_heading_drift_deg'
+        ],
+        'crab_entry_max_cross_track_error_m': lc[
+            'control_camping_site_crab_entry_max_cross_track_error_m'
+        ],
+        'crab_entry_body_yaw_compensation_deg': lc[
+            'control_camping_site_crab_entry_body_yaw_compensation_deg'
+        ],
+        'crab_entry_body_yaw_alignment_tolerance_deg': lc[
+            'control_camping_site_crab_entry_body_yaw_alignment_tolerance_deg'
+        ],
+        'crab_entry_body_yaw_alignment_timeout_s': lc[
+            'control_camping_site_crab_entry_body_yaw_alignment_timeout_s'
+        ],
         'roadside_reverse_return_enable': lc[
             'control_camping_site_roadside_reverse_return_enable'
         ],

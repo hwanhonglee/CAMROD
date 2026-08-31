@@ -473,6 +473,117 @@ private:
   double stage_start_s_{0.0};
 };
 
+// HH_260901 - Before CRAB_IN, remove the immutable route-snap longitudinal
+// residual first, hold zero for wheel settlement, and finish with lateral crab.
+// Ending in parallel steering avoids another mode change at CRAB_IN handoff.
+enum class CampsiteEntryAnchorCenteringStage
+{
+  kLongitudinal,
+  kSteeringSettle,
+  kLateral,
+};
+
+inline const char * campsiteEntryAnchorCenteringStageName(
+  const CampsiteEntryAnchorCenteringStage stage)
+{
+  switch (stage) {
+    case CampsiteEntryAnchorCenteringStage::kLongitudinal:
+      return "longitudinal";
+    case CampsiteEntryAnchorCenteringStage::kSteeringSettle:
+      return "steering_settle";
+    case CampsiteEntryAnchorCenteringStage::kLateral:
+      return "lateral";
+  }
+  return "longitudinal";
+}
+
+struct CampsiteEntryAnchorCenteringCommand
+{
+  double linear_x_mps{0.0};
+  double linear_y_mps{0.0};
+  CampsiteEntryAnchorCenteringStage stage{
+    CampsiteEntryAnchorCenteringStage::kLongitudinal};
+  bool stage_changed{false};
+  bool longitudinal_latch_exceeded{false};
+  bool invalid_input{false};
+};
+
+class CampsiteEntryAnchorCenteringSequencer
+{
+public:
+  explicit CampsiteEntryAnchorCenteringSequencer(
+    CampsiteCrabReturnConfig config = CampsiteCrabReturnConfig())
+  : sequencer_(config)
+  {
+  }
+
+  void setConfig(const CampsiteCrabReturnConfig & config)
+  {
+    sequencer_.setConfig(config);
+  }
+
+  void reset(const double steady_elapsed_s = 0.0)
+  {
+    sequencer_.reset(steady_elapsed_s);
+  }
+
+  CampsiteEntryAnchorCenteringStage stage() const
+  {
+    return translatedStage(sequencer_.stage());
+  }
+
+  CampsiteEntryAnchorCenteringCommand update(
+    const double fixed_longitudinal_error_m,
+    const double fixed_lateral_error_m,
+    const double steady_elapsed_s,
+    const double maximum_speed_mps,
+    const double proportional_gain)
+  {
+    // Swap the proven return sequencer axes so its latched first (lateral)
+    // stage becomes fixed-frame longitudinal motion, and its final
+    // (longitudinal) stage becomes fixed-frame lateral motion.
+    const auto inner = sequencer_.update(
+      fixed_lateral_error_m, fixed_longitudinal_error_m, steady_elapsed_s,
+      maximum_speed_mps, proportional_gain);
+    CampsiteEntryAnchorCenteringCommand output;
+    output.linear_x_mps = inner.linear_y_mps;
+    output.linear_y_mps = inner.linear_x_mps;
+    output.stage = translatedStage(inner.stage);
+    output.stage_changed = inner.stage_changed;
+    output.longitudinal_latch_exceeded = inner.lateral_latch_exceeded;
+    output.invalid_input = inner.invalid_input;
+    return output;
+  }
+
+private:
+  static CampsiteEntryAnchorCenteringStage translatedStage(
+    const CampsiteCrabReturnStage stage)
+  {
+    switch (stage) {
+      case CampsiteCrabReturnStage::kLateral:
+        return CampsiteEntryAnchorCenteringStage::kLongitudinal;
+      case CampsiteCrabReturnStage::kSteeringSettle:
+        return CampsiteEntryAnchorCenteringStage::kSteeringSettle;
+      case CampsiteCrabReturnStage::kLongitudinal:
+        return CampsiteEntryAnchorCenteringStage::kLateral;
+    }
+    return CampsiteEntryAnchorCenteringStage::kLongitudinal;
+  }
+
+  CampsiteCrabReturnSequencer sequencer_;
+};
+
+inline bool campsiteEntryAnchorCenteringMayComplete(
+  const CampsiteEntryAnchorCenteringStage stage,
+  const double radial_error_m,
+  const double radial_tolerance_m)
+{
+  return stage == CampsiteEntryAnchorCenteringStage::kLateral &&
+         std::isfinite(radial_error_m) &&
+         std::isfinite(radial_tolerance_m) && radial_tolerance_m >= 0.0 &&
+         radial_error_m <= radial_tolerance_m;
+}
+
 inline geometry_msgs::msg::Quaternion quaternionFromYaw(const double yaw)
 {
   geometry_msgs::msg::Quaternion output;

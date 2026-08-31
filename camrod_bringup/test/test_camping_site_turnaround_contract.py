@@ -38,6 +38,11 @@ EVIDENCE_SUMMARY = (
 )
 
 
+def _normalized_source(source: str) -> str:
+    """Make source contracts independent of clang-format line wrapping."""
+    return " ".join(source.split())
+
+
 def _sites(path: Path) -> list[dict]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["camping_sites"]
 
@@ -103,9 +108,8 @@ def test_roadside_reverse_override_is_fail_closed_in_production() -> None:
         in maneuver_source
     )
     assert (
-        'declare_parameter<bool>(\n'
-        '        "roadside_reverse_return_enable", false)'
-        in controller_source
+        'declare_parameter<bool>("roadside_reverse_return_enable", false)'
+        in _normalized_source(controller_source)
     )
     assert (
         "return active_service_mode_ == CampsiteServiceMode::kRoadsideStop &&\n"
@@ -210,10 +214,9 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
         not in controller_source
     )
     assert (
-        'roadsideReverseReturnActive()\n'
-        '                    ? "done_roadside_reverse_retry"\n'
-        '                    : "done_retry"'
-        in controller_source
+        'roadsideReverseReturnActive() ? "done_roadside_reverse_retry" '
+        ': "done_retry"'
+        in _normalized_source(controller_source)
     )
 
 

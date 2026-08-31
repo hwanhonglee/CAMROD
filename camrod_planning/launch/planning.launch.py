@@ -253,6 +253,22 @@ def generate_launch_description():
             default_value='__auto__',
         ),
         DeclareLaunchArgument(
+            'nav2_reverse_controller',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
+            'goal_snapper_reverse_auxiliary_input_goal_topic',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
+            'goal_snapper_pose_jump_check_topic',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
+            'planning_state_machine_reverse_auto_goal_snapper_input_topic',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
             'nav2_bt_xml_nav_to_pose',
             default_value=nav2_bt_xml_nav_to_pose_default,
         ),
@@ -291,6 +307,7 @@ def generate_launch_description():
                     'nav2_robot_base_frame',
                     'nav2_selected_planner',
                     'nav2_selected_controller',
+                    'nav2_reverse_controller',
                     'nav2_bt_xml_nav_to_pose',
                     'nav2_bt_xml_nav_through_poses',
                     'use_nav2_container',
@@ -316,6 +333,8 @@ def generate_launch_description():
                 'origin_alt',
                 'centerline_input_pose_topic',
                 'goal_snapper_param_file',
+                'goal_snapper_reverse_auxiliary_input_goal_topic',
+                'goal_snapper_pose_jump_check_topic',
                 'centerline_snapper_param_file',
             ).items(),
         ),
@@ -359,6 +378,7 @@ def generate_launch_description():
                 'planning_state_machine_param_file',
                 'planning_state_machine_keypoints_yaml',
                 'planning_state_machine_camping_sites_yaml',
+                'planning_state_machine_reverse_auto_goal_snapper_input_topic',
             ).items(),
         ),
 

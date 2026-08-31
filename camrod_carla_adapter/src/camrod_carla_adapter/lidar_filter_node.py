@@ -137,7 +137,7 @@ class CarlaLidarFilterNode(Node):
                 ).value
             ),
             self_return_x_min_m=float(
-                self.declare_parameter("self_return_x_min_m", 0.49).value
+                self.declare_parameter("self_return_x_min_m", 0.40).value
             ),
             self_return_x_max_m=float(
                 self.declare_parameter("self_return_x_max_m", 1.31).value

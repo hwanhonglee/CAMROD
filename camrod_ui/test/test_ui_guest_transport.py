@@ -21,6 +21,7 @@ from camrod_ui.operator_ui_window import (  # noqa: E402
     _build_chromium_command,
     _build_parser,
     _find_chromium_browser,
+    _with_session_cache_key,
     _wait_for_ui_ready,
 )
 from camrod_ui.ui_guest_node import UiGuestNode  # noqa: E402
@@ -143,6 +144,26 @@ class GuestTransportTest(unittest.IsolatedAsyncioTestCase):
 
 class OperatorWindowTest(unittest.TestCase):
 
+    def test_webkit_session_cache_key_preserves_url_components(self) -> None:
+        rendered = _with_session_cache_key(
+            "http://127.0.0.1:8010/operator?build=e16af2de#radar",
+            token="fixed",
+        )
+        self.assertEqual(
+            rendered,
+            "http://127.0.0.1:8010/operator?build=e16af2de&"
+            "_camrod_ui_session=fixed#radar",
+        )
+
+    def test_webkit_session_cache_key_replaces_an_existing_key(self) -> None:
+        rendered = _with_session_cache_key(
+            "http://127.0.0.1:8010/?_camrod_ui_session=old&view=lidar",
+            token="new",
+        )
+        self.assertEqual(rendered.count("_camrod_ui_session="), 1)
+        self.assertIn("view=lidar", rendered)
+        self.assertIn("_camrod_ui_session=new", rendered)
+
     def test_fullscreen_defaults_on_and_can_be_disabled(self) -> None:
         self.assertTrue(_build_parser().parse_args([]).fullscreen)
         self.assertFalse(_build_parser().parse_args(["--no-fullscreen"]).fullscreen)
@@ -251,6 +272,8 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn("CHROMIUM_CANDIDATES", window_text)
         self.assertIn("_run_chromium", window_text)
         self.assertIn("_run_webkit", window_text)
+        self.assertIn("render_url = _with_session_cache_key(args.url)", window_text)
+        self.assertIn("web_view.load_uri(render_url)", window_text)
 
         guest_html = (
             src_root

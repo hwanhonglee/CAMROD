@@ -32,6 +32,7 @@
 #include "avg_msgs/msg/planning_state.hpp"
 #include "avg_msgs/msg/ui_destination_command.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
+#include "camrod_control/campsite_crab_approach.hpp"
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
@@ -70,6 +71,12 @@ enum class CampingSiteManeuverPhase {
 enum class CampsiteServiceMode {
   kTurnaround,
   kRoadsideStop,
+};
+
+enum class CrabEntryBodyYawAlignmentPurpose {
+  kInactive,
+  kPrecompensateEntry,
+  kRestoreNominalBeforeRotation,
 };
 
 std::string serviceModeName(const CampsiteServiceMode mode) {
@@ -167,8 +174,8 @@ public:
         "/control/camping_site_maneuver_controller/path_ros");
     campsite_occupancy_topic_ = declare_parameter<std::string>(
         "campsite_occupancy_topic", "/perception/camping_sites/occupancy");
-    enable_campsite_occupancy_guard_ = declare_parameter<bool>(
-        "enable_campsite_occupancy_guard", false);
+    enable_campsite_occupancy_guard_ =
+        declare_parameter<bool>("enable_campsite_occupancy_guard", false);
 
     enable_auto_start_from_planning_state_ =
         declare_parameter<bool>("enable_auto_start_from_planning_state", true);
@@ -204,45 +211,114 @@ public:
     // default, but allow an explicitly selected simulator composition to
     // leave the constrained site first and drive the validated shortest
     // return route in reverse without attempting an unsafe 180-degree turn.
-    roadside_reverse_return_enable_ = declare_parameter<bool>(
-        "roadside_reverse_return_enable", false);
+    roadside_reverse_return_enable_ =
+        declare_parameter<bool>("roadside_reverse_return_enable", false);
     default_lateral_direction_ =
         declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ =
         std::abs(declare_parameter<double>("crab_speed_mps", 0.18));
     roadside_crab_speed_mps_ =
         std::abs(declare_parameter<double>("roadside_crab_speed_mps", 0.20));
+    // HH_260901 - Real Ranger braking is handled by the platform controller,
+    // while CARLA's wheel/contact model needs an explicit low-energy terminal
+    // approach. Both defaults are disabled so the production profile is
+    // unchanged unless the simulator launch opts in.
+    crab_approach_slowdown_distance_m_ = std::abs(
+        declare_parameter<double>("crab_approach_slowdown_distance_m", 0.0));
+    crab_approach_min_speed_mps_ =
+        std::abs(declare_parameter<double>("crab_approach_min_speed_mps", 0.0));
     entry_position_tolerance_m_ =
         std::abs(declare_parameter<double>("entry_position_tolerance_m", 0.15));
+    // HH_260901 - CARLA may opt into a bounded correction from the actual Nav2
+    // handoff pose to the immutable route_goal_snap before lateral site entry.
+    // A zero initial-error envelope keeps this substate disabled everywhere
+    // else, including the physical Ranger profile.
+    entry_anchor_centering_max_initial_error_m_ =
+        std::abs(declare_parameter<double>(
+            "entry_anchor_centering_max_initial_error_m", 0.0));
+    entry_anchor_centering_max_speed_mps_ = std::abs(declare_parameter<double>(
+        "entry_anchor_centering_max_speed_mps", 0.12));
+    entry_anchor_centering_timeout_s_ = std::abs(
+        declare_parameter<double>("entry_anchor_centering_timeout_s", 15.0));
+    entry_anchor_centering_tolerance_m_ = std::abs(
+        declare_parameter<double>("entry_anchor_centering_tolerance_m", 0.05));
+    crab_entry_max_heading_drift_deg_ = std::abs(
+        declare_parameter<double>("crab_entry_max_heading_drift_deg", 0.0));
+    crab_entry_max_cross_track_error_m_ = std::abs(
+        declare_parameter<double>("crab_entry_max_cross_track_error_m", 0.0));
+    // HH_260901 - CARLA clips nominal +/-90-degree parallel steering near
+    // +/-88 degrees. A simulator composition may opt into a small,
+    // direction-signed body-yaw precompensation before crab entry so the
+    // resulting world-frame motion remains on the authored lateral line.
+    // Zero is the shared/physical identity. Bound accidental launch values to
+    // a small correction; non-finite input remains invalid and fails closed
+    // when entry geometry is configured.
+    const double configured_crab_entry_body_yaw_compensation_deg =
+        declare_parameter<double>("crab_entry_body_yaw_compensation_deg", 0.0);
+    crab_entry_body_yaw_compensation_deg_ =
+        std::isfinite(configured_crab_entry_body_yaw_compensation_deg)
+            ? std::min(
+                  5.0,
+                  std::abs(configured_crab_entry_body_yaw_compensation_deg))
+            : configured_crab_entry_body_yaw_compensation_deg;
+    crab_entry_body_yaw_alignment_tolerance_deg_ = std::max(
+        0.05, std::abs(declare_parameter<double>(
+                  "crab_entry_body_yaw_alignment_tolerance_deg", 0.5)));
+    crab_entry_body_yaw_alignment_timeout_s_ =
+        std::max(0.1, std::abs(declare_parameter<double>(
+                          "crab_entry_body_yaw_alignment_timeout_s", 15.0)));
+    // HH_260901 - A simulator composition may fail closed before a 180-degree
+    // turn if its actual rotation center is outside the collision-certified
+    // site envelope. Zero keeps the shared/physical behavior disabled.
+    rotate_entry_max_position_error_m_ = std::abs(
+        declare_parameter<double>("rotate_entry_max_position_error_m", 0.0));
+    rotate_entry_centering_max_initial_error_m_ =
+        std::abs(declare_parameter<double>(
+            "rotate_entry_centering_max_initial_error_m", 0.30));
+    rotate_entry_centering_max_speed_mps_ = std::abs(declare_parameter<double>(
+        "rotate_entry_centering_max_speed_mps", 0.12));
+    rotate_entry_centering_timeout_s_ = std::abs(
+        declare_parameter<double>("rotate_entry_centering_timeout_s", 15.0));
     return_position_tolerance_m_ = std::abs(
         declare_parameter<double>("return_position_tolerance_m", 0.04));
     return_translation_gain_ = std::max(
         0.1, std::abs(declare_parameter<double>("return_translation_kp", 4.0)));
-    return_lateral_transition_tolerance_m_ = std::abs(
-        declare_parameter<double>("return_lateral_transition_tolerance_m", 0.02));
+    return_lateral_transition_tolerance_m_ = std::abs(declare_parameter<double>(
+        "return_lateral_transition_tolerance_m", 0.02));
     return_lateral_hysteresis_m_ = std::abs(
         declare_parameter<double>("return_lateral_hysteresis_m", 0.10));
-    return_steering_settle_s_ = std::abs(
-        declare_parameter<double>("return_steering_settle_s", 1.20));
+    return_steering_settle_s_ =
+        std::abs(declare_parameter<double>("return_steering_settle_s", 1.20));
     // HH_260825 - Normal campsite exit hands planning the live lanelet
     // projection instead of forcing the robot back to the historical entry XY.
     // The old exact-anchor sequencer remains available as a stale-projection
-    // fallback, preserving a deterministic recovery path if planning input dies.
-    enable_live_lanelet_return_handoff_ = declare_parameter<bool>(
-        "enable_live_lanelet_return_handoff", true);
-    return_lanelet_handoff_distance_m_ = std::max(
-        0.01, std::abs(declare_parameter<double>(
-                  "return_lanelet_handoff_distance_m", 0.15)));
+    // fallback, preserving a deterministic recovery path if planning input
+    // dies.
+    enable_live_lanelet_return_handoff_ =
+        declare_parameter<bool>("enable_live_lanelet_return_handoff", true);
+    return_lanelet_handoff_distance_m_ =
+        std::max(0.01, std::abs(declare_parameter<double>(
+                           "return_lanelet_handoff_distance_m", 0.15)));
     // HH_260830 - The reverse handoff restores the ordinary Nav2 planning
     // footprint. Live 5 cm raster audit requires at least 38 mm of additional
     // inward crab from the old handoff; 30 mm CTE gives a bounded margin.
-    roadside_reverse_handoff_distance_m_ = std::max(
-        0.01, std::abs(declare_parameter<double>(
-                  "roadside_reverse_handoff_distance_m", 0.03)));
-    return_lanelet_handoff_hold_s_ = std::max(
-        0.0, std::abs(declare_parameter<double>(
-                 "return_lanelet_handoff_hold_s", 1.20)));
-    crab_return_sequencer_.setConfig(
+    roadside_reverse_handoff_distance_m_ =
+        std::max(0.01, std::abs(declare_parameter<double>(
+                           "roadside_reverse_handoff_distance_m", 0.03)));
+    return_lanelet_handoff_hold_s_ =
+        std::max(0.0, std::abs(declare_parameter<double>(
+                          "return_lanelet_handoff_hold_s", 1.20)));
+    crab_return_sequencer_.setConfig(camrod_control::CampsiteCrabReturnConfig{
+        return_lateral_transition_tolerance_m_, return_lateral_hysteresis_m_,
+        return_steering_settle_s_});
+    // HH_260901 - Reuse the proven no-chatter lateral -> wheel-settle ->
+    // longitudinal sequencer to put the simulated body origin at the certified
+    // rotation center. The independent instance never changes return behavior.
+    rotate_entry_centering_sequencer_.setConfig(
+        camrod_control::CampsiteCrabReturnConfig{
+            return_lateral_transition_tolerance_m_,
+            return_lateral_hysteresis_m_, return_steering_settle_s_});
+    entry_anchor_centering_sequencer_.setConfig(
         camrod_control::CampsiteCrabReturnConfig{
             return_lateral_transition_tolerance_m_,
             return_lateral_hysteresis_m_, return_steering_settle_s_});
@@ -261,9 +337,11 @@ public:
         std::abs(declare_parameter<double>("crab_timeout_speed_scale", 1.0)));
     maximum_forward_residual_m_ =
         std::abs(declare_parameter<double>("max_forward_residual_m", 0.8));
-    entry_yaw_alignment_timeout_s_ = std::max(
-        0.1,
-        std::abs(declare_parameter<double>("entry_yaw_alignment_timeout_s", 15.0)));
+    entry_yaw_alignment_timeout_s_ =
+        std::max(0.1, std::abs(declare_parameter<double>(
+                          "entry_yaw_alignment_timeout_s", 15.0)));
+    rotate_180_timeout_s_ =
+        std::abs(declare_parameter<double>("rotate_180_timeout_s", 0.0));
     rotate_proportional_gain_ = declare_parameter<double>("rotate_kp", 1.2);
     maximum_angular_speed_radps_ =
         std::abs(declare_parameter<double>("max_angular_speed_radps", 0.35));
@@ -278,6 +356,10 @@ public:
     yaw_alignment_settling_.setConfig(
         camrod_control::YawAlignmentSettlingConfig{
             rotate_yaw_tolerance_deg_, rotate_settle_hold_s_,
+            rotate_settle_max_rate_degps_});
+    crab_entry_body_yaw_alignment_settling_.setConfig(
+        camrod_control::YawAlignmentSettlingConfig{
+            crab_entry_body_yaw_alignment_tolerance_deg_, rotate_settle_hold_s_,
             rotate_settle_max_rate_degps_});
     site_rotate_direction_policy_ = declare_parameter<std::string>(
         "site_rotate_direction_policy", "entry_crab_side");
@@ -718,8 +800,7 @@ private:
     std::string anchor_source;
   };
 
-  std::optional<RoadsideOperationalGeometry>
-  resolveRoadsideOperationalGeometry(
+  std::optional<RoadsideOperationalGeometry> resolveRoadsideOperationalGeometry(
       const avg_msgs::msg::AvgPoseStamped &raw_site_goal) const {
     if (!camrod_control::poseHasFinitePlanarPosition(raw_site_goal)) {
       return std::nullopt;
@@ -774,8 +855,8 @@ private:
     const bool lanelet_pose_fresh =
         lanelet_pose_.has_value() &&
         (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_;
-    if (const auto lanelet = resolve(
-            lanelet_pose_, lanelet_pose_fresh, "latest_lanelet_pose")) {
+    if (const auto lanelet =
+            resolve(lanelet_pose_, lanelet_pose_fresh, "latest_lanelet_pose")) {
       return lanelet;
     }
     // Route goals are unkeyed and an adjacent B-site goal may still be fresh.
@@ -785,22 +866,20 @@ private:
         (now() - route_goal_time_).seconds() <= pose_timeout_s_ &&
         camrod_control::campsiteAdoptAnchorsCorrelated(
             *lanelet_pose_, *route_goal_, route_goal_reached_distance_m_);
-    return resolve(
-        route_goal_, route_goal_correlated, "correlated_route_goal");
+    return resolve(route_goal_, route_goal_correlated, "correlated_route_goal");
   }
 
-  std::pair<double, double> roadsideArrivalErrors(
-      const RoadsideOperationalGeometry &geometry,
-      const avg_msgs::msg::AvgPoseStamped &pose) const {
+  std::pair<double, double>
+  roadsideArrivalErrors(const RoadsideOperationalGeometry &geometry,
+                        const avg_msgs::msg::AvgPoseStamped &pose) const {
     const auto relative = camrod_control::relativeXyAtHeading(
         geometry.anchor, pose, camrod_control::yawFromPose(geometry.anchor));
     return {relative.first,
             relative.second - geometry.operational_signed_lateral_m};
   }
 
-  bool roadsideArrivalMatches(
-      const RoadsideOperationalGeometry &geometry,
-      const avg_msgs::msg::AvgPoseStamped &pose) const {
+  bool roadsideArrivalMatches(const RoadsideOperationalGeometry &geometry,
+                              const avg_msgs::msg::AvgPoseStamped &pose) const {
     if (!camrod_control::poseHasFinitePlanarPosition(pose)) {
       return false;
     }
@@ -809,8 +888,8 @@ private:
         std::min(route_goal_reached_distance_m_, site_pose_reached_distance_m_);
     return camrod_control::roadsideOperationalArrivalMatches(
         errors.first, errors.second + geometry.operational_signed_lateral_m,
-        geometry.operational_signed_lateral_m,
-        forward_tolerance, entry_position_tolerance_m_);
+        geometry.operational_signed_lateral_m, forward_tolerance,
+        entry_position_tolerance_m_);
   }
 
   bool adoptWaitReturnState(const std::string &key, const std::string &source) {
@@ -906,17 +985,17 @@ private:
       // current pose as an already-complete return anchor.
       adopted_route_goal = stampPoseNow(roadside_geometry->anchor);
       route_source = roadside_geometry->anchor_source;
-    } else if (poseUsableAsAdoptRoute(
-                   lanelet_pose_, lanelet_pose_time_, *adopted_site_goal)) {
+    } else if (poseUsableAsAdoptRoute(lanelet_pose_, lanelet_pose_time_,
+                                      *adopted_site_goal)) {
       adopted_route_goal = stampPoseNow(*lanelet_pose_);
       route_source = "latest_lanelet_pose";
-    } else if (
-        poseUsableAsAdoptRoute(
-            route_goal_, route_goal_time_, *adopted_site_goal) &&
-        lanelet_pose_.has_value() &&
-        (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_ &&
-        camrod_control::campsiteAdoptAnchorsCorrelated(
-            *lanelet_pose_, *route_goal_, route_goal_reached_distance_m_)) {
+    } else if (poseUsableAsAdoptRoute(route_goal_, route_goal_time_,
+                                      *adopted_site_goal) &&
+               lanelet_pose_.has_value() &&
+               (now() - lanelet_pose_time_).seconds() <= pose_timeout_s_ &&
+               camrod_control::campsiteAdoptAnchorsCorrelated(
+                   *lanelet_pose_, *route_goal_,
+                   route_goal_reached_distance_m_)) {
       adopted_route_goal = stampPoseNow(*route_goal_);
       route_source = "correlated_route_goal";
     } else {
@@ -965,6 +1044,11 @@ private:
     start_yaw_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop
                      ? current_yaw
                      : camrod_control::normalizeAngle(current_yaw - M_PI);
+    crab_entry_body_yaw_target_ = start_yaw_;
+    crab_entry_body_yaw_compensation_active_ = false;
+    crab_entry_body_yaw_compensation_state_ = "inactive_adopted_wait_return";
+    crab_entry_body_yaw_alignment_purpose_ =
+        CrabEntryBodyYawAlignmentPurpose::kInactive;
     target_yaw_ = current_yaw;
     rotate_direction_sign_ =
         camrod_control::turnaroundDirectionForCrab(direction);
@@ -993,6 +1077,8 @@ private:
     return_requested_ = false;
     return_published_ = false;
     return_acknowledged_ = false;
+    entry_anchor_centering_active_ = false;
+    entry_anchor_centering_completed_ = false;
     last_return_request_publish_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     publishZero();
     setPhase(CampingSiteManeuverPhase::kWaitReturn,
@@ -1024,6 +1110,31 @@ private:
     return active_service_mode_ == CampsiteServiceMode::kRoadsideStop
                ? roadside_crab_speed_mps_
                : crab_speed_mps_;
+  }
+
+  bool crabApproachSlowdownEnabled() const {
+    return crab_approach_slowdown_distance_m_ > 0.0 &&
+           crab_approach_min_speed_mps_ > 0.0;
+  }
+
+  double crabApproachRemainingToCompletionM() const {
+    const double completion_progress_m =
+        std::max(0.0, crab_offset_m_ - entry_position_tolerance_m_);
+    const double current_progress_m =
+        crab_direction_ * relativeLateralFromEntry();
+    return std::max(0.0, completion_progress_m - current_progress_m);
+  }
+
+  double activeCrabApproachSpeedMps() const {
+    const double maximum_speed_mps = activeCrabSpeedMps();
+    if (!crabApproachSlowdownEnabled()) {
+      return maximum_speed_mps;
+    }
+    return camrod_control::campsiteCrabApproachSpeed(
+        maximum_speed_mps,
+        std::min(crab_approach_min_speed_mps_, maximum_speed_mps),
+        crab_approach_slowdown_distance_m_,
+        crabApproachRemainingToCompletionM());
   }
 
   bool roadsideForwardLoopActive() const {
@@ -1072,9 +1183,8 @@ private:
     if (site_rotate_direction_policy_ == "entry_crab_side") {
       const double direction =
           camrod_control::turnaroundDirectionForCrab(crab_direction);
-      return {direction,
-              crab_direction >= 0.0 ? "entry_left_rotate_cw"
-                                    : "entry_right_rotate_ccw"};
+      return {direction, crab_direction >= 0.0 ? "entry_left_rotate_cw"
+                                               : "entry_right_rotate_ccw"};
     }
     if (site_rotate_direction_policy_ != "site_index_lanelet_side") {
       return {0.0, "shortest"};
@@ -1163,8 +1273,7 @@ private:
           get_logger(), *get_clock(), 2000,
           "campsite auto-entry waiting at GOAL_REACHED: key=%s "
           "route_goal=%s pose=%s lanelet=%s limit=%.2fm",
-          automatic_key.c_str(),
-          route_goal_.has_value() ? "yes" : "missing",
+          automatic_key.c_str(), route_goal_.has_value() ? "yes" : "missing",
           route_goal_.has_value() && poseIsFresh()
               ? fixed(poseDistance(*last_pose_, *route_goal_)).c_str()
               : "stale",
@@ -1224,16 +1333,15 @@ private:
 
   std::pair<bool, std::string> configureCrabEntryGeometry(
       const std::string &source, const double entry_yaw,
-      const std::tuple<double, double, std::string, double> &motion) {
+      const std::tuple<double, double, std::string, double> &motion,
+      const bool automatic_lanelet_snap_entry) {
     const double requested_lateral_offset = std::get<0>(motion);
     const double direction = std::get<1>(motion);
     std::string source_name = std::get<2>(motion);
     const double forward_residual = std::get<3>(motion);
-    if (!std::isfinite(entry_yaw) ||
-        !std::isfinite(requested_lateral_offset) ||
+    if (!std::isfinite(entry_yaw) || !std::isfinite(requested_lateral_offset) ||
         !std::isfinite(direction) || !std::isfinite(forward_residual) ||
-        !std::isfinite(return_anchor_x_) ||
-        !std::isfinite(return_anchor_y_) ||
+        !std::isfinite(return_anchor_x_) || !std::isfinite(return_anchor_y_) ||
         (site_goal_.has_value() &&
          !camrod_control::poseHasFinitePlanarPosition(*site_goal_))) {
       setError("non-finite campsite goal-pair geometry");
@@ -1256,14 +1364,37 @@ private:
     }
 
     start_yaw_ = camrod_control::normalizeAngle(entry_yaw);
+    crab_direction_ = direction;
+    double active_body_yaw_compensation_deg = 0.0;
+    crab_entry_body_yaw_compensation_active_ = false;
+    compensated_directed_rotation_tracking_active_ = false;
+    if (!std::isfinite(crab_entry_body_yaw_compensation_deg_)) {
+      active_body_yaw_compensation_deg = crab_entry_body_yaw_compensation_deg_;
+      crab_entry_body_yaw_compensation_state_ = "invalid_nonfinite";
+    } else if (crab_entry_body_yaw_compensation_deg_ == 0.0) {
+      crab_entry_body_yaw_compensation_state_ = "disabled_zero_default";
+    } else if (!automatic_lanelet_snap_entry) {
+      crab_entry_body_yaw_compensation_state_ = "inactive_nonautomatic_entry";
+    } else if (active_service_mode_ != CampsiteServiceMode::kTurnaround) {
+      crab_entry_body_yaw_compensation_state_ = "inactive_roadside_service";
+    } else if (camrod_control::campsiteCrabEntryBodyYawCompensationEligible(
+                   crab_entry_body_yaw_compensation_deg_,
+                   automatic_lanelet_snap_entry, true)) {
+      active_body_yaw_compensation_deg = crab_entry_body_yaw_compensation_deg_;
+      crab_entry_body_yaw_compensation_active_ = true;
+      crab_entry_body_yaw_compensation_state_ = "active_automatic_turnaround";
+    } else {
+      crab_entry_body_yaw_compensation_state_ = "inactive_policy_rejected";
+    }
+    crab_entry_body_yaw_target_ =
+        camrod_control::campsiteCrabEntryBodyYawTarget(
+            start_yaw_, crab_direction_, active_body_yaw_compensation_deg);
     const auto rotation = rotationDirectionForSource(source, direction);
     rotate_direction_sign_ = rotation.first;
     rotate_direction_label_ = rotation.second;
     target_yaw_ = camrod_control::normalizeAngle(
         start_yaw_ +
-        (rotate_direction_sign_ == 0.0 ? M_PI
-                                       : rotate_direction_sign_ * M_PI));
-    crab_direction_ = direction;
+        (rotate_direction_sign_ == 0.0 ? M_PI : rotate_direction_sign_ * M_PI));
     crab_offset_m_ = lateral_offset;
     crab_source_ = source_name;
     goal_pair_forward_m_ = forward_residual;
@@ -1275,10 +1406,9 @@ private:
     entry_reference_yaw_ = start_yaw_;
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop ||
         !site_goal_.has_value()) {
-      const auto operational_target =
-          camrod_control::lateralTargetFromAnchor(
-              return_anchor_x_, return_anchor_y_, start_yaw_, direction,
-              lateral_offset);
+      const auto operational_target = camrod_control::lateralTargetFromAnchor(
+          return_anchor_x_, return_anchor_y_, start_yaw_, direction,
+          lateral_offset);
       entry_target_x_ = operational_target.first;
       entry_target_y_ = operational_target.second;
     } else {
@@ -1287,11 +1417,24 @@ private:
       entry_target_x_ = site_goal_->pose.position.x;
       entry_target_y_ = site_goal_->pose.position.y;
     }
-    crab_duration_s_ =
-        lateral_offset /
+    const double timeout_maximum_speed_mps =
         std::max(0.01, active_crab_speed_mps * crab_timeout_speed_scale_);
+    const double timeout_minimum_speed_mps =
+        crabApproachSlowdownEnabled()
+            ? std::min(timeout_maximum_speed_mps,
+                       crab_approach_min_speed_mps_ * crab_timeout_speed_scale_)
+            : timeout_maximum_speed_mps;
+    // HH_260901 - Include the analytic terminal-ramp travel time in the
+    // existing bounded timeout. Without this, enabling slowdown could make a
+    // healthy CARLA approach expire before it reaches the site.
+    crab_duration_s_ = camrod_control::campsiteCrabApproachDuration(
+        lateral_offset, timeout_maximum_speed_mps, timeout_minimum_speed_mps,
+        crabApproachSlowdownEnabled() ? crab_approach_slowdown_distance_m_
+                                      : 0.0);
     if (!std::isfinite(entry_target_x_) || !std::isfinite(entry_target_y_) ||
-        !std::isfinite(target_yaw_) || !std::isfinite(crab_duration_s_)) {
+        !std::isfinite(target_yaw_) ||
+        !std::isfinite(crab_entry_body_yaw_target_) ||
+        !std::isfinite(crab_duration_s_)) {
       setError("non-finite configured campsite entry geometry");
       return {false, "non-finite configured campsite entry geometry"};
     }
@@ -1306,18 +1449,34 @@ private:
         true,
         "start=" + source + " offset=" + fixed(lateral_offset) +
             "m direction=" + signedFixed(direction) +
-            " rotate=" + rotate_direction_label_ +
-            " service_mode=" + serviceModeName(active_service_mode_) +
-            " source=" + source_name +
+            " rotate=" + rotate_direction_label_ + " service_mode=" +
+            serviceModeName(active_service_mode_) + " source=" + source_name +
             " entry_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 1) +
-            "deg forward=" + fixed(forward_residual) +
+            "deg crab_body_yaw=" +
+            fixed(crab_entry_body_yaw_target_ * 180.0 / M_PI, 1) +
+            "deg body_yaw_compensation=" +
+            signedFixed(active_body_yaw_compensation_deg > 0.0
+                            ? std::copysign(active_body_yaw_compensation_deg,
+                                            crab_direction_)
+                            : 0.0) +
+            "deg body_yaw_compensation_state=" +
+            crab_entry_body_yaw_compensation_state_ +
+            " forward=" + fixed(forward_residual) +
             "m requested_offset=" + fixed(requested_lateral_offset) +
-            "m return_anchor=" + return_anchor_source_ +
-            " anchor_offset=" + fixed(return_anchor_offset_m_) +
-            "m anchor_xy=(" + fixed(return_anchor_x_) + "," +
-            fixed(return_anchor_y_) + ")" +
+            "m return_anchor=" + return_anchor_source_ + " anchor_offset=" +
+            fixed(return_anchor_offset_m_) + "m anchor_xy=(" +
+            fixed(return_anchor_x_) + "," + fixed(return_anchor_y_) + ")" +
             "m crab_speed=" + fixed(active_crab_speed_mps) +
-            "m/s timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
+            "m/s crab_terminal_min_speed=" +
+            fixed(crabApproachSlowdownEnabled()
+                      ? std::min(crab_approach_min_speed_mps_,
+                                 active_crab_speed_mps)
+                      : active_crab_speed_mps) +
+            "m/s crab_slowdown_distance=" +
+            fixed(crabApproachSlowdownEnabled()
+                      ? crab_approach_slowdown_distance_m_
+                      : 0.0) +
+            "m timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
             " duration=" + fixed(crab_duration_s_, 1) + "s"};
   }
 
@@ -1348,9 +1507,8 @@ private:
         already_at_site = roadside.has_value() &&
                           roadsideArrivalMatches(*roadside, *last_pose_);
       } else {
-        already_at_site =
-            poseDistance(*last_pose_, *site_goal_) <=
-            site_pose_reached_distance_m_;
+        already_at_site = poseDistance(*last_pose_, *site_goal_) <=
+                          site_pose_reached_distance_m_;
       }
     }
     if (already_at_site) {
@@ -1361,7 +1519,8 @@ private:
       // bounds inherited axial handoff error by the smaller existing
       // route-goal/site threshold (0.60 m deployed). The raw semantic center
       // is never used as a global-radius shortcut.
-      const std::string key = site_goal_key_.empty() ? last_auto_key_ : site_goal_key_;
+      const std::string key =
+          site_goal_key_.empty() ? last_auto_key_ : site_goal_key_;
       if (!key.empty() &&
           adoptWaitReturnState(key, "already_at_site:" + source)) {
         return {true, "site arrival restored; waiting for return"};
@@ -1373,7 +1532,8 @@ private:
          !camrod_control::poseHasFiniteMotionGeometry(*route_goal_) ||
          !site_goal_.has_value() ||
          !camrod_control::poseHasFinitePlanarPosition(*site_goal_))) {
-      setError("finite route/site goal geometry unavailable for auto site maneuver");
+      setError(
+          "finite route/site goal geometry unavailable for auto site maneuver");
       return {
           false,
           "finite route/site goal geometry unavailable for auto site maneuver"};
@@ -1401,8 +1561,8 @@ private:
       setError("non-finite resolved campsite lateral motion");
       return {false, "non-finite resolved campsite lateral motion"};
     }
-    if (automatic_arrival &&
-        require_goal_pair_for_auto_start_ && source_name != "goal_pair") {
+    if (automatic_arrival && require_goal_pair_for_auto_start_ &&
+        source_name != "goal_pair") {
       setError("site/route goal pair unavailable for auto site maneuver");
       return {false, "site/route goal pair unavailable for auto site maneuver"};
     }
@@ -1420,8 +1580,11 @@ private:
       return startReverseEntrySequence(source, std::get<2>(reverse_motion),
                                        std::get<3>(reverse_motion));
     }
-    const auto configured =
-        configureCrabEntryGeometry(source, yaw_selection.yaw_rad, motion);
+    const bool automatic_lanelet_snap_entry =
+        yaw_selection.source ==
+        camrod_control::CampsiteEntryYawSource::kLaneletSnap;
+    const auto configured = configureCrabEntryGeometry(
+        source, yaw_selection.yaw_rad, motion, automatic_lanelet_snap_entry);
     if (!configured.first) {
       return configured;
     }
@@ -1437,13 +1600,27 @@ private:
       pending_crab_start_source_ = source;
       pending_crab_motion_ = motion;
       entry_yaw_alignment_for_crab_ = true;
+      crab_entry_body_yaw_alignment_purpose_ =
+          CrabEntryBodyYawAlignmentPurpose::kInactive;
+      // First align and pre-center in the immutable nominal lanelet frame.
+      // The CARLA body-yaw correction is a separate, stationary alignment
+      // after the route anchor has been recovered.
       target_yaw_ = start_yaw_;
       setPhase(CampingSiteManeuverPhase::kAlignEntryYaw,
-               "align automatic crab entry to lanelet snap yaw=" +
+               "align automatic crab entry nominal_yaw=" +
                    fixed(start_yaw_ * 180.0 / M_PI, 1) +
+                   "deg body_yaw_target=" +
+                   fixed(crab_entry_body_yaw_target_ * 180.0 / M_PI, 1) +
                    "deg live_yaw=" + fixed(current_yaw * 180.0 / M_PI, 1) +
                    "deg; " + configured.second);
     } else {
+      // A manual/live-yaw start does not execute ALIGN_ENTRY_YAW, so it must
+      // not claim or police a simulator precompensation it never applied.
+      crab_entry_body_yaw_target_ = start_yaw_;
+      crab_entry_body_yaw_compensation_active_ = false;
+      crab_entry_body_yaw_compensation_state_ = "inactive_nonautomatic_entry";
+      crab_entry_body_yaw_alignment_purpose_ =
+          CrabEntryBodyYawAlignmentPurpose::kInactive;
       entry_yaw_alignment_for_crab_ = false;
       pending_crab_motion_.reset();
       setPhase(CampingSiteManeuverPhase::kCrabIn,
@@ -1519,6 +1696,11 @@ private:
       return {false, "reverse site target exceeds max distance"};
     }
     start_yaw_ = camrod_control::yawFromPose(*last_pose_);
+    crab_entry_body_yaw_target_ = start_yaw_;
+    crab_entry_body_yaw_compensation_active_ = false;
+    crab_entry_body_yaw_compensation_state_ = "inactive_reverse_entry";
+    crab_entry_body_yaw_alignment_purpose_ =
+        CrabEntryBodyYawAlignmentPurpose::kInactive;
     const auto selected_axis =
         selectReverseEntryAxis(std::atan2(dy, dx), dx, dy);
     entry_reverse_axis_yaw_ = selected_axis.first;
@@ -1578,10 +1760,9 @@ private:
       // policy preserves that yaw and follows the inverted route in reverse.
       target_yaw_ = start_yaw_;
       setPhase(CampingSiteManeuverPhase::kCrabOut,
-               reason +
-                   (roadsideForwardLoopActive()
-                        ? "; roadside exit before forward return loop"
-                        : "; roadside exit before reverse route handoff"));
+               reason + (roadsideForwardLoopActive()
+                             ? "; roadside exit before forward return loop"
+                             : "; roadside exit before reverse route handoff"));
     } else if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
@@ -1609,9 +1790,8 @@ private:
     // this controller holds the raw vehicle pose. A body stopped off the
     // centerline is at the route goal by one measure and away from it by the
     // other; either confirmation is enough to adopt the campsite entry.
-    if (poseIsFresh() &&
-        poseDistance(*last_pose_, *route_goal_) <=
-            route_goal_reached_distance_m_) {
+    if (poseIsFresh() && poseDistance(*last_pose_, *route_goal_) <=
+                             route_goal_reached_distance_m_) {
       return true;
     }
     return lanelet_pose_.has_value() &&
@@ -1648,10 +1828,106 @@ private:
            std::cos(entry_reference_yaw_) * dy;
   }
 
+  double relativeForwardFromEntry() const {
+    if (!last_pose_.has_value()) {
+      return 0.0;
+    }
+    return camrod_control::campsiteCrabEntryLineCrossTrack(
+        last_pose_->pose.position.x, last_pose_->pose.position.y,
+        entry_start_x_, entry_start_y_, entry_reference_yaw_);
+  }
+
   bool entryReached() const {
     return poseIsFresh() &&
            crab_direction_ * relativeLateralFromEntry() >=
                std::max(0.0, crab_offset_m_ - entry_position_tolerance_m_);
+  }
+
+  double rotationEntryPositionErrorM() const {
+    return distanceTo(entry_target_x_, entry_target_y_);
+  }
+
+  bool rotationEntryPositionAccepted() const {
+    if (rotate_entry_max_position_error_m_ <= 0.0) {
+      return true;
+    }
+    const double error_m = rotationEntryPositionErrorM();
+    return std::isfinite(error_m) &&
+           error_m <= rotate_entry_max_position_error_m_;
+  }
+
+  bool rotationEntryReadyForTurn() const {
+    if (rotate_entry_max_position_error_m_ <= 0.0) {
+      return true;
+    }
+    return rotate_entry_centering_active_ &&
+           camrod_control::campsiteCrabReturnMayComplete(
+               rotate_entry_centering_sequencer_.stage(),
+               rotationEntryPositionErrorM(),
+               rotate_entry_max_position_error_m_);
+  }
+
+  double rotationEntryCenteringWallElapsedSeconds() const {
+    if (!rotate_entry_centering_active_) {
+      return 0.0;
+    }
+    return std::max(0.0, std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() -
+                             rotate_entry_centering_start_wall_time_)
+                             .count());
+  }
+
+  bool entryAnchorCenteringEnabled() const {
+    return entry_anchor_centering_max_initial_error_m_ > 0.0 &&
+           return_anchor_source_ == "route_goal_snap";
+  }
+
+  double entryAnchorCenteringErrorM() const {
+    return distanceTo(return_anchor_x_, return_anchor_y_);
+  }
+
+  double entryAnchorCenteringWallElapsedSeconds() const {
+    if (!entry_anchor_centering_active_) {
+      return 0.0;
+    }
+    return std::max(0.0, std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() -
+                             entry_anchor_centering_start_wall_time_)
+                             .count());
+  }
+
+  std::string entryAnchorCenteringDetail() const {
+    const std::string current_xy =
+        last_pose_.has_value()
+            ? "(" + fixed(last_pose_->pose.position.x, 3) + "," +
+                  fixed(last_pose_->pose.position.y, 3) + ")"
+            : "unavailable";
+    return "current_xy=" + current_xy + " anchor_xy=(" +
+           fixed(return_anchor_x_, 3) + "," + fixed(return_anchor_y_, 3) +
+           ") anchor_error=" + fixed(entryAnchorCenteringErrorM(), 3) +
+           "m max_initial_error=" +
+           fixed(entry_anchor_centering_max_initial_error_m_, 3) +
+           "m tolerance=" + fixed(entry_anchor_centering_tolerance_m_, 3) +
+           "m stage=" +
+           camrod_control::campsiteEntryAnchorCenteringStageName(
+               entry_anchor_centering_sequencer_.stage());
+  }
+
+  std::string rotationEntryPoseDetail() const {
+    const std::string current_xy =
+        last_pose_.has_value()
+            ? "(" + fixed(last_pose_->pose.position.x, 3) + "," +
+                  fixed(last_pose_->pose.position.y, 3) + ")"
+            : "unavailable";
+    return "current_xy=" + current_xy + " target_xy=(" +
+           fixed(entry_target_x_, 3) + "," + fixed(entry_target_y_, 3) +
+           ") target_error=" + fixed(rotationEntryPositionErrorM(), 3) +
+           "m max_error=" + fixed(rotate_entry_max_position_error_m_, 3) +
+           "m centering_active=" +
+           (rotate_entry_centering_active_ ? "true" : "false") +
+           " centering_stage=" +
+           camrod_control::campsiteCrabReturnStageName(
+               rotate_entry_centering_sequencer_.stage());
   }
 
   std::pair<double, double> axisProgressLateral(const double origin_x,
@@ -1749,8 +2025,7 @@ private:
             ? std::min(return_lanelet_handoff_distance_m_,
                        roadside_reverse_handoff_distance_m_)
             : return_lanelet_handoff_distance_m_;
-    return distance_m.has_value() &&
-                   *distance_m <= handoff_distance_m + 1.0e-9
+    return distance_m.has_value() && *distance_m <= handoff_distance_m + 1.0e-9
                ? distance_m
                : std::nullopt;
   }
@@ -1761,14 +2036,12 @@ private:
     const auto distance_m = liveLaneletReturnDistance();
     if (!distance_m.has_value()) {
       if (return_lanelet_handoff_candidate_) {
-        RCLCPP_WARN(
-            get_logger(),
-            "live lanelet return handoff lost before hold completed; "
-            "resuming exact-anchor fallback");
+        RCLCPP_WARN(get_logger(),
+                    "live lanelet return handoff lost before hold completed; "
+                    "resuming exact-anchor fallback");
       }
       return_lanelet_handoff_candidate_ = false;
-      return_lanelet_handoff_start_time_ =
-          rclcpp::Time(0, 0, RCL_ROS_TIME);
+      return_lanelet_handoff_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
       return std::nullopt;
     }
 
@@ -1794,12 +2067,12 @@ private:
         lanelet_pose_.has_value() ? poseDistance(*last_pose_, *lanelet_pose_)
                                   : std::numeric_limits<double>::infinity();
     const std::string detail =
-        "live lanelet handoff current=(" +
-        fixed(last_pose_->pose.position.x) + "," +
-        fixed(last_pose_->pose.position.y) + ") projection=(" +
+        "live lanelet handoff current=(" + fixed(last_pose_->pose.position.x) +
+        "," + fixed(last_pose_->pose.position.y) + ") projection=(" +
         fixed(lanelet_pose_->pose.position.x) + "," +
-        fixed(lanelet_pose_->pose.position.y) + ") lateral_error=" +
-        fixed(lanelet_distance_m) + "m original_anchor_error=" +
+        fixed(lanelet_pose_->pose.position.y) +
+        ") lateral_error=" + fixed(lanelet_distance_m) +
+        "m original_anchor_error=" +
         fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m";
     publishZero();
     if (roadsideForwardLoopActive()) {
@@ -1822,10 +2095,50 @@ private:
     }
   }
 
+  double phaseWallElapsedSeconds() const {
+    return std::max(
+        0.0, std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                           phase_start_wall_time_)
+                 .count());
+  }
+
+  double activeYawErrorRad(const double current_yaw) {
+    if (phase_ == CampingSiteManeuverPhase::kRotate180 &&
+        rotate_direction_sign_ != 0.0) {
+      if (compensated_directed_rotation_tracking_active_) {
+        const double sample_time_s = last_pose_time_.seconds();
+        if (sample_time_s > compensated_rotation_last_sample_time_s_) {
+          const double step = camrod_control::campsiteIncrementalYawStep(
+              compensated_rotation_last_yaw_, current_yaw);
+          if (!std::isfinite(step)) {
+            return std::numeric_limits<double>::quiet_NaN();
+          }
+          compensated_rotation_traveled_rad_ += step;
+          compensated_rotation_last_yaw_ = current_yaw;
+          compensated_rotation_last_sample_time_s_ = sample_time_s;
+        }
+        return compensated_rotation_target_delta_rad_ -
+               compensated_rotation_traveled_rad_;
+      }
+      const double target_delta = rotate_direction_sign_ * M_PI;
+      double traveled =
+          camrod_control::normalizeAngle(current_yaw - start_yaw_);
+      if (rotate_direction_sign_ > 0.0 && traveled < 0.0) {
+        traveled += 2.0 * M_PI;
+      } else if (rotate_direction_sign_ < 0.0 && traveled > 0.0) {
+        traveled -= 2.0 * M_PI;
+      }
+      return target_delta - traveled;
+    }
+    return camrod_control::normalizeAngle(target_yaw_ - current_yaw);
+  }
+
   void setPhase(const CampingSiteManeuverPhase phase,
                 const std::string &detail) {
     phase_ = phase;
     phase_start_time_ = now();
+    phase_start_wall_time_ = std::chrono::steady_clock::now();
+    phase_detail_ = detail;
     yaw_alignment_settling_.reset();
     return_lanelet_handoff_candidate_ = false;
     return_lanelet_handoff_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -1833,6 +2146,10 @@ private:
         phase_ == CampingSiteManeuverPhase::kDone ||
         phase_ == CampingSiteManeuverPhase::kError) {
       entry_yaw_alignment_for_crab_ = false;
+      entry_anchor_centering_active_ = false;
+      entry_anchor_centering_completed_ = false;
+      crab_entry_body_yaw_alignment_purpose_ =
+          CrabEntryBodyYawAlignmentPurpose::kInactive;
       pending_crab_start_source_.clear();
       pending_crab_motion_.reset();
     }
@@ -1845,24 +2162,27 @@ private:
           camrod_control::normalizeAngle(entry_target_yaw_ + M_PI));
     }
     if (phase_ == CampingSiteManeuverPhase::kCrabIn && last_pose_.has_value()) {
+      rotate_entry_centering_active_ = false;
+      rotate_entry_centering_start_wall_time_ =
+          std::chrono::steady_clock::now();
+      rotate_entry_centering_sequencer_.reset(now().seconds());
       // HH_260818 - Publish campsite entry geometry as well as reverse paths so
       // RViz and the operator UI always show what the controller will execute.
       publishReversePath(last_pose_->pose.position.x,
                          last_pose_->pose.position.y, entry_target_x_,
                          entry_target_y_, start_yaw_);
     }
-    if (phase_ == CampingSiteManeuverPhase::kCrabOut && last_pose_.has_value()) {
+    if (phase_ == CampingSiteManeuverPhase::kCrabOut &&
+        last_pose_.has_value()) {
       crab_return_sequencer_.reset(now().seconds());
       const auto live_distance_m = liveLaneletProjectionDistance();
       const bool use_live_target =
           live_distance_m.has_value() && lanelet_pose_.has_value();
-      publishReversePath(last_pose_->pose.position.x,
-                         last_pose_->pose.position.y,
-                         use_live_target ? lanelet_pose_->pose.position.x
-                                         : return_anchor_x_,
-                         use_live_target ? lanelet_pose_->pose.position.y
-                                         : return_anchor_y_,
-                         camrod_control::yawFromPose(*last_pose_));
+      publishReversePath(
+          last_pose_->pose.position.x, last_pose_->pose.position.y,
+          use_live_target ? lanelet_pose_->pose.position.x : return_anchor_x_,
+          use_live_target ? lanelet_pose_->pose.position.y : return_anchor_y_,
+          camrod_control::yawFromPose(*last_pose_));
     }
     RCLCPP_INFO(get_logger(), "camping_site_maneuver_controller %s: %s",
                 phaseName(phase_).c_str(), detail.c_str());
@@ -1907,13 +2227,343 @@ private:
     service_state_publisher_->publish(message);
   }
 
-  void publishZero() const {
+  void publishZero() {
+    last_angular_command_radps_ = 0.0;
+    last_crab_command_mps_ = 0.0;
     command_publisher_->publish(avg_msgs::msg::AvgTwist());
   }
 
-  void publishCrab(const double direction) const {
+  void publishCrab(const double direction) {
     avg_msgs::msg::AvgTwist command;
-    command.linear.y = direction * activeCrabSpeedMps();
+    command.linear.y = direction * activeCrabApproachSpeedMps();
+    last_crab_command_mps_ = command.linear.y;
+    last_angular_command_radps_ = 0.0;
+    command_publisher_->publish(command);
+  }
+
+  bool crabEntryBodyYawAlignmentActive() const {
+    return crab_entry_body_yaw_alignment_purpose_ !=
+           CrabEntryBodyYawAlignmentPurpose::kInactive;
+  }
+
+  std::string crabEntryBodyYawAlignmentPurposeName() const {
+    switch (crab_entry_body_yaw_alignment_purpose_) {
+    case CrabEntryBodyYawAlignmentPurpose::kInactive:
+      return "inactive";
+    case CrabEntryBodyYawAlignmentPurpose::kPrecompensateEntry:
+      return "precompensate_entry";
+    case CrabEntryBodyYawAlignmentPurpose::kRestoreNominalBeforeRotation:
+      return "restore_nominal_before_rotation";
+    }
+    return "invalid";
+  }
+
+  double crabEntryBodyYawAlignmentWallElapsedSeconds() const {
+    if (!crabEntryBodyYawAlignmentActive()) {
+      return 0.0;
+    }
+    return std::max(0.0, std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() -
+                             crab_entry_body_yaw_alignment_start_wall_time_)
+                             .count());
+  }
+
+  bool crabEntryBodyYawAlignmentTimedOut() const {
+    const auto timeout =
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(
+                crab_entry_body_yaw_alignment_timeout_s_));
+    return crabEntryBodyYawAlignmentActive() &&
+           camrod_control::campsiteCrabSteadyTimeoutExpired(
+               crab_entry_body_yaw_alignment_start_wall_time_,
+               std::chrono::steady_clock::now(), timeout);
+  }
+
+  bool publishCrabEntryBodyYawAlignment() {
+    if (!poseIsFresh()) {
+      setError("pose timeout during crab-entry body-yaw alignment");
+      return false;
+    }
+    const double yaw = camrod_control::yawFromPose(*last_pose_);
+    const double error = camrod_control::normalizeAngle(target_yaw_ - yaw);
+    const bool settled = crab_entry_body_yaw_alignment_settling_.observe(
+        error, yaw, last_pose_time_.seconds());
+    const bool within_dedicated_tolerance =
+        camrod_control::campsiteBodyYawWithinTolerance(
+            yaw, target_yaw_, crab_entry_body_yaw_alignment_tolerance_deg_);
+    if (within_dedicated_tolerance &&
+        crab_entry_body_yaw_alignment_settling_.withinTolerance()) {
+      publishZero();
+      return settled;
+    }
+    avg_msgs::msg::AvgTwist command;
+    command.angular.z = camrod_control::clamp(rotate_proportional_gain_ * error,
+                                              -maximum_angular_speed_radps_,
+                                              maximum_angular_speed_radps_);
+    last_angular_command_radps_ = command.angular.z;
+    last_crab_command_mps_ = 0.0;
+    command_publisher_->publish(command);
+    return false;
+  }
+
+  bool beginCrabEntryBodyYawPrecompensation() {
+    if (!crab_entry_body_yaw_compensation_active_) {
+      return false;
+    }
+    publishZero();
+    target_yaw_ = crab_entry_body_yaw_target_;
+    crab_entry_body_yaw_alignment_purpose_ =
+        CrabEntryBodyYawAlignmentPurpose::kPrecompensateEntry;
+    crab_entry_body_yaw_alignment_start_wall_time_ =
+        std::chrono::steady_clock::now();
+    crab_entry_body_yaw_alignment_settling_.reset();
+    // Re-entering the same externally visible phase gives this stationary
+    // substate a fresh ROS timer while preserving existing UI/gate contracts.
+    setPhase(CampingSiteManeuverPhase::kAlignEntryYaw,
+             "route anchor ready; align CARLA crab body yaw target=" +
+                 fixed(crab_entry_body_yaw_target_ * 180.0 / M_PI, 2) +
+                 "deg nominal_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 2) +
+                 "deg tolerance=" +
+                 fixed(crab_entry_body_yaw_alignment_tolerance_deg_, 2) +
+                 "deg compensation_state=" +
+                 crab_entry_body_yaw_compensation_state_);
+    return true;
+  }
+
+  void beginRotationAfterCrabEntry(const std::string &detail) {
+    if (camrod_control::selectCampsiteCrabPostEntryAction(
+            crab_entry_body_yaw_compensation_active_) ==
+        camrod_control::CampsiteCrabPostEntryAction::kBeginRotation) {
+      compensated_directed_rotation_tracking_active_ = false;
+      setPhase(CampingSiteManeuverPhase::kRotate180, detail);
+      return;
+    }
+    publishZero();
+    target_yaw_ = start_yaw_;
+    crab_entry_body_yaw_alignment_purpose_ =
+        CrabEntryBodyYawAlignmentPurpose::kRestoreNominalBeforeRotation;
+    crab_entry_body_yaw_alignment_start_wall_time_ =
+        std::chrono::steady_clock::now();
+    crab_entry_body_yaw_alignment_settling_.reset();
+    // Keep the public phase CRAB_IN so command-gate and matrix phase contracts
+    // remain stable; phase_detail exposes that translation has ended and only
+    // the fail-closed nominal-yaw restore owns commands.
+    setPhase(CampingSiteManeuverPhase::kCrabIn,
+             detail + "; restore nominal yaw before ROTATE_180 target=" +
+                 fixed(start_yaw_ * 180.0 / M_PI, 2) + "deg tolerance=" +
+                 fixed(crab_entry_body_yaw_alignment_tolerance_deg_, 2) +
+                 "deg");
+  }
+
+  bool transitionAlignedCrabEntryToCrabIn(const std::string &detail_prefix) {
+    if (!pending_crab_motion_.has_value() ||
+        (require_goal_pair_for_auto_start_ &&
+         std::get<2>(*pending_crab_motion_) != "goal_pair")) {
+      setError("captured site/route goal pair unavailable after entry yaw "
+               "alignment");
+      return false;
+    }
+    const auto configured = configureCrabEntryGeometry(
+        pending_crab_start_source_, start_yaw_, *pending_crab_motion_, true);
+    if (!configured.first) {
+      return false;
+    }
+    crab_entry_body_yaw_alignment_purpose_ =
+        CrabEntryBodyYawAlignmentPurpose::kInactive;
+    entry_yaw_alignment_for_crab_ = false;
+    pending_crab_motion_.reset();
+    setPhase(CampingSiteManeuverPhase::kCrabIn,
+             detail_prefix + configured.second);
+    return true;
+  }
+
+  bool beginEntryAnchorCentering() {
+    const double initial_error_m = entryAnchorCenteringErrorM();
+    if (!std::isfinite(initial_error_m) ||
+        initial_error_m > entry_anchor_centering_max_initial_error_m_) {
+      setError("CRAB_IN anchor centering rejected outside recovery envelope: " +
+               entryAnchorCenteringDetail());
+      return false;
+    }
+    entry_anchor_centering_active_ = true;
+    entry_anchor_centering_completed_ = false;
+    entry_anchor_centering_start_wall_time_ = std::chrono::steady_clock::now();
+    entry_anchor_centering_sequencer_.reset(0.0);
+    publishZero();
+    RCLCPP_INFO(get_logger(),
+                "CRAB_IN anchor centering started: %s max_speed=%.3fm/s "
+                "timeout=%.1fs",
+                entryAnchorCenteringDetail().c_str(),
+                entry_anchor_centering_max_speed_mps_,
+                entry_anchor_centering_timeout_s_);
+    return true;
+  }
+
+  void handleEntryAnchorCentering() {
+    if (!poseIsFresh()) {
+      setError("pose timeout during CRAB_IN anchor centering");
+      return;
+    }
+    const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+    const auto heading_safety = camrod_control::checkCampsiteCrabEntrySafety(
+        current_yaw, start_yaw_, 0.0, crab_entry_max_heading_drift_deg_, 0.0);
+    if (heading_safety.invalid_input || heading_safety.heading_drift_exceeded) {
+      setError(
+          "CRAB_IN anchor centering heading violation: invalid=" +
+          std::string(heading_safety.invalid_input ? "true" : "false") +
+          " heading_drift=" + fixed(heading_safety.heading_drift_deg, 2) +
+          "deg max_heading=" + fixed(crab_entry_max_heading_drift_deg_, 2) +
+          "deg nominal_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 2) + "deg; " +
+          entryAnchorCenteringDetail());
+      return;
+    }
+    const auto timeout =
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(entry_anchor_centering_timeout_s_));
+    const bool timeout_expired =
+        entry_anchor_centering_timeout_s_ > 0.0 &&
+        camrod_control::campsiteCrabSteadyTimeoutExpired(
+            entry_anchor_centering_start_wall_time_,
+            std::chrono::steady_clock::now(), timeout);
+    const bool completion_ready =
+        camrod_control::campsiteEntryAnchorCenteringMayComplete(
+            entry_anchor_centering_sequencer_.stage(),
+            entryAnchorCenteringErrorM(), entry_anchor_centering_tolerance_m_);
+    const auto action =
+        camrod_control::selectCampsiteEntryAnchorCenteringAction(
+            entry_anchor_centering_active_, completion_ready, timeout_expired);
+    if (action ==
+        camrod_control::CampsiteEntryAnchorCenteringAction::kTimeout) {
+      setError("CRAB_IN anchor centering steady timeout after " +
+               fixed(entryAnchorCenteringWallElapsedSeconds(), 1) +
+               "s: " + entryAnchorCenteringDetail());
+      return;
+    }
+    if (action ==
+        camrod_control::CampsiteEntryAnchorCenteringAction::kComplete) {
+      publishZero();
+      entry_anchor_centering_active_ = false;
+      entry_anchor_centering_completed_ = true;
+      // The final pre-centering stage already uses lateral/parallel steering.
+      // With the simulator correction disabled, retain the established direct
+      // handoff. If CARLA opted in, translate only in the nominal fixed frame,
+      // then perform the small body-yaw correction while stationary.
+      const std::string centered_detail =
+          "route_goal_snap anchor centered; " + entryAnchorCenteringDetail();
+      const auto post_nominal_action =
+          camrod_control::selectCampsiteCrabPostNominalAlignmentAction(
+              entryAnchorCenteringEnabled(), true,
+              crab_entry_body_yaw_compensation_active_);
+      if (post_nominal_action ==
+          camrod_control::CampsiteCrabPostNominalAlignmentAction::
+              kBeginBodyYawAlignment) {
+        beginCrabEntryBodyYawPrecompensation();
+      } else {
+        transitionAlignedCrabEntryToCrabIn(centered_detail +
+                                           "; geometry reprojected; ");
+      }
+      return;
+    }
+
+    const double dx = return_anchor_x_ - last_pose_->pose.position.x;
+    const double dy = return_anchor_y_ - last_pose_->pose.position.y;
+    // The sequence axes stay fixed to the authored lanelet yaw. It starts only
+    // after that yaw has settled and finishes in the CRAB_IN wheel mode.
+    const double fixed_longitudinal_error =
+        std::cos(start_yaw_) * dx + std::sin(start_yaw_) * dy;
+    const double fixed_lateral_error =
+        -std::sin(start_yaw_) * dx + std::cos(start_yaw_) * dy;
+    const auto command_result = entry_anchor_centering_sequencer_.update(
+        fixed_longitudinal_error, fixed_lateral_error,
+        entryAnchorCenteringWallElapsedSeconds(),
+        entry_anchor_centering_max_speed_mps_, return_translation_gain_);
+    if (command_result.invalid_input) {
+      setError("non-finite CRAB_IN anchor centering geometry");
+      return;
+    }
+    if (command_result.longitudinal_latch_exceeded) {
+      setError("CRAB_IN anchor centering longitudinal latch exceeded: error=" +
+               fixed(fixed_longitudinal_error, 3) + "m; " +
+               entryAnchorCenteringDetail());
+      return;
+    }
+    if (command_result.stage_changed) {
+      RCLCPP_INFO(get_logger(), "CRAB_IN anchor centering stage -> %s",
+                  camrod_control::campsiteEntryAnchorCenteringStageName(
+                      command_result.stage));
+    }
+    avg_msgs::msg::AvgTwist command;
+    command.linear.x = command_result.linear_x_mps;
+    command.linear.y = command_result.linear_y_mps;
+    last_crab_command_mps_ = command.linear.y;
+    last_angular_command_radps_ = 0.0;
+    command_publisher_->publish(command);
+  }
+
+  bool beginRotationEntryCentering() {
+    const double initial_error_m = rotationEntryPositionErrorM();
+    if (!std::isfinite(initial_error_m) ||
+        initial_error_m > rotate_entry_centering_max_initial_error_m_) {
+      setError("ROTATE_180 centering rejected outside recovery envelope: " +
+               rotationEntryPoseDetail() + " centering_max_initial_error=" +
+               fixed(rotate_entry_centering_max_initial_error_m_, 3) + "m");
+      return false;
+    }
+    rotate_entry_centering_active_ = true;
+    rotate_entry_centering_start_wall_time_ = std::chrono::steady_clock::now();
+    rotate_entry_centering_sequencer_.reset(now().seconds());
+    publishZero();
+    RCLCPP_INFO(get_logger(),
+                "ROTATE_180 entry centering started: %s max_speed=%.3fm/s "
+                "timeout=%.1fs",
+                rotationEntryPoseDetail().c_str(),
+                rotate_entry_centering_max_speed_mps_,
+                rotate_entry_centering_timeout_s_);
+    return true;
+  }
+
+  void publishRotationEntryCentering() {
+    if (!poseIsFresh()) {
+      setError("pose timeout during ROTATE_180 entry centering");
+      return;
+    }
+    if (rotate_entry_centering_timeout_s_ > 0.0 &&
+        rotationEntryCenteringWallElapsedSeconds() >=
+            rotate_entry_centering_timeout_s_) {
+      setError("ROTATE_180 entry centering steady timeout after " +
+               fixed(rotationEntryCenteringWallElapsedSeconds(), 1) +
+               "s: " + rotationEntryPoseDetail());
+      return;
+    }
+    const double yaw = camrod_control::yawFromPose(*last_pose_);
+    const double dx = entry_target_x_ - last_pose_->pose.position.x;
+    const double dy = entry_target_y_ - last_pose_->pose.position.y;
+    const double body_longitudinal_error =
+        std::cos(yaw) * dx + std::sin(yaw) * dy;
+    const double body_lateral_error = -std::sin(yaw) * dx + std::cos(yaw) * dy;
+    const auto command_result = rotate_entry_centering_sequencer_.update(
+        body_longitudinal_error, body_lateral_error, now().seconds(),
+        rotate_entry_centering_max_speed_mps_, return_translation_gain_);
+    if (command_result.invalid_input) {
+      setError("non-finite ROTATE_180 entry centering geometry");
+      return;
+    }
+    if (command_result.lateral_latch_exceeded) {
+      setError("ROTATE_180 entry centering lateral latch exceeded: error=" +
+               fixed(body_lateral_error, 3) + "m; " +
+               rotationEntryPoseDetail());
+      return;
+    }
+    if (command_result.stage_changed) {
+      RCLCPP_INFO(
+          get_logger(), "ROTATE_180 entry centering stage -> %s",
+          camrod_control::campsiteCrabReturnStageName(command_result.stage));
+    }
+    avg_msgs::msg::AvgTwist command;
+    command.linear.x = command_result.linear_x_mps;
+    command.linear.y = command_result.linear_y_mps;
+    last_crab_command_mps_ = command.linear.y;
+    last_angular_command_radps_ = 0.0;
     command_publisher_->publish(command);
   }
 
@@ -1927,8 +2577,7 @@ private:
     const double dy = return_anchor_y_ - last_pose_->pose.position.y;
     const double body_longitudinal_error =
         std::cos(yaw) * dx + std::sin(yaw) * dy;
-    const double body_lateral_error =
-        -std::sin(yaw) * dx + std::cos(yaw) * dy;
+    const double body_lateral_error = -std::sin(yaw) * dx + std::cos(yaw) * dy;
     const auto velocity = crab_return_sequencer_.update(
         body_longitudinal_error, body_lateral_error, now().seconds(),
         activeCrabSpeedMps(), return_translation_gain_);
@@ -1956,8 +2605,7 @@ private:
     // the full settle transition but do not issue a one-tick longitudinal
     // impulse. The next timer tick completes from the latched stage.
     if (!camrod_control::campsiteCrabReturnMayComplete(
-            velocity.stage,
-            distanceTo(return_anchor_x_, return_anchor_y_),
+            velocity.stage, distanceTo(return_anchor_x_, return_anchor_y_),
             return_position_tolerance_m_)) {
       command.linear.x = velocity.linear_x_mps;
       command.linear.y = velocity.linear_y_mps;
@@ -2063,14 +2711,7 @@ private:
     const double yaw = camrod_control::yawFromPose(*last_pose_);
     if (phase_ == CampingSiteManeuverPhase::kRotate180 &&
         rotate_direction_sign_ != 0.0) {
-      const double target_delta = rotate_direction_sign_ * M_PI;
-      double traveled = camrod_control::normalizeAngle(yaw - start_yaw_);
-      if (rotate_direction_sign_ > 0.0 && traveled < 0.0) {
-        traveled += 2.0 * M_PI;
-      } else if (rotate_direction_sign_ < 0.0 && traveled > 0.0) {
-        traveled -= 2.0 * M_PI;
-      }
-      const double remaining = target_delta - traveled;
+      const double remaining = activeYawErrorRad(yaw);
       const bool settled = yaw_alignment_settling_.observe(
           remaining, yaw, last_pose_time_.seconds());
       if (yaw_alignment_settling_.withinTolerance()) {
@@ -2090,6 +2731,8 @@ private:
                 camrod_control::normalizeAngle(target_yaw_ - yaw),
             -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
       }
+      last_angular_command_radps_ = command.angular.z;
+      last_crab_command_mps_ = 0.0;
       command_publisher_->publish(command);
       return false;
     }
@@ -2104,6 +2747,8 @@ private:
     command.angular.z = camrod_control::clamp(rotate_proportional_gain_ * error,
                                               -maximum_angular_speed_radps_,
                                               maximum_angular_speed_radps_);
+    last_angular_command_radps_ = command.angular.z;
+    last_crab_command_mps_ = 0.0;
     command_publisher_->publish(command);
     return false;
   }
@@ -2141,7 +2786,45 @@ private:
       publishStatus(false);
       return;
     }
+    if (crabEntryBodyYawAlignmentActive() &&
+        crabEntryBodyYawAlignmentTimedOut()) {
+      setError("crab-entry body-yaw " + crabEntryBodyYawAlignmentPurposeName() +
+               " steady timeout after " +
+               fixed(crabEntryBodyYawAlignmentWallElapsedSeconds(), 1) +
+               "s target_yaw=" + fixed(target_yaw_ * 180.0 / M_PI, 2) +
+               "deg nominal_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 2) +
+               "deg tolerance=" +
+               fixed(crab_entry_body_yaw_alignment_tolerance_deg_, 2) + "deg");
+      publishStatus(false);
+      return;
+    }
+    if (phase_ == CampingSiteManeuverPhase::kRotate180 &&
+        rotate_180_timeout_s_ > 0.0) {
+      const auto timeout =
+          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              std::chrono::duration<double>(rotate_180_timeout_s_));
+      if (camrod_control::campsiteCrabSteadyTimeoutExpired(
+              phase_start_wall_time_, std::chrono::steady_clock::now(),
+              timeout)) {
+        const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+        const double yaw_error = activeYawErrorRad(current_yaw);
+        setError(
+            "ROTATE_180 steady timeout after " +
+            fixed(phaseWallElapsedSeconds(), 1) +
+            "s; current_yaw=" + fixed(current_yaw * 180.0 / M_PI, 2) +
+            "deg target_yaw=" + fixed(target_yaw_ * 180.0 / M_PI, 2) +
+            "deg yaw_error=" + fixed(yaw_error * 180.0 / M_PI, 2) +
+            "deg yaw_rate=" + fixed(yaw_alignment_settling_.yawRateDegps(), 2) +
+            "deg/s last_angular_cmd=" + fixed(last_angular_command_radps_, 3) +
+            "rad/s; " + rotationEntryPoseDetail());
+        publishStatus(false);
+        return;
+      }
+    }
     if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
+        !entry_anchor_centering_active_ &&
+        crab_entry_body_yaw_alignment_purpose_ ==
+            CrabEntryBodyYawAlignmentPurpose::kInactive &&
         camrod_control::automaticCrabEntryAlignmentTimedOut(
             entry_yaw_alignment_for_crab_, elapsed,
             entry_yaw_alignment_timeout_s_)) {
@@ -2150,26 +2833,43 @@ private:
       publishStatus(false);
       return;
     }
-    if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw) {
+    if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
+        crab_entry_body_yaw_alignment_purpose_ ==
+            CrabEntryBodyYawAlignmentPurpose::kPrecompensateEntry) {
+      if (publishCrabEntryBodyYawAlignment()) {
+        crab_entry_body_yaw_alignment_purpose_ =
+            CrabEntryBodyYawAlignmentPurpose::kInactive;
+        transitionAlignedCrabEntryToCrabIn(
+            "CARLA crab body yaw aligned after nominal anchor centering; ");
+      }
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
+               entry_anchor_centering_active_) {
+      handleEntryAnchorCentering();
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw) {
       if (publishRotate()) {
         if (entry_yaw_alignment_for_crab_) {
+          const auto post_nominal_action =
+              camrod_control::selectCampsiteCrabPostNominalAlignmentAction(
+                  entryAnchorCenteringEnabled(),
+                  entry_anchor_centering_completed_,
+                  crab_entry_body_yaw_compensation_active_);
+          if (post_nominal_action ==
+              camrod_control::CampsiteCrabPostNominalAlignmentAction::
+                  kBeginAnchorCentering) {
+            beginEntryAnchorCentering();
+            publishStatus(false);
+            return;
+          }
           // HH_260824 - Re-project the fixed goal pair only after the live body
           // has settled on the authored lanelet yaw. Translation can now begin
           // without inheriting Nav2's arrival heading error.
-          if (!pending_crab_motion_.has_value() ||
-              (require_goal_pair_for_auto_start_ &&
-               std::get<2>(*pending_crab_motion_) != "goal_pair")) {
-            setError("captured site/route goal pair unavailable after entry yaw alignment");
+          if (post_nominal_action ==
+              camrod_control::CampsiteCrabPostNominalAlignmentAction::
+                  kBeginBodyYawAlignment) {
+            beginCrabEntryBodyYawPrecompensation();
           } else {
-            const auto configured = configureCrabEntryGeometry(
-                pending_crab_start_source_, start_yaw_, *pending_crab_motion_);
-            if (configured.first) {
-              entry_yaw_alignment_for_crab_ = false;
-              pending_crab_motion_.reset();
-              setPhase(CampingSiteManeuverPhase::kCrabIn,
-                       "entry yaw aligned; geometry reprojected; " +
-                           configured.second);
-            }
+            transitionAlignedCrabEntryToCrabIn(
+                "entry yaw aligned; geometry reprojected; ");
           }
         } else {
           setPhase(CampingSiteManeuverPhase::kReverseIn,
@@ -2179,32 +2879,114 @@ private:
     } else if (phase_ == CampingSiteManeuverPhase::kReverseIn) {
       if (reverseInReached()) {
         publishZero();
-        target_yaw_ = camrod_control::normalizeAngle(entry_target_yaw_ + M_PI);
-        setPhase(CampingSiteManeuverPhase::kRotate180,
-                 "reverse entry pose reached");
+        if (!rotationEntryPositionAccepted()) {
+          setError("ROTATE_180 entry rejected outside certified center: " +
+                   rotationEntryPoseDetail());
+        } else {
+          target_yaw_ =
+              camrod_control::normalizeAngle(entry_target_yaw_ + M_PI);
+          setPhase(CampingSiteManeuverPhase::kRotate180,
+                   "reverse entry pose reached; " + rotationEntryPoseDetail());
+        }
       } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("reverse entry timeout before reaching site target");
       } else {
         publishReverseAlongAxis(entry_target_yaw_, entry_line_origin_x_,
                                 entry_line_origin_y_);
       }
+    } else if (phase_ == CampingSiteManeuverPhase::kCrabIn &&
+               crab_entry_body_yaw_alignment_purpose_ ==
+                   CrabEntryBodyYawAlignmentPurpose::
+                       kRestoreNominalBeforeRotation) {
+      if (publishCrabEntryBodyYawAlignment()) {
+        crab_entry_body_yaw_alignment_purpose_ =
+            CrabEntryBodyYawAlignmentPurpose::kInactive;
+        target_yaw_ = camrod_control::normalizeAngle(
+            start_yaw_ + (rotate_direction_sign_ == 0.0
+                              ? M_PI
+                              : rotate_direction_sign_ * M_PI));
+        const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+        if (rotate_direction_sign_ == 0.0) {
+          compensated_directed_rotation_tracking_active_ = false;
+          setPhase(CampingSiteManeuverPhase::kRotate180,
+                   "nominal entry yaw restored before shortest turnaround; " +
+                       rotationEntryPoseDetail());
+          return;
+        }
+        compensated_rotation_target_delta_rad_ =
+            camrod_control::campsiteDirectedYawTargetDelta(
+                current_yaw, target_yaw_, rotate_direction_sign_);
+        if (!std::isfinite(compensated_rotation_target_delta_rad_)) {
+          setError("invalid compensated directed-rotation latch");
+          publishStatus(false);
+          return;
+        }
+        compensated_rotation_last_yaw_ = current_yaw;
+        compensated_rotation_last_sample_time_s_ = last_pose_time_.seconds();
+        compensated_rotation_traveled_rad_ = 0.0;
+        compensated_directed_rotation_tracking_active_ = true;
+        setPhase(
+            CampingSiteManeuverPhase::kRotate180,
+            "nominal entry yaw restored before directed turnaround; " +
+                rotationEntryPoseDetail() +
+                " live_rotation_start=" + fixed(current_yaw * 180.0 / M_PI, 2) +
+                "deg directed_target_delta=" +
+                fixed(compensated_rotation_target_delta_rad_ * 180.0 / M_PI,
+                      2) +
+                "deg");
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kCrabIn) {
-      if (entryReached()) {
-        publishZero();
+      const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+      const double signed_cross_track_m = relativeForwardFromEntry();
+      const auto entry_safety = camrod_control::checkCampsiteCrabEntrySafety(
+          current_yaw, crab_entry_body_yaw_target_, signed_cross_track_m,
+          crab_entry_max_heading_drift_deg_,
+          crab_entry_max_cross_track_error_m_);
+      if (entry_safety.invalid_input || entry_safety.heading_drift_exceeded ||
+          entry_safety.cross_track_exceeded) {
+        setError(
+            "CRAB_IN fixed-corridor violation: invalid=" +
+            std::string(entry_safety.invalid_input ? "true" : "false") +
+            " heading_drift=" + fixed(entry_safety.heading_drift_deg, 2) +
+            "deg max_heading=" + fixed(crab_entry_max_heading_drift_deg_, 2) +
+            "deg signed_cross_track=" + fixed(signed_cross_track_m, 3) +
+            "m max_cross_track=" +
+            fixed(crab_entry_max_cross_track_error_m_, 3) +
+            "m body_yaw_target=" +
+            fixed(crab_entry_body_yaw_target_ * 180.0 / M_PI, 2) +
+            "deg nominal_yaw=" + fixed(start_yaw_ * 180.0 / M_PI, 2) + "deg");
+        publishStatus(false);
+        return;
+      }
+      const auto entry_action = camrod_control::selectCampsiteCrabEntryAction(
+          entryReached(),
+          active_service_mode_ == CampsiteServiceMode::kRoadsideStop,
+          rotate_entry_max_position_error_m_ > 0.0,
+          rotate_entry_centering_active_, rotationEntryReadyForTurn());
+      if (entry_action ==
+          camrod_control::CampsiteCrabEntryAction::kRoadsideComplete) {
         // HH_260830 - Keep the route heading at every constrained roadside
         // service pose. The CARLA-only return preserves this yaw throughout
         // reverse path tracking; no on-site or post-exit turn is attempted.
-        if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-          target_yaw_ = start_yaw_;
-          setPhase(CampingSiteManeuverPhase::kUnloadWait,
-                   roadsideForwardLoopActive()
-                       ? "roadside service pose reached; zero-turn skipped"
-                       : "roadside service pose reached; reverse return "
-                         "deferred until lanelet exit");
-        } else {
-          setPhase(CampingSiteManeuverPhase::kRotate180,
-                   "crab entry pose reached");
-        }
+        publishZero();
+        target_yaw_ = start_yaw_;
+        setPhase(CampingSiteManeuverPhase::kUnloadWait,
+                 roadsideForwardLoopActive()
+                     ? "roadside service pose reached; zero-turn skipped"
+                     : "roadside service pose reached; reverse return "
+                       "deferred until lanelet exit");
+      } else if (entry_action ==
+                 camrod_control::CampsiteCrabEntryAction::kBeginRotation) {
+        publishZero();
+        beginRotationAfterCrabEntry(
+            "crab entry centered and steering settled; " +
+            rotationEntryPoseDetail());
+      } else if (entry_action ==
+                 camrod_control::CampsiteCrabEntryAction::kBeginCentering) {
+        beginRotationEntryCentering();
+      } else if (entry_action ==
+                 camrod_control::CampsiteCrabEntryAction::kContinueCentering) {
+        publishRotationEntryCentering();
       } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("crab entry timeout before reaching site offset");
       } else {
@@ -2245,8 +3027,7 @@ private:
         setPhase(CampingSiteManeuverPhase::kDone,
                  "outbound lane yaw aligned; reverse route requested "
                  "without turnaround");
-        publishReturnRequest(
-            "done_roadside_reverse_after_outbound_alignment");
+        publishReturnRequest("done_roadside_reverse_after_outbound_alignment");
       }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseOut) {
       const auto live_handoff = observeLiveLaneletReturnHandoff();
@@ -2257,12 +3038,14 @@ private:
         // do not let the legacy exact-anchor controller add another movement.
       } else if (reverseOutReached()) {
         publishZero();
-        setPhase(CampingSiteManeuverPhase::kDone,
-                 "live lanelet pose unavailable; exact-anchor fallback reached");
+        setPhase(
+            CampingSiteManeuverPhase::kDone,
+            "live lanelet pose unavailable; exact-anchor fallback reached");
         publishReturnRequest("done_exact_anchor_fallback");
       } else if (elapsed >
                  crab_duration_s_ + reverse_return_timeout_margin_s_) {
-        setError("reverse return timeout before reaching live lanelet or fallback anchor");
+        setError("reverse return timeout before reaching live lanelet or "
+                 "fallback anchor");
       } else {
         publishReverseAlongAxis(
             camrod_control::normalizeAngle(entry_target_yaw_ + M_PI),
@@ -2277,8 +3060,8 @@ private:
       } else if (live_handoff.has_value()) {
         // Stationary hold is published by observeLiveLaneletReturnHandoff().
       } else if (camrod_control::campsiteCrabReturnMayComplete(
-              crab_return_sequencer_.stage(), return_error,
-              return_position_tolerance_m_)) {
+                     crab_return_sequencer_.stage(), return_error,
+                     return_position_tolerance_m_)) {
         publishZero();
         if (roadsideForwardLoopActive()) {
           // HH_260819 - B11-B13 cannot safely zero-turn inside the current
@@ -2297,26 +3080,24 @@ private:
               "live lanelet pose unavailable; roadside exact-anchor "
               "fallback reached; align outbound lane yaw before reverse route");
         } else {
-          setPhase(
-              CampingSiteManeuverPhase::kDone,
-              "live lanelet pose unavailable; exact-anchor fallback=" +
-                  return_anchor_source_ +
-                  " error=" +
-                  fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m");
+          setPhase(CampingSiteManeuverPhase::kDone,
+                   "live lanelet pose unavailable; exact-anchor fallback=" +
+                       return_anchor_source_ + " error=" +
+                       fixed(distanceTo(return_anchor_x_, return_anchor_y_)) +
+                       "m");
           publishReturnRequest("done_exact_anchor_fallback");
         }
       } else if (elapsed > crab_return_timeout_s_) {
-        setError("crab return timeout before reaching live lanelet or fallback anchor");
+        setError("crab return timeout before reaching live lanelet or fallback "
+                 "anchor");
       } else {
         publishCrabReturnToAnchor();
       }
     } else if (phase_ == CampingSiteManeuverPhase::kDone) {
       publishReturnRequest(
-          roadsideForwardLoopActive()
-              ? "done_roadside_forward_retry"
-              : roadsideReverseReturnActive()
-                    ? "done_roadside_reverse_retry"
-                    : "done_retry");
+          roadsideForwardLoopActive()     ? "done_roadside_forward_retry"
+          : roadsideReverseReturnActive() ? "done_roadside_reverse_retry"
+                                          : "done_retry");
     }
     publishStatus(false);
   }
@@ -2330,6 +3111,33 @@ private:
     }
     const auto live_lanelet_projection_distance_m =
         liveLaneletProjectionDistance();
+    const bool yaw_available =
+        last_pose_.has_value() &&
+        camrod_control::poseHasFiniteMotionGeometry(*last_pose_);
+    const double current_yaw =
+        yaw_available ? camrod_control::yawFromPose(*last_pose_) : 0.0;
+    const double yaw_error =
+        yaw_available ? activeYawErrorRad(current_yaw) : 0.0;
+    const double phase_ros_elapsed_s =
+        phase_start_time_.nanoseconds() == 0
+            ? 0.0
+            : std::max(0.0, (current_time - phase_start_time_).seconds());
+    const double phase_wall_elapsed_s = phaseWallElapsedSeconds();
+    const double crab_entry_heading_drift_deg =
+        yaw_available ? std::abs(camrod_control::normalizeAngle(
+                            current_yaw - crab_entry_body_yaw_target_)) *
+                            180.0 / M_PI
+                      : 0.0;
+    const double crab_entry_cross_track_m =
+        last_pose_.has_value() ? relativeForwardFromEntry() : 0.0;
+    const double active_alignment_yaw_rate_degps =
+        crabEntryBodyYawAlignmentActive()
+            ? crab_entry_body_yaw_alignment_settling_.yawRateDegps()
+            : yaw_alignment_settling_.yawRateDegps();
+    const bool active_alignment_within_tolerance =
+        crabEntryBodyYawAlignmentActive()
+            ? crab_entry_body_yaw_alignment_settling_.withinTolerance()
+            : yaw_alignment_settling_.withinTolerance();
     // HH_260721 - Entry, unload wait, return wait, and exit are normal
     // operating states.
     const uint8_t module_level = phase_ == CampingSiteManeuverPhase::kError
@@ -2339,11 +3147,24 @@ private:
         "phase=" + phaseName(phase_) +
         " service_mode=" + serviceModeName(active_service_mode_) +
         " roadside_return=" +
-        (roadsideForwardLoopActive()
-             ? "forward_loop"
-             : roadsideReverseReturnActive() ? "reverse_without_turnaround"
-                                             : "turnaround") +
+        (roadsideForwardLoopActive()     ? "forward_loop"
+         : roadsideReverseReturnActive() ? "reverse_without_turnaround"
+                                         : "turnaround") +
         " crab_speed_mps=" + fixed(activeCrabSpeedMps()) +
+        " crab_command_mps=" + fixed(last_crab_command_mps_) +
+        " anchor_centering=" +
+        (entry_anchor_centering_active_ ? "active" : "inactive") +
+        " phase_wall_elapsed_s=" + fixed(phase_wall_elapsed_s, 1) +
+        " current_yaw_deg=" +
+        (yaw_available ? fixed(current_yaw * 180.0 / M_PI, 2) : "unavailable") +
+        " target_yaw_deg=" + fixed(target_yaw_ * 180.0 / M_PI, 2) +
+        " yaw_error_deg=" +
+        (yaw_available ? fixed(yaw_error * 180.0 / M_PI, 2) : "unavailable") +
+        " yaw_rate_degps=" + fixed(active_alignment_yaw_rate_degps, 2) +
+        " last_angular_cmd_radps=" + fixed(last_angular_command_radps_, 3) +
+        " crab_body_yaw_alignment=" + crabEntryBodyYawAlignmentPurposeName() +
+        " crab_body_yaw_compensation_state=" +
+        crab_entry_body_yaw_compensation_state_ + " detail=" + phase_detail_ +
         " return_published=" + (return_published_ ? "True" : "False") +
         " return_ack=" + (return_acknowledged_ ? "True" : "False");
     status_publisher_->publish(camrod_control::makeModuleState(
@@ -2359,17 +3180,111 @@ private:
         diagnostic_level, message,
         {
             {"phase", phaseName(phase_)},
+            {"phase_detail", phase_detail_},
+            {"phase_ros_elapsed_s", fixed(phase_ros_elapsed_s, 2)},
+            {"phase_wall_elapsed_s", fixed(phase_wall_elapsed_s, 2)},
+            {"current_yaw_deg", yaw_available
+                                    ? fixed(current_yaw * 180.0 / M_PI, 3)
+                                    : "unavailable"},
+            {"target_yaw_deg", fixed(target_yaw_ * 180.0 / M_PI, 3)},
+            {"yaw_error_deg", yaw_available ? fixed(yaw_error * 180.0 / M_PI, 3)
+                                            : "unavailable"},
+            {"yaw_rate_degps", fixed(active_alignment_yaw_rate_degps, 3)},
+            {"yaw_within_tolerance",
+             active_alignment_within_tolerance ? "true" : "false"},
+            {"last_angular_command_radps",
+             fixed(last_angular_command_radps_, 4)},
             {"roadside_reverse_return_enable",
              roadside_reverse_return_enable_ ? "true" : "false"},
             {"roadside_return_policy",
-             roadsideForwardLoopActive()
-                 ? "forward_loop"
-                 : roadsideReverseReturnActive()
-                       ? "reverse_without_turnaround"
-                       : "turnaround"},
+             roadsideForwardLoopActive()     ? "forward_loop"
+             : roadsideReverseReturnActive() ? "reverse_without_turnaround"
+                                             : "turnaround"},
             {"cmd_vel_topic", command_topic_},
             {"crab_duration_s", fixed(crab_duration_s_)},
             {"crab_offset_m", fixed(crab_offset_m_)},
+            {"crab_approach_slowdown_distance_m",
+             fixed(crab_approach_slowdown_distance_m_)},
+            {"crab_approach_min_speed_mps",
+             fixed(crab_approach_min_speed_mps_)},
+            {"crab_approach_remaining_m",
+             fixed(crabApproachRemainingToCompletionM())},
+            {"last_crab_command_mps", fixed(last_crab_command_mps_, 4)},
+            {"entry_anchor_centering_active",
+             entry_anchor_centering_active_ ? "true" : "false"},
+            {"entry_anchor_centering_completed",
+             entry_anchor_centering_completed_ ? "true" : "false"},
+            {"entry_anchor_centering_stage",
+             camrod_control::campsiteEntryAnchorCenteringStageName(
+                 entry_anchor_centering_sequencer_.stage())},
+            {"entry_anchor_centering_error_m",
+             fixed(entryAnchorCenteringErrorM())},
+            {"entry_anchor_centering_wall_elapsed_s",
+             fixed(entryAnchorCenteringWallElapsedSeconds())},
+            {"entry_anchor_centering_max_initial_error_m",
+             fixed(entry_anchor_centering_max_initial_error_m_)},
+            {"entry_anchor_centering_max_speed_mps",
+             fixed(entry_anchor_centering_max_speed_mps_)},
+            {"entry_anchor_centering_timeout_s",
+             fixed(entry_anchor_centering_timeout_s_)},
+            {"entry_anchor_centering_tolerance_m",
+             fixed(entry_anchor_centering_tolerance_m_)},
+            {"crab_entry_heading_drift_deg",
+             yaw_available ? fixed(crab_entry_heading_drift_deg, 3)
+                           : "unavailable"},
+            {"crab_entry_nominal_yaw_deg", fixed(start_yaw_ * 180.0 / M_PI, 3)},
+            {"crab_entry_body_yaw_target_deg",
+             fixed(crab_entry_body_yaw_target_ * 180.0 / M_PI, 3)},
+            {"crab_entry_body_yaw_compensation_deg",
+             fixed(crab_entry_body_yaw_compensation_deg_)},
+            {"crab_entry_body_yaw_applied_compensation_deg",
+             fixed(camrod_control::normalizeAngle(crab_entry_body_yaw_target_ -
+                                                  start_yaw_) *
+                       180.0 / M_PI,
+                   3)},
+            {"crab_entry_body_yaw_compensation_active",
+             crab_entry_body_yaw_compensation_active_ ? "true" : "false"},
+            {"crab_entry_body_yaw_compensation_state",
+             crab_entry_body_yaw_compensation_state_},
+            {"crab_entry_body_yaw_alignment_purpose",
+             crabEntryBodyYawAlignmentPurposeName()},
+            {"crab_entry_body_yaw_alignment_tolerance_deg",
+             fixed(crab_entry_body_yaw_alignment_tolerance_deg_)},
+            {"crab_entry_body_yaw_alignment_timeout_s",
+             fixed(crab_entry_body_yaw_alignment_timeout_s_)},
+            {"crab_entry_body_yaw_alignment_wall_elapsed_s",
+             fixed(crabEntryBodyYawAlignmentWallElapsedSeconds())},
+            {"compensated_directed_rotation_tracking_active",
+             compensated_directed_rotation_tracking_active_ ? "true" : "false"},
+            {"compensated_rotation_target_delta_deg",
+             fixed(compensated_rotation_target_delta_rad_ * 180.0 / M_PI, 3)},
+            {"compensated_rotation_traveled_deg",
+             fixed(compensated_rotation_traveled_rad_ * 180.0 / M_PI, 3)},
+            {"crab_entry_max_heading_drift_deg",
+             fixed(crab_entry_max_heading_drift_deg_)},
+            {"crab_entry_cross_track_m",
+             last_pose_.has_value() ? fixed(crab_entry_cross_track_m, 4)
+                                    : "unavailable"},
+            {"crab_entry_max_cross_track_error_m",
+             fixed(crab_entry_max_cross_track_error_m_)},
+            {"rotate_entry_max_position_error_m",
+             fixed(rotate_entry_max_position_error_m_)},
+            {"rotate_entry_position_error_m",
+             fixed(rotationEntryPositionErrorM())},
+            {"rotate_entry_centering_active",
+             rotate_entry_centering_active_ ? "true" : "false"},
+            {"rotate_entry_centering_stage",
+             camrod_control::campsiteCrabReturnStageName(
+                 rotate_entry_centering_sequencer_.stage())},
+            {"rotate_entry_centering_wall_elapsed_s",
+             fixed(rotationEntryCenteringWallElapsedSeconds())},
+            {"rotate_entry_centering_max_initial_error_m",
+             fixed(rotate_entry_centering_max_initial_error_m_)},
+            {"rotate_entry_centering_max_speed_mps",
+             fixed(rotate_entry_centering_max_speed_mps_)},
+            {"rotate_entry_centering_timeout_s",
+             fixed(rotate_entry_centering_timeout_s_)},
+            {"rotate_180_timeout_s", fixed(rotate_180_timeout_s_)},
             {"crab_source", crab_source_},
             {"return_anchor_source", return_anchor_source_},
             {"return_anchor_offset_m", fixed(return_anchor_offset_m_)},
@@ -2388,9 +3303,8 @@ private:
                        : return_lanelet_handoff_distance_m_)},
             {"live_lanelet_handoff_holding",
              return_lanelet_handoff_candidate_ ? "true" : "false"},
-            {"crab_return_stage",
-             camrod_control::campsiteCrabReturnStageName(
-                 crab_return_sequencer_.stage())},
+            {"crab_return_stage", camrod_control::campsiteCrabReturnStageName(
+                                      crab_return_sequencer_.stage())},
             {"crab_return_timeout_s", fixed(crab_return_timeout_s_)},
         }));
     last_status_publish_time_ = current_time;
@@ -2425,7 +3339,22 @@ private:
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
   double roadside_crab_speed_mps_{0.20};
+  double crab_approach_slowdown_distance_m_{0.0};
+  double crab_approach_min_speed_mps_{0.0};
   double entry_position_tolerance_m_{0.15};
+  double entry_anchor_centering_max_initial_error_m_{0.0};
+  double entry_anchor_centering_max_speed_mps_{0.12};
+  double entry_anchor_centering_timeout_s_{15.0};
+  double entry_anchor_centering_tolerance_m_{0.05};
+  double crab_entry_max_heading_drift_deg_{0.0};
+  double crab_entry_max_cross_track_error_m_{0.0};
+  double crab_entry_body_yaw_compensation_deg_{0.0};
+  double crab_entry_body_yaw_alignment_tolerance_deg_{0.5};
+  double crab_entry_body_yaw_alignment_timeout_s_{15.0};
+  double rotate_entry_max_position_error_m_{0.0};
+  double rotate_entry_centering_max_initial_error_m_{0.30};
+  double rotate_entry_centering_max_speed_mps_{0.12};
+  double rotate_entry_centering_timeout_s_{15.0};
   double return_position_tolerance_m_{0.04};
   double return_translation_gain_{4.0};
   double return_lateral_transition_tolerance_m_{0.02};
@@ -2443,6 +3372,7 @@ private:
   double crab_timeout_speed_scale_{1.0};
   double maximum_forward_residual_m_{0.8};
   double entry_yaw_alignment_timeout_s_{15.0};
+  double rotate_180_timeout_s_{0.0};
   double rotate_proportional_gain_{1.2};
   double maximum_angular_speed_radps_{0.35};
   double rotate_yaw_tolerance_deg_{4.0};
@@ -2493,8 +3423,25 @@ private:
   rclcpp::Time return_lanelet_handoff_start_time_{0, 0, RCL_ROS_TIME};
   std::string site_goal_key_;
   rclcpp::Time phase_start_time_{0, 0, RCL_ROS_TIME};
+  std::chrono::steady_clock::time_point phase_start_wall_time_{
+      std::chrono::steady_clock::now()};
+  std::string phase_detail_{"initialized"};
   camrod_control::YawAlignmentSettling yaw_alignment_settling_;
+  camrod_control::YawAlignmentSettling crab_entry_body_yaw_alignment_settling_;
   double start_yaw_{0.0};
+  double crab_entry_body_yaw_target_{0.0};
+  bool crab_entry_body_yaw_compensation_active_{false};
+  std::string crab_entry_body_yaw_compensation_state_{"disabled_zero_default"};
+  CrabEntryBodyYawAlignmentPurpose crab_entry_body_yaw_alignment_purpose_{
+      CrabEntryBodyYawAlignmentPurpose::kInactive};
+  std::chrono::steady_clock::time_point
+      crab_entry_body_yaw_alignment_start_wall_time_{
+          std::chrono::steady_clock::now()};
+  bool compensated_directed_rotation_tracking_active_{false};
+  double compensated_rotation_last_yaw_{0.0};
+  double compensated_rotation_last_sample_time_s_{0.0};
+  double compensated_rotation_target_delta_rad_{0.0};
+  double compensated_rotation_traveled_rad_{0.0};
   double target_yaw_{0.0};
   double rotate_direction_sign_{0.0};
   std::string rotate_direction_label_{"shortest"};
@@ -2511,11 +3458,23 @@ private:
   double crab_direction_{1.0};
   double crab_duration_s_{0.0};
   double crab_offset_m_{0.0};
+  double last_crab_command_mps_{0.0};
+  double last_angular_command_radps_{0.0};
   std::string crab_source_{"default"};
   double goal_pair_forward_m_{0.0};
   double entry_start_x_{0.0};
   double entry_start_y_{0.0};
   double entry_reference_yaw_{0.0};
+  camrod_control::CampsiteEntryAnchorCenteringSequencer
+      entry_anchor_centering_sequencer_;
+  bool entry_anchor_centering_active_{false};
+  bool entry_anchor_centering_completed_{false};
+  std::chrono::steady_clock::time_point entry_anchor_centering_start_wall_time_{
+      std::chrono::steady_clock::now()};
+  camrod_control::CampsiteCrabReturnSequencer rotate_entry_centering_sequencer_;
+  bool rotate_entry_centering_active_{false};
+  std::chrono::steady_clock::time_point rotate_entry_centering_start_wall_time_{
+      std::chrono::steady_clock::now()};
   camrod_control::CampsiteCrabReturnSequencer crab_return_sequencer_;
   double return_anchor_x_{0.0};
   double return_anchor_y_{0.0};

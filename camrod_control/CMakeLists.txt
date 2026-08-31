@@ -152,6 +152,13 @@ if(BUILD_TESTING)
     test/test_drop_zone_exit_target_policy.cpp
   )
   target_include_directories(test_drop_zone_exit_target_policy PRIVATE include)
+
+  # Verify campsite crab terminal deceleration and steady timeout boundaries
+  # without ROS time or a running simulator.
+  ament_add_gtest(test_campsite_crab_approach
+    test/test_campsite_crab_approach.cpp
+  )
+  target_include_directories(test_campsite_crab_approach PRIVATE include)
 endif()
 
 ament_package()

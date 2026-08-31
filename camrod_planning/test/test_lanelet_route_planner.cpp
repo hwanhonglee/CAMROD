@@ -47,6 +47,17 @@ geometry_msgs::msg::PoseStamped makePose(
   return pose;
 }
 
+avg_msgs::msg::AvgPoseStamped makeAvgPose(
+  const double x, const double y, const std::string & frame_id = "map")
+{
+  avg_msgs::msg::AvgPoseStamped pose;
+  pose.header.frame_id = frame_id;
+  pose.pose.position.x = x;
+  pose.pose.position.y = y;
+  pose.pose.orientation.w = 1.0;
+  return pose;
+}
+
 double pathLength(const nav_msgs::msg::Path & path)
 {
   double length = 0.0;
@@ -316,6 +327,288 @@ TEST_F(
     std::sin(poseYaw(endpoint) - poseYaw(manual_goal)),
     std::cos(poseYaw(endpoint) - poseYaw(manual_goal)));
   EXPECT_NEAR(endpoint_yaw_error, 0.0, 1.0e-6);
+}
+
+class GoalSnapperPoseJumpTest : public testing::Test
+{
+protected:
+  static void SetUpTestSuite()
+  {
+    if (!rclcpp::ok()) {
+      rclcpp::init(0, nullptr);
+    }
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (rclcpp::ok()) {
+      rclcpp::shutdown();
+    }
+  }
+
+  void SetUp() override
+  {
+    client_ = std::make_shared<rclcpp::Node>("goal_snapper_pose_jump_test_client");
+    executor_.add_node(client_);
+  }
+
+  void TearDown() override
+  {
+    executor_.remove_node(client_);
+    client_.reset();
+  }
+
+  rclcpp::NodeOptions options(
+    const std::string & input_topic,
+    const std::string & output_topic,
+    const std::string & current_pose_topic,
+    const std::string & status_topic,
+    const std::string & pose_jump_check_topic = "") const
+  {
+    std::vector<rclcpp::Parameter> parameters{
+      rclcpp::Parameter("map_path", activeMapPath().string()),
+      rclcpp::Parameter("offset_lat", 36.8435737),
+      rclcpp::Parameter("offset_lon", 128.0925646),
+      rclcpp::Parameter("offset_alt", 0.0),
+      rclcpp::Parameter("input_goal_topic", input_topic),
+      rclcpp::Parameter("manual_input_goal_topic", ""),
+      rclcpp::Parameter("auxiliary_input_goal_topic", ""),
+      rclcpp::Parameter("output_goal_topic", output_topic),
+      rclcpp::Parameter("output_goal_topic_ros", output_topic + "_ros"),
+      rclcpp::Parameter("output_goal_source_topic", output_topic + "_source"),
+      rclcpp::Parameter("goal_source_settle_delay_s", 0.0),
+      rclcpp::Parameter("max_search_radius", 120.0),
+      rclcpp::Parameter("restrict_to_connected_lanelet_component", false),
+      rclcpp::Parameter("restrict_to_cost_grid_component", false),
+      rclcpp::Parameter("sequential_goal_release_enable", false),
+      rclcpp::Parameter("sequential_goal_status_topic", status_topic),
+      rclcpp::Parameter("current_pose_topic", current_pose_topic),
+      rclcpp::Parameter("reissue_active_goal_on_pose_jump", true),
+      rclcpp::Parameter("pose_jump_reissue_distance_m", 1.0),
+      rclcpp::Parameter("pose_jump_reissue_min_interval_s", 0.0),
+      rclcpp::Parameter("reissue_active_goal_after_route_recovery", false),
+    };
+    if (!pose_jump_check_topic.empty()) {
+      parameters.emplace_back("pose_jump_check_topic", pose_jump_check_topic);
+    }
+    rclcpp::NodeOptions node_options;
+    node_options.parameter_overrides(parameters);
+    return node_options;
+  }
+
+  template<typename PredicateT>
+  bool spinUntil(PredicateT predicate, const int attempts = 200)
+  {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+      executor_.spin_some();
+      if (predicate()) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return predicate();
+  }
+
+  void spinFor(const int attempts = 20)
+  {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+      executor_.spin_some();
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+  }
+
+  rclcpp::executors::SingleThreadedExecutor executor_;
+  std::shared_ptr<rclcpp::Node> client_;
+};
+
+TEST_F(GoalSnapperPoseJumpTest, DefaultCurrentPoseSourceKeepsSingleSubscriptionAndReissues)
+{
+  constexpr char kInputTopic[] = "/test/goal_snapper/default_jump/input";
+  constexpr char kOutputTopic[] = "/test/goal_snapper/default_jump/output";
+  constexpr char kCurrentPoseTopic[] = "/test/goal_snapper/default_jump/current_pose";
+  constexpr char kStatusTopic[] = "/test/goal_snapper/default_jump/status";
+
+  auto goal_snapper = std::make_shared<GoalSnapperNode>(
+    options(kInputTopic, kOutputTopic, kCurrentPoseTopic, kStatusTopic));
+  std::vector<avg_msgs::msg::AvgPoseStamped> outputs;
+  auto output_subscription = client_->create_subscription<avg_msgs::msg::AvgPoseStamped>(
+    kOutputTopic, rclcpp::QoS(10),
+    [&outputs](const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg) {
+      outputs.push_back(*msg);
+    });
+  auto goal_publisher = client_->create_publisher<geometry_msgs::msg::PoseStamped>(
+    kInputTopic, rclcpp::QoS(10));
+  auto current_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kCurrentPoseTopic, rclcpp::QoS(10));
+  executor_.add_node(goal_snapper);
+
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return goal_publisher->get_subscription_count() == 1U &&
+        current_pose_publisher->get_subscription_count() == 1U &&
+        output_subscription->get_publisher_count() == 1U;
+      }));
+
+  current_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  spinFor();
+  goal_publisher->publish(makePose(12.7921, 22.52, -77.0));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 1U;
+      }));
+
+  current_pose_publisher->publish(makeAvgPose(-10.0, 43.0));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 2U;
+      }));
+  current_pose_publisher->publish(makeAvgPose(-9.9, 43.0));
+  spinFor();
+  EXPECT_EQ(outputs.size(), 2U);
+
+  executor_.remove_node(goal_snapper);
+}
+
+TEST_F(GoalSnapperPoseJumpTest, SeparateRawSourceIgnoresLaneletJumpAndReissuesExactlyOnce)
+{
+  constexpr char kInputTopic[] = "/test/goal_snapper/raw_jump/input";
+  constexpr char kOutputTopic[] = "/test/goal_snapper/raw_jump/output";
+  constexpr char kCurrentPoseTopic[] = "/test/goal_snapper/raw_jump/lanelet_pose";
+  constexpr char kRawPoseTopic[] = "/test/goal_snapper/raw_jump/localization_pose";
+  constexpr char kStatusTopic[] = "/test/goal_snapper/raw_jump/status";
+
+  auto goal_snapper = std::make_shared<GoalSnapperNode>(
+    options(kInputTopic, kOutputTopic, kCurrentPoseTopic, kStatusTopic, kRawPoseTopic));
+  std::vector<avg_msgs::msg::AvgPoseStamped> outputs;
+  auto output_subscription = client_->create_subscription<avg_msgs::msg::AvgPoseStamped>(
+    kOutputTopic, rclcpp::QoS(10),
+    [&outputs](const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg) {
+      outputs.push_back(*msg);
+    });
+  auto goal_publisher = client_->create_publisher<geometry_msgs::msg::PoseStamped>(
+    kInputTopic, rclcpp::QoS(10));
+  auto current_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kCurrentPoseTopic, rclcpp::QoS(10));
+  auto raw_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kRawPoseTopic, rclcpp::QoS(10));
+  executor_.add_node(goal_snapper);
+
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return goal_publisher->get_subscription_count() == 1U &&
+        current_pose_publisher->get_subscription_count() == 1U &&
+        raw_pose_publisher->get_subscription_count() == 1U &&
+        output_subscription->get_publisher_count() == 1U;
+      }));
+
+  current_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  auto invalid_raw_pose = makeAvgPose(-14.0, 43.0);
+  invalid_raw_pose.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  raw_pose_publisher->publish(invalid_raw_pose);
+  raw_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  spinFor();
+  goal_publisher->publish(makePose(12.7921, 22.52, -77.0));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 1U;
+      }));
+
+  // A discontinuous lanelet projection still updates component/reached state,
+  // but it must not be interpreted as physical motion in the separate mode.
+  current_pose_publisher->publish(makeAvgPose(-8.0, 43.0));
+  spinFor();
+  EXPECT_EQ(outputs.size(), 1U);
+
+  // A frame change seeds a new checkpoint; only a subsequent raw-localization
+  // displacement in that frame is a valid jump and reissues the goal once.
+  raw_pose_publisher->publish(makeAvgPose(-10.0, 43.0, "odom"));
+  spinFor();
+  EXPECT_EQ(outputs.size(), 1U);
+  raw_pose_publisher->publish(makeAvgPose(-6.0, 43.0, "odom"));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 2U;
+      }));
+  raw_pose_publisher->publish(makeAvgPose(-5.9, 43.0, "odom"));
+  spinFor();
+  EXPECT_EQ(outputs.size(), 2U);
+
+  executor_.remove_node(goal_snapper);
+}
+
+TEST_F(GoalSnapperPoseJumpTest, SeparateRawSourceCannotResurrectPoseReachedGoal)
+{
+  constexpr char kInputTopic[] = "/test/goal_snapper/reached_jump/input";
+  constexpr char kOutputTopic[] = "/test/goal_snapper/reached_jump/output";
+  constexpr char kCurrentPoseTopic[] = "/test/goal_snapper/reached_jump/lanelet_pose";
+  constexpr char kRawPoseTopic[] = "/test/goal_snapper/reached_jump/localization_pose";
+  constexpr char kStatusTopic[] = "/test/goal_snapper/reached_jump/status";
+
+  auto goal_snapper = std::make_shared<GoalSnapperNode>(
+    options(kInputTopic, kOutputTopic, kCurrentPoseTopic, kStatusTopic, kRawPoseTopic));
+  std::vector<avg_msgs::msg::AvgPoseStamped> outputs;
+  auto output_subscription = client_->create_subscription<avg_msgs::msg::AvgPoseStamped>(
+    kOutputTopic, rclcpp::QoS(10),
+    [&outputs](const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg) {
+      outputs.push_back(*msg);
+    });
+  auto goal_publisher = client_->create_publisher<geometry_msgs::msg::PoseStamped>(
+    kInputTopic, rclcpp::QoS(10));
+  auto current_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kCurrentPoseTopic, rclcpp::QoS(10));
+  auto raw_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kRawPoseTopic, rclcpp::QoS(10));
+  executor_.add_node(goal_snapper);
+
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return goal_publisher->get_subscription_count() == 1U &&
+        current_pose_publisher->get_subscription_count() == 1U &&
+        raw_pose_publisher->get_subscription_count() == 1U &&
+        output_subscription->get_publisher_count() == 1U;
+      }));
+
+  current_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  spinFor();
+  goal_publisher->publish(makePose(12.7921, 22.52, -77.0));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 1U;
+      }));
+
+  // Raw localization remains unusable while the lanelet pose reaches the
+  // snapped goal. The current-pose callback must still latch pose-distance
+  // completion independently of jump-monitor callbacks.
+  auto invalid_raw_pose = makeAvgPose(-14.0, 43.0);
+  invalid_raw_pose.pose.position.y = std::numeric_limits<double>::infinity();
+  raw_pose_publisher->publish(invalid_raw_pose);
+  const auto snapped_position = outputs.front().pose.position;
+  current_pose_publisher->publish(
+    makeAvgPose(snapped_position.x, snapped_position.y));
+  spinFor();
+  // Move the observed pose away again so a later jump callback cannot infer
+  // completion retroactively. Only the sticky latch set by the at-goal current
+  // callback can suppress resurrection in this sequence.
+  current_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  spinFor();
+
+  // A later recovered raw stream seeds normally, but even a valid large jump
+  // must not resurrect a goal already reached through the lanelet pose.
+  raw_pose_publisher->publish(makeAvgPose(-14.0, 43.0));
+  spinFor();
+  raw_pose_publisher->publish(makeAvgPose(-10.0, 43.0));
+  spinFor();
+  EXPECT_EQ(outputs.size(), 1U);
+
+  executor_.remove_node(goal_snapper);
 }
 
 TEST(PathQualityMetrics, MeasuresLengthTurnAndCurvature)

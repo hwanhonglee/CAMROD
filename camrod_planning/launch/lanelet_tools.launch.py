@@ -80,6 +80,14 @@ def generate_launch_description():
             default_value=pkg_share('camrod_planning', os.path.join('config', 'goal_snapper.yaml')),
         ),
         DeclareLaunchArgument(
+            'goal_snapper_reverse_auxiliary_input_goal_topic',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
+            'goal_snapper_pose_jump_check_topic',
+            default_value='',
+        ),
+        DeclareLaunchArgument(
             'centerline_snapper_param_file',
             default_value=pkg_share('camrod_planning', os.path.join('config', 'centerline_snapper.yaml')),
         ),
@@ -104,6 +112,12 @@ def generate_launch_description():
                     # HH_260727 - Split regulated mission goals from manual RViz goals.
                     'input_goal_topic': '/planning/site_goal_pose_ros',
                     'manual_input_goal_topic': '/goal_pose',
+                    'reverse_auxiliary_input_goal_topic': LaunchConfiguration(
+                        'goal_snapper_reverse_auxiliary_input_goal_topic'
+                    ),
+                    'pose_jump_check_topic': LaunchConfiguration(
+                        'goal_snapper_pose_jump_check_topic'
+                    ),
                     'output_goal_topic': '/planning/goal_pose_snapped',
                     'output_goal_topic_ros': '/planning/goal_pose_snapped_ros',
                     'output_goal_source_topic': '/planning/goal_source',

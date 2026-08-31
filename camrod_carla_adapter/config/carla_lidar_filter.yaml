@@ -34,16 +34,19 @@
     # query-geometry clusters in lidar_link:
     #   x=0.5410..1.2553 m, |y|=0.6379..0.8910 m,
     #   z=-0.5149..0.1206 m.
-    # Each bound adds roughly 5-6 cm for frame-to-frame numerical and pose
-    # variation. Using |y| creates separate left/right boxes and preserves the
-    # entire |y|<0.59 m center corridor, unlike a minimum-range filter that
-    # would hide a genuine close obstacle directly ahead. This is deliberately
-    # actor/extrinsic-specific: remeasure it if the Ranger collision asset or
-    # lidar_front mounting transform changes. A real return that overlaps one
-    # of these two narrow boxes cannot be distinguished from the self return
-    # and will be removed; the preserved center corridor limits that tradeoff.
+    # A later physical-crab trace exposed the same ego query component down to
+    # x~=0.45 m as the chassis attitude changed.  The 0.40 m lower bound keeps
+    # 5 cm of measured pose margin without widening either side box toward the
+    # center corridor. Using |y| creates separate left/right boxes and
+    # preserves the entire |y|<0.59 m center corridor, unlike a minimum-range
+    # filter that would hide a genuine close obstacle directly ahead. This is
+    # deliberately actor/extrinsic-specific: remeasure it if the Ranger
+    # collision asset or lidar_front mounting transform changes. A real return
+    # that overlaps one of these two narrow boxes cannot be distinguished from
+    # the self return and will be removed; the preserved center corridor limits
+    # that tradeoff.
     self_return_mask_enabled: true
-    self_return_x_min_m: 0.49
+    self_return_x_min_m: 0.40
     self_return_x_max_m: 1.31
     self_return_abs_y_min_m: 0.59
     self_return_abs_y_max_m: 0.95

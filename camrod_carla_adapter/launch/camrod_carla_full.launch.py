@@ -102,6 +102,11 @@ def generate_launch_description():
         "bt",
         "navigate_through_poses_w_planner_selector.xml",
     )
+    nav_to_pose_bt = os.path.join(
+        adapter_share,
+        "config",
+        "navigate_to_pose_carla.xml",
+    )
 
     baseline_manifest = _environment_path(
         "RANGER_BASELINE_MANIFEST",
@@ -254,8 +259,9 @@ def generate_launch_description():
             ),
             description=(
                 "CARLA-only final cmd_vel scale. Unity preserves the bounded "
-                "0.20 m/s simulator Nav2 profile; ordinary CAMROD retains "
-                "its production 0.5 scale"
+                "0.20 m/s reverse-return RPPReverse profile without slowing "
+                "ordinary forward RPP; ordinary CAMROD retains its "
+                "production 0.5 scale"
             ),
         ),
         DeclareLaunchArgument(
@@ -278,6 +284,150 @@ def generate_launch_description():
                 "Exit a CARLA roadside campsite, preserve its outbound yaw, "
                 "and retrace the validated reverse-shortest route instead of "
                 "using the invalid Woraksan forward loop"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_approach_slowdown_distance_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_APPROACH_SLOWDOWN_DISTANCE_M", "1.0"
+            ),
+            description=(
+                "CARLA-only distance over which crab entry tapers toward its "
+                "minimum speed; ordinary CAMROD keeps this disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_approach_min_speed_mps",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_APPROACH_MIN_SPEED_MPS", "0.12"
+            ),
+            description=(
+                "CARLA-only minimum crab-entry speed during the final "
+                "approach; ordinary CAMROD keeps this disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_rotate_180_timeout_s",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ROTATE_180_TIMEOUT_S", "60.0"
+            ),
+            description=(
+                "CARLA-only wall-clock bound for campsite ROTATE_180; "
+                "ordinary CAMROD keeps an unbounded zero default"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_entry_position_tolerance_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ENTRY_POSITION_TOLERANCE_M", "0.05"
+            ),
+            description=(
+                "CARLA-only crab-entry completion tolerance selected for the "
+                "narrow v3 campsite geometry; ordinary CAMROD keeps 0.15 m"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_rotate_entry_max_position_error_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ROTATE_ENTRY_MAX_POSITION_ERROR_M", "0.05"
+            ),
+            description=(
+                "CARLA-only certified center tolerance for starting "
+                "ROTATE_180 after bounded axis-by-axis centering; ordinary "
+                "CAMROD keeps this disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_entry_anchor_centering_max_initial_error_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_INITIAL_ERROR_M",
+                "0.65",
+            ),
+            description=(
+                "CARLA-only maximum initial route-anchor error recoverable "
+                "before crab entry; ordinary CAMROD keeps this disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_entry_anchor_centering_max_speed_mps",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_SPEED_MPS", "0.12"
+            ),
+            description=(
+                "CARLA-only maximum speed for axis-by-axis route-anchor "
+                "centering before crab entry"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_entry_anchor_centering_timeout_s",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_TIMEOUT_S", "15"
+            ),
+            description=(
+                "CARLA-only wall-clock timeout for route-anchor centering "
+                "before crab entry"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_entry_anchor_centering_tolerance_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_TOLERANCE_M", "0.05"
+            ),
+            description=(
+                "CARLA-only radial route-anchor tolerance required before "
+                "crab entry"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_entry_max_heading_drift_deg",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_MAX_HEADING_DRIFT_DEG", "5.0"
+            ),
+            description=(
+                "CARLA-only fail-closed heading-drift limit during crab entry; "
+                "ordinary CAMROD keeps this guard disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_entry_max_cross_track_error_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_MAX_CROSS_TRACK_ERROR_M", "0.10"
+            ),
+            description=(
+                "CARLA-only fail-closed cross-track limit during crab entry; "
+                "ordinary CAMROD keeps this guard disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_entry_body_yaw_compensation_deg",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_COMPENSATION_DEG", "2.0"
+            ),
+            description=(
+                "CARLA-only direction-signed body-yaw correction for the "
+                "88-degree physical crab-steering limit; ordinary CAMROD "
+                "keeps the zero identity"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_entry_body_yaw_alignment_tolerance_deg",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TOLERANCE_DEG",
+                "0.5",
+            ),
+            description=(
+                "CARLA-only precision tolerance for stationary crab-entry "
+                "body-yaw precompensation and nominal restoration"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_entry_body_yaw_alignment_timeout_s",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TIMEOUT_S", "15"
+            ),
+            description=(
+                "CARLA-only wall-clock bound for stationary crab-entry "
+                "body-yaw alignment"
             ),
         ),
         DeclareLaunchArgument(
@@ -341,6 +491,14 @@ def generate_launch_description():
             description=(
                 "CARLA real-cloud cost raster profile; filters measured low "
                 "road/parking-stop returns without changing UI sensor data"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "nav2_bt_xml_nav_to_pose",
+            default_value=nav_to_pose_bt,
+            description=(
+                "CARLA-only recovery tree without the unsafe generic "
+                "in-lane 90-degree Spin"
             ),
         ),
         DeclareLaunchArgument(
@@ -565,6 +723,70 @@ def generate_launch_description():
                 "control_manual_drive_deadman_timeout_s": LaunchConfiguration(
                     "manual_drive_deadman_timeout_s"
                 ),
+                "control_camping_site_crab_approach_slowdown_distance_m": (
+                    LaunchConfiguration(
+                        "carla_crab_approach_slowdown_distance_m"
+                    )
+                ),
+                "control_camping_site_crab_approach_min_speed_mps": (
+                    LaunchConfiguration("carla_crab_approach_min_speed_mps")
+                ),
+                "control_camping_site_rotate_180_timeout_s": (
+                    LaunchConfiguration("carla_rotate_180_timeout_s")
+                ),
+                "control_camping_site_entry_position_tolerance_m": (
+                    LaunchConfiguration("carla_entry_position_tolerance_m")
+                ),
+                "control_camping_site_rotate_entry_max_position_error_m": (
+                    LaunchConfiguration(
+                        "carla_rotate_entry_max_position_error_m"
+                    )
+                ),
+                "control_camping_site_entry_anchor_centering_max_initial_error_m": (
+                    LaunchConfiguration(
+                        "carla_entry_anchor_centering_max_initial_error_m"
+                    )
+                ),
+                "control_camping_site_entry_anchor_centering_max_speed_mps": (
+                    LaunchConfiguration(
+                        "carla_entry_anchor_centering_max_speed_mps"
+                    )
+                ),
+                "control_camping_site_entry_anchor_centering_timeout_s": (
+                    LaunchConfiguration(
+                        "carla_entry_anchor_centering_timeout_s"
+                    )
+                ),
+                "control_camping_site_entry_anchor_centering_tolerance_m": (
+                    LaunchConfiguration(
+                        "carla_entry_anchor_centering_tolerance_m"
+                    )
+                ),
+                "control_camping_site_crab_entry_max_heading_drift_deg": (
+                    LaunchConfiguration(
+                        "carla_crab_entry_max_heading_drift_deg"
+                    )
+                ),
+                "control_camping_site_crab_entry_max_cross_track_error_m": (
+                    LaunchConfiguration(
+                        "carla_crab_entry_max_cross_track_error_m"
+                    )
+                ),
+                "control_camping_site_crab_entry_body_yaw_compensation_deg": (
+                    LaunchConfiguration(
+                        "carla_crab_entry_body_yaw_compensation_deg"
+                    )
+                ),
+                "control_camping_site_crab_entry_body_yaw_alignment_tolerance_deg": (
+                    LaunchConfiguration(
+                        "carla_crab_entry_body_yaw_alignment_tolerance_deg"
+                    )
+                ),
+                "control_camping_site_crab_entry_body_yaw_alignment_timeout_s": (
+                    LaunchConfiguration(
+                        "carla_crab_entry_body_yaw_alignment_timeout_s"
+                    )
+                ),
                 "control_camping_site_roadside_reverse_return_enable": (
                     LaunchConfiguration(
                         "carla_roadside_reverse_return_enable"
@@ -579,6 +801,22 @@ def generate_launch_description():
                     LaunchConfiguration(
                         "carla_nav2_reverse_return_param_file"
                     )
+                ),
+                # Keep ordinary regulated missions on production RPP. Only a
+                # return-to-drop-zone goal is tagged regulated_reverse by the
+                # dedicated source-aware snapper input and selects RPPReverse.
+                "planning_nav2_reverse_controller": "RPPReverse",
+                "planning_goal_snapper_reverse_auxiliary_input_goal_topic": (
+                    "/planning/auto_reverse_goal_raw"
+                ),
+                # The centerline snapper may switch lanelet branches by metres
+                # even though the CARLA actor moves continuously. Detect true
+                # teleports from raw fused localization instead.
+                "planning_goal_snapper_pose_jump_check_topic": (
+                    "/localization/pose"
+                ),
+                "planning_state_machine_reverse_auto_goal_snapper_input_topic": (
+                    "/planning/auto_reverse_goal_raw"
                 ),
                 "parking_runtime_override_param_file": LaunchConfiguration(
                     "carla_parking_runtime_override_param_file"
@@ -604,8 +842,8 @@ def generate_launch_description():
                         "carla_route_heading_error_enter_deg"
                     )
                 ),
-                # CARLA's sparse Nav2 overlay is already capped at 0.20 m/s.
-                # Do not halve it again at the final gate: the live uphill
+                # CARLA's RPPReverse is already capped at 0.20 m/s. Do not
+                # halve it again at the final gate: the live uphill
                 # B12 run showed the resulting 0.10 m/s target had only
                 # near-hold torque authority. Production remains 0.5 because
                 # this typed override exists only in the CARLA composition.
@@ -630,6 +868,9 @@ def generate_launch_description():
                 "control_cmd_vel_gate_cost_threshold": "100",
                 "control_cmd_vel_gate_lanelet_safety_threshold": "100",
                 "control_cmd_vel_gate_lanelet_safety_current_threshold": "100",
+                "planning_nav2_bt_xml_nav_to_pose": LaunchConfiguration(
+                    "nav2_bt_xml_nav_to_pose"
+                ),
                 "planning_nav2_bt_xml_nav_through_poses": LaunchConfiguration(
                     "nav2_bt_xml_nav_through_poses"
                 ),

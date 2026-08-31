@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|manual|audit-sensors|doctor>
+Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|spectator|manual|audit-sensors|camping-sites-plan|camping-sites|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
@@ -13,9 +13,14 @@ Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|manual|audit-sensors|do
   pacer     pace the gate-bound synchronous bridge at real-time 20 Hz
   spawn     spawn the configured Ranger actor/sensors
   camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
+  spectator follow the exact live Ranger in the visible CARLA window; visual only
   manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
   audit-sensors
             prove all 32 CARLA-source/UI sensor streams and 13 actors live
+  camping-sites-plan
+            print the B1-B13 round-trip plan; create nothing and send no command
+  camping-sites
+            execute UI-driven Drop Zone -> B1-B13 -> Drop Zone live evidence
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
 Required order in separate terminals: server -> bridge -> pacer -> spawn -> camrod.
@@ -172,8 +177,23 @@ manual_command() {
   )
 }
 
+spectator_command() {
+  SPECTATOR_COMMAND=(
+    python3 "${script_dir}/follow_ego_spectator.py"
+    --host "${CARLA_HOST}"
+    --port "${CARLA_PORT}"
+    --actor-id "${RANGER_LIVE_ACTOR_ID}"
+    --type-id vehicle.ranger.default
+    --role-name "${CARLA_ROLE_NAME}"
+  )
+}
+
 run_sensor_source_audit() {
-  local cache_dir
+  local output_mode="${1:-text}" cache_dir
+  case "${output_mode}" in
+    text|json) ;;
+    *) virtual_carla_die "sensor audit output mode must be text or json"; return 2 ;;
+  esac
   cache_dir="$(mktemp -d \
     "${TMPDIR:-/tmp}/camrod-carla-sensor-audit.XXXXXX")"
   (
@@ -182,12 +202,33 @@ run_sensor_source_audit() {
     export CARLA_PYTHON_EGG_CACHE="${cache_dir}"
     export RANGER_PYTHON_EGG_CACHE="${cache_dir}"
     virtual_carla_use_python_egg
-    ros2 run camrod_carla_adapter carla_sensor_source_audit \
-      --role-name "${CARLA_ROLE_NAME}" \
-      --host "${CARLA_HOST}" \
-      --port "${CARLA_PORT}" \
+    audit_command=(
+      ros2 run camrod_carla_adapter carla_sensor_source_audit
+      --role-name "${CARLA_ROLE_NAME}"
+      --host "${CARLA_HOST}"
+      --port "${CARLA_PORT}"
       --actor-policy require
+    )
+    if [[ "${output_mode}" == "json" ]]; then
+      audit_command+=(--json)
+    fi
+    "${audit_command[@]}"
   )
+}
+
+run_sensor_source_audit_json() {
+  local output="$1" temporary="${1}.partial" status_code
+  [[ ! -e "${output}" && ! -e "${temporary}" ]] || {
+    virtual_carla_die "refusing to overwrite sensor audit: ${output}"
+    return 1
+  }
+  if run_sensor_source_audit json >"${temporary}"; then
+    status_code=0
+  else
+    status_code=$?
+  fi
+  mv -- "${temporary}" "${output}"
+  return "${status_code}"
 }
 
 port_is_listening() {
@@ -762,6 +803,24 @@ validate_manual_actor_binding() {
     "manual actor identity matched: actor_id=${live_actor_id}"
 }
 
+validate_camping_matrix_actor_binding() {
+  local live_actor_id="${RANGER_LIVE_ACTOR_ID:-}"
+  local bridge_actor_id="${PHYSICAL_BRIDGE_ACTOR_ID:-}"
+  if [[ ! "${live_actor_id}" =~ ^[1-9][0-9]*$ || \
+        ! "${bridge_actor_id}" =~ ^[1-9][0-9]*$ ]]; then
+    virtual_carla_die \
+      "camping-site matrix actor identity is missing; automatic motion remains disabled"
+    return 1
+  fi
+  if [[ "${live_actor_id}" != "${bridge_actor_id}" ]]; then
+    virtual_carla_die \
+      "camping-site matrix actor mismatch: live CARLA actor_id=${live_actor_id}, physical 4WS bridge actor_id=${bridge_actor_id}; automatic motion remains disabled"
+    return 1
+  fi
+  virtual_carla_log \
+    "camping-site matrix actor identity matched: actor_id=${live_actor_id}"
+}
+
 validate_camrod_ui_manual_ready() {
   local status_code
   if timeout --signal=INT --kill-after=2s 7s \
@@ -932,6 +991,14 @@ case "${subcommand}" in
       CARLA_PYTHON_EGG_CACHE='<fresh-empty-absolute-directory>'
     fi
     camrod_command
+    SPECTATOR_COMMAND=(
+      python3 "${script_dir}/follow_ego_spectator.py"
+      --host "${CARLA_HOST}"
+      --port "${CARLA_PORT}"
+      --actor-id '<validated-live-ranger-actor-id>'
+      --type-id vehicle.ranger.default
+      --role-name "${CARLA_ROLE_NAME}"
+    )
     manual_command
 
     printf '# Export once in every terminal (adjust overrides as needed)\n'
@@ -984,10 +1051,15 @@ case "${subcommand}" in
     printf '%q pacer\n' "${script_dir}/run.sh"
     printf '%q spawn\n' "${script_dir}/run.sh"
     printf '%q camrod\n\n' "${script_dir}/run.sh"
+    printf '# Optional visual-only chase camera; does not tick or control the world\n'
+    printf '%q spectator\n\n' "${script_dir}/run.sh"
     printf '# Optional after CAMROD and physical 4WS status are healthy\n'
     printf '%q manual\n\n' "${script_dir}/run.sh"
     printf '# Required live proof after opening a UI sensor tab\n'
     printf '%q audit-sensors\n\n' "${script_dir}/run.sh"
+    printf '# B1-B13 plan is read-only; live matrix uses the production UI and sends motion\n'
+    printf '%q camping-sites-plan\n' "${script_dir}/run.sh"
+    printf '%q camping-sites\n\n' "${script_dir}/run.sh"
 
     printf '# Expanded server command\n'
     print_command "${SERVER_COMMAND[@]}"
@@ -999,6 +1071,8 @@ case "${subcommand}" in
     print_command "${SPAWN_COMMAND[@]}"
     printf '\n# Expanded CAMROD command; run.sh creates the fresh egg cache\n'
     print_command "${CAMROD_COMMAND[@]}"
+    printf '\n# Expanded spectator command; run.sh resolves the exact live actor id\n'
+    print_command "${SPECTATOR_COMMAND[@]}"
     printf '\n# Expanded guarded keyboard command (manual preflight runs first)\n'
     print_command "${MANUAL_COMMAND[@]}"
     printf '\n# No motion command or navigation goal is emitted here.\n'
@@ -1102,6 +1176,20 @@ case "${subcommand}" in
       "no motion is sent; arm and command only after runtime gates are healthy"
     exec "${CAMROD_COMMAND[@]}"
     ;;
+  spectator)
+    port_is_listening || virtual_carla_die \
+      "CARLA server is not listening on ${CARLA_HOST}:${CARLA_PORT}"
+    virtual_carla_require_file \
+      "${script_dir}/follow_ego_spectator.py" "visual spectator helper"
+    prepare_ros_carla_python spectator
+    validate_ranger_actor_ready
+    spectator_command
+    virtual_carla_log \
+      "following Ranger actor_id=${RANGER_LIVE_ACTOR_ID} in the CARLA spectator window"
+    virtual_carla_log \
+      "visual-only: no world tick, ROS publication, vehicle command, spawn or destroy"
+    exec "${SPECTATOR_COMMAND[@]}"
+    ;;
   manual)
     [[ -t 0 ]] || virtual_carla_die \
       "manual requires an interactive terminal (TTY)"
@@ -1148,6 +1236,94 @@ case "${subcommand}" in
     virtual_carla_log \
       "auditing actual CARLA actor ownership and every UI sensor stream"
     run_sensor_source_audit
+    ;;
+  camping-sites-plan)
+    matrix_command=(
+      python3 "${script_dir}/camping_site_matrix.py"
+      --camping-sites-yaml \
+        "${CAMROD_SRC_ROOT}/camrod_planning/config/camping_sites.yaml"
+      --drop-zones-yaml \
+        "${CAMROD_SRC_ROOT}/camrod_bringup/config/map/drop_zones.yaml"
+    )
+    if [[ -n "${CAMROD_CARLA_CAMPING_SITES:-}" ]]; then
+      matrix_command+=(--sites "${CAMROD_CARLA_CAMPING_SITES}")
+    fi
+    "${matrix_command[@]}"
+    ;;
+  camping-sites)
+    [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]] || virtual_carla_die \
+      "camping-site matrix requires rendered CARLA and the 32-stream sensor audit"
+    virtual_carla_require_dds_transport
+    require_common_runtime_files
+    virtual_carla_source_ros true true
+    virtual_carla_verify_package_prefix \
+      carla_extended_ackermann_control "${RANGER_ROS_WS}/install"
+    virtual_carla_verify_package_prefix \
+      camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
+    virtual_carla_verify_package_prefix \
+      camrod_ui "${CAMROD_WS_ROOT}/install"
+    validate_runtime_gates
+    validate_spawn_file
+    validate_render_timing_contract
+    validate_step_pacer_ready
+    validate_ranger_actor_ready
+    validate_physical_bridge_ready
+    # Re-read the CARLA actor after the ROS bridge status sample so a hot
+    # respawn cannot bind the matrix to two different actors.
+    validate_ranger_actor_ready
+    validate_camping_matrix_actor_binding
+
+    matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix"
+    matrix_run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+    matrix_output_dir="${matrix_root}/${matrix_run_id}"
+    mkdir -p -- "${matrix_root}"
+    mkdir -- "${matrix_output_dir}" || virtual_carla_die \
+      "camping-site matrix output already exists: ${matrix_output_dir}"
+    matrix_sensor_report="${matrix_output_dir}/sensor_source_audit.json"
+    matrix_report="${matrix_output_dir}/camping_site_matrix.json"
+
+    virtual_carla_log \
+      "writing fresh sensor ownership audit: ${matrix_sensor_report}"
+    if run_sensor_source_audit_json "${matrix_sensor_report}"; then
+      :
+    else
+      matrix_status=$?
+      virtual_carla_die \
+        "sensor-source audit failed; preserved evidence at ${matrix_sensor_report}"
+      exit "${matrix_status}"
+    fi
+
+    matrix_command=(
+      python3 "${script_dir}/camping_site_matrix.py"
+      --run
+      --camping-sites-yaml \
+        "${CAMROD_SRC_ROOT}/camrod_planning/config/camping_sites.yaml"
+      --drop-zones-yaml \
+        "${CAMROD_SRC_ROOT}/camrod_bringup/config/map/drop_zones.yaml"
+      --sensor-audit-report "${matrix_sensor_report}"
+      --output "${matrix_report}"
+      --ui-url "${CAMROD_UI_URL}"
+      --role-name "${CARLA_ROLE_NAME}"
+      --phase-timeout-s \
+        "${CAMROD_CARLA_MATRIX_PHASE_TIMEOUT_S:-900}"
+      --start-drop-zone-tolerance-m \
+        "${CAMROD_CARLA_MATRIX_START_DROP_ZONE_TOLERANCE_M:-5.0}"
+      --drop-zone-tolerance-m \
+        "${CAMROD_CARLA_MATRIX_DROP_ZONE_TOLERANCE_M:-3.0}"
+    )
+    if [[ -n "${CAMROD_CARLA_CAMPING_SITES:-}" ]]; then
+      matrix_command+=(--sites "${CAMROD_CARLA_CAMPING_SITES}")
+    fi
+    virtual_carla_log \
+      "starting UI-driven camping-site matrix; progress is saved after every milestone"
+    if "${matrix_command[@]}"; then
+      virtual_carla_log "camping-site matrix PASS: ${matrix_report}"
+    else
+      matrix_status=$?
+      virtual_carla_die \
+        "camping-site matrix did not pass; partial report preserved: ${matrix_report}"
+      exit "${matrix_status}"
+    fi
     ;;
   doctor)
     run_doctor

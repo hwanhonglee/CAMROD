@@ -67,6 +67,9 @@
     component_include_lane_changes: true
     component_max_expansion_nodes: 5000
     current_pose_topic: "/planning/lanelet_pose"
+    # Empty preserves the common CAMROD behavior: current_pose_topic is also
+    # the pose-jump source. Simulator launch profiles may supply raw localization.
+    pose_jump_check_topic: ""
     current_lanelet_search_radius: 12.0
     component_update_min_period_s: 0.2
     component_update_min_displacement_m: 0.5

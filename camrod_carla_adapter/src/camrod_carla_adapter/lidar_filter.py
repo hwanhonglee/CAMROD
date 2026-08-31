@@ -36,7 +36,10 @@ class LidarFilterConfig:
     # CARLA actors and physical LiDARs.  The Ranger CARLA profile enables it
     # with bounds measured from that actor's query geometry.
     self_return_mask_enabled: bool = False
-    self_return_x_min_m: float = 0.49
+    # The CARLA Ranger crab-pose trace reaches x~=0.45 m; retain 5 cm of
+    # attitude/tick margin while the independent |y| bounds preserve the
+    # complete forward-center corridor.
+    self_return_x_min_m: float = 0.40
     self_return_x_max_m: float = 1.31
     self_return_abs_y_min_m: float = 0.59
     self_return_abs_y_max_m: float = 0.95
