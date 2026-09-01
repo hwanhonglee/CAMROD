@@ -69,6 +69,7 @@ fi
 
 virtual_carla_log "running CAMROD canonical dependency setup"
 CAMROD_EXTRA_PREFIX_ROOTS="${CAMROD_EXTRA_PREFIX_ROOTS}" \
+CAMROD_EXTRA_ROSDEP_SKIP_KEYS="carla_extended_ackermann_control carla_extended_ackermann_msgs" \
   "${CAMROD_SRC_ROOT}/setup_camrod.sh" "${args[@]}"
 
 # Verify that setup did not replace the intentionally selected underlays.

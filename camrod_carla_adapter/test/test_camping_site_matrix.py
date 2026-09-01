@@ -182,13 +182,13 @@ def test_return_waits_for_service_state_and_ordered_controller_phase():
     assert not matrix.arrival_ready_for_return(out_of_order, expected)
 
 
-def test_sensor_audit_requires_exact_32_streams_and_13_actors(tmp_path):
+def test_sensor_audit_requires_exact_36_streams_and_13_actors(tmp_path):
     audit = tmp_path / "sensor-audit.json"
     document = {
         "status": "PASS",
         "passed": True,
         "summary": {
-            "streams_checked": 32,
+            "streams_checked": 36,
             "stream_failures": 0,
             "actors_checked": 13,
             "actor_failures": 0,

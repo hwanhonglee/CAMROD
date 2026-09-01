@@ -38,6 +38,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "input_twist_topic", default_value="/control/cmd_vel_ros"),
         DeclareLaunchArgument(
+            "recovery_breakaway_enable",
+            default_value="false",
+            description=(
+                "Authorize the historical low-speed route-recovery torque "
+                "lease; disabled for develop-parity command translation"
+            ),
+        ),
+        DeclareLaunchArgument(
             "extended_command_topic",
             default_value=_role_topic("/extended_ackermann_cmd"),
         ),
@@ -95,6 +103,10 @@ def generate_launch_description():
                     "input_topic": LaunchConfiguration("input_twist_topic"),
                     "output_topic": LaunchConfiguration(
                         "extended_command_topic"),
+                    "recovery_breakaway_enable": ParameterValue(
+                        LaunchConfiguration("recovery_breakaway_enable"),
+                        value_type=bool,
+                    ),
                     "use_sim_time": False,
                 },
             ],

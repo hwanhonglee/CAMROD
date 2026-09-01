@@ -30,15 +30,15 @@ private:
     std::unique_ptr<IRuntime> runtime_;
     std::unique_ptr<ICudaEngine> engine_;
     std::unique_ptr<IExecutionContext> context_;
-    int32_t output0_size_;
-    int32_t output1_size_;
+    int32_t output0_size_{0};
+    int32_t output1_size_{0};
     const int32_t input_index_ = 0;
     const int32_t output0_index_ = 1;
     const int32_t output1_index_ = 2;
-    void *inference_buffers_[3];
+    void *inference_buffers_[3]{nullptr, nullptr, nullptr};
     PinnedVector<float> output_blob_classes_;
     PinnedVector<float> output_blob_bbox_;
-    cudaStream_t stream_;
+    cudaStream_t stream_{nullptr};
 };
 } // namespace yolov9mit
 

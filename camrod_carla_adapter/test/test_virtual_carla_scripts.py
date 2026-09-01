@@ -22,6 +22,7 @@ SCRIPTS = (
     "env.sh",
     "setup.sh",
     "build.sh",
+    "prepare_yolo_engine.sh",
     "test.sh",
     "run.sh",
     "capture_ui_evidence.sh",
@@ -37,6 +38,12 @@ VIRTUAL_ENV_KEYS = (
     "CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ",
     "CAMROD_CARLA_SENSOR_MIN_RATE_HZ",
     "CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS",
+    "CAMROD_CARLA_YOLO_MODEL_PATH",
+    "CAMROD_CARLA_YOLO_DEVICE",
+    "CAMROD_CARLA_YOLO_WORKSPACE_MIB",
+    "YOLOV9_MODEL_PATH",
+    "CAMROD_DEVELOP_LANELET_MAP",
+    "CAMROD_WORAKSAN_TUNED_LANELET_MAP",
     "CAMROD_LANELET_MAP",
     "CAMROD_MAP_ALIGNMENT_FILE",
     "CYCLONEDDS_URI",
@@ -116,6 +123,7 @@ def test_help_is_available_without_external_workspaces() -> None:
     for filename in (
         "setup.sh",
         "build.sh",
+        "prepare_yolo_engine.sh",
         "test.sh",
         "run.sh",
         "capture_ui_evidence.sh",
@@ -549,7 +557,9 @@ def test_camrod_requires_spawn_contract_and_live_actor_before_main_cache() -> No
     assert 'vehicle.get("type") != expected_type' in source
     assert '"${accepted_control}" "${accepted_visual}" <<\'PY\'' in source
     assert "breaks the accepted spawn/alignment cohort" in source
-    camrod_case = source.split("  camrod)\n", 1)[1].split("    ;;\n", 1)[0]
+    camrod_case = source.split(
+        "  camrod|camrod-tuned)\n", 1
+    )[1].split("    ;;\n", 1)[0]
     gate_index = camrod_case.index("validate_runtime_gates")
     spawn_index = camrod_case.index("validate_spawn_file")
     actor_index = camrod_case.index("validate_ranger_actor_ready")
@@ -1503,7 +1513,7 @@ printf '%s\n%s\n' "$RANGER_SPAWN_FILE" "$CAMROD_LAUNCH_SENSOR_RELAY"
     ]
 
 
-def test_env_selects_virtual_map_by_default_and_preserves_override(
+def test_env_resolves_host_local_carla_yolo_cache_and_caller_override(
     tmp_path: Path,
 ) -> None:
     ranger_root = tmp_path / "ranger"
@@ -1511,15 +1521,70 @@ def test_env_selects_virtual_map_by_default_and_preserves_override(
     script = f"""
 set -euo pipefail
 source {str(SCRIPT_ROOT / 'env.sh')!r}
-printf '%s\n' "$CAMROD_LANELET_MAP"
+printf '%s\n%s\n%s\n' \
+  "$CAMROD_CARLA_YOLO_MODEL_PATH" \
+  "$CAMROD_CARLA_YOLO_DEVICE" \
+  "$CAMROD_CARLA_YOLO_WORKSPACE_MIB"
 """
     default_result = _bash(
         script,
         environment={"RANGER_CARLA_ROOT": str(ranger_root)},
     )
-    assert default_result.stdout.strip() == str(
-        PACKAGE_ROOT / "config" / "woraksan_carla_lanelet2.osm"
+    assert default_result.stdout.splitlines() == [
+        str(
+            ranger_root
+            / ".work"
+            / "camrod"
+            / "model_cache"
+            / "yolov9mit"
+            / "v1.0.0"
+            / "v9-s.vec2box.sim.fp16.engine"
+        ),
+        "0",
+        "2048",
+    ]
+
+    explicit_engine = tmp_path / "caller.engine"
+    override_result = _bash(
+        script,
+        environment={
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CAMROD_CARLA_YOLO_MODEL_PATH": str(explicit_engine),
+            "CAMROD_CARLA_YOLO_DEVICE": "2",
+            "CAMROD_CARLA_YOLO_WORKSPACE_MIB": "4096",
+        },
     )
+    assert override_result.stdout.splitlines() == [
+        str(explicit_engine),
+        "2",
+        "4096",
+    ]
+
+
+def test_env_separates_develop_and_woraksan_tuned_map_cohorts(
+    tmp_path: Path,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    ranger_root.mkdir()
+    script = f"""
+set -euo pipefail
+source {str(SCRIPT_ROOT / 'env.sh')!r}
+printf '%s\n%s\n%s\n' \
+  "$CAMROD_LANELET_MAP" \
+  "$CAMROD_DEVELOP_LANELET_MAP" \
+  "$CAMROD_WORAKSAN_TUNED_LANELET_MAP"
+"""
+    default_result = _bash(
+        script,
+        environment={"RANGER_CARLA_ROOT": str(ranger_root)},
+    )
+    develop_map = SRC_ROOT / "lanelet2_maps.osm"
+    tuned_map = PACKAGE_ROOT / "config" / "woraksan_carla_lanelet2.osm"
+    assert default_result.stdout.splitlines() == [
+        str(develop_map),
+        str(develop_map),
+        str(tuned_map),
+    ]
 
     explicit_map = tmp_path / "caller-map.osm"
     override_result = _bash(
@@ -1529,7 +1594,11 @@ printf '%s\n' "$CAMROD_LANELET_MAP"
             "CAMROD_LANELET_MAP": str(explicit_map),
         },
     )
-    assert override_result.stdout.strip() == str(explicit_map)
+    assert override_result.stdout.splitlines() == [
+        str(explicit_map),
+        str(develop_map),
+        str(tuned_map),
+    ]
 
 
 def test_env_applies_one_checked_in_cyclonedds_contract_to_every_ros_shell(
@@ -1549,7 +1618,7 @@ printf '%s\n%s\n%s\n' \
         script,
         environment={"RANGER_CARLA_ROOT": str(ranger_root)},
     )
-    config = SRC_ROOT / "cyclonedds.xml"
+    config = SRC_ROOT / "camrod_system" / "config" / "cyclonedds_carla.xml"
     assert result.stdout.splitlines() == [
         str(config),
         f"file://{config}",
@@ -1656,21 +1725,114 @@ printf '%s\\n%s\\n%s\\n' \
     ]
 
 
+def test_carla_yolo_preparation_is_pinned_and_build_has_explicit_skip() -> None:
+    prepare_source = (SCRIPT_ROOT / "prepare_yolo_engine.sh").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "releases/download/v1.0.0/v9-s.vec2box.sim.onnx"
+        in prepare_source
+    )
+    assert (
+        "22bfd3d91b8b1fc69586803f676b72e52766116eca644ef56c94e2e344b569dc"
+        in prepare_source
+    )
+    assert 'readonly model_size_bytes="29226807"' in prepare_source
+    assert "--print-runtime-key" in prepare_source
+    assert "--validate-engine" in prepare_source
+    assert "mktemp" in prepare_source
+    assert 'if [[ -e "${managed_engine_path}" || -e "${manifest_path}" ]]' in prepare_source
+    assert "incomplete CARLA YOLO cache" in prepare_source
+    assert 'mv -- "${temporary_engine}" "${managed_engine_path}"' in prepare_source
+    assert '"schema_version": 1' in prepare_source
+    assert "json.dumps(manifest, indent=2, sort_keys=True)" in prepare_source
+
+    build_source = (SCRIPT_ROOT / "build.sh").read_text(encoding="utf-8")
+    assert "--skip-yolo-engine" in build_source
+    assert 'prepare_yolo_engine=true' in build_source
+    assert '"${script_dir}/prepare_yolo_engine.sh"' in build_source
+    assert 'if [[ "${prepare_yolo_engine}" == "true" ]]' in build_source
+
+
+def test_generic_yolo_defaults_remain_packaged_and_override_is_opt_in() -> None:
+    launch_sources = (
+        SRC_ROOT / "camrod_perception" / "launch" / "yolo.launch.py",
+        SRC_ROOT / "camrod_bringup" / "launch" / "camera_yolo_container.launch.py",
+    )
+    for path in launch_sources:
+        source = path.read_text(encoding="utf-8")
+        assert "epoch74_step151350.vec2box.sim.engine" in source
+        assert "YOLOV9_MODEL_PATH" in source
+        assert "CAMROD_CARLA_YOLO_MODEL_PATH" not in source
+
+
+def test_nullrhi_disables_camera_yolo_while_rendered_carla_keeps_it() -> None:
+    launch_source = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    assert (
+        '"perception_enable_yolo": LaunchConfiguration(\n'
+        '                    "launch_sensor_relay"'
+        in launch_source
+    )
+    assert "'camera_lidar' if '" in launch_source
+    assert "else 'lidar_only'" in launch_source
+    assert (
+        '"external_front_camera_source": LaunchConfiguration(\n'
+        '                    "launch_sensor_relay"'
+        in launch_source
+    )
+
+    run_source = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    env_source = (SCRIPT_ROOT / "env.sh").read_text(encoding="utf-8")
+    common_runtime = run_source.split(
+        "require_common_runtime_files() {", 1
+    )[1].split("\n}\n", 1)[0]
+    assert 'CARLA_RENDER_MODE}" != "nullrhi' in common_runtime
+    assert "CAMROD_CARLA_YOLO_MODEL_PATH" in common_runtime
+    assert '"YOLOV9_MODEL_PATH=${CAMROD_CARLA_YOLO_MODEL_PATH}"' in run_source
+    assert "export YOLOV9_MODEL_PATH" not in env_source
+
+    doctor_body = run_source.split("run_doctor() {", 1)[1].split(
+        "\n}\n\ncase", 1
+    )[0]
+    assert "yolov9mit_ros" in doctor_body
+    assert "validate_carla_yolo_engine" in doctor_body
+
+
 def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment["RANGER_CARLA_ROOT"] = str(tmp_path)
     result = subprocess.run(
         [str(SCRIPT_ROOT / "run.sh"), "commands"],
         cwd="/tmp",
-        env={**os.environ, "RANGER_CARLA_ROOT": str(tmp_path)},
+        env=environment,
         check=True,
         capture_output=True,
         text=True,
     )
-    for command in ("server", "bridge", "pacer", "spawn", "camrod"):
+    for command in (
+        "server",
+        "bridge",
+        "pacer",
+        "spawn",
+        "camrod",
+        "camrod-tuned",
+    ):
         assert f"run.sh {command}" in result.stdout
     assert "ros2 run carla_ros_bridge bridge" in result.stdout
     assert "--log-level warn" in result.stdout
     assert "carla_spawn_objects.launch.py" in result.stdout
     assert "camrod_carla_full.launch.py" in result.stdout
+    assert "camrod_carla_woraksan_tuned.launch.py" in result.stdout
+    assert f"camrod_map_path:={SRC_ROOT / 'lanelet2_maps.osm'}" in result.stdout
+    assert (
+        "camrod_map_path:="
+        f"{PACKAGE_ROOT / 'config' / 'woraksan_carla_lanelet2.osm'}"
+        in result.stdout
+    )
     assert "launch_sensor_relay:=true" in result.stdout
     assert "# REQUIRED lifecycle order (five terminals)" in result.stdout
     assert "Wait for each preceding stage to report success" in result.stdout
@@ -1686,11 +1848,11 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "export CAMROD_CYCLONEDDS_CONFIG=" in result.stdout
     assert "export CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES=20971520" in result.stdout
     assert "export CYCLONEDDS_URI=" in result.stdout
-    assert "export CAMROD_MANUAL_LINEAR_LIMIT_MPS=1.40" in result.stdout
-    assert "export CAMROD_MANUAL_LATERAL_LIMIT_MPS=1.00" in result.stdout
-    assert "export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS=0.7853" in result.stdout
-    assert "export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=0.75" in result.stdout
-    assert "export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE=1.0" in result.stdout
+    assert "export CAMROD_MANUAL_LINEAR_LIMIT_MPS=0.20" in result.stdout
+    assert "export CAMROD_MANUAL_LATERAL_LIMIT_MPS=0.20" in result.stdout
+    assert "export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS=0.20" in result.stdout
+    assert "export CAMROD_MANUAL_DEADMAN_TIMEOUT_S=0.25" in result.stdout
+    assert "export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE=0.5" in result.stdout
     assert (
         "export CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ=5.0"
         in result.stdout
@@ -1701,10 +1863,30 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
         "export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS=3.0"
         in result.stdout
     )
-    assert "manual_drive_linear_limit_mps:=1.40" in result.stdout
-    assert "manual_drive_lateral_limit_mps:=1.00" in result.stdout
-    assert "manual_drive_angular_limit_radps:=0.7853" in result.stdout
-    assert "manual_drive_deadman_timeout_s:=0.75" in result.stdout
+    expected_yolo = (
+        tmp_path
+        / ".work"
+        / "camrod"
+        / "model_cache"
+        / "yolov9mit"
+        / "v1.0.0"
+        / "v9-s.vec2box.sim.fp16.engine"
+    )
+    assert f"export CAMROD_CARLA_YOLO_MODEL_PATH={expected_yolo}" in result.stdout
+    assert "export CAMROD_CARLA_YOLO_DEVICE=0" in result.stdout
+    assert "export CAMROD_CARLA_YOLO_WORKSPACE_MIB=2048" in result.stdout
+    assert "prepare_yolo_engine.sh --print-path" in result.stdout
+    assert f"env YOLOV9_MODEL_PATH={expected_yolo} ros2 launch" in result.stdout
+    # Parity limits arrive through the exported environment. Do not forward
+    # them as outer CLI arguments to the tuned wrapper, where they would make
+    # the printed command contradict its explicit historical profile.
+    assert "manual_drive_linear_limit_mps:=0.20" not in result.stdout
+    assert "manual_drive_lateral_limit_mps:=0.20" not in result.stdout
+    assert "manual_drive_angular_limit_radps:=0.20" not in result.stdout
+    assert "manual_drive_deadman_timeout_s:=0.25" not in result.stdout
+    assert "manual limits=1.40/1.00/0.7853" in result.stdout
+    assert "speed scale=1.0" in result.stdout
+    assert "radius=0.82m" in result.stdout
     assert "compressed_image_max_rate_hz:=5.0" in result.stdout
     assert "raw_image_max_rate_hz:=10.0" in result.stdout
     assert (
@@ -1739,7 +1921,10 @@ def test_every_runtime_ros_terminal_and_doctor_fail_closed_on_dds_buffers() -> N
         "bridge", "spawn", "camrod", "manual", "audit-sensors",
         "camping-sites",
     ):
-        case_body = source.split(f"  {stage})\n", 1)[1].split("    ;;\n", 1)[0]
+        case_label = "camrod|camrod-tuned" if stage == "camrod" else stage
+        case_body = source.split(f"  {case_label})\n", 1)[1].split(
+            "    ;;\n", 1
+        )[0]
         assert case_body.count("virtual_carla_require_dds_transport") == 1
     doctor_body = source.split("run_doctor() {", 1)[1].split(
         "\n}\n\ncase", 1

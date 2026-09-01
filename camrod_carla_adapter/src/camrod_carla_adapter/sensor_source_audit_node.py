@@ -24,6 +24,7 @@ from rclpy.qos import (
     ReliabilityPolicy,
 )
 from sensor_msgs.msg import (
+    CameraInfo,
     CompressedImage,
     Image,
     Imu,
@@ -36,6 +37,7 @@ from ublox_msgs.msg import NavCOV, NavPVT, NavRELPOSNED9
 
 
 MESSAGE_TYPES = {
+    'sensor_msgs/msg/CameraInfo': CameraInfo,
     'sensor_msgs/msg/CompressedImage': CompressedImage,
     'sensor_msgs/msg/Image': Image,
     'sensor_msgs/msg/Imu': Imu,
@@ -91,7 +93,16 @@ def _validate_lidar_cloud(contract, message: PointCloud2) -> str:
 
 def validate_message(contract, message) -> str:
     """Return an empty string for a structurally useful live UI payload."""
-    if isinstance(message, CompressedImage):
+    if isinstance(message, CameraInfo):
+        if message.width <= 0 or message.height <= 0:
+            return 'camera calibration dimensions are not positive'
+        if len(message.k) != 9 or not _finite(message.k):
+            return 'camera calibration K matrix is invalid'
+        if float(message.k[0]) <= 0.0 or float(message.k[4]) <= 0.0:
+            return 'camera calibration focal lengths are not positive'
+        if not _finite(message.d):
+            return 'camera calibration distortion contains non-finite values'
+    elif isinstance(message, CompressedImage):
         if not message.data:
             return 'compressed image payload is empty'
         if not str(message.format).strip():

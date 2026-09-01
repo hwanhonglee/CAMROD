@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: build.sh [--ranger-only | --camrod-only] [colcon-build-args...]
+Usage: build.sh [--ranger-only | --camrod-only] [--skip-yolo-engine] [colcon-build-args...]
 
 Default order:
   1. build Ranger 4WS messages/controller/rqt in RANGER_ROS_WS/install
@@ -15,6 +15,10 @@ Default order:
 forwarded only to CAMROD's colcon_build.sh. The Ranger repository is an external
 path dependency identified by RANGER_CARLA_ROOT; it is never a Git submodule.
 
+After a CAMROD build, the pinned official YOLOv9MIT ONNX is converted into a
+TensorRT engine for this GPU. Use --skip-yolo-engine only for an intentional
+CPU/offline build; run prepare_yolo_engine.sh before rendered CARLA later.
+
 This builds ROS workspaces only. Build UE 4.26/CARLA and import the Ranger asset
 with the scripts in the Ranger repository before this step.
 EOF
@@ -22,6 +26,7 @@ EOF
 
 build_ranger=true
 build_camrod=true
+prepare_yolo_engine=true
 camrod_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +38,10 @@ while [[ $# -gt 0 ]]; do
     --camrod-only)
       build_ranger=false
       build_camrod=true
+      shift
+      ;;
+    --skip-yolo-engine)
+      prepare_yolo_engine=false
       shift
       ;;
     -h|--help)
@@ -114,6 +123,15 @@ if [[ "${build_camrod}" == "true" ]]; then
   virtual_carla_source_ros true true
   virtual_carla_verify_package_prefix \
     camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
+
+  if [[ "${prepare_yolo_engine}" == "true" ]]; then
+    virtual_carla_require_executable \
+      "${script_dir}/prepare_yolo_engine.sh" "CARLA YOLO engine preparation"
+    "${script_dir}/prepare_yolo_engine.sh"
+  else
+    virtual_carla_log \
+      "skipping host-local CARLA YOLO engine by explicit request"
+  fi
 fi
 
 virtual_carla_log "build complete"

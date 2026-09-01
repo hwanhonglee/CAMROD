@@ -45,6 +45,12 @@ _virtual_carla_config_names=(
   CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
   CAMROD_CARLA_SENSOR_MIN_RATE_HZ
   CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
+  CAMROD_CARLA_YOLO_MODEL_PATH
+  CAMROD_CARLA_YOLO_DEVICE
+  CAMROD_CARLA_YOLO_WORKSPACE_MIB
+  CAMROD_DEVELOP_LANELET_MAP
+  CAMROD_WORAKSAN_TUNED_LANELET_MAP
+  CAMROD_LANELET_MAP
   RANGER_WORK_ROOT
   RANGER_ROS_WS
   CARLA_ROOT
@@ -90,6 +96,9 @@ for _virtual_carla_name in "${!_virtual_carla_explicit_values[@]}"; do
 done
 
 export RANGER_WORK_ROOT="${RANGER_WORK_ROOT:-${RANGER_CARLA_ROOT:+${RANGER_CARLA_ROOT}/.work}}"
+export CAMROD_CARLA_YOLO_MODEL_PATH="${CAMROD_CARLA_YOLO_MODEL_PATH:-${RANGER_WORK_ROOT:+${RANGER_WORK_ROOT}/camrod/model_cache/yolov9mit/v1.0.0/v9-s.vec2box.sim.fp16.engine}}"
+export CAMROD_CARLA_YOLO_DEVICE="${CAMROD_CARLA_YOLO_DEVICE:-0}"
+export CAMROD_CARLA_YOLO_WORKSPACE_MIB="${CAMROD_CARLA_YOLO_WORKSPACE_MIB:-2048}"
 
 _virtual_carla_default_ranger_ros_ws() {
   if [[ -z "${RANGER_CARLA_ROOT}" ]]; then
@@ -174,10 +183,13 @@ if [[ -z "${CAMROD_LAUNCH_SENSOR_RELAY:-}" ]]; then
 fi
 export CAMROD_LAUNCH_SENSOR_RELAY
 export CAMROD_MAP_ALIGNMENT_FILE="${CAMROD_MAP_ALIGNMENT_FILE:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_lane_anchor_alignment.yaml}"
-# HH_260830 - The production map's Road26 centerline cuts into CARLA Terrain.
-# Select the generated CARLA-only geometry by default while preserving an
-# explicit caller override for other worlds/map cohorts.
-export CAMROD_LANELET_MAP="${CAMROD_LANELET_MAP:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_carla_lanelet2.osm}"
+# Keep the develop map and the historical terrain-clearance map as two named
+# cohorts.  `camrod` uses the former; only `camrod-tuned` may select the latter.
+# CAMROD_LANELET_MAP remains the caller-overridable parity map for backwards
+# compatibility with existing launch scripts.
+export CAMROD_DEVELOP_LANELET_MAP="${CAMROD_DEVELOP_LANELET_MAP:-${CAMROD_SRC_ROOT}/lanelet2_maps.osm}"
+export CAMROD_WORAKSAN_TUNED_LANELET_MAP="${CAMROD_WORAKSAN_TUNED_LANELET_MAP:-${CAMROD_SRC_ROOT}/camrod_carla_adapter/config/woraksan_carla_lanelet2.osm}"
+export CAMROD_LANELET_MAP="${CAMROD_LANELET_MAP:-${CAMROD_DEVELOP_LANELET_MAP}}"
 export CAMROD_LAUNCH_DEFAULTS_FILE="${CAMROD_LAUNCH_DEFAULTS_FILE:-${CAMROD_SRC_ROOT}/camrod_bringup/config/bringup/launch_defaults.yaml}"
 
 export CAMROD_UI_PORT="${CAMROD_UI_PORT:-8010}"
@@ -185,19 +197,18 @@ export CAMROD_UI_URL="${CAMROD_UI_URL:-http://127.0.0.1:${CAMROD_UI_PORT}}"
 export CAMROD_ENABLE_OPERATOR_WINDOW="${CAMROD_ENABLE_OPERATOR_WINDOW:-true}"
 export CAMROD_ENABLE_VOICE="${CAMROD_ENABLE_VOICE:-false}"
 export CAMROD_ENABLE_RVIZ="${CAMROD_ENABLE_RVIZ:-false}"
-export CAMROD_MANUAL_LINEAR_LIMIT_MPS="${CAMROD_MANUAL_LINEAR_LIMIT_MPS:-1.40}"
-export CAMROD_MANUAL_LATERAL_LIMIT_MPS="${CAMROD_MANUAL_LATERAL_LIMIT_MPS:-1.00}"
-export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS="${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS:-0.7853}"
-export CAMROD_MANUAL_DEADMAN_TIMEOUT_S="${CAMROD_MANUAL_DEADMAN_TIMEOUT_S:-0.75}"
-# The CARLA Nav2 profile is already bounded to 0.20 m/s.  Preserve that exact
-# target at the final gate instead of inheriting CAMROD hardware's 0.5 scale.
-# This variable is consumed only by camrod_carla_full.launch.py; production
-# bringup and its checked-in 0.5 default remain unchanged.
-export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE="${CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE:-1.0}"
-# CARLA's Ranger adapter accepts 0.810330349 m.  Keep a 9.7 mm margin so
-# rounded RPP output cannot chatter between ACKERMANN and ZERO_TURN.  The full
-# launch applies this only to final Nav2 commands; normal CAMROD remains 0.0.
-export CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M="${CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M:-0.82}"
+export CAMROD_MANUAL_LINEAR_LIMIT_MPS="${CAMROD_MANUAL_LINEAR_LIMIT_MPS:-0.20}"
+export CAMROD_MANUAL_LATERAL_LIMIT_MPS="${CAMROD_MANUAL_LATERAL_LIMIT_MPS:-0.20}"
+export CAMROD_MANUAL_ANGULAR_LIMIT_RADPS="${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS:-0.20}"
+export CAMROD_MANUAL_DEADMAN_TIMEOUT_S="${CAMROD_MANUAL_DEADMAN_TIMEOUT_S:-0.25}"
+# The default CARLA composition keeps the develop final-gate scale exactly.
+# The historical Woraksan profile selects 1.0 inside its explicit tuned launch
+# wrapper, so a map-specific uphill workaround cannot leak into parity runs.
+export CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE="${CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE:-0.5}"
+# Develop leaves the final Nav2 Ackermann-radius clamp disabled.  The accepted
+# Ranger boundary and its 0.82 m anti-chatter margin belong only to the explicit
+# Woraksan tuned wrapper.
+export CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M="${CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M:-0.0}"
 # Five wall-clock JPEG frames per camera are sufficient for the operator view
 # and leave CPU headroom for the independent 10 Hz manual command heartbeat.
 # Raw frames remain available to algorithms, but the CARLA relay caps their
@@ -207,11 +218,11 @@ export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ="${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ:
 export CAMROD_CARLA_SENSOR_MIN_RATE_HZ="${CAMROD_CARLA_SENSOR_MIN_RATE_HZ:-2.0}"
 export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS="${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS:-3.0}"
 
-# One checked-in CycloneDDS transport contract is shared by every virtual-CARLA
-# ROS process.  Raw 800x600 BGRA frames are fragmented across DDS UDP packets;
-# allowing individual terminals to inherit different ambient DDS settings can
-# make small CameraInfo messages work while the image stream silently stalls.
-export CAMROD_CYCLONEDDS_CONFIG="${CAMROD_CYCLONEDDS_CONFIG:-${CAMROD_SRC_ROOT}/cyclonedds.xml}"
+# A CARLA-only CycloneDDS transport contract is shared by every virtual-CARLA
+# ROS process. The repository-root file keeps the develop defaults; raw 800x600
+# simulation frames use this explicit larger profile so CameraInfo and images
+# cannot silently diverge between terminals.
+export CAMROD_CYCLONEDDS_CONFIG="${CAMROD_CYCLONEDDS_CONFIG:-${CAMROD_SRC_ROOT}/camrod_system/config/cyclonedds_carla.xml}"
 CAMROD_CYCLONEDDS_CONFIG="$(readlink -m "${CAMROD_CYCLONEDDS_CONFIG}")"
 export CAMROD_CYCLONEDDS_CONFIG
 export CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES="${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES:-20971520}"
@@ -366,6 +377,8 @@ virtual_carla_source_ros() {
   export CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
   export CAMROD_CARLA_SENSOR_MIN_RATE_HZ
   export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
+  export CAMROD_CARLA_YOLO_MODEL_PATH CAMROD_CARLA_YOLO_DEVICE
+  export CAMROD_CARLA_YOLO_WORKSPACE_MIB
   export CAMROD_CARLA_STEP_PACING CAMROD_CARLA_STEP_PERIOD_SECONDS
 }
 
@@ -467,7 +480,8 @@ CARLA fixed delta seconds=${CARLA_FIXED_DELTA_SECONDS}
 CAMROD CARLA step pacing=${CAMROD_CARLA_STEP_PACING}
 CAMROD CARLA step period seconds=${CAMROD_CARLA_STEP_PERIOD_SECONDS}
 CAMROD sensor relay=${CAMROD_LAUNCH_SENSOR_RELAY}
-CAMROD lanelet map=${CAMROD_LANELET_MAP}
+CAMROD develop/parity lanelet map=${CAMROD_LANELET_MAP}
+CAMROD Woraksan-tuned lanelet map=${CAMROD_WORAKSAN_TUNED_LANELET_MAP}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
 RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}
 CAMROD CycloneDDS config=${CAMROD_CYCLONEDDS_CONFIG}
@@ -483,6 +497,9 @@ CARLA compressed image maximum wall rate hz=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_
 CARLA raw image maximum wall rate hz=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}
 CARLA visual sensor minimum wall rate hz=${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}
 CARLA visual sensor maximum sample age seconds=${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}
+CARLA YOLO model path=${CAMROD_CARLA_YOLO_MODEL_PATH}
+CARLA YOLO CUDA device=${CAMROD_CARLA_YOLO_DEVICE}
+CARLA YOLO TensorRT workspace MiB=${CAMROD_CARLA_YOLO_WORKSPACE_MIB}
 EOF
 }
 

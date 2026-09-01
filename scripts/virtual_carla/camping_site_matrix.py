@@ -285,7 +285,7 @@ def load_sensor_audit(path: Path, *, maximum_age_s: float = 120.0) -> dict[str, 
     if not isinstance(summary, dict):
         raise MatrixError(f"sensor-source audit summary is missing: {path}")
     exact = {
-        "streams_checked": 32,
+        "streams_checked": 36,
         "stream_failures": 0,
         "actors_checked": 13,
         "actor_failures": 0,
@@ -376,7 +376,7 @@ def observation_contract() -> dict[str, Any]:
             "/control/drop_zone_maneuver_controller/status",
             "/control/cmd_vel_safety_gate/status",
         ],
-        "sensor_policy": "a fresh 32-stream/13-actor CARLA source audit is required; this runner neither publishes nor synthesizes sensor data",
+        "sensor_policy": "a fresh 36-stream/13-actor CARLA source audit is required; this runner neither publishes nor synthesizes sensor data",
         "readiness_policy": "physical actor id and strict PHYSX_FOUR_WHEEL_STEERING readiness must remain unchanged for the whole mission",
     }
 
