@@ -6,33 +6,47 @@ PNG/GIF**는 서로 다른 증거 등급이며 한 열의 PASS를 다른 열로 
 
 ## 현재 보유 결과
 
-| 사이트 | 운용 정책 | 활성 goal-snap `(x, y, yaw°)` | 기존 ROS 2 sim | 실제 CARLA 왕복 |
-|---|---|---|---|---|
-| B1 | turnaround | `(22.358, -6.908, -63.25)` | PASS | **최신 live PASS (2026-08-31)** |
-| B2 | turnaround | `(22.455, -7.101, -63.25)` | PASS | PENDING |
-| B3 | turnaround | `(19.772, -1.223, -65.29)` | PASS | PENDING |
-| B4 | turnaround | `(19.307, -0.153, -67.43)` | PASS | PENDING |
-| B5 | turnaround | `(17.383, 4.336, -66.90)` | PASS | PENDING |
-| B6 | turnaround | `(16.786, 5.716, -66.42)` | PASS | PENDING |
-| B7 | turnaround | `(15.085, 9.670, -66.94)` | PASS | PENDING |
-| B8 | turnaround | `(14.147, 11.828, -66.92)` | PASS | PENDING |
-| B9 | turnaround | `(12.680, 15.667, -68.22)` | PASS | PENDING |
-| B10 | turnaround | `(11.891, 17.728, -69.18)` | PASS | PENDING |
-| B11 | roadside_stop | `(10.822, 20.516, -68.78)` | PASS + full-cycle sim PASS | PENDING |
-| B12 | roadside_stop | `(10.103, 23.094, -78.44)` | PASS | **역사 rendered PASS** |
-| B13 | roadside_stop | `(9.626, 27.419, -91.18)` | PASS | PENDING |
+`CARLA tuned` 열은 현재 기본 명령의 성공 증거가 아니다. 2026-08-31 당시
+Woraksan 보정 OSM, reverse-return, 복구·속도·경계·UI 튜닝이 넣어간 구성을
+현재의 두 프로필 기준으로 재분류한 결과다. 당시 실행 명령이 현재 새로 생긴
+`camrod-tuned` subcommand였다는 뜻은 아니다. `develop-parity` 열은 현재
+`./scripts/virtual_carla/run.sh camrod`를 새로 실행해야만 채울 수 있다.
+
+| 사이트 | 운용 정책 | 활성 goal-snap `(x, y, yaw°)` | 기존 ROS 2 sim | 과거 Woraksan-tuned CARLA | 현재 develop-parity CARLA |
+|---|---|---|---|---|---|
+| B1 | turnaround | `(22.358, -6.908, -63.25)` | PASS | **PASS (2026-08-31)** | **PENDING** |
+| B2 | turnaround | `(22.455, -7.101, -63.25)` | PASS | PENDING | **PENDING** |
+| B3 | turnaround | `(19.772, -1.223, -65.29)` | PASS | PENDING | **PENDING** |
+| B4 | turnaround | `(19.307, -0.153, -67.43)` | PASS | PENDING | **PENDING** |
+| B5 | turnaround | `(17.383, 4.336, -66.90)` | PASS | PENDING | **PENDING** |
+| B6 | turnaround | `(16.786, 5.716, -66.42)` | PASS | PENDING | **PENDING** |
+| B7 | turnaround | `(15.085, 9.670, -66.94)` | PASS | PENDING | **PENDING** |
+| B8 | turnaround | `(14.147, 11.828, -66.92)` | PASS | PENDING | **PENDING** |
+| B9 | turnaround | `(12.680, 15.667, -68.22)` | PASS | PENDING | **PENDING** |
+| B10 | turnaround | `(11.891, 17.728, -69.18)` | PASS | PENDING | **PENDING** |
+| B11 | roadside_stop | `(10.822, 20.516, -68.78)` | PASS + full-cycle sim PASS | PENDING | **PENDING** |
+| B12 | roadside_stop | `(10.103, 23.094, -78.44)` | PASS | **PASS (2026-08-31)** | **PENDING** |
+| B13 | roadside_stop | `(9.626, 27.419, -91.18)` | PASS | PENDING | **PENDING** |
 
 Drop Zone 기준점은 `(-14.2347, 39.7863, -82.2127°)`다. 표의 goal-snap은 semantic
 area 중심이 아니라 lanelet 경로가 실제로 사용하는 활성 snapped target이며
 `camrod_planning/test/test_active_campsite_geometry.cpp`가 현재 map 계약으로 고정한다.
 
-## 정책별 필수 phase
+## 정책과 프로필의 차이
 
 - B1~B10 `turnaround`:
   `CRAB_IN → ROTATE_180 → UNLOAD_WAIT → WAIT_RETURN → ALIGN_RETRACE_YAW → CRAB_OUT → DONE`
 - B11~B13 `roadside_stop`:
   `CRAB_IN → UNLOAD_WAIT → WAIT_RETURN → CRAB_OUT → DONE`
-- `roadside_stop`에서는 현장 zero-turn을 금지하고 forward one-way return을 사용한다.
+- develop-parity `camrod`는 develop의 BT·controller·goal source를 그대로 유지한다.
+  특히 B11~B13 `roadside_stop`의 현장 zero-turn을 금지하고 develop의
+  forward one-way return 정책을 유지한다.
+- `camrod-tuned`는 `RPPReverse`, reverse auxiliary goal, reverse lanelet 검사와
+  Woraksan 복귀 overlay를 명시적으로 켠다. 아래 B1/B12 과거 실행의
+  `reverse_shortest` 결과는 이 tuned 열에만 해당한다.
+- parity는 recovery breakaway, sim planning/localization/parking profile, docking rear
+  fallback, Return site-exit re-arm을 끄고 실행한다. tuned matrix는 이 항목들을
+  켜므로, 같은 사이트 이름이어도 parity 결과로 승계하지 않는다.
 
 ## 기존 데이터의 정확한 범위
 
@@ -48,9 +62,9 @@ B12의 CARLA 자료는
 [`07_b12_round_trip_e2e.png`](07_b12_round_trip_e2e.png),
 [`07_b12_round_trip_e2e.gif`](07_b12_round_trip_e2e.gif)다. 해당 run은 onscreen
 CARLA와 production UI에서 수동주행·teleport 없이 복귀와 충전까지 완료했지만,
-후속 source refresh 이전의 역사 결과다.
+후속 source refresh와 develop-parity 분리 이전의 역사 tuned 결과다.
 
-## 최신 B1 live CARLA 결과
+## 역사 B1 live CARLA tuned 결과
 
 최종 보고서는
 [`camrod_carla_b1_round_trip_final_20260831.json`](camrod_carla_b1_round_trip_final_20260831.json),
@@ -94,8 +108,9 @@ actor는 RGB camera 2, LiDAR 1, radar 7, GNSS 2, IMU 1로 총 13개다. 모든 �
 publisher는 `carla_ros_bridge`였으며 canonical UI topic은 지정 relay/filter 노드에서만
 나왔다.
 
-이 실행은 **B1만** 대상으로 했으므로 B2~B11·B13의 실제 CARLA 열은 계속 PENDING이고,
-B12는 후속 수정 이전 역사 PASS다. `WAITING_FOR_CHARGING` 직후 matrix sample에서 parking
+이 실행은 **B1만** 대상으로 했으므로 tuned B2~B11·B13은 계속 PENDING이고,
+B12는 후속 수정 이전 역사 tuned PASS다. 현재 develop-parity는 B1과 B12를
+포함해 **B1~B13 모두 PENDING**이다. `WAITING_FOR_CHARGING` 직후 matrix sample에서 parking
 상태가 잠깐 `REVERSE_APPROACH`로 보이는 것은 비동기 observation 시점 차이며 11.501초 뒤
 `PARKED + CHARGING`으로 수렴했다. 최종 campsite `DONE` 메시지의 yaw 값은 이미 B1을 떠난
 뒤 남은 현장 context이므로 복귀 오차는 `drop_zone_error_m=0.306233`을 사용한다.
@@ -125,8 +140,21 @@ export RANGER_CARLA_ROOT=/home/hong/Downloads/ranger-carla-4ws-pipeline
 ./scripts/virtual_carla/run.sh camping-sites-plan
 ```
 
-최신 gate가 검증되고 `server → bridge → pacer → spawn → camrod`가 모두 실행 중일 때
-다음 한 명령으로 B1~B13 전체를 순차 실행한다.
+최신 gate가 검증되고 `server → bridge → pacer → spawn`이 실행 중일 때
+먼저 검증할 프로필을 하나만 선택한다. 최신 develop 알고리즘 동등성 재검증은
+다음이 기준이다.
+
+```bash
+./scripts/virtual_carla/run.sh camrod
+```
+
+2026-08-31 보정 구성을 재현하는 별도 실험에서만 다음을 쓴다.
+
+```bash
+./scripts/virtual_carla/run.sh camrod-tuned
+```
+
+그 다음 별도 terminal에서 활성 프로필을 변경하지 않고 B1~B13을 순차 실행한다.
 
 ```bash
 ./scripts/virtual_carla/run.sh camping-sites
@@ -163,8 +191,9 @@ $RANGER_EVIDENCE_ROOT/camrod_camping_site_matrix/<UTC>/
 └── camping_site_matrix.json
 ```
 
-`sensor_source_audit.json`은 주행 직전 실제 CARLA source/UI 32개 stream과 CARLA sensor
-actor 13개가 모두 PASS이고 fake/dummy publisher가 없음을 묶는다. matrix 보고서는 각
+`sensor_source_audit.json`은 주행 직전 실제 CARLA source/UI 36개 stream과 CARLA sensor
+actor 13개의 감사 결과를 묶는다. 성공했다면 fake/dummy publisher가 없음을
+보여주지만, 그 결과만으로 mission/parity PASS가 되지는 않는다. matrix 보고서는 각
 milestone마다 atomic 갱신되므로 긴 전체 실행을 Ctrl+C로 중단해도 완료 사이트와 마지막
 관측을 보존한다. 오류나 actor/gate identity 변화 시 `/ui/stop`을 호출하고 이후 사이트는
 `NOT_ATTEMPTED`로 둔다.
@@ -175,6 +204,7 @@ B12 역사 실행은 약 14분이었으므로 13개 전체는 맵 경로와 주�
 [`capture_ui_evidence.sh`](../../../scripts/virtual_carla/capture_ui_evidence.sh)로 실제
 CARLA/UI 창을 동시에 녹화해야 하며, matrix JSON의 UTC milestone과 맞춰 파생물을 만든다.
 
-2026-08-31 최신 host에서는 gate 두 개와 실제 sensor source audit가 모두 검증된 뒤 B1
-matrix가 PASS했다. 그 결과만 B1 열에 반영했으며, 실제 실행하지 않은 나머지 PENDING은
-PASS로 바꾸지 않는다.
+2026-08-31 host에서는 gate 두 개와 실제 sensor source audit가 모두 검증된 뒤
+현재 `camrod-tuned`로 분류한 구성의 B1 matrix가 PASS했다. 그 결과만
+과거 tuned B1 열에 반영했으며, 실제 실행하지 않은 나머지 tuned 사이트와
+현재 develop-parity 전체를 PASS로 바꾸지 않는다.

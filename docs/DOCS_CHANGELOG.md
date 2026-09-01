@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+<!-- HH_260901 - Separate develop-parity CARLA I/O from historical Woraksan
+tuning and prevent tuned B1/B12 evidence from being promoted to parity PASS. -->
+## [virtual-carla-develop-parity-audit] - 2026-09-01 (HH_260901)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Profile boundary | Defines `run.sh camrod` as `origin/develop` algorithm/default parity plus CARLA I/O, and `camrod-tuned` as the opt-in historical Woraksan map/reverse/recovery/speed/UI profile |
+| Package audit | Adds `VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md` with the baseline SHAs, package-by-package retained/additive/isolated changes, sensor path, parameter split, run order, and acceptance boundary |
+| Tuned isolation | Keeps recovery breakaway, sim planning/localization/parking profiles, docking rear-camera fallback, and Return re-arm off in parity and enables them only in `camrod-tuned`; UI fixed-frame TF transform remains a common CARLA display adaptation |
+| Perception ownership | Keeps `/perception/obstacles` solely owned by production camera-LiDAR fusion; source audit key `ui.perception.obstacles` requires publisher `obstacle_fusion`, CARLA diagnostics monitor both YOLO detections and reliable fusion output, Euclidean output stays on visualization-only `/perception/lidar/cluster_points`, and fake sensor outputs stay disabled |
+| Sensor proof | Expands the current audit to 36 streams by checking front/rear `CameraInfo` at both CARLA-source and CAMROD-canonical boundaries; retained 32-stream B1/B12 reports remain historical evidence rather than being relabeled |
+| Diagnostic boundary | Records the CARLA `2 Hz`/`3 s` thresholds as rendered alive/stale checks only; the actor `0.1 s` sensor tick still requires a separate 10 Hz cadence measurement |
+| Manual authority | Makes the default-disabled panel inert and prevents an unarmed UI close/reload/backend shutdown from publishing zero or disengage; armed disconnect/deadman remains fail-closed |
+| LiDAR model | Records the CARLA front-fixed 120°×35°, 16-channel ray-cast profile as a solid-state FOV/cadence approximation, not a 360° mechanical sensor or exact real-device model |
+| Evidence correction | Reclassifies the retained 2026-08-31 B1/B12 captures as historical tuned PASS; current develop-parity B1-B13 and tuned B2-B11/B13 remain PENDING |
+| Historical release integrity | Confirms `docs/V2_2_1_RELEASE_NOTES.md` and `DONE.txt` are byte-identical to `origin/develop`; CARLA integration is not retroactively inserted into the v2.2.1 release |
+
+---
+
 <!-- HH_260831 - Record the virtual/carla rendered Ranger B12 round trip,
 real-CARLA sensor ownership, fixed-sector LiDAR, and controller-delta scope. -->
 ## [virtual-carla-rendered-b12-e2e] - 2026-08-31 (HH_260831)
@@ -8,9 +29,9 @@ real-CARLA sensor ownership, fixed-sector LiDAR, and controller-delta scope. -->
 
 | Area | Current behavior and verification |
 |---|---|
-| Rendered mission | Physical 4WS actor completed Drop Zone → B12 → Return → reverse parking → `CHARGING/PARKED` with one normal dispatch and one Return request, no manual drive or teleport |
+| Rendered mission | Historical Woraksan-tuned profile: physical 4WS actor completed Drop Zone → B12 → Return → reverse parking → `CHARGING/PARKED` with one normal dispatch and one Return request, no manual drive or teleport; develop-parity revalidation remains pending |
 | Sensor ownership | `audit-sensors` passed source/UI streams `32/32` and CARLA actors `13/13`; fake/dummy owners do not publish the UI-visible camera/LiDAR/GNSS/IMU/radar boundaries |
-| LiDAR | Documents the forward fixed 120°×35° solid-state approximation and the real raw → road-plane nonground filter → Euclidean cluster → cost-grid chain |
+| LiDAR | Documents the forward fixed 120°×35° solid-state approximation and the real raw → road-plane nonground filter path; Euclidean clusters are visualization-only, while class-associated camera-LiDAR fusion solely owns semantic obstacle cost input |
 | Runtime shutdown | Makes LiDAR/UI/controller/spawn cleanup idempotent and bridge PAUSE waiting shutdown-aware; a live 20 Hz pacer race exits the bridge after one Ctrl-C in 0.24 s with code 0 |
 | Position proof | Records the exact Woraksan SE(2) transform from CARLA ROS odometry to CAMROD metric/EKF/UI pose, preventing cross-frame coordinates from being mistaken for fake localization |
 | B12 traction | Records the failed former 5.0 N·m floor and bounded 5.5/6.0 N·m controller delta; the successful E2E did not stall, so it is not claimed as a live floor-activation test |
@@ -33,7 +54,7 @@ target reacquisition window for field occlusion. -->
 ---
 
 <!-- HH_260825 - Record current-lane campsite handoff, guarded charging
-departure, front-radar near-field authority, and external CARLA integration. -->
+departure, and front-radar near-field authority. -->
 ## [v2.2.1-current-lane-charging-radar] - 2026-08-25 (HH_260825)
 
 ### Changed
@@ -44,7 +65,6 @@ departure, front-radar near-field authority, and external CARLA integration. -->
 | Charging departure | Queues the next destination for `7.0 s` with all motion authorization false; observed `6.996327111 s`, one parking cancel, one station EXIT, and no early site goal |
 | Front radar | Extends only FRONT1/FRONT2 to a usable `0.30 m` range after measured body echoes, while preserving lanelet/`1.27 m` path-corridor clipping, side/rear `0.10 m`, and REAR quarantine |
 | Measured integration | B8 current-lane handoff, B2 charging recall, and continuous FRONT1 `0.300 m` injection all pass on the AMD64 full graph; physical and ARM64 acceptance remain open |
-| External simulation | Documents the new CARLA 4WS adapter, external-odometry plant ownership, stale timeout, selector contracts, source-only checks, and NullRHI image limitation |
 | Build hygiene | Replaces active README direct-colcon examples with `colcon_build.sh`, which keeps workspace artifacts out of `src/` |
 | Documentation | Adds v2.2.1 release notes, parameter ownership, machine-readable result, generated PNG/SVG, updated package guides, DONE record, and focused field TODOs |
 

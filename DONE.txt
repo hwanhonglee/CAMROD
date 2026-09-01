@@ -1093,18 +1093,7 @@ CAMROD 구현·검증 완료 기록
   `build/install/log`를 사용하도록 검증했다. 활성 package README의 직접 colcon
   명령도 wrapper로 변경해 `src/build`, `src/install`, `src/log` 재생성을 막았다.
 
-36. HH_260825: 외부 CARLA plant 연동과 source checkout 빌드 경계
-    [DONE-CODE, DONE-AMD64-SOURCE-TEST, RENDERED-RGB-PENDING]
-- `camrod_carla_adapter`에 4WS command/feedback 변환, platform heartbeat,
-  sensor relay, identity/map-anchor alignment 및 control-only/full launch를 추가했다.
-  bringup fake sensor는 `external_simulator=true`일 때 fresh 외부 odometry를 plant
-  truth로 사용하고 stale `0.5 s` 이후 센서 발행을 정지한다. Nav2
-  NavigateThroughPoses selector와 외부 underlay shell 계약도 함께 추가했다.
-- CARLA source-only contract `21/21`과 adapter Release build를 통과했다.
-  커밋된 prior-overlay 결과는 `786` tests 중 `778` pass, `8` skip, failure 0이며
-  adapter는 `86/86`이다. CARLA NullRHI 결과는 rendered RGB 합격을 증명하지 않는다.
-
-37. HH_260826: AprilTag stopped reacquisition window 60초 연장
+36. HH_260826: AprilTag stopped reacquisition window 60초 연장
     [DONE-CODE, DONE-ARM64-BUILD, DONE-CONTRACT, FIELD-PENDING]
 - Tag sample freshness `0.5 s`와 즉시 zero command는 유지하고, translation
   latch 이전 `WAITING_FOR_TAG`의 terminal ERROR 대기만 `10.0 -> 60.0 s`로
