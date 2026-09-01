@@ -61,6 +61,36 @@ AGILEX_BASE="${CAMROD_AGILEX_BASE:-https://github.com/agilexrobotics}"
 
 log() { echo "[setup_camrod] $*"; }
 
+# Optional wrappers may extend rosdep's skip list without changing the
+# canonical CAMROD defaults.  Keep this space-delimited and parse it as data:
+# never eval caller input or let it become shell options/path globs.
+CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS=()
+parse_extra_rosdep_skip_keys() {
+  local raw="${CAMROD_EXTRA_ROSDEP_SKIP_KEYS:-}"
+  local key
+
+  if [[ -z "${raw}" ]]; then
+    return 0
+  fi
+  if [[ "${raw}" == *$'\n'* || "${raw}" == *$'\r'* ]]; then
+    log "ERROR: CAMROD_EXTRA_ROSDEP_SKIP_KEYS must be a single space-delimited line"
+    return 2
+  fi
+
+  # read -a performs word splitting only; unlike eval/unquoted expansion it
+  # cannot execute substitutions and does not expand pathname metacharacters.
+  read -r -a CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS <<< "${raw}"
+  for key in "${CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS[@]}"; do
+    if [[ ! "${key}" =~ ^[A-Za-z0-9][A-Za-z0-9_.+-]*$ ]]; then
+      log "ERROR: invalid rosdep skip key in CAMROD_EXTRA_ROSDEP_SKIP_KEYS: ${key}"
+      log "       allowed characters: ASCII letters, digits, '_', '.', '+', '-' (leading alphanumeric)"
+      return 2
+    fi
+  done
+}
+
+parse_extra_rosdep_skip_keys || exit $?
+
 # HH_260617: Keep setup usable from CI/Codex/non-interactive shells.  When sudo
 # cannot prompt for a password, report the exact apt command instead of hanging
 # or turning optional dependency setup into a hard failure.
@@ -339,16 +369,17 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   _ROSDEP_SKIP_KEYS=(
     ament_python
     catkin
-    # virtual/CARLA provides these from the separately built Ranger ROS
-    # workspace. They intentionally have no system rosdep rule.
-    carla_extended_ackermann_control
-    carla_extended_ackermann_msgs
     OpenCV
     cuda_cudart
     libsdl2-dev
     libsdl2-mixer-dev
     opencv
   )
+
+  # Integration wrappers (for example scripts/virtual_carla/setup.sh) own
+  # their environment-specific exclusions.  The ordinary CAMROD setup keeps
+  # its dependency resolution independent of those optional workspaces.
+  _ROSDEP_SKIP_KEYS+=("${CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS[@]}")
 
   log "rosdep install (skip keys: ${_ROSDEP_SKIP_KEYS[*]})"
   mapfile -t _ROSDEP_PATHS < <(
@@ -364,5 +395,7 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   fi
   unset _ROSDEP_SKIP_KEYS
 fi
+
+unset CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS
 
 log "setup complete. now run: ./colcon_build.sh"
