@@ -1,17 +1,16 @@
 # CAMROD v2.2.1 Release Notes
 
 <!-- HH_260825 - Record current-pose campsite return, guarded charger
-departure, front-radar near-field policy, external CARLA plant integration,
-canonical build boundaries, measured results, and remaining field acceptance. -->
+departure, front-radar near-field policy, canonical build boundaries,
+measured results, and remaining field acceptance. -->
 
 ## Scope
 
 `v2.2.1` advances the `develop` baseline at
 `0a81ccdace53fcf94aab9a1482dbae6cdbc07fd6`. It removes the normal campsite
 return dependency on the historical entry XY, delays movement after a charging
-destination request, extends only the two front radar stop windows, and adds an
-external CARLA plant adapter. The user-authored lanelet map geometry is not
-modified by this release.
+destination request, and extends only the two front radar stop windows. The
+user-authored lanelet map geometry is not modified by this release.
 
 ## Runtime Changes
 
@@ -25,7 +24,6 @@ modified by this release.
 | Front radar | FRONT1 uses `(0.220, 0.520] m` and FRONT2 `(0.117, 0.417] m`, providing `0.30 m` beyond each measured body-return envelope |
 | Radar spatial authority | The longer front range remains clipped to the active lanelet and `1.27 m` local-path corridor; side/rear usable range stays `0.10 m`, and REAR remains quarantined |
 | Validator | Charging recall is keyed to public `CHARGING`, parking `PARKED`, and `DEPARTING_CHARGER` states instead of presentation-specific command-gate text |
-| External simulation | `camrod_carla_adapter` maps 4WS commands/feedback and allows fake sensors to follow fresh external odometry with a `0.5 s` stale timeout |
 | Build outputs | The canonical wrapper pins `build/install/log` to `~/camrod_ws`; active package READMEs no longer instruct direct colcon builds from the source checkout |
 
 ## Operator Parameters
@@ -43,8 +41,6 @@ bringup mirrors must remain byte-identical.
 | Front software range ceiling | `software_max_ranges_m[FRONT1/2]` | `0.55 m` | same radar driver pair |
 | Front stop candidate ceiling | `stop_candidate_max_ranges_m[FRONT1/2]` | `0.520/0.417 m` | sensing/bringup `cost_grid.yaml` pair |
 | Final front corridor | `front_dynamic_path_width_m` | `1.27 m` | control/bringup `cmd_vel_safety_gate.yaml` pair |
-| External plant ownership | `external_simulator` | `false` physical default | `camrod_bringup/config/bringup/launch_defaults.yaml` |
-| External odometry freshness | `external_simulator_odometry_timeout_s` | `0.5 s` | same launch-default file |
 
 Changing a radar body exclusion changes the sensor-face coordinate at which the
 usable `0.30 m` window starts. It must be based on a physical empty-scene/raw
@@ -62,22 +58,16 @@ measurement, not adjusted solely to make simulation pass.
 | Focused CARLA-free contracts | PASS: `65/65` |
 | Full isolated test inventory | 6 bringup targets remain failing: inherited parking mirror/stale assertion debt plus worktree-root and Pillow environment limits; this release does not claim zero failures |
 | UI production bundle | PASS; current npm audit reports `40` inherited findings (`11` low, `7` moderate, `20` high, `2` critical) |
-| CARLA source contracts | PASS: `21/21` |
-| CARLA adapter Release build | PASS |
-| Prior complete external-overlay report | `786` collected, `778` pass, `8` skip, failure `0`; adapter `86/86` |
 
 The measured campsite, charging, and radar record is under
 [`v2-2-1-safety-handoff-20260825`](assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md).
-The CARLA source/evidence boundary is documented in
-[`virtual_carla.md`](virtual_carla.md).
 ## Verification Commands
 
 ```bash
 cd ~/camrod_ws/src
 ./setup_camrod.sh
 ./colcon_build.sh --packages-select \
-  camrod_control camrod_planning camrod_sensing camrod_ui camrod_bringup \
-  camrod_carla_adapter
+  camrod_control camrod_planning camrod_sensing camrod_ui camrod_bringup
 
 diff -u camrod_control/config/control.yaml \
   camrod_bringup/config/control/control.yaml
@@ -91,8 +81,6 @@ colcon test --packages-select \
   camrod_control camrod_planning camrod_sensing camrod_ui camrod_bringup
 colcon test-result --verbose
 
-cd ~/camrod_ws/src
-scripts/virtual_carla/test.sh --source-only
 ```
 
 ## Field Acceptance Still Required
@@ -108,5 +96,3 @@ scripts/virtual_carla/test.sh --source-only
 - Review and upgrade the React dependency tree in a dedicated compatibility
   change. This release does not use `npm audit fix --force` to trade known API
   behavior for an unreviewed major-version migration.
-- Run CARLA with a rendered RGB-capable environment; NullRHI evidence does not
-  establish camera image quality or camera perception behavior.

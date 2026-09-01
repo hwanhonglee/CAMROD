@@ -1,13 +1,15 @@
 # CAMROD × CARLA 4WS 시나리오 시각화
 
 이 폴더에는 직진, 좌회전, 우회전, 크랩 횡이동, 제자리 회전, Nav2 단거리 목표와
-rendered B12 역사 왕복, 최신 B1 live 왕복의 PNG/GIF와 원본 JSON이 들어 있습니다.
+2026-08-31 Woraksan-tuned B12/B1 왕복의 PNG/GIF와 원본 JSON이 들어 있습니다.
 
 01~06은 당시 CARLA 서버가 `NullRHI`였기 때문에 실제 카메라 프레임이 없는
 제어·자세 데이터 기술 시각화다. 07은 별도의 2026-08-31 onscreen 실행에서 실제
 CARLA window와 production CAMROD UI를 동시에 녹화한 렌더 증거다. 08은 2026-08-31
-`virtual/carla` 최종 수정 상태에서 같은 두 창을 900초 동안 다시 녹화하고, B1 왕복
-matrix와 실제 sensor-source audit를 함께 보존한 최신 증거다. 각 범위를 섞지 않으며
+당시 `virtual/carla` 작업 트리에서 같은 두 창을 900초 동안 다시 녹화하고,
+B1 왕복 matrix와 실제 sensor-source audit를 함께 보존한 역사 증거다. 현재
+분리된 기준으로는 07·08 둘 다 `camrod-tuned`에 해당하며, 당시 실행 명령이
+현재의 `camrod-tuned` subcommand였다는 뜻은 아니다. 각 범위를 섞지 않으며
 역사 `manifest.json`은 01~06만 설명한다.
 
 07은 **역사 증거**다. 원본은 보고서에 기록된 host-local
@@ -27,21 +29,33 @@ X11/ffmpeg 명령은 commit되지 않았다. 따라서 07을 현재 wheel/torque
 | 04 | 크랩 횡이동 | CARLA 실측 물리 반응, 화면 변위 정규화 |
 | 05 | 제자리 회전 | CARLA 실측 yaw/평행이동 |
 | 06 | Nav2 단거리 목표 | 실측 시작·최종·목표점 선형 보간 |
-| 07 | Drop Zone → B12 → 복귀 → 충전 | 실제 onscreen CARLA/UI 녹화에서 추출; 수동주행·teleport 없음 |
-| 08 | Drop Zone → B1 → 복귀 → 주차·충전 | 최신 onscreen CARLA/UI 900초 녹화 + 32-stream/13-actor audit + live matrix PASS |
+| 07 | Drop Zone → B12 → 복귀 → 충전 | 과거 Woraksan-tuned onscreen CARLA/UI 녹화에서 추출; 수동주행·teleport 없음 |
+| 08 | Drop Zone → B1 → 복귀 → 주차·충전 | 과거 Woraksan-tuned onscreen CARLA/UI 900초 녹화 + 32-stream/13-actor audit + live matrix PASS |
 
 빠른 확인 파일:
 
+- `current/README.md`: 2026-09-01 현재 develop-parity rendered smoke의 actor/gate,
+  36-stream/13-actor 감사, 실제 rate, physical wheel command와 판정 경계
+- `current/ranger_actor_actual_carla_20260901.png`: 실제 onscreen CARLA Ranger actor
+- `current/ui_camera_actual_carla_20260901.png`: production UI에 들어온 실제 CARLA
+  front/rear camera
+- `current/ui_semantic_perception_actual_carla_20260901.png`: raw cost가 아니라
+  semantic fusion만 보이는 현재 지도·인지 화면
+- `current/manual_straight_4ws_live_20260901.gif`: bounded 직진 smoke
+- `current/manual_zero_turn_crab_4ws_live_20260901.gif`: mode-cut을 포함한
+  zero-turn/crab smoke
 - `00_scenario_overview.png`: 전체 정적 모음
 - `00_all_scenarios.gif`: 전체 연속 애니메이션
 - `01_...` ~ `06_...`: 시나리오별 PNG/GIF
-- `camrod_carla_ui_latest_develop_20260825.png`: 실제 CAMROD UI 실행 화면
+- `camrod_carla_ui_latest_develop_20260825.png`: 2026-08-25 당시 CAMROD UI 실행
+  화면. 파일명의 `latest_develop`은 현재 parity PASS를 의미하지 않음
 - `camrod_carla_live_smoke_20260823T152312Z.json`: CARLA 실측 원본
 - `camrod_carla_latest_develop_full_test_20260825.json`: 2026-08-25 당시 develop 전체 시험 결과
 - `07_b12_round_trip_e2e.{png,gif}`: 실제 렌더 B12 왕복 요약
 - `camrod_carla_b12_round_trip_e2e_20260831.json`: 07의 gate, 센서, 좌표 정합,
   타임라인, 테스트와 제한
-- `08_b1_round_trip_live_20260831.{png,gif}`: 최신 B1 왕복의 실제 CARLA/UI 대화면 요약
+- `08_b1_round_trip_live_20260831.{png,gif}`: 과거 tuned B1 왕복의 실제
+  CARLA/UI 대화면 요약. 파일명의 `live`는 develop-parity 재검증을 의미하지 않음
 - `camrod_carla_b1_round_trip_final_20260831.json`: 08의 전체 milestone, pose, 물리 4WS,
   주행거리, 주차·충전 결과
 - `camrod_carla_b1_sensor_source_audit_20260831.json`: 32개 UI stream과 13개 CARLA
@@ -52,6 +66,10 @@ X11/ffmpeg 명령은 commit되지 않았다. 따라서 07을 현재 wheel/torque
   혼동 없이 비교하는 단일 표
 - `UI_COMPOSITION.md`: 07 화면이 어떤 런타임 조합으로 만들어졌는지 설명
 - `manifest.json`: 역사 01~06 원본 보고서 SHA-256, 파일 SHA-256, 프레임 수, 범위 선언
+
+`current/`의 2026-09-01 자료는 현재 develop-parity live smoke다. actual sensor와
+manual physical 4WS까지는 새로 검증했지만 B1~B13 dispatch/Return/parking은 실행하지
+않았으므로 mission PASS로 확대 해석하지 않는다.
 
 ## 07·08 화면 구성
 
@@ -69,8 +87,8 @@ X11/ffmpeg 명령은 commit되지 않았다. 따라서 07을 현재 wheel/torque
 ## B1~B13 왕복 데이터
 
 [`CAMPING_SITE_MATRIX.md`](CAMPING_SITE_MATRIX.md)에 기존 13/13 ROS 2 simulation,
-B12 역사 rendered CARLA, 최신 B1 live PASS, 아직 실행되지 않은 사이트를 한 표로
-분리했다. 최신 gate와
+과거 tuned B12/B1 CARLA PASS, 아직 실행되지 않은 tuned 사이트와 현재
+develop-parity B1~B13 PENDING을 서로 다른 열로 분리했다. 최신 gate와
 다섯 runtime process가 모두 준비된 뒤 다음 한 명령이 실제 production UI 경로로 각
 사이트 도착·Return·Drop Zone 주차/충전 결과를 machine-local JSON에 누적한다.
 
@@ -110,10 +128,14 @@ cd /path/to/camrod_ws/src
 ```
 
 먼저 `CARLA_RENDER_MODE=onscreen`으로
-`server → bridge → pacer → spawn → camrod`가 기동된 상태를 만든다. full launch의
+`server → bridge → pacer → spawn → camrod`가 기동된 상태를 만든다. 여기서
+`camrod`는 현재 develop-parity 프로필이며, 과거 조정값 재현은 명시적으로
+`camrod-tuned`를 선택한다. full launch의
 operator window는 기본 fullscreen이므로 증빙 시에는
 `CAMROD_ENABLE_OPERATOR_WINDOW=false ./scripts/virtual_carla/run.sh camrod`로 backend를
-띄우고, 별도 terminal에서 다음처럼 windowed wrapper를 연다.
+띄우고, 별도 terminal에서 다음처럼 windowed wrapper를 연다. 위는 parity
+캡처 예시다. tuned 재현을 녹화할 때는 동일 위치의 마지막 인자만
+`camrod-tuned`로 바꾸고 manifest에 profile을 명시한다.
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -183,9 +205,11 @@ CARLA sensor topic의 증거이고, 이 runner가 녹화하는 왼쪽 `CarlaUE4`
 증거 범위가 다르다. 또한 X11 `IsViewable`은 mapped 상태만 확인하므로 제3의 창이 잠시
 가린 적이 전혀 없다는 사실은 증명하지 못하며, 이 한계는 v2 manifest에 기록된다.
 
-## 최신 B1 live 결과
+## 역사 Woraksan-tuned B1 live 결과
 
-08과 함께 저장한 2026-08-31 실행은 B1 한 곳만 시험했고 B2~B13을 확대 해석하지 않는다.
+08과 함께 저장한 2026-08-31 실행은 현재 `camrod-tuned`로 분류한
+구성에서 B1 한 곳만 시험했다. B2~B13으로 확대 해석하지 않고, 현재
+`camrod` develop-parity 실행의 PASS로도 재사용하지 않는다.
 
 - 결과: `PASS`, 710.787초 / 사이트 제한 900초
 - 실제 이동: 170.222831 m, `/cmd_vel` 13,570 sample, CARLA odometry 13,462 sample
@@ -209,6 +233,6 @@ SHA-256은 `camrod_carla_b1_capture_manifest_20260831.json`에서 확인한다.
 `sensor_tick=0.1 s`다. `rotation_frequency=20`은 이 부채꼴 ray-cast sampling
 parameter이지 360° 회전을 뜻하지 않는다.
 
-08도 같은 전방 고정 solid-state 계약을 사용했으며 해당 live run의 LiDAR actor는
+08도 같은 전방 고정 solid-state 계약을 사용했으며 해당 과거 tuned run의 LiDAR actor는
 133이다. 08의 센서 actor ID 전체는 `camrod_carla_b1_sensor_source_audit_20260831.json`에
 있다.

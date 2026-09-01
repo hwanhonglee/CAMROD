@@ -183,7 +183,7 @@ no second hold. This is not physical-road evidence.
 |---|---|---|
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
 | v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
-| CARLA overlay verification | **RENDERED E2E PASS** | source/UI streams `32/32`, CARLA sensor actors `13/13`; Drop Zone → B12 → return → reverse parking → `CHARGING` completed with the physical 4WS Ranger and no manual drive/teleport; see the dedicated virtual integration guide |
+| Historical CARLA Woraksan tuning | **B1/B12 RENDERED PASS; PARITY REVALIDATION PENDING** | The retained source/UI `32/32`, actor `13/13`, and round-trip captures used the explicit map/mission-tuned profile. They do not yet prove the restored develop-parity profile or B2-B11/B13. |
 | Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
 | Repeated campsite service | **AMD64 SIM PASS 10/10** | `2210.611 s`, restart `0`; cycle 1 seeded at B1 handoff, cycles 2-10 full charger departure/outbound/RETURN/parking/charging |
 | 3 km/h RPP source-profile A/B | **FIXED 1.1 m SELECTED** | Scaled preview recontacted in `0.850 s`; fixed preview completed B1/B2 `2/2` in `422.848 s` without retry latch |
@@ -218,6 +218,17 @@ no second hold. This is not physical-road evidence.
 | B1-B10 turnaround | **SIM PASS (10/10)** | All ten map-derived lateral entries (`1.79-5.31 m`) completed full round trips with maneuver-exclusive command ownership |
 | B11-B13 roadside | **CURRENT AMD64 SIM PASS 3/3** | Each site used a `0.30 m` cap, accepted UI Return, completed `CRAB_OUT -> DONE`, skipped zero-turn, and selected the forward one-way loop |
 | Physical Ranger/sensors/audio | **FIELD PENDING** | Jetson and real-robot measurements are still required |
+
+### Virtual CARLA Profile Boundary
+
+The default `./scripts/virtual_carla/run.sh camrod` composition preserves the
+`origin/develop` algorithm and common defaults while opting into CARLA sensor,
+odometry, UI-manual, and physical-4WS I/O. The separate `camrod-tuned` command
+contains the historical Woraksan map, reverse-return, recovery, speed/radius,
+boundary, and UI tuning. Retained 2026-08-31 B1/B12 captures prove only that
+historical tuned composition; develop-parity B1-B13 and tuned B2-B11/B13 remain
+pending. See the [develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md)
+for the package and parameter inventory.
 
 ### Package Technology Proof
 
@@ -328,9 +339,10 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
-| [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, CARLA integration, tests, and field limits |
+| [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Virtual CARLA integration](docs/virtual_carla.md) | External Ranger/CARLA ownership, build/run gates, adapter topics, and bounded functional evidence |
+| [Virtual CARLA develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md) | Baseline SHAs, package-by-package core/additive/tuned split, real sensor path, two-profile parameters, and honest pending E2E boundary |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
 | [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
