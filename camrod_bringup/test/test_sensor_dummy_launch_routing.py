@@ -123,6 +123,8 @@ def _base_rear_owner_context(**overrides):
         "enable_rear_camera": "true",
         "enable_parking": "true",
         "parking_method": "apriltag",
+        "use_sim_parking_method": "true",
+        "external_rear_camera_source": "false",
         **overrides,
     })
     return context
@@ -162,6 +164,34 @@ def test_non_sim_preserves_requested_dummy_policy(real_sim):
     })
 
     assert context.perform_substitution(expression) == "true"
+
+
+@pytest.mark.parametrize(
+    ("sim", "use_sim_profile", "expected"),
+    (
+        ("false", "true", "production"),
+        ("true", "false", "production"),
+        ("true", "true", "simulation"),
+        ("yes", "on", "simulation"),
+    ),
+)
+def test_sim_profile_overrides_are_explicit_opt_ins(
+    sim, use_sim_profile, expected
+):
+    expression = BRINGUP_IMPL.sim_opt_in_switch(
+        LaunchConfiguration("sim"),
+        LaunchConfiguration("use_sim_profile"),
+        "simulation",
+        LaunchConfiguration("production_value"),
+    )
+    context = LaunchContext()
+    context.launch_configurations.update({
+        "sim": sim,
+        "use_sim_profile": use_sim_profile,
+        "production_value": "production",
+    })
+
+    assert context.perform_substitution(expression) == expected
 
 
 def test_bringup_forces_both_sensing_and_platform_dummies_off_in_sim():
@@ -237,16 +267,21 @@ def test_external_component_camera_owns_front_without_dummy_overlap():
     component_active = ast.unparse(
         _assigned_value("camera_yolo_container_active")
     )
+    external_expression = ast.unparse(
+        _assigned_value("front_camera_source_external_expression")
+    )
     regular_front = ast.unparse(
         _assigned_value("regular_front_camera_enable")
     )
 
-    assert front_external == "camera_yolo_container_active"
+    assert front_external == "front_camera_source_external"
     assert "lc['sim']" in component_expression
     assert "not in ['1', 'true', 'yes', 'on']" in component_expression
     assert component_active == (
         "LaunchConfiguration('camera_yolo_container_active_resolved')"
     )
+    assert "camera_yolo_container_active" in external_expression
+    assert "lc['external_front_camera_source']" in external_expression
     assert "camera_yolo_container_active" in regular_front
     assert "lc['enable_front_camera']" in regular_front
     assert "in ['1', 'true', 'yes', 'on']" in regular_front
@@ -254,17 +289,24 @@ def test_external_component_camera_owns_front_without_dummy_overlap():
 
 
 @pytest.mark.parametrize(
-    ("sim", "use_container", "expected_external", "expected_regular"),
     (
-        ("false", "true", "true", "false"),
-        ("false", "false", "false", "true"),
-        ("1", "true", "false", "false"),
-        ("yes", "true", "false", "false"),
-        ("on", "true", "false", "false"),
+        "sim",
+        "use_container",
+        "external_camera",
+        "expected_external",
+        "expected_regular",
+    ),
+    (
+        ("false", "true", "false", "true", "false"),
+        ("false", "false", "false", "false", "true"),
+        ("1", "true", "false", "false", "false"),
+        ("yes", "true", "false", "false", "false"),
+        ("on", "true", "false", "false", "false"),
+        ("true", "true", "true", "true", "false"),
     ),
 )
 def test_launch_description_resolves_component_front_camera_ownership(
-    sim, use_container, expected_external, expected_regular
+    sim, use_container, external_camera, expected_external, expected_regular
 ):
     context = LaunchContext()
     context.launch_configurations.update({
@@ -273,8 +315,12 @@ def test_launch_description_resolves_component_front_camera_ownership(
         "enable_camera": "true",
         "enable_front_camera": "true",
         "perception_enable_yolo": "true",
+        "external_front_camera_source": external_camera,
     })
     _camera_owner_resolution_action().execute(context)
+    _camera_owner_resolution_action(
+        "front_camera_source_external_resolved"
+    ).execute(context)
     arguments = dict(
         _module_include("sensing.launch.py").launch_arguments
     )
@@ -295,8 +341,12 @@ def test_component_camera_owner_survives_scoped_child_front_override():
         "enable_camera": "true",
         "enable_front_camera": "true",
         "perception_enable_yolo": "true",
+        "external_front_camera_source": "false",
     })
     _camera_owner_resolution_action().execute(context)
+    _camera_owner_resolution_action(
+        "front_camera_source_external_resolved"
+    ).execute(context)
     arguments = dict(
         _module_include("sensing.launch.py").launch_arguments
     )
@@ -318,10 +368,47 @@ def test_component_camera_owner_survives_scoped_child_front_override():
 
 
 @pytest.mark.parametrize(
+    ("sim", "external_camera", "expected_yolo"),
+    (
+        ("false", "false", "true"),
+        ("true", "false", "false"),
+        ("true", "true", "true"),
+    ),
+)
+def test_external_front_camera_keeps_production_yolo_in_sim(
+    sim, external_camera, expected_yolo
+):
+    context = LaunchContext()
+    context.launch_configurations.update({
+        "sim": sim,
+        "use_camera_yolo_container": "false",
+        "enable_camera": "true",
+        "enable_front_camera": "true",
+        "perception_enable_yolo": "true",
+        "external_front_camera_source": external_camera,
+    })
+    _camera_owner_resolution_action().execute(context)
+    _camera_owner_resolution_action(
+        "front_camera_source_external_resolved"
+    ).execute(context)
+    arguments = dict(
+        _module_include("perception.launch.py").launch_arguments
+    )
+
+    assert context.perform_substitution(arguments["enable_yolo"]) == (
+        expected_yolo
+    )
+    assert context.perform_substitution(
+        arguments["front_camera_source_external"]
+    ) == external_camera
+
+
+@pytest.mark.parametrize(
     ("overrides", "expected_active"),
     (
         ({}, "true"),
         ({"sim": "true"}, "false"),
+        ({"sim": "true", "use_sim_parking_method": "false"}, "false"),
         ({"parking_method": "reverse"}, "false"),
         ({"enable_rear_camera": "false"}, "false"),
         ({"use_rear_camera_apriltag_container": "false"}, "false"),
@@ -334,6 +421,9 @@ def test_rear_apriltag_container_has_one_physical_owner(
     _camera_owner_resolution_action(
         "rear_camera_apriltag_container_active_resolved"
     ).execute(context)
+    _camera_owner_resolution_action(
+        "rear_camera_source_external_resolved"
+    ).execute(context)
     sensing_arguments = dict(
         _module_include("sensing.launch.py").launch_arguments
     )
@@ -343,7 +433,11 @@ def test_rear_apriltag_container_has_one_physical_owner(
 
     assert context.perform_substitution(
         sensing_arguments["rear_camera_source_external"]
-    ) == expected_active
+    ) == (
+        "true"
+        if overrides.get("external_rear_camera_source") == "true"
+        else expected_active
+    )
     expected_regular = "false" if expected_active == "true" else (
         "false" if overrides.get("sim") == "true" else
         overrides.get("enable_rear_camera", "true")
@@ -354,6 +448,39 @@ def test_rear_apriltag_container_has_one_physical_owner(
     assert context.perform_substitution(
         parking_arguments["launch_apriltag_detector"]
     ) == ("false" if expected_active == "true" else "true")
+
+
+def test_external_rear_camera_keeps_apriltag_detection_without_dummy_overlap():
+    context = _base_rear_owner_context(
+        sim="true",
+        use_sim_parking_method="false",
+        external_rear_camera_source="true",
+    )
+    _camera_owner_resolution_action(
+        "rear_camera_apriltag_container_active_resolved"
+    ).execute(context)
+    _camera_owner_resolution_action(
+        "rear_camera_source_external_resolved"
+    ).execute(context)
+    sensing_arguments = dict(
+        _module_include("sensing.launch.py").launch_arguments
+    )
+    parking_arguments = dict(
+        _module_include("parking.launch.py").launch_arguments
+    )
+
+    assert context.launch_configurations[
+        "rear_camera_apriltag_container_active_resolved"
+    ] == "false"
+    assert context.perform_substitution(
+        sensing_arguments["rear_camera_source_external"]
+    ) == "true"
+    assert context.perform_substitution(
+        sensing_arguments["enable_rear_camera"]
+    ) == "false"
+    assert context.perform_substitution(
+        parking_arguments["launch_apriltag_detector"]
+    ) == "true"
 
 
 def test_rear_apriltag_container_keeps_the_complete_intra_process_chain():

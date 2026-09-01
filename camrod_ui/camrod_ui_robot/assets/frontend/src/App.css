@@ -813,14 +813,6 @@ body {
   line-height: 1.6;
 }
 
-.arrival-complete-error {
-  margin: 0;
-  color: #b71c1c;
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1.45;
-}
-
 .arrival-complete-btn {
   margin-top: 1rem;
   padding: 1.4rem 5rem;
@@ -842,13 +834,6 @@ body {
 
 .arrival-complete-btn:active {
   transform: translateY(0);
-}
-
-.arrival-complete-btn:disabled,
-.preview-return-btn:disabled {
-  cursor: wait;
-  opacity: 0.62;
-  transform: none;
 }
 
 .move-confirm-overlay {
@@ -3375,23 +3360,6 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 0.28rem;
-}
-
-.lidar-raw-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  padding: 0.12rem 0.35rem;
-  border: 1px solid #c9d0cb;
-  border-radius: 0.28rem;
-  background: #f4f6f4;
-  cursor: pointer;
-  user-select: none;
-}
-
-.lidar-raw-toggle input {
-  margin: 0;
-  accent-color: #3b8f59;
 }
 
 .telemetry-legend-row i {

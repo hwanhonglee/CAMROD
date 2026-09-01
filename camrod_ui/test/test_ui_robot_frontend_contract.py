@@ -55,39 +55,6 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("if (isReturning && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
 
-    def test_repeated_standby_heartbeat_preserves_destination_selection(self) -> None:
-        """Only a real lifecycle edge may return the operator UI to idle."""
-        for token in (
-            "const shouldReturnToWaitingScreen = (previousState, nextState)",
-            "const previousBackendServiceStateRef = useRef(null)",
-            "const previousServiceState = previousBackendServiceStateRef.current;",
-            "previousBackendServiceStateRef.current = serviceState;",
-            "shouldReturnToWaitingScreen(previousServiceState, serviceState)",
-            "MOVING_SERVICE_STATES.has(previousState)",
-            "ARRIVAL_STATES.has(previousState)",
-            "RETURNING_STATES.has(previousState)",
-        ):
-            self.assertIn(token, self.source)
-
-        service_handler = self.source.split(
-            "if ('service_state' in data) {", 1
-        )[1].split(
-            "if ('system_health' in data)", 1
-        )[0]
-        standby_branch = service_handler.split(
-            "serviceState === SERVICE_STATE.DROP_ZONE_WAIT", 1
-        )[1].split(
-            "} else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED)", 1
-        )[0]
-        self.assertNotIn(
-            "setIsReturning(false);\n          setShowWaiting(true);",
-            standby_branch,
-        )
-        self.assertIn(
-            "if (shouldReturnToWaitingScreen(previousServiceState, serviceState))",
-            standby_branch,
-        )
-
     def test_site_keypad_layout_is_bounded_for_windowed_operation(self) -> None:
         self.assertIn("max-height: 94vh", self.css)
         self.assertIn(".move-verify-keyboard .vkb-key", self.css)
@@ -109,17 +76,26 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("TelemetryWorkspace", self.source)
         self.assertIn("diag-tab-bar", self.css)
 
-    def test_raw_lidar_overlay_is_explicitly_opt_in(self) -> None:
-        """The normal view must not paint CARLA/physical self returns."""
+    def test_raw_lidar_overlay_preserves_develop_default(self) -> None:
+        """Raw LiDAR retains develop's always-visible telemetry behavior."""
         for token in (
-            "showRawLidar = false",
-            "const [showRawLidar, setShowRawLidar] = useState(false)",
-            "showRawLidar ? (telemetry.lidar?.streams?.raw?.points || []) : []",
-            'aria-label="진단용 원시 LiDAR 오버레이"',
-            "Raw overlay ${showRawLidar ? 'ON' : 'OFF'}",
+            "const raw = telemetry.lidar?.streams?.raw?.points || []",
+            '<span><i className="legend-lidar-raw" />LiDAR raw</span>',
         ):
             self.assertIn(token, self.telemetry_source)
-        self.assertIn(".lidar-raw-toggle", self.css)
+        self.assertNotIn("showRawLidar", self.telemetry_source)
+        self.assertNotIn(".lidar-raw-toggle", self.css)
+
+    def test_perception_view_distinguishes_semantic_and_raw_visual_layers(self) -> None:
+        for token in (
+            "raw_lidar_bbox_overlay_enabled: true",
+            "telemetry.options?.raw_lidar_bbox_overlay_enabled !== false",
+            "Semantic fusion cost",
+            "Semantic obstacle cloud",
+            "Raw LiDAR bbox · visual only",
+            "Raw BBox outlines · visual only",
+        ):
+            self.assertIn(token, self.telemetry_source)
 
     def test_operator_telemetry_lease_is_closed_on_unmount(self) -> None:
         self.assertIn("/ws/telemetry?view=${view}", self.telemetry_source)
@@ -157,6 +133,17 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             'step="0.05"',
         ):
             self.assertIn(token, self.manual_drive_source)
+
+    def test_default_disabled_manual_drive_does_not_capture_global_input(self) -> None:
+        self.assertIn(
+            "const manualEnabled = manual.available || manual.connected;",
+            self.manual_drive_source,
+        )
+        self.assertGreaterEqual(
+            self.manual_drive_source.count("if (!manualEnabled) return undefined;"),
+            2,
+        )
+        self.assertIn("if (!manualEnabled) return null;", self.manual_drive_source)
         for mode in ("ackermann", "zero_turn", "crab"):
             self.assertIn(mode, self.manual_drive_source)
         for token in (
@@ -249,6 +236,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "window.addEventListener('blur', stopForBlur)",
             "window.addEventListener('pagehide', disarmForPageLifecycle)",
             "if (document.hidden) disarmForPageLifecycle()",
+            "const manualTransitionActive = manualRef.current.armed || armPendingRef.current;",
+            "socket.readyState === WebSocket.OPEN && manualTransitionActive",
         ):
             self.assertIn(token, self.manual_drive_source)
 
@@ -295,11 +284,11 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # from the managed UI without opening RViz or a separate browser tool.
         for token in (
             "/ui/manual_return",
-            "const hasFreshDockingDebug =",
-            "dockingCamera.available === true",
-            "dockingSource.state === 'live'",
-            "hasFreshDockingDebug ? 'docking' : 'rear'",
-            'source="camera.rear" label="CARLA rear fallback"',
+            "const rearFallbackEnabled = telemetry.options?.docking_rear_camera_fallback_enabled === true",
+            "const useRearFallback = rearFallbackEnabled && !hasFreshDockingDebug",
+            "const dockingCameraName = useRearFallback ? 'rear' : 'docking'",
+            ": 'AprilTag docking debug';",
+            "{rearFallbackEnabled && (",
             "Docking camera · CARLA rear fallback",
             "camera={dockingCameraName}",
             "DockingPathPlot",
@@ -314,59 +303,6 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertNotIn(removed, self.source)
             self.assertNotIn(removed, self.telemetry_source)
         self.assertIn(".docking-layout", self.css)
-
-    def test_public_return_waits_for_acknowledged_backend_command(self) -> None:
-        """The prominent Return buttons must never silently drop a command."""
-        handler = self.source.split(
-            "const handleArrivalComplete = async () => {", 1
-        )[1].split("const applyToggle", 1)[0]
-
-        self.assertIn("fetch('/ui/manual_return', { method: 'POST' })", handler)
-        self.assertIn("payload.success !== true", handler)
-        self.assertIn("setReturnCommandPending(true)", handler)
-        self.assertIn("setReturnCommandError", handler)
-        self.assertLess(
-            handler.index("payload.success !== true"),
-            handler.index("setShowArrivalComplete(false)"),
-        )
-        self.assertNotIn("usage_complete", handler)
-        self.assertNotIn("wsRef.current.send", handler)
-        self.assertIn("disabled={returnCommandPending}", self.source)
-        self.assertIn("arrival-complete-error", self.source)
-
-    def test_arrival_reconnect_restores_return_prompt_from_active_site(self) -> None:
-        """REST/guest missions must expose Return after arrival or reconnect."""
-        websocket_open = self.source.split(
-            "ws.onopen = async () => {", 1
-        )[1].split("ws.onmessage", 1)[0]
-        websocket_handler = self.source.split(
-            "ws.onmessage = (event) => {", 1
-        )[1].split("ws.onerror", 1)[0]
-
-        self.assertIn("const activeMissionSiteRef = useRef(null)", self.source)
-        self.assertIn("fetch('/ui/state')", websocket_open)
-        self.assertIn("snapshot.destination?.site", websocket_open)
-        self.assertIn("ARRIVAL_STATES.has(serviceState)", websocket_open)
-        self.assertIn("setShowArrivalComplete(true)", websocket_open)
-        self.assertIn("setShowWaiting(false)", websocket_open)
-        self.assertIn(
-            "activeMissionSiteRef.current = activeSite || null",
-            websocket_handler,
-        )
-        self.assertIn(
-            "data.site || data.arrived || activeMissionSiteRef.current",
-            websocket_handler,
-        )
-        arrived_handler = websocket_handler.split(
-            "if ('arrived' in data) {", 1
-        )[1].split("if ('service_state' in data)", 1)[0]
-        self.assertIn("setShowArrivalComplete(true)", arrived_handler)
-        self.assertIn("setShowWaiting(false)", arrived_handler)
-        arrival_state_handler = websocket_handler.split(
-            "ARRIVAL_STATES.has(serviceState)", 1
-        )[1].split("RETURNING_STATES.has(serviceState)", 1)[0]
-        self.assertIn("setShowArrivalComplete(true)", arrival_state_handler)
-        self.assertIn("setShowWaiting(false)", arrival_state_handler)
 
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)

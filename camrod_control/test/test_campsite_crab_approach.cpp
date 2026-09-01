@@ -10,6 +10,26 @@
 
 namespace camrod_control {
 
+TEST(CampsiteAdoptedWaitReturnYaw, SharedDefaultMatchesDevelopReconstruction) {
+  const double current = 30.0 * M_PI / 180.0;
+  EXPECT_NEAR(
+      campsiteAdoptedWaitReturnStartYaw(current, false, false),
+      -150.0 * M_PI / 180.0, 1.0e-12);
+  EXPECT_DOUBLE_EQ(
+      campsiteAdoptedWaitReturnStartYaw(current, true, false), current);
+}
+
+TEST(CampsiteAdoptedWaitReturnYaw, ReverseFlagDoesNotChangeDevelopAdoptionYaw) {
+  const double current = 30.0 * M_PI / 180.0;
+  EXPECT_DOUBLE_EQ(
+      campsiteAdoptedWaitReturnStartYaw(current, true, true), current);
+  EXPECT_NEAR(
+      campsiteAdoptedWaitReturnStartYaw(current, false, true),
+      -150.0 * M_PI / 180.0, 1.0e-12);
+  EXPECT_TRUE(std::isnan(campsiteAdoptedWaitReturnStartYaw(
+      std::numeric_limits<double>::quiet_NaN(), true, true)));
+}
+
 TEST(CampsiteCrabEntryBodyYawTarget,
      DisabledCompensationIsExactProductionIdentity) {
   // Preserve the nominal value byte-for-byte when the opt-in is disabled;

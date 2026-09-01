@@ -94,6 +94,10 @@ def test_sparse_diagnostics_profiles_follow_ordered_fallback_chain() -> None:
             str(carla), (str(sim), str(default)), "sensing", "imu_checker.yaml"
         ) == str(carla_file)
 
+    source = SYSTEM_LAUNCH.read_text(encoding="utf-8")
+    assert "if not fallback_dirs:" in source
+    assert 'fallback_dirs = [os.path.join(config_root, "default")]' in source
+
 
 def test_composed_checkers_keep_standalone_entrypoints() -> None:
     """Composition must not remove per-checker field-debug commands."""

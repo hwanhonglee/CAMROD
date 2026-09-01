@@ -78,6 +78,7 @@ class OperatorTelemetryTest(unittest.TestCase):
             telemetry_max_lidar_points=20,
             telemetry_lidar_max_abs_xy_m=12.0,
             telemetry_max_grid_cells=20,
+            telemetry_tf_transform_enabled=True,
             telemetry_tf_latest_fallback_tolerance_s=0.0,
             _tf_buffer=tf_buffer,
             get_logger=lambda: SimpleNamespace(
@@ -408,6 +409,28 @@ class OperatorTelemetryTest(unittest.TestCase):
                 ("map", "lidar_link"),
             ],
         )
+        self.assertEqual(warnings, [])
+
+    def test_develop_default_does_not_require_telemetry_tf(self) -> None:
+        class UnexpectedTfBuffer:
+            @staticmethod
+            def lookup_transform(_target, _source, _stamp):
+                raise AssertionError("TF must remain opt-in")
+
+        backend, warnings = self._telemetry_backend(UnexpectedTfBuffer())
+        backend.telemetry_tf_transform_enabled = False
+
+        UiBackendNode._on_telemetry_cloud(
+            backend,
+            "filtered",
+            self._single_point_cloud("lidar_link", 2.0, 0.0),
+        )
+
+        payload = backend._telemetry["lidar"]["streams"]["filtered"]
+        self.assertEqual(payload["frame_id"], "lidar_link")
+        self.assertEqual(payload["source_frame_id"], "lidar_link")
+        self.assertEqual(payload["points"], [[2.0, 0.0]])
+        self.assertNotIn("transform_available", payload)
         self.assertEqual(warnings, [])
 
     def test_cloud_callback_drops_geometry_when_tf_is_unavailable(self) -> None:
@@ -860,7 +883,7 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertTrue(pruned["cameras"]["docking"]["available"])
         self.assertEqual(pruned["lidar"]["points"], [])
 
-    def test_docking_view_subscribes_to_canonical_rear_camera_fallback(self) -> None:
+    def test_docking_rear_camera_subscription_is_explicitly_opt_in(self) -> None:
         source = (
             Path(__file__).resolve().parents[1]
             / "runtime"
@@ -868,7 +891,10 @@ class OperatorTelemetryTest(unittest.TestCase):
             / "camrod_ui"
             / "ui_backend_node.py"
         ).read_text(encoding="utf-8")
-        self.assertIn('if wants("camera", "docking"):', source)
+        self.assertIn(
+            '"telemetry_docking_rear_camera_fallback_enabled"', source
+        )
+        self.assertIn('wants("docking")', source)
         self.assertIn('self.telemetry_topics["rear_camera"]', source)
         self.assertIn('self.telemetry_topics["rear_camera_raw"]', source)
 
@@ -940,6 +966,90 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertIn("default_value='0.0'", tf_fallback_block)
         self.assertIn(
             "'telemetry_tf_latest_fallback_tolerance_s'", source
+        )
+        tf_transform_block = source.split(
+            "'operator_telemetry_tf_transform_enabled'", 1
+        )[1].split(
+            "operator_telemetry_tf_latest_fallback_tolerance_s_arg", 1
+        )[0]
+        self.assertIn("default_value='false'", tf_transform_block)
+        docking_fallback_block = source.split(
+            "'operator_telemetry_docking_rear_camera_fallback_enabled'", 1
+        )[1].split("enable_ui_guest_arg", 1)[0]
+        self.assertIn("default_value='false'", docking_fallback_block)
+
+    def test_raw_lidar_bbox_subscription_is_explicit_and_default_on(self) -> None:
+        """CARLA can hide raw boxes without changing develop's UI default."""
+        self.assertTrue(
+            UiBackendNode._new_telemetry_snapshot()["options"][
+                "raw_lidar_bbox_overlay_enabled"
+            ]
+        )
+
+        class Logger:
+            @staticmethod
+            def info(_message) -> None:
+                pass
+
+        def subscribed_topics(raw_bbox_enabled: bool):
+            subscriptions = []
+
+            def create_subscription(message_type, topic, _callback, _qos):
+                subscription = (message_type, topic)
+                subscriptions.append(subscription)
+                return subscription
+
+            no_op = lambda *_args, **_kwargs: None
+            backend = SimpleNamespace(
+                _telemetry_subscriptions=[],
+                _normalize_telemetry_view=UiBackendNode._normalize_telemetry_view,
+                _lock=threading.Lock(),
+                _telemetry_capture_active=False,
+                _telemetry_active_view="",
+                _telemetry={"session_active": False, "active_view": ""},
+                _reset_telemetry_source_timing_locked=no_op,
+                telemetry_raw_lidar_bbox_overlay_enabled=raw_bbox_enabled,
+                telemetry_topics=TELEMETRY_TOPIC_DEFAULTS,
+                create_subscription=create_subscription,
+                _on_telemetry_map=no_op,
+                _on_telemetry_footprint=no_op,
+                _on_telemetry_robot_markers=no_op,
+                _on_telemetry_obstacle_boxes=no_op,
+                get_logger=lambda: Logger(),
+            )
+            UiBackendNode._start_telemetry_subscriptions(
+                backend, "perception"
+            )
+            return subscriptions
+
+        without_raw_boxes = subscribed_topics(False)
+        with_raw_boxes = subscribed_topics(True)
+        semantic = (
+            PointCloud2, TELEMETRY_TOPIC_DEFAULTS["obstacle_cloud"]
+        )
+        raw_boxes = (
+            MarkerArray, TELEMETRY_TOPIC_DEFAULTS["obstacle_boxes"]
+        )
+
+        self.assertIn(semantic, without_raw_boxes)
+        self.assertIn(semantic, with_raw_boxes)
+        self.assertNotIn(raw_boxes, without_raw_boxes)
+        self.assertIn(raw_boxes, with_raw_boxes)
+
+        launch_source = (
+            Path(__file__).resolve().parents[1]
+            / "camrod_ui_robot"
+            / "launch"
+            / "ui.launch.py"
+        ).read_text(encoding="utf-8")
+        raw_bbox_block = launch_source.split(
+            "'operator_telemetry_raw_lidar_bbox_overlay_enabled'", 1
+        )[1].split(
+            "operator_telemetry_tf_latest_fallback_tolerance_s_arg", 1
+        )[0]
+        self.assertIn("default_value='true'", raw_bbox_block)
+        self.assertIn(
+            "'telemetry_raw_lidar_bbox_overlay_enabled'", launch_source
         )
 
     def test_tab_payload_prunes_unrelated_high_volume_sections(self) -> None:

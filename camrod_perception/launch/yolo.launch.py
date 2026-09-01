@@ -24,6 +24,13 @@ def generate_launch_description():
         default_model = ''
         default_labels = ''
 
+    # The ordinary/field default remains the packaged epoch74 engine.  Virtual
+    # CARLA opts into its GPU-local engine by setting this process-local
+    # variable in scripts/virtual_carla/run.sh.
+    model_override = os.environ.get('YOLOV9_MODEL_PATH', '').strip()
+    if model_override:
+        default_model = model_override
+
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace',      default_value='perception'),
         DeclareLaunchArgument('perception_param_file', default_value=default_param),

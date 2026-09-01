@@ -1,11 +1,25 @@
-# Fused obstacle cloud is produced from the actual CARLA LiDAR input.
+# Both streams are produced from actual CARLA sensor input. Monitoring the
+# detector separately prevents an empty-but-live fused cloud from hiding a
+# failed front-camera/YOLO path.
 /system/perception_obstacle_checker:
   ros__parameters:
     publish_rate_hz: 1.0
-    obstacle_names: ["fused_obstacles"]
+    obstacle_names: ["camera_detections", "fused_obstacles"]
+    camera_detections:
+      topic: "/perception/camera/detections_2d"
+      type: "Detection2DArray"
+      expected_hz: 2.0
+      hz_warn_ratio: 0.7
+      hz_error_ratio: 0.4
+      stale_timeout_s: 3.0
+      min_count: 0
+      max_count: 0
     fused_obstacles:
       topic: "/perception/obstacles"
       type: "PointCloud2"
+      # Production obstacle_fusion publishes RELIABLE depth 10. Match it here;
+      # only the expected wall-rate/staleness thresholds are CARLA-specific.
+      qos_profile: "reliable"
       expected_hz: 2.0
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4

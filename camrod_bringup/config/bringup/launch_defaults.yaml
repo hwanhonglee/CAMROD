@@ -16,6 +16,22 @@ bringup:
     external_simulator: false
     external_simulator_odometry_topic: /odom
     external_simulator_odometry_timeout_s: 0.5
+    # Ordinary sim uses CAMROD's deterministic fixture. External plants may
+    # disable it completely once their adapter owns odometry and sensor topics.
+    enable_fake_sensors: true
+    # Preserve the historical sim state-machine profile unless an external
+    # simulator explicitly requests the production planning contract.
+    use_sim_planning_profile: true
+    # The deterministic built-in simulator retains its relaxed localization
+    # and pose-driven parking profiles. External plants can select production.
+    use_sim_localization_profile: true
+    use_sim_parking_method: true
+    # An external adapter may publish the canonical econ_front image and
+    # CameraInfo topics while all hardware camera drivers remain disabled.
+    external_front_camera_source: false
+    # The rear source is independent so production AprilTag parking can consume
+    # an external canonical image_rect/CameraInfo pair without a dummy camera.
+    external_rear_camera_source: false
     # Ordinary sim keeps the built-in raw Ranger/BMS heartbeat. External
     # simulators can disable it when their adapter owns those two raw topics.
     sim_publish_platform_status: true
@@ -172,6 +188,9 @@ bringup:
     # ---- Per-planning-node parameter file overrides ----
     path_cost_grids_param_file: planning/path_cost_grids.yaml
     goal_snapper_param_file: planning/goal_snapper.yaml
+    # Keep the CARLA-discovered active-goal reissue behavior opt-in. Ordinary
+    # develop parity reissues only when Nav2 is no longer active.
+    goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active: false
     centerline_snapper_param_file: planning/centerline_snapper.yaml
     goal_replanner_param_file: planning/goal_replanner.yaml
     obstacle_replan_monitor_param_file: planning/obstacle_replan_monitor.yaml
@@ -299,6 +318,10 @@ bringup:
     enable_drop_zone_maneuver_controller: true
     # HH_260803 / TODOLIST 12 - Execute only gate-approved bounded reverse/crab recovery.
     enable_route_safety_recovery_controller: true
+    # Simulation-tuned recovery clock/yaw behavior is opt-in and is forwarded
+    # to the recovery controller without changing production defaults.
+    route_safety_recovery_zero_hold_pauses_limits: false
+    route_safety_recovery_allow_corrective_yaw_beyond_limit: false
     param_file: __module_default__
 
     # HH_260720 - Navigation and maneuver commands enter camrod_control here.
@@ -449,6 +472,9 @@ bringup:
     cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
     cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
     cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
+    # Full-route path-relative recovery was introduced for CARLA mission
+    # tuning. Keep it disabled unless a deployment overlay explicitly opts in.
+    cmd_vel_gate_route_safety_path_relative_recovery_enable: false
     # HH_260810 - Bound retries per contact region and reset only after the
     # robot progresses beyond the original contact point.
     cmd_vel_gate_route_safety_recovery_max_auto_releases: 50
@@ -615,6 +641,9 @@ bringup:
     mode: auto
     # By default, use internal config defaults declared by perception launch files.
     perception_param_file: perception/perception_params.yaml
+    # Final sparse geometry/runtime overlay. Ordinary CAMROD resolves this
+    # sentinel to camrod_perception's empty disabled profile.
+    runtime_override_param_file: __module_default__
 
   # =========================================================================
   # 9. SYSTEM
@@ -663,6 +692,12 @@ bringup:
     # HH_260810 - Selected-view latest-value stream ceiling. Ten Hz follows the
     # camera target while remaining bounded for the 8-core ARM64 deployment.
     operator_telemetry_stream_rate_hz: 10.0
+    # Exact production geometry remains in the sensor/map frames. External
+    # simulator compositions may explicitly opt into TF transformation.
+    operator_telemetry_tf_transform_enabled: false
+    # Preserve develop's diagnostic raw Euclidean BBox overlay. External
+    # simulator profiles may disable it so only semantic fusion is shown.
+    operator_telemetry_raw_lidar_bbox_overlay_enabled: true
     # Production UI geometry requires exact-time TF. Simulator compositions
     # may explicitly override this bounded future-stamp fallback tolerance.
     operator_telemetry_tf_latest_fallback_tolerance_s: 0.0
@@ -670,6 +705,12 @@ bringup:
     # generic profile retains the UI backend's raw-image JPEG fallback. CARLA
     # overrides only this value because its relay guarantees compressed topics.
     operator_telemetry_camera_raw_fallback_enabled: true
+    # Production docking uses the AprilTag debug stream as its only semantic
+    # source; simulator UIs may explicitly fall back to the rear camera.
+    operator_telemetry_docking_rear_camera_fallback_enabled: false
+    # Production return keeps its existing authorization lifecycle. External
+    # simulator compositions may re-arm explicitly after campsite exit.
+    return_site_exit_rearm_enabled: false
     # HH_260803 - Serve the guest workflow with the same scenario backend.
     enable_guest_ui: true
     guest_ui_host: 0.0.0.0

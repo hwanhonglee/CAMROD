@@ -145,6 +145,10 @@ TEST(BoundedRecoveryAttemptPolicy, TotalTravelAndTimeRemainFinalStops) {
             BoundedRecoveryAction::kFinalHold);
 }
 
+TEST(PathRelativeRouteRecovery, SharedPolicyIsDisabledByDefault) {
+  EXPECT_FALSE(PathRelativeRecoveryConfig{}.enabled);
+}
+
 TEST(BoundedRecoveryCandidatePolicy, ExactGateZeroIsAValidFailClosedHold) {
   const avg_msgs::msg::AvgTwist zero;
   EXPECT_EQ(ClassifyBoundedRecoveryCandidate(zero),
@@ -195,6 +199,52 @@ TEST(BoundedRecoveryAttemptPolicy,
 
   EXPECT_FALSE(BoundedRecoveryYawCommandPermitted(
       std::numeric_limits<double>::quiet_NaN(), -0.10, limit));
+}
+
+TEST(BoundedRecoveryAttemptPolicy, DevelopBehaviorRemainsTheDefault) {
+  const BoundedRecoveryBehaviorConfig defaults;
+  const double limit = degrees(12.0);
+  avg_msgs::msg::AvgTwist nonfinite_candidate;
+  nonfinite_candidate.linear.x = std::numeric_limits<double>::quiet_NaN();
+
+  EXPECT_FALSE(defaults.zero_hold_pauses_limits);
+  EXPECT_FALSE(defaults.allow_corrective_yaw_beyond_limit);
+  EXPECT_FALSE(BoundedRecoveryCandidatePausesLimits(
+      BoundedRecoveryCandidateDisposition::kZeroHold, defaults));
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermittedForConfig(
+      degrees(13.0), -0.10, limit, defaults));
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermittedForConfig(
+      degrees(11.9), 0.10, limit, defaults));
+  // origin/develop used direct floating-point comparisons. Preserve those
+  // exact edge semantics unless the simulator zero-hold policy is enabled.
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidateForConfig(
+                nonfinite_candidate, defaults),
+            BoundedRecoveryCandidateDisposition::kMotion);
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermittedForConfig(
+      std::numeric_limits<double>::quiet_NaN(), -0.10, limit, defaults));
+}
+
+TEST(BoundedRecoveryAttemptPolicy, TunedBehaviorRequiresExplicitOptIn) {
+  BoundedRecoveryBehaviorConfig tuned;
+  tuned.zero_hold_pauses_limits = true;
+  tuned.allow_corrective_yaw_beyond_limit = true;
+  const double limit = degrees(12.0);
+  avg_msgs::msg::AvgTwist nonfinite_candidate;
+  nonfinite_candidate.linear.x = std::numeric_limits<double>::quiet_NaN();
+
+  EXPECT_TRUE(BoundedRecoveryCandidatePausesLimits(
+      BoundedRecoveryCandidateDisposition::kZeroHold, tuned));
+  EXPECT_FALSE(BoundedRecoveryCandidatePausesLimits(
+      BoundedRecoveryCandidateDisposition::kInvalid, tuned));
+  EXPECT_TRUE(BoundedRecoveryYawCommandPermittedForConfig(
+      degrees(13.0), -0.10, limit, tuned));
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermittedForConfig(
+      degrees(13.0), 0.10, limit, tuned));
+  EXPECT_EQ(ClassifyBoundedRecoveryCandidateForConfig(
+                nonfinite_candidate, tuned),
+            BoundedRecoveryCandidateDisposition::kInvalid);
+  EXPECT_FALSE(BoundedRecoveryYawCommandPermittedForConfig(
+      std::numeric_limits<double>::quiet_NaN(), -0.10, limit, tuned));
 }
 
 TEST(BoundedRecoveryAttemptPolicy, ExactZeroPausesAttemptAndEpisodeClocks) {

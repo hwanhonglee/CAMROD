@@ -265,6 +265,10 @@ def generate_launch_description():
             default_value='',
         ),
         DeclareLaunchArgument(
+            'goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active',
+            default_value='false',
+        ),
+        DeclareLaunchArgument(
             'planning_state_machine_reverse_auto_goal_snapper_input_topic',
             default_value='',
         ),
@@ -335,6 +339,7 @@ def generate_launch_description():
                 'goal_snapper_param_file',
                 'goal_snapper_reverse_auxiliary_input_goal_topic',
                 'goal_snapper_pose_jump_check_topic',
+                'goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active',
                 'centerline_snapper_param_file',
             ).items(),
         ),

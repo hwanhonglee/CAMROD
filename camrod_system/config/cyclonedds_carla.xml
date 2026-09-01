@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  CARLA-only CycloneDDS transport profile.
+
+  Opt in with:
+    export CYCLONEDDS_URI=file://<camrod_system-share>/config/cyclonedds_carla.xml
+
+  The repository-root cyclonedds.xml intentionally remains identical to
+  origin/develop. CARLA's concurrent 800x600 BGRA camera frames need larger
+  receive and send socket buffers, but ordinary CAMROD deployments must not
+  inherit that simulator-specific transport policy implicitly.
+-->
 <CycloneDDS xmlns="https://cdds.io/config"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
@@ -12,7 +23,8 @@
       <MaxAutoParticipantIndex>1000</MaxAutoParticipantIndex>
     </Discovery>
     <Internal>
-      <SocketReceiveBufferSize min="10MB"/>
+      <SocketReceiveBufferSize min="20MiB"/>
+      <SocketSendBufferSize min="20MiB"/>
       <Watermarks>
         <WhcHigh>500kB</WhcHigh>
       </Watermarks>

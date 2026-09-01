@@ -72,14 +72,13 @@ public:
 
     marker_lifetime_s_ = this->declare_parameter<double>("marker_lifetime_s", 0.15);
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
-    // Production camera-LiDAR fusion remains the default owner of
-    // /perception/obstacles.  External simulators may opt into this LiDAR-only
-    // cloud so the topic contains points from valid Euclidean clusters instead
-    // of a raw sensor alias.
+    // This cloud is visualization-only. Production camera-LiDAR fusion is the
+    // sole semantic owner of /perception/obstacles for both hardware and
+    // external simulators.
     publish_cluster_cloud_ = this->declare_parameter<bool>(
       "publish_cluster_cloud", false);
-    obstacle_cloud_topic_ = this->declare_parameter<std::string>(
-      "obstacle_cloud_topic", "/perception/obstacles");
+    cluster_cloud_topic_ = this->declare_parameter<std::string>(
+      "cluster_cloud_topic", "/perception/lidar/cluster_points");
 
     // HH_260721 - Publish the explicit generated obstacle contract without message aliases.
     sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -92,14 +91,14 @@ public:
     if (publish_cluster_cloud_) {
       pub_obstacle_cloud_ =
         this->create_publisher<sensor_msgs::msg::PointCloud2>(
-        obstacle_cloud_topic_, rclcpp::SensorDataQoS());
+        cluster_cloud_topic_, rclcpp::SensorDataQoS());
     }
 
     RCLCPP_INFO(
       this->get_logger(),
       "Euclidean+BBox started. input=%s cluster_cloud=%s topic=%s",
       input_topic_.c_str(), publish_cluster_cloud_ ? "on" : "off",
-      obstacle_cloud_topic_.c_str());
+      cluster_cloud_topic_.c_str());
   }
 
 private:
@@ -154,8 +153,10 @@ private:
     ec.extract(cluster_indices);
 
     if (cluster_indices.empty()) {
-      pcl::PointCloud<pcl::PointXYZ> empty_cloud;
-      publishClusterCloud(*msg, empty_cloud);
+      if (pub_obstacle_cloud_) {
+        pcl::PointCloud<pcl::PointXYZ> empty_cloud;
+        publishClusterCloud(*msg, empty_cloud);
+      }
       publishDeleteAll(msg->header.frame_id, msg->header.stamp);
       return;
     }
@@ -163,7 +164,10 @@ private:
     std::vector<AABB> boxes(cluster_indices.size());
     std::vector<float> min_dists(cluster_indices.size(), std::numeric_limits<float>::max());
     pcl::PointCloud<pcl::PointXYZ> cluster_cloud;
-    cluster_cloud.reserve(filtered->size());
+    const bool cluster_cloud_requested = hasClusterCloudSubscribers();
+    if (cluster_cloud_requested) {
+      cluster_cloud.reserve(filtered->size());
+    }
 
     for (size_t i = 0; i < cluster_indices.size(); ++i) {
       auto & b = boxes[i];
@@ -173,7 +177,9 @@ private:
 
       for (auto idx : cluster_indices[i].indices) {
         const auto & p = filtered->points[idx];
-        cluster_cloud.push_back(p);
+        if (cluster_cloud_requested) {
+          cluster_cloud.push_back(p);
+        }
 
         b.min_x = std::min(b.min_x, p.x);
         b.min_y = std::min(b.min_y, p.y);
@@ -190,7 +196,9 @@ private:
         if (d < min_dists[i]) {min_dists[i] = d;}
       }
     }
-    publishClusterCloud(*msg, cluster_cloud);
+    if (cluster_cloud_requested) {
+      publishClusterCloud(*msg, cluster_cloud);
+    }
 
     visualization_msgs::msg::MarkerArray arr;
 
@@ -292,7 +300,7 @@ private:
     const sensor_msgs::msg::PointCloud2 & source,
     const pcl::PointCloud<pcl::PointXYZ> & cloud)
   {
-    if (!pub_obstacle_cloud_) {
+    if (!hasClusterCloudSubscribers()) {
       return;
     }
     sensor_msgs::msg::PointCloud2 output;
@@ -301,7 +309,14 @@ private:
     pub_obstacle_cloud_->publish(output);
   }
 
-  std::string input_topic_, bbox_topic_, obstacle_cloud_topic_;
+  bool hasClusterCloudSubscribers() const
+  {
+    return pub_obstacle_cloud_ &&
+           (pub_obstacle_cloud_->get_subscription_count() +
+           pub_obstacle_cloud_->get_intra_process_subscription_count() > 0U);
+  }
+
+  std::string input_topic_, bbox_topic_, cluster_cloud_topic_;
 
   double cluster_tolerance_;
   int min_cluster_size_;

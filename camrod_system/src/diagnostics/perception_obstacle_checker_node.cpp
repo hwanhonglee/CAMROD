@@ -66,6 +66,7 @@ struct ObstacleSource
   std::string name;
   std::string topic;
   std::string type;            // "PointCloud2" or "Detection2DArray"
+  std::string qos_profile{"reliable"};
   double      expected_hz{10.0};
   double      hz_warn_ratio{0.8};
   double      hz_error_ratio{0.5};
@@ -114,6 +115,7 @@ protected:
 
       declare_parameter(name + ".topic",          std::string(""));
       declare_parameter(name + ".type",           std::string("PointCloud2"));
+      declare_parameter(name + ".qos_profile",    std::string("reliable"));
       declare_parameter(name + ".expected_hz",    10.0);
       declare_parameter(name + ".hz_warn_ratio",  0.8);
       declare_parameter(name + ".hz_error_ratio", 0.5);
@@ -123,6 +125,7 @@ protected:
 
       src->topic          = get_parameter(name + ".topic").as_string();
       src->type           = get_parameter(name + ".type").as_string();
+      src->qos_profile    = get_parameter(name + ".qos_profile").as_string();
       src->expected_hz    = get_parameter(name + ".expected_hz").as_double();
       src->hz_warn_ratio  = get_parameter(name + ".hz_warn_ratio").as_double();
       src->hz_error_ratio = get_parameter(name + ".hz_error_ratio").as_double();
@@ -160,13 +163,21 @@ protected:
 
       } else {
         // PointCloud2 (기본)
-        // LiDAR/obstacle clouds are sensor-data streams and may legitimately
-        // be published BEST_EFFORT (CARLA and the production LiDAR path both
-        // use that contract).  A reliable-only diagnostic subscriber is QoS
-        // incompatible and falsely reports "No topic messages" even while the
-        // safety consumer receives the cloud.
+        // Keep the develop contract (RELIABLE depth 10) unless an external
+        // simulator profile explicitly requests sensor-data QoS.
+        rclcpp::QoS pointcloud_qos = rclcpp::QoS(10);
+        if (src->qos_profile == "sensor_data" ||
+            src->qos_profile == "best_effort")
+        {
+          pointcloud_qos = rclcpp::SensorDataQoS();
+        } else if (src->qos_profile != "reliable") {
+          RCLCPP_WARN(
+            get_logger(),
+            "[%s] unknown qos_profile='%s'; using reliable",
+            src->name.c_str(), src->qos_profile.c_str());
+        }
         src->pc2_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
-          src->topic, rclcpp::SensorDataQoS(),
+          src->topic, pointcloud_qos,
           [this, src](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
             std::lock_guard<std::mutex> lock(src->mtx);
             const auto now     = this->now();
@@ -182,8 +193,9 @@ protected:
           });
 
         RCLCPP_INFO(get_logger(),
-          "[%s] PointCloud2 checker started (topic=%s, expected_hz=%.1f)",
-          src->name.c_str(), src->topic.c_str(), src->expected_hz);
+          "[%s] PointCloud2 checker started (topic=%s, expected_hz=%.1f, qos=%s)",
+          src->name.c_str(), src->topic.c_str(), src->expected_hz,
+          src->qos_profile.c_str());
       }
 
       const std::string diag_name = "/perception/obstacles/" + src->name;

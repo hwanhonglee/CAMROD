@@ -137,6 +137,10 @@
     # HH_260729 - Reissue a retained goal only when its Nav2 action aborted
     # during an explicit route-safety hold and the gate later becomes enabled.
     reissue_active_goal_after_route_recovery: true
+    # CARLA may leave Nav2 EXECUTING while a separate bounded controller owns
+    # the recovery. Keep refreshing that active action opt-in so the shared
+    # package remains behaviorally equivalent to develop.
+    reissue_active_goal_after_route_recovery_when_nav_active: false
     route_recovery_status_topic: "/control/cmd_vel_safety_gate/status"
     route_recovery_reissue_clear_delay_s: 0.5
     route_recovery_reissue_min_interval_s: 2.0

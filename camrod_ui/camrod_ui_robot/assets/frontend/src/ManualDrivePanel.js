@@ -105,6 +105,7 @@ export default function ManualDrivePanel() {
   const disarmPendingRef = useRef(false);
   const manualRef = useRef(EMPTY_STATE);
   const scaleRef = useRef(1.0);
+  const manualEnabled = manual.available || manual.connected;
 
   const applyState = useCallback(next => {
     const merged = {
@@ -277,7 +278,8 @@ export default function ManualDrivePanel() {
       mounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       const socket = socketRef.current;
-      if (socket && socket.readyState === WebSocket.OPEN) {
+      const manualTransitionActive = manualRef.current.armed || armPendingRef.current;
+      if (socket && socket.readyState === WebSocket.OPEN && manualTransitionActive) {
         sequenceRef.current += 1;
         socket.send(JSON.stringify({ type: 'disarm', seq: sequenceRef.current }));
       }
@@ -290,11 +292,16 @@ export default function ManualDrivePanel() {
   }, [applyState, replacePressed]);
 
   useEffect(() => {
+    if (!manualEnabled) return undefined;
     const timer = setInterval(sendDrive, 100);
     return () => clearInterval(timer);
-  }, [sendDrive]);
+  }, [manualEnabled, sendDrive]);
 
   useEffect(() => {
+    // Keep the ordinary develop UI completely inert when the CARLA-only
+    // backend topic is absent. In particular, do not consume Space/Escape or
+    // install a 10 Hz heartbeat timer for a panel that is not rendered.
+    if (!manualEnabled) return undefined;
     const keyDown = event => {
       if (isTextEntry(event.target)) return;
       if (event.code === 'Space') {
@@ -345,7 +352,7 @@ export default function ManualDrivePanel() {
       window.removeEventListener('pagehide', disarmForPageLifecycle);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [clearMotion, replacePressed, sendDrive]);
+  }, [clearMotion, manualEnabled, replacePressed, sendDrive]);
 
   const changeButton = (code, active) => event => {
     event.preventDefault();
@@ -387,7 +394,7 @@ export default function ManualDrivePanel() {
     setScale(value);
   };
 
-  if (!manual.available && !manual.connected) return null;
+  if (!manualEnabled) return null;
 
   const command = manual.command || EMPTY_STATE.command;
   const requestedLinearMps = Number(manual.limits?.linear_x_mps || 0) * scale;

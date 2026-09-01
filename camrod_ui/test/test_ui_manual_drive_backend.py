@@ -253,6 +253,41 @@ class UiManualDriveBackendTest(unittest.TestCase):
         self.assertFalse(response["manual_drive"]["armed"])
         self.assertEqual(response["manual_drive"]["reason"], "client_disarm")
 
+    def test_unarmed_disarm_does_not_disengage_autonomy(self) -> None:
+        backend, policy, lease, events = self.make_backend()
+
+        response = UiBackendNode._disarm_manual_drive(
+            backend, lease, control_frame("disarm", 1)
+        )
+
+        self.assertEqual(events, [])
+        self.assertTrue(response["manual_drive"]["connected"])
+        self.assertFalse(response["manual_drive"]["armed"])
+        self.assertEqual(response["manual_drive"]["reason"], "client_disarm")
+
+    def test_unarmed_disconnect_releases_lease_without_disengaging_autonomy(self) -> None:
+        backend, policy, lease, events = self.make_backend()
+        backend._manual_drive_transport = SimpleNamespace(lease=lease)
+
+        self.assertTrue(UiBackendNode._disconnect_manual_drive(backend, lease))
+
+        self.assertEqual(events, [])
+        self.assertIsNone(backend._manual_drive_transport)
+        self.assertFalse(policy.snapshot()["connected"])
+
+    def test_armed_disconnect_remains_fail_closed(self) -> None:
+        backend, policy, lease, events = self.make_backend()
+        policy.arm(lease, control_frame("arm", 1), 10.0)
+        policy.drive(lease, drive_frame(2, forward=1), 10.0)
+
+        self.assertTrue(UiBackendNode._disconnect_manual_drive(backend, lease))
+
+        self.assertEqual(
+            [event[0] for event in events], ["zero", "manual_engage"]
+        )
+        self.assertFalse(events[-1][1])
+        self.assertFalse(policy.snapshot()["connected"])
+
     def test_malformed_owner_frame_is_fail_closed(self) -> None:
         backend, policy, lease, events = self.make_backend()
         policy.arm(lease, control_frame("arm", 1), 10.0)
@@ -338,6 +373,23 @@ class UiManualDriveBackendTest(unittest.TestCase):
         )
         self.assertIs(events[-1][1], transport)
         self.assertEqual(events[-1][2], "shutdown")
+        self.assertIsNone(backend._manual_drive_transport)
+        self.assertFalse(policy.snapshot()["connected"])
+
+    def test_unarmed_shutdown_releases_lease_without_disengaging_autonomy(self) -> None:
+        backend, policy, lease, events = self.make_backend()
+        transport = object()
+        backend._manual_drive_transport = transport
+        backend._manual_drive_shutdown_done = False
+        backend._schedule_manual_drive_payload = (
+            lambda selected, payload: events.append(
+                ("notify", selected, payload["manual_drive"]["reason"])
+            )
+        )
+
+        UiBackendNode._shutdown_manual_drive(backend)
+
+        self.assertEqual(events, [("notify", transport, "shutdown")])
         self.assertIsNone(backend._manual_drive_transport)
         self.assertFalse(policy.snapshot()["connected"])
 

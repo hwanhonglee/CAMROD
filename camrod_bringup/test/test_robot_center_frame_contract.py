@@ -334,7 +334,9 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
     assert parameters[
         "route_safety_recovery_progress_reset_distance_m"
     ] == pytest.approx(0.75)
-    assert parameters["route_safety_path_relative_recovery_enable"] is True
+    # Path-relative CARLA/Woraksan recovery changes candidate selection and is
+    # therefore an explicit simulator overlay, not a develop default.
+    assert parameters["route_safety_path_relative_recovery_enable"] is False
     assert parameters["route_safety_path_full_route_topic"] == "/planning/global_path_avg"
     assert parameters["route_safety_path_center_tolerance_m"] == pytest.approx(0.05)
     assert parameters["route_safety_path_center_reentry_m"] == pytest.approx(0.08)

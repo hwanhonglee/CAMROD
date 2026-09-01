@@ -32,6 +32,7 @@ TEST(RouteGoalRecovery, ActiveGoalReissuesAfterHoldAndEnabledClearDelay)
 {
   RouteGoalRecoveryConfig config;
   config.clear_delay_s = 0.5;
+  config.reissue_while_nav_active = true;
   RouteGoalRecovery recovery(config);
   recovery.resetForGoal();
 
@@ -44,6 +45,21 @@ TEST(RouteGoalRecovery, ActiveGoalReissuesAfterHoldAndEnabledClearDelay)
   EXPECT_TRUE(recovery.ready(2.5));
   EXPECT_TRUE(recovery.navActive());
   EXPECT_FALSE(recovery.navAborted());
+}
+
+TEST(RouteGoalRecovery, ActiveGoalDoesNotReissueByDefault)
+{
+  RouteGoalRecoveryConfig config;
+  config.clear_delay_s = 0.0;
+  RouteGoalRecovery recovery(config);
+  recovery.resetForGoal();
+
+  recovery.observeNavActive();
+  recovery.observeRouteHold(true, false, 1.0);
+  recovery.observeRouteHold(false, true, 2.0);
+
+  EXPECT_FALSE(config.reissue_while_nav_active);
+  EXPECT_FALSE(recovery.ready(2.0));
 }
 
 TEST(RouteGoalRecovery, ActiveGoalWithoutHoldNeverReissues)
@@ -64,6 +80,7 @@ TEST(RouteGoalRecovery, ReissueIsIntervalBoundedAndNeedsANewHold)
 {
   RouteGoalRecoveryConfig config;
   config.clear_delay_s = 0.0;
+  config.reissue_while_nav_active = true;
   config.minimum_reissue_interval_s = 2.0;
   config.maximum_reissues_per_goal = 2;
   RouteGoalRecovery recovery(config);
@@ -93,10 +110,11 @@ TEST(RouteGoalRecovery, ReissueIsIntervalBoundedAndNeedsANewHold)
   EXPECT_FALSE(recovery.ready(6.0));
 }
 
-TEST(RouteGoalRecovery, SucceededStatusSuppressesLaterReengage)
+TEST(RouteGoalRecovery, ActiveReissuePolicySuppressesSucceededGoal)
 {
   RouteGoalRecoveryConfig config;
   config.clear_delay_s = 0.0;
+  config.reissue_while_nav_active = true;
   RouteGoalRecovery recovery(config);
   recovery.resetForGoal();
   recovery.observeRouteHold(true, false, 1.0);
@@ -113,10 +131,11 @@ TEST(RouteGoalRecovery, SucceededStatusSuppressesLaterReengage)
   EXPECT_FALSE(recovery.ready(3.0));
 }
 
-TEST(RouteGoalRecovery, CanceledStatusSuppressesLaterReengage)
+TEST(RouteGoalRecovery, ActiveReissuePolicySuppressesCanceledGoal)
 {
   RouteGoalRecoveryConfig config;
   config.clear_delay_s = 0.0;
+  config.reissue_while_nav_active = true;
   RouteGoalRecovery recovery(config);
   recovery.resetForGoal();
   recovery.observeRouteHold(true, false, 1.0);
@@ -130,6 +149,42 @@ TEST(RouteGoalRecovery, CanceledStatusSuppressesLaterReengage)
   EXPECT_FALSE(recovery.navActive());
   EXPECT_FALSE(recovery.navAborted());
   EXPECT_FALSE(recovery.ready(3.0));
+}
+
+TEST(RouteGoalRecovery, DevelopDefaultDoesNotLatchSucceededAsTerminal)
+{
+  RouteGoalRecoveryConfig config;
+  config.clear_delay_s = 0.0;
+  RouteGoalRecovery recovery(config);
+  recovery.resetForGoal();
+
+  recovery.observeNavSucceeded();
+  recovery.observeRouteHold(true, false, 1.0);
+  recovery.observeNavAborted();
+  recovery.observeRouteHold(false, true, 2.0);
+
+  EXPECT_FALSE(config.reissue_while_nav_active);
+  EXPECT_TRUE(recovery.navAborted());
+  EXPECT_TRUE(recovery.ready(2.0));
+}
+
+TEST(RouteGoalRecovery, DevelopDefaultDoesNotLatchCanceledAsTerminal)
+{
+  RouteGoalRecoveryConfig config;
+  config.clear_delay_s = 0.0;
+  RouteGoalRecovery recovery(config);
+  recovery.resetForGoal();
+
+  recovery.observeRouteHold(true, false, 1.0);
+  recovery.observeNavCanceled();
+  recovery.observeNavActive();
+  recovery.observeNavAborted();
+  recovery.observeRouteHold(true, false, 2.0);
+  recovery.observeRouteHold(false, true, 3.0);
+
+  EXPECT_FALSE(config.reissue_while_nav_active);
+  EXPECT_TRUE(recovery.navAborted());
+  EXPECT_TRUE(recovery.ready(3.0));
 }
 
 }  // namespace camrod_planning

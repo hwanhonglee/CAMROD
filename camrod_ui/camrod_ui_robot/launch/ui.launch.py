@@ -87,6 +87,24 @@ def generate_launch_description():
         default_value='10.0',
         description='Maximum selected-view WebSocket refresh rate in Hz',
     )
+    operator_telemetry_tf_transform_enabled_arg = DeclareLaunchArgument(
+        'operator_telemetry_tf_transform_enabled',
+        default_value='false',
+        description=(
+            'Transform telemetry clouds and marker geometry through TF; '
+            'external-simulator opt-in'
+        ),
+    )
+    operator_telemetry_raw_lidar_bbox_overlay_enabled_arg = (
+        DeclareLaunchArgument(
+            'operator_telemetry_raw_lidar_bbox_overlay_enabled',
+            default_value='true',
+            description=(
+                'Subscribe and render classless Euclidean LiDAR bounding boxes; '
+                'enabled for develop compatibility and disabled by CARLA'
+            ),
+        )
+    )
     operator_telemetry_tf_latest_fallback_tolerance_s_arg = (
         DeclareLaunchArgument(
             'operator_telemetry_tf_latest_fallback_tolerance_s',
@@ -104,6 +122,16 @@ def generate_launch_description():
             'Subscribe to raw front/rear images when compressed operator '
             'camera streams may be unavailable'
         ),
+    )
+    operator_telemetry_docking_rear_camera_fallback_enabled_arg = (
+        DeclareLaunchArgument(
+            'operator_telemetry_docking_rear_camera_fallback_enabled',
+            default_value='false',
+            description=(
+                'Use rear camera when AprilTag docking debug is stale; '
+                'external-simulator opt-in'
+            ),
+        )
     )
     enable_ui_guest_arg = DeclareLaunchArgument(
         'enable_ui_guest',
@@ -233,6 +261,14 @@ def generate_launch_description():
         default_value='0.5',
         description='Stopped hold between cancelling an active Nav2 goal and dispatching Return',
     )
+    return_site_exit_rearm_enabled_arg = DeclareLaunchArgument(
+        'return_site_exit_rearm_enabled',
+        default_value='false',
+        description=(
+            'Re-arm mission/drive authorization before campsite return; '
+            'external-simulator opt-in'
+        ),
+    )
     charging_departure_delay_s_arg = DeclareLaunchArgument(
         'charging_departure_delay_s',
         # HH_260825 - A one-shot stopped dwell gives people time to clear the
@@ -313,6 +349,18 @@ def generate_launch_description():
                 LaunchConfiguration('operator_telemetry_stream_rate_hz'),
                 value_type=float,
             ),
+            'telemetry_tf_transform_enabled': ParameterValue(
+                LaunchConfiguration(
+                    'operator_telemetry_tf_transform_enabled'
+                ),
+                value_type=bool,
+            ),
+            'telemetry_raw_lidar_bbox_overlay_enabled': ParameterValue(
+                LaunchConfiguration(
+                    'operator_telemetry_raw_lidar_bbox_overlay_enabled'
+                ),
+                value_type=bool,
+            ),
             'telemetry_tf_latest_fallback_tolerance_s': ParameterValue(
                 LaunchConfiguration(
                     'operator_telemetry_tf_latest_fallback_tolerance_s'
@@ -322,6 +370,12 @@ def generate_launch_description():
             'telemetry_camera_raw_fallback_enabled': ParameterValue(
                 LaunchConfiguration(
                     'operator_telemetry_camera_raw_fallback_enabled'
+                ),
+                value_type=bool,
+            ),
+            'telemetry_docking_rear_camera_fallback_enabled': ParameterValue(
+                LaunchConfiguration(
+                    'operator_telemetry_docking_rear_camera_fallback_enabled'
                 ),
                 value_type=bool,
             ),
@@ -357,6 +411,10 @@ def generate_launch_description():
             'manual_return_preempt_hold_s': ParameterValue(
                 LaunchConfiguration('manual_return_preempt_hold_s'),
                 value_type=float,
+            ),
+            'return_site_exit_rearm_enabled': ParameterValue(
+                LaunchConfiguration('return_site_exit_rearm_enabled'),
+                value_type=bool,
             ),
             'charging_departure_delay_s': ParameterValue(
                 LaunchConfiguration('charging_departure_delay_s'),
@@ -489,8 +547,11 @@ def generate_launch_description():
         ui_port_arg,
         enable_operator_telemetry_arg,
         operator_telemetry_stream_rate_hz_arg,
+        operator_telemetry_tf_transform_enabled_arg,
+        operator_telemetry_raw_lidar_bbox_overlay_enabled_arg,
         operator_telemetry_tf_latest_fallback_tolerance_s_arg,
         operator_telemetry_camera_raw_fallback_enabled_arg,
+        operator_telemetry_docking_rear_camera_fallback_enabled_arg,
         enable_ui_guest_arg,
         guest_host_arg,
         guest_port_arg,
@@ -514,6 +575,7 @@ def generate_launch_description():
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,
         manual_return_preempt_hold_s_arg,
+        return_site_exit_rearm_enabled_arg,
         charging_departure_delay_s_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,

@@ -19,7 +19,9 @@
 namespace camrod_control {
 
 struct PathRelativeRecoveryConfig {
-  bool enabled{true};
+  // The shared CAMROD default retains the develop clearance-side recovery.
+  // External-simulator profiles must opt in to this route-relative policy.
+  bool enabled{false};
   double center_tolerance_m{0.05};
   double center_reentry_m{0.08};
   double heading_tolerance_rad{5.0 * 3.14159265358979323846 / 180.0};

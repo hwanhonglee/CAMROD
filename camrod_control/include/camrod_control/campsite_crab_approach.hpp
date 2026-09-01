@@ -19,6 +19,24 @@ enum class CampsiteCrabEntryAction {
   kBeginRotation,
 };
 
+inline double campsiteAdoptedWaitReturnStartYaw(
+    const double current_yaw, const bool roadside_service,
+    const bool roadside_reverse_return_enabled) {
+  if (!std::isfinite(current_yaw)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  // origin/develop retains the current heading for every roadside adoption;
+  // only a turnaround site reconstructs its pre-turn entry yaw. The optional
+  // reverse-return policy changes the later exit path, never this adoption
+  // boundary.
+  (void)roadside_reverse_return_enabled;
+  if (roadside_service) {
+    return current_yaw;
+  }
+  return std::atan2(std::sin(current_yaw - M_PI),
+                    std::cos(current_yaw - M_PI));
+}
+
 inline CampsiteCrabEntryAction selectCampsiteCrabEntryAction(
     const bool entry_reached, const bool roadside_service,
     const bool centering_enabled, const bool centering_active,

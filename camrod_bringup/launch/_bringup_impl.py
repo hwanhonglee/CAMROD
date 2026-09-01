@@ -404,6 +404,23 @@ def sim_switch(sim_cfg: Any, sim_value: str, real_value: Any) -> PythonExpressio
     ])
 
 
+def sim_opt_in_switch(
+    sim_cfg: Any,
+    use_sim_profile_cfg: Any,
+    sim_value: str,
+    production_value: Any,
+) -> PythonExpression:
+    """Select a sim override only when both simulation and its profile opt-in are true."""
+    return PythonExpression([
+        f"'{sim_value}' if str('", sim_cfg,
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        use_sim_profile_cfg,
+        "').lower() in ['1', 'true', 'yes', 'on'] else '",
+        production_value,
+        "'",
+    ])
+
+
 def _first_existing_path(candidates: list[str]) -> str:
     seen = set()
     for candidate in candidates:
@@ -687,6 +704,27 @@ def generate_launch_description():
             'control/parking_runtime_profiles/disabled.yaml',
         )
     )
+    perception_runtime_override_cfg = cfg_get(
+        launch_cfg,
+        'perception/runtime_override_param_file',
+        '__module_default__',
+    )
+    perception_runtime_override_param_default = (
+        pkg_path(
+            'camrod_perception',
+            os.path.join(
+                'config', 'perception_runtime_profiles', 'disabled.yaml'
+            ),
+        )
+        if str(perception_runtime_override_cfg).strip() in (
+            '', '__module_default__', 'module_default', 'default'
+        )
+        else resolve_cfg_file(
+            config_root_default,
+            perception_runtime_override_cfg,
+            'perception/perception_runtime_profiles/disabled.yaml',
+        )
+    )
     apriltag_cfg_entry = cfg_get(
         launch_cfg,
         'perception/apriltag_param_file',
@@ -770,6 +808,36 @@ def generate_launch_description():
             'external_simulator_odometry_timeout_s',
             cfg_get(launch_cfg, 'runtime/external_simulator_odometry_timeout_s', 0.5),
             'Maximum external odometry age before simulated sensor output stops',
+        ),
+        (
+            'enable_fake_sensors',
+            cfg_get(launch_cfg, 'runtime/enable_fake_sensors', True),
+            'Launch the deterministic fake-sensor fixture when sim is enabled',
+        ),
+        (
+            'use_sim_planning_profile',
+            cfg_get(launch_cfg, 'runtime/use_sim_planning_profile', True),
+            'Select planning_state_machine_sim.yaml when sim is enabled',
+        ),
+        (
+            'use_sim_localization_profile',
+            cfg_get(launch_cfg, 'runtime/use_sim_localization_profile', True),
+            'Select relaxed EKF and GNSS-reattach profiles when sim is enabled',
+        ),
+        (
+            'use_sim_parking_method',
+            cfg_get(launch_cfg, 'runtime/use_sim_parking_method', True),
+            'Force pose-driven reverse parking instead of the configured method in sim',
+        ),
+        (
+            'external_front_camera_source',
+            cfg_get(launch_cfg, 'runtime/external_front_camera_source', False),
+            'External adapter owns canonical front image and CameraInfo topics',
+        ),
+        (
+            'external_rear_camera_source',
+            cfg_get(launch_cfg, 'runtime/external_rear_camera_source', False),
+            'External adapter owns canonical rear image and CameraInfo topics',
         ),
         (
             'sim_publish_platform_status',
@@ -973,6 +1041,15 @@ def generate_launch_description():
                 '',
             ),
             'Optional raw pose source for active-goal jump detection',
+        ),
+        (
+            'planning_goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active',
+            cfg_get(
+                launch_cfg,
+                'planning/goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active',
+                False,
+            ),
+            'Allow route-recovery reissue while the current Nav2 goal remains active',
         ),
         (
             'planning_state_machine_reverse_auto_goal_snapper_input_topic',
@@ -1514,6 +1591,15 @@ def generate_launch_description():
             'Require forward cmd_vel for current-cell route re-entry bypass',
         ),
         (
+            'control_cmd_vel_gate_route_safety_path_relative_recovery_enable',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_route_safety_path_relative_recovery_enable',
+                False,
+            ),
+            'Enable full-route path-relative correction in the cmd_vel safety gate',
+        ),
+        (
             'control_cmd_vel_gate_route_safety_recovery_max_auto_releases',
             cfg_get(
                 launch_cfg,
@@ -1937,6 +2023,24 @@ def generate_launch_description():
             'Maximum selected operator telemetry stream rate in Hz',
         ),
         (
+            'operator_telemetry_tf_transform_enabled',
+            cfg_get(
+                launch_cfg,
+                'system/operator_telemetry_tf_transform_enabled',
+                False,
+            ),
+            'Transform operator telemetry geometry through TF',
+        ),
+        (
+            'operator_telemetry_raw_lidar_bbox_overlay_enabled',
+            cfg_get(
+                launch_cfg,
+                'system/operator_telemetry_raw_lidar_bbox_overlay_enabled',
+                True,
+            ),
+            'Render diagnostic classless Euclidean LiDAR bounding boxes',
+        ),
+        (
             'operator_telemetry_tf_latest_fallback_tolerance_s',
             cfg_get(
                 launch_cfg,
@@ -1953,6 +2057,24 @@ def generate_launch_description():
                 True,
             ),
             'Subscribe to raw operator camera topics as compressed-stream fallback',
+        ),
+        (
+            'operator_telemetry_docking_rear_camera_fallback_enabled',
+            cfg_get(
+                launch_cfg,
+                'system/operator_telemetry_docking_rear_camera_fallback_enabled',
+                False,
+            ),
+            'Use the rear camera when AprilTag docking debug is stale',
+        ),
+        (
+            'return_site_exit_rearm_enabled',
+            cfg_get(
+                launch_cfg,
+                'system/return_site_exit_rearm_enabled',
+                False,
+            ),
+            'Re-arm mission and drive authorization after campsite exit',
         ),
         (
             'enable_guest_ui',
@@ -2084,6 +2206,11 @@ def generate_launch_description():
         ('ublox_dual_base_rtcm_baud', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_baud', '__config__'), 'Moving-base baud override (__config__ uses gnss_param_file)'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
+        (
+            'perception_runtime_override_param_file',
+            perception_runtime_override_param_default,
+            'Final sparse perception runtime overlay',
+        ),
         ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
         (
             'use_rear_camera_apriltag_container',
@@ -2172,9 +2299,9 @@ def generate_launch_description():
             cfg_get(
                 launch_cfg,
                 'control/camping_site_entry_position_tolerance_m',
-                0.15,
+                '',
             ),
-            'Campsite crab-entry position tolerance',
+            'Optional campsite crab-entry tolerance override; empty keeps the parameter file',
         ),
         (
             'control_camping_site_rotate_entry_max_position_error_m',
@@ -2286,6 +2413,24 @@ def generate_launch_description():
         ),
         ('enable_drop_zone_maneuver_controller', cfg_get(launch_cfg, 'control/enable_drop_zone_maneuver_controller', True), 'Enable drop-zone exit/yaw control node'),
         ('enable_route_safety_recovery_controller', cfg_get(launch_cfg, 'control/enable_route_safety_recovery_controller', True), 'Enable bounded route-safety reverse/crab owner'),
+        (
+            'control_route_safety_recovery_zero_hold_pauses_limits',
+            cfg_get(
+                launch_cfg,
+                'control/route_safety_recovery_zero_hold_pauses_limits',
+                False,
+            ),
+            'Pause route-recovery attempt and episode limits during explicit zero holds',
+        ),
+        (
+            'control_route_safety_recovery_allow_corrective_yaw_beyond_limit',
+            cfg_get(
+                launch_cfg,
+                'control/route_safety_recovery_allow_corrective_yaw_beyond_limit',
+                False,
+            ),
+            'Allow only envelope-reducing yaw after route-recovery yaw exceeds its limit',
+        ),
         ('control_param_file', control_param_default, 'Control maneuver parameter YAML path'),
         # HH_260720 - Keep CAN/charging gate settings under the owning control module.
         ('control_cmd_vel_gate_status_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_status_topic', '/control/cmd_vel_safety_gate/status'), 'Control safety-gate status topic'),
@@ -2576,6 +2721,19 @@ def generate_launch_description():
     camera_yolo_container_active = LaunchConfiguration(
         'camera_yolo_container_active_resolved'
     )
+    front_camera_source_external_expression = PythonExpression([
+        "'true' if str('", camera_yolo_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
+        lc['external_front_camera_source'],
+        "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
+    ])
+    resolve_front_camera_source_external = SetLaunchConfiguration(
+        'front_camera_source_external_resolved',
+        front_camera_source_external_expression,
+    )
+    front_camera_source_external = LaunchConfiguration(
+        'front_camera_source_external_resolved'
+    )
     regular_front_camera_enable = PythonExpression([
         "'false' if str('", lc['sim'],
         "').lower() in ['1', 'true', 'yes', 'on'] or str('",
@@ -2584,10 +2742,11 @@ def generate_launch_description():
         lc['enable_front_camera'], "'",
     ])
     regular_yolo_enable = PythonExpression([
-        "'false' if str('", lc['sim'],
-        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
-        camera_yolo_container_active,
-        "').lower() in ['1', 'true', 'yes', 'on'] else '",
+        "'false' if (str('", camera_yolo_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] or (str('",
+        lc['sim'], "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        front_camera_source_external,
+        "').lower() not in ['1', 'true', 'yes', 'on'])) else '",
         lc['perception_enable_yolo'], "'",
     ])
     camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
@@ -2595,7 +2754,12 @@ def generate_launch_description():
     # HH_260814 - AprilTag parking needs the physical rear camera, which
     # fake_sensors does not synthesize. Simulation therefore keeps the
     # pose-driven reverse controller that sim_validation_runner exercises.
-    parking_method_resolved = sim_switch(lc['sim'], 'reverse', lc['parking_method'])
+    parking_method_resolved = sim_opt_in_switch(
+        lc['sim'],
+        lc['use_sim_parking_method'],
+        'reverse',
+        lc['parking_method'],
+    )
 
     # HH_260805 - Resolve rear-camera ownership independently from the front
     # camera. The container is hardware-only and exists only for AprilTag parking.
@@ -2621,6 +2785,19 @@ def generate_launch_description():
     )
     rear_camera_apriltag_container_active = LaunchConfiguration(
         'rear_camera_apriltag_container_active_resolved'
+    )
+    rear_camera_source_external_expression = PythonExpression([
+        "'true' if str('", rear_camera_apriltag_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
+        lc['external_rear_camera_source'],
+        "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
+    ])
+    resolve_rear_camera_source_external = SetLaunchConfiguration(
+        'rear_camera_source_external_resolved',
+        rear_camera_source_external_expression,
+    )
+    rear_camera_source_external = LaunchConfiguration(
+        'rear_camera_source_external_resolved'
     )
     regular_rear_camera_enable = PythonExpression([
         "'false' if str('", lc['sim'],
@@ -2661,8 +2838,8 @@ def generate_launch_description():
         # The component container owns the physical front camera when active;
         # tell sensing.launch so it does not mistake the scoped regular-camera
         # false value for a disabled sensor and start a duplicate dummy.
-        'front_camera_source_external': camera_yolo_container_active,
-        'rear_camera_source_external': rear_camera_apriltag_container_active,
+        'front_camera_source_external': front_camera_source_external,
+        'rear_camera_source_external': rear_camera_source_external,
         'publish_sensor_dummies_when_disabled': sim_switch(
             lc['sim'],
             'false',
@@ -2704,6 +2881,9 @@ def generate_launch_description():
 
     perception_args = {
         'module_namespace': lc['perception_namespace'],
+        'perception_runtime_override_param_file': lc[
+            'perception_runtime_override_param_file'
+        ],
         'enable_lidar_obstacle': lc['perception_enable_lidar_obstacle'],
         # In sim mode, default to LiDAR-only perception to avoid GPU/TensorRT dependency.
         'enable_yolo': regular_yolo_enable,
@@ -2714,6 +2894,7 @@ def generate_launch_description():
         'enable_camera': lc['enable_camera'],
         'enable_front_camera': lc['enable_front_camera'],
         'sim': lc['sim'],
+        'front_camera_source_external': front_camera_source_external,
         'camera_device_path': lc['camera_device_path'],
         'perception_mode': lc['perception_mode'],
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
@@ -2746,7 +2927,12 @@ def generate_launch_description():
     # pose becomes the planning/control truth instead of leaving EKF at map origin.
     _ekf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'ekf_sim.yaml')
     _ekf_real_cfg = localization_overrides.get('filter_ekf_param_file', '')
-    _ekf_cfg = sim_switch(lc['sim'], _ekf_sim_cfg, _ekf_real_cfg or '')
+    _ekf_cfg = sim_opt_in_switch(
+        lc['sim'],
+        lc['use_sim_localization_profile'],
+        _ekf_sim_cfg,
+        _ekf_real_cfg or '',
+    )
 
     # HH_260617: In sim planning tests, automatic GNSS reattach can teleport the
     # EKF pose away from the active Nav2 path. Keep the node for manual
@@ -2756,8 +2942,12 @@ def generate_launch_description():
         config_root_default, 'localization', 'filter', 'gnss_reattach_sim.yaml')
     _gnss_reattach_real_cfg = localization_overrides.get(
         'filter_gnss_reattach_param_file', '')
-    _gnss_reattach_cfg = sim_switch(
-        lc['sim'], _gnss_reattach_sim_cfg, _gnss_reattach_real_cfg or '')
+    _gnss_reattach_cfg = sim_opt_in_switch(
+        lc['sim'],
+        lc['use_sim_localization_profile'],
+        _gnss_reattach_sim_cfg,
+        _gnss_reattach_real_cfg or '',
+    )
 
     localization_args = {
         'module_namespace': lc['localization_namespace'],
@@ -2808,9 +2998,14 @@ def generate_launch_description():
         'planning_state_machine_camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
         # HH_260617: In sim, avoid ERROR_STOP from intentionally missing/stale
         # hardware diagnostics so RViz/UI planning-control tests can move.
-        'planning_state_machine_param_file': sim_switch(
+        'planning_state_machine_param_file': sim_opt_in_switch(
             lc['sim'],
-            os.path.join(config_root_default, 'planning', 'planning_state_machine_sim.yaml'),
+            lc['use_sim_planning_profile'],
+            os.path.join(
+                config_root_default,
+                'planning',
+                'planning_state_machine_sim.yaml',
+            ),
             lc['planning_state_machine_param_file'],
         ),
         'map_path': lc['map_path'],
@@ -2834,6 +3029,9 @@ def generate_launch_description():
         ],
         'goal_snapper_pose_jump_check_topic': lc[
             'planning_goal_snapper_pose_jump_check_topic'
+        ],
+        'goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active': lc[
+            'planning_goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active'
         ],
         'planning_state_machine_reverse_auto_goal_snapper_input_topic': lc[
             'planning_state_machine_reverse_auto_goal_snapper_input_topic'
@@ -3004,6 +3202,12 @@ def generate_launch_description():
         ],
         'enable_drop_zone_maneuver_controller': lc['enable_drop_zone_maneuver_controller'],
         'enable_route_safety_recovery_controller': lc['enable_route_safety_recovery_controller'],
+        'route_safety_recovery_zero_hold_pauses_limits': lc[
+            'control_route_safety_recovery_zero_hold_pauses_limits'
+        ],
+        'route_safety_recovery_allow_corrective_yaw_beyond_limit': lc[
+            'control_route_safety_recovery_allow_corrective_yaw_beyond_limit'
+        ],
         'command_topic': lc['control_cmd_vel_raw_topic'],
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
@@ -3046,11 +3250,23 @@ def generate_launch_description():
         # the top-level deployment boundary for constrained ARM64 targets.
         'enable_operator_telemetry': lc['enable_operator_telemetry'],
         'operator_telemetry_stream_rate_hz': lc['operator_telemetry_stream_rate_hz'],
+        'operator_telemetry_tf_transform_enabled': lc[
+            'operator_telemetry_tf_transform_enabled'
+        ],
+        'operator_telemetry_raw_lidar_bbox_overlay_enabled': lc[
+            'operator_telemetry_raw_lidar_bbox_overlay_enabled'
+        ],
         'operator_telemetry_tf_latest_fallback_tolerance_s': lc[
             'operator_telemetry_tf_latest_fallback_tolerance_s'
         ],
         'operator_telemetry_camera_raw_fallback_enabled': lc[
             'operator_telemetry_camera_raw_fallback_enabled'
+        ],
+        'operator_telemetry_docking_rear_camera_fallback_enabled': lc[
+            'operator_telemetry_docking_rear_camera_fallback_enabled'
+        ],
+        'return_site_exit_rearm_enabled': lc[
+            'return_site_exit_rearm_enabled'
         ],
         'enable_ui_guest': lc['enable_guest_ui'],
         'guest_host': lc['guest_ui_host'],
@@ -3106,7 +3322,17 @@ def generate_launch_description():
     module_specs = [
         ('camrod_platform', 'platform.launch.py', platform_args, None),
         ('camrod_map', 'map.launch.py', map_args, None),
-        ('camrod_bringup', 'fake_sensors.launch.py', fake_sensors_args, IfCondition(lc['sim'])),
+        (
+            'camrod_bringup',
+            'fake_sensors.launch.py',
+            fake_sensors_args,
+            IfCondition(PythonExpression([
+                "'true' if str('", lc['sim'],
+                "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+                lc['enable_fake_sensors'],
+                "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
+            ])),
+        ),
         ('camrod_bringup', 'camera_yolo_container.launch.py', camera_yolo_container_args, camera_yolo_container_condition),
         (
             'camrod_bringup',
@@ -3238,7 +3464,9 @@ def generate_launch_description():
     return LaunchDescription([
         *args,
         resolve_camera_yolo_container_active,
+        resolve_front_camera_source_external,
         resolve_rear_camera_apriltag_container_active,
+        resolve_rear_camera_source_external,
         clean_action,
         start_after_cleanup,
         start_without_cleanup,

@@ -92,22 +92,6 @@ const MOVING_SERVICE_STATES = new Set([
   SERVICE_STATE.DEPARTING_CHARGER,
   SERVICE_STATE.DEPARTING_DROP_ZONE,
 ]);
-// HH_260829 - Backend service-state messages are periodic heartbeats.  A
-// repeated standby heartbeat must not close an operator's destination picker
-// or confirmation dialog.  Only a completed mission/lifecycle transition back
-// to a stopped standby state owns the navigation back to the waiting screen.
-const shouldReturnToWaitingScreen = (previousState, nextState) => (
-  (
-    nextState === SERVICE_STATE.DROP_ZONE_WAIT
-    || nextState === SERVICE_STATE.CHARGING
-  )
-  && previousState !== null
-  && (
-    MOVING_SERVICE_STATES.has(previousState)
-    || ARRIVAL_STATES.has(previousState)
-    || RETURNING_STATES.has(previousState)
-  )
-);
 const ACTIVE_MANUAL_PHASES = new Set([
   'GOAL_RECEIVED',
   'PATH_PREPARING',
@@ -1028,21 +1012,10 @@ function App() {
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
   const wsRef = useRef(null);
   const idleTimerRef = useRef(null);                    // 전체 OFF 시 10초 타이머
-  const previousBackendServiceStateRef = useRef(null);  // periodic service heartbeat edge detector
-  // HH_260830 - WebSocket reconnect sends the site-state frame before the
-  // service-state frame.  Keep that active site synchronously in a ref so an
-  // already-arrived REST/guest mission can restore its Return prompt without
-  // waiting for React's asynchronous state update.
-  const activeMissionSiteRef = useRef(null);
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
   const [selectedSite, setSelectedSite] = useState(null);         // 이미지 프리뷰 대상 사이트
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
-  // HH_260830 - The public Return controls use the acknowledged HTTP command
-  // path.  The former fire-and-forget WebSocket branch could silently discard
-  // a click while still changing the screen to "returning".
-  const [returnCommandPending, setReturnCommandPending] = useState(false);
-  const [returnCommandError, setReturnCommandError] = useState('');
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
   const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
   const [activeModal, setActiveModal] = useState(null);           // 현재 열린 모달 ID
@@ -1261,38 +1234,8 @@ function App() {
     // FastAPI 백엔드의 WebSocket 엔드포인트에 연결 (same host:port as HTTP)
     const ws = new WebSocket(`${protocol}://${host}/ws`);
 
-    // 연결 성공 시 → 연결 상태 녹색 표시.  The REST snapshot is also
-    // hydrated here for compatibility with an already-running older backend:
-    // its initial WebSocket frame did not carry the destination/site needed
-    // to reconstruct an arrival Return prompt after a UI reload.
-    ws.onopen = async () => {
-      setConnected(true);
-      try {
-        const response = await fetch('/ui/state');
-        if (!response.ok) return;
-        const snapshot = await response.json();
-        const serviceState = Number(snapshot.service_state);
-        const destinationSite = snapshot.destination?.site;
-        if (destinationSite) {
-          activeMissionSiteRef.current = destinationSite;
-        }
-        if (ARRIVAL_STATES.has(serviceState) && destinationSite) {
-          setArrivedSite(destinationSite);
-          setShowArrivalComplete(true);
-          setShowWaiting(false);
-          setIsReturning(false);
-        } else if (MOVING_SERVICE_STATES.has(serviceState)) {
-          setShowWaiting(false);
-        } else if (RETURNING_STATES.has(serviceState)) {
-          setShowArrivalComplete(false);
-          setArrivedSite(null);
-          setShowWaiting(false);
-          setIsReturning(true);
-        }
-      } catch (_) {
-        // Periodic WebSocket state remains the authoritative fallback.
-      }
-    };
+    // 연결 성공 시 → 연결 상태 녹색 표시
+    ws.onopen = () => setConnected(true);
 
     // 서버에서 메시지 수신 시 → 상태 업데이트
     ws.onmessage = (event) => {
@@ -1332,17 +1275,10 @@ function App() {
 
       // 초기 연결 시: {"states": {"B1": false, ...}} 전체 상태 수신
       if ('states' in data) {
-        const activeSite = SITE_NAMES.find(site => Boolean(data.states[site]));
-        activeMissionSiteRef.current = activeSite || null;
         setStates(prev => ({ ...prev, ...data.states }));
       }
       // 개별 토글 변경 시: {"site": "B1", "state": true} 수신
       if ('site' in data && 'state' in data) {
-        if (data.state) {
-          activeMissionSiteRef.current = data.site;
-        } else if (activeMissionSiteRef.current === data.site) {
-          activeMissionSiteRef.current = null;
-        }
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
@@ -1355,16 +1291,12 @@ function App() {
       }
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
-        activeMissionSiteRef.current = data.arrived;
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
-        setShowWaiting(false);
       }
       // Service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
       if ('service_state' in data) {
         const serviceState = Number(data.service_state);
-        const previousServiceState = previousBackendServiceStateRef.current;
-        previousBackendServiceStateRef.current = serviceState;
         const nextStateName = data.service_state_name || SERVICE_STATE_NAME_BY_ID[serviceState];
         if (nextStateName) setServiceStateName(nextStateName);
         if (
@@ -1375,10 +1307,7 @@ function App() {
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
-          activeMissionSiteRef.current = null;
-          if (shouldReturnToWaitingScreen(previousServiceState, serviceState)) {
-            setShowWaiting(true);
-          }
+          setShowWaiting(true);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
         } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
@@ -1394,28 +1323,19 @@ function App() {
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
-          activeMissionSiteRef.current = null;
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
         } else if (MOVING_SERVICE_STATES.has(serviceState)) {
-          // HH_260830 - REST/guest missions can start while the local UI is on
-          // its idle screen.  Show the live mission as soon as the backend has
-          // accepted motion, in addition to closing the confirmation preview.
-          setShowWaiting(false);
+          // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
           setSelectedSite(null);
           setShowMoveConfirm(false);
           setShowMoveVerify(false);
           setMoveVerifyInput('');
           setMoveVerifyError(false);
-        } else if (ARRIVAL_STATES.has(serviceState)) {
-          const arrivalSite = data.site || data.arrived || activeMissionSiteRef.current;
-          if (arrivalSite) {
-            activeMissionSiteRef.current = arrivalSite;
-            setArrivedSite(arrivalSite);
-            setShowArrivalComplete(true);
-            setShowWaiting(false);
-            setIsReturning(false);
-          }
+        } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
+          setArrivedSite(data.site);
+          setShowArrivalComplete(true);
+          setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
           setShowArrivalComplete(false);
           setArrivedSite(null);
@@ -1547,27 +1467,14 @@ function App() {
     }
   };
 
-  // ── 이용 완료 버튼 클릭 → 확인 가능한 복귀 명령 ────────────────────────
-  const handleArrivalComplete = async () => {
-    if (returnCommandPending) return;
-    setReturnCommandPending(true);
-    setReturnCommandError('');
-    try {
-      const response = await fetch('/ui/manual_return', { method: 'POST' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.success !== true) {
-        throw new Error(payload.detail || payload.message || `Return request failed (${response.status})`);
-      }
-      // Change the optimistic local view only after the backend has accepted
-      // the command.  Subsequent service-state frames remain authoritative.
-      setShowArrivalComplete(false);
-      setArrivedSite(null);
-      setIsReturning(true);
-    } catch (error) {
-      setReturnCommandError(error instanceof Error ? error.message : '복귀 명령을 전송하지 못했습니다.');
-    } finally {
-      setReturnCommandPending(false);
+  // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
+  const handleArrivalComplete = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ usage_complete: true }));
     }
+    setShowArrivalComplete(false);
+    setArrivedSite(null);
+    setIsReturning(true);
   };
 
   // ── 실제 토글 적용 & WebSocket 전송 ─────────────────────────────────────
@@ -1938,16 +1845,9 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
-              <button
-                className="preview-return-btn"
-                onClick={handleArrivalComplete}
-                disabled={returnCommandPending}
-              >
-                {returnCommandPending ? '복귀 요청 중…' : '복귀'}
+              <button className="preview-return-btn" onClick={handleArrivalComplete}>
+                복귀
               </button>
-              {returnCommandError && (
-                <p className="arrival-complete-error" role="alert">{returnCommandError}</p>
-              )}
             </>
           ) : displayedReturning ? (
             <>
@@ -2080,15 +1980,8 @@ function App() {
             <p className="arrival-complete-sub">
               이용 완료 버튼을 누르면 로봇이 이동합니다.
             </p>
-            {returnCommandError && (
-              <p className="arrival-complete-error" role="alert">{returnCommandError}</p>
-            )}
-            <button
-              className="arrival-complete-btn"
-              onClick={handleArrivalComplete}
-              disabled={returnCommandPending}
-            >
-              {returnCommandPending ? '복귀 요청 중…' : '복귀'}
+            <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
+              복귀
             </button>
           </div>
         </div>
