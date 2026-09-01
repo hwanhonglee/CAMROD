@@ -472,6 +472,57 @@ TEST_F(GoalSnapperPoseJumpTest, DefaultCurrentPoseSourceKeepsSingleSubscriptionA
   executor_.remove_node(goal_snapper);
 }
 
+TEST_F(GoalSnapperPoseJumpTest, DefaultSourceKeepsDevelopFrameChangeJumpSemantics)
+{
+  constexpr char kInputTopic[] = "/test/goal_snapper/default_frame_jump/input";
+  constexpr char kOutputTopic[] = "/test/goal_snapper/default_frame_jump/output";
+  constexpr char kCurrentPoseTopic[] =
+    "/test/goal_snapper/default_frame_jump/current_pose";
+  constexpr char kStatusTopic[] = "/test/goal_snapper/default_frame_jump/status";
+
+  auto goal_snapper = std::make_shared<GoalSnapperNode>(
+    options(kInputTopic, kOutputTopic, kCurrentPoseTopic, kStatusTopic));
+  std::vector<avg_msgs::msg::AvgPoseStamped> outputs;
+  auto output_subscription = client_->create_subscription<avg_msgs::msg::AvgPoseStamped>(
+    kOutputTopic, rclcpp::QoS(10),
+    [&outputs](const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg) {
+      outputs.push_back(*msg);
+    });
+  auto goal_publisher = client_->create_publisher<geometry_msgs::msg::PoseStamped>(
+    kInputTopic, rclcpp::QoS(10));
+  auto current_pose_publisher = client_->create_publisher<avg_msgs::msg::AvgPoseStamped>(
+    kCurrentPoseTopic, rclcpp::QoS(10));
+  executor_.add_node(goal_snapper);
+
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return goal_publisher->get_subscription_count() == 1U &&
+        current_pose_publisher->get_subscription_count() == 1U &&
+        output_subscription->get_publisher_count() == 1U;
+      }));
+
+  current_pose_publisher->publish(makeAvgPose(-14.0, 43.0, "map"));
+  spinFor();
+  goal_publisher->publish(makePose(12.7921, 22.52, -77.0));
+  ASSERT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 1U;
+      }));
+
+  // origin/develop did not reseed on frame-id changes in the default
+  // single-topic topology; the displacement still counts as a pose jump.
+  current_pose_publisher->publish(makeAvgPose(-10.0, 43.0, "odom"));
+  EXPECT_TRUE(
+    spinUntil(
+      [&]() {
+        return outputs.size() == 2U;
+      }));
+
+  executor_.remove_node(goal_snapper);
+}
+
 TEST_F(GoalSnapperPoseJumpTest, SeparateRawSourceIgnoresLaneletJumpAndReissuesExactlyOnce)
 {
   constexpr char kInputTopic[] = "/test/goal_snapper/raw_jump/input";

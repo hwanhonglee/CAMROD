@@ -12,10 +12,8 @@ import subprocess
 import sys
 import tempfile
 import threading
-import uuid
 from typing import Any, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
@@ -33,26 +31,6 @@ CHROMIUM_CANDIDATES = (
     "brave-browser-stable",
     "brave",
 )
-
-
-def _with_session_cache_key(url: str, token: str | None = None) -> str:
-    """Return a WebKit document URL unique to this kiosk session.
-
-    The React assets are content-hashed, but WebKit can otherwise reuse an old
-    cached ``index.html`` and keep loading the previous asset hash after a local
-    rebuild.  Change only the renderer URL: readiness probes and backend API
-    calls must continue using the stable base URL.
-    """
-    parts = urlsplit(url)
-    query = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        if key != "_camrod_ui_session"
-    ]
-    query.append(("_camrod_ui_session", token or uuid.uuid4().hex))
-    return urlunsplit(
-        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
-    )
 
 
 def _positive_dimension(value: str) -> int:
@@ -258,8 +236,6 @@ def _load_gtk() -> tuple[Any, Any, Any, Any]:
 
 
 def _run_webkit(args: argparse.Namespace) -> int:
-    render_url = _with_session_cache_key(args.url)
-
     try:
         Gdk, GLib, Gtk, WebKit2 = _load_gtk()
     except RuntimeError as exc:
@@ -328,7 +304,7 @@ def _run_webkit(args: argparse.Namespace) -> int:
         attempt_failed = False
         load_in_progress = True
         load_attempt_count += 1
-        web_view.load_uri(render_url)
+        web_view.load_uri(args.url)
 
     def mark_load_failed(detail: str) -> None:
         nonlocal attempt_failed, load_failure_count, load_in_progress
@@ -370,7 +346,7 @@ def _run_webkit(args: argparse.Namespace) -> int:
         load_succeeded = True
         window.set_title("CAMROD Operator UI")
         print(
-            f"camrod_ui_window: loaded {render_url} "
+            f"camrod_ui_window: loaded {args.url} "
             f"(attempt {load_attempt_count}, WebKit)",
             flush=True,
         )

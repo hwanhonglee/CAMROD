@@ -659,7 +659,7 @@ private:
     route_safety_candidate_yaw_rate_radps_ = declare_parameter<double>(
         "route_safety_auto_recovery_yaw_rate_radps", 0.10);
     path_relative_recovery_config_.enabled = declare_parameter<bool>(
-        "route_safety_path_relative_recovery_enable", true);
+        "route_safety_path_relative_recovery_enable", false);
     path_relative_recovery_config_.center_tolerance_m =
         declare_parameter<double>("route_safety_path_center_tolerance_m", 0.05);
     path_relative_recovery_config_.center_reentry_m =
@@ -971,7 +971,8 @@ private:
           rclcpp::QoS(1).reliable().transient_local(),
           [this](const avg_msgs::msg::AvgPath::SharedPtr message) {
             latest_full_route_ = *message;
-            if (route_safety_recovery_.active()) {
+            if (path_relative_recovery_config_.enabled &&
+                route_safety_recovery_.active()) {
               // A replaced route revokes the prior path-relative stage until
               // the next fully projected candidate is selected.
               resetPathRelativeRecoveryState();
@@ -1165,7 +1166,7 @@ private:
     if (enable_route_heading_alignment_ ||
         motion_cost_stop_config_.lanelet_front_use_local_path ||
         motion_cost_stop_config_.dynamic_front_use_local_path ||
-        route_safety_recovery_config_.enabled) {
+        path_relative_recovery_config_.enabled) {
       route_path_subscription_ = create_subscription<avg_msgs::msg::AvgPath>(
           route_heading_path_topic_, 10,
           [this](const avg_msgs::msg::AvgPath::SharedPtr message) {
@@ -1667,14 +1668,17 @@ private:
 
   void
   onMissionRequest(const avg_msgs::msg::PlanningMissionKey::SharedPtr message) {
-    // AvgPath has no mission identity. Drop the old full-route cache before
-    // any mission-specific handling so recovery can never use the previous
-    // destination while the new global route is being generated.
-    latest_full_route_.reset();
-    resetPathRelativeRecoveryState();
-    if (route_safety_recovery_.active()) {
-      last_path_relative_reason_ = "path_full_route_waiting_for_new_mission";
-      publishZero();
+    if (path_relative_recovery_config_.enabled) {
+      // AvgPath has no mission identity. Drop the old full-route cache before
+      // any mission-specific handling so recovery can never use the previous
+      // destination while the new global route is being generated. With the
+      // feature disabled this callback must preserve origin/develop behavior.
+      latest_full_route_.reset();
+      resetPathRelativeRecoveryState();
+      if (route_safety_recovery_.active()) {
+        last_path_relative_reason_ = "path_full_route_waiting_for_new_mission";
+        publishZero();
+      }
     }
     MissionRequestIdentity request;
     request.mission_key = message->mission_key;
@@ -2120,15 +2124,15 @@ private:
         // HH_260805 - Retain the active stage but permit only a newly projected
         // safe crab/reverse-yaw transition; total execution limits stay global.
         latched_route_recovery_candidate_ = selected.kind;
-      } else {
+      } else if (path_relative_recovery_config_.enabled) {
         latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
-        if (path_relative_recovery_config_.enabled) {
-          path_relative_recovery_command_latch_.reset();
-          // Stop at the final gate immediately. The bounded controller will
-          // receive the same zero candidate, while the raw-command race guard
-          // prevents its previous stage from overwriting this boundary.
-          publishZero();
-        }
+        path_relative_recovery_command_latch_.reset();
+        // Stop at the final gate immediately. The bounded controller will
+        // receive the same zero candidate, while the raw-command race guard
+        // prevents its previous stage from overwriting this boundary. Generic
+        // develop recovery preserves its previous stage when no new candidate
+        // is available.
+        publishZero();
       }
     } else {
       selected.reason = route_safety_recovery_.automaticReleaseBlocked()
@@ -2873,7 +2877,8 @@ private:
     if (reset_path_relative_state) {
       resetPathRelativeRecoveryState();
       publishZero();
-    } else if (reset_path_relative_command_latch) {
+    } else if (reset_path_relative_command_latch &&
+               path_relative_recovery_config_.enabled) {
       // A previously projected raw/final pair cannot survive a scale retune.
       // The next state tick must project and latch a fresh pair.
       path_relative_recovery_command_latch_.reset();

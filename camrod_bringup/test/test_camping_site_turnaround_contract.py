@@ -122,6 +122,7 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
     """Bringup may opt in, but only through the typed controller parameter."""
     package_params = _controller_params(PACKAGE_CONTROL_CONFIG)
     maneuver_source = MANEUVERS_LAUNCH.read_text(encoding="utf-8")
+    normalized_maneuver_source = _normalized_source(maneuver_source)
     bringup_source = BRINGUP_LAUNCH.read_text(encoding="utf-8")
     controller_source = CONTROLLER_SOURCE.read_text(encoding="utf-8")
 
@@ -130,11 +131,10 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
         in maneuver_source
     )
     assert (
-        'LaunchConfiguration(\n'
-        '                            "roadside_reverse_return_enable"\n'
-        "                        ),\n"
-        "                        value_type=bool,"
-        in maneuver_source
+        '"roadside_reverse_return_enable": ParameterValue( '
+        'LaunchConfiguration("roadside_reverse_return_enable"), '
+        "value_type=bool,"
+        in normalized_maneuver_source
     )
     assert (
         '"roadside_reverse_handoff_distance_m": ParameterValue('
@@ -166,10 +166,15 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
     # versus simulator reverse tracking without a turnaround.
     assert "bool roadsideForwardLoopActive() const" in controller_source
     assert "bool roadsideReverseReturnActive() const" in controller_source
+    # Adopted WAIT_RETURN must retain develop's reconstructed return heading.
+    # Only the explicitly enabled roadside reverse-return profile may preserve
+    # the current outbound heading through the reverse handoff.
     assert (
-        "start_yaw_ = active_service_mode_ == "
-        "CampsiteServiceMode::kRoadsideStop"
-        in controller_source
+        "start_yaw_ = camrod_control::campsiteAdoptedWaitReturnStartYaw( "
+        "current_yaw, active_service_mode_ == "
+        "CampsiteServiceMode::kRoadsideStop, "
+        "roadside_reverse_return_enable_);"
+        in _normalized_source(controller_source)
     )
     assert (
         "entry_target_yaw_ =\n"
@@ -195,7 +200,7 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
     assert "target_yaw_ = start_yaw_;" in controller_source
     assert "outbound_lane_before_reverse" in controller_source
     assert "start_yaw_ + M_PI" not in controller_source[
-        controller_source.index("void finishReturnAtLiveLaneletHandoff()") :
+        controller_source.index("void finishReturnAtLiveLaneletHandoff()"):
         controller_source.index("void setPhase(")
     ]
     assert "reverse route requested " in controller_source

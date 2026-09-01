@@ -468,6 +468,11 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
         for profile in fallback_profiles
         if os.path.isdir(os.path.join(config_root, profile))
     ]
+    # Preserve develop's diagnosable missing-file path for an incomplete or
+    # custom config root instead of raising IndexError while selecting the
+    # sparse-profile fallback chain.
+    if not fallback_dirs:
+        fallback_dirs = [os.path.join(config_root, "default")]
     default_dir = tuple(fallback_dirs)
     config_dir = (
         profile_dir

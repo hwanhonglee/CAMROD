@@ -19,9 +19,10 @@ def _default_yolo_paths() -> tuple[str, str]:
         model = os.path.join(
             yolo_share, "models", "epoch74_step151350.vec2box.sim.engine")
         labels = os.path.join(yolo_share, "labels", "coco_names.txt")
-        return model, labels
+        model_override = os.environ.get("YOLOV9_MODEL_PATH", "").strip()
+        return model_override or model, labels
     except Exception:
-        return "", ""
+        return os.environ.get("YOLOV9_MODEL_PATH", "").strip(), ""
 
 
 def generate_launch_description():

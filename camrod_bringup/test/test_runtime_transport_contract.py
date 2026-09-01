@@ -87,6 +87,7 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert defaults["system"]["operator_ui_window_engine"] == "webkit"
     assert defaults["system"]["enable_operator_telemetry"] is True
     assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 10.0
+    assert defaults["system"]["operator_telemetry_tf_transform_enabled"] is False
     assert (
         defaults["system"][
             "operator_telemetry_tf_latest_fallback_tolerance_s"
@@ -99,6 +100,10 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
         ]
         is True
     )
+    assert defaults["system"][
+        "operator_telemetry_docking_rear_camera_fallback_enabled"
+    ] is False
+    assert defaults["system"]["return_site_exit_rearm_enabled"] is False
 
     bringup_source = BRINGUP_IMPL.read_text(encoding="utf-8")
     lidar_source = LIDAR_LAUNCH.read_text(encoding="utf-8")
@@ -115,6 +120,7 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
         "'operator_telemetry_stream_rate_hz': "
         "lc['operator_telemetry_stream_rate_hz']"
     ) in bringup_source
+    assert "'operator_telemetry_tf_transform_enabled': lc[" in bringup_source
     assert (
         "'operator_telemetry_tf_latest_fallback_tolerance_s': lc["
         in bringup_source
@@ -123,6 +129,11 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
         "'operator_telemetry_camera_raw_fallback_enabled': lc["
         in bringup_source
     )
+    assert (
+        "'operator_telemetry_docking_rear_camera_fallback_enabled': lc["
+        in bringup_source
+    )
+    assert "'return_site_exit_rearm_enabled': lc[" in bringup_source
     assert "cfg_get(launch_cfg, 'runtime/rviz', False)" in bringup_source
 
 

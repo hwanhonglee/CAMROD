@@ -102,23 +102,6 @@ class _FakeThread:
         self.alive = False
 
 
-class _ForceExitThread:
-    """Model uvicorn 0.15 waiting for a connection until force_exit."""
-
-    def __init__(self, server) -> None:
-        self.server = server
-        self.alive = True
-        self.join_timeouts = []
-
-    def is_alive(self) -> bool:
-        return self.alive
-
-    def join(self, timeout: float) -> None:
-        self.join_timeouts.append(timeout)
-        if self.server.force_exit:
-            self.alive = False
-
-
 class _FakeTimer:
 
     def __init__(self, period_s: float, callback) -> None:
@@ -175,6 +158,7 @@ class UiBackendStopTest(unittest.TestCase):
             _latest_service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
             _latest_platform_is_charging=False,
             publish_mission_engage_from_destination=True,
+            return_site_exit_rearm_enabled=False,
             planning_return_to_drop_zone_topic=(
                 "/planning/state_machine/return_to_drop_zone"
             ),
@@ -204,7 +188,6 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(
             events,
             [
-                ("mission_engage", True, "test:manual:site_exit_resume"),
                 ("site_exit", "test:manual:site_exit_first"),
                 (
                     "state",
@@ -223,6 +206,7 @@ class UiBackendStopTest(unittest.TestCase):
             _latest_service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
             _latest_platform_is_charging=False,
             publish_mission_engage_from_destination=False,
+            return_site_exit_rearm_enabled=True,
             _publish_platform_drive_enable=(
                 lambda enabled, source: events.append(
                     ("platform_drive_enable", enabled, source)
@@ -1556,30 +1540,6 @@ class UiBackendStopTest(unittest.TestCase):
             self.assertIn("except RuntimeError:", source)
             self.assertRegex(source, r"if rclpy\.ok\(\):\s+raise")
 
-    def test_backend_shutdown_keeps_ros_context_alive_for_manual_zero(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1]
-            / "runtime"
-            / "python"
-            / "camrod_ui"
-            / "ui_backend_node.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("from rclpy.signals import SignalHandlerOptions", source)
-        self.assertIn(
-            "rclpy.init(signal_handler_options=SignalHandlerOptions.NO)", source
-        )
-        self.assertIn(
-            "signal.signal(signal.SIGINT, _interrupt_for_ordered_shutdown)",
-            source,
-        )
-        self.assertIn(
-            "signal.signal(signal.SIGTERM, _interrupt_for_ordered_shutdown)",
-            source,
-        )
-        destroy_index = source.index("node.destroy_node()")
-        shutdown_index = source.index("rclpy.shutdown()", destroy_index)
-        self.assertLess(destroy_index, shutdown_index)
-
     def test_http_server_is_stopped_before_node_destruction(self) -> None:
         server = SimpleNamespace(should_exit=False, force_exit=False)
         loop = _FakeLoop()
@@ -1599,33 +1559,6 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertFalse(server.force_exit)
         self.assertEqual(loop.wake_calls, 1)
         self.assertEqual(thread.join_timeouts, [1.25])
-
-    def test_http_server_forces_only_connection_stuck_after_grace_period(self) -> None:
-        server = SimpleNamespace(should_exit=False, force_exit=False)
-        loop = _FakeLoop()
-        thread = _ForceExitThread(server)
-        logger = _FakeLogger()
-        backend = SimpleNamespace(
-            _server_stop_requested=threading.Event(),
-            _uvicorn_server=server,
-            _main_loop=loop,
-            _server_thread=thread,
-            get_logger=lambda: logger,
-        )
-
-        UiBackendNode._stop_fastapi_server(
-            backend,
-            join_timeout_s=0.25,
-            force_join_timeout_s=0.5,
-        )
-
-        self.assertTrue(backend._server_stop_requested.is_set())
-        self.assertTrue(server.should_exit)
-        self.assertTrue(server.force_exit)
-        self.assertEqual(loop.wake_calls, 2)
-        self.assertEqual(thread.join_timeouts, [0.25, 0.5])
-        self.assertFalse(thread.is_alive())
-        self.assertEqual(logger.warning_messages, [])
 
     def test_cancel_uses_rclpy_call_async_and_cancels_every_motion_owner(self) -> None:
         backend = _FakeBackend()
@@ -1684,100 +1617,6 @@ class UiBackendStopTest(unittest.TestCase):
                 )
             ],
         )
-
-    def test_reconnect_service_payload_restores_active_arrival_site(self) -> None:
-        for service_state in (
-            AvgServiceState.UNLOAD_WAIT,
-            AvgServiceState.WAITING_FOR_RETURN_REQUEST,
-        ):
-            with self.subTest(service_state=int(service_state)):
-                backend = SimpleNamespace(
-                    _active_mission_site="B12",
-                    _state=ApiState(
-                        service_state=int(service_state),
-                        service_state_name="ARRIVAL_WAIT",
-                        service_state_description="Waiting at B12",
-                        # The destination can be cleared before the arrival edge.
-                        destination={"site": "", "run": False},
-                    ),
-                )
-
-                payload = UiBackendNode._service_state_payload_locked(backend)
-
-                self.assertEqual(payload["destination"], {"site": "", "run": False})
-                self.assertEqual(payload["site"], "B12")
-                self.assertEqual(payload["arrived"], "B12")
-
-    def test_reconnect_service_payload_falls_back_to_running_destination(self) -> None:
-        backend = SimpleNamespace(
-            _active_mission_site="",
-            _state=ApiState(
-                service_state=int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
-                destination={"site": "B8", "run": True},
-            ),
-        )
-
-        payload = UiBackendNode._service_state_payload_locked(backend)
-
-        self.assertEqual(payload["site"], "B8")
-        self.assertEqual(payload["arrived"], "B8")
-
-    def test_non_arrival_service_payload_does_not_reopen_arrival_modal(self) -> None:
-        backend = SimpleNamespace(
-            _active_mission_site="B12",
-            _state=ApiState(
-                service_state=int(AvgServiceState.RETURN_WITH_CARGO),
-                destination={"site": "B12", "run": True},
-            ),
-        )
-
-        payload = UiBackendNode._service_state_payload_locked(backend)
-
-        self.assertEqual(payload["destination"], {"site": "B12", "run": True})
-        self.assertNotIn("site", payload)
-        self.assertNotIn("arrived", payload)
-
-    def test_http_snapshot_includes_same_active_arrival_context(self) -> None:
-        backend = SimpleNamespace(
-            _active_mission_site="B6",
-            _lock=threading.Lock(),
-            _state=ApiState(
-                service_state=int(AvgServiceState.UNLOAD_WAIT),
-                service_state_name="UNLOAD_WAIT",
-                service_state_description="Unload wait",
-                destination={"site": "", "run": False},
-            ),
-            _low_battery_return_pending=False,
-            _low_battery_return_started=False,
-            _low_battery_return_wait_notified=False,
-            _charging_departure_delay_pending=False,
-            charging_departure_delay_s=7.0,
-            low_battery_return_threshold_percent=35,
-        )
-
-        snapshot = UiBackendNode._snapshot(backend)
-
-        self.assertEqual(snapshot["destination"], {"site": "", "run": False})
-        self.assertEqual(snapshot["site"], "B6")
-        self.assertEqual(snapshot["arrived"], "B6")
-
-    def test_websocket_initial_state_uses_reconnect_service_payload(self) -> None:
-        source = (
-            Path(__file__).resolve().parents[1]
-            / "runtime"
-            / "python"
-            / "camrod_ui"
-            / "ui_backend_node.py"
-        ).read_text(encoding="utf-8")
-        initial_state = source.split("# Send initial state on connect.", 1)[1].split(
-            "try:", 1
-        )[0]
-
-        self.assertIn(
-            "service_payload = node._service_state_payload_locked()",
-            initial_state,
-        )
-        self.assertIn("await ws.send_json(service_payload)", initial_state)
 
     def test_battery_rejected_destination_does_not_become_active_site(self) -> None:
         metrics = _FakeServiceMetrics()

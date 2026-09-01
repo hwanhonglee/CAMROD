@@ -44,11 +44,8 @@ WGS84_E2 = 6.69437999014e-3
 
 
 def publish_timer_period_seconds(rate_hz):
-    """Return the bounded fake-sensor timer period for a requested rate."""
-    rate = float(rate_hz)
-    if not math.isfinite(rate) or rate <= 0.0:
-        raise ValueError("publish_rate_hz must be finite and greater than zero")
-    return 1.0 / max(rate, 1.0)
+    """Mirror develop's startup timer clamp exactly."""
+    return 1.0 / max(rate_hz, 1.0)
 
 
 # Implements `deg2rad` behavior.
@@ -1617,40 +1614,6 @@ class FakeSensorPublisher(Node):
 
     # Applies selected runtime parameter updates without node restart.
     def _on_set_parameters(self, params):
-        requested_publish_rate_hz = None
-        for p in params:
-            if p.name != "publish_rate_hz":
-                continue
-            try:
-                requested_publish_rate_hz = float(p.value)
-                requested_period_s = publish_timer_period_seconds(
-                    requested_publish_rate_hz
-                )
-            except (TypeError, ValueError, OverflowError) as exc:
-                return SetParametersResult(successful=False, reason=str(exc))
-
-        # A ROS parameter callback does not recreate an existing rclpy timer.
-        # Update its period and reset it before committing any other requested
-        # values, so a successful 5 -> 10 Hz change takes effect immediately.
-        if requested_publish_rate_hz is not None:
-            timer = getattr(self, "timer", None)
-            if timer is not None:
-                old_period_ns = timer.timer_period_ns
-                try:
-                    timer.timer_period_ns = int(requested_period_s * 1.0e9)
-                    timer.reset()
-                except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
-                    try:
-                        timer.timer_period_ns = old_period_ns
-                        timer.reset()
-                    except (AttributeError, RuntimeError, TypeError, ValueError):
-                        pass
-                    return SetParametersResult(
-                        successful=False,
-                        reason=f"failed to update publish timer: {exc}",
-                    )
-            self.publish_rate_hz = requested_publish_rate_hz
-
         for p in params:
             if p.name == "obstacle_offset":
                 self.obstacle_offset = float(p.value)
@@ -1677,8 +1640,9 @@ class FakeSensorPublisher(Node):
             elif p.name == "speed_mps":
                 self.speed_mps = float(p.value)
             elif p.name == "publish_rate_hz":
-                # Applied atomically with the timer period above.
-                continue
+                # Preserve develop semantics: the stored parameter changes, but
+                # the already-created rclpy timer keeps its startup period.
+                self.publish_rate_hz = float(p.value)
             elif p.name == "dummy_lidar_cost_grid_publish_rate_hz":
                 self.dummy_lidar_cost_grid_publish_rate_hz = float(p.value)
             elif p.name == "simulated_battery_percentage":

@@ -262,6 +262,11 @@
     retry_pause_s: 0.5
     maximum_total_distance_m: 1.50
     maximum_total_duration_s: 90.0
+    # Preserve develop wall-clock/yaw-envelope behavior by default. A tuned
+    # simulator profile may opt in to pausing bounded limits while the safety
+    # gate owns an exact-zero hold and to corrective yaw beyond the envelope.
+    zero_hold_pauses_limits: false
+    allow_corrective_yaw_beyond_limit: false
     pose_timeout_s: 0.5
     candidate_timeout_s: 0.75
     status_timeout_s: 1.0

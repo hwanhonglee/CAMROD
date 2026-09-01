@@ -1037,13 +1037,13 @@ private:
     // already at a site.
     active_service_mode_ = adopted_service_mode;
     last_auto_key_ = "adopt:" + key + ":" + fixed(now().seconds(), 3);
-    // HH_260830 - A roadside WAIT_RETURN pose has not turned yet: both the
-    // production forward loop and the CARLA exit-first turnaround preserve
-    // the entry heading until CRAB_OUT reaches the lanelet anchor. Ordinary
-    // turnaround sites have already turned, so reconstruct their entry yaw.
-    start_yaw_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop
-                     ? current_yaw
-                     : camrod_control::normalizeAngle(current_yaw - M_PI);
+    // Keep develop's adopted WAIT_RETURN reconstruction as the shared default.
+    // Only the explicit reverse-roadside profile retains the current outbound
+    // heading through lanelet exit and reverse-path handoff.
+    start_yaw_ = camrod_control::campsiteAdoptedWaitReturnStartYaw(
+        current_yaw,
+        active_service_mode_ == CampsiteServiceMode::kRoadsideStop,
+        roadside_reverse_return_enable_);
     crab_entry_body_yaw_target_ = start_yaw_;
     crab_entry_body_yaw_compensation_active_ = false;
     crab_entry_body_yaw_compensation_state_ = "inactive_adopted_wait_return";

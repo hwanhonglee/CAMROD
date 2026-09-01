@@ -3,7 +3,9 @@
 # HH_260810 - Exercise syntax/help contracts only; setup, CAN, Docker, and
 # hardware scripts must never mutate a test workstation during CTest.
 
+import os
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -64,3 +66,63 @@ def test_setup_declares_renderer_runtime_dependencies() -> None:
     for dependency in ("python3-numpy", "python3-matplotlib", "python3-pil", "python3-yaml"):
         assert dependency in source
         assert f"<exec_depend>{dependency}</exec_depend>" in package
+
+
+def test_setup_scopes_optional_rosdep_skip_keys_to_callers() -> None:
+    """The generic setup must not silently hide CARLA-only dependencies."""
+    source = (SRC_ROOT / "setup_camrod.sh").read_text(encoding="utf-8")
+    base_skip_match = re.search(
+        r"_ROSDEP_SKIP_KEYS=\(\n(?P<body>.*?)\n  \)", source, re.DOTALL
+    )
+    assert base_skip_match is not None
+    base_skip_keys = base_skip_match.group("body")
+    assert "carla_extended_ackermann_control" not in base_skip_keys
+    assert "carla_extended_ackermann_msgs" not in base_skip_keys
+    assert '_ROSDEP_SKIP_KEYS+=("${CAMROD_PARSED_EXTRA_ROSDEP_SKIP_KEYS[@]}")' in source
+
+    virtual_setup = (
+        SRC_ROOT / "scripts/virtual_carla/setup.sh"
+    ).read_text(encoding="utf-8")
+    assert (
+        'CAMROD_EXTRA_ROSDEP_SKIP_KEYS="carla_extended_ackermann_control '
+        'carla_extended_ackermann_msgs"'
+    ) in virtual_setup
+
+
+def test_setup_rejects_unsafe_extra_rosdep_skip_keys_before_host_actions() -> None:
+    """Caller-provided rosdep keys are parsed as package names, never shell text."""
+    environment = os.environ.copy()
+    environment["CAMROD_EXTRA_ROSDEP_SKIP_KEYS"] = "valid_key --bad-option"
+    result = subprocess.run(
+        [str(SRC_ROOT / "setup_camrod.sh"), "--help"],
+        cwd="/tmp",
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "invalid rosdep skip key" in result.stdout
+
+    environment["CAMROD_EXTRA_ROSDEP_SKIP_KEYS"] = "valid_key;touch_/tmp/never"
+    result = subprocess.run(
+        [str(SRC_ROOT / "setup_camrod.sh"), "--help"],
+        cwd="/tmp",
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "invalid rosdep skip key" in result.stdout
+
+    environment["CAMROD_EXTRA_ROSDEP_SKIP_KEYS"] = (
+        "carla_extended_ackermann_control carla_extended_ackermann_msgs"
+    )
+    result = subprocess.run(
+        [str(SRC_ROOT / "setup_camrod.sh"), "--help"],
+        cwd="/tmp",
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "One-time workspace setup" in result.stdout

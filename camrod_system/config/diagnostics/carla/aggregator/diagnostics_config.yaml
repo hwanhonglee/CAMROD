@@ -19,10 +19,9 @@ global:
     - "system/diagnostic"
     - "planning_state_checker: /planning/state_machine/state"
     # CARLA owns the two cameras, raw/filtered LiDAR, seven radars, GNSS,
-    # IMU, and the LiDAR-backed fused obstacle cloud. Those diagnostics must
-    # participate in UI/planning readiness; only the disabled hardware-only
-    # camera-detection branch remains ignored.
-    - "perception_obstacle_checker: /perception/obstacles/camera_detections"
+    # IMU, camera detections, and the fused obstacle cloud. All participate in
+    # UI/planning readiness so a stalled YOLO path cannot be hidden by empty
+    # fusion output.
 
 topics:
 

@@ -55,6 +55,10 @@ public:
     maximum_total_duration_s_ = std::max(
       maximum_duration_s_, std::clamp(
         declare_parameter<double>("maximum_total_duration_s", 90.0), 5.0, 300.0));
+    behavior_config_.zero_hold_pauses_limits = declare_parameter<bool>(
+      "zero_hold_pauses_limits", false);
+    behavior_config_.allow_corrective_yaw_beyond_limit = declare_parameter<bool>(
+      "allow_corrective_yaw_beyond_limit", false);
     attempt_limits_ = {
       maximum_duration_s_, maximum_distance_m_, maximum_attempts_,
       maximum_total_duration_s_, maximum_total_distance_m_};
@@ -233,6 +237,33 @@ private:
     motion_segment_observed_ = false;
   }
 
+  double episodeElapsed(const rclcpp::Time & current_time) const
+  {
+    if (!behavior_config_.zero_hold_pauses_limits) {
+      return (current_time - episode_start_time_).seconds();
+    }
+    return zero_hold_clock_.episodeElapsed(
+      current_time.seconds(), episode_start_time_.seconds());
+  }
+
+  double attemptElapsed(const rclcpp::Time & current_time) const
+  {
+    if (!behavior_config_.zero_hold_pauses_limits) {
+      return (current_time - attempt_start_time_).seconds();
+    }
+    return zero_hold_clock_.attemptElapsed(
+      current_time.seconds(), attempt_start_time_.seconds());
+  }
+
+  double retryElapsed(const rclcpp::Time & current_time) const
+  {
+    if (!behavior_config_.zero_hold_pauses_limits) {
+      return (current_time - retry_wait_start_time_).seconds();
+    }
+    return zero_hold_clock_.retryElapsed(
+      current_time.seconds(), retry_wait_start_time_.seconds());
+  }
+
   void tick()
   {
     if (!enabled_ || !hold_active_) {
@@ -258,7 +289,7 @@ private:
       publishStatus("SAFETY_HOLD", "candidate_missing_or_stale");
       return;
     }
-    if (limit_reached_) {
+    if (limit_reached_ && behavior_config_.zero_hold_pauses_limits) {
       resumeZeroHold(current_time);
       publishZero();
       publishStatus("LIMIT_HOLD", recoveryDetail("bounded_recovery_limit_reached"));
@@ -266,9 +297,9 @@ private:
     }
 
     const auto candidate_disposition =
-      ClassifyBoundedRecoveryCandidate(candidate_);
-    if (candidate_disposition ==
-      BoundedRecoveryCandidateDisposition::kZeroHold)
+      ClassifyBoundedRecoveryCandidateForConfig(candidate_, behavior_config_);
+    if (BoundedRecoveryCandidatePausesLimits(
+        candidate_disposition, behavior_config_))
     {
       beginZeroHold(current_time);
       publishZero();
@@ -278,8 +309,7 @@ private:
     }
     resumeZeroHold(current_time);
 
-    const double total_elapsed = zero_hold_clock_.episodeElapsed(
-      current_time.seconds(), episode_start_time_.seconds());
+    const double total_elapsed = episodeElapsed(current_time);
     if (retry_waiting_) {
       if (total_elapsed >= maximum_total_duration_s_ ||
         cumulative_distance_m_ >= maximum_total_distance_m_)
@@ -289,9 +319,7 @@ private:
         publishStatus("LIMIT_HOLD", recoveryDetail("total_recovery_limit_reached"));
         return;
       }
-      if (zero_hold_clock_.retryElapsed(
-          current_time.seconds(), retry_wait_start_time_.seconds()) <
-        retry_pause_s_)
+      if (retryElapsed(current_time) < retry_pause_s_)
       {
         publishZero();
         publishStatus("RETRY_WAIT", recoveryDetail("waiting_for_fresh_candidate"));
@@ -312,8 +340,7 @@ private:
         current_attempt_, maximum_attempts_);
     }
 
-    const double elapsed = zero_hold_clock_.attemptElapsed(
-      current_time.seconds(), attempt_start_time_.seconds());
+    const double elapsed = attemptElapsed(current_time);
     const double distance = attemptDistance();
     // HH_260818 - Sum one net displacement per bounded attempt instead of
     // every 20 Hz pose segment. Segment summation turns harmless localization
@@ -322,7 +349,7 @@ private:
     const auto limit_action = EvaluateBoundedRecoveryAttempt(
       attempt_limits_, current_attempt_, elapsed, distance, total_elapsed,
       total_distance);
-    if (limit_action == BoundedRecoveryAction::kFinalHold) {
+    if (limit_reached_ || limit_action == BoundedRecoveryAction::kFinalHold) {
       limit_reached_ = true;
       publishZero();
       publishStatus("LIMIT_HOLD", recoveryDetail("bounded_recovery_limit_reached"));
@@ -345,8 +372,9 @@ private:
       return;
     }
 
-    if (candidate_disposition ==
-      BoundedRecoveryCandidateDisposition::kInvalid)
+    if (candidate_disposition == BoundedRecoveryCandidateDisposition::kInvalid ||
+      (!behavior_config_.zero_hold_pauses_limits && candidate_disposition ==
+      BoundedRecoveryCandidateDisposition::kZeroHold))
     {
       publishZero();
       publishStatus("SAFETY_HOLD", "candidate_outside_bounded_twist");
@@ -363,9 +391,9 @@ private:
     // reduces an offset already created by a preceding crab stage.  The old
     // absolute-only clamp deleted that safe correction and converted it into
     // a straight reverse command, which the gate then held at exact zero.
-    if (!BoundedRecoveryYawCommandPermitted(
+    if (!BoundedRecoveryYawCommandPermittedForConfig(
         signedYawDisplacement(), command.angular.z,
-        maximum_yaw_change_rad_))
+        maximum_yaw_change_rad_, behavior_config_))
     {
       command.angular.z = 0.0;
     }
@@ -385,16 +413,19 @@ private:
 
   std::string recoveryDetail(const std::string & reason) const
   {
-    return reason +
-           " attempt=" + std::to_string(current_attempt_) + "/" +
-           std::to_string(maximum_attempts_) +
-           " total_distance=" +
-           std::to_string(cumulative_distance_m_ + attemptDistance()) +
-           " total_elapsed=" +
-           std::to_string(zero_hold_clock_.episodeElapsed(
-             now().seconds(), episode_start_time_.seconds())) +
-           " zero_hold_elapsed=" +
-           std::to_string(zero_hold_clock_.zeroHoldElapsed(now().seconds()));
+    const auto current_time = now();
+    std::string detail =
+      reason +
+      " attempt=" + std::to_string(current_attempt_) + "/" +
+      std::to_string(maximum_attempts_) +
+      " total_distance=" +
+      std::to_string(cumulative_distance_m_ + attemptDistance()) +
+      " total_elapsed=" + std::to_string(episodeElapsed(current_time));
+    if (behavior_config_.zero_hold_pauses_limits) {
+      detail += " zero_hold_elapsed=" +
+        std::to_string(zero_hold_clock_.zeroHoldElapsed(current_time.seconds()));
+    }
+    return detail;
   }
 
   void publishZero()
@@ -425,6 +456,7 @@ private:
   double retry_pause_s_{0.5};
   double maximum_total_distance_m_{1.50};
   double maximum_total_duration_s_{90.0};
+  BoundedRecoveryBehaviorConfig behavior_config_;
   double pose_timeout_s_{0.5};
   double candidate_timeout_s_{0.75};
   double status_timeout_s_{1.0};

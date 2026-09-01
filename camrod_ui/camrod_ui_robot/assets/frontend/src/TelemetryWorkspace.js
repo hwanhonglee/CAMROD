@@ -16,6 +16,7 @@ export const TELEMETRY_TABS = [
 const EMPTY_TELEMETRY = {
   stream_rate_hz: 10,
   session_active: false,
+  options: { raw_lidar_bbox_overlay_enabled: true },
   sources: {},
   gnss: { fix: {}, navpvt: {}, covariance: {}, relative_heading: {} },
   imu: {},
@@ -235,13 +236,10 @@ function radarArcPoints(mount, distance, fov) {
   return points;
 }
 
-function ProximityPlot({ telemetry, showRawLidar = false }) {
+function ProximityPlot({ telemetry }) {
   const channels = telemetry.radar?.channels || {};
   const filtered = telemetry.lidar?.streams?.filtered?.points || telemetry.lidar?.points || [];
-  // CARLA's ray-cast source can include returns from the simulated Ranger
-  // mesh.  Keep that raw stream available for diagnostics, but never mix it
-  // into the normal operator view unless the operator explicitly enables it.
-  const raw = showRawLidar ? (telemetry.lidar?.streams?.raw?.points || []) : [];
+  const raw = telemetry.lidar?.streams?.raw?.points || [];
   const planning = telemetry.footprint?.planning_points?.length
     ? telemetry.footprint.planning_points : (telemetry.footprint?.points || []);
   const width = 680;
@@ -309,7 +307,6 @@ function ProximityView({ telemetry }) {
   const lidarSource = sourceState(telemetry, 'lidar.filtered');
   const filtered = telemetry.lidar?.streams?.filtered || telemetry.lidar || {};
   const raw = telemetry.lidar?.streams?.raw || {};
-  const [showRawLidar, setShowRawLidar] = useState(false);
   return (
     <div className="telemetry-view telemetry-proximity-view">
       <div className="telemetry-source-row">
@@ -322,23 +319,11 @@ function ProximityView({ telemetry }) {
       </div>
       <div className="telemetry-proximity-layout">
         <section className="telemetry-section telemetry-plot-section">
-          <SectionHeader
-            title="Top-down proximity"
-            meta={`Filtered ${filtered.sample_count || 0} / ${filtered.point_count || 0} · Raw overlay ${showRawLidar ? 'ON' : 'OFF'}`}
-          />
-          <ProximityPlot telemetry={telemetry} showRawLidar={showRawLidar} />
+          <SectionHeader title="Top-down proximity" meta={`Filtered ${filtered.sample_count || 0} / ${filtered.point_count || 0}`} />
+          <ProximityPlot telemetry={telemetry} />
           <div className="telemetry-legend-row">
             <span><i className="legend-lidar" />LiDAR sample</span>
-            <label className="lidar-raw-toggle">
-              <input
-                type="checkbox"
-                checked={showRawLidar}
-                onChange={event => setShowRawLidar(event.target.checked)}
-                aria-label="진단용 원시 LiDAR 오버레이"
-              />
-              <i className="legend-lidar-raw" />
-              진단용 원시 LiDAR
-            </label>
+            <span><i className="legend-lidar-raw" />LiDAR raw</span>
             <span><i className="legend-radar-hit" />Radar return</span>
             <span><i className="legend-body" />Physical body</span>
             <span><i className="legend-margin" />Planning boundary</span>
@@ -763,7 +748,7 @@ function TrajectoryView({ telemetry, mapData }) {
 
 const COST_LAYER_META = {
   lanelet: { label: 'Lane boundary', color: '#8d99a6' },
-  lidar: { label: 'LiDAR cost', color: '#d8534f' },
+  lidar: { label: 'Semantic fusion cost', color: '#d8534f' },
   radar: { label: 'Radar cost', color: '#e2a93b' },
   inflation: { label: 'Inflation', color: '#527ca8' },
 };
@@ -780,7 +765,10 @@ function localToMap(point, pose) {
 function MapPerceptionPlot({ telemetry, mapData }) {
   const pose = telemetry.localization?.pose || {};
   const obstacleCloud = pointList(telemetry.perception?.obstacle_cloud);
-  const boxes = telemetry.perception?.obstacle_boxes?.polylines || [];
+  const rawBboxOverlayEnabled = telemetry.options?.raw_lidar_bbox_overlay_enabled !== false;
+  const boxes = rawBboxOverlayEnabled
+    ? telemetry.perception?.obstacle_boxes?.polylines || []
+    : [];
   const layers = telemetry.perception?.cost_layers || {};
   const layerPoints = Object.values(layers).flatMap(layer =>
     Array.isArray(layer?.occupied_samples) ? layer.occupied_samples : []
@@ -863,15 +851,18 @@ function MapPerceptionView({ telemetry, mapData }) {
   const layers = perception.cost_layers || {};
   const obstacleCloud = perception.obstacle_cloud || {};
   const boxes = perception.obstacle_boxes || {};
+  const rawBboxOverlayEnabled = telemetry.options?.raw_lidar_bbox_overlay_enabled !== false;
   return (
     <div className="telemetry-view telemetry-perception-view">
       <div className="telemetry-source-row">
         <SourcePill telemetry={telemetry} source="map.markers" label="Lanelet map" staleAfter={3600} />
         <SourcePill telemetry={telemetry} source="cost.lanelet" label="Lane cost" staleAfter={5} />
-        <SourcePill telemetry={telemetry} source="cost.lidar" label="LiDAR cost" staleAfter={5} />
+        <SourcePill telemetry={telemetry} source="cost.lidar" label="Semantic fusion cost" staleAfter={5} />
         <SourcePill telemetry={telemetry} source="cost.radar" label="Radar cost" staleAfter={5} />
-        <SourcePill telemetry={telemetry} source="perception.obstacles" label="Obstacle cloud" />
-        <SourcePill telemetry={telemetry} source="perception.boxes" label="Bounding boxes" />
+        <SourcePill telemetry={telemetry} source="perception.obstacles" label="Semantic obstacle cloud" />
+        {rawBboxOverlayEnabled && (
+          <SourcePill telemetry={telemetry} source="perception.boxes" label="Raw LiDAR bbox · visual only" />
+        )}
       </div>
       <div className="telemetry-perception-layout">
         <section className="telemetry-section telemetry-perception-map-section">
@@ -881,8 +872,10 @@ function MapPerceptionView({ telemetry, mapData }) {
             {Object.entries(COST_LAYER_META).map(([name, meta]) => (
               <span key={name}><i style={{ background: meta.color }} />{meta.label}</span>
             ))}
-            <span><i className="legend-obstacle" />Obstacle</span>
-            <span><i className="legend-box" />BBox</span>
+            <span><i className="legend-obstacle" />Semantic obstacle</span>
+            {rawBboxOverlayEnabled && (
+              <span><i className="legend-box" />Raw LiDAR bbox · visual only</span>
+            )}
           </div>
         </section>
         <section className="telemetry-section telemetry-perception-metrics">
@@ -904,7 +897,9 @@ function MapPerceptionView({ telemetry, mapData }) {
           <div className="telemetry-metric-grid telemetry-metric-grid-2 perception-count-grid">
             <Metric label="Obstacle samples" value={obstacleCloud.sample_count ?? 0} />
             <Metric label="Obstacle source points" value={obstacleCloud.point_count ?? 0} />
-            <Metric label="BBox outlines" value={boxes.outline_count ?? 0} />
+            {rawBboxOverlayEnabled && (
+              <Metric label="Raw BBox outlines · visual only" value={boxes.outline_count ?? 0} />
+            )}
             <Metric label="Map polylines" value={mapData.polylines?.length ?? 0} />
           </div>
           <div className="telemetry-subsection">
@@ -1053,16 +1048,17 @@ function DockingView({ telemetry }) {
   const reverse = controllers.reverse_parking || {};
   const april = controllers.apriltag_parking || {};
   const mission = telemetry.mission || {};
-  // The AprilTag detector is optional in CARLA.  Prefer its annotated debug
-  // frame when it is genuinely live; otherwise keep the operator's docking
-  // view useful with the canonical rear camera instead of showing NO FRAME.
+  // Keep develop's AprilTag debug source unless an external-simulator profile
+  // explicitly enables the rear-camera fallback.
   const dockingCamera = telemetry.cameras?.docking || {};
   const dockingSource = sourceState(telemetry, 'camera.docking', 3);
   const hasFreshDockingDebug = dockingCamera.available === true && dockingSource.state === 'live';
-  const dockingCameraName = hasFreshDockingDebug ? 'docking' : 'rear';
-  const dockingCameraLabel = hasFreshDockingDebug
-    ? 'Docking camera · AprilTag debug'
-    : 'Docking camera · CARLA rear fallback';
+  const rearFallbackEnabled = telemetry.options?.docking_rear_camera_fallback_enabled === true;
+  const useRearFallback = rearFallbackEnabled && !hasFreshDockingDebug;
+  const dockingCameraName = useRearFallback ? 'rear' : 'docking';
+  const dockingCameraLabel = useRearFallback
+    ? 'Docking camera · CARLA rear fallback'
+    : 'AprilTag docking debug';
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
@@ -1087,7 +1083,9 @@ function DockingView({ telemetry }) {
     <div className="telemetry-view telemetry-docking-view">
       <div className="telemetry-source-row">
         <SourcePill telemetry={telemetry} source="camera.docking" label="AprilTag debug" staleAfter={3} />
-        <SourcePill telemetry={telemetry} source="camera.rear" label="CARLA rear fallback" staleAfter={3} />
+        {rearFallbackEnabled && (
+          <SourcePill telemetry={telemetry} source="camera.rear" label="CARLA rear fallback" staleAfter={3} />
+        )}
         <SourcePill telemetry={telemetry} source="docking.tag_detected" label="Tag detection" />
         <SourcePill telemetry={telemetry} source="docking.tag_pose" label="Tag pose" />
         <SourcePill telemetry={telemetry} source="platform.velocity" label="Charging CAN" />

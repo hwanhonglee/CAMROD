@@ -98,8 +98,8 @@
     # HH_260818 - Charging CAN contact immediately stops every active phase.
     stop_when_charging: true
 
-    heading_gain: 0.9 # HH_260824
-    lateral_to_heading_gain: 1.5 # HH_260824
+    heading_gain: 1.5
+    lateral_to_heading_gain: 2.5
     maximum_angular_speed_radps: 1.0
     maximum_approach_angle_rad: 0.5
 
@@ -112,8 +112,8 @@
     # Slow down from 0.80 m, latch translation off at 0.40 m, then align yaw only.
     # Full bringup loads this package-owned file by default; keep deployment
     # mirrors synchronized so a field edit cannot silently leave 0.60 m active.
-    slowdown_start_tag_distance_m: 0.80 # HH_260824
-    translation_stop_tag_distance_m: 0.40 # HH_260824
+    slowdown_start_tag_distance_m: 0.80
+    translation_stop_tag_distance_m: 0.40
     # Keep combined reverse + steering above Ranger's 0.81033 m spin threshold.
     minimum_approach_turn_radius_m: 0.85
     final_yaw_angular_speed_radps: 0.20
@@ -123,12 +123,13 @@
     slowdown_start_distance_m: 1.443
     slowdown_start_remaining_distance_m: 0.60
 
-    final_heading_tolerance_rad: 0.10 # HH_260824
-    final_lateral_tolerance_m: 0.03 # HH_260824
+    final_heading_tolerance_rad: 0.10
+    final_lateral_tolerance_m: 0.03
     final_yaw_settle_hold_s: 0.8
     final_yaw_settle_max_rate_degps: 3.0
     final_insertion_start_distance_m: 0.993
     parked_distance_from_tag_m: 0.943
+
     tag_timeout_s: 0.5
     odometry_timeout_s: 0.5
     tag_wait_timeout_s: 60.0

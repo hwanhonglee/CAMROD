@@ -222,7 +222,10 @@
     # HH_260829 - Use the active route instead of clearance-side heuristics to
     # choose the bounded escape. Positive CTE is left of the ordered full route;
     # recovery therefore crabs right until the center tolerance is reached.
-    route_safety_path_relative_recovery_enable: true
+    # This CARLA/Woraksan recovery policy changes candidate selection from the
+    # production clearance-side heuristic. Keep it opt-in at the shared package
+    # boundary; simulator profiles may enable it explicitly.
+    route_safety_path_relative_recovery_enable: false
     # The local path remains the <=0.5 s active-route heartbeat, but its first
     # point may be pruned far ahead on a turn. Compute recovery geometry from
     # the mission-scoped full route and clear it on every new mission key.

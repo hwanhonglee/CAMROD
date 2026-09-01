@@ -1,0 +1,3 @@
+# Empty final perception overlay used by ordinary CAMROD.
+/perception/obstacle_fusion:
+  ros__parameters: {}

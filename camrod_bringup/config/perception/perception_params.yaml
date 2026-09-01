@@ -62,11 +62,10 @@
     input_topic: "/sensing/lidar/points_filtered"                 # LiDAR cloud input for Euclidean clustering.
     bbox_topic: "/perception/lidar/bboxes"                        # MarkerArray output topic for cluster AABB results.
 
-    # Disabled on physical CAMROD because camera-LiDAR fusion owns
-    # /perception/obstacles. The CARLA-only launch enables this to publish only
-    # points that belong to a valid nonground Euclidean cluster.
+    # Optional visualization-only cloud. Camera-LiDAR fusion is the sole owner
+    # of the semantic /perception/obstacles contract on hardware and simulators.
     publish_cluster_cloud: false
-    obstacle_cloud_topic: "/perception/obstacles"
+    cluster_cloud_topic: "/perception/lidar/cluster_points"
 
     # HH_260406: Canonical DBSCAN/Euclidean clustering params.
     cluster_tolerance: 0.25                                       # Neighbor distance threshold for cluster growth [m].

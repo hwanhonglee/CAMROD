@@ -13,7 +13,6 @@ import io
 import json
 import math
 import os
-import signal
 import struct
 import threading
 import time
@@ -63,7 +62,6 @@ from rclpy.action import ActionClient
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, Image as RosImage, Imu, NavSatFix, PointCloud2, Range
 from std_msgs.msg import String
@@ -835,6 +833,14 @@ class UiBackendNode(Node):
                 ),
             ),
         )
+        # Re-arming before a campsite return was introduced for the CARLA
+        # mission harness. Keep the develop lifecycle unchanged unless that
+        # simulator profile opts in explicitly.
+        self.return_site_exit_rearm_enabled = bool(
+            self.declare_parameter(
+                "return_site_exit_rearm_enabled", False
+            ).value
+        )
         # HH_260825 - A campsite selection made while physically charging is
         # accepted immediately but motion remains disabled for this one-shot
         # dwell.  The timer is created only for a pending departure, avoiding a
@@ -1069,6 +1075,19 @@ class UiBackendNode(Node):
             2.0,
             float(self.declare_parameter("telemetry_lidar_max_abs_xy_m", 12.0).value),
         )
+        self.telemetry_tf_transform_enabled = bool(
+            self.declare_parameter(
+                "telemetry_tf_transform_enabled", False
+            ).value
+        )
+        # Develop keeps the diagnostic Euclidean boxes visible by default.
+        # External-simulator compositions may disable the subscription so a
+        # classless raw cluster cannot be mistaken for semantic stop evidence.
+        self.telemetry_raw_lidar_bbox_overlay_enabled = bool(
+            self.declare_parameter(
+                "telemetry_raw_lidar_bbox_overlay_enabled", True
+            ).value
+        )
         tf_latest_tolerance = float(
             self.declare_parameter(
                 "telemetry_tf_latest_fallback_tolerance_s", 0.0
@@ -1106,6 +1125,11 @@ class UiBackendNode(Node):
         self.telemetry_camera_raw_fallback_enabled = bool(
             self.declare_parameter(
                 "telemetry_camera_raw_fallback_enabled", True
+            ).value
+        )
+        self.telemetry_docking_rear_camera_fallback_enabled = bool(
+            self.declare_parameter(
+                "telemetry_docking_rear_camera_fallback_enabled", False
             ).value
         )
         self.telemetry_camera_fallback_max_width = max(
@@ -1206,6 +1230,14 @@ class UiBackendNode(Node):
                 f"in-memory evidence: {self._service_metrics.persistence_error}"
             )
         self._telemetry = self._new_telemetry_snapshot()
+        self._telemetry["options"].update({
+            "docking_rear_camera_fallback_enabled": (
+                self.telemetry_docking_rear_camera_fallback_enabled
+            ),
+            "raw_lidar_bbox_overlay_enabled": (
+                self.telemetry_raw_lidar_bbox_overlay_enabled
+            ),
+        })
         self._telemetry_source_rx: Dict[str, float] = {}
         self._telemetry_source_history: Dict[str, deque[float]] = defaultdict(
             lambda: deque(maxlen=20)
@@ -1707,9 +1739,14 @@ class UiBackendNode(Node):
         self, lease: ManualDriveLease, payload: Any
     ) -> Dict[str, Any]:
         with self._manual_drive_transition_lock:
+            previous_state = self._manual_drive_policy.snapshot()
+            was_active = bool(
+                previous_state["armed"] or previous_state["holding"]
+            )
             self._manual_drive_policy.disarm(lease, payload)
-            self._publish_manual_drive_zero()
-            self._publish_engage(False, source="ws_manual_drive_disarm")
+            if was_active:
+                self._publish_manual_drive_zero()
+                self._publish_engage(False, source="ws_manual_drive_disarm")
             return {
                 "type": "state",
                 "manual_drive": self._manual_drive_policy.snapshot(),
@@ -1741,6 +1778,10 @@ class UiBackendNode(Node):
     def _disconnect_manual_drive(self, lease: ManualDriveLease) -> bool:
         """Stop only the matching generation; stale finally blocks are inert."""
         with self._manual_drive_transition_lock:
+            previous_state = self._manual_drive_policy.snapshot()
+            was_active = bool(
+                previous_state["armed"] or previous_state["holding"]
+            )
             if not self._manual_drive_policy.disconnect(lease):
                 return False
             if (
@@ -1748,8 +1789,9 @@ class UiBackendNode(Node):
                 and self._manual_drive_transport.lease == lease
             ):
                 self._manual_drive_transport = None
-            self._publish_manual_drive_zero()
-            self._publish_engage(False, source="ws_manual_drive_disconnect")
+            if was_active:
+                self._publish_manual_drive_zero()
+                self._publish_engage(False, source="ws_manual_drive_disconnect")
             return True
 
     def _on_manual_drive_deadman(self) -> None:
@@ -1780,14 +1822,17 @@ class UiBackendNode(Node):
             self._manual_drive_shutdown_done = True
             transport = self._manual_drive_transport
             self._manual_drive_transport = None
+            previous_state = self._manual_drive_policy.snapshot()
+            was_active = bool(
+                previous_state["armed"] or previous_state["holding"]
+            )
             self._manual_drive_policy.shutdown()
-            # Normal SIGINT/SIGTERM is handled by main() before the ROS context
-            # is closed, so the final zero and disengage reach the safety gate.
-            # External context shutdown cannot publish; in that race the gate's
-            # independent command watchdog remains the fail-safe backstop.
+            # Publish the final boundary while the ROS context is available.
+            # If shutdown has already invalidated it, the independent command
+            # watchdog remains the fail-safe backstop.
             context = getattr(self, "context", None)
             context_ok = context is None or rclpy.ok(context=context)
-            if context_ok:
+            if was_active and context_ok:
                 try:
                     self._publish_manual_drive_zero()
                     self._publish_engage(False, source="manual_drive_shutdown")
@@ -1798,7 +1843,7 @@ class UiBackendNode(Node):
                         "ROS context closed during manual-drive shutdown; "
                         "safety-gate watchdog will hold zero"
                     )
-            else:
+            elif was_active:
                 self.get_logger().warn(
                     "ROS context already closed during manual-drive shutdown; "
                     "safety-gate watchdog will hold zero"
@@ -1821,20 +1866,7 @@ class UiBackendNode(Node):
             service_metrics.close()
         return super().destroy_node()
 
-    def _stop_fastapi_server(
-        self,
-        join_timeout_s: float = 3.0,
-        force_join_timeout_s: float = 1.0,
-    ) -> None:
-        """Stop uvicorn gracefully, then bound its legacy connection wait.
-
-        Ubuntu 22.04 ships uvicorn 0.15.0.  Its graceful shutdown waits without
-        a timeout while any ASGI connection/task remains registered.  An open
-        operator WebSocket can therefore outlive the first ``should_exit``
-        request even after uvicorn has sent its disconnect event.  Preserve the
-        existing grace period, then use uvicorn's second-signal ``force_exit``
-        path so node destruction never abandons the daemon server thread.
-        """
+    def _stop_fastapi_server(self, join_timeout_s: float = 3.0) -> None:
         self._server_stop_requested.set()
         server = self._uvicorn_server
         if server is not None:
@@ -1855,21 +1887,9 @@ class UiBackendNode(Node):
         ):
             thread.join(timeout=max(0.0, float(join_timeout_s)))
             if thread.is_alive():
-                # Equivalent to uvicorn receiving SIGINT/SIGTERM a second time.
-                # In 0.15 this breaks its otherwise unbounded connection/task
-                # loops; FastAPI has no lifespan cleanup handlers in this node.
-                if server is not None:
-                    server.force_exit = True
-                if loop is not None and loop.is_running():
-                    try:
-                        loop.call_soon_threadsafe(lambda: None)
-                    except RuntimeError:
-                        pass
-                thread.join(timeout=max(0.0, float(force_join_timeout_s)))
-                if thread.is_alive():
-                    self.get_logger().warn(
-                        "ui backend fastapi thread did not stop after forced shutdown"
-                    )
+                self.get_logger().warn(
+                    "ui backend fastapi thread did not stop before timeout"
+                )
 
     def _compute_operation_mode(self, engaged: bool, ready: bool) -> str:
         if engaged and ready:
@@ -1917,6 +1937,10 @@ class UiBackendNode(Node):
         """Create the stable browser contract before any ROS sample arrives."""
         return {
             "schema_version": TELEMETRY_SCHEMA_VERSION,
+            "options": {
+                "docking_rear_camera_fallback_enabled": False,
+                "raw_lidar_bbox_overlay_enabled": True,
+            },
             "stream_rate_hz": None,
             "session_active": False,
             "active_view": "",
@@ -2142,10 +2166,17 @@ class UiBackendNode(Node):
                     sensor_qos,
                 ))
 
-        # The Docking view normally shows the AprilTag detector overlay.  CARLA
-        # maps without a placed tag still have a real rear camera, so subscribe
-        # to that canonical stream as an explicit UI fallback in this view.
-        if wants("camera", "docking"):
+        # The camera tab retains develop's front/rear pair. A docking-only rear
+        # subscription is added only when an external-simulator profile opts
+        # into the rear-camera fallback.
+        if wants("camera") or (
+            wants("docking")
+            and getattr(
+                self,
+                "telemetry_docking_rear_camera_fallback_enabled",
+                False,
+            )
+        ):
             subscriptions.append(
                 self.create_subscription(
                     CompressedImage, self.telemetry_topics["rear_camera"],
@@ -2218,17 +2249,18 @@ class UiBackendNode(Node):
             ])
 
         if wants("perception"):
-            subscriptions.extend([
-                self.create_subscription(
-                    PointCloud2, self.telemetry_topics["obstacle_cloud"],
-                    lambda message: self._on_telemetry_cloud("obstacles", message),
-                    sensor_qos,
-                ),
-                self.create_subscription(
+            subscriptions.append(self.create_subscription(
+                PointCloud2, self.telemetry_topics["obstacle_cloud"],
+                lambda message: self._on_telemetry_cloud("obstacles", message),
+                sensor_qos,
+            ))
+            if getattr(
+                self, "telemetry_raw_lidar_bbox_overlay_enabled", True
+            ):
+                subscriptions.append(self.create_subscription(
                     MarkerArray, self.telemetry_topics["obstacle_boxes"],
                     self._on_telemetry_obstacle_boxes, sensor_qos,
-                ),
-            ])
+                ))
             for layer_name in ("lanelet", "lidar", "radar", "inflation"):
                 subscriptions.append(self.create_subscription(
                     AvgOccupancyGrid,
@@ -2762,6 +2794,54 @@ class UiBackendNode(Node):
         ):
             return
         self._telemetry_last_cloud_decode[stream] = now
+        if not getattr(self, "telemetry_tf_transform_enabled", False):
+            # Preserve origin/develop's map-to-local fallback and payload
+            # contract for ordinary CAMROD deployments.
+            map_to_local_pose = None
+            with self._lock:
+                current_pose = dict(self._telemetry["localization"]["pose"])
+            if stream != "obstacles" and message.header.frame_id == "map":
+                pose_x = _finite_or_none(current_pose.get("x"))
+                pose_y = _finite_or_none(current_pose.get("y"))
+                pose_yaw = _finite_or_none(current_pose.get("yaw_deg"))
+                if (
+                    pose_x is not None
+                    and pose_y is not None
+                    and pose_yaw is not None
+                ):
+                    map_to_local_pose = (
+                        pose_x, pose_y, math.radians(pose_yaw)
+                    )
+            points = _sample_pointcloud_xy(
+                message,
+                max_points=self.telemetry_max_lidar_points,
+                max_abs_xy_m=self.telemetry_lidar_max_abs_xy_m,
+                map_to_local_pose=map_to_local_pose,
+            )
+            payload = {
+                "frame_id": (
+                    "robot_center_link"
+                    if map_to_local_pose is not None
+                    else message.header.frame_id
+                ),
+                "source_frame_id": message.header.frame_id,
+                "points": points,
+                "point_count": int(message.width) * max(1, int(message.height)),
+                "sample_count": len(points),
+            }
+            with self._lock:
+                self._telemetry["lidar"]["streams"][stream] = payload
+                if stream == "filtered":
+                    self._telemetry["lidar"].update(payload)
+                    self._touch_telemetry_locked("lidar", now)
+                    self._touch_telemetry_locked("lidar.filtered", now)
+                elif stream == "raw":
+                    self._touch_telemetry_locked("lidar.raw", now)
+                else:
+                    self._telemetry["perception"]["obstacle_cloud"] = payload
+                    self._touch_telemetry_locked("perception.obstacles", now)
+            return
+
         source_frame_id = str(message.header.frame_id or "").strip()
         target_frame_id = (
             "map" if stream == "obstacles" else "robot_center_link"
@@ -2892,6 +2972,16 @@ class UiBackendNode(Node):
             self._touch_telemetry_locked(f"camera.{camera}.raw", now)
 
     def _on_telemetry_obstacle_boxes(self, message: MarkerArray) -> None:
+        if not getattr(self, "telemetry_tf_transform_enabled", False):
+            geometry = _marker_array_geometry(
+                message,
+                max_points=self.telemetry_max_grid_cells,
+            )
+            with self._lock:
+                self._telemetry["perception"]["obstacle_boxes"] = geometry
+                self._touch_telemetry_locked("perception.boxes")
+            return
+
         active_markers = [
             marker for marker in message.markers
             if marker.action not in {Marker.DELETE, Marker.DELETEALL}
@@ -4773,21 +4863,19 @@ class UiBackendNode(Node):
             int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
             int(AvgServiceState.RETURN_WITH_CARGO),
         }:
-            # HH_260830 - Arrival states deliberately disarm both mission
-            # engage and the platform drive gate.  Re-open that authorization
-            # *before* asking the campsite controller to start CRAB_OUT.
-            # _publish_service_state() updates _latest_service_state
-            # synchronously, so relying on the echoed RETURNING_TO_DROP_ZONE
-            # callback skips its edge-triggered re-arm path and leaves every
-            # valid exit command blocked in STANDBY until the 90 s timeout.
-            if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(
-                    True, source=f"{source}:site_exit_resume"
-                )
-            else:
-                self._publish_platform_drive_enable(
-                    True, source=f"{source}:site_exit_resume"
-                )
+            if getattr(self, "return_site_exit_rearm_enabled", False):
+                # CARLA may disarm both mission engage and drive enable at an
+                # arrival boundary. The simulator profile can opt into an
+                # explicit re-arm before asking its campsite controller to
+                # start CRAB_OUT; develop keeps the original lifecycle.
+                if self.publish_mission_engage_from_destination:
+                    self._publish_mission_engage(
+                        True, source=f"{source}:site_exit_resume"
+                    )
+                else:
+                    self._publish_platform_drive_enable(
+                        True, source=f"{source}:site_exit_resume"
+                    )
             self._publish_camping_site_maneuver_controller_return(
                 source=f"{source}:site_exit_first"
             )
@@ -5469,40 +5557,9 @@ class UiBackendNode(Node):
         )
         return payload
 
-    def _service_state_payload_locked(self) -> Dict[str, Any]:
-        """Build reconnect-safe service context while ``_lock`` is held."""
-        destination = dict(self._state.destination)
-        payload: Dict[str, Any] = {
-            "service_state": self._state.service_state,
-            "service_state_name": self._state.service_state_name,
-            "service_state_description": self._state.service_state_description,
-            "destination": destination,
-        }
-
-        # HH_260830 - Arrival notifications are edge-triggered broadcasts.  A
-        # browser reconnecting during unloading or WAIT_RETURN therefore needs
-        # the active site repeated in its initial service payload.  Prefer the
-        # mission latch because the public destination can already have been
-        # cleared by a departure/status acknowledgement.
-        if self._state.service_state in {
-            int(AvgServiceState.UNLOAD_WAIT),
-            int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
-        }:
-            active_site = str(
-                getattr(self, "_active_mission_site", "") or ""
-            ).strip()
-            if not active_site and bool(destination.get("run", False)):
-                active_site = str(destination.get("site", "") or "").strip()
-            if active_site:
-                payload["site"] = active_site
-                payload["arrived"] = active_site
-
-        return payload
-
     def _snapshot(self) -> Dict[str, Any]:
         with self._lock:
-            service_payload = UiBackendNode._service_state_payload_locked(self)
-            snapshot = {
+            return {
                 "engaged": self._state.engaged,
                 "ready": self._state.ready,
                 "headlight": self._state.headlight,
@@ -5515,12 +5572,10 @@ class UiBackendNode(Node):
                 "system_health": self._state.system_health,
                 "mission_phase": self._state.mission_phase,
                 "mission_source": self._state.mission_source,
-                "service_state": service_payload["service_state"],
-                "service_state_name": service_payload["service_state_name"],
-                "service_state_description": service_payload[
-                    "service_state_description"
-                ],
-                "destination": service_payload["destination"],
+                "service_state": self._state.service_state,
+                "service_state_name": self._state.service_state_name,
+                "service_state_description": self._state.service_state_description,
+                "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
                 # HH_260724 - Initial UI snapshots carry the active battery policy state,
                 # not only edge-triggered websocket updates.
@@ -5540,10 +5595,6 @@ class UiBackendNode(Node):
                 "minimum_battery_percentage": self.low_battery_return_threshold_percent,
                 "occupied_sites": list(self._state.occupied_sites),
             }
-            for key in ("site", "arrived"):
-                if key in service_payload:
-                    snapshot[key] = service_payload[key]
-            return snapshot
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
 
@@ -5827,7 +5878,9 @@ class UiBackendNode(Node):
                 system_health = node._state.system_health
                 mission_phase = node._state.mission_phase
                 mission_source = node._state.mission_source
-                service_payload = node._service_state_payload_locked()
+                service_state = node._state.service_state
+                service_state_name = node._state.service_state_name
+                service_state_description = node._state.service_state_description
                 occupied_sites = list(node._state.occupied_sites)
             await ws.send_json({"states": states})
             await ws.send_json({"occupied_sites": occupied_sites})
@@ -5841,7 +5894,11 @@ class UiBackendNode(Node):
             if battery >= 0:
                 await ws.send_json({"battery": battery})
             await ws.send_json({"system_health": system_health})
-            await ws.send_json(service_payload)
+            await ws.send_json({
+                "service_state": service_state,
+                "service_state_name": service_state_name,
+                "service_state_description": service_state_description,
+            })
 
             try:
                 while True:
@@ -6264,41 +6321,27 @@ class UiBackendNode(Node):
         self._server_thread.start()
 
 
-def _interrupt_for_ordered_shutdown(_signum: int, _frame: Any) -> None:
-    """Leave the ROS context alive until manual-drive zero is published."""
-    raise KeyboardInterrupt
-
-
 def main() -> None:
-    previous_sigint = signal.signal(signal.SIGINT, _interrupt_for_ordered_shutdown)
-    previous_sigterm = signal.signal(signal.SIGTERM, _interrupt_for_ordered_shutdown)
-    node: Optional[UiBackendNode] = None
+    rclpy.init()
+    node = UiBackendNode()
     try:
-        # Keep ROS's default signal hooks disabled: they invalidate publishers
-        # before destroy_node() can send the manual-drive stop command.
-        rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
-        node = UiBackendNode()
-        try:
-            rclpy.spin(node)
-        # HH_260805 - launch-driven shutdown and terminal Ctrl+C are normal
-        # paths and must leave the process with exit code 0.
-        except (KeyboardInterrupt, ExternalShutdownException):
-            pass
-        # HH_260807 - Humble can race context shutdown with take_message
-        # conversion and raise RuntimeError. Suppress only after shutdown.
-        except RuntimeError:
-            if rclpy.ok():
-                raise
+        rclpy.spin(node)
+    # HH_260805 - launch-driven shutdown and terminal Ctrl+C are normal
+    # paths and must leave the process with exit code 0.
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    # HH_260807 - Humble can race context shutdown with take_message
+    # conversion and raise RuntimeError. Suppress only after shutdown.
+    except RuntimeError:
+        if rclpy.ok():
+            raise
     finally:
-        if node is not None:
-            node.destroy_node()
+        node.destroy_node()
         try:
             if rclpy.ok():
                 rclpy.shutdown()
         except Exception:
             pass
-        signal.signal(signal.SIGINT, previous_sigint)
-        signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 if __name__ == "__main__":

@@ -19,14 +19,24 @@ enum class BoundedRecoveryAction
   kFinalHold,
 };
 
-// The safety gate uses an exact zero Twist as a fail-closed hold sentinel when
-// no currently projected path-relative motion is safe. It is not a malformed
-// low-speed recovery attempt. Nonzero sub-threshold commands remain invalid.
+// The tuned route-relative policy uses an exact zero Twist as a fail-closed
+// hold sentinel when no currently projected motion is safe. The shared develop
+// behavior still treats it as an out-of-bounds candidate unless the owning node
+// explicitly enables zero-hold timing. Nonzero sub-threshold commands remain
+// invalid in either profile.
 enum class BoundedRecoveryCandidateDisposition
 {
   kMotion,
   kZeroHold,
   kInvalid,
+};
+
+struct BoundedRecoveryBehaviorConfig
+{
+  // Both switches are false to preserve the origin/develop controller policy.
+  // The CARLA tuned profile may opt into either behavior independently.
+  bool zero_hold_pauses_limits{false};
+  bool allow_corrective_yaw_beyond_limit{false};
 };
 
 // Preserve the whole-attempt yaw envelope without preventing a command that
@@ -54,11 +64,38 @@ inline bool BoundedRecoveryYawCommandPermitted(
   return requested_yaw_rate_radps * signed_yaw_offset_rad < -deadband;
 }
 
-// Count only time during which a bounded motion candidate is eligible to run.
-// The safety gate publishes an exact-zero sentinel when no complete projected
-// sweep is currently safe. That fail-closed dwell may last arbitrarily long
-// and must not manufacture 10 s retries or a 90 s final hold. Invalid/nonzero
-// candidates do not enter this pause and therefore retain the existing limits.
+inline bool BoundedRecoveryYawCommandPermittedForConfig(
+  const double signed_yaw_offset_rad,
+  const double requested_yaw_rate_radps,
+  const double maximum_absolute_yaw_offset_rad,
+  const BoundedRecoveryBehaviorConfig & config)
+{
+  if (config.allow_corrective_yaw_beyond_limit) {
+    return BoundedRecoveryYawCommandPermitted(
+      signed_yaw_offset_rad, requested_yaw_rate_radps,
+      maximum_absolute_yaw_offset_rad);
+  }
+  // Match origin/develop's exact comparison (`yaw >= limit`) when the tuned
+  // corrective policy is disabled.  That legacy comparison also defines its
+  // NaN edge behavior; fail-closed finite validation belongs only to the
+  // explicit simulator policy above.
+  (void)requested_yaw_rate_radps;
+  return !(std::abs(signed_yaw_offset_rad) >=
+         maximum_absolute_yaw_offset_rad);
+}
+
+inline bool BoundedRecoveryCandidatePausesLimits(
+  const BoundedRecoveryCandidateDisposition disposition,
+  const BoundedRecoveryBehaviorConfig & config)
+{
+  return config.zero_hold_pauses_limits &&
+         disposition == BoundedRecoveryCandidateDisposition::kZeroHold;
+}
+
+// Optional tuned clock that counts only time during which a bounded motion
+// candidate is eligible to run. The node never starts this clock under its
+// default develop-compatible policy. A simulator profile can opt in when its
+// gate intentionally uses exact zero as a route-relative hold sentinel.
 class BoundedRecoveryZeroHoldClock
 {
 public:
@@ -175,6 +212,34 @@ inline BoundedRecoveryCandidateDisposition ClassifyBoundedRecoveryCandidate(
   }
   if (translation < std::max(0.0, minimum_translation_mps) ||
     yaw_rate > std::max(0.0, maximum_yaw_rate_radps))
+  {
+    return BoundedRecoveryCandidateDisposition::kInvalid;
+  }
+  return BoundedRecoveryCandidateDisposition::kMotion;
+}
+
+inline BoundedRecoveryCandidateDisposition
+ClassifyBoundedRecoveryCandidateForConfig(
+  const avg_msgs::msg::AvgTwist & candidate,
+  const BoundedRecoveryBehaviorConfig & config,
+  const double minimum_translation_mps = 0.02,
+  const double maximum_yaw_rate_radps = 0.15,
+  const double zero_epsilon = 1.0e-9)
+{
+  if (config.zero_hold_pauses_limits) {
+    return ClassifyBoundedRecoveryCandidate(
+      candidate, minimum_translation_mps, maximum_yaw_rate_radps,
+      zero_epsilon);
+  }
+
+  // The develop controller used these two comparisons directly. Preserve
+  // their exact default behavior (including non-finite IEEE comparisons) and
+  // reserve the stricter zero/non-finite classifier for the opt-in zero-hold
+  // policy that needs the additional disposition.
+  const double translation = std::hypot(candidate.linear.x, candidate.linear.y);
+  const double yaw_rate = std::abs(candidate.angular.z);
+  if (translation < minimum_translation_mps ||
+    yaw_rate > maximum_yaw_rate_radps)
   {
     return BoundedRecoveryCandidateDisposition::kInvalid;
   }

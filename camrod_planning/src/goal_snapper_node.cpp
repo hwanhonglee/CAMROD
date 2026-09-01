@@ -271,11 +271,13 @@ public:
       declare_parameter<double>("pose_jump_reissue_distance_m", 1.5);
     pose_jump_reissue_min_interval_s_ =
       declare_parameter<double>("pose_jump_reissue_min_interval_s", 1.0);
-    // HH_260729 - Rebuild a retained Nav2 goal/path after the command gate
-    // explicitly transitions through ROUTE_SAFETY_HOLD and back to ENABLED.
-    // Nav2 normally remains EXECUTING while the gate performs recovery.
+    // HH_260729 - Preserve the develop default: only a retained goal whose
+    // Nav2 action aborted during ROUTE_SAFETY_HOLD is reissued. Simulator
+    // profiles can explicitly refresh an action that remains active.
     route_goal_recovery_config_.enabled = declare_parameter<bool>(
       "reissue_active_goal_after_route_recovery", true);
+    route_goal_recovery_config_.reissue_while_nav_active = declare_parameter<bool>(
+      "reissue_active_goal_after_route_recovery_when_nav_active", false);
     route_goal_recovery_status_topic_ = declare_parameter<std::string>(
       "route_recovery_status_topic", "/control/cmd_vel_safety_gate/status");
     route_goal_recovery_config_.clear_delay_s = declare_parameter<double>(
@@ -533,18 +535,37 @@ private:
     const double py = msg->pose.position.y;
     const double now_sec = this->get_clock()->now().seconds();
 
+    // Preserve origin/develop byte-for-byte callback ordering for the default
+    // single-source topology.  In particular, pending-goal release runs before
+    // this callback marks the current goal reached, and a frame-id change is
+    // still measured as an ordinary pose displacement.  The safer checkpoint
+    // validation below belongs only to the explicitly selected auxiliary
+    // simulator source.
+    const bool separate_pose_jump_source =
+      pose_jump_check_topic_ != current_pose_topic_;
+    const bool has_previous_pose = has_pose_jump_check_pose_;
+    const double pose_jump_distance =
+      !separate_pose_jump_source && has_previous_pose ?
+      std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_) : 0.0;
+    if (!separate_pose_jump_source) {
+      last_pose_jump_check_x_ = px;
+      last_pose_jump_check_y_ = py;
+      has_pose_jump_check_pose_ = true;
+    }
+
     latest_current_pose_x_ = px;
     latest_current_pose_y_ = py;
     has_latest_current_pose_ = true;
-    // Reached-state fallback belongs to the current lanelet pose regardless
-    // of which topic supplies physical jump detection. In separate-source
-    // mode the raw stream may be absent, invalid, or reseeding after a frame
-    // change while the robot still completes its active route normally.
-    updateActiveGoalReachedFromPose();
+    if (separate_pose_jump_source) {
+      // In the explicit two-source topology, reached-state fallback still
+      // belongs to the lanelet pose even if raw localization is absent,
+      // invalid, or reseeding after a frame change.
+      updateActiveGoalReachedFromPose();
+    }
     rebuildCostGridComponent();
     releasePendingGoalIfReady();
-    if (pose_jump_check_topic_ == current_pose_topic_) {
-      processPoseJumpCheck(*msg, now_sec);
+    if (!separate_pose_jump_source) {
+      maybeReissueActiveGoalOnPoseJump(pose_jump_distance, now_sec);
     }
 
     if (!restrict_to_connected_lanelet_component_ || !routing_graph_) {
@@ -687,7 +708,8 @@ private:
       return;
     }
     const bool route_hold = msg->operating_state == "ROUTE_SAFETY_HOLD";
-    const bool gate_enabled = msg->operating_state == "ENABLED";
+    const bool gate_enabled =
+      msg->operating_state == "ENABLED" || msg->operating_state == "DEPARTING_CHARGER";
     route_goal_recovery_.observeRouteHold(route_hold, gate_enabled, now().seconds());
   }
 
