@@ -5,18 +5,20 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|spectator|manual|audit-sensors|camping-sites-plan|camping-sites|doctor>
+Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|camrod-tuned|spectator|manual|audit-sensors|camping-sites-plan|camping-sites|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
   bridge    run the standard carla_ros_bridge
   pacer     pace the gate-bound synchronous bridge at real-time 20 Hz
   spawn     spawn the configured Ranger actor/sensors
-  camrod    run the Ranger 4WS controller, adapter, full CAMROD and UI
+  camrod    run develop-parity CAMROD over the CARLA bridge (default)
+  camrod-tuned
+            run the historical Woraksan-specific tuned mission profile
   spectator follow the exact live Ranger in the visible CARLA window; visual only
   manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
   audit-sensors
-            prove all 32 CARLA-source/UI sensor streams and 13 actors live
+            prove all 36 CARLA-source/UI sensor streams and 13 actors live
   camping-sites-plan
             print the B1-B13 round-trip plan; create nothing and send no command
   camping-sites
@@ -135,8 +137,12 @@ spawn_command() {
 }
 
 camrod_command() {
+  local launch_file="${1:-camrod_carla_full.launch.py}"
+  local lanelet_map="${2:-${CAMROD_LANELET_MAP}}"
   CAMROD_COMMAND=(
-    ros2 launch camrod_carla_adapter camrod_carla_full.launch.py
+    env
+    "YOLOV9_MODEL_PATH=${CAMROD_CARLA_YOLO_MODEL_PATH}"
+    ros2 launch camrod_carla_adapter "${launch_file}"
     "role_name:=${CARLA_ROLE_NAME}"
     "host:=${CARLA_HOST}"
     "port:=${CARLA_PORT}"
@@ -147,14 +153,10 @@ camrod_command() {
     extended_mode_backend:=PHYSX_FOUR_WHEEL_STEERING
     "map_alignment_file:=${CAMROD_MAP_ALIGNMENT_FILE}"
     "camrod_launch_defaults_file:=${CAMROD_LAUNCH_DEFAULTS_FILE}"
-    "camrod_map_path:=${CAMROD_LANELET_MAP}"
+    "camrod_map_path:=${lanelet_map}"
     "launch_sensor_relay:=${CAMROD_LAUNCH_SENSOR_RELAY}"
     "compressed_image_max_rate_hz:=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}"
     "raw_image_max_rate_hz:=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}"
-    "manual_drive_linear_limit_mps:=${CAMROD_MANUAL_LINEAR_LIMIT_MPS}"
-    "manual_drive_lateral_limit_mps:=${CAMROD_MANUAL_LATERAL_LIMIT_MPS}"
-    "manual_drive_angular_limit_radps:=${CAMROD_MANUAL_ANGULAR_LIMIT_RADPS}"
-    "manual_drive_deadman_timeout_s:=${CAMROD_MANUAL_DEADMAN_TIMEOUT_S}"
     enable_plugin_api:=true
     enable_api_ui:=true
     "enable_operator_ui_window:=${CAMROD_ENABLE_OPERATOR_WINDOW}"
@@ -372,6 +374,7 @@ validate_step_pacer_ready() {
 }
 
 require_common_runtime_files() {
+  local lanelet_map="${1:-${CAMROD_LANELET_MAP}}"
   virtual_carla_require_var RANGER_CARLA_ROOT || return 1
   virtual_carla_verify_gate_aliases || return 1
   virtual_carla_require_file \
@@ -383,9 +386,34 @@ require_common_runtime_files() {
   virtual_carla_require_file \
     "${CAMROD_MAP_ALIGNMENT_FILE}" "CARLA-to-CAMROD map alignment" || return 1
   virtual_carla_require_file \
-    "${CAMROD_LANELET_MAP}" "CAMROD lanelet map" || return 1
+    "${lanelet_map}" "CAMROD lanelet map" || return 1
   virtual_carla_require_file \
     "${CAMROD_LAUNCH_DEFAULTS_FILE}" "CAMROD launch defaults" || return 1
+  if [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]]; then
+    virtual_carla_require_file \
+      "${CAMROD_CARLA_YOLO_MODEL_PATH}" \
+      "host-local CARLA YOLO TensorRT engine" || return 1
+    [[ -s "${CAMROD_CARLA_YOLO_MODEL_PATH}" ]] || {
+      virtual_carla_die \
+        "host-local CARLA YOLO TensorRT engine is empty: ${CAMROD_CARLA_YOLO_MODEL_PATH}"
+      return 1
+    }
+  fi
+}
+
+validate_carla_yolo_engine() {
+  [[ "${CARLA_RENDER_MODE}" == "nullrhi" ]] && return 0
+  local builder="${CAMROD_WS_ROOT}/install/yolov9mit/lib/yolov9mit/yolov9mit_build_engine"
+  virtual_carla_require_executable \
+    "${builder}" "YOLOv9MIT TensorRT engine validator" || return 1
+  "${builder}" --validate-engine "${CAMROD_CARLA_YOLO_MODEL_PATH}" \
+    --device "${CAMROD_CARLA_YOLO_DEVICE}" || {
+      virtual_carla_die \
+        "CARLA YOLO engine is incompatible with this TensorRT/GPU; run ${script_dir}/prepare_yolo_engine.sh"
+      return 1
+    }
+  virtual_carla_log \
+    "CARLA YOLO engine runtime validation passed: ${CAMROD_CARLA_YOLO_MODEL_PATH}"
 }
 
 require_bridge_authorization_files() {
@@ -956,6 +984,13 @@ run_doctor() {
       "${CAMROD_WS_ROOT}/install" || failures=$((failures + 1))
     virtual_carla_verify_package_prefix \
       camrod_ui "${CAMROD_WS_ROOT}/install" || failures=$((failures + 1))
+    if [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]]; then
+      virtual_carla_verify_package_prefix \
+        yolov9mit "${CAMROD_WS_ROOT}/install" || failures=$((failures + 1))
+      virtual_carla_verify_package_prefix \
+        yolov9mit_ros "${CAMROD_WS_ROOT}/install" || failures=$((failures + 1))
+      validate_carla_yolo_engine || failures=$((failures + 1))
+    fi
     validate_carla_python_api || failures=$((failures + 1))
   else
     failures=$((failures + 1))
@@ -990,7 +1025,13 @@ case "${subcommand}" in
     if [[ -z "${CARLA_PYTHON_EGG_CACHE}" ]]; then
       CARLA_PYTHON_EGG_CACHE='<fresh-empty-absolute-directory>'
     fi
-    camrod_command
+    camrod_command \
+      "camrod_carla_full.launch.py" "${CAMROD_LANELET_MAP}"
+    CAMROD_PARITY_COMMAND=("${CAMROD_COMMAND[@]}")
+    camrod_command \
+      "camrod_carla_woraksan_tuned.launch.py" \
+      "${CAMROD_WORAKSAN_TUNED_LANELET_MAP}"
+    CAMROD_TUNED_COMMAND=("${CAMROD_COMMAND[@]}")
     SPECTATOR_COMMAND=(
       python3 "${script_dir}/follow_ego_spectator.py"
       --host "${CARLA_HOST}"
@@ -1033,6 +1074,12 @@ case "${subcommand}" in
       "${CAMROD_CARLA_SENSOR_MIN_RATE_HZ}"
     printf 'export CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS=%q\n' \
       "${CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS}"
+    printf 'export CAMROD_CARLA_YOLO_MODEL_PATH=%q\n' \
+      "${CAMROD_CARLA_YOLO_MODEL_PATH}"
+    printf 'export CAMROD_CARLA_YOLO_DEVICE=%q\n' \
+      "${CAMROD_CARLA_YOLO_DEVICE}"
+    printf 'export CAMROD_CARLA_YOLO_WORKSPACE_MIB=%q\n' \
+      "${CAMROD_CARLA_YOLO_WORKSPACE_MIB}"
     printf 'export CARLA_RENDER_MODE=%q\n\n' "${CARLA_RENDER_MODE}"
     printf 'export CARLA_RENDER_MAX_FPS=%q\n' "${CARLA_RENDER_MAX_FPS}"
     printf 'export CAMROD_CARLA_STEP_PACING=%q\n' \
@@ -1044,6 +1091,8 @@ case "${subcommand}" in
       "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}" \
       "${CAMROD_DDS_SOCKET_BUFFER_MIN_BYTES}"
     printf '# Persist both values in /etc/sysctl.d/99-camrod-carla-dds.conf\n\n'
+    printf '# One-time/host-change YOLO TensorRT preparation (build.sh runs this by default)\n'
+    printf '%q --print-path\n\n' "${script_dir}/prepare_yolo_engine.sh"
     printf '# REQUIRED lifecycle order (five terminals)\n'
     printf '# Wait for each preceding stage to report success before continuing.\n'
     printf '%q server\n' "${script_dir}/run.sh"
@@ -1051,6 +1100,8 @@ case "${subcommand}" in
     printf '%q pacer\n' "${script_dir}/run.sh"
     printf '%q spawn\n' "${script_dir}/run.sh"
     printf '%q camrod\n\n' "${script_dir}/run.sh"
+    printf '# Historical Woraksan tuning is explicit and is not the parity default\n'
+    printf '%q camrod-tuned\n\n' "${script_dir}/run.sh"
     printf '# Optional visual-only chase camera; does not tick or control the world\n'
     printf '%q spectator\n\n' "${script_dir}/run.sh"
     printf '# Optional after CAMROD and physical 4WS status are healthy\n'
@@ -1069,8 +1120,11 @@ case "${subcommand}" in
     print_command "${PACER_COMMAND[@]}"
     printf '\n# Expanded actor spawn command\n'
     print_command "${SPAWN_COMMAND[@]}"
-    printf '\n# Expanded CAMROD command; run.sh creates the fresh egg cache\n'
-    print_command "${CAMROD_COMMAND[@]}"
+    printf '\n# Expanded develop-parity CAMROD command; run.sh creates the fresh egg cache\n'
+    print_command "${CAMROD_PARITY_COMMAND[@]}"
+    printf '\n# Expanded historical Woraksan-tuned CAMROD command (optional)\n'
+    printf '# The wrapper explicitly resolves manual limits=1.40/1.00/0.7853, lease=0.75s, speed scale=1.0, radius=0.82m.\n'
+    print_command "${CAMROD_TUNED_COMMAND[@]}"
     printf '\n# Expanded spectator command; run.sh resolves the exact live actor id\n'
     print_command "${SPECTATOR_COMMAND[@]}"
     printf '\n# Expanded guarded keyboard command (manual preflight runs first)\n'
@@ -1132,9 +1186,17 @@ case "${subcommand}" in
     virtual_carla_log "spawning configured Ranger actor (no motion command)"
     exec "${SPAWN_COMMAND[@]}"
     ;;
-  camrod)
+  camrod|camrod-tuned)
     virtual_carla_require_dds_transport
-    require_common_runtime_files
+    camrod_launch_file="camrod_carla_full.launch.py"
+    camrod_profile="develop-parity"
+    camrod_lanelet_map="${CAMROD_LANELET_MAP}"
+    if [[ "${subcommand}" == "camrod-tuned" ]]; then
+      camrod_launch_file="camrod_carla_woraksan_tuned.launch.py"
+      camrod_profile="woraksan-tuned"
+      camrod_lanelet_map="${CAMROD_WORAKSAN_TUNED_LANELET_MAP}"
+    fi
+    require_common_runtime_files "${camrod_lanelet_map}"
     virtual_carla_source_ros true true
     virtual_carla_verify_package_prefix \
       carla_extended_ackermann_control "${RANGER_ROS_WS}/install"
@@ -1142,6 +1204,13 @@ case "${subcommand}" in
       camrod_carla_adapter "${CAMROD_WS_ROOT}/install"
     virtual_carla_verify_package_prefix \
       camrod_ui "${CAMROD_WS_ROOT}/install"
+    if [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]]; then
+      virtual_carla_verify_package_prefix \
+        yolov9mit "${CAMROD_WS_ROOT}/install"
+      virtual_carla_verify_package_prefix \
+        yolov9mit_ros "${CAMROD_WS_ROOT}/install"
+      validate_carla_yolo_engine
+    fi
     validate_runtime_gates
     validate_spawn_file
     validate_render_timing_contract
@@ -1169,9 +1238,9 @@ case "${subcommand}" in
       exit 1
     fi
     virtual_carla_use_python_egg
-    camrod_command
+    camrod_command "${camrod_launch_file}" "${camrod_lanelet_map}"
     virtual_carla_log \
-      "starting Ranger 4WS controller, CAMROD algorithms and production UI"
+      "starting Ranger 4WS controller, CAMROD algorithms and production UI; profile=${camrod_profile} map=${camrod_lanelet_map}"
     virtual_carla_log \
       "no motion is sent; arm and command only after runtime gates are healthy"
     exec "${CAMROD_COMMAND[@]}"
@@ -1252,7 +1321,7 @@ case "${subcommand}" in
     ;;
   camping-sites)
     [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]] || virtual_carla_die \
-      "camping-site matrix requires rendered CARLA and the 32-stream sensor audit"
+      "camping-site matrix requires rendered CARLA and the 36-stream sensor audit"
     virtual_carla_require_dds_transport
     require_common_runtime_files
     virtual_carla_source_ros true true

@@ -33,36 +33,51 @@ YOLOV9MIT_TensorRT::YOLOV9MIT_TensorRT(const std::string& engine_path, const int
                                        const size_t num_classes)
     : AbcYOLOV9MIT(min_iou, min_confidence, num_classes), device_(device)
 {
-    cudaSetDevice(this->device_);
+    cuda_check(cudaSetDevice(this->device_));
 
     this->runtime_ = std::unique_ptr<IRuntime>(createInferRuntime(this->trt_logger_));
-    assert(this->runtime_ != nullptr);
+    if (this->runtime_ == nullptr)
+    {
+        throw std::runtime_error("TensorRT createInferRuntime returned null");
+    }
 
     std::ifstream file(engine_path, std::ios::binary);
     if (file.good())
     {
         file.seekg(0, file.end);
-        const size_t size = file.tellg();
+        const auto end_position = file.tellg();
+        if (end_position <= 0)
+        {
+            throw std::runtime_error("TensorRT engine file is empty: " + engine_path);
+        }
+        const size_t size = static_cast<size_t>(end_position);
         file.seekg(0, file.beg);
-        char* trtModelStream = new char[size];
-        assert(trtModelStream);
-        file.read(trtModelStream, size);
+        std::vector<char> trt_model_stream(size);
+        file.read(trt_model_stream.data(), static_cast<std::streamsize>(size));
+        if (!file)
+        {
+            throw std::runtime_error("failed to read TensorRT engine: " + engine_path);
+        }
         file.close();
 
         this->engine_ = std::unique_ptr<ICudaEngine>(
-            this->runtime_->deserializeCudaEngine(trtModelStream, size));
-        assert(this->engine_ != nullptr);
-
-        delete[] trtModelStream;
+            this->runtime_->deserializeCudaEngine(trt_model_stream.data(), size));
+        if (this->engine_ == nullptr)
+        {
+            throw std::runtime_error(
+                "TensorRT could not deserialize engine (runtime/GPU mismatch): " + engine_path);
+        }
     }
     else
     {
-        std::cerr << "invalid arguments engine_path: " << engine_path << std::endl;
-        return;
+        throw std::runtime_error("TensorRT engine path does not exist: " + engine_path);
     }
 
     this->context_ = std::unique_ptr<IExecutionContext>(this->engine_->createExecutionContext());
-    assert(this->context_ != nullptr);
+    if (this->context_ == nullptr)
+    {
+        throw std::runtime_error("TensorRT createExecutionContext returned null");
+    }
 
     const auto input_name = this->engine_->getIOTensorName(this->input_index_);
     const auto output0_name = this->engine_->getIOTensorName(this->output0_index_);
@@ -153,10 +168,11 @@ YOLOV9MIT_TensorRT::YOLOV9MIT_TensorRT(const std::string& engine_path, const int
 
 YOLOV9MIT_TensorRT::~YOLOV9MIT_TensorRT()
 {
-    cuda_check(cudaStreamDestroy(stream_));
-    cuda_check(cudaFree(inference_buffers_[0]));
-    cuda_check(cudaFree(inference_buffers_[1]));
-    cuda_check(cudaFree(inference_buffers_[2]));
+    if (stream_ != nullptr) cudaStreamDestroy(stream_);
+    for (void *buffer : inference_buffers_)
+    {
+        if (buffer != nullptr) cudaFree(buffer);
+    }
 }
 
 std::vector<Object> YOLOV9MIT_TensorRT::inference(const cv::Mat& frame)

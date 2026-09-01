@@ -12,7 +12,7 @@ from camrod_carla_adapter.sensor_source_audit import (
     PublisherEndpoint,
     StreamObservation,
 )
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import CameraInfo, PointCloud2, PointField
 
 
 def _healthy_observations(contracts, now=100.0):
@@ -32,15 +32,19 @@ def _healthy_observations(contracts, now=100.0):
 def test_inventory_covers_exact_ui_topics_and_all_carla_sources():
     contracts = build_stream_contracts('ranger_test')
 
-    assert len(contracts) == 32
-    assert sum(item.layer == 'source' for item in contracts) == 13
-    assert sum(item.layer == 'canonical' for item in contracts) == 19
+    assert len(contracts) == 36
+    assert sum(item.layer == 'source' for item in contracts) == 15
+    assert sum(item.layer == 'canonical' for item in contracts) == 21
     topics = {item.topic for item in contracts}
     assert '/carla/ranger_test/rgb_view/image' in topics
+    assert '/carla/ranger_test/rgb_view/camera_info' in topics
     assert '/sensing/camera/econ_front/image_rect/compressed' in topics
     assert '/sensing/camera/econ_front/image_raw' in topics
+    assert '/sensing/camera/econ_front/camera_info' in topics
+    assert '/carla/ranger_test/rgb_rear/camera_info' in topics
     assert '/sensing/camera/econ_rear/image_raw/compressed' in topics
     assert '/sensing/camera/econ_rear/image_raw' in topics
+    assert '/sensing/camera/econ_rear/camera_info' in topics
     assert '/sensing/lidar/vanjee/points_raw' in topics
     assert '/sensing/lidar/points_filtered' in topics
     assert '/perception/obstacles' in topics
@@ -51,13 +55,13 @@ def test_inventory_covers_exact_ui_topics_and_all_carla_sources():
     assert contracts_by_key['ui.lidar.filtered'].expected_publisher == (
         'carla_lidar_filter'
     )
-    assert contracts_by_key['ui.lidar.obstacles'].expected_publisher == (
-        'obstacle_lidar'
+    assert contracts_by_key['ui.perception.obstacles'].expected_publisher == (
+        'obstacle_fusion'
     )
     assert contracts_by_key['source.lidar.front'].allow_empty_pointcloud is False
     assert contracts_by_key['ui.lidar.raw'].allow_empty_pointcloud is False
     assert contracts_by_key['ui.lidar.filtered'].allow_empty_pointcloud is True
-    assert contracts_by_key['ui.lidar.obstacles'].allow_empty_pointcloud is True
+    assert contracts_by_key['ui.perception.obstacles'].allow_empty_pointcloud is True
     assert '/sensing/gnss/ublox_gps_node/fix' in topics
     assert '/carla/ranger_test/gnss_right' in topics
     assert '/sensing/gnss/ublox_gps_node/navpvt' in topics
@@ -82,6 +86,27 @@ def test_healthy_unique_adapter_ownership_and_fresh_samples_pass():
 
     assert results
     assert all(result.passed for result in results)
+
+
+def test_camera_info_contract_rejects_missing_or_invalid_calibration():
+    contract = next(
+        item for item in build_stream_contracts()
+        if item.key == 'ui.camera.front.info'
+    )
+    message = CameraInfo()
+    assert 'dimensions' in sensor_source_audit_node.validate_message(
+        contract, message
+    )
+
+    message.width = 800
+    message.height = 600
+    message.k = [0.0] * 9
+    assert 'focal lengths' in sensor_source_audit_node.validate_message(
+        contract, message
+    )
+
+    message.k = [400.0, 0.0, 400.0, 0.0, 400.0, 300.0, 0.0, 0.0, 1.0]
+    assert sensor_source_audit_node.validate_message(contract, message) == ''
 
 
 def _empty_lidar_heartbeat() -> PointCloud2:
@@ -115,7 +140,7 @@ def test_clear_scene_empty_cloud_is_valid_only_for_processed_lidar_products():
         contracts['ui.lidar.filtered'], message
     ) == ''
     assert sensor_source_audit_node.validate_message(
-        contracts['ui.lidar.obstacles'], message
+        contracts['ui.perception.obstacles'], message
     ) == ''
     assert sensor_source_audit_node.validate_message(
         contracts['source.lidar.front'], message

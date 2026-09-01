@@ -1,0 +1,16 @@
+# CARLA-only camera-to-LiDAR geometry overlay.
+#
+# Spawn contract (vehicle-relative metres):
+#   front camera = (0.76337, 0.00000, 0.49568)
+#   LiDAR        = (0.76336, 0.00000, 0.59538)
+# Spawn coordinates use the raw LiDAR axes (raw_X forward, raw_Y left,
+# raw_Z up), so camera - LiDAR = (+0.00001, 0.00000, -0.09970). Fusion first
+# rotates points into the Vanjee effective frame:
+#   eff_X = -raw_Y, eff_Y = raw_X, eff_Z = raw_Z
+# Therefore its translation parameter is (0.00000, +0.00001, -0.09970).
+# Production parameters are intentionally unchanged; camrod_carla_full opts in.
+/perception/obstacle_fusion:
+  ros__parameters:
+    extrinsic_x: 0.0
+    extrinsic_y: 0.00001
+    extrinsic_z: -0.09970

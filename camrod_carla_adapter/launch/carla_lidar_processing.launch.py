@@ -46,11 +46,13 @@ def generate_launch_description():
             parameters=[
                 LaunchConfiguration("perception_param_file"),
                 {
-                    # Physical CAMROD leaves this false because camera-LiDAR
-                    # fusion owns /perception/obstacles. CARLA runs LiDAR-only
-                    # perception, so publish points from valid clusters here.
+                    # Euclidean clusters remain visualization-only. The
+                    # production camera-LiDAR fusion node is the sole owner of
+                    # the semantic /perception/obstacles topic in CARLA too.
                     "publish_cluster_cloud": True,
-                    "obstacle_cloud_topic": "/perception/obstacles",
+                    "cluster_cloud_topic": (
+                        "/perception/lidar/cluster_points"
+                    ),
                 },
             ],
             condition=IfCondition(LaunchConfiguration("enable")),

@@ -10,7 +10,11 @@ public:
     }
     virtual void log(Severity severity, const char* msg) noexcept override
     {
-        if (severity >= m_defaultLevel)
+        // TensorRT orders severities from the most serious (0) to the most
+        // verbose (4).  The previous comparison suppressed INTERNAL_ERROR and
+        // ERROR while printing less important messages, which hid engine
+        // deserialization failures immediately before a null dereference.
+        if (severity <= m_defaultLevel)
         {
             switch (severity)
             {

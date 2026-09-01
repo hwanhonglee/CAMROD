@@ -38,7 +38,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${script_dir}/env.sh"
 
-shell_tools=(env.sh setup.sh build.sh test.sh run.sh)
+shell_tools=(
+  env.sh
+  setup.sh
+  build.sh
+  prepare_yolo_engine.sh
+  test.sh
+  run.sh
+)
 for tool in "${shell_tools[@]}"; do
   bash -n "${script_dir}/${tool}"
 done

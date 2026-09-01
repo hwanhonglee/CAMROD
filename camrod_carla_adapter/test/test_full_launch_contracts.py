@@ -10,6 +10,10 @@ import yaml
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PACKAGE_ROOT.parent
+FULL_LAUNCH = PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+TUNED_LAUNCH = (
+    PACKAGE_ROOT / "launch" / "camrod_carla_woraksan_tuned.launch.py"
+)
 
 
 def _deep_merge(base, overlay):
@@ -40,38 +44,130 @@ def _resolve_rate(module, primary_name, primary_value, legacy_value):
 
 
 def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
-    source = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+    source = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
     assert 'get_package_share_directory("carla_ros_bridge")' not in source
     assert 'get_package_share_directory("carla_spawn_objects")' not in source
     assert '"sim": "true"' in source
     assert '"external_simulator": "true"' in source
+    assert '"enable_fake_sensors": "false"' in source
+    assert (
+        '"use_sim_planning_profile": LaunchConfiguration('
+        in source
+    )
+    assert (
+        '"use_sim_localization_profile": LaunchConfiguration('
+        in source
+    )
+    assert (
+        '"use_sim_parking_method": LaunchConfiguration('
+        in source
+    )
+    for setting in (
+        "external_front_camera_source",
+        "external_rear_camera_source",
+        "perception_enable_yolo",
+    ):
+        assert (
+            f'"{setting}": LaunchConfiguration(\n'
+            '                    "launch_sensor_relay"'
+            in source
+        )
+    assert "'camera_lidar' if '" in source
+    assert "else 'lidar_only'" in source
     assert '"sim_platform_status_enable": "true"' in source
+    assert (
+        '"operator_telemetry_raw_lidar_bbox_overlay_enabled",'
+        in source
+    )
+    raw_bbox_declaration = source.split(
+        '"operator_telemetry_raw_lidar_bbox_overlay_enabled",', 1
+    )[1].split("DeclareLaunchArgument", 1)[0]
+    assert 'default_value="false"' in raw_bbox_declaration
+    assert (
+        '"operator_telemetry_raw_lidar_bbox_overlay_enabled": ('
+        in source
+    )
     assert '"clean_before_launch": "false"' in source
     assert '"platform_odometry_topic": "/odom"' in source
     assert '"platform_ranger_bridge_enable": "true"' in source
     assert '"diagnostics_profile": "carla"' in source
     assert '"diagnostics_profile_fallback": "sim,default"' in source
-    assert '"planning_nav2_bt_xml_nav_to_pose"' in source
-    assert '"navigate_to_pose_carla.xml"' in source
-    assert '"planning_nav2_bt_xml_nav_through_poses"' in source
-    assert '"navigate_through_poses_w_planner_selector.xml"' in source
-    assert '"enable_api_ui": LaunchConfiguration("enable_api_ui")' in source
+    assert 'get_package_share_directory("camrod_system")' in source
     assert (
-        '"operator_telemetry_camera_raw_fallback_enabled": "false"'
+        'system_share, "config", "system_checker.yaml"'
+        in source
+    )
+    assert '"camrod_system_checker_param_file",' in source
+    assert "default_value=system_checker_config" in source
+    assert "default_value=system_checker_sim_config" not in source
+    assert (
+        '"system_checker_param_file": LaunchConfiguration('
         in source
     )
     assert (
-        '"CAMROD_CARLA_UI_TF_LATEST_FALLBACK_TOLERANCE_S", "0.075"'
+        '"camrod_system_checker_param_file"\n'
+        '                )'
+        in source
+    )
+    assert '"planning_nav2_bt_xml_nav_to_pose"' in source
+    assert '"navigate_to_pose_w_planner_selector.xml"' in source
+    assert '"planning_nav2_bt_xml_nav_through_poses"' in source
+    assert '"navigate_through_poses_w_replanning_and_recovery.xml"' in source
+    assert '"enable_api_ui": LaunchConfiguration("enable_api_ui")' in source
+    assert (
+        '"operator_telemetry_camera_raw_fallback_enabled": ('
+        in source
+    )
+    assert (
+        '"CAMROD_CARLA_UI_TF_LATEST_FALLBACK_TOLERANCE_S", "0.0"'
         in source
     )
     assert (
         '"operator_telemetry_tf_latest_fallback_tolerance_s": ('
         in source
     )
+    assert '"operator_telemetry_tf_transform_enabled": (' in source
+    assert (
+        '"operator_telemetry_docking_rear_camera_fallback_enabled": ('
+        in source
+    )
+    assert '"return_site_exit_rearm_enabled": LaunchConfiguration(' in source
     assert 'controller_share, "full_stack.launch.py"' in source
     assert 'controller_share, "launch", "full_stack.launch.py"' not in source
+    assert '"nav2_bt_xml_nav_to_pose": tuned_nav_to_pose' in tuned
+    assert '"nav2_bt_xml_nav_through_poses": tuned_nav_through_poses' in tuned
+    assert '"operator_telemetry_camera_raw_fallback_enabled": "false"' in tuned
+    assert '"operator_telemetry_tf_latest_fallback_tolerance_s": "0.075"' in tuned
+    assert '"operator_telemetry_tf_transform_enabled": "true"' in tuned
+    assert (
+        '"operator_telemetry_docking_rear_camera_fallback_enabled": "true"'
+        in tuned
+    )
+    assert '"return_site_exit_rearm_enabled": "true"' in tuned
+    assert '"use_sim_planning_profile": "true"' in tuned
+    assert '"use_sim_localization_profile": "true"' in tuned
+    assert '"use_sim_parking_method": "true"' in tuned
+    assert '"recovery_breakaway_enable": "true"' in tuned
+
+
+def test_recovery_breakaway_authority_is_tuned_only():
+    source = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+    adapter_launch = (
+        PACKAGE_ROOT / "launch" / "adapter.launch.py"
+    ).read_text(encoding="utf-8")
+    command_config = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "command_adapter.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/**"]["ros__parameters"]
+
+    assert command_config["recovery_breakaway_enable"] is False
+    assert '"recovery_breakaway_enable",\n            default_value="false"' in source
+    assert '"recovery_breakaway_enable",\n            default_value="false"' in adapter_launch
+    assert '"recovery_breakaway_enable": LaunchConfiguration(' in source
+    assert '"recovery_breakaway_enable": "true"' in tuned
 
 
 def test_full_launch_defaults_carla_route_heading_to_production_profile():
@@ -118,11 +214,10 @@ def test_full_launch_defaults_carla_route_heading_to_production_profile():
     )
 
 
-def test_full_carla_opts_into_reverse_roadside_return_without_changing_production():
-    """CARLA alone exits and retraces in reverse through typed opt-ins."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_reverse_roadside_return_is_tuned_only_and_not_a_full_default():
+    """Develop-parity stays forward-only; the historical profile opts in."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     production_defaults = yaml.safe_load(
         (
             REPO_ROOT
@@ -134,7 +229,7 @@ def test_full_carla_opts_into_reverse_roadside_return_without_changing_productio
     )["bringup"]
 
     assert (
-        '"CAMROD_CARLA_ROADSIDE_REVERSE_RETURN_ENABLE", "true"'
+        '"CAMROD_CARLA_ROADSIDE_REVERSE_RETURN_ENABLE", "false"'
         in full_launch
     )
     assert (
@@ -148,7 +243,7 @@ def test_full_carla_opts_into_reverse_roadside_return_without_changing_productio
         in full_launch
     )
     assert (
-        '"CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.10"'
+        '"CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.03"'
         in full_launch
     )
     assert (
@@ -163,7 +258,13 @@ def test_full_carla_opts_into_reverse_roadside_return_without_changing_productio
     )
     assert "Exit a CARLA roadside campsite, preserve its outbound yaw" in full_launch
     assert '"planning_nav2_runtime_override_param_file": (' in full_launch
-    assert '"control_cmd_vel_gate_lanelet_safety_check_reverse": "true"' in full_launch
+    assert (
+        '"control_cmd_vel_gate_lanelet_safety_check_reverse": ('
+        in full_launch
+    )
+    assert '"carla_roadside_reverse_return_enable": "true"' in tuned_launch
+    assert '"carla_roadside_reverse_handoff_distance_m": "0.10"' in tuned_launch
+    assert '"carla_lanelet_safety_check_reverse": "true"' in tuned_launch
     assert (
         production_defaults["control"][
             "camping_site_roadside_reverse_return_enable"
@@ -178,11 +279,10 @@ def test_full_carla_opts_into_reverse_roadside_return_without_changing_productio
     )
 
 
-def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
-    """Production stays disabled while CARLA opts into bounded entry motion."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
+    """The full profile keeps develop values and the tuned wrapper opts in."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     bringup_launch = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
     ).read_text(encoding="utf-8")
@@ -225,19 +325,23 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
         ) in bringup_launch
         assert f'"{bringup_name}": (' in full_launch
 
-    assert '"CAMROD_CARLA_CRAB_APPROACH_SLOWDOWN_DISTANCE_M", "1.0"' in full_launch
-    assert '"CAMROD_CARLA_CRAB_APPROACH_MIN_SPEED_MPS", "0.12"' in full_launch
-    assert '"CAMROD_CARLA_ROTATE_180_TIMEOUT_S", "60.0"' in full_launch
+    assert '"CAMROD_CARLA_CRAB_APPROACH_SLOWDOWN_DISTANCE_M", "0.0"' in full_launch
+    assert '"CAMROD_CARLA_CRAB_APPROACH_MIN_SPEED_MPS", "0.0"' in full_launch
+    assert '"CAMROD_CARLA_ROTATE_180_TIMEOUT_S", "0.0"' in full_launch
     assert '"carla_crab_approach_slowdown_distance_m"' in full_launch
     assert '"carla_crab_approach_min_speed_mps"' in full_launch
     assert '"carla_rotate_180_timeout_s"' in full_launch
+    assert '"carla_crab_approach_slowdown_distance_m": "1.0"' in tuned_launch
+    assert '"carla_crab_approach_min_speed_mps": "0.12"' in tuned_launch
+    assert '"carla_rotate_180_timeout_s": "60.0"' in tuned_launch
 
     geometry_overrides = (
         (
             "camping_site_entry_position_tolerance_m",
             "entry_position_tolerance_m",
-            "0.15",
+            "",
             "CAMROD_CARLA_ENTRY_POSITION_TOLERANCE_M",
+            "0.15",
             "0.05",
             "carla_entry_position_tolerance_m",
         ),
@@ -246,6 +350,7 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             "rotate_entry_max_position_error_m",
             "0",
             "CAMROD_CARLA_ROTATE_ENTRY_MAX_POSITION_ERROR_M",
+            "0.0",
             "0.05",
             "carla_rotate_entry_max_position_error_m",
         ),
@@ -255,6 +360,7 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
         node_parameter,
         shared_default,
         environment_name,
+        parity_default,
         carla_default,
         carla_launch_name,
     ) in geometry_overrides:
@@ -263,7 +369,13 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             f'DeclareLaunchArgument("{launch_name}",'
             f'default_value="{shared_default}"'
         ) in compact_maneuvers_launch
-        assert f'"{node_parameter}": ParameterValue(' in maneuvers_launch
+        if node_parameter == "entry_position_tolerance_m":
+            assert (
+                'overrides["entry_position_tolerance_m"] = ParameterValue('
+                in maneuvers_launch
+            )
+        else:
+            assert f'"{node_parameter}": ParameterValue(' in maneuvers_launch
         assert (
             f'LaunchConfiguration("{launch_name}")'
             in compact_maneuvers_launch
@@ -275,15 +387,43 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             f"            '{bringup_name}'\n"
             "        ]"
         ) in bringup_launch
-        assert f'"{environment_name}","{carla_default}"' in compact_full_launch
+        assert f'"{environment_name}","{parity_default}"' in compact_full_launch
         assert f'"{bringup_name}": (' in full_launch
         assert f'"{carla_launch_name}"' in full_launch
+        assert f'"{carla_launch_name}":"{carla_default}"' in "".join(
+            tuned_launch.split()
+        )
+
+    maneuvers_module = _load_module(
+        REPO_ROOT / "camrod_control" / "launch" / "maneuvers.launch.py"
+    )
+    context = LaunchContext()
+    context.launch_configurations[
+        "camping_site_entry_position_tolerance_m"
+    ] = ""
+    overrides = maneuvers_module._camping_site_parameter_overrides(context)
+    assert "entry_position_tolerance_m" not in overrides
+
+    context.launch_configurations[
+        "camping_site_entry_position_tolerance_m"
+    ] = "0.05"
+    overrides = maneuvers_module._camping_site_parameter_overrides(context)
+    assert "entry_position_tolerance_m" in overrides
+
+    bringup_entry_default = bringup_launch.split(
+        "'control_camping_site_entry_position_tolerance_m',", 1
+    )[1][:300]
+    assert "'control/camping_site_entry_position_tolerance_m'," in (
+        bringup_entry_default
+    )
+    assert "                ''," in bringup_entry_default
 
     anchor_centering_overrides = (
         (
             "entry_anchor_centering_max_initial_error_m",
             "0",
             "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_INITIAL_ERROR_M",
+            "0.0",
             "0.65",
         ),
         (
@@ -291,11 +431,13 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             "0.12",
             "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_SPEED_MPS",
             "0.12",
+            "0.12",
         ),
         (
             "entry_anchor_centering_timeout_s",
             "15",
             "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_TIMEOUT_S",
+            "15",
             "15",
         ),
         (
@@ -303,23 +445,27 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             "0.05",
             "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_TOLERANCE_M",
             "0.05",
+            "0.05",
         ),
         (
             "crab_entry_max_heading_drift_deg",
             "0",
             "CAMROD_CARLA_CRAB_ENTRY_MAX_HEADING_DRIFT_DEG",
+            "0.0",
             "5.0",
         ),
         (
             "crab_entry_max_cross_track_error_m",
             "0",
             "CAMROD_CARLA_CRAB_ENTRY_MAX_CROSS_TRACK_ERROR_M",
+            "0.0",
             "0.10",
         ),
         (
             "crab_entry_body_yaw_compensation_deg",
             "0",
             "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_COMPENSATION_DEG",
+            "0.0",
             "2.0",
         ),
         (
@@ -327,15 +473,18 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             "0.5",
             "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TOLERANCE_DEG",
             "0.5",
+            "0.5",
         ),
         (
             "crab_entry_body_yaw_alignment_timeout_s",
             "15",
             "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TIMEOUT_S",
             "15",
+            "15",
         ),
     )
-    for parameter, shared_default, environment_name, carla_default in (
+    compact_tuned_launch = "".join(tuned_launch.split())
+    for parameter, shared_default, environment_name, parity_default, tuned_default in (
         anchor_centering_overrides
     ):
         bringup_name = f"control_camping_site_{parameter}"
@@ -356,16 +505,16 @@ def test_carla_only_campsite_motion_overrides_are_typed_and_forwarded():
             f"            '{bringup_name}'\n"
             "        ]"
         ) in bringup_launch
-        assert f'"{environment_name}","{carla_default}"' in compact_full_launch
+        assert f'"{environment_name}","{parity_default}"' in compact_full_launch
         assert f'"{bringup_name}": (' in full_launch
         assert f'"{carla_launch_name}"' in full_launch
+        assert f'"{carla_launch_name}":"{tuned_default}"' in compact_tuned_launch
 
 
 def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
-    """CARLA isolates bounded reverse tracking from production forward RPP."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+    """The retained reverse overlay is reachable only through tuned mode."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     overlay_path = PACKAGE_ROOT / "config" / "nav2_carla_reverse_return.yaml"
     overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
     controller = overlay["controller_server"]["ros__parameters"]
@@ -429,7 +578,7 @@ def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
     )["bringup"]["control"]["cmd_vel_gate_speed_scale"]
     assert production_gate_scale == 0.5
     assert (
-        '"CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE", "1.0"'
+        '"CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE", "0.5"'
         in full_launch
     )
     assert (
@@ -437,12 +586,19 @@ def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
         in full_launch
     )
     assert (
-        reverse_rpp["regulated_linear_scaling_min_speed"] * 1.0
-        == 0.20
+        reverse_rpp["regulated_linear_scaling_min_speed"] * 1.0 == 0.20
     )
 
-    assert '"planning_nav2_reverse_controller": "RPPReverse"' in full_launch
-    assert full_launch.count('"/planning/auto_reverse_goal_raw"') == 2
+    assert '"carla_nav2_reverse_controller", default_value=""' in full_launch
+    assert '"carla_reverse_goal_topic", default_value=""' in full_launch
+    assert 'default_value=nav2_runtime_disabled_config' in full_launch
+    assert '"carla_cmd_vel_gate_speed_scale": "1.0"' in tuned_launch
+    assert '"carla_nav2_reverse_controller": "RPPReverse"' in tuned_launch
+    assert (
+        '"carla_reverse_goal_topic": "/planning/auto_reverse_goal_raw"'
+        in tuned_launch
+    )
+    assert '"carla_nav2_reverse_return_param_file": tuned_nav2' in tuned_launch
 
 
 def test_carla_runtime_overlay_prescales_forward_rpp_and_isolates_reverse():
@@ -520,11 +676,10 @@ def test_reverse_goal_source_is_routed_before_the_return_goal():
     assert '"reverse_controller_id"' in selector
 
 
-def test_carla_nav2_radius_stabilizer_is_opt_in_and_above_adapter_boundary():
-    """CARLA removes radius chatter without changing production/manual paths."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_nav2_radius_stabilizer_is_tuned_only_and_above_adapter_boundary():
+    """Develop parity leaves the stabilizer off; tuned mode opts into 0.82 m."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     adapter = yaml.safe_load(
         (PACKAGE_ROOT / "config" / "command_adapter.yaml").read_text(
             encoding="utf-8"
@@ -561,8 +716,12 @@ def test_carla_nav2_radius_stabilizer_is_opt_in_and_above_adapter_boundary():
     assert carla_radius > adapter["minimum_turn_radius_m"]
     assert (
         '"CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M",\n'
-        '                "0.82",'
+        '                "0.0",'
     ) in full_launch
+    assert (
+        '"carla_navigation_minimum_ackermann_turn_radius_m": "0.82"'
+        in tuned_launch
+    )
     assert (
         '"control_cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m": ('
         in full_launch
@@ -577,11 +736,10 @@ def test_carla_nav2_radius_stabilizer_is_opt_in_and_above_adapter_boundary():
     assert bringup_gate["navigation_minimum_ackermann_turn_radius_m"] == 0.0
 
 
-def test_carla_parking_reaches_station_before_emulating_charger_contact():
-    """CARLA may widen the cap, but contact still needs pose/motion evidence."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_parking_and_charger_emulation_are_tuned_only():
+    """Develop parity keeps production parking and no emulated contact."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     overlay = yaml.safe_load(
         (PACKAGE_ROOT / "config" / "parking_carla.yaml").read_text(
             encoding="utf-8"
@@ -596,7 +754,10 @@ def test_carla_parking_reaches_station_before_emulating_charger_contact():
     assert overlay == {"maximum_reverse_distance_m": 4.2}
     assert production["maximum_reverse_distance_m"] == 1.5
     assert production["complete_without_charging"] is False
-    assert '"launch_charging_contact_emulator", default_value="true"' in full_launch
+    assert '"launch_charging_contact_emulator", default_value="false"' in full_launch
+    assert 'default_value=parking_runtime_disabled_config' in full_launch
+    assert '"launch_charging_contact_emulator": "true"' in tuned_launch
+    assert '"carla_parking_runtime_override_param_file": tuned_parking' in tuned_launch
     assert '"parking_runtime_override_param_file": LaunchConfiguration(' in full_launch
     assert '"carla_charging_contact_position_tolerance_m"' in full_launch
     assert '"carla_charging_contact_speed_tolerance_mps"' in full_launch
@@ -651,11 +812,10 @@ def test_reverse_runtime_overlay_is_forwarded_last_without_production_mutation()
     assert runtime_index < immutable_index
 
 
-def test_carla_pose_jump_check_uses_raw_localization_without_mutating_defaults():
-    """Only CARLA separates physical jumps from lanelet projection changes."""
-    full_launch = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_pose_jump_source_is_empty_by_default_and_tuned_to_raw_localization():
+    """The full profile preserves develop; tuned mode opts into the raw pose."""
+    full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     bringup_source = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
     ).read_text(encoding="utf-8")
@@ -681,10 +841,15 @@ def test_carla_pose_jump_check_uses_raw_localization_without_mutating_defaults()
     )["/planning/goal_snapper"]["ros__parameters"]
 
     assert (
-        '"planning_goal_snapper_pose_jump_check_topic": (\n'
-        '                    "/localization/pose"\n'
-        "                )"
+        '"carla_goal_snapper_pose_jump_check_topic", default_value=""'
         in full_launch
+    )
+    assert (
+        '"planning_goal_snapper_pose_jump_check_topic": (' in full_launch
+    )
+    assert (
+        '"carla_goal_snapper_pose_jump_check_topic": "/localization/pose"'
+        in tuned_launch
     )
     assert "'planning_goal_snapper_pose_jump_check_topic'," in bringup_source
     assert "'goal_snapper_pose_jump_check_topic': lc[" in bringup_source
@@ -800,11 +965,10 @@ def test_subset_launch_forwards_multi_pose_selector_tree():
     )
 
 
-def test_full_launch_selects_carla_metric_localization_adapter_only():
-    """Full CARLA must reuse the accepted subset localization source profile."""
-    full = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_full_launch_uses_production_localization_and_tuned_uses_metric_pose():
+    """The CARLA metric-pose adapter is an explicit historical opt-in."""
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
     subset = (
         PACKAGE_ROOT / "launch" / "camrod_carla.launch.py"
     ).read_text(encoding="utf-8")
@@ -828,9 +992,11 @@ def test_full_launch_selects_carla_metric_localization_adapter_only():
         ).read_text(encoding="utf-8")
     )["/**"]["ros__parameters"]
 
-    for source in (subset, full):
-        assert '"camrod_input_adapter_config"' in source
-        assert '"camrod_input_adapter_carla.yaml"' in source
+    assert '"camrod_input_adapter_config"' in subset
+    assert '"camrod_input_adapter_carla.yaml"' in subset
+    assert '"camrod_input_adapter_config"' in full
+    assert 'localization_share, "config", "source", "input_adapter.yaml"' in full
+    assert '"camrod_input_adapter_config": tuned_input_adapter' in tuned
 
     assert (
         '"localization_adapter_param_file": LaunchConfiguration('
@@ -897,34 +1063,51 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     subset = (
         PACKAGE_ROOT / "launch" / "camrod_carla.launch.py"
     ).read_text(encoding="utf-8")
-    full = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
     assert '"manual_cmd_vel_ros_topic": LaunchConfiguration(' in subset
     assert '"control_manual_cmd_vel_ros_topic": LaunchConfiguration(' in full
-    for name, default in (
-        ("manual_drive_linear_limit_mps", "1.40"),
-        ("manual_drive_lateral_limit_mps", "1.00"),
-        ("manual_drive_angular_limit_radps", "0.7853"),
-        ("manual_drive_deadman_timeout_s", "0.75"),
+    for name, parity_default, tuned_default in (
+        ("manual_drive_linear_limit_mps", "0.20", "1.40"),
+        ("manual_drive_lateral_limit_mps", "0.20", "1.00"),
+        ("manual_drive_angular_limit_radps", "0.20", "0.7853"),
+        ("manual_drive_deadman_timeout_s", "0.25", "0.75"),
     ):
         assert f'"{name}"' in full
-        assert f'"{default}"' in full
+        assert f'"{parity_default}"' in full
         assert f'"control_{name}": LaunchConfiguration(' in full
+        assert f'"{name}": "{tuned_default}"' in tuned
 
 
-def test_full_carla_uses_hard_lanelet_costs_without_soft_inflation_deadlock():
-    """CARLA manual motion keeps lethal cost 100 while ignoring soft 85..99."""
-    full = (
-        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
-    ).read_text(encoding="utf-8")
+def test_full_uses_develop_cost_thresholds_and_tuned_uses_hard_costs():
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+    compact_full = "".join(full.split())
 
-    for argument in (
-        "control_cmd_vel_gate_cost_threshold",
-        "control_cmd_vel_gate_lanelet_safety_threshold",
-        "control_cmd_vel_gate_lanelet_safety_current_threshold",
+    for declaration in (
+        "carla_cost_stop_threshold",
+        "carla_lanelet_safety_threshold",
+        "carla_lanelet_safety_current_threshold",
     ):
-        assert f'"{argument}": "100"' in full
+        assert f'"{declaration}", default_value="85"' in full
+
+    for argument, declaration in (
+        ("control_cmd_vel_gate_cost_threshold", "carla_cost_stop_threshold"),
+        (
+            "control_cmd_vel_gate_lanelet_safety_threshold",
+            "carla_lanelet_safety_threshold",
+        ),
+        (
+            "control_cmd_vel_gate_lanelet_safety_current_threshold",
+            "carla_lanelet_safety_current_threshold",
+        ),
+    ):
+        assert f'"{argument}":' in full
+        assert f'LaunchConfiguration("{declaration}")' in compact_full
+
+    assert '"carla_cost_stop_threshold": "100"' in tuned
+    assert '"carla_lanelet_safety_threshold": "100"' in tuned
+    assert '"carla_lanelet_safety_current_threshold": "100"' in tuned
 
 
 def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():
@@ -946,20 +1129,22 @@ def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():
         assert "ranger_physical_4ws_acceptance_gate_20260823" not in source
 
 
-def test_composition_launches_forward_the_explicit_camrod_map_path():
-    for filename in (
-        "camrod_carla.launch.py",
-        "camrod_carla_full.launch.py",
-    ):
-        source = (PACKAGE_ROOT / "launch" / filename).read_text(
-            encoding="utf-8"
-        )
+def test_full_and_tuned_launches_use_distinct_lanelet_map_cohorts():
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+    subset = (
+        PACKAGE_ROOT / "launch" / "camrod_carla.launch.py"
+    ).read_text(encoding="utf-8")
+
+    for source in (subset, full):
         assert '"camrod_map_path", default_value=camrod_map_path' in source
         assert '"map_path": LaunchConfiguration("camrod_map_path")' in source
-        assert '"config", "woraksan_carla_lanelet2.osm"' in source
-        assert (
-            '"CAMROD_LANELET_MAP", default=virtual_lanelet_map' in source
-        )
+
+    assert '"lanelet2_maps.osm"' in full
+    assert '"CAMROD_LANELET_MAP", default=develop_lanelet_map' in full
+    assert '"woraksan_carla_lanelet2.osm"' not in full
+    assert '"camrod_map_path": tuned_lanelet_map' in tuned
+    assert '"config", "woraksan_carla_lanelet2.osm"' in tuned
 
 
 def test_sensor_relay_uses_camrod_canonical_topics():
@@ -1100,13 +1285,24 @@ def test_carla_diagnostics_match_rendered_sensor_contract():
         "lidar_checker: /sensor/lidar/main",
         "radar_checker: /sensor/radar/FRONT1",
         "radar_checker: /sensor/radar/REAR",
+        "perception_obstacle_checker: /perception/obstacles/camera_detections",
         "perception_obstacle_checker: /perception/obstacles/fused_obstacles",
     ):
         assert active_name not in ignored
-    assert (
-        "perception_obstacle_checker: /perception/obstacles/camera_detections"
-        in ignored
+
+    perception = yaml.safe_load(
+        (root / "perception" / "perception_obstacle_checker.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/system/perception_obstacle_checker"]["ros__parameters"]
+    assert perception["obstacle_names"] == [
+        "camera_detections",
+        "fused_obstacles",
+    ]
+    assert perception["camera_detections"]["topic"] == (
+        "/perception/camera/detections_2d"
     )
+    assert perception["camera_detections"]["expected_hz"] == 2.0
 
     for filename, node_name, rate_key, stream_name in (
         ("gnss_checker.yaml", "gnss_checker", "expected_hz", "main"),

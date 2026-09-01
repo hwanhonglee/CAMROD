@@ -12,7 +12,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 
 def _environment_path(name, ranger_relative_path=None, default=""):
@@ -46,7 +46,12 @@ def generate_launch_description():
         "carla_extended_ackermann_control"
     )
     bringup_share = get_package_share_directory("camrod_bringup")
+    control_share = get_package_share_directory("camrod_control")
+    localization_share = get_package_share_directory("camrod_localization")
     planning_share = get_package_share_directory("camrod_planning")
+    sensing_share = get_package_share_directory("camrod_sensing")
+    system_share = get_package_share_directory("camrod_system")
+    nav2_bt_share = get_package_share_directory("nav2_bt_navigator")
 
     adapter_launch = os.path.join(
         adapter_share, "launch", "adapter.launch.py"
@@ -82,30 +87,43 @@ def generate_launch_description():
         adapter_share, "config", "woraksan_lane_anchor_alignment.yaml"
     )
     input_adapter_config = os.path.join(
-        adapter_share, "config", "camrod_input_adapter_carla.yaml"
+        localization_share, "config", "source", "input_adapter.yaml"
     )
     lidar_cost_grid_config = os.path.join(
-        adapter_share, "config", "carla_lidar_cost_grid.yaml"
+        sensing_share, "config", "lidar", "cost_grid.yaml"
     )
-    nav2_reverse_return_config = os.path.join(
-        adapter_share, "config", "nav2_carla_reverse_return.yaml"
+    nav2_runtime_disabled_config = os.path.join(
+        planning_share, "config", "nav2_combo_profiles", "disabled.yaml"
     )
-    parking_carla_config = os.path.join(
-        adapter_share, "config", "parking_carla.yaml"
+    parking_runtime_disabled_config = os.path.join(
+        control_share, "config", "parking_runtime_profiles", "disabled.yaml"
     )
-    virtual_lanelet_map = os.path.join(
-        adapter_share, "config", "woraksan_carla_lanelet2.osm"
+    perception_carla_config = os.path.join(
+        adapter_share, "config", "perception_carla.yaml"
     )
+    system_checker_config = os.path.join(
+        system_share, "config", "system_checker.yaml"
+    )
+    camrod_src_root = os.environ.get("CAMROD_SRC_ROOT", "").strip()
+    if camrod_src_root:
+        develop_lanelet_map = os.path.join(
+            os.path.abspath(os.path.expanduser(camrod_src_root)),
+            "lanelet2_maps.osm",
+        )
+    else:
+        develop_lanelet_map = os.path.join(
+            os.path.expanduser("~"), "camrod_ws", "src", "lanelet2_maps.osm"
+        )
     nav_through_poses_bt = os.path.join(
+        nav2_bt_share,
+        "behavior_trees",
+        "navigate_through_poses_w_replanning_and_recovery.xml",
+    )
+    nav_to_pose_bt = os.path.join(
         planning_share,
         "config",
         "bt",
-        "navigate_through_poses_w_planner_selector.xml",
-    )
-    nav_to_pose_bt = os.path.join(
-        adapter_share,
-        "config",
-        "navigate_to_pose_carla.xml",
+        "navigate_to_pose_w_planner_selector.xml",
     )
 
     baseline_manifest = _environment_path(
@@ -125,7 +143,7 @@ def generate_launch_description():
         "CARLA_PYTHON_EGG_CACHE"
     ) or _environment_path("RANGER_PYTHON_EGG_CACHE")
     camrod_map_path = _environment_path(
-        "CAMROD_LANELET_MAP", default=virtual_lanelet_map
+        "CAMROD_LANELET_MAP", default=develop_lanelet_map
     )
     alignment_config = _environment_path(
         "CAMROD_MAP_ALIGNMENT_FILE", default=alignment_config
@@ -136,6 +154,10 @@ def generate_launch_description():
     lidar_cost_grid_config = _environment_path(
         "CAMROD_CARLA_LIDAR_COST_GRID_FILE",
         default=lidar_cost_grid_config,
+    )
+    perception_carla_config = _environment_path(
+        "CAMROD_CARLA_PERCEPTION_FILE",
+        default=perception_carla_config,
     )
 
     declarations = [
@@ -150,6 +172,14 @@ def generate_launch_description():
             "port", default_value=os.environ.get("CARLA_PORT", "2000")
         ),
         DeclareLaunchArgument("launch_vehicle_control", default_value="true"),
+        DeclareLaunchArgument(
+            "recovery_breakaway_enable",
+            default_value="false",
+            description=(
+                "Opt-in CARLA plant torque authorization used by historical "
+                "Woraksan recovery runs; parity mode adds no such authority"
+            ),
+        ),
         DeclareLaunchArgument("launch_sensor_relay", default_value="true"),
         DeclareLaunchArgument(
             "launch_lidar_processing", default_value="true"
@@ -165,9 +195,27 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "operator_telemetry_tf_transform_enabled",
+            default_value="true",
+            description=(
+                "Transform CARLA sensor overlays into the UI fixed frame. "
+                "This is a display-side CARLA boundary adaptation; the "
+                "ordinary CAMROD UI default remains disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "operator_telemetry_raw_lidar_bbox_overlay_enabled",
+            default_value="false",
+            description=(
+                "Hide classless Euclidean LiDAR boxes in CARLA so the operator "
+                "view shows semantic fusion obstacles and fusion-derived cost "
+                "only; ordinary CAMROD retains its develop overlay"
+            ),
+        ),
+        DeclareLaunchArgument(
             "operator_telemetry_tf_latest_fallback_tolerance_s",
             default_value=os.environ.get(
-                "CAMROD_CARLA_UI_TF_LATEST_FALLBACK_TOLERANCE_S", "0.075"
+                "CAMROD_CARLA_UI_TF_LATEST_FALLBACK_TOLERANCE_S", "0.0"
             ),
             description=(
                 "CARLA-only bound for the reception-stamp race between sensor "
@@ -189,7 +237,7 @@ def generate_launch_description():
             "launch_platform_heartbeat", default_value="true"
         ),
         DeclareLaunchArgument(
-            "launch_charging_contact_emulator", default_value="true"
+            "launch_charging_contact_emulator", default_value="false"
         ),
         DeclareLaunchArgument(
             "platform_heartbeat_publish_rate_hz", default_value="5.0"
@@ -204,28 +252,28 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "manual_drive_linear_limit_mps",
             default_value=os.environ.get(
-                "CAMROD_MANUAL_LINEAR_LIMIT_MPS", "1.40"
+                "CAMROD_MANUAL_LINEAR_LIMIT_MPS", "0.20"
             ),
         ),
         DeclareLaunchArgument(
             "manual_drive_lateral_limit_mps",
             default_value=os.environ.get(
-                "CAMROD_MANUAL_LATERAL_LIMIT_MPS", "1.00"
+                "CAMROD_MANUAL_LATERAL_LIMIT_MPS", "0.20"
             ),
         ),
         DeclareLaunchArgument(
             "manual_drive_angular_limit_radps",
             default_value=os.environ.get(
-                "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS", "0.7853"
+                "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS", "0.20"
             ),
         ),
-        # The downstream command gate still stops a stale physical command at
-        # 0.35 s.  This longer UI lease only prevents a loaded browser from
-        # repeatedly losing its arm state between otherwise valid heartbeats.
+        # The UI publishes at 10 Hz and expires its lease at 0.25 s.  The
+        # downstream 0.35 s command watchdog remains the final physical stop
+        # boundary if the browser or WebSocket disappears.
         DeclareLaunchArgument(
             "manual_drive_deadman_timeout_s",
             default_value=os.environ.get(
-                "CAMROD_MANUAL_DEADMAN_TIMEOUT_S", "0.75"
+                "CAMROD_MANUAL_DEADMAN_TIMEOUT_S", "0.25"
             ),
             description=(
                 "CARLA UI heartbeat lease; downstream 0.35 s command "
@@ -255,7 +303,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_cmd_vel_gate_speed_scale",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE", "1.0"
+                "CAMROD_CARLA_CMD_VEL_GATE_SPEED_SCALE", "0.5"
             ),
             description=(
                 "CARLA-only final cmd_vel scale. Unity preserves the bounded "
@@ -268,7 +316,7 @@ def generate_launch_description():
             "carla_navigation_minimum_ackermann_turn_radius_m",
             default_value=os.environ.get(
                 "CAMROD_CARLA_NAVIGATION_MINIMUM_ACKERMANN_TURN_RADIUS_M",
-                "0.82",
+                "0.0",
             ),
             description=(
                 "CARLA-only final Nav2 radius used to stabilize the Ranger "
@@ -276,9 +324,89 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "carla_cost_stop_threshold", default_value="85"
+        ),
+        DeclareLaunchArgument(
+            "carla_lanelet_safety_threshold", default_value="85"
+        ),
+        DeclareLaunchArgument(
+            "carla_lanelet_safety_current_threshold", default_value="85"
+        ),
+        DeclareLaunchArgument(
+            "carla_lanelet_safety_check_reverse", default_value="false"
+        ),
+        DeclareLaunchArgument(
+            "carla_nav2_reverse_controller", default_value=""
+        ),
+        DeclareLaunchArgument(
+            "carla_reverse_goal_topic", default_value=""
+        ),
+        DeclareLaunchArgument(
+            "carla_goal_snapper_pose_jump_check_topic", default_value=""
+        ),
+        DeclareLaunchArgument(
+            "carla_route_safety_path_relative_recovery_enable",
+            default_value="false",
+        ),
+        DeclareLaunchArgument(
+            "carla_route_safety_zero_hold_pauses_limits",
+            default_value="false",
+        ),
+        DeclareLaunchArgument(
+            "carla_route_safety_allow_corrective_yaw_beyond_limit",
+            default_value="false",
+        ),
+        DeclareLaunchArgument(
+            "carla_goal_reissue_while_nav_active", default_value="false"
+        ),
+        DeclareLaunchArgument(
+            "operator_telemetry_camera_raw_fallback_enabled",
+            default_value="true",
+        ),
+        DeclareLaunchArgument(
+            "operator_telemetry_docking_rear_camera_fallback_enabled",
+            default_value="false",
+            description=(
+                "Use the CARLA rear camera directly only when an explicit "
+                "profile opts out of the production docking-camera path"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "return_site_exit_rearm_enabled",
+            default_value="false",
+            description=(
+                "Optional historical CARLA campsite Return re-arm behavior; "
+                "develop-parity mode keeps the production state transition"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "use_sim_planning_profile",
+            default_value="false",
+            description=(
+                "Select deterministic simulation mission-state parameters; "
+                "parity mode keeps the production planning profile"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "use_sim_localization_profile",
+            default_value="false",
+            description=(
+                "Select simulation localization parameters; parity mode "
+                "keeps the production localization profile"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "use_sim_parking_method",
+            default_value="false",
+            description=(
+                "Select the simulation parking-method parameters; parity "
+                "mode keeps the production AprilTag method"
+            ),
+        ),
+        DeclareLaunchArgument(
             "carla_roadside_reverse_return_enable",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROADSIDE_REVERSE_RETURN_ENABLE", "true"
+                "CAMROD_CARLA_ROADSIDE_REVERSE_RETURN_ENABLE", "false"
             ),
             description=(
                 "Exit a CARLA roadside campsite, preserve its outbound yaw, "
@@ -289,7 +417,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_crab_approach_slowdown_distance_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CRAB_APPROACH_SLOWDOWN_DISTANCE_M", "1.0"
+                "CAMROD_CARLA_CRAB_APPROACH_SLOWDOWN_DISTANCE_M", "0.0"
             ),
             description=(
                 "CARLA-only distance over which crab entry tapers toward its "
@@ -299,7 +427,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_crab_approach_min_speed_mps",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CRAB_APPROACH_MIN_SPEED_MPS", "0.12"
+                "CAMROD_CARLA_CRAB_APPROACH_MIN_SPEED_MPS", "0.0"
             ),
             description=(
                 "CARLA-only minimum crab-entry speed during the final "
@@ -309,7 +437,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_rotate_180_timeout_s",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROTATE_180_TIMEOUT_S", "60.0"
+                "CAMROD_CARLA_ROTATE_180_TIMEOUT_S", "0.0"
             ),
             description=(
                 "CARLA-only wall-clock bound for campsite ROTATE_180; "
@@ -319,7 +447,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_entry_position_tolerance_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ENTRY_POSITION_TOLERANCE_M", "0.05"
+                "CAMROD_CARLA_ENTRY_POSITION_TOLERANCE_M", "0.15"
             ),
             description=(
                 "CARLA-only crab-entry completion tolerance selected for the "
@@ -329,7 +457,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_rotate_entry_max_position_error_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROTATE_ENTRY_MAX_POSITION_ERROR_M", "0.05"
+                "CAMROD_CARLA_ROTATE_ENTRY_MAX_POSITION_ERROR_M", "0.0"
             ),
             description=(
                 "CARLA-only certified center tolerance for starting "
@@ -341,7 +469,7 @@ def generate_launch_description():
             "carla_entry_anchor_centering_max_initial_error_m",
             default_value=os.environ.get(
                 "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_INITIAL_ERROR_M",
-                "0.65",
+                "0.0",
             ),
             description=(
                 "CARLA-only maximum initial route-anchor error recoverable "
@@ -381,7 +509,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_crab_entry_max_heading_drift_deg",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CRAB_ENTRY_MAX_HEADING_DRIFT_DEG", "5.0"
+                "CAMROD_CARLA_CRAB_ENTRY_MAX_HEADING_DRIFT_DEG", "0.0"
             ),
             description=(
                 "CARLA-only fail-closed heading-drift limit during crab entry; "
@@ -391,7 +519,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_crab_entry_max_cross_track_error_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CRAB_ENTRY_MAX_CROSS_TRACK_ERROR_M", "0.10"
+                "CAMROD_CARLA_CRAB_ENTRY_MAX_CROSS_TRACK_ERROR_M", "0.0"
             ),
             description=(
                 "CARLA-only fail-closed cross-track limit during crab entry; "
@@ -401,7 +529,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_crab_entry_body_yaw_compensation_deg",
             default_value=os.environ.get(
-                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_COMPENSATION_DEG", "2.0"
+                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_COMPENSATION_DEG", "0.0"
             ),
             description=(
                 "CARLA-only direction-signed body-yaw correction for the "
@@ -433,7 +561,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_roadside_reverse_handoff_distance_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.10"
+                "CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.03"
             ),
             description=(
                 "CARLA-only B11-B13 reverse centerline handoff. The live "
@@ -443,16 +571,23 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "carla_nav2_reverse_return_param_file",
-            default_value=nav2_reverse_return_config,
+            default_value=nav2_runtime_disabled_config,
             description=(
                 "CARLA-only sparse Nav2 overlay enabling RPP reverse tracking"
             ),
         ),
         DeclareLaunchArgument(
             "carla_parking_runtime_override_param_file",
-            default_value=parking_carla_config,
+            default_value=parking_runtime_disabled_config,
             description=(
                 "CARLA-only sparse reverse-parking geometry overlay"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_perception_runtime_override_param_file",
+            default_value=perception_carla_config,
+            description=(
+                "CARLA-only sparse camera-to-LiDAR geometry overlay"
             ),
         ),
         DeclareLaunchArgument(
@@ -497,8 +632,8 @@ def generate_launch_description():
             "nav2_bt_xml_nav_to_pose",
             default_value=nav_to_pose_bt,
             description=(
-                "CARLA-only recovery tree without the unsafe generic "
-                "in-lane 90-degree Spin"
+                "NavigateToPose tree. Parity mode uses CAMROD's production "
+                "tree; a map-tuned wrapper may select a CARLA-specific tree"
             ),
         ),
         DeclareLaunchArgument(
@@ -507,6 +642,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "camrod_launch_defaults_file", default_value=launch_defaults
+        ),
+        DeclareLaunchArgument(
+            "camrod_system_checker_param_file",
+            default_value=system_checker_config,
+            description=(
+                "CARLA graph-readiness manifest. The full CARLA composition "
+                "uses production-shaped sensor relays, so it must not inherit "
+                "the fake-sensor manifest selected by generic sim:=true"
+            ),
         ),
         DeclareLaunchArgument(
             "camrod_map_path", default_value=camrod_map_path
@@ -578,6 +722,9 @@ def generate_launch_description():
                 "role_name": LaunchConfiguration("role_name"),
                 "map_alignment_file": LaunchConfiguration(
                     "map_alignment_file"
+                ),
+                "recovery_breakaway_enable": LaunchConfiguration(
+                    "recovery_breakaway_enable"
                 ),
                 # The standard /odom boundary is consumed by the unmodified
                 # ranger_platform_bridge, which remains the sole owner of the
@@ -670,6 +817,33 @@ def generate_launch_description():
                 "external_simulator": "true",
                 "external_simulator_odometry_topic": "/odom",
                 "external_simulator_odometry_timeout_s": "0.5",
+                # CARLA owns odometry and all canonical sensor boundaries.
+                # Keep the fake fixture out of the parity graph entirely.
+                "enable_fake_sensors": "false",
+                # Run the production mission-state contract even though the
+                # hardware acquisition processes remain disabled by sim=true.
+                "use_sim_planning_profile": LaunchConfiguration(
+                    "use_sim_planning_profile"
+                ),
+                # CARLA relays already provide production-shaped odometry and
+                # rear-camera inputs; retain production localization and
+                # AprilTag parking parameter selection.
+                "use_sim_localization_profile": LaunchConfiguration(
+                    "use_sim_localization_profile"
+                ),
+                "use_sim_parking_method": LaunchConfiguration(
+                    "use_sim_parking_method"
+                ),
+                # CARLA sensor_relay owns the canonical econ_front image and
+                # CameraInfo topics consumed by production YOLO + fusion.
+                "external_front_camera_source": LaunchConfiguration(
+                    "launch_sensor_relay"
+                ),
+                # The same relay owns econ_rear image_raw/image_rect and
+                # CameraInfo for the production AprilTag parking detector.
+                "external_rear_camera_source": LaunchConfiguration(
+                    "launch_sensor_relay"
+                ),
                 # The remaining external-motion fixture keeps its deterministic
                 # 10 Hz cadence. All UI-visible fake sensor outputs are disabled
                 # below and replaced by CARLA relays.
@@ -680,28 +854,53 @@ def generate_launch_description():
                 # topics in this external-simulator composition.
                 "sim_publish_fake_radar_ranges": "false",
                 # Every UI-visible sensor topic must originate at a CARLA
-                # actor. Keep fake_sensor_publisher only for non-sensor
-                # simulation support (route state and platform fixtures).
+                # actor. fake_sensor_publisher is not launched in this graph.
                 "sim_publish_fake_gnss": "false",
                 "sim_publish_fake_imu": "false",
                 "sim_publish_fake_lidar_obstacle_cloud": "false",
                 "sim_publish_velocity_converter_output": "false",
                 "sim_publish_dummy_lidar_cost_grid": "false",
-                # carla_lidar_processing.launch.py owns the sole LiDAR
-                # clustering node and its genuine /perception/obstacles cloud.
-                # Suppress the ordinary instance to avoid duplicate consumers
-                # and publishers; this override is confined to virtual/carla.
+                # carla_lidar_processing.launch.py owns the optional LiDAR
+                # visualization clusters. Production camera-LiDAR fusion is
+                # the sole semantic /perception/obstacles publisher. Suppress
+                # the ordinary cluster instance to avoid duplicate consumers.
                 "perception_enable_lidar_obstacle": "false",
+                # Rendered CARLA owns real camera actors and runs the production
+                # YOLO/fusion chain. NullRHI selects the control-only spawn and
+                # must not instantiate a detector against a missing camera or
+                # an absent host-local TensorRT engine.
+                "perception_enable_yolo": LaunchConfiguration(
+                    "launch_sensor_relay"
+                ),
+                "perception_mode": PythonExpression([
+                    "'camera_lidar' if '",
+                    LaunchConfiguration("launch_sensor_relay"),
+                    "'.lower() in ('1', 'true', 'yes', 'on') ",
+                    "else 'lidar_only'",
+                ]),
+                "perception_runtime_override_param_file": (
+                    LaunchConfiguration(
+                        "carla_perception_runtime_override_param_file"
+                    )
+                ),
                 # CARLA wall-clock sensor cadence depends on rendered server
                 # load. Apply only CARLA sensor thresholds, then inherit every
                 # other simulation diagnostic before hardware defaults.
                 "diagnostics_profile": "carla",
                 "diagnostics_profile_fallback": "sim,default",
+                # sim=true normally selects system_checker_sim.yaml, whose
+                # graph contract requires /bringup/fake_sensor_publisher.
+                # CARLA instead owns production-shaped sensor boundaries;
+                # select that graph manifest explicitly without changing the
+                # generic bringup mode-selection contract.
+                "system_checker_param_file": LaunchConfiguration(
+                    "camrod_system_checker_param_file"
+                ),
                 "platform_ranger_driver_enable": "false",
                 "platform_ranger_bridge_enable": "true",
-                # Match the accepted subset CARLA launch: localization consumes
-                # the already metric, map-aligned CARLA pose rather than applying
-                # the production GNSS projection to CARLA's NavSatFix stream.
+                # Parity mode selects CAMROD's production sensor-input adapter.
+                # The tuned wrapper may explicitly select a metric CARLA pose
+                # adapter; it is never injected into ordinary CAMROD defaults.
                 "localization_adapter_param_file": LaunchConfiguration(
                     "camrod_input_adapter_config"
                 ),
@@ -802,21 +1001,27 @@ def generate_launch_description():
                         "carla_nav2_reverse_return_param_file"
                     )
                 ),
-                # Keep ordinary regulated missions on production RPP. Only a
-                # return-to-drop-zone goal is tagged regulated_reverse by the
-                # dedicated source-aware snapper input and selects RPPReverse.
-                "planning_nav2_reverse_controller": "RPPReverse",
+                # Parity mode keeps the develop controller and goal source.
+                # The Woraksan tuned wrapper explicitly enables RPPReverse.
+                "planning_nav2_reverse_controller": LaunchConfiguration(
+                    "carla_nav2_reverse_controller"
+                ),
                 "planning_goal_snapper_reverse_auxiliary_input_goal_topic": (
-                    "/planning/auto_reverse_goal_raw"
+                    LaunchConfiguration("carla_reverse_goal_topic")
                 ),
                 # The centerline snapper may switch lanelet branches by metres
                 # even though the CARLA actor moves continuously. Detect true
                 # teleports from raw fused localization instead.
                 "planning_goal_snapper_pose_jump_check_topic": (
-                    "/localization/pose"
+                    LaunchConfiguration(
+                        "carla_goal_snapper_pose_jump_check_topic"
+                    )
+                ),
+                "planning_goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active": (
+                    LaunchConfiguration("carla_goal_reissue_while_nav_active")
                 ),
                 "planning_state_machine_reverse_auto_goal_snapper_input_topic": (
-                    "/planning/auto_reverse_goal_raw"
+                    LaunchConfiguration("carla_reverse_goal_topic")
                 ),
                 "parking_runtime_override_param_file": LaunchConfiguration(
                     "carla_parking_runtime_override_param_file"
@@ -824,7 +1029,24 @@ def generate_launch_description():
                 # Reverse navigation is ordinary DONE-state motion, not a
                 # maneuver bypass. Enforce the rear lanelet corridor as well
                 # as the always-on physical body and planning footprint checks.
-                "control_cmd_vel_gate_lanelet_safety_check_reverse": "true",
+                "control_cmd_vel_gate_lanelet_safety_check_reverse": (
+                    LaunchConfiguration("carla_lanelet_safety_check_reverse")
+                ),
+                "control_cmd_vel_gate_route_safety_path_relative_recovery_enable": (
+                    LaunchConfiguration(
+                        "carla_route_safety_path_relative_recovery_enable"
+                    )
+                ),
+                "control_route_safety_recovery_zero_hold_pauses_limits": (
+                    LaunchConfiguration(
+                        "carla_route_safety_zero_hold_pauses_limits"
+                    )
+                ),
+                "control_route_safety_recovery_allow_corrective_yaw_beyond_limit": (
+                    LaunchConfiguration(
+                        "carla_route_safety_allow_corrective_yaw_beyond_limit"
+                    )
+                ),
                 # HH_260829 - The visible v16 A/B run proved that the prior
                 # CARLA-only 2.75 m / 45 degree override freshly armed an
                 # unnecessary ZERO_TURN at the B10 hairpin.  The production
@@ -842,32 +1064,31 @@ def generate_launch_description():
                         "carla_route_heading_error_enter_deg"
                     )
                 ),
-                # CARLA's RPPReverse is already capped at 0.20 m/s. Do not
-                # halve it again at the final gate: the live uphill
-                # B12 run showed the resulting 0.10 m/s target had only
-                # near-hold torque authority. Production remains 0.5 because
-                # this typed override exists only in the CARLA composition.
+                # Parity mode resolves to the production 0.5 scale. The tuned
+                # wrapper alone selects unity for its historical reverse-return
+                # profile, without mutating the shared control configuration.
                 "control_cmd_vel_gate_speed_scale": LaunchConfiguration(
                     "carla_cmd_vel_gate_speed_scale"
                 ),
-                # HH_260830 - The physical adapter accepts Ackermann radii at
-                # 0.810330349 m and above.  A 0.82 m CARLA-only final envelope
-                # removes millimetre-scale mode chatter while production keeps
-                # its explicit 0.0 no-op and every non-Nav2 source is untouched.
+                # Parity mode keeps the production 0.0 no-op. The historical
+                # tuned wrapper alone applies the 0.82 m Ranger plant envelope.
                 "control_cmd_vel_gate_navigation_minimum_ackermann_turn_radius_m": (
                     LaunchConfiguration(
                         "carla_navigation_minimum_ackermann_turn_radius_m"
                     )
                 ),
-                # The live aligned CARLA spawn currently occupies lanelet
-                # inflation costs up to 98 but no hard/off-map cost 100 cells.
-                # CARLA's existing safety profile therefore uses 100 as the
-                # static boundary threshold: soft map inflation cannot make
-                # every forward manual command look blocked, while physical
-                # body, unknown-map and lethal cost 100 checks remain active.
-                "control_cmd_vel_gate_cost_threshold": "100",
-                "control_cmd_vel_gate_lanelet_safety_threshold": "100",
-                "control_cmd_vel_gate_lanelet_safety_current_threshold": "100",
+                # Parity mode keeps all production cost thresholds at 85. The
+                # historical tuned profile explicitly raises them to 100 for
+                # the measured Woraksan map-inflation cohort.
+                "control_cmd_vel_gate_cost_threshold": LaunchConfiguration(
+                    "carla_cost_stop_threshold"
+                ),
+                "control_cmd_vel_gate_lanelet_safety_threshold": (
+                    LaunchConfiguration("carla_lanelet_safety_threshold")
+                ),
+                "control_cmd_vel_gate_lanelet_safety_current_threshold": (
+                    LaunchConfiguration("carla_lanelet_safety_current_threshold")
+                ),
                 "planning_nav2_bt_xml_nav_to_pose": LaunchConfiguration(
                     "nav2_bt_xml_nav_to_pose"
                 ),
@@ -877,14 +1098,36 @@ def generate_launch_description():
                 "rviz": LaunchConfiguration("rviz"),
                 "enable_plugin_api": LaunchConfiguration("enable_plugin_api"),
                 "enable_api_ui": LaunchConfiguration("enable_api_ui"),
-                # CARLA sensor_relay guarantees bounded compressed front/rear
-                # streams. Do not also pull full raw images into ui_backend;
-                # this removes duplicate DDS copies and fallback JPEG work.
-                "operator_telemetry_camera_raw_fallback_enabled": "false",
+                # Keep develop's raw-camera fallback contract in parity mode.
+                # CARLA's relay is subscriber-aware and rate-bounds raw frames;
+                # the tuned wrapper may explicitly disable this fallback.
+                "operator_telemetry_camera_raw_fallback_enabled": (
+                    LaunchConfiguration(
+                        "operator_telemetry_camera_raw_fallback_enabled"
+                    )
+                ),
+                "operator_telemetry_tf_transform_enabled": (
+                    LaunchConfiguration(
+                        "operator_telemetry_tf_transform_enabled"
+                    )
+                ),
+                "operator_telemetry_raw_lidar_bbox_overlay_enabled": (
+                    LaunchConfiguration(
+                        "operator_telemetry_raw_lidar_bbox_overlay_enabled"
+                    )
+                ),
                 "operator_telemetry_tf_latest_fallback_tolerance_s": (
                     LaunchConfiguration(
                         "operator_telemetry_tf_latest_fallback_tolerance_s"
                     )
+                ),
+                "operator_telemetry_docking_rear_camera_fallback_enabled": (
+                    LaunchConfiguration(
+                        "operator_telemetry_docking_rear_camera_fallback_enabled"
+                    )
+                ),
+                "return_site_exit_rearm_enabled": LaunchConfiguration(
+                    "return_site_exit_rearm_enabled"
                 ),
                 "enable_operator_ui_window": LaunchConfiguration(
                     "enable_operator_ui_window"

@@ -40,6 +40,7 @@ def test_ros_message_mapping_invalid_input_and_timeout_stop():
             "recovery_breakaway_status_topic",
             value=recovery_status_topic,
         ),
+        Parameter("recovery_breakaway_enable", value=True),
         Parameter("recovery_breakaway_status_timeout_sec", value=0.05),
         Parameter("input_timeout_sec", value=0.08),
         Parameter("watchdog_rate_hz", value=200.0),

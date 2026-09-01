@@ -43,6 +43,8 @@ class TwistToFourWSNode(Node):
             "recovery_breakaway_status_topic",
             "/control/route_safety_recovery_controller/status",
         ).value
+        self.recovery_breakaway_enable = bool(self.declare_parameter(
+            "recovery_breakaway_enable", False).value)
         self.base_frame_id = self.declare_parameter(
             "base_frame_id", "robot_center_link").value
 
@@ -102,12 +104,14 @@ class TwistToFourWSNode(Node):
         recovery_status_qos = QoSProfile(depth=1)
         recovery_status_qos.reliability = ReliabilityPolicy.RELIABLE
         recovery_status_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-        self.recovery_status_subscription = self.create_subscription(
-            ModuleState,
-            self.recovery_breakaway_status_topic,
-            self._on_recovery_status,
-            recovery_status_qos,
-        )
+        self.recovery_status_subscription = None
+        if self.recovery_breakaway_enable:
+            self.recovery_status_subscription = self.create_subscription(
+                ModuleState,
+                self.recovery_breakaway_status_topic,
+                self._on_recovery_status,
+                recovery_status_qos,
+            )
 
         self._last_valid_receive_monotonic = None
         self._last_zero_publish_monotonic = None
@@ -123,11 +127,12 @@ class TwistToFourWSNode(Node):
             1.0 / self.watchdog_rate_hz, self._watchdog_tick)
         self.get_logger().info(
             "CAMROD adapter ready: %s -> %s; timeout=%.3fs; "
-            "recovery authority=%s/%.2fs"
+            "recovery authority=%s%s/%.2fs"
             % (
                 self.input_topic,
                 self.output_topic,
                 self.input_timeout_sec,
+                "enabled:" if self.recovery_breakaway_enable else "disabled:",
                 self.recovery_breakaway_status_topic,
                 self.recovery_breakaway_status_timeout_sec,
             )
@@ -159,6 +164,8 @@ class TwistToFourWSNode(Node):
             self._last_recovery_operating_state = ""
 
     def _recovery_breakaway_is_authorized(self, command, now=None):
+        if not self.recovery_breakaway_enable:
+            return False
         if self._last_recovery_status_receive_monotonic is None:
             return False
         return recovery_breakaway_is_authorized(

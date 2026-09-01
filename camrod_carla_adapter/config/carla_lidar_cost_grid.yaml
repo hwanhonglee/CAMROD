@@ -1,9 +1,10 @@
 # CARLA-specific LiDAR safety raster.
 #
-# This profile consumes the CARLA-only Euclidean cluster cloud. Ground removal
-# happens before clustering in carla_lidar_filter, so the old z=0.15 raw-road
-# workaround is intentionally removed. Keep the production -0.55 m lower bound
-# to retain low physical obstacles while excluding any residual road returns.
+# This historical Woraksan overlay consumes only the production semantic
+# camera-LiDAR fusion output on /perception/obstacles. The Euclidean cluster
+# cloud on /perception/lidar/cluster_points is visualization-only and never
+# creates safety cost. Raw CARLA LiDAR cost is explicitly disabled below.
+# Keep the production -0.55 m lower bound for the fused obstacle samples.
 /sensing/lidar/lidar_cost_grid:
   ros__parameters:
     input_topic: "/perception/obstacles"

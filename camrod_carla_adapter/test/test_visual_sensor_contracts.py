@@ -17,6 +17,7 @@ SENSOR_PREFLIGHT = (
     REPO_ROOT / "scripts" / "virtual_carla" / "check_carla_sensor_streams.py"
 )
 CARLA_LIDAR_COST_GRID = CONFIG_ROOT / "carla_lidar_cost_grid.yaml"
+CARLA_PERCEPTION = CONFIG_ROOT / "perception_carla.yaml"
 CARLA_LIDAR_CHECKER = (
     REPO_ROOT
     / "camrod_bringup"
@@ -96,19 +97,67 @@ def test_carla_lidar_cost_grid_returns_to_production_height_after_ground_filter(
     assert carla["cloud_min_z_m"] == pytest.approx(-0.55)
 
 
-def test_full_carla_launch_passes_its_lidar_cost_profile_to_bringup():
+def test_full_uses_production_lidar_cost_profile_and_tuned_opts_into_carla():
     source = (
         PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    tuned = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_woraksan_tuned.launch.py"
     ).read_text(encoding="utf-8")
     bringup = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
     ).read_text(encoding="utf-8")
-    assert "carla_lidar_cost_grid.yaml" in source
+    assert 'sensing_share, "config", "lidar", "cost_grid.yaml"' in source
     assert '"lidar_cost_grid_param_file": LaunchConfiguration(' in source
     assert '"carla_lidar_cost_grid_param_file"' in source
     assert "'lidar_cost_grid_param_file'," in bringup
     assert "sensing_args['lidar_cost_grid_param_file'] = lc[" in bringup
     assert "'lidar_cost_grid_param_file'\n    ]" in bringup
+    assert '"carla_lidar_cost_grid_param_file": tuned_lidar_cost_grid' in tuned
+    assert '"carla_lidar_cost_grid.yaml"' in tuned
+
+
+def test_carla_camera_lidar_extrinsic_is_a_sparse_final_overlay():
+    """CARLA geometry must not mutate the shared production calibration."""
+    node_key = "/perception/obstacle_fusion"
+    production = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_perception"
+            / "config"
+            / "perception_params.yaml"
+        ).read_text(encoding="utf-8")
+    )[node_key]["ros__parameters"]
+    carla = yaml.safe_load(CARLA_PERCEPTION.read_text(encoding="utf-8"))[
+        node_key
+    ]["ros__parameters"]
+    visual = _vehicle(VISUAL_SPAWN)
+    front = next(
+        sensor for sensor in visual["sensors"] if sensor["id"] == "rgb_view"
+    )["spawn_point"]
+    lidar = next(
+        sensor
+        for sensor in visual["sensors"]
+        if sensor["id"] == "lidar_front"
+    )["spawn_point"]
+
+    assert set(carla) == {"extrinsic_x", "extrinsic_y", "extrinsic_z"}
+    raw_delta_x = front["x"] - lidar["x"]
+    raw_delta_y = front["y"] - lidar["y"]
+    # obstacle_fusion::projectCloud converts raw Vanjee axes before applying
+    # initExtrinsic: eff_X=-raw_Y, eff_Y=raw_X, eff_Z=raw_Z.
+    assert carla["extrinsic_x"] == pytest.approx(-raw_delta_y)
+    assert carla["extrinsic_y"] == pytest.approx(raw_delta_x)
+    assert carla["extrinsic_z"] == pytest.approx(front["z"] - lidar["z"])
+    assert carla["extrinsic_z"] == pytest.approx(-0.09970)
+    assert production["extrinsic_z"] == pytest.approx(-0.07)
+
+    full_launch = (
+        PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+    ).read_text(encoding="utf-8")
+    assert '"CAMROD_CARLA_PERCEPTION_FILE"' in full_launch
+    assert '"carla_perception_runtime_override_param_file"' in full_launch
+    assert '"perception_runtime_override_param_file": (' in full_launch
 
 
 @pytest.mark.parametrize(
@@ -278,6 +327,15 @@ def test_carla_lidar_processing_owns_filtered_and_cluster_boundaries():
     assert 'executable="carla_lidar_filter"' in processing
     assert 'executable="obstacle_lidar_node"' in processing
     assert '"publish_cluster_cloud": True' in processing
+    obstacle_source = (
+        REPO_ROOT
+        / "camrod_perception"
+        / "src"
+        / "obstacle_lidar_node.cpp"
+    ).read_text(encoding="utf-8")
+    assert "hasClusterCloudSubscribers()" in obstacle_source
+    assert "get_subscription_count()" in obstacle_source
+    assert "get_intra_process_subscription_count()" in obstacle_source
     assert filter_config["input_topic"] == "/sensing/lidar/vanjee/points_raw"
     assert filter_config["output_topic"] == "/sensing/lidar/points_filtered"
     assert filter_config["expected_ground_z_m"] == pytest.approx(-0.59538)
@@ -294,7 +352,11 @@ def test_carla_lidar_processing_owns_filtered_and_cluster_boundaries():
     ).read_text(encoding="utf-8")
     assert 'key="self_return_points_removed"' in filter_node
     assert perception["publish_cluster_cloud"] is False
-    assert perception["obstacle_cloud_topic"] == "/perception/obstacles"
+    assert perception["cluster_cloud_topic"] == (
+        "/perception/lidar/cluster_points"
+    )
+    assert '"obstacle_cloud_topic"' not in processing
+    assert '"/perception/obstacles"' not in processing
 
 
 def test_carla_diagnostics_accept_an_empty_filtered_clear_scene():
@@ -314,18 +376,34 @@ def test_carla_diagnostics_accept_an_empty_filtered_clear_scene():
     assert bringup["filtered"]["stale_timeout_s"] > 0.0
 
 
-def test_virtual_carla_cyclonedds_config_reserves_both_socket_directions():
-    root = ET.parse(REPO_ROOT / "cyclonedds.xml").getroot()
-    minimums = {
+def test_carla_has_dedicated_dds_buffers_without_mutating_develop_defaults():
+    develop_root = ET.parse(REPO_ROOT / "cyclonedds.xml").getroot()
+    develop_minimums = {
         element.tag.rsplit("}", 1)[-1]: element.attrib.get("min")
-        for element in root.iter()
+        for element in develop_root.iter()
         if element.tag.rsplit("}", 1)[-1]
         in {"SocketReceiveBufferSize", "SocketSendBufferSize"}
     }
-    assert minimums == {
+    assert develop_minimums == {"SocketReceiveBufferSize": "10MB"}
+
+    carla_config = (
+        REPO_ROOT / "camrod_system" / "config" / "cyclonedds_carla.xml"
+    )
+    carla_root = ET.parse(carla_config).getroot()
+    carla_minimums = {
+        element.tag.rsplit("}", 1)[-1]: element.attrib.get("min")
+        for element in carla_root.iter()
+        if element.tag.rsplit("}", 1)[-1]
+        in {"SocketReceiveBufferSize", "SocketSendBufferSize"}
+    }
+    assert carla_minimums == {
         "SocketReceiveBufferSize": "20MiB",
         "SocketSendBufferSize": "20MiB",
     }
+    env_source = (
+        REPO_ROOT / "scripts" / "virtual_carla" / "env.sh"
+    ).read_text(encoding="utf-8")
+    assert "camrod_system/config/cyclonedds_carla.xml" in env_source
 
 
 def test_sensor_stream_preflight_requires_payloads_from_all_five_inputs():
