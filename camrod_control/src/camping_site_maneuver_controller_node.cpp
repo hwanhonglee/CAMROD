@@ -194,6 +194,8 @@ public:
     // bays. Keep their lateral reach and speed independently constrained.
     roadside_maximum_lateral_offset_m_ = std::abs(
         declare_parameter<double>("roadside_max_lateral_offset_m", 0.30));
+    recall_wait_lateral_offset_m_ = std::abs(
+        declare_parameter<double>("recall_wait_lateral_offset_m", 0.30));
     default_lateral_direction_ =
         declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ =
@@ -523,6 +525,15 @@ private:
            occupied_mission_keys_.count(mission_key) > 0U;
   }
 
+  bool occupiedSiteBlocksCurrentMission(const std::string &mission_key) const {
+    // A guest recall deliberately targets an already occupied campsite, but it
+    // never enters that campsite. The controller moves only from the map
+    // derived lanelet snap toward the site's signed side by the bounded
+    // roadside offset. Normal DELIVERY_TO_SITE missions retain the occupancy
+    // guard and are still rejected before any campsite motion starts.
+    return !active_recall_wait_mission_ && isSiteOccupied(mission_key);
+  }
+
   avg_msgs::msg::AvgPoseStamped makePose(const std::string &frame_id,
                                          const double x, const double y,
                                          const double z,
@@ -731,7 +742,7 @@ private:
           std::abs(relative.second), minimum_lateral_offset_m_,
           maximum_lateral_offset_m_);
       const double operational_offset =
-          std::min(bounded_offset, roadside_maximum_lateral_offset_m_);
+          std::min(bounded_offset, activeRoadsideMaximumOffsetM());
       if (!std::isfinite(operational_offset) || operational_offset <= 0.0) {
         return std::nullopt;
       }
@@ -1004,6 +1015,11 @@ private:
                : crab_speed_mps_;
   }
 
+  double activeRoadsideMaximumOffsetM() const {
+    return active_recall_wait_mission_ ? recall_wait_lateral_offset_m_
+                                       : roadside_maximum_lateral_offset_m_;
+  }
+
   void ensureGoalPairForAutoStart(const std::string &key) {
     // HH_260721 - Bind the mission key and service policy even when the UI pose
     // already matches YAML.
@@ -1107,7 +1123,14 @@ private:
     std::string automatic_key;
     const std::string mission_key = message.active_mission_key;
     if (mission_key.rfind(site_mission_key_prefix_, 0) == 0) {
-      if (isSiteOccupied(mission_key)) {
+      // Latch the occupancy exception only after this state proves that a
+      // concrete campsite owns the RECALL scenario.  A malformed/stale
+      // RECALL state for any other key must never make a later manual START
+      // bypass the normal occupied-site guard.
+      active_recall_wait_mission_ =
+          message.scenario_id ==
+          avg_msgs::msg::PlanningScenario::RECALL_TO_SITE;
+      if (occupiedSiteBlocksCurrentMission(mission_key)) {
         publishZero();
         setPhase(CampingSiteManeuverPhase::kError,
                  "occupied campsite auto-entry blocked: " + mission_key);
@@ -1115,6 +1138,12 @@ private:
         return;
       }
       ensureGoalPairForAutoStart(mission_key);
+      if (active_recall_wait_mission_) {
+        // Recall is a roadside pickup for every B1-B13 site. Reuse the signed
+        // snap-to-site geometry proven for B11-B13 and cap travel at
+        // recall_wait_lateral_offset_m (0.30 m in the deployed profile).
+        active_service_mode_ = CampsiteServiceMode::kRoadsideStop;
+      }
       automatic_key = mission_key;
     } else {
       // HH_260727 - A stale site/route pose pair is not mission authority.
@@ -1158,6 +1187,7 @@ private:
     }
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
       publishZero();
+      active_recall_wait_mission_ = false;
       setPhase(CampingSiteManeuverPhase::kIdle, "cancel=" + source);
       return {true, "camping-site maneuver cancelled"};
     }
@@ -1210,7 +1240,7 @@ private:
     double lateral_offset = requested_lateral_offset;
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
       lateral_offset =
-          std::min(lateral_offset, roadside_maximum_lateral_offset_m_);
+          std::min(lateral_offset, activeRoadsideMaximumOffsetM());
       if (lateral_offset + 1.0e-6 < requested_lateral_offset) {
         source_name += "_roadside_cap";
       }
@@ -1295,7 +1325,7 @@ private:
         phase_ != CampingSiteManeuverPhase::kError) {
       return {false, "site maneuver already active: " + phaseName(phase_)};
     }
-    if (isSiteOccupied(site_goal_key_)) {
+    if (occupiedSiteBlocksCurrentMission(site_goal_key_)) {
       publishZero();
       setPhase(CampingSiteManeuverPhase::kError,
                "occupied campsite entry blocked: " + site_goal_key_);
@@ -1307,7 +1337,9 @@ private:
     }
     // HH_260721 - A direct/manual goal remains a normal turnaround unless a
     // mission key selects otherwise.
-    active_service_mode_ = serviceModeForKey(site_goal_key_);
+    active_service_mode_ = active_recall_wait_mission_
+                               ? CampsiteServiceMode::kRoadsideStop
+                               : serviceModeForKey(site_goal_key_);
     const double current_yaw = camrod_control::yawFromPose(*last_pose_);
     bool already_at_site = false;
     if (site_goal_.has_value()) {
@@ -1732,16 +1764,7 @@ private:
   // false means stationary steering-settle hold, true means route-ready.
   std::optional<bool> observeLiveLaneletReturnHandoff() {
     const auto distance_m = liveLaneletReturnDistance();
-    if (!distance_m.has_value()) {
-      if (return_lanelet_handoff_candidate_) {
-        RCLCPP_WARN(
-            get_logger(),
-            "live lanelet return handoff lost before hold completed; "
-            "resuming exact-anchor fallback");
-      }
-      return_lanelet_handoff_candidate_ = false;
-      return_lanelet_handoff_start_time_ =
-          rclcpp::Time(0, 0, RCL_ROS_TIME);
+    if (!distance_m.has_value() && !return_lanelet_handoff_candidate_) {
       return std::nullopt;
     }
 
@@ -1756,6 +1779,16 @@ private:
           last_pose_->pose.position.x, last_pose_->pose.position.y,
           lanelet_pose_->pose.position.x, lanelet_pose_->pose.position.y,
           distanceTo(return_anchor_x_, return_anchor_y_));
+    } else if (!distance_m.has_value()) {
+      // HH_260904 - Crossing the boundary once proves that the lateral exit
+      // reached the live lane. Keep the robot stopped through the rest of the
+      // steering-settle hold even if GNSS noise moves the next sample a few
+      // centimetres outside the threshold. Releasing this latch used to restart
+      // the historical-anchor controller and command a long reverse.
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "live lanelet return handoff sample moved outside threshold; "
+          "keeping route-ready latch and stationary hold");
     }
     publishZero();
     return (now() - return_lanelet_handoff_start_time_).seconds() + 1.0e-9 >=
@@ -1844,17 +1877,32 @@ private:
         phase_ == CampingSiteManeuverPhase::kReverseIn ||
         phase_ == CampingSiteManeuverPhase::kCrabIn ||
         phase_ == CampingSiteManeuverPhase::kRotate180) {
-      message.state = avg_msgs::msg::AvgServiceState::SITE_ENTRY;
-      message.state_name = "SITE_ENTRY";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::RECALL_TO_SITE_ROAD;
+        message.state_name = "RECALL_TO_SITE_ROAD";
+      } else {
+        message.state = avg_msgs::msg::AvgServiceState::SITE_ENTRY;
+        message.state_name = "SITE_ENTRY";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait) {
-      message.state = avg_msgs::msg::AvgServiceState::UNLOAD_WAIT;
-      message.state_name = "UNLOAD_WAIT";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
+        message.state_name = "GUEST_LOADING_WAIT";
+      } else {
+        message.state = avg_msgs::msg::AvgServiceState::UNLOAD_WAIT;
+        message.state_name = "UNLOAD_WAIT";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       // HH_260721 - Distinguish unloading dwell from the operator
       // return-request wait.
-      message.state =
-          avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST;
-      message.state_name = "WAITING_FOR_RETURN_REQUEST";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
+        message.state_name = "GUEST_LOADING_WAIT";
+      } else {
+        message.state =
+            avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST;
+        message.state_name = "WAITING_FOR_RETURN_REQUEST";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
                phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
                phase_ == CampingSiteManeuverPhase::kReverseOut ||
@@ -1915,13 +1963,11 @@ private:
           body_longitudinal_error, body_lateral_error);
     }
     avg_msgs::msg::AvgTwist command;
-    // HH_260824 - If the robot is already inside the radial tolerance, consume
-    // the full settle transition but do not issue a one-tick longitudinal
-    // impulse. The next timer tick completes from the latched stage.
-    if (!camrod_control::campsiteCrabReturnMayComplete(
-            velocity.stage,
-            distanceTo(return_anchor_x_, return_anchor_y_),
-            return_position_tolerance_m_)) {
+    // HH_260904 - The longitudinal state is now a route-ready latch, not a
+    // command phase. Consume the settle transition without issuing even one
+    // tick of reverse toward the historical entry XY; the next timer tick
+    // publishes the return route from the current pose.
+    if (!camrod_control::campsiteCrabReturnReadyForRoute(velocity.stage)) {
       command.linear.x = velocity.linear_x_mps;
       command.linear.y = velocity.linear_y_mps;
     }
@@ -2227,29 +2273,27 @@ private:
         finishReturnAtLiveLaneletHandoff();
       } else if (live_handoff.has_value()) {
         // Stationary hold is published by observeLiveLaneletReturnHandoff().
-      } else if (camrod_control::campsiteCrabReturnMayComplete(
-              crab_return_sequencer_.stage(), return_error,
-              return_position_tolerance_m_)) {
+      } else if (camrod_control::campsiteCrabReturnReadyForRoute(
+                     crab_return_sequencer_.stage())) {
         publishZero();
         if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-          // HH_260819 - B11-B13 cannot safely zero-turn inside the current
-          // narrow mapped lane. Preserve arrival heading, request the legal
-          // forward loop, and resume ordinary body/footprint checks at DONE.
+          // HH_260904 - Preserve the arrival heading and request the legal
+          // forward loop after lateral exit and steering settle. Never drive
+          // longitudinally to the historical entry XY.
           setPhase(CampingSiteManeuverPhase::kDone,
-                   "live lanelet pose unavailable; roadside exact-anchor "
-                   "fallback reached; forward return loop requested");
-          publishReturnRequest("done_roadside_forward_exact_anchor_fallback");
+                   "roadside exit complete at current pose; forward return "
+                   "loop requested; historical_anchor_error=" +
+                       fixed(return_error) + "m");
+          publishReturnRequest("done_roadside_forward_current_pose");
         } else {
-          setPhase(
-              CampingSiteManeuverPhase::kDone,
-              "live lanelet pose unavailable; exact-anchor fallback=" +
-                  return_anchor_source_ +
-                  " error=" +
-                  fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m");
-          publishReturnRequest("done_exact_anchor_fallback");
+          setPhase(CampingSiteManeuverPhase::kDone,
+                   "lateral exit and steering settle complete at current "
+                   "pose; historical_anchor_error=" +
+                       fixed(return_error) + "m");
+          publishReturnRequest("done_current_pose_after_lateral_exit");
         }
       } else if (elapsed > crab_return_timeout_s_) {
-        setError("crab return timeout before reaching live lanelet or fallback anchor");
+        setError("crab return timeout before completing lateral road exit");
       } else {
         publishCrabReturnToAnchor();
       }
@@ -2346,6 +2390,7 @@ private:
   double minimum_lateral_offset_m_{0.2};
   double maximum_lateral_offset_m_{7.0};
   double roadside_maximum_lateral_offset_m_{0.30};
+  double recall_wait_lateral_offset_m_{0.30};
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
   double roadside_crab_speed_mps_{0.20};
@@ -2404,6 +2449,10 @@ private:
 
   CampingSiteManeuverPhase phase_{CampingSiteManeuverPhase::kIdle};
   CampsiteServiceMode active_service_mode_{CampsiteServiceMode::kTurnaround};
+  // True only for planning scenario RECALL_TO_SITE. It turns every campsite
+  // into a bounded roadside pickup without weakening normal delivery
+  // occupancy protection.
+  bool active_recall_wait_mission_{false};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> site_goal_;
   std::optional<avg_msgs::msg::AvgPoseStamped> route_goal_;

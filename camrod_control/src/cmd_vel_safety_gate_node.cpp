@@ -636,16 +636,20 @@ private:
     motion_cost_stop_config_.drop_zone_static_bypass_phases =
         parseLabelSet(declare_parameter<std::string>(
                           "drop_zone_maneuver_controller_static_bypass_phases",
-                          "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
-                      {"exit_straight", "align_exit_yaw"});
+                          "EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,"
+                          "ALIGN_PARKING_YAW"),
+                      {"exit_straight", "align_exit_yaw", "position_parking_point",
+                       "align_parking_yaw"});
     motion_cost_stop_config_.drop_zone_lanelet_bypass_phases =
         parseLabelSet(declare_parameter<std::string>(
                           "drop_zone_maneuver_controller_lanelet_bypass_phases",
                           // HH_260807 - The bounded station exit starts outside
                           // road lanelets; dynamic radar checks are still
                           // evaluated before publication.
-                          "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
-                      {"exit_straight", "align_exit_yaw"});
+                          "EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,"
+                          "ALIGN_PARKING_YAW"),
+                      {"exit_straight", "align_exit_yaw", "position_parking_point",
+                       "align_parking_yaw"});
     campsite_status_topic_ = declare_parameter<std::string>(
         "camping_site_maneuver_controller_status_topic",
         "/control/camping_site_maneuver_controller/status");

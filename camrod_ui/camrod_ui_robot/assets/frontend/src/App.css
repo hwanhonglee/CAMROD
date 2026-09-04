@@ -675,8 +675,8 @@ body {
   color: #1e6c89;
 }
 
-/* Active service screens expose only the current trip distance so that the
-   arrival, return, and emergency-stop controls retain visual priority. */
+/* Keep the active-service entry compact so arrival, return, and emergency-stop
+   controls retain visual priority while detailed evidence remains accessible. */
 .evidence-trip-badge {
   width: min(100%, 30rem);
   min-height: 2.7rem;
@@ -690,8 +690,15 @@ body {
   border-radius: 12px;
   background: #edf8f1;
   color: #42604b;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.evidence-trip-badge:focus-visible {
+  outline: 3px solid rgba(30, 108, 137, 0.34);
+  outline-offset: 2px;
 }
 
 .evidence-trip-badge strong {
@@ -703,6 +710,13 @@ body {
 .evidence-trip-badge small {
   color: #a76e1b;
   font-size: 0.64rem;
+}
+
+.evidence-trip-more {
+  margin-left: auto;
+  color: #24683a;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .evidence-trip-badge-stale {

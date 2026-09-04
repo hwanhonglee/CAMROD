@@ -149,6 +149,7 @@ localization, or battery hold.
 |---|---|
 | Active B1-B10 turnaround | `ALIGN_ENTRY_YAW -> CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
 | Active B11-B13 roadside | `ALIGN_ENTRY_YAW ->` `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
+| Guest recall B1-B13 | route to lanelet snap -> site-side `0.30 m` roadside wait -> explicit Return -> lateral road exit -> drop-zone route; occupied-site delivery guard remains active for non-guest missions |
 | B11-B13 return | Preserve arrival heading, reach a fresh lanelet projection laterally, then request a forward one-way loop |
 | Drop-zone departure | optional charging `7.0 s` stopped dwell -> `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> exact snapped lanelet point -> 90-degree body alignment -> selected parking controller |

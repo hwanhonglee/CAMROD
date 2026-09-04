@@ -50,8 +50,27 @@ def guest_mission_dispatch_ready(state: int, battery: int, minimum: int) -> bool
     """Apply the Robot UI's stationary-state and SOC admission boundary."""
     return state in {
         int(AvgServiceState.DROP_ZONE_WAIT),
+        # Parking has already completed before this healthy charger-contact
+        # wait.  A missing/intermittent CAN charge signal must not prevent a
+        # sufficiently charged robot from starting the station-exit sequence.
+        int(AvgServiceState.WAITING_FOR_CHARGING),
         int(AvgServiceState.CHARGING),
     } and battery >= minimum
+
+
+def guest_mission_cancel_available(state: int) -> bool:
+    """Limit Guest UI cancel requests to a mission that can still be stopped."""
+    return int(state) in {
+        int(AvgServiceState.MOVING_TO_SITE),
+        int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+        int(AvgServiceState.GUEST_RECALL_SERVICE),
+        int(AvgServiceState.SITE_ENTRY),
+        int(AvgServiceState.RECALL_TO_SITE_ROAD),
+        int(AvgServiceState.RETURN_WITH_CARGO),
+        int(AvgServiceState.DROP_ZONE_PARKING),
+        int(AvgServiceState.DEPARTING_CHARGER),
+        int(AvgServiceState.DEPARTING_DROP_ZONE),
+    }
 
 
 def guest_gate_safety_hold(operating_state: str, message: str = "") -> bool:
@@ -432,6 +451,18 @@ class UiGuestNode(Node):
             f"{self.ui_camping_site_operation_request_topic}"
         )
 
+    def _publish_cancel(self) -> None:
+        """Request a backend-owned stop of the active guest mission."""
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = MotionOperation.CANCEL
+        msg.source = "guest:cancel"
+        self.pub_operation_request.publish(msg)
+        self.get_logger().info(
+            "[guest] cancel -> CANCEL request -> "
+            f"{self.ui_camping_site_operation_request_topic}"
+        )
+
     # ── Path resolution ───────────────────────────────────────────────────────
 
     def _resolve_guest_html(self) -> Optional[Path]:
@@ -599,6 +630,26 @@ class UiGuestNode(Node):
                     # (확장) 이용 완료 → 드롭존 복귀
                     elif action == "usage_complete":
                         await asyncio.to_thread(node._publish_usage_complete)
+
+                    # 이동/복귀/도킹 중 취소 → Robot UI와 동일한 backend stop 경로.
+                    elif action == "cancel":
+                        def _dispatch_cancel() -> int:
+                            with node._lock:
+                                current = node._service_state
+                            if guest_mission_cancel_available(current):
+                                node._publish_cancel()
+                            return current
+
+                        current = await asyncio.to_thread(_dispatch_cancel)
+                        if guest_mission_cancel_available(current):
+                            await node._send_guest_payload(
+                                ws, {"cancel_requested": True}
+                            )
+                        else:
+                            await node._send_guest_payload(ws, {
+                                "error": "robot_not_active",
+                                "service_state": current,
+                            })
 
             except WebSocketDisconnect:
                 pass

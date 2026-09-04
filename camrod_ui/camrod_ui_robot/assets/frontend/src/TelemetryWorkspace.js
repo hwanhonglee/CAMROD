@@ -1057,7 +1057,7 @@ function DockingPathPlot({ telemetry }) {
   );
 }
 
-function DockingView({ telemetry }) {
+function DockingView({ telemetry, redockStatus = null }) {
   const docking = telemetry.docking || {};
   const tag = docking.tag || {};
   const controllers = telemetry.safety?.controllers || {};
@@ -1068,6 +1068,14 @@ function DockingView({ telemetry }) {
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
+  useEffect(() => {
+    if (!redockStatus?.received) return;
+    setCommandStatus({
+      tone: redockStatus.pending || redockStatus.waitingForCan ? 'ok' : '',
+      message: redockStatus.message || '',
+    });
+  }, [redockStatus]);
+
   const postCommand = async (name, url, successMessage) => {
     setPending(name);
     setCommandStatus({ tone: '', message: '' });
@@ -1075,7 +1083,17 @@ function DockingView({ telemetry }) {
       const response = await fetch(url, { method: 'POST' });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || '명령 실패');
-      setCommandStatus({ tone: 'ok', message: successMessage });
+      const statusByAction = {
+        parking_alignment: '재도킹 정렬을 시작합니다',
+        parking_alignment_waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+        waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+        parking_in_progress: '도킹이 이미 진행 중입니다',
+        return_in_progress: '복귀가 이미 진행 중입니다',
+      };
+      setCommandStatus({
+        tone: 'ok',
+        message: statusByAction[body.action] || successMessage,
+      });
       return true;
     } catch (error) {
       setCommandStatus({ tone: 'err', message: error.message || '명령 실패' });
@@ -1147,7 +1165,7 @@ function DockingView({ telemetry }) {
   );
 }
 
-export default function TelemetryWorkspace({ activeTab }) {
+export default function TelemetryWorkspace({ activeTab, redockStatus = null }) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
   const [connectionError, setConnectionError] = useState('');
@@ -1284,9 +1302,11 @@ export default function TelemetryWorkspace({ activeTab }) {
     if (activeTab === 'trajectory') return <TrajectoryView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
-    if (activeTab === 'docking') return <DockingView telemetry={telemetry} />;
+    if (activeTab === 'docking') {
+      return <DockingView telemetry={telemetry} redockStatus={redockStatus} />;
+    }
     return null;
-  }, [activeTab, telemetry, mapData]);
+  }, [activeTab, telemetry, mapData, redockStatus]);
 
   return (
     <div className="telemetry-workspace">

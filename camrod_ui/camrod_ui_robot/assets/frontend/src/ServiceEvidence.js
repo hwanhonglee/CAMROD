@@ -344,7 +344,7 @@ export function ServiceEvidenceSummary({ data, loading, error, onOpen }) {
   );
 }
 
-export function ServiceTripBadge({ serviceActive, currentService, loading, error }) {
+export function ServiceTripBadge({ serviceActive, currentService, loading, error, onOpen }) {
   if (!serviceActive) return null;
   const distance = formatDistance(distanceOf(currentService));
   let value = distance;
@@ -354,12 +354,18 @@ export function ServiceTripBadge({ serviceActive, currentService, loading, error
     else value = '거리 집계 시작 대기';
   }
   return (
-    <div className={`evidence-trip-badge ${error ? 'evidence-trip-badge-stale' : ''}`} aria-live="polite">
+    <button
+      type="button"
+      className={`evidence-trip-badge ${error ? 'evidence-trip-badge-stale' : ''}`}
+      onClick={onOpen}
+      aria-label="실증 운행 현황 상세 보기"
+    >
       <span className="evidence-trip-live-dot" />
       <span>이번 서비스</span>
       <strong>{value}</strong>
       {distance && error && <small>갱신 지연</small>}
-    </div>
+      <span className="evidence-trip-more">상세 보기 ›</span>
+    </button>
   );
 }
 

@@ -116,13 +116,13 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `route_goal_reached_distance_m` | `0.60 m` | Bounds axial handoff and B11-B13 operational-target adoption independently of lateral tolerance |
 | `entry_yaw_alignment_timeout_s` | `15.0 s` | Automatic crab entry fails closed if lanelet-snap yaw alignment does not finish |
 | `entry_position_tolerance_m` | `0.15 m` | Completes crab-in position |
-| `return_position_tolerance_m` | `0.04 m` | Required distance to the shared lanelet snap anchor on crab-out |
+| `return_position_tolerance_m` | `0.04 m` | Legacy exact-anchor tolerance retained for non-crab return checks; crab-out routes from current XY |
 | `return_lateral_transition_tolerance_m` | `0.02 m` | Latches lateral correction complete before steering settle |
 | `return_lateral_hysteresis_m` | `0.10 m` | Fails closed if lateral error escapes the latched band; never switches back to crab |
 | `return_steering_settle_s` | `1.20 s` | Zero-command hold for the deployed `+/-90 -> 0 deg` steering transition |
 | `enable_live_lanelet_return_handoff` | `true` | Normal exit completes at a fresh live lanelet projection instead of requiring historical entry XY |
 | `return_lanelet_handoff_distance_m` | `0.15 m` | Maximum current-pose to live-projection separation for route handoff |
-| `return_lanelet_handoff_hold_s` | `1.20 s` | Continuous zero-command steering-settle hold before publishing Return planning authorization |
+| `return_lanelet_handoff_hold_s` | `1.20 s` | Zero-command steering-settle hold after the first eligible live projection; the eligibility latch does not drop on GNSS jitter |
 | `crab_return_timeout_s` | `90 s` | Time available for exit plus repeated boundary recovery |
 | `rotate_yaw_tolerance_deg` | `4 deg` | 180-degree target tolerance |
 | `rotate_settle_hold_s` | `0.8 s` | Continuous settled-yaw proof before translation |
@@ -130,16 +130,18 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `unload_wait_s` | `5 s` | Delay before external Return becomes valid |
 | `auto_return_after_unload_wait` | `false` | Prevents automatic motion while people unload |
 | `roadside_max_lateral_offset_m` | `0.30 m` | B11-B13 roadside-only cap |
+| `recall_wait_lateral_offset_m` | `0.30 m` | Guest recall for every B1-B13: lanelet snap to the authored site side, without entering the occupied campsite |
 
 Entry still uses `/planning/goal_pose_snapped` for its map target, authored
 tangent, signed crab side, and restart correlation. During `CRAB_OUT`, normal
 completion uses the fresh `/planning/lanelet_pose_ros` projection and ignores
 longitudinal distance from the historical entry snap. After a `1.20 s` stopped
-hold within `0.15 m`, LaneletRoute plans from current XY. A stale, non-finite,
-or wrong-frame live projection falls back to the exact-anchor sequencer and its
-`0.04 m` tolerance. Restart/adopt still requires a fresh finite lanelet anchor
-or a route goal correlated to it; current pose is not accepted without a live
-projection.
+hold after first reaching `0.15 m`, LaneletRoute plans from current XY; GNSS
+jitter cannot release that latch. If a live projection is unavailable, the
+controller finishes the lateral exit and steering settle, then also plans from
+current XY. It never adds a longitudinal reverse to the historical entry snap.
+Restart/adopt still requires a fresh finite lanelet anchor or a route goal
+correlated to it.
 B11-B13 match their signed `0.30 m` requested target using the existing
 `0.15 m` lateral completion and `0.60 m` axial handoff bounds, not the distant
 raw semantic site center or the global B1-B10 center radius.
@@ -147,6 +149,10 @@ raw semantic site center or the global B1-B10 center radius.
 B1-B10 may retrace the reverse shortest Return after their on-site turn.
 B11-B13 publish a `roadside_forward` source only after `CRAB_OUT -> DONE`, so
 LaneletRoute follows the legal forward one-way loop without rotating in-lane.
+Guest recall applies that same roadside sequence to B1-B13: the semantic site
+key is retained through GoalSnapper, control derives the signed site side from
+the current map/site pair, and Return exits laterally before requesting the
+drop-zone route.
 
 ## Boundary Recovery
 
@@ -175,10 +181,11 @@ episode time limits remain fail-closed.
 | `cmd_vel_gate_cost_stop_classified_source_labels` | `fusion` | Fusion must have a current semantic class |
 | `cmd_vel_gate_cost_stop_classified_front_lookahead_m` | `2.0 m` | Class-confirmed path-front stop distance |
 | `cmd_vel_gate_cost_stop_clear_required_s` | `2.0 s` | Continuous clear proof before release |
-| FRONT1 stop candidate | `(0.220, 0.520] m` from sensor face | Measured body envelope followed by `0.30 m` usable window |
-| FRONT2 stop candidate | `(0.117, 0.417] m` from sensor face | Measured body envelope followed by `0.30 m` usable window |
-| Side/rear usable window | `0.10 m` | Unchanged near-field policy; REAR remains quarantined |
-| Front radar spatial gate | active lanelet + `1.27 m` local-path corridor | Prevents the longer scalar window from widening lateral stop authority |
+| FRONT1 stop candidate | `(0.220, 0.300] m` after fixed-return filtering | Absolute `0.30 m` cutoff from the sensor face |
+| FRONT2 stop candidate | `(0.117, 0.300] m` after fixed-return filtering | Absolute `0.30 m` cutoff from the sensor face |
+| Side stop candidate | `[0.020, 0.100] m` before named fixed-return filtering | Absolute `0.100 m` sensor-face cutoff; per-channel fixed-return bands still take precedence |
+| REAR stop candidate | `(0.106, 0.206] m` after fixed-return filtering | Body-relative `0.10 m` window remains configured, but REAR is quarantined |
+| Front radar spatial gate | active lanelet + `1.27 m` local-path corridor | Keeps the absolute front cutoff constrained to current route/path authority |
 | `obstacle_replan_monitor.block_hold_s` | `20.0 s` | Delay before fallback planner preemption, not stop delay |
 | `enable_obstacle_replan_monitor` | `true` | Width-gated fallback replan monitor |
 | fallback minimum corridor | `2.50 m` | Prevents replanning in an infeasible narrow lane |
@@ -227,7 +234,7 @@ remains active during `FINAL_YAW_ALIGNMENT`.
 
 | Item | Topic/API | Effect |
 |---|---|---|
-| Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; planning recall is deferred until `CRAB_OUT` reaches a fresh live lanelet projection or the exact-anchor fallback |
+| Manual Return in a site | `POST /ui/manual_return` | Latches site RETURN; after lateral exit and steering settle, planning starts from current XY without historical-anchor reverse |
 | Manual Return while driving | same API | Cancels Nav2, closes motion authorization for `manual_return_preempt_hold_s=0.50 s`, then publishes one drop-zone route |
 | Already at drop zone | same API | Starts drop-zone yaw alignment before selected parking method |
 | Already charging | same API | Reports `already_charging`; does not move |

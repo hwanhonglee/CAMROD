@@ -66,7 +66,7 @@ dwell, front radar near-field range, and external-simulator ownership. -->
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
 | Final parking | route arrival corrects to the exact snapped lanelet point within `0.05 m`, then aligns 90 degrees; reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; charging feedback immediately commands zero |
-| Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes; side/rear stay `0.10 m`; the UI distinguishes finite raw `ECHO` from authoritative cost-grid `COST` evidence |
+| Radar stop/display | FRONT1/2 stop candidates end at an absolute `0.30 m` sensor-face range; side channels use `0.10 m`; rear keeps its measured body-relative `0.10 m` window; the UI distinguishes finite raw `ECHO` from authoritative cost-grid `COST` evidence |
 | Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |

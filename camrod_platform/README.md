@@ -49,7 +49,7 @@ RViz markers are generated from the sensor-kit boundary contract below.
 | Parallel-motion selector | `|linear.y| > 0.02 m/s` | Tiny Nav2 lateral residue stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Zero-turn handoff | re-seed from CAN steering feedback | Prevents the following crab/straight command from inheriting a stale pre-turn wheel angle |
 | Wheel linear/angular sigma | `0.05 m/s`, `0.10 rad/s` | Non-zero odometry covariance |
-| Charging threshold | `> 0.3 A`, at least 2 distinct `0x361` frames, max `1.0 s` inter-frame gap | Cached 50 Hz driver reads and sparse/dropout-separated frames are not continuous charging evidence |
+| Charging threshold | `> 0.3 A`, at least 2 distinct `0x361` frames, max `1.0 s` inter-frame gap, one consecutive false frame for at most `0.75 s` | Cached 50 Hz driver reads and sparse/sustained-false frames are not charging evidence; a bounded isolated bounce pauses rather than resets assertion |
 | Charging confirmation | global `10 s`; AprilTag terminal docking `1.5 s`; release `3 s` | The fast path requires a fresh healthy `FINAL_YAW_ALIGNMENT` or `WAITING_FOR_CHARGING` heartbeat; ordinary driving keeps the regenerative-current guard |
 | Odom fallback timeout | `1.0 s` | Switches to configured substitute source |
 | Robot marker/boundary rate | `5 Hz` | RViz/diagnostic publication |
@@ -109,6 +109,14 @@ frames: mean interval `0.243 s`, minimum `0.200 s`, and maximum `0.401 s`.
 `charging_sample_max_gap_s=1.0` therefore leaves more than twice the observed
 worst-case interval while resetting global-confirm, docking-fast-confirm, and
 release candidates whenever BMS evidence is interrupted longer than that.
+During rising-edge confirmation, `charging_assertion_false_grace_s=0.75`
+preserves the dwell across at most one consecutive isolated below-threshold
+frame when the next positive frame arrives within the grace, while pausing the
+confirmation clock for that below-threshold interval. Repeated isolated false
+frames may each use the grace, but none of their measured false intervals count
+toward confirmation. A second consecutive false frame, an expired grace, or the
+existing sample-gap limit resets the dwell; the global 10-second
+positive-evidence requirement and confirmed-state release policy are unchanged.
 
 | Status content | Source |
 |---|---|

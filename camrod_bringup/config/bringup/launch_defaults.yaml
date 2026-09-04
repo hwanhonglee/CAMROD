@@ -417,7 +417,7 @@ bringup:
     # HH_260720 - During explicit drop-zone exit, bypass only static lanelet
     # cost for these control phases; dynamic obstacle stops remain active.
     cmd_vel_gate_drop_zone_maneuver_controller_status_topic: /control/drop_zone_maneuver_controller/status
-    cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
+    cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,ALIGN_PARKING_YAW
     # HH_260720 - Campsite entry/return is control-owned body-frame motion;
     # bypass only static lanelet/global-path cost in these phases.
     cmd_vel_gate_camping_site_maneuver_controller_status_topic: /control/camping_site_maneuver_controller/status

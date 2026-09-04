@@ -99,6 +99,34 @@ double poseYaw(const avg_msgs::msg::AvgPoseStamped & pose)
     orientation.z * orientation.z));
 }
 
+TEST(GoalReissueStampPolicy, KeepsMissionCorrelationAndRefreshesOnlyNav2Stamp)
+{
+  avg_msgs::msg::AvgPoseStamped active_goal;
+  active_goal.header.stamp.sec = 101;
+  active_goal.header.stamp.nanosec = 202U;
+  active_goal.header.frame_id = "map";
+  active_goal.pose.position.x = 3.0;
+  active_goal.pose.position.y = 4.0;
+  active_goal.pose.orientation.w = 1.0;
+
+  builtin_interfaces::msg::Time fresh_nav2_stamp;
+  fresh_nav2_stamp.sec = 303;
+  fresh_nav2_stamp.nanosec = 404U;
+  const auto reissued = makeReissuedGoalCopies(active_goal, fresh_nav2_stamp);
+
+  EXPECT_EQ(reissued.correlation_goal.header.stamp.sec, 101);
+  EXPECT_EQ(reissued.correlation_goal.header.stamp.nanosec, 202U);
+  EXPECT_EQ(reissued.nav2_goal.header.stamp.sec, 303);
+  EXPECT_EQ(reissued.nav2_goal.header.stamp.nanosec, 404U);
+  EXPECT_EQ(active_goal.header.stamp.sec, 101);
+  EXPECT_EQ(active_goal.header.stamp.nanosec, 202U);
+  EXPECT_EQ(reissued.correlation_goal.header.frame_id, active_goal.header.frame_id);
+  EXPECT_DOUBLE_EQ(
+    reissued.nav2_goal.pose.position.x, active_goal.pose.position.x);
+  EXPECT_DOUBLE_EQ(
+    reissued.nav2_goal.pose.position.y, active_goal.pose.position.y);
+}
+
 TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
 {
   if (!rclcpp::ok()) {
@@ -184,6 +212,20 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
     const double bounded_offset = std::clamp(std::abs(lateral), 0.20, 7.0);
     const double operational_offset =
       roadside ? std::min(bounded_offset, 0.30) : bounded_offset;
+    // Guest recall is roadside-only for every occupied B1-B13 site.  Its wait
+    // pose is not authored independently: derive it from this exact active-map
+    // snap and move 0.30 m toward the signed site side.
+    const double recall_offset = std::min(bounded_offset, 0.30);
+    const double recall_direction = lateral >= 0.0 ? 1.0 : -1.0;
+    const double recall_wait_x =
+      snapped.pose.position.x - std::sin(yaw) * recall_direction * recall_offset;
+    const double recall_wait_y =
+      snapped.pose.position.y + std::cos(yaw) * recall_direction * recall_offset;
+    std::vector<std::pair<double, double>> site_polygon;
+    for (const auto & corner : site["corners"]) {
+      site_polygon.emplace_back(
+        corner["x"].as<double>(), corner["y"].as<double>());
+    }
 
     std::cout << "CAMPSITE_GEOMETRY B" << index + 1U
               << " service=" << fixture.service_mode
@@ -191,7 +233,9 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
               << " snap_y=" << snapped.pose.position.y
               << " snap_yaw_deg=" << yaw * 180.0 / M_PI
               << " forward_m=" << forward << " lateral_m=" << lateral
-              << " operational_offset_m=" << operational_offset << std::endl;
+              << " operational_offset_m=" << operational_offset
+              << " recall_wait_x=" << recall_wait_x
+              << " recall_wait_y=" << recall_wait_y << std::endl;
     EXPECT_NEAR(snapped.pose.position.x, fixture.snap_x, 0.02);
     EXPECT_NEAR(snapped.pose.position.y, fixture.snap_y, 0.02);
     EXPECT_NEAR(
@@ -203,6 +247,15 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
     EXPECT_NEAR(lateral, fixture.signed_lateral_m, 0.02);
     EXPECT_EQ(lateral >= 0.0, fixture.signed_lateral_m >= 0.0);
     EXPECT_NEAR(operational_offset, fixture.operational_offset_m, 0.02);
+    EXPECT_NEAR(recall_offset, 0.30, 1.0e-9);
+    const double recall_dx = recall_wait_x - snapped.pose.position.x;
+    const double recall_dy = recall_wait_y - snapped.pose.position.y;
+    EXPECT_NEAR(
+      std::cos(yaw) * recall_dx + std::sin(yaw) * recall_dy, 0.0, 1.0e-9);
+    EXPECT_NEAR(
+      -std::sin(yaw) * recall_dx + std::cos(yaw) * recall_dy,
+      recall_direction * 0.30, 1.0e-9);
+    EXPECT_FALSE(pointInPolygon2D(site_polygon, recall_wait_x, recall_wait_y));
   }
 
   executor.remove_node(request_node);

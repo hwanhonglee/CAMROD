@@ -2,12 +2,13 @@
 
 import asyncio
 import ast
+import hashlib
 import os
 from pathlib import Path
 import sys
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -21,6 +22,7 @@ from camrod_ui.operator_ui_window import (  # noqa: E402
     _build_chromium_command,
     _build_parser,
     _find_chromium_browser,
+    _read_ui_revision,
     _wait_for_ui_ready,
 )
 from camrod_ui.ui_guest_node import UiGuestNode  # noqa: E402
@@ -143,6 +145,43 @@ class GuestTransportTest(unittest.IsolatedAsyncioTestCase):
 
 class OperatorWindowTest(unittest.TestCase):
 
+    def test_frontend_revision_hash_bypasses_http_cache(self) -> None:
+        body = b"<html><script src='/static/js/main.1234.js'></script></html>"
+        response = MagicMock()
+        response.status = 200
+        response.read.return_value = body
+        response_context = MagicMock()
+        response_context.__enter__.return_value = response
+
+        with patch(
+            "camrod_ui.operator_ui_window.urlopen",
+            return_value=response_context,
+        ) as open_url:
+            revision = _read_ui_revision("http://127.0.0.1:8010", timeout_s=0.01)
+
+        self.assertEqual(revision, hashlib.sha256(body).hexdigest())
+        request = open_url.call_args.args[0]
+        self.assertEqual(request.get_header("Cache-control"), "no-cache, no-store")
+        self.assertEqual(request.get_header("Pragma"), "no-cache")
+        self.assertEqual(open_url.call_args.kwargs["timeout"], 0.05)
+
+    def test_frontend_revision_probe_tolerates_http_and_transport_failures(self) -> None:
+        response = MagicMock()
+        response.status = 503
+        response_context = MagicMock()
+        response_context.__enter__.return_value = response
+
+        with patch(
+            "camrod_ui.operator_ui_window.urlopen",
+            return_value=response_context,
+        ):
+            self.assertIsNone(_read_ui_revision("http://127.0.0.1:8010"))
+        with patch(
+            "camrod_ui.operator_ui_window.urlopen",
+            side_effect=ValueError("invalid URL"),
+        ):
+            self.assertIsNone(_read_ui_revision("not a URL"))
+
     def test_fullscreen_defaults_on_and_can_be_disabled(self) -> None:
         self.assertTrue(_build_parser().parse_args([]).fullscreen)
         self.assertFalse(_build_parser().parse_args(["--no-fullscreen"]).fullscreen)
@@ -247,6 +286,8 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn("HardwareAccelerationPolicy.ALWAYS", window_text)
         self.assertIn('"set_enable_smooth_scrolling": True', window_text)
         self.assertIn('"set_enable_webgl": False', window_text)
+        self.assertIn('if hasattr(context, "clear_cache")', window_text)
+        self.assertIn("context.clear_cache()", window_text)
         self.assertIn("window.fullscreen()", window_text)
         self.assertIn("CHROMIUM_CANDIDATES", window_text)
         self.assertIn("_run_chromium", window_text)

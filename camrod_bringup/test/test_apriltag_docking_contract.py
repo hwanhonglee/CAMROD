@@ -9,6 +9,7 @@ SRC_ROOT = Path(__file__).resolve().parents[2]
 CONTROL = SRC_ROOT / "camrod_control"
 BRINGUP = SRC_ROOT / "camrod_bringup"
 NODE = CONTROL / "src/apriltag_parking_controller_node.cpp"
+REVERSE_NODE = CONTROL / "src/reverse_parking_controller_node.cpp"
 
 
 def _parameters(path: Path) -> dict:
@@ -171,8 +172,47 @@ def test_charging_preempts_every_active_motion_phase() -> None:
     assert "publishStop();" in guard
     assert "transitionTo(State::PARKED);" in guard
     assert 'translation_stop_reason_ = "charging"' in guard
+    assert "state_ != State::ERROR" not in guard
+    assert "parking ERROR recovered by authoritative charging contact" in guard
     assert 'case State::WAITING_FOR_CHARGING: return "WAITING_FOR_CHARGING";' in source
     assert 'message.state_name = "WAITING_FOR_CHARGING";' in source
+
+
+def test_late_charging_contact_recovers_both_parking_controllers() -> None:
+    """A timeout ERROR must clear when authoritative charger current returns."""
+    apriltag = NODE.read_text(encoding="utf-8")
+    reverse = REVERSE_NODE.read_text(encoding="utf-8")
+
+    charging_guard = apriltag[
+        apriltag.index("if (stop_when_charging_ && charging_detected_") :
+        apriltag.index("switch (state_)")
+    ]
+    assert "state_ != State::ERROR" not in charging_guard
+    assert "parking ERROR recovered by authoritative charging contact" in charging_guard
+    reverse_callback = reverse[
+        reverse.index("platform_status_subscription_ =") :
+        reverse.index("operation_subscription_ =")
+    ]
+    assert "if (is_charging_ && phase_ == ReverseParkingPhase::kError)" in reverse_callback
+    assert "charging_changed && is_charging_" not in reverse_callback
+    assert "parking ERROR recovered by authoritative charging contact" in reverse
+
+
+def test_reverse_charge_timeout_retains_terminal_wait_service_state() -> None:
+    """Health ERROR must not erase the physical parked/waiting service evidence."""
+    reverse = REVERSE_NODE.read_text(encoding="utf-8")
+    wait_for_charging = reverse[
+        reverse.index("void waitForCharging()") : reverse.index("void onTimer()")
+    ]
+    publish_service_state = reverse[
+        reverse.index("void publishServiceState(") : reverse.index("void publishZero()")
+    ]
+
+    assert 'setError("charging was not detected before timeout")' in wait_for_charging
+    assert "ReverseParkingPhase::kWaitForCharging" in publish_service_state
+    assert 'message.state_name = "WAITING_FOR_CHARGING";' in publish_service_state
+    assert "ReverseParkingPhase::kError" not in publish_service_state
+    assert "else {\n      return;\n    }" in publish_service_state
 
 
 def test_safety_gate_owns_new_stopped_phases_without_dynamic_bypass() -> None:

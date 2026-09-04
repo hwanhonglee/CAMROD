@@ -33,6 +33,7 @@ def test_charging_fast_path_is_narrow_and_mirrored() -> None:
         "charging_fast_confirm_s": 1.5,
         "charging_fast_status_ttl_s": 1.5,
         "charging_sample_max_gap_s": 1.0,
+        "charging_assertion_false_grace_s": 0.75,
     }
     for profile in profiles:
         assert {key: profile[key] for key in expected} == expected
@@ -47,3 +48,4 @@ def test_fast_confirmation_does_not_replace_global_regen_filter() -> None:
     assert profile["charging_fast_confirm_s"] == 1.5
     assert profile["charging_release_s"] == 3.0
     assert profile["charging_sample_max_gap_s"] == 1.0
+    assert profile["charging_assertion_false_grace_s"] == 0.75
