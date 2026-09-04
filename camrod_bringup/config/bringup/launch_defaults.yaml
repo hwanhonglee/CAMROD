@@ -106,7 +106,7 @@ bringup:
     enable_progress: true
     # HH_260618: Publish thick global/local trajectory markers for RViz readability.
     enable_path_visualization: true
-    # Resolve drop_zone from map-exported semantic area YAML.
+    # Resolve drop_zone from camrod_bringup/config/map/drop_zones.yaml.
     state_machine_keypoints_yaml: map/drop_zones.yaml
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.

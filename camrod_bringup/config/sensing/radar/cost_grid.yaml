@@ -48,10 +48,12 @@
     # HH_260904 - FRONT1/FRONT2 use an absolute 0.30 m cutoff measured from
     # each sensor face. Do not add the body-return envelope to this value: that
     # previously admitted persistent 0.43..0.52 m echoes as stop obstacles.
-    # Side/rear retain their existing independently measured cutoffs.
+    # Side and rear use the original absolute 0.10 m cutoff. The rear channel
+    # remains disabled because its measured chassis return (0.020..0.106 m)
+    # occupies that complete stop window; do not widen the cutoff to compensate.
     stop_candidate_max_range_m: 0.10
     # input_topics order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    stop_candidate_max_ranges_m: [0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.206]
+    stop_candidate_max_ranges_m: [0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.100]
     cost_near_distance_m: 0.30
     cost_far_distance_m: 2.00
     obstacle_radius_m: 0.30

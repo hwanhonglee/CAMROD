@@ -186,6 +186,36 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertNotIn(removed, self.telemetry_source)
         self.assertIn(".docking-layout", self.css)
 
+    def test_robot_operator_recall_is_distinct_from_campsite_delivery(self) -> None:
+        # A roadside recall must never fall through to the existing destination
+        # WebSocket command, which is intentionally ordinary campsite delivery.
+        for token in (
+            "const [destinationIntent, setDestinationIntent] = useState('delivery')",
+            "Recall · 도로 대기",
+            "배송 · 사이트 진입",
+            "사이트 내부로 들어가지 않고 도로 측 대기점",
+            "destinationIntent === 'delivery'",
+            "텐트 · 호출 가능",
+        ):
+            self.assertIn(token, self.source)
+
+        recall_start = self.source.index("const requestCampingSiteRecall")
+        recall_end = self.source.index("const handleToggle", recall_start)
+        recall_source = self.source[recall_start:recall_end]
+        self.assertIn(
+            "/ui/camping_site_recall?site=${encodeURIComponent(site)}&intent=recall",
+            recall_source,
+        )
+        self.assertIn("body.intent !== 'recall'", recall_source)
+        self.assertIn("'robot_recall_site' in data", self.source)
+        self.assertIn(
+            "const activeSite = activeRecallSite ? null : activeStateSite",
+            self.source,
+        )
+        self.assertNotIn("fetch('/ui/destination", recall_source)
+        self.assertNotIn("fetch(`/ui/destination", recall_source)
+        self.assertNotIn("applyToggle", recall_source)
+
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)
         self.assertIn("/api/service-metrics?days=30", self.service_evidence_source)
@@ -223,8 +253,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("<ServiceTripBadge", self.source)
         self.assertIn("serviceMetrics.data?.current_service", self.source)
         self.assertIn(
-            "serviceActive={Boolean(activeSite || arrivedSite || "
-            "displayedReturning)}",
+            "activeSite || activeRecallSite || arrivedSite || displayedReturning",
             self.source,
         )
         self.assertIn("이번 서비스", self.service_evidence_source)

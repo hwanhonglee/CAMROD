@@ -41,10 +41,11 @@ def test_sample_classification_preserves_real_no_target_contract():
     )
 
     rear_body = ((0.020, 0.106),)
-    assert classify(0.106, 0.02, 0.5, 0.1, 1.0, rear_body, 0.206) == "filtered"
-    assert classify(0.107, 0.02, 0.5, 0.1, 1.0, rear_body, 0.206) == "hit"
-    assert classify(0.206, 0.02, 0.5, 0.1, 1.0, rear_body, 0.206) == "hit"
-    assert classify(0.207, 0.02, 0.5, 0.1, 1.0, rear_body, 0.206) == "outside_stop"
+    # HH_260904 - Rear's original 0.10 m stop window is entirely occupied by
+    # the measured chassis band, so the channel remains disabled in hardware.
+    assert classify(0.100, 0.02, 0.5, 0.1, 1.0, rear_body, 0.100) == "filtered"
+    assert classify(0.106, 0.02, 0.5, 0.1, 1.0, rear_body, 0.100) == "outside_stop"
+    assert classify(0.107, 0.02, 0.5, 0.1, 1.0, rear_body, 0.100) == "outside_stop"
 
 
 def test_rolling_rate_uses_intervals_not_sample_count():
@@ -126,8 +127,9 @@ def test_live_cost_profile_uses_absolute_front_thirty_centimeter_cutoff():
     assert bands["FRONT2"] == ((0.020, 0.117),)
     assert bands["REAR"] == ((0.020, 0.106),)
     assert tuple(stop_max[name] for name in RADAR_GUI.SENSOR_ORDER) == pytest.approx(
-        (0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.206)
+        (0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.100)
     )
     assert stop_max["FRONT1"] == pytest.approx(0.30)
     assert stop_max["FRONT2"] == pytest.approx(0.30)
-    assert stop_max["REAR"] - bands["REAR"][-1][1] == pytest.approx(0.10)
+    assert stop_max["REAR"] == pytest.approx(0.10)
+    assert bands["REAR"][-1][1] >= stop_max["REAR"]

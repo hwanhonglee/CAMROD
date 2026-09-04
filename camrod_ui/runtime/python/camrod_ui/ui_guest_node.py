@@ -666,14 +666,25 @@ class UiGuestNode(Node):
             # index.html 단일 파일만이 아니라, 같은 폴더의 정적 파일(사이트 이미지 등)도
             # 서빙되도록 변경. 없는 경로는 index.html로 폴백(SPA 동작).
             guest_dir = html_path.parent
+            html_real = Path(os.path.realpath(str(html_path)))
+            no_store_headers = {
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
+            }
 
             @app.get("/{full_path:path}")
             async def serve_html(full_path: str) -> FileResponse:
                 candidate = guest_dir / full_path
                 real = Path(os.path.realpath(str(candidate)))
                 if real.is_file():
+                    if real == html_real:
+                        return FileResponse(
+                            str(real), headers=no_store_headers
+                        )
                     return FileResponse(str(real))
-                return FileResponse(str(os.path.realpath(str(html_path))))
+                return FileResponse(
+                    str(html_real), headers=no_store_headers
+                )
         else:
             @app.get("/")
             async def serve_fallback() -> JSONResponse:

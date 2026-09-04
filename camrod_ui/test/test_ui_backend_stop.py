@@ -1166,6 +1166,57 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(dispatches, [("B7", True, "guest:kiosk")])
         self.assertEqual(broadcasts, [{"guest_navigate": "B7"}])
 
+    def test_robot_ui_recall_uses_explicit_roadside_source_and_skips_occupancy(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            site_names=["B1", "B2"],
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(ws_site_states={"B1": False, "B2": False}),
+            _last_direct_destination_echo=None,
+            get_clock=lambda: SimpleNamespace(
+                now=lambda: SimpleNamespace(nanoseconds=12_500_000_000)
+            ),
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_destination_command = lambda site, run, source: (
+            events.append(("destination", site, run, source))
+            or {"site": site, "run": run}
+        )
+        backend._apply_destination_command = lambda site, run, source: (
+            events.append(("dispatch", site, run, source))
+            or {
+                "recall_request_published": False,
+                "message": "recall request pending drop-zone exit",
+            }
+        )
+        backend._is_site_occupied = lambda site: self.fail(
+            f"robot recall incorrectly consulted occupancy for {site}"
+        )
+
+        result = UiBackendNode.set_campsite_recall(backend, "B2")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["intent"], "recall")
+        self.assertEqual(result["site"], "B2")
+        self.assertEqual(backend._state.ws_site_states, {"B1": False, "B2": True})
+        self.assertIn(
+            ("destination", "B2", True, "robot_ui:recall"), events
+        )
+        self.assertIn(("dispatch", "B2", True, "robot_ui:recall"), events)
+        self.assertTrue(
+            UiBackendNode._is_guest_recall_source("robot_ui:recall")
+        )
+        self.assertFalse(
+            UiBackendNode._is_guest_recall_source("http_ui_destination")
+        )
+        self.assertEqual(
+            backend._last_direct_destination_echo,
+            ("B2", True, "robot_ui:recall", 12.5),
+        )
+
     def test_operator_destination_stays_normal_delivery_not_guest_recall(self) -> None:
         events = []
 
@@ -1236,7 +1287,7 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertIn(("goal", "B4", "http_ui_destination"), events)
         self.assertNotIn("recall", [event[0] for event in events])
 
-    def test_guest_recall_waits_for_charger_exit_before_planning_release(self) -> None:
+    def test_guest_recall_from_fresh_backend_exits_drop_zone_before_planning(self) -> None:
         events = []
         recalls = []
 
@@ -1254,8 +1305,11 @@ class UiBackendStopTest(unittest.TestCase):
             _drop_zone_exit_failure_latched=False,
             _drop_zone_exit_waiting_for_fresh_status=False,
             _drop_zone_exit_cancel_suppressed=False,
-            _latest_platform_is_charging=True,
-            _latest_service_state=int(AvgServiceState.CHARGING),
+            # This mirrors the field failure: the backend started without a
+            # retained service-state sample while the robot was physically
+            # parked at the drop zone.
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
             _active_mission_site="",
             _service_metrics=None,
             _lock=threading.Lock(),
@@ -1339,6 +1393,14 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(
             [event[1] for event in events if event[0] == "parking_operation"],
             [MotionOperation.CANCEL],
+        )
+        self.assertIn(
+            (
+                "state",
+                AvgServiceState.DEPARTING_DROP_ZONE,
+                "guest:kiosk:drop_zone_departure",
+            ),
+            events,
         )
 
         complete = AvgBool()
