@@ -1041,6 +1041,12 @@ function App() {
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
   const [selectedSite, setSelectedSite] = useState(null);         // 이미지 프리뷰 대상 사이트
+  // HH_260904 - Delivery enters the campsite; recall stops at the authored
+  // roadside wait pose. Keep the intent explicit through both confirmations.
+  const [destinationIntent, setDestinationIntent] = useState('delivery');
+  const destinationIntentRef = useRef('delivery');
+  const [recallRequestPending, setRecallRequestPending] = useState(false);
+  const [activeRecallSite, setActiveRecallSite] = useState(null);
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
   const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
@@ -1157,7 +1163,10 @@ function App() {
   const anyOn = Object.values(states).some(v => v);
 
   // 현재 ON인 사이트 (이동 중인 사이트)
-  const activeSite = SITE_NAMES.find(s => states[s]) || null;
+  const activeStateSite = SITE_NAMES.find(s => states[s]) || null;
+  // The backend mirrors both delivery and recall in the shared site-state
+  // buttons. Keep a typed recall out of the delivery-only presentation path.
+  const activeSite = activeRecallSite ? null : activeStateSite;
   // HH_260730 - A manual mission exists only after a source-aware RViz goal,
   // not merely because the operator has armed engage.
   const manualDriveActive =
@@ -1364,13 +1373,27 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
+      if (
+        'robot_recall_site' in data
+        && SITE_NAMES.includes(data.robot_recall_site)
+      ) {
+        destinationIntentRef.current = 'recall';
+        setDestinationIntent('recall');
+        setActiveRecallSite(data.robot_recall_site);
+        setSelectedSite(null);
+      }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
         setOccupiedSites(prev => (
           prev.length === data.occupied_sites.length
           && prev.every((site, index) => site === data.occupied_sites[index])
         ) ? prev : data.occupied_sites);
-        setSelectedSite(prev => data.occupied_sites.includes(prev) ? null : prev);
+        // A tent blocks delivery into a campsite, but is the expected target
+        // of a roadside recall. Do not clear a recall selection on occupancy.
+        setSelectedSite(prev => (
+          destinationIntentRef.current === 'delivery'
+          && data.occupied_sites.includes(prev)
+        ) ? null : prev);
       }
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
@@ -1393,6 +1416,7 @@ function App() {
           setShowWaiting(true);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
+          setActiveRecallSite(null);
         } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
           // HH_260724 - Operator stop/cancel clears mission selection but remains visible as service state.
           const cleared = {};
@@ -1408,6 +1432,7 @@ function App() {
           setIsReturning(false);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
+          setActiveRecallSite(null);
         } else if (MOVING_SERVICE_STATES.has(serviceState)) {
           // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
           setSelectedSite(null);
@@ -1517,11 +1542,66 @@ function App() {
       .catch(() => {});
   };
 
+  const selectDestinationIntent = (intent) => {
+    if (intent !== 'delivery' && intent !== 'recall') return;
+    destinationIntentRef.current = intent;
+    setDestinationIntent(intent);
+    setSelectedSite(null);
+    setShowMoveConfirm(false);
+    setShowMoveVerify(false);
+    setMoveVerifyInput('');
+    setMoveVerifyError(false);
+    setMissionBlockMessage('');
+  };
+
+  const requestCampingSiteRecall = async (site) => {
+    setRecallRequestPending(true);
+    setMissionBlockMessage('');
+    try {
+      // This dedicated endpoint is intentionally not replaced with
+      // /ui/destination on failure: that would enter the campsite as delivery.
+      const response = await fetch(
+        `/ui/camping_site_recall?site=${encodeURIComponent(site)}&intent=recall`,
+        { method: 'POST' }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.success) {
+        const unavailable = response.status === 404
+          ? 'Recall API가 아직 백엔드에 연결되지 않았습니다.'
+          : 'Recall 요청이 거부되었습니다.';
+        throw new Error(body.message || unavailable);
+      }
+      // Require an intent echo so a miswired ordinary destination endpoint
+      // cannot be presented to the operator as a safe roadside recall.
+      if (body.intent !== 'recall') {
+        throw new Error('백엔드가 typed Recall 응답을 확인하지 않았습니다.');
+      }
+      setActiveRecallSite(site);
+      setArrivedSite(null);
+      setShowArrivalComplete(false);
+      setIsReturning(false);
+      setSelectedSite(null);
+      return true;
+    } catch (error) {
+      setMissionBlockMessage(
+        error.message || 'Recall 요청을 전송하지 못했습니다.'
+      );
+      return false;
+    } finally {
+      setRecallRequestPending(false);
+    }
+  };
+
   const handleToggle = (site) => {
-    // HH_260723 - Keep confirmed occupied sites out of the dispatch flow.
-    if (occupiedSites.includes(site)) {
+    // HH_260723 - Occupancy blocks physical campsite entry, not the typed
+    // roadside recall used when a tent is already installed at the site.
+    if (
+      destinationIntent === 'delivery'
+      && occupiedSites.includes(site)
+    ) {
       return;
     }
+    if (activeRecallSite || recallRequestPending) return;
     if (states[site]) {
       // 이미 ON → OFF 불가, 아무것도 하지 않음
       return;
@@ -1536,8 +1616,13 @@ function App() {
   };
 
   // ── 프리뷰에서 "Yes" 클릭 → 실제 ON publish ─────────────────────────────
-  const handleConfirmMove = () => {
-    if (selectedSite && !occupiedSites.includes(selectedSite)) {
+  const handleConfirmMove = async () => {
+    if (!selectedSite) return;
+    if (destinationIntent === 'recall') {
+      await requestCampingSiteRecall(selectedSite);
+      return;
+    }
+    if (!occupiedSites.includes(selectedSite)) {
       applyToggle(selectedSite, true);
       setSelectedSite(null);
     }
@@ -1583,6 +1668,9 @@ function App() {
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  const missionSelectionLocked = Boolean(
+    anyOn || isReturning || activeRecallSite || recallRequestPending
+  );
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
   const serviceEvidenceModalOpen = activeModal === 'service-evidence';
   const serviceEvidenceModal = serviceEvidenceModalOpen ? (
@@ -1923,9 +2011,19 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{selectedSite}</p>
-              <p className="preview-question">이동하시겠습니까?</p>
+              <p className="preview-question">
+                {destinationIntent === 'recall'
+                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 호출하시겠습니까?'
+                  : '배송을 위해 사이트 내부로 이동하시겠습니까?'}
+              </p>
               <div className="preview-yn-btns">
-                <button className="preview-yes-btn" onClick={() => setShowMoveConfirm(true)}>예</button>
+                <button
+                  className="preview-yes-btn"
+                  onClick={() => setShowMoveConfirm(true)}
+                  disabled={recallRequestPending}
+                >
+                  {recallRequestPending ? '요청 중…' : '예'}
+                </button>
                 <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>아니오</button>
               </div>
             </>
@@ -1937,9 +2035,13 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{arrivedSite}</p>
-              <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
+              <p className="preview-arrived">
+                {activeRecallSite === arrivedSite
+                  ? 'Recall 도로 대기 지점에 도착했습니다.'
+                  : '배송 로봇이 목적지에 도착했습니다.'}
+              </p>
               <button className="preview-return-btn" onClick={handleArrivalComplete}>
-                복귀
+                {activeRecallSite === arrivedSite ? '적재 완료 · 복귀' : '복귀'}
               </button>
             </>
           ) : displayedReturning ? (
@@ -1960,6 +2062,20 @@ function App() {
               />
               <p className="preview-site-name">{activeSite}</p>
               <p className="preview-moving">배송 로봇이 이동중 입니다.</p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <div className="preview-yn-btns">
+                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+              </div>
+            </>
+          ) : activeRecallSite ? (
+            <>
+              <img
+                src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[activeRecallSite]}`}
+                alt={`${activeRecallSite} recall site`}
+                className="preview-image"
+              />
+              <p className="preview-site-name">{activeRecallSite} Recall</p>
+              <p className="preview-moving">도로 측 대기 지점으로 이동 중입니다.</p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
@@ -1988,7 +2104,9 @@ function App() {
             </>
           )}
           <ServiceTripBadge
-            serviceActive={Boolean(activeSite || arrivedSite || displayedReturning)}
+            serviceActive={Boolean(
+              activeSite || activeRecallSite || arrivedSite || displayedReturning
+            )}
             currentService={serviceMetrics.data?.current_service}
             loading={serviceMetrics.loading}
             error={serviceMetrics.error}
@@ -1998,7 +2116,32 @@ function App() {
 
         {/* ── 오른쪽: 컨트롤 패널 ── */}
         <div className="app">
-          <h1>목적지 선택</h1>
+          <h1>{destinationIntent === 'recall' ? 'Recall 사이트 선택' : '배송 목적지 선택'}</h1>
+          <div className="preview-yn-btns" role="group" aria-label="사이트 운행 목적">
+            <button
+              type="button"
+              className={destinationIntent === 'delivery' ? 'preview-yes-btn' : 'preview-no-btn'}
+              aria-pressed={destinationIntent === 'delivery'}
+              disabled={missionSelectionLocked}
+              onClick={() => selectDestinationIntent('delivery')}
+            >
+              배송 · 사이트 진입
+            </button>
+            <button
+              type="button"
+              className={destinationIntent === 'recall' ? 'preview-yes-btn' : 'preview-no-btn'}
+              aria-pressed={destinationIntent === 'recall'}
+              disabled={missionSelectionLocked}
+              onClick={() => selectDestinationIntent('recall')}
+            >
+              Recall · 도로 대기
+            </button>
+          </div>
+          <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
+            {destinationIntent === 'recall'
+              ? '텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
+              : '빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.'}
+          </p>
 
           {/* ── 페이지네이션 래퍼 ── */}
           <div className="toggle-paginator">
@@ -2016,13 +2159,23 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''} ${occupiedSites.includes(site) ? 'occupied' : ''}`}
+                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${missionSelectionLocked && !states[site] ? 'locked' : ''} ${destinationIntent === 'delivery' && occupiedSites.includes(site) ? 'occupied' : ''}`}
                   onClick={() => handleToggle(site)}
-                  disabled={isReturning || occupiedSites.includes(site)}
+                  disabled={
+                    missionSelectionLocked
+                    || (
+                      destinationIntent === 'delivery'
+                      && occupiedSites.includes(site)
+                    )
+                  }
                 >
                   <span className="site-label">{site}</span>
                   {states[site] && <span className="site-on-badge">ON</span>}
-                  {occupiedSites.includes(site) && <span className="site-occupied-badge">사용 중</span>}
+                  {occupiedSites.includes(site) && (
+                    <span className="site-occupied-badge">
+                      {destinationIntent === 'recall' ? '텐트 · 호출 가능' : '사용 중'}
+                    </span>
+                  )}
                 </button>
               ))}
               {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
@@ -2063,7 +2216,13 @@ function App() {
             ))}
           </div>
 
-          <button className="control-back-btn" onClick={() => setShowWaiting(true)} disabled={!!activeSite || isReturning}>← 뒤로가기</button>
+          <button
+            className="control-back-btn"
+            onClick={() => setShowWaiting(true)}
+            disabled={Boolean(activeSite || activeRecallSite || isReturning)}
+          >
+            ← 뒤로가기
+          </button>
         </div>
 
       </div>
@@ -2092,7 +2251,17 @@ function App() {
         <div className="move-confirm-overlay" onClick={() => setShowMoveConfirm(false)}>
           <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
             <p className="move-confirm-msg">
-              로봇이 출발하면 정차할 수 없습니다.<br />이동하시겠습니까?
+              {destinationIntent === 'recall' ? (
+                <>
+                  Recall은 사이트 내부로 진입하지 않습니다.<br />
+                  도로 측 대기점으로 호출하시겠습니까?
+                </>
+              ) : (
+                <>
+                  로봇이 출발하면 정차할 수 없습니다.<br />
+                  배송을 위해 이동하시겠습니까?
+                </>
+              )}
             </p>
             <div className="move-confirm-btns">
               <button
@@ -2123,7 +2292,9 @@ function App() {
         <div className="move-verify-overlay" onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}>
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
-              지금 이동하시는 사이트는<br />
+              {destinationIntent === 'recall'
+                ? '지금 Recall 호출할 사이트는'
+                : '지금 배송 이동할 사이트는'}<br />
               <span className="move-verify-site">{selectedSite}</span><br />
               입니다
             </p>

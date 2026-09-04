@@ -5034,8 +5034,11 @@ class UiBackendNode(Node):
 
     @staticmethod
     def _is_guest_recall_source(source: str) -> bool:
-        """Return whether a destination command represents a guest roadside call."""
-        return str(source).strip().lower().startswith("guest")
+        """Return whether a destination command represents a roadside recall."""
+        normalized = str(source).strip().lower()
+        return normalized.startswith("guest") or normalized.startswith(
+            "robot_ui:recall"
+        )
 
     def _publish_planning_camping_site_recall(
         self, mission_key: str, source: str
@@ -5612,6 +5615,17 @@ class UiBackendNode(Node):
         departure_required = (
             getattr(self, "_drop_zone_exit_cancel_suppressed", False)
             or self._latest_platform_is_charging
+            # A roadside recall normally starts from the parked drop-zone
+            # position.  On a fresh UI-backend process there may be no retained
+            # service-state sample yet; the explicit road-handoff latch is the
+            # only safe proof that Nav2 may start without the bounded station
+            # exit maneuver.  Starting Nav2 directly from the parking pose
+            # makes the lanelet body guard stop it immediately.
+            or (
+                guest_recall
+                and not getattr(self, "_drop_zone_exit_handoff_ready", False)
+                and getattr(self, "_latest_service_state", None) is None
+            )
             or (
                 not getattr(self, "_drop_zone_exit_handoff_ready", False)
                 and self._latest_service_state
@@ -5918,6 +5932,81 @@ class UiBackendNode(Node):
         )
         return {"success": True, "destination": payload, "dispatch": dispatch}
 
+    def set_campsite_recall(self, site: str) -> Dict[str, Any]:
+        """Dispatch a Robot UI campsite selection as a roadside recall."""
+        normalized_site = str(site).strip()
+        if not normalized_site:
+            return {
+                "success": False,
+                "intent": "recall",
+                "site": "",
+                "message": "site is required",
+            }
+        if normalized_site not in self.site_names:
+            return {
+                "success": False,
+                "intent": "recall",
+                "site": normalized_site,
+                "message": f"unknown site: {normalized_site}",
+                "valid_sites": list(self.site_names),
+            }
+
+        # Occupancy is intentionally not consulted: a tent at the selected
+        # campsite is the expected target for roadside recall.  Battery policy
+        # and every normal motion-safety gate remain authoritative.
+        battery_block = self._mission_dispatch_battery_block(normalized_site)
+        if battery_block is not None:
+            return {
+                "success": False,
+                "intent": "recall",
+                "site": normalized_site,
+                **battery_block,
+            }
+
+        states = {
+            known_site: known_site == normalized_site
+            for known_site in self.site_names
+        }
+        with self._lock:
+            self._state.ws_site_states = dict(states)
+        self._schedule_broadcast(
+            {"states": states, "robot_recall_site": normalized_site}
+        )
+
+        source = "robot_ui:recall"
+        self._last_direct_destination_echo = (
+            normalized_site,
+            True,
+            source,
+            self.get_clock().now().nanoseconds * 1e-9,
+        )
+        payload = self._publish_destination_command(
+            site=normalized_site,
+            run=True,
+            source=source,
+        )
+        dispatch = self._apply_destination_command(
+            site=normalized_site,
+            run=True,
+            source=source,
+        )
+        if dispatch.get("blocked", False):
+            return {
+                "success": False,
+                "intent": "recall",
+                "site": normalized_site,
+                "destination": payload,
+                "dispatch": dispatch,
+                "message": str(dispatch.get("message", "recall was rejected")),
+            }
+        return {
+            "success": True,
+            "intent": "recall",
+            "site": normalized_site,
+            "destination": payload,
+            "dispatch": dispatch,
+        }
+
     async def _await_ros_future(self, future: Any, timeout_s: float = 1.5) -> Any:
         deadline = asyncio.get_running_loop().time() + timeout_s
         while not future.done():
@@ -6059,8 +6148,22 @@ class UiBackendNode(Node):
                 service_state_name = node._state.service_state_name
                 service_state_description = node._state.service_state_description
                 occupied_sites = list(node._state.occupied_sites)
+                active_mission_site = str(node._active_mission_site)
+                active_mission_source = str(node._active_mission_source)
+                recall_site = (
+                    active_mission_site
+                    if (
+                        states.get(active_mission_site, False)
+                        and UiBackendNode._is_guest_recall_source(
+                            active_mission_source
+                        )
+                    )
+                    else ""
+                )
             redock_status = UiBackendNode._redock_status_snapshot(node)
             await ws.send_json({"states": states})
+            if recall_site:
+                await ws.send_json({"robot_recall_site": recall_site})
             await ws.send_json({"occupied_sites": occupied_sites})
             await ws.send_json({"engage": engage})
             await ws.send_json({
@@ -6314,6 +6417,26 @@ class UiBackendNode(Node):
             # HH_260818 - Operator docking tests may request return without a
             # preceding campsite WAIT_RETURN state.
             return JSONResponse(node.request_manual_return())
+
+        @app.post("/ui/camping_site_recall")
+        def post_camping_site_recall(
+            site: str = "", intent: str = "recall"
+        ) -> JSONResponse:
+            if str(intent).strip().lower() != "recall":
+                return JSONResponse(
+                    {
+                        "success": False,
+                        "intent": str(intent),
+                        "site": str(site).strip(),
+                        "message": "intent must be recall",
+                    },
+                    status_code=400,
+                )
+            result = node.set_campsite_recall(site=site)
+            return JSONResponse(
+                result,
+                status_code=200 if result.get("success") else 400,
+            )
 
         # HH_260810 - This is the managed operator-map equivalent of RViz 2D
         # Goal Pose. The backend owns validation and engage ordering; deployment

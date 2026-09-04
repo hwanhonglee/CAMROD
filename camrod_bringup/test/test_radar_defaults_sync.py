@@ -108,7 +108,9 @@ _EXPECTED_STOP_CANDIDATE_MAX_RANGES_M = [
     0.100,
     0.100,
     0.100,
-    0.206,
+    # HH_260904 - Rear remains at the original absolute 0.10 m cutoff. Its
+    # 0.020..0.106 m chassis return is why that hardware channel stays disabled.
+    0.100,
 ]
 
 _OLD_DRIVER_KEYS = {
@@ -322,9 +324,9 @@ def test_active_cost_grid_uses_canonical_cost_and_return_names_only():
         == _EXPECTED_STOP_CANDIDATE_MAX_RANGES_M
     )
     assert len(params["stop_candidate_max_ranges_m"]) == len(params["input_topics"])
-    # HH_260904 - Front cutoffs are absolute sensor-face ranges. Rear retains
-    # its measured body edge plus 0.10 m so a future re-enable cannot silently
-    # inherit the forward policy.
+    # HH_260904 - Front cutoffs are absolute 0.30 m sensor-face ranges. Side
+    # and rear retain the original absolute 0.10 m policy; rear stays disabled
+    # because its measured chassis band occupies that entire stop window.
     topic_labels = [
         topic.rstrip("/").split("/")[-2].upper()
         for topic in params["input_topics"]
@@ -332,7 +334,7 @@ def test_active_cost_grid_uses_canonical_cost_and_return_names_only():
     per_sensor_max = dict(zip(topic_labels, params["stop_candidate_max_ranges_m"]))
     assert per_sensor_max["FRONT1"] == 0.30
     assert per_sensor_max["FRONT2"] == 0.30
-    assert abs(per_sensor_max["REAR"] - 0.106 - 0.10) < 1e-9
+    assert per_sensor_max["REAR"] == 0.10
     assert params["cost_near_distance_m"] == 0.30
     assert params["cost_far_distance_m"] == 2.00
     assert (

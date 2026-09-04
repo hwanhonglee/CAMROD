@@ -301,6 +301,8 @@ class OperatorWindowTest(unittest.TestCase):
             / "guest_frontend"
             / "index.html"
         ).read_text(encoding="utf-8")
+        self.assertIn('class="wh-wifi" id="wifiBadge"', guest_html)
+        self.assertIn("if (badge) badge.style.opacity", guest_html)
         self.assertIn("{ action: 'heartbeat' }", guest_html)
         self.assertIn("}, 10000);", guest_html)
 
@@ -315,6 +317,11 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn('if action == "heartbeat":', guest_backend)
         self.assertIn("if idle_cycles >= 3:", guest_backend)
         self.assertIn("await asyncio.to_thread", guest_backend)
+        self.assertIn(
+            '"Cache-Control": "no-store, no-cache, must-revalidate"',
+            guest_backend,
+        )
+        self.assertIn("str(html_real), headers=no_store_headers", guest_backend)
 
 
 class BackendEndpointContractTest(unittest.TestCase):

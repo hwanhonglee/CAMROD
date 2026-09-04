@@ -134,7 +134,7 @@ accuracy.
 | Hardware beam | angle level `4` on all channels (widest; approximately 65 deg horizontal / 80 deg vertical) |
 | Hardware range level | Level 1 on all channels |
 | Software observation maximum | `0.50 m` on all channels; stop authority is narrower |
-| Radar stop windows | FRONT1/FRONT2 use an absolute `0.30 m` sensor-face cutoff; side channels use `0.10 m`; rear body-relative window is `(0.106, 0.206] m` |
+| Radar stop windows | FRONT1/FRONT2 use an absolute `0.30 m` sensor-face cutoff; side and rear use the original absolute `0.10 m` cutoff; REAR is disabled because its chassis echo fills that window |
 | Front spatial gate | active lanelet mask plus the `1.27 m` local-path corridor in `cmd_vel_safety_gate` |
 | Automatic startup learning | disabled in field-driving profile |
 | Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
@@ -146,9 +146,9 @@ not painted into `/sensing/cost_grid/radar` unless it is inside that channel's
 configured stop window and survives fixed-return and route clipping. The
 operator UI therefore labels an ordinary finite sample `ECHO` and uses the
 authoritative `/sensing/radar/obstacle_evidence` output for the red `COST`
-state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR remains
-disabled; its configured `0.206 m` scalar cutoff is its measured body-return
-upper edge (`0.106 m`) plus the same `0.10 m` usable window.
+state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR also
+retains the original absolute `0.10 m` cutoff, but remains disabled because its
+measured `0.020..0.106 m` chassis return occupies the complete stop window.
 
 ![Radar raw ECHO versus authoritative COST UI fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
 

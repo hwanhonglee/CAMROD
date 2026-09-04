@@ -184,7 +184,7 @@ episode time limits remain fail-closed.
 | FRONT1 stop candidate | `(0.220, 0.300] m` after fixed-return filtering | Absolute `0.30 m` cutoff from the sensor face |
 | FRONT2 stop candidate | `(0.117, 0.300] m` after fixed-return filtering | Absolute `0.30 m` cutoff from the sensor face |
 | Side stop candidate | `[0.020, 0.100] m` before named fixed-return filtering | Absolute `0.100 m` sensor-face cutoff; per-channel fixed-return bands still take precedence |
-| REAR stop candidate | `(0.106, 0.206] m` after fixed-return filtering | Body-relative `0.10 m` window remains configured, but REAR is quarantined |
+| REAR stop candidate | `[0.020, 0.100] m` before fixed-return filtering | Original absolute `0.100 m` cutoff; REAR is disabled because its `0.020..0.106 m` chassis band fills the stop window |
 | Front radar spatial gate | active lanelet + `1.27 m` local-path corridor | Keeps the absolute front cutoff constrained to current route/path authority |
 | `obstacle_replan_monitor.block_hold_s` | `20.0 s` | Delay before fallback planner preemption, not stop delay |
 | `enable_obstacle_replan_monitor` | `true` | Width-gated fallback replan monitor |

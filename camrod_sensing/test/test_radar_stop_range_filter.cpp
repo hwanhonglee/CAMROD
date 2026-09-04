@@ -14,16 +14,17 @@ TEST(RadarStopRangeFilter, KeepsObservationAndStopRangesIndependent)
   EXPECT_FALSE(filter::isStopCandidate(0.400, 0.020, 0.500, 0.100));
 }
 
-TEST(RadarStopRangeFilter, IncludesAbsoluteFrontThirtyAndRearBodyRelativeCutoffs)
+TEST(RadarStopRangeFilter, IncludesAbsoluteFrontThirtyAndSideRearTenCentimeterCutoffs)
 {
   // HH_260904 - Both front sensors stop at an absolute 0.30 m range from
-  // their faces. Rear retains its measured body edge plus 0.10 m window.
+  // their faces. Side/rear retain the original absolute 0.10 m cutoff; the
+  // rear channel is disabled separately because its chassis echo fills it.
   EXPECT_TRUE(filter::isStopCandidate(0.300, 0.020, 0.500, 0.300));
   EXPECT_FALSE(filter::isStopCandidate(0.301, 0.020, 0.500, 0.300));
   EXPECT_TRUE(filter::isStopCandidate(0.300, 0.020, 0.500, 0.300));
   EXPECT_FALSE(filter::isStopCandidate(0.301, 0.020, 0.500, 0.300));
-  EXPECT_TRUE(filter::isStopCandidate(0.206, 0.020, 0.500, 0.206));
-  EXPECT_FALSE(filter::isStopCandidate(0.207, 0.020, 0.500, 0.206));
+  EXPECT_TRUE(filter::isStopCandidate(0.100, 0.020, 0.500, 0.100));
+  EXPECT_FALSE(filter::isStopCandidate(0.101, 0.020, 0.500, 0.100));
 }
 
 TEST(RadarStopRangeFilter, RejectsInvalidAndNoTargetSamples)

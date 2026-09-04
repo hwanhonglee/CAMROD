@@ -551,10 +551,10 @@ def generate_launch_description():
     state_machine_camping_sites_cfg = cfg_get(
         launch_cfg, 'planning/state_machine_camping_sites_yaml', 'planning/camping_sites.yaml')
     if _is_default_cfg_value(state_machine_keypoints_cfg, 'map/drop_zones.yaml'):
-        # HH_260623 - Use camrod_map exporter output as the default drop-zone source.
-        # Bringup-local profile copies easily go stale when the active Lanelet2 map changes.
+        # Full bringup owns its deployment profile and therefore reads the
+        # bringup-local drop-zone YAML by default.
         planning_state_machine_keypoints_default = resolve_profile_file(
-            pkg_path('camrod_map', os.path.join('config', 'drop_zones.yaml')),
+            bringup_cfg('map/drop_zones.yaml'),
             map_profile,
         )
     else:

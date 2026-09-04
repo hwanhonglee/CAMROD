@@ -460,7 +460,7 @@
     </div>
   </div>
   <div class="header-badges">
-    <div class="wh-wifi">
+    <div class="wh-wifi" id="wifiBadge">
       <svg id="wifiSvg" width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path id="wArc3" d="M1.5 8.5C5.1 4.9 10.3 3 12 3s6.9 1.9 10.5 5.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
         <path id="wArc2" d="M4.5 11.5C6.9 9.1 9.7 8 12 8s5.1 1.1 7.5 3.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
@@ -666,7 +666,8 @@
 
   function setConn(on) {
     // 연결 상태를 WiFi 배지 투명도로 표현
-    document.getElementById('wifiBadge').style.opacity = on ? '1' : '0.4';
+    const badge = document.getElementById('wifiBadge');
+    if (badge) badge.style.opacity = on ? '1' : '0.4';
   }
 
   /* ── Battery ── */
