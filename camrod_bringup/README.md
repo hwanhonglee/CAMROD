@@ -65,14 +65,20 @@ dwell, front radar near-field range, and external-simulator ownership. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
-| Final parking | reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; a stale Tag stops within `0.5 s` and may reacquire for `60 s`; charging feedback immediately commands zero |
-| Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes and are clipped by active lanelet plus the `1.27 m` path corridor; side/rear stay `0.10 m`; the GUI shows all seven streams |
+| Final parking | route arrival corrects to the exact snapped lanelet point within `0.05 m`, then aligns 90 degrees; reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; charging feedback immediately commands zero |
+| Radar stop/display | FRONT1/2 accept `0.30 m` beyond measured body echoes; side/rear stay `0.10 m`; the UI distinguishes finite raw `ECHO` from authoritative cost-grid `COST` evidence |
 | Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | Operator window | WebKit fullscreen default |
 | Normal visualization / manual goal | Managed UI; RViz default `OFF`, explicit `rviz:=true` maintenance override |
 | Operator telemetry | selected-view WebSocket `10 Hz`, `4 s` client heartbeat, `12 s` lease, `1 Hz` REST fallback |
-| Manual Return / docking UI | both controls share one state-independent API; ordinary Nav2 is cancelled and held stopped `0.50 s`; docking tab uses seven lazy tag/path/controller subscriptions |
+| Manual Return / docking UI | both controls share one state-independent API; ordinary Nav2 is cancelled and held stopped `0.50 s`; docking tab uses nine lazy tag/path/controller subscriptions |
 | Telemetry scheduler | request-triggered ROS GuardCondition plus `1 Hz` abandoned-lease expiry; selected visible stream remains `10 Hz` |
+
+<!-- HH_260904 - Record exact return-parking handoff and per-site evidence. -->
+The evidence dashboard derives B1-B13 completed-run average distance/time,
+latest terminal run, and current run from the existing SQLite service records.
+It adds no sensor polling or database write loop. The docking tab lazily adds
+the exact lanelet-point path and drop-zone controller state only while open.
 
 The [runtime parameter reference](../docs/RUNTIME_PARAMETER_REFERENCE.md)
 indexes every operational speed, distance, timeout, sensor rate, feature toggle,

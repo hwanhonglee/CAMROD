@@ -249,6 +249,8 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260904 - Keep this target scoped to immutable v2.1.8 media and tooling;
+  # current runtime/config documentation is verified by config mirror tests.
   # HH_260818 - Bind the v2.1.8 normal/crab, same-anchor campsite return,
   # final-parking slowdown, UI capture, and YAML mirrors to reproducible media.
   ament_add_pytest_test(

@@ -29,9 +29,11 @@ site exit, and record the no-zero-turn roadside forward-loop policy. -->
 DN05Y9E7, and 460800 baud; require physical RTCM and heading evidence. -->
 <!-- HH_260825 - Publish v2.2.1 with current-lane campsite Return handoff,
 stopped charger-departure dwell, and a wider route-clipped front radar gate. -->
+<!-- HH_260904 - Publish v2.2.3 with authoritative radar-cost telemetry,
+exact drop-zone parking-point correction, and B1-B13 service metrics. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.2.1`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.2.3`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
@@ -84,14 +86,15 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Campsite service policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | B11-B13 cap lateral travel at `0.30 m`, skip every zero-turn, finish `CRAB_OUT`, then use a forward one-way return loop |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
-| Drop-zone parking handoff | `1.0 s` continuously within tolerance and `<= 3 deg/s` | Final parking cannot start while the body is still rotating |
+| Drop-zone parking handoff | snapped lanelet point `<=0.05 m`, `0.5 s` position hold, then yaw `1.0 s` within tolerance and `<=3 deg/s` | Automatic parking reaches the mission-correlated perpendicular centerline projection before the 90-degree turn and straight reverse |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | Final parking slowdown | reverse last `0.30 m`; AprilTag camera range `0.80 -> 0.40 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
-| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions and accept the next `0.30 m`; active lanelet plus the `1.27 m` local-path corridor bounds front stopping; side/rear remain `0.10 m` |
+| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions and accept the next `0.30 m`; side usable stop windows remain `0.10 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |
 | Charging mission start | `7.0 s` stopped dwell | A campsite selection is queued while charging; manual, mission, and platform gates stay closed until one station `EXIT` is released |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |
+| Service evidence | B1-B13 completed-run averages plus latest/current run | One graph and table show distance, elapsed time, attempts, completion rate, and current values relative to completed averages |
 | Operator Return | one `/ui/manual_return` authority; `0.50 s` preemption hold | Both visible Return controls cancel outbound Nav2, close motion authorization, then publish exactly one fresh drop-zone recall |
 | RViz launch default | `OFF` | Normal operation uses the managed UI; `rviz:=true` remains an engineering override |
 | ROS transport | component intra-process; physical-LiDAR SHM opt-in | DDS-SHM is scoped to the LiDAR driver group and never exported to the full graph |
@@ -181,6 +184,7 @@ no second hold. This is not physical-road evidence.
 
 | Check | Result | Scope |
 |---|---|---|
+| v2.2.3 radar/docking/metrics hardening | **AMD64 BUILD/TEST PASS** | Side `0.10 m` cost authority separated from raw `0.43 m` echo; exact drop-zone point correction added; B1-B13 metrics rendered; native 144 results and Python 166 tests passed |
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
 | v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
 | Historical tapered/rounded B2 road run | **MEASURED ROS SIM PASS** | map-v17; physical cost-100 contact `NO`, planning contact `YES`; `REVERSE_YAW_RIGHT`; same route complete; field pending |
@@ -326,6 +330,7 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.3 release notes](docs/V2_2_3_RELEASE_NOTES.md) | Radar echo/cost semantics, Site 7 settle diagnosis, deterministic drop-zone parking approach, B1-B13 metrics, tests, and field limits |
 | [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |

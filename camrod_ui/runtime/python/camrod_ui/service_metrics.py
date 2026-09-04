@@ -48,6 +48,7 @@ class ServiceMetricsTracker:
     # is a valid completed service boundary too.
     COMPLETION_STATES = frozenset({0, 12, 13})
     INTERRUPT_STATES = frozenset({16})
+    CANONICAL_CAMPSITES = tuple(f"B{index}" for index in range(1, 14))
 
     def __init__(
         self,
@@ -488,6 +489,13 @@ class ServiceMetricsTracker:
                 "recent_services": [
                     self._format_record(record, now=now) for record in recent
                 ],
+                # HH_260904 - Keep B1-B13 comparison server-side so every UI
+                # client receives identical averages and active-run progress.
+                # Progress is explicitly relative to completed historical
+                # averages; it is not an estimate of route completion.
+                "site_summaries": self._build_site_summaries(
+                    records, active=active, now=now
+                ),
                 "persistence": {
                     "enabled": self.persistence_enabled,
                     "path": str(self.database_path) if self.database_path else "",
@@ -547,6 +555,134 @@ class ServiceMetricsTracker:
             "state": record["last_state"],
             "state_name": record["last_state_name"],
         }
+
+    @classmethod
+    def _canonical_site_name(cls, value: Any) -> str:
+        text = str(value).strip()
+        upper = text.upper()
+        if upper.startswith("B") and upper[1:].isdigit():
+            index = int(upper[1:])
+            if 1 <= index <= 13:
+                return f"B{index}"
+        return text or "미지정"
+
+    @classmethod
+    def _site_sort_key(cls, value: str) -> tuple[int, int, str]:
+        canonical = cls._canonical_site_name(value)
+        if canonical.startswith("B") and canonical[1:].isdigit():
+            return (0, int(canonical[1:]), canonical)
+        return (1, 0, canonical.casefold())
+
+    def _build_site_summaries(
+        self,
+        records: List[Dict[str, Any]],
+        *,
+        active: Optional[Dict[str, Any]],
+        now: float,
+    ) -> List[Dict[str, Any]]:
+        grouped: Dict[str, List[Dict[str, Any]]] = {
+            site: [] for site in self.CANONICAL_CAMPSITES
+        }
+        for record in records:
+            site = self._canonical_site_name(record.get("site"))
+            grouped.setdefault(site, []).append(record)
+
+        summaries: List[Dict[str, Any]] = []
+        for site in sorted(grouped, key=self._site_sort_key):
+            site_records = grouped[site]
+            completed = [
+                record
+                for record in site_records
+                if record["result"] == self.COMPLETED_RESULT
+                and record["ended_at"] is not None
+            ]
+            interrupted = [
+                record
+                for record in site_records
+                if record["result"]
+                in {self.INTERRUPTED_RESULT, self.SUPERSEDED_RESULT}
+            ]
+            terminal_count = len(completed) + len(interrupted)
+            completed_distances = [
+                max(0.0, float(record["distance_m"])) for record in completed
+            ]
+            completed_durations = [
+                max(0.0, float(record["ended_at"]) - float(record["started_at"]))
+                for record in completed
+            ]
+            average_distance_m = (
+                sum(completed_distances) / len(completed_distances)
+                if completed_distances else None
+            )
+            average_duration_s = (
+                sum(completed_durations) / len(completed_durations)
+                if completed_durations else None
+            )
+            terminal_records = [
+                record
+                for record in site_records
+                if record["result"] != self.ACTIVE_RESULT
+            ]
+            latest = max(
+                terminal_records,
+                key=lambda record: record["ended_at"] or record["started_at"],
+                default=None,
+            )
+            current = (
+                active
+                if active is not None
+                and self._canonical_site_name(active.get("site")) == site
+                else None
+            )
+            current_distance_m = (
+                max(0.0, float(current["distance_m"])) if current else None
+            )
+            current_duration_s = (
+                max(0.0, now - float(current["started_at"])) if current else None
+            )
+
+            def progress_percentage(
+                current_value: Optional[float], average_value: Optional[float]
+            ) -> Optional[float]:
+                if (
+                    current_value is None
+                    or average_value is None
+                    or average_value <= 0.0
+                ):
+                    return None
+                return round(100.0 * current_value / average_value, 1)
+
+            summaries.append({
+                "site": site,
+                "service_attempt_count": len(site_records),
+                "completed_service_count": len(completed),
+                "interrupted_service_count": len(interrupted),
+                "completion_rate_percentage": (
+                    round(100.0 * len(completed) / terminal_count, 1)
+                    if terminal_count else None
+                ),
+                "average_distance_m": (
+                    round(average_distance_m, 2)
+                    if average_distance_m is not None else None
+                ),
+                "average_duration_s": (
+                    round(average_duration_s)
+                    if average_duration_s is not None else None
+                ),
+                "latest_service": (
+                    self._format_record(latest, now=now) if latest else None
+                ),
+                "current_service": (
+                    self._format_record(current, now=now) if current else None
+                ),
+                "current_distance_progress_percentage": progress_percentage(
+                    current_distance_m, average_distance_m
+                ),
+                "current_duration_progress_percentage": progress_percentage(
+                    current_duration_s, average_duration_s
+                ),
+            })
+        return summaries
 
     @staticmethod
     def _format_totals(totals: Dict[str, Any]) -> Dict[str, Any]:

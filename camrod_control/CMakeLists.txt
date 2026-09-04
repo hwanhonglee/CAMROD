@@ -152,6 +152,13 @@ if(BUILD_TESTING)
     test/test_drop_zone_exit_target_policy.cpp
   )
   target_include_directories(test_drop_zone_exit_target_policy PRIVATE include)
+
+  # HH_260904 - Verify the bounded exact-centerline correction that precedes
+  # drop-zone yaw alignment and straight reverse parking.
+  ament_add_gtest(test_drop_zone_parking_approach
+    test/test_drop_zone_parking_approach.cpp
+  )
+  target_include_directories(test_drop_zone_parking_approach PRIVATE include)
 endif()
 
 ament_package()

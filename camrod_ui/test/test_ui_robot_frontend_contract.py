@@ -136,6 +136,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "lifetime",
             "daily_history",
             "recent_services",
+            "site_summaries",
             "generated_at",
             "persistence",
         ):
@@ -203,6 +204,44 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn(".evidence-table-scroll", self.css)
         self.assertIn("@media (max-width: 1000px)", self.css)
         self.assertIn("@media (max-width: 700px)", self.css)
+
+    def test_service_evidence_compares_all_sites_with_live_progress(self) -> None:
+        for token in (
+            "B1-B13 서비스 비교",
+            "average_distance_m",
+            "average_duration_s",
+            "latest_service",
+            "current_service",
+            "current_distance_progress_percentage",
+            "current_duration_progress_percentage",
+            "완료 평균 대비",
+        ):
+            self.assertIn(token, self.service_evidence_source)
+        self.assertIn(".evidence-site-chart-row", self.css)
+        self.assertIn(".evidence-site-table", self.css)
+
+    def test_radar_echo_is_not_presented_as_stopping_cost(self) -> None:
+        for token in (
+            "radarCostSensors",
+            "safety.radar_evidence",
+            "return 'COST'",
+            "return finite(sample.range_m) ? 'ECHO'",
+            "Radar echo",
+            "Radar cost",
+        ):
+            self.assertIn(token, self.telemetry_source)
+        self.assertNotIn("Radar return", self.telemetry_source)
+        self.assertIn(".radar-arc-echo", self.css)
+        self.assertIn(".radar-arc-cost", self.css)
+
+    def test_docking_view_shows_exact_lanelet_parking_approach(self) -> None:
+        for token in (
+            "drop_zone_parking",
+            "Lanelet parking point",
+            "Exact lanelet point",
+            "docking-path-approach",
+        ):
+            self.assertIn(token, self.telemetry_source)
 
 
 if __name__ == "__main__":

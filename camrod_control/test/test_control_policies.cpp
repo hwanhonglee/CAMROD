@@ -896,6 +896,29 @@ TEST(MotionCostStop, ForwardThresholdAndBelowThreshold) {
   EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 }
 
+TEST(MotionCostStop, UnknownDynamicCellsNeverBecomeObstacleCost) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto unknown_dynamic = makeGrid({{1.0, 0.0, -1}});
+  cost_stop.setMergedGrid(unknown_dynamic, 0.0);
+  cost_stop.setSourceGrid("radar", unknown_dynamic, 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+
+  // HH_260904 - Unknown is fail-open only for obstacle sources. The separate
+  // lanelet geometry contract intentionally remains fail-closed.
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.lanelet_stop_on_unknown = true;
+  config.lanelet_current_allow_route_reentry = false;
+  cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+  cost_stop.setLaneletGrid(makeGrid(), 0.0);
+  cost_stop.setPose(PlanarPose{5.0, 0.0, 0.0, "map", "test"});
+  const auto unknown_lanelet = cost_stop.evaluate(command(0.2), 0.0);
+  EXPECT_TRUE(unknown_lanelet.lanelet_violation) << unknown_lanelet.reason;
+}
+
 TEST(MotionCostStop, CrabAndReverseUseTravelDirection) {
   auto cost_stop = makeMotionCostStop();
   cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
@@ -1858,6 +1881,20 @@ TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle) {
   EXPECT_TRUE(finished.maneuver_finished);
   EXPECT_EQ(arbiter.evaluate(true, 3.49), CommandSourceDecision::kHoldZero);
   EXPECT_EQ(arbiter.evaluate(true, 3.50), CommandSourceDecision::kAllow);
+}
+
+TEST(CommandSourceArbiter, ExactDropZonePointOwnsCommandBeforeYawAlignment) {
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases(
+      "POSITION_PARKING_POINT", "IDLE", "IDLE", 1.0);
+  EXPECT_TRUE(started.drop_zone_started);
+  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+
+  const auto align = arbiter.setManeuverPhases(
+      "ALIGN_PARKING_YAW", "IDLE", "IDLE", 2.0);
+  EXPECT_FALSE(align.maneuver_finished);
+  EXPECT_EQ(arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
 }
 
 TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {

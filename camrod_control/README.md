@@ -151,7 +151,7 @@ localization, or battery hold.
 | Active B11-B13 roadside | `ALIGN_ENTRY_YAW ->` `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
 | B11-B13 return | Preserve arrival heading, reach a fresh lanelet projection laterally, then request a forward one-way loop |
 | Drop-zone departure | optional charging `7.0 s` stopped dwell -> `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
-| Return parking | route arrival -> body alignment -> selected parking controller |
+| Return parking | route arrival -> exact snapped lanelet point -> 90-degree body alignment -> selected parking controller |
 
 Drop-zone departure captures one fresh, same-frame lanelet pose at `EXIT`
 start and holds that XY/yaw target for the whole maneuver. Production requires
@@ -163,6 +163,23 @@ The UI withholds the campsite mission key and Nav2 goal until
 drop-zone status with exact `EXIT_STRAIGHT` or `ALIGN_EXIT_YAW` operating state
 opens the charging reason for at most `2.0 s`; SOC, E-stop, platform freshness,
 fault and obstacle reasons remain authoritative.
+
+<!-- HH_260904 - Explain the deterministic pre-parking correction and the
+stationary Site 7 alignment that can otherwise look like another turn. -->
+After automatic Return reports route arrival, `POSITION_PARKING_POINT` uses
+the original `/planning/goal_pose_snapped` centerline projection to remove
+Nav2's remaining goal-tolerance error. It accepts at most `0.75 m` correction,
+commands at most `0.20 m/s` raw (`0.10 m/s` after the final gate), settles
+inside `0.05 m` for `0.5 s`, and only then enters `ALIGN_PARKING_YAW` before
+straight reverse parking or AprilTag docking. Missing, stale-mission, wrong-
+frame, non-finite, or out-of-envelope targets fail closed for automatic
+parking. Radar/fusion obstacle checks remain active throughout this phase.
+
+For B1-B10, including Site 7, `ALIGN_RETRACE_YAW` after `ROTATE_180` is also a
+required handoff. If yaw is already within `4 deg`, the robot commands zero
+while proving the configured `0.8 s` low-yaw-rate settle; status now reports
+`action=stationary_settle`. It reports `action=corrective_turn` only when an
+actual residual-yaw correction is commanded.
 
 ![B8 same-anchor campsite entry and return](../docs/assets/module-guides/control/test-results/campsite-return-docking-20260819/b8-same-anchor-return.png)
 
