@@ -208,6 +208,10 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def test_service_evidence_compares_all_sites_with_live_progress(self) -> None:
         for token in (
             "B1-B13 서비스 비교",
+            "SiteTrendChart",
+            "buildTrendSeries",
+            "evidence-site-trend-line",
+            "항목별 독립 척도",
             "average_distance_m",
             "average_duration_s",
             "latest_service",
@@ -218,6 +222,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(token, self.service_evidence_source)
         self.assertIn(".evidence-site-chart-row", self.css)
+        self.assertIn(".evidence-site-trend-scroll", self.css)
         self.assertIn(".evidence-site-table", self.css)
 
     def test_radar_echo_is_not_presented_as_stopping_cost(self) -> None:

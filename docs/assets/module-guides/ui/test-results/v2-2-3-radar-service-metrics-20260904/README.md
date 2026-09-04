@@ -13,17 +13,17 @@ measurements.
 
 | Artifact | Verified UI behavior |
 |---|---|
-| `service-evidence-b1-b13-desktop.png` | B1-B13 average distance/time bars, active B7 run, and aggregate KPIs fit the desktop view |
+| `service-evidence-b1-b13-desktop.png` | B1-B13 average distance/time trends and bars, active B7 run, and aggregate KPIs fit the desktop view |
 | `service-evidence-b1-b13-mobile.png` | The same evidence remains readable without horizontal page overflow on a narrow viewport |
 | `service-evidence-responsive.gif` | Desktop and mobile evidence layouts use the same data contract |
 | `radar-echo-cost-telemetry.png` | Finite `0.39-0.55 m` raw returns remain `ECHO`; only the fixture's authoritative RIGHT2 `0.09 m` evidence is labeled `COST` |
 
 ## Verification
 
-- React production build completed successfully: JS `76.71 kB`, CSS
-  `13.66 kB` after gzip.
+- React production build completed successfully: JS `77.49 kB`, CSS
+  `13.89 kB` after gzip. The trend chart adds only `777 B` JS and `236 B` CSS
+  to the previous gzip bundle.
 - Frontend/backend and configuration contracts passed in the `166`-test
   focused Python run.
 - Physical radar stop behavior and ARM64 performance remain field acceptance
   items in `TODOLIST.txt`.
-

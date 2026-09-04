@@ -67,7 +67,8 @@ geometry, not an unknown object class.
 
 The field-evidence view now presents all 13 sites together:
 
-- completed-run average distance and duration bars;
+- independently scaled average distance and duration trend lines;
+- exact-value average distance and duration bars;
 - completed/attempt count and completion rate;
 - latest terminal run distance and duration;
 - current run distance and duration;

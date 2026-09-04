@@ -122,7 +122,7 @@ change no longer closes the diagnostics view or its telemetry lease.
 The public waiting screen shows the current or latest service distance, today's
 distance and completed-service count, and all-time distance and completions.
 Opening the strip shows per-day totals and recent service rows. It also shows
-B1-B13 together as average distance/time bars and a quantitative table with
+B1-B13 together as normalized trend lines, exact-value bars, and a table with
 attempts, completions, completion rate, latest run, and active run. Active-run
 percentages are relative to that site's completed-run average; they are not a
 route-completion estimate. During an active campsite service the control
