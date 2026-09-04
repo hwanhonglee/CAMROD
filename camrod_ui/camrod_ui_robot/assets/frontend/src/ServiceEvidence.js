@@ -51,6 +51,26 @@ const formatDuration = durationS => {
   return `${seconds}초`;
 };
 
+const formatMeters = distanceM => {
+  const value = finiteNumber(distanceM);
+  if (value === null) return '-';
+  return `${value.toLocaleString('ko-KR', {
+    minimumFractionDigits: value < 10 ? 1 : 0,
+    maximumFractionDigits: 1,
+  })} m`;
+};
+
+const formatPercentage = value => {
+  const parsed = finiteNumber(value);
+  return parsed === null ? '-' : `${parsed.toFixed(1)}%`;
+};
+
+const scaledBarWidth = (value, maximum) => {
+  const parsed = finiteNumber(value);
+  if (parsed === null || !finiteNumber(maximum) || maximum <= 0) return '0%';
+  return `${Math.max(0, Math.min(100, parsed * 100 / maximum)).toFixed(1)}%`;
+};
+
 const formatDate = value => {
   if (!value) return '-';
   const text = String(value);
@@ -278,6 +298,108 @@ function MetricsNotice({ loading, error, hasData, onRetry }) {
   );
 }
 
+// HH_260904 - Compare every campsite in one bounded render using the backend's
+// completed-run aggregates; active percentages are not route progress.
+function SitePerformance({ sites, loading, error }) {
+  const maximumDistance = Math.max(
+    0,
+    ...sites.map(site => finiteNumber(site.average_distance_m) || 0),
+  );
+  const maximumDuration = Math.max(
+    0,
+    ...sites.map(site => finiteNumber(site.average_duration_s) || 0),
+  );
+
+  if (loading && sites.length === 0) {
+    return <div className="evidence-empty">사이트별 운행 지표를 불러오는 중입니다.</div>;
+  }
+  if (error && sites.length === 0) {
+    return <div className="evidence-empty evidence-empty-error">사이트별 운행 지표를 확인할 수 없습니다.</div>;
+  }
+
+  return (
+    <>
+      <div className="evidence-site-chart" aria-label="B1부터 B13까지 평균 운행 거리와 시간 그래프">
+        <div className="evidence-site-chart-legend">
+          <span><i className="distance" />완료 평균 거리</span>
+          <span><i className="duration" />완료 평균 시간</span>
+          <em>막대 길이는 13개 사이트 중 최댓값 기준</em>
+        </div>
+        {sites.map(site => {
+          const current = isRecord(site.current_service) ? site.current_service : null;
+          const completedCount = finiteNumber(site.completed_service_count);
+          return (
+            <div className={`evidence-site-chart-row ${current ? 'active' : ''}`} key={site.site}>
+              <strong>{site.site}</strong>
+              <div className="evidence-site-bars">
+                <div className="evidence-site-bar-line">
+                  <span className="evidence-site-bar-track">
+                    <i className="distance" style={{ width: scaledBarWidth(site.average_distance_m, maximumDistance) }} />
+                  </span>
+                  <b>{formatMeters(site.average_distance_m)}</b>
+                </div>
+                <div className="evidence-site-bar-line">
+                  <span className="evidence-site-bar-track">
+                    <i className="duration" style={{ width: scaledBarWidth(site.average_duration_s, maximumDuration) }} />
+                  </span>
+                  <b>{formatDuration(site.average_duration_s)}</b>
+                </div>
+              </div>
+              <span className="evidence-site-run-state">
+                {current
+                  ? `운행 중 · ${formatMeters(current.distance_m)} · ${formatDuration(current.duration_s)}`
+                  : (completedCount === null ? '기록 없음' : `${Math.trunc(completedCount)}회 완료`)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="evidence-table-scroll evidence-site-table-scroll">
+        <table className="evidence-table evidence-site-table">
+          <caption className="sr-only">사이트별 평균, 최근 실행, 현재 실행 정량 지표</caption>
+          <thead>
+            <tr>
+              <th>사이트</th><th>완료/시도</th><th>완료율</th>
+              <th>평균 거리</th><th>평균 시간</th><th>최근 실행</th><th>현재 진행</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sites.map(site => {
+              const latest = isRecord(site.latest_service) ? site.latest_service : null;
+              const current = isRecord(site.current_service) ? site.current_service : null;
+              const completedCount = finiteNumber(site.completed_service_count);
+              const attemptCount = finiteNumber(site.service_attempt_count);
+              return (
+                <tr key={site.site} className={current ? 'evidence-site-active-row' : ''}>
+                  <td><strong>{site.site}</strong></td>
+                  <td>{completedCount === null || attemptCount === null
+                    ? '-' : `${Math.trunc(completedCount)}/${Math.trunc(attemptCount)}`}</td>
+                  <td>{formatPercentage(site.completion_rate_percentage)}</td>
+                  <td>{formatMeters(site.average_distance_m)}</td>
+                  <td>{formatDuration(site.average_duration_s)}</td>
+                  <td>{latest
+                    ? `${formatMeters(latest.distance_m)} · ${formatDuration(latest.duration_s)}`
+                    : '-'}</td>
+                  <td>{current
+                    ? (
+                      <span className="evidence-current-progress">
+                        <b>{formatMeters(current.distance_m)} · {formatDuration(current.duration_s)}</b>
+                        <small>
+                          완료 평균 대비 거리 {formatPercentage(site.current_distance_progress_percentage)}
+                          {' · '}시간 {formatPercentage(site.current_duration_progress_percentage)}
+                        </small>
+                      </span>
+                    ) : '-'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryError }) {
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(true);
@@ -336,6 +458,9 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
   const recentServices = useMemo(() => (
     Array.isArray(detailData?.recent_services) ? detailData.recent_services : []
   ), [detailData]);
+  const siteSummaries = useMemo(() => (
+    Array.isArray(data?.site_summaries) ? data.site_summaries : []
+  ), [data]);
 
   return (
     <div className="service-evidence-dashboard">
@@ -375,6 +500,18 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
           {current && <em>거리 실시간 집계 중</em>}
         </div>
         <ServiceOverview service={current || last} active={Boolean(current)} />
+      </section>
+
+      <section className="evidence-panel evidence-site-performance-panel">
+        <div className="evidence-panel-heading">
+          <div><span>SITE PERFORMANCE</span><h3>B1-B13 서비스 비교</h3></div>
+          <em>현재 진행률은 완료 평균 대비 값</em>
+        </div>
+        <SitePerformance
+          sites={siteSummaries}
+          loading={combinedLoading || summaryLoading}
+          error={combinedError}
+        />
       </section>
 
       <div className="evidence-history-layout">

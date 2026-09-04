@@ -1,6 +1,8 @@
-CAMROD v2.2.2 미완료 실차 확인 목록
-갱신일: 2026-08-26 (Asia/Seoul)
+CAMROD v2.2.3 미완료 실차 확인 목록
+갱신일: 2026-09-04 (Asia/Seoul)
 
+# HH_260904 - Keep physical radar, Site 7 settle, exact drop-zone approach,
+# and ARM64 UI acceptance open after the v2.2.3 AMD64 verification pass.
 # HH_260825 - Move the completed current-lane campsite handoff, event-driven
 # charger departure dwell, and front-radar range policy to DONE.txt while
 # retaining their unresolved physical acceptance checks here.
@@ -15,7 +17,7 @@ CAMROD v2.2.2 미완료 실차 확인 목록
 - 다른 PC 인계와 다음 현장 순서:
   camrod_bringup/docs/v2_1_5_field_handoff_20260808.md
 - 실행 명령과 안전 절차: camrod_bringup/docs/field_test_runbook.md
-- 현재 변경과 검증 한계: docs/V2_2_1_RELEASE_NOTES.md
+- 현재 변경과 검증 한계: docs/V2_2_3_RELEASE_NOTES.md
 
 현재 소프트웨어 기준
 - 주행 기준 frame: `robot_center_link`
@@ -30,6 +32,8 @@ CAMROD v2.2.2 미완료 실차 확인 목록
 - campsite return handoff: fresh live lanelet projection `<=0.15 m`, zero hold `1.20 s`
 - charging departure dwell: destination 접수 후 authorization OFF `7.0 s`
 - front radar usable stop window: measured body echo 뒤 `0.30 m`; side/rear `0.10 m`
+- drop-zone parking: mission-correlated snapped point `<=0.05 m`, position hold
+  `0.5 s`, then 90-degree yaw alignment and straight reverse/tag approach
 - AprilTag occlusion: stale `0.5 s`에서 zero, pre-latch reacquisition `60.0 s`
 - lanelet safety grid: `/map/cost_grid/lanelet_safety`, `0.05 m`
 - LiDAR cost grid/DDS-SHM: 운영 기본 OFF
@@ -126,6 +130,15 @@ CAMROD v2.2.2 미완료 실차 확인 목록
   대기 중 Stop을 누르면 timer가 폐기되고 이후 자동 출발하지 않아야 한다.
 - 합격: node/bringup restart 없이 3회 이상의 site-return-charge-next-site가
   순서대로 완료되고 state, motion owner와 최종 command가 일치한다.
+- B7에서 ROTATE_180 직후 `ALIGN_RETRACE_YAW` status의 `action`을 기록한다.
+  이미 yaw tolerance 안이면 `stationary_settle` 동안 final cmd가 0이어야 하고,
+  `corrective_turn`이면 yaw 오차가 단조 감소해야 한다. 두 경우 모두 crab 전
+  연속 low-rate hold를 통과해야 한다.
+- drop-zone route 완료 때 exact snapped target, 현재 pose, position error와 phase를
+  기록한다. `POSITION_PARKING_POINT -> ALIGN_PARKING_YAW -> selected parking` 순서,
+  위치 오차 `<=0.05 m`, position hold `>=0.5 s`, correction `<=0.75 m`, timeout 시
+  zero/ERROR를 확인한다. yaw 회전 뒤 reverse 구간에서 lateral command가 다시
+  생기지 않아야 한다.
 - SIM 기준 B1-B10은 `2210.611 s`, restart 0으로 10/10 통과했다. cycle 1은
   B1 route endpoint에 준비한 site handoff이고, cycle 2-10은 charger departure부터
   outbound/RETURN/parking/charging까지 모두 실행했다. cycle 5 장애물
@@ -176,6 +189,10 @@ CAMROD v2.2.2 미완료 실차 확인 목록
   목표는 10 Hz이며 기존 실측 3.633 Hz의 CPU/driver/encode 원인을 구분한다.
 - 합격: radar 실제 장애물을 가리지 않는 noise 정책과 rear 10 Hz, AprilTag
   pose/rate, publisher 중복 0, 전방 `0.30 m`의 정지/해제 반복 10/10을 확인한다.
+- UI의 `ECHO`는 raw finite range, `COST`는 fresh post-filter/post-route evidence다.
+  좌우에 `0.43 m` 물체를 두었을 때 ECHO만 표시되고 radar cost/grid/gate stop이
+  0회인지 확인한다. `0.09 m` 실제 물체는 COST와 final zero가 함께 나와야 한다.
+  REAR는 quarantine을 해제하기 전 이 합격 시험에 포함하지 않는다.
 
 [P1-F] Jetson container CPU/GPU/PSS와 반복 종료
 - 최종 대상은 ARM64 8코어/16 GB RAM이다. AMD64 수치는 구현 전후 비교와

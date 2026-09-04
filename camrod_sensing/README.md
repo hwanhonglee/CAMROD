@@ -138,6 +138,16 @@ accuracy.
 | Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
 | Cost message maximum age | `0.35 s` |
 
+<!-- HH_260904 - Separate raw SEN0592 visibility from cost-stop authority. -->
+A finite side or rear range, such as `0.43 m`, is only a raw radar echo. It is
+not painted into `/sensing/cost_grid/radar` unless it is inside that channel's
+configured stop window and survives fixed-return and route clipping. The
+operator UI therefore labels an ordinary finite sample `ECHO` and uses the
+authoritative `/sensing/radar/obstacle_evidence` output for the red `COST`
+state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR remains
+disabled; its configured `0.206 m` scalar cutoff is its measured body-return
+upper edge (`0.106 m`) plus the same `0.10 m` usable window.
+
 ![v2.2.1 front radar range and cost result](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
 
 The measured integration probe published a fresh FRONT1 `AvgRange` at

@@ -1,5 +1,22 @@
 # Documentation Changelog
 
+<!-- HH_260904 - Record radar display semantics, deterministic return parking,
+and per-site field-operation metrics. -->
+## [develop-radar-parking-metrics] - 2026-09-04 (HH_260904)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Radar display | Finite side/rear ranges are `ECHO`; only fresh `/sensing/radar/obstacle_evidence` marks `COST`. Side thresholds remain `0.10 m`, so a `0.43 m` return cannot itself stop motion |
+| Site 7 handoff | `ALIGN_RETRACE_YAW` reports stationary settle versus corrective turn and retains the required `0.8 s` yaw-rate proof |
+| Drop-zone parking | Corrects to the mission-correlated snapped lanelet point within `0.05 m` before 90-degree alignment and reverse/tag parking; bounded by `0.75 m` and `12 s` |
+| Config synchronization | Restores the package-owned parking profile as the runtime source of truth and makes the bringup deployment mirror byte-identical |
+| Field evidence UI | Adds B1-B13 average distance/time graph plus attempts, completion rate, latest run, and current run values from existing records |
+| Verification | Release control/perception build, 144 native test results (4 skipped), 166 UI/config/docs tests, and production React build pass on AMD64; physical radar/docking and ARM64 acceptance remain pending |
+
+---
+
 <!-- HH_260826 - Keep the fast AprilTag safety stop while extending the stopped
 target reacquisition window for field occlusion. -->
 ## [v2.2.2-apriltag-reacquisition] - 2026-08-26 (HH_260826)

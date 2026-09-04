@@ -356,6 +356,60 @@ class ServiceMetricsTrackerTest(unittest.TestCase):
         self.assertEqual(snapshot["lifetime"]["completed_service_count"], 1)
         self.assertEqual(snapshot["lifetime"]["interrupted_service_count"], 1)
 
+    def test_site_summaries_cover_b1_to_b13_with_average_latest_and_progress(self) -> None:
+        clock = _Clock(_utc_timestamp(2026, 9, 4, 0))
+        tracker = self._tracker(
+            clock,
+            maximum_speed_mps=5.0,
+            maximum_sample_gap_s=20.0,
+        )
+
+        # Two completed B1 services establish 15 m / 100 s averages and prove
+        # that the latest execution remains independently visible.
+        tracker.start_service("b01")
+        tracker.observe_velocity(1.0, 0.0, 0.0)
+        tracker.observe_velocity(1.0, 0.0, 10.0)
+        tracker.observe_service_state(CHARGING, "CHARGING", now_s=clock.wall_s + 100)
+        clock.wall_s += 200
+        tracker.start_service("B1")
+        tracker.observe_velocity(2.0, 0.0, 20.0)
+        tracker.observe_velocity(2.0, 0.0, 30.0)
+        tracker.observe_service_state(CHARGING, "CHARGING", now_s=clock.wall_s + 100)
+
+        # B2 has one 10 m / 100 s baseline and a 5 m / 50 s active run.
+        clock.wall_s += 200
+        tracker.start_service("B2")
+        tracker.observe_velocity(1.0, 0.0, 40.0)
+        tracker.observe_velocity(1.0, 0.0, 50.0)
+        tracker.observe_service_state(CHARGING, "CHARGING", now_s=clock.wall_s + 100)
+        clock.wall_s += 200
+        tracker.start_service("B2")
+        tracker.observe_velocity(0.5, 0.0, 60.0)
+        tracker.observe_velocity(0.5, 0.0, 70.0)
+        clock.wall_s += 50
+
+        summaries = tracker.snapshot()["site_summaries"]
+        canonical = [summary for summary in summaries if summary["site"].startswith("B")]
+        self.assertEqual([summary["site"] for summary in canonical], [
+            f"B{index}" for index in range(1, 14)
+        ])
+        b1 = summaries[0]
+        self.assertEqual(b1["completed_service_count"], 2)
+        self.assertAlmostEqual(b1["average_distance_m"], 15.0)
+        self.assertEqual(b1["average_duration_s"], 100)
+        self.assertAlmostEqual(b1["latest_service"]["distance_m"], 20.0)
+
+        b2 = summaries[1]
+        self.assertEqual(b2["service_attempt_count"], 2)
+        self.assertAlmostEqual(b2["average_distance_m"], 10.0)
+        self.assertEqual(b2["average_duration_s"], 100)
+        self.assertAlmostEqual(b2["current_service"]["distance_m"], 5.0)
+        self.assertEqual(b2["current_service"]["duration_s"], 50)
+        self.assertEqual(b2["current_distance_progress_percentage"], 50.0)
+        self.assertEqual(b2["current_duration_progress_percentage"], 50.0)
+        self.assertIsNone(summaries[12]["average_distance_m"])
+        self.assertIsNone(summaries[12]["latest_service"])
+
 
 if __name__ == "__main__":
     unittest.main()

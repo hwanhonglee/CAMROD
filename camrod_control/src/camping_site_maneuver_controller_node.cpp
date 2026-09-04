@@ -1553,8 +1553,25 @@ private:
       // HH_260721 - Verify retrace yaw without undoing the site's required
       // 180-degree turn.
       target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
+      double yaw_error_deg = std::numeric_limits<double>::quiet_NaN();
+      std::string alignment_action = "pose_unavailable";
+      if (poseIsFresh()) {
+        yaw_error_deg = std::abs(camrod_control::normalizeAngle(
+                            target_yaw_ -
+                            camrod_control::yawFromPose(*last_pose_))) *
+                        180.0 / M_PI;
+        // HH_260904 - Site 7 commonly enters this phase already aligned. In
+        // that case the visible ALIGN state is the mandatory stationary yaw
+        // settle, not a second zero-turn or an unexplained correction.
+        alignment_action = yaw_error_deg <= rotate_yaw_tolerance_deg_
+                               ? "stationary_settle"
+                               : "corrective_turn";
+      }
       setPhase(CampingSiteManeuverPhase::kAlignRetraceYaw,
-               reason + "; preserve_retrace_yaw");
+               reason + "; preserve_retrace_yaw action=" + alignment_action +
+                   " yaw_error_deg=" +
+                   (std::isfinite(yaw_error_deg) ? fixed(yaw_error_deg, 2)
+                                                 : "unavailable"));
     } else {
       setPhase(CampingSiteManeuverPhase::kCrabOut, reason);
     }

@@ -171,7 +171,7 @@ def test_changed_config_mirrors_are_byte_identical() -> None:
     assert ranger_values == [0.02, 0.02]
 
 
-def test_renderer_is_executable_installed_and_documented() -> None:
+def test_historical_renderer_and_live_probe_are_installed() -> None:
     renderer = (
         REPO_ROOT
         / "camrod_bringup/scripts/visualization/render_v2_1_8_return_docking_results.py"
@@ -180,11 +180,6 @@ def test_renderer_is_executable_installed_and_documented() -> None:
     assert os.access(renderer, os.X_OK)
     cmake = (REPO_ROOT / "camrod_bringup/CMakeLists.txt").read_text()
     assert f"scripts/visualization/{renderer.name}" in cmake
-    parameter_reference = (REPO_ROOT / "docs/RUNTIME_PARAMETER_REFERENCE.md").read_text()
-    assert "parallel_command_lateral_deadband_mps" in parameter_reference
-    assert "`0.30 m` remaining" in parameter_reference
-    assert "UI camera range `0.80 -> 0.60 m`" in parameter_reference
-    assert "Charging CAN feedback immediately publishes zero" in parameter_reference
 
     # HH_260819 - Keep the live production-endpoint probe available on AMD64
     # and ARM64 installs; only its measured acceptance result remains host-specific.

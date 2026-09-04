@@ -131,8 +131,10 @@ private:
   static bool dropZoneOwnsCommand(const std::string & phase)
   {
     const std::string value = normalize(phase);
+    // HH_260904 - The exact lanelet-point correction is a bounded maneuver
+    // owner and must suppress any still-latched Nav2 command before yaw align.
     return value == "exit_straight" || value == "align_exit_yaw" ||
-           value == "align_parking_yaw";
+           value == "position_parking_point" || value == "align_parking_yaw";
   }
 
   static bool parkingOwnsCommand(const std::string & phase)

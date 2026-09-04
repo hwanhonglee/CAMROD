@@ -8,6 +8,8 @@ preemption, and event-driven telemetry scheduling values. -->
 camera-frame range requested by the operator and document trigger provenance. -->
 <!-- HH_260825 - Add live campsite lanelet handoff, charging departure dwell,
 front-only radar stop windows, and external-simulator ownership parameters. -->
+<!-- HH_260904 - Add exact drop-zone parking approach, radar evidence display,
+and the current nine-subscription docking workspace contract. -->
 
 This guide lists the parameters normally changed for vehicle behavior. It does
 not duplicate every ROS topic string or diagnostic checker threshold in the
@@ -62,6 +64,7 @@ the raw owner limit and the resulting platform limit.
 | B11-B13 roadside crab | `roadside_crab_speed_mps` | `0.20 m/s` | `0.10 m/s` = `0.36 km/h` |
 | Campsite reverse | `reverse_entry_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
 | Drop-zone exit | `exit_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
+| Drop-zone exact parking point | `parking_approach_maximum_speed_mps` | `0.20 m/s` | `0.10 m/s` = `0.36 km/h` |
 | Reverse parking cruise | `reverse_speed_mps` | `0.444444 m/s` | `0.222222 m/s` = `0.8 km/h` |
 | Reverse parking final | `final_approach_speed_mps` | `0.138889 m/s` | `0.069445 m/s` = `0.25 km/h` |
 | AprilTag approach | `reverse_approach_speed_mps` | `0.555556 m/s` | `0.277778 m/s` = `1.0 km/h` |
@@ -231,7 +234,7 @@ remains active during `FINAL_YAW_ALIGNMENT`.
 | `CHARGING` state but CAN contact lost | same API | Restarts drop-zone alignment instead of creating a Nav2 loop |
 | Docking debug image | `/perception/apriltag_parking_detector/debug_image/compressed` | Lazy UI camera stream |
 | Tag data | tag pose and detected topics | Exact x/y/z/distance/yaw and presence |
-| Controller paths | reverse/AprilTag `path_ros` | UI parking trajectory |
+| Controller paths | exact lanelet-point, reverse, and AprilTag `path_ros` | UI parking trajectory |
 | Charging | `/platform/status.is_charging` | UI boolean and immediate controller stop |
 
 Both visible Return controls call the same API. Duplicate presses during the
@@ -246,10 +249,33 @@ snapshots. Timer expiry opens authorization and publishes one `EXIT`; Stop or
 shutdown destroys the timer first. This is event-driven and adds no permanent
 poll loop on the ARM64 target.
 
-The docking UI uses seven dynamic subscriptions only while its administrator
+The docking UI uses nine dynamic subscriptions only while its administrator
 tab is open. Lease changes wake ROS through a GuardCondition; a `1 Hz` timer is
 retained only for abandoned-lease expiry, while visible telemetry remains
 `10 Hz`.
+
+## Drop-Zone Exact Parking Approach
+
+File pair: `camrod_control/config/control.yaml` and its byte-identical bringup
+mirror.
+
+| Parameter | Active value | Effect |
+|---|---:|---|
+| `require_exact_parking_approach_for_auto` | `true` | Automatic Return cannot skip the exact lanelet-point correction |
+| `parking_approach_goal_topic` | `/planning/goal_pose_snapped` | Nearest lanelet centerline projection of the semantic drop-zone center |
+| `parking_approach_goal_max_station_distance_m` | `8.0 m` | Rejects a snapped point unrelated to the selected drop zone |
+| `parking_approach_position_tolerance_m` | `0.05 m` | Required XY error before settling |
+| `parking_approach_proportional_gain` | `0.8` | Converts remaining XY error into bounded body-frame velocity |
+| `parking_approach_minimum_speed_mps` | `0.06 m/s` raw | Prevents correction stalling immediately outside tolerance |
+| `parking_approach_maximum_speed_mps` | `0.20 m/s` raw | Final gate limits the platform to `0.10 m/s` |
+| `parking_approach_maximum_correction_m` | `0.75 m` | Rejects an unsafe or mismatched target instead of chasing it |
+| `parking_approach_settle_hold_s` | `0.5 s` | Continuous zero-command proof before 90-degree alignment |
+| `parking_approach_timeout_s` | `12.0 s` | Terminal bounded timeout |
+
+`POSITION_PARKING_POINT` owns the command stream, keeps lanelet and dynamic
+obstacle checks enabled, and publishes a two-point diagnostic path. A manual
+maintenance `ALIGN_FOR_PARKING` may retain yaw-only fallback when no route goal
+exists; automatic service parking is fail-closed.
 
 ## Battery Policy
 

@@ -1846,14 +1846,18 @@ class UiBackendNode(Node):
                     sensor_qos,
                 ))
 
+        # HH_260904 - The proximity UI needs one lightweight evidence string
+        # to distinguish a raw radar echo from a cost-producing return. Keep
+        # the heavier safety-only replan stream scoped to its original tab.
+        if wants("safety", "proximity"):
+            subscriptions.append(self.create_subscription(
+                AvgString, self.telemetry_topics["radar_evidence"],
+                lambda message: self._on_telemetry_text(
+                    "radar_evidence", message.data
+                ), 10,
+            ))
         if wants("safety"):
             subscriptions.extend([
-                self.create_subscription(
-                    AvgString, self.telemetry_topics["radar_evidence"],
-                    lambda message: self._on_telemetry_text(
-                        "radar_evidence", message.data
-                    ), 10,
-                ),
                 self.create_subscription(
                     AvgString, self.telemetry_topics["obstacle_replan"],
                     lambda message: self._on_telemetry_text(
@@ -1865,6 +1869,7 @@ class UiBackendNode(Node):
         maneuver_topics = {
             "camping_site": "/control/camping_site_maneuver_controller/path_ros",
             "drop_zone_exit": "/control/drop_zone_maneuver_controller/exit_path_ros",
+            "drop_zone_parking": "/control/drop_zone_maneuver_controller/parking_approach_path_ros",
             "reverse_parking": "/parking/reverse_parking_controller/path_ros",
             # HH_260814 - Only the selected parking controller publishes, so both
             # entries can stay subscribed without drawing two parking paths.
@@ -1873,7 +1878,7 @@ class UiBackendNode(Node):
         if wants("trajectory", "docking"):
             for name, topic in maneuver_topics.items():
                 if active_view == "docking" and name not in {
-                    "reverse_parking", "apriltag_parking"
+                    "drop_zone_parking", "reverse_parking", "apriltag_parking"
                 }:
                     continue
                 subscriptions.append(
@@ -1897,7 +1902,7 @@ class UiBackendNode(Node):
         if wants("safety", "docking"):
             for name, topic in controller_topics.items():
                 if active_view == "docking" and name not in {
-                    "reverse_parking", "apriltag_parking"
+                    "drop_zone", "reverse_parking", "apriltag_parking"
                 }:
                     continue
                 subscriptions.append(
@@ -1952,7 +1957,7 @@ class UiBackendNode(Node):
         # repeatedly serializing stale high-volume data on an 8-core ARM host.
         allowed_sections = {
             "gnss": {"gnss", "imu", "localization"},
-            "proximity": {"radar", "lidar", "footprint"},
+            "proximity": {"radar", "lidar", "footprint", "safety"},
             "camera": {"cameras"},
             "trajectory": {"localization", "motion", "paths", "footprint"},
             "perception": {"localization", "perception", "footprint"},
@@ -1966,6 +1971,13 @@ class UiBackendNode(Node):
         ):
             if section not in allowed_sections:
                 snapshot[section] = template[section]
+
+        if view == "proximity":
+            # Only the short authoritative radar-cost evidence is needed to
+            # classify ECHO versus COST; omit unrelated controller payloads.
+            radar_evidence = snapshot["safety"].get("radar_evidence", "")
+            snapshot["safety"] = template["safety"]
+            snapshot["safety"]["radar_evidence"] = radar_evidence
 
         # Only the trajectory tab draws history. GNSS and perception require
         # the latest localization pose but not the accumulated trace array.

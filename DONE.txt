@@ -1,7 +1,9 @@
 CAMROD 구현·검증 완료 기록
-작업 기준 버전: v2.1.8
-정리일: 2026-08-19 (Asia/Seoul)
+작업 기준 버전: v2.2.3
+정리일: 2026-09-04 (Asia/Seoul)
 
+# HH_260904 - Record v2.2.3 code, AMD64 build, and regression evidence while
+# keeping every unresolved physical-robot result in TODOLIST.txt.
 # HH_260810 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
 # 보존한다. 실차 PASS가 아닌 결과를 실차 완료로 오해하지 않도록 증거
@@ -27,7 +29,7 @@ CAMROD 구현·검증 완료 기록
   해석하지 않는다.
 
 릴리스 기준점
-- branch/tag: develop / v2.1.7
+- branch/tag: develop / v2.2.3
 - 이전 v2.1.4 tag commit: f83975d5e
 - v2.1.5 tag: 이 문서, 코드, 설정, 테스트 및 생성 자산을 포함하는 최종
   release commit을 가리킨다.
@@ -46,6 +48,34 @@ CAMROD 구현·검증 완료 기록
   - b0e10814 feat(platform): publish steering transition evidence
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
+
+0I. HH_260904 Radar 표시·Site 7 정렬 진단·drop-zone 정위치·B1-B13 지표
+    [DONE-CODE, DONE-AMD64-BUILD, DONE-CONTRACT, FIELD-PENDING]
+- 현재 radar cost 설정과 실제 로그를 대조했다. 좌우 채널의 cost 후보는 센서면
+  기준 `<=0.10 m`이며, UI에 보였던 `0.43 m RETURN`은 필터 전 raw echo였다.
+  `/sensing/radar/obstacle_evidence`를 UI 판정 근거로 추가해 raw `ECHO`와 실제
+  정지 가능한 `COST`를 분리했다. REAR는 현재 driver에서 비활성이다.
+- B7 로그에서 `ROTATE_180` 완료 뒤 약 1초의 `ALIGN_RETRACE_YAW`가 두 번째
+  경로 정렬이 아니라 yaw 오차/회전률의 연속 안정화임을 확인했다. 상태 상세에
+  `stationary_settle`과 `corrective_turn`을 구분해 실제 보정 여부를 드러낸다.
+- campsite phase는 static lanelet boundary만 제한적으로 bypass하고 radar/fusion
+  dynamic stop은 유지한다. 따라서 실차에서 지도와 무관하게 반복되는 짧은 정지는
+  같은 시점의 radar evidence 또는 fusion/gate reason으로 판정해야 한다. 안전
+  source를 임의로 약화하지 않았다.
+- 자동 drop-zone 도착은 Nav2 tolerance 위치에서 바로 90도 회전하지 않는다.
+  동일 mission stamp의 `/planning/goal_pose_snapped`를 선택하고 최대 `0.75 m`
+  범위 안에서 `<=0.05 m`까지 저속 x/y 보정한 뒤 `0.5 s` 정지, 90도 yaw 정렬,
+  reverse/AprilTag parking 순으로 진행한다. target 누락·frame 불일치·timeout은
+  fail-closed ERROR다.
+- obstacle dynamic grid의 `-1 unknown`은 정지 cost가 아님을 회귀 시험으로
+  고정했다. 다만 lanelet safety grid의 unknown/out-of-map은 기존대로 fail-closed다.
+- 실증 운행 현황에 B1-B13 전체 평균 거리/시간, 완료/시도, 완료율, 최근 실행,
+  현재 거리/시간과 완료 평균 대비 비율을 추가했다. 기존 기록을 O(n)으로 집계하며
+  새 polling loop나 DB write cadence를 만들지 않았다.
+- AMD64 Release control/perception build와 native 144 test result(4 skip), UI/config/
+  docs Python `165/165`, React production build를 통과했다. package parking YAML과
+  bringup mirror의 기존 drift도 runtime package 값을 기준으로 byte-identical하게
+  복구했다. 물리 radar, B7, drop-zone/docking, Jetson 시험은 FIELD-PENDING이다.
 
 0H. HH_260819 Return 선점·B11-B13 전방 순환·UI lease 경량화
     [DONE-CODE, DONE-SIM, MEASURED-AMD64, FIELD-PENDING]
