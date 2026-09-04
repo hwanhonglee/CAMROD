@@ -77,6 +77,20 @@ The percentages are historical-average comparisons, not route-completion
 estimates. Aggregation reuses the existing in-memory/SQLite records in one
 linear pass and adds no polling loop or persistence cadence.
 
+## UI Evidence
+
+<!-- HH_260904 - Keep visual UI proof in the versioned module asset tree and
+identify deterministic fixture data separately from field measurements. -->
+![B1-B13 field-evidence UI fixture](assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-b1-b13-desktop.png)
+
+![Desktop/mobile evidence layout](assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-responsive.gif)
+
+![Radar ECHO versus COST UI fixture](assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
+
+The [artifact record](assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/README.md)
+states the fixture scope and provides SHA-256 checksums. These screenshots do
+not replace physical radar or ARM64 acceptance.
+
 ## Verification
 
 - Latest `origin/develop` baseline: `9756edf2d` (`v2.2.2`).
