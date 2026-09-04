@@ -1380,6 +1380,92 @@ body {
   font-style: normal;
 }
 
+/* HH_260904 - Pair the exact-value bars with a bounded SVG trend view; an
+internal narrow-screen scroller prevents the chart from widening the page. */
+.evidence-site-trend-block {
+  margin: 0.25rem 0 0.65rem;
+  border: 1px solid #e1e7e3;
+  border-radius: 6px;
+  background: #fbfcfb;
+}
+
+.evidence-site-trend-scale {
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 0.35rem 0.65rem 0;
+  color: #65716a;
+  font-size: 0.62rem;
+}
+
+.evidence-site-trend-scale span {
+  padding-left: 0.55rem;
+  border-left: 3px solid;
+}
+
+.evidence-site-trend-scale span.distance {
+  border-color: #2f8179;
+}
+
+.evidence-site-trend-scale span.duration {
+  border-color: #bd782d;
+}
+
+.evidence-site-trend-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.evidence-site-trend {
+  width: 100%;
+  min-width: 44rem;
+  height: auto;
+  display: block;
+}
+
+.evidence-site-trend-grid line {
+  stroke: #e3e8e5;
+  stroke-width: 1;
+}
+
+.evidence-site-trend-grid text,
+.evidence-site-trend-site {
+  fill: #7a857e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.evidence-site-trend-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.evidence-site-trend-line.distance {
+  stroke: #2f8179;
+}
+
+.evidence-site-trend-line.duration {
+  stroke: #bd782d;
+}
+
+.evidence-site-trend-point {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.evidence-site-trend-point.distance {
+  fill: #2f8179;
+}
+
+.evidence-site-trend-point.duration {
+  fill: #bd782d;
+}
+
 .evidence-site-chart-row {
   min-height: 2.55rem;
   display: grid;
@@ -1629,6 +1715,11 @@ body {
   .evidence-site-chart-legend em {
     width: 100%;
     margin-left: 0;
+  }
+
+  .evidence-site-trend-scale {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .evidence-site-chart-row {

@@ -71,6 +71,114 @@ const scaledBarWidth = (value, maximum) => {
   return `${Math.max(0, Math.min(100, parsed * 100 / maximum)).toFixed(1)}%`;
 };
 
+function buildTrendSeries(sites, valueKey, maximum, geometry) {
+  const { left, top, plotWidth, plotHeight } = geometry;
+  const segments = [];
+  const points = [];
+  let currentSegment = [];
+  sites.forEach((site, index) => {
+    const value = finiteNumber(site[valueKey]);
+    if (value === null || maximum <= 0) {
+      if (currentSegment.length) segments.push(currentSegment);
+      currentSegment = [];
+      return;
+    }
+    const ratio = sites.length <= 1 ? 0.5 : index / (sites.length - 1);
+    const point = {
+      site: site.site,
+      value,
+      x: left + ratio * plotWidth,
+      y: top + (1 - Math.max(0, Math.min(1, value / maximum))) * plotHeight,
+    };
+    points.push(point);
+    currentSegment.push(point);
+  });
+  if (currentSegment.length) segments.push(currentSegment);
+  return { segments, points };
+}
+
+// HH_260904 - Reuse the existing B1-B13 aggregates for an SVG trend layer.
+// Missing-site samples break the line instead of implying measured values, and
+// distance/time retain independent scales because their units are unrelated.
+function SiteTrendChart({ sites, maximumDistance, maximumDuration }) {
+  const width = 1040;
+  const height = 230;
+  const geometry = { left: 52, top: 20, plotWidth: 936, plotHeight: 168 };
+  const distance = buildTrendSeries(
+    sites, 'average_distance_m', maximumDistance, geometry,
+  );
+  const duration = buildTrendSeries(
+    sites, 'average_duration_s', maximumDuration, geometry,
+  );
+  const xFor = index => geometry.left + (
+    sites.length <= 1 ? 0.5 : index / (sites.length - 1)
+  ) * geometry.plotWidth;
+
+  return (
+    <div className="evidence-site-trend-block">
+      <div className="evidence-site-trend-scale">
+        <span className="distance">거리 최대 <b>{formatMeters(maximumDistance)}</b></span>
+        <span className="duration">시간 최대 <b>{formatDuration(maximumDuration)}</b></span>
+      </div>
+      <div className="evidence-site-trend-scroll">
+        <svg
+          className="evidence-site-trend"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="B1부터 B13까지 완료 평균 거리와 시간 꺾은선 그래프"
+        >
+          <title>B1-B13 완료 평균 추세</title>
+          <desc>거리와 시간은 각 항목의 최댓값을 기준으로 독립 정규화됩니다.</desc>
+          {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+            const y = geometry.top + ratio * geometry.plotHeight;
+            return (
+              <g key={ratio} className="evidence-site-trend-grid">
+                <line x1={geometry.left} y1={y} x2={geometry.left + geometry.plotWidth} y2={y} />
+                <text x={geometry.left - 9} y={y + 4} textAnchor="end">{Math.round((1 - ratio) * 100)}%</text>
+              </g>
+            );
+          })}
+          {sites.map((site, index) => (
+            <text
+              key={site.site}
+              className="evidence-site-trend-site"
+              x={xFor(index)}
+              y={height - 12}
+              textAnchor="middle"
+            >
+              {site.site}
+            </text>
+          ))}
+          {distance.segments.map((segment, index) => (
+            <polyline
+              key={`distance-${index}`}
+              className="evidence-site-trend-line distance"
+              points={segment.map(point => `${point.x},${point.y}`).join(' ')}
+            />
+          ))}
+          {duration.segments.map((segment, index) => (
+            <polyline
+              key={`duration-${index}`}
+              className="evidence-site-trend-line duration"
+              points={segment.map(point => `${point.x},${point.y}`).join(' ')}
+            />
+          ))}
+          {distance.points.map(point => (
+            <circle key={`distance-${point.site}`} className="evidence-site-trend-point distance" cx={point.x} cy={point.y} r="4">
+              <title>{point.site} 평균 거리 {formatMeters(point.value)}</title>
+            </circle>
+          ))}
+          {duration.points.map(point => (
+            <circle key={`duration-${point.site}`} className="evidence-site-trend-point duration" cx={point.x} cy={point.y} r="4">
+              <title>{point.site} 평균 시간 {formatDuration(point.value)}</title>
+            </circle>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 const formatDate = value => {
   if (!value) return '-';
   const text = String(value);
@@ -323,8 +431,13 @@ function SitePerformance({ sites, loading, error }) {
         <div className="evidence-site-chart-legend">
           <span><i className="distance" />완료 평균 거리</span>
           <span><i className="duration" />완료 평균 시간</span>
-          <em>막대 길이는 13개 사이트 중 최댓값 기준</em>
+          <em>항목별 독립 척도</em>
         </div>
+        <SiteTrendChart
+          sites={sites}
+          maximumDistance={maximumDistance}
+          maximumDuration={maximumDuration}
+        />
         {sites.map(site => {
           const current = isRecord(site.current_service) ? site.current_service : null;
           const completedCount = finiteNumber(site.completed_service_count);
