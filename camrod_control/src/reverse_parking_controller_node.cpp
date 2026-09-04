@@ -149,7 +149,16 @@ public:
       [this](const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
         const bool charging_changed = is_charging_ != message->is_charging;
         is_charging_ = message->is_charging;
-        if (charging_changed && phase_ == ReverseParkingPhase::kParked) {
+        if (is_charging_ && phase_ == ReverseParkingPhase::kError) {
+          // Evaluate the authoritative charging level, not only its rising
+          // edge. The confirmed level may have arrived in the callback that
+          // immediately preceded a timer transition to ERROR; the next normal
+          // platform heartbeat must still recover the parked service.
+          publishZero();
+          setPhase(
+            ReverseParkingPhase::kParked,
+            "parking ERROR recovered by authoritative charging contact");
+        } else if (charging_changed && phase_ == ReverseParkingPhase::kParked) {
           // HH_260721 - Keep the parked service state synchronized with live CAN charging feedback.
           publishServiceState("platform charging state changed");
         }

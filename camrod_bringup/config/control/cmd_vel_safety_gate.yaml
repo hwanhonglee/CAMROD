@@ -115,8 +115,8 @@
     # grid evaluation remains the sole authority for stopping and releasing.
     radar_obstacle_evidence_topic: "/sensing/radar/obstacle_evidence"
     radar_obstacle_evidence_max_age_s: 0.50
-    # HH_260825 - FRONT1/FRONT2 may observe 0.30 m beyond their body echoes,
-    # but final stop authority is intersected with this 1.27 m local-path
+    # HH_260904 - FRONT1/FRONT2 stop candidates end at an absolute 0.30 m
+    # sensor-face range and are intersected with this 1.27 m local-path
     # corridor. Charger departure bypasses static lanelet cost only; this
     # dynamic radar corridor remains mandatory in every EXIT phase.
     front_dynamic_stop_use_local_path: true
@@ -226,10 +226,10 @@
     # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
     # =========================================================================
     drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"
-    drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
-    # HH_260807 - Permit only the bounded charger-exit controller to cross the
-    # off-road service-area boundary; live LiDAR/radar stops remain enabled.
-    drop_zone_maneuver_controller_lanelet_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
+    drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,ALIGN_PARKING_YAW"
+    # HH_260904 - Permit only the bounded charger approach/exit controller to
+    # cross the off-road service-area boundary; live LiDAR/radar stops remain enabled.
+    drop_zone_maneuver_controller_lanelet_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,ALIGN_PARKING_YAW"
     camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
     # HH_260721 - Bypass static lanelet cost during bounded entry-lanelet retrace alignment.
     camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"

@@ -49,6 +49,10 @@
     # HH_260819 - B11-B13 remain immediately beside the narrow road: cap the
     # lateral service offset at 0.30 m and skip the on-site zero-turn.
     roadside_max_lateral_offset_m: 0.30
+    # Guest recall treats every occupied B1-B13 site as a roadside pickup.
+    # This is measured from the current map-derived lanelet snap toward the
+    # signed site side, never from a separately guessed coordinate.
+    recall_wait_lateral_offset_m: 0.30
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.
@@ -81,10 +85,11 @@
     return_lateral_transition_tolerance_m: 0.02
     return_lateral_hysteresis_m: 0.10
     return_steering_settle_s: 1.20
-    # HH_260825 - Complete a normal site exit at the live centerline projection,
-    # regardless of longitudinal offset from the historical entry snap. Hold
-    # zero for steering settlement before LaneletRoute plans from the current XY.
-    # If the live projection is stale, the exact-anchor sequence remains fallback.
+    # HH_260904 - Complete a normal site exit at the live centerline projection,
+    # regardless of longitudinal offset from the historical entry snap. Once a
+    # live handoff is acquired it stays latched through steering settlement.
+    # If the live projection is unavailable, finish after the lateral exit and
+    # steering settlement at the current XY; never reverse to the old entry XY.
     enable_live_lanelet_return_handoff: true
     return_lanelet_handoff_distance_m: 0.15
     return_lanelet_handoff_hold_s: 1.20

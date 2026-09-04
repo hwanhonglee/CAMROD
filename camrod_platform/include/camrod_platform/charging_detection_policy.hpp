@@ -29,6 +29,9 @@ struct ChargingDetectionConfig
   double docking_fast_confirm_s{1.5};
   double release_s{3.0};
   double maximum_sample_gap_s{1.0};
+  // Preserve a rising dwell across at most one consecutive brief false BMS
+  // frame. A second consecutive false frame always resets the candidates.
+  double assertion_false_grace_s{0.75};
 };
 
 struct ChargingDetectionResult
@@ -136,6 +139,7 @@ public:
     config_.docking_fast_confirm_s = std::max(0.0, config.docking_fast_confirm_s);
     config_.release_s = std::max(0.0, config.release_s);
     config_.maximum_sample_gap_s = std::max(0.0, config.maximum_sample_gap_s);
+    config_.assertion_false_grace_s = std::max(0.0, config.assertion_false_grace_s);
     reset(false);
   }
 
@@ -176,8 +180,33 @@ public:
 
     release_candidate_.reset();
     if (!charging_sample) {
-      resetRisingCandidates();
+      // A single false current sample can be contact bounce or quantization at
+      // the threshold. Preserve a rising dwell only until either a second
+      // false sample arrives or the bounded grace expires. The release path
+      // above remains unchanged once charging has actually been confirmed.
+      if (!docking_fast_armed) {
+        fast_candidate_.reset();
+      }
+      observeRisingFalseSample(sample_time_s);
+      const Candidate & reported =
+        docking_fast_armed && fast_candidate_.active ? fast_candidate_ : global_candidate_;
+      result.held_s = reported.held(sample_time_s);
+      result.sample_count = reported.samples;
       return result;
+    }
+
+    if (rising_false_grace_active_) {
+      const double false_age_s = sample_time_s - rising_false_since_s_;
+      if (false_age_s > config_.assertion_false_grace_s) {
+        resetRisingCandidates();
+      } else {
+        // Retain candidate history without counting the below-threshold
+        // interval toward either confirmation duration. The grace improves
+        // continuity but cannot shorten the positive-evidence requirement.
+        global_candidate_.pauseHold(false_age_s);
+        fast_candidate_.pauseHold(false_age_s);
+        resetRisingFalseGrace();
+      }
     }
 
     global_candidate_.observe(sample_time_s, config_.maximum_sample_gap_s);
@@ -236,9 +265,9 @@ private:
 
     void observe(double sample_time_s, double maximum_gap_s)
     {
-      // A dwell represents continuous evidence.  If physical BMS updates stop
-      // beyond the configured cadence allowance, this frame starts a new
-      // candidate instead of completing an old global, fast, or release hold.
+      // A dwell represents accumulated positive evidence. If physical BMS
+      // updates stop beyond the configured cadence allowance, this frame
+      // starts a new candidate instead of completing an old hold.
       if (!active || sample_time_s - last_sample_s > maximum_gap_s) {
         active = true;
         since_s = sample_time_s;
@@ -253,6 +282,13 @@ private:
     double held(double sample_time_s) const
     {
       return active ? std::max(0.0, sample_time_s - since_s) : 0.0;
+    }
+
+    void pauseHold(double duration_s)
+    {
+      if (active) {
+        since_s += std::max(0.0, duration_s);
+      }
     }
 
     void reset()
@@ -291,6 +327,29 @@ private:
   {
     global_candidate_.reset();
     fast_candidate_.reset();
+    resetRisingFalseGrace();
+  }
+
+  void observeRisingFalseSample(double sample_time_s)
+  {
+    if (!global_candidate_.active && !fast_candidate_.active) {
+      resetRisingFalseGrace();
+      return;
+    }
+    if (config_.assertion_false_grace_s <= 0.0 || rising_false_grace_active_) {
+      // The grace is deliberately one frame wide. Repeated false evidence is
+      // physical loss of the candidate, even when the samples arrive quickly.
+      resetRisingCandidates();
+      return;
+    }
+    rising_false_grace_active_ = true;
+    rising_false_since_s_ = sample_time_s;
+  }
+
+  void resetRisingFalseGrace()
+  {
+    rising_false_grace_active_ = false;
+    rising_false_since_s_ = 0.0;
   }
 
   void resetCandidates()
@@ -306,6 +365,8 @@ private:
   Candidate global_candidate_;
   Candidate fast_candidate_;
   Candidate release_candidate_;
+  bool rising_false_grace_active_{false};
+  double rising_false_since_s_{0.0};
 };
 
 }  // namespace camrod_platform

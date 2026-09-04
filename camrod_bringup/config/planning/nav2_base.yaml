@@ -214,10 +214,10 @@ controller_server:
       # HH_260803 - Use the axle-midpoint robot_center_link as the arrival reference. A
       # wide 0.8 m tolerance made Nav2 succeed when only the front footprint
       # reached the marker, before the robot center reached the goal pose.
-      # HH_260720 - A 0.3 m tolerance is sufficient for the lanelet snap handoff;
-      # the control or parking owner performs the precise local maneuver afterward.
-      # Some lanelet routes end about 0.2 m from the semantic handoff pose, so 0.15 m
-      # could prevent Nav2 completion while 0.3 m remains much tighter than 0.8 m.
+      # HH_260904 - Keep the route handoff wider than the GNSS lever-arm motion
+      # seen during zero-turn.  The drop-zone controller subsequently corrects
+      # the snapped parking point to 0.05 m, latches XY complete, and only then
+      # aligns yaw, so Nav2 must not fight that local maneuver at centimeter scale.
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 3.14
       stateful: False
@@ -260,8 +260,8 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
-      # HH_260623 - Keep DWB fallback aligned with the center-based Nav2
-      # arrival tolerance so controller selection does not change stop point.
+      # Keep DWB aligned with the regulated route handoff. Precise 0.05 m
+      # positioning belongs to the latched drop-zone parking approach phase.
       xy_goal_tolerance: 0.3
       trans_stopped_velocity: 0.10
       short_circuit_trajectory_evaluation: True

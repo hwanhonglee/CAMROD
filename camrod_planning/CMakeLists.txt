@@ -14,6 +14,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(avg_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_core REQUIRED)
@@ -33,6 +34,7 @@ add_executable(goal_snapper_node src/goal_snapper_node.cpp)
 ament_target_dependencies(goal_snapper_node
   avg_msgs
   action_msgs
+  builtin_interfaces
   rclcpp
   geometry_msgs
   std_msgs
@@ -316,6 +318,13 @@ if(BUILD_TESTING)
     COMMAND
       "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/test/test_planning_runtime_coalescing.py"
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+  ament_add_test(
+    test_recall_target_policy
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_recall_target_policy.py"
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
   )
 endif()

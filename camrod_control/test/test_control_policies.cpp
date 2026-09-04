@@ -249,6 +249,22 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
         fixture.roadside ? std::min(clamped_offset, 0.30) : clamped_offset;
     EXPECT_NEAR(operational_offset, fixture.operational_offset_m, 0.02);
 
+    // RECALL_TO_SITE always adopts the roadside policy, including B1-B10.
+    // The signed side still comes from active map/site geometry, but occupied
+    // tents can never make the recall target deeper than 0.30 m from the snap.
+    const double recall_wait_offset = std::min(clamped_offset, 0.30);
+    EXPECT_NEAR(recall_wait_offset, 0.30, 1.0e-9);
+    const auto recall_wait_target = lateralTargetFromAnchor(
+        fixture.snap_x, fixture.snap_y, selected.yaw_rad, direction,
+        recall_wait_offset);
+    avg_msgs::msg::AvgPoseStamped recall_wait;
+    recall_wait.pose.position.x = recall_wait_target.first;
+    recall_wait.pose.position.y = recall_wait_target.second;
+    const auto recall_relative =
+        relativeXyAtHeading(snap, recall_wait, selected.yaw_rad);
+    EXPECT_NEAR(recall_relative.first, 0.0, 1.0e-9);
+    EXPECT_NEAR(recall_relative.second, direction * 0.30, 1.0e-9);
+
     const auto operational_target = lateralTargetFromAnchor(
         fixture.snap_x, fixture.snap_y, selected.yaw_rad, direction,
         operational_offset);
@@ -381,6 +397,18 @@ TEST(MotionGeometry, CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame) {
   live_lanelet.pose.position.x = std::numeric_limits<double>::quiet_NaN();
   EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
       current, live_lanelet, 0.1, 2.0, 0.15));
+}
+
+TEST(MotionGeometry,
+     CampsiteCrabReturnStartsRouteAfterLateralExitWithoutHistoricalXY) {
+  // HH_260904 - The former longitudinal stage could reverse roughly 1.6 m to
+  // the entry snap. It is now only the route-ready state after wheel settle.
+  EXPECT_FALSE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kLateral));
+  EXPECT_FALSE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kSteeringSettle));
+  EXPECT_TRUE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kLongitudinal));
 }
 
 TEST(MotionGeometry,
@@ -1928,7 +1956,7 @@ TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
   EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
 }
 
-TEST(MotionCostStop, DropZoneExitBypassesRoadLaneletButNeverLiveObstacle) {
+TEST(MotionCostStop, DropZoneApproachAndExitBypassRoadLaneletButNeverLiveObstacle) {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
@@ -1936,25 +1964,33 @@ TEST(MotionCostStop, DropZoneExitBypassesRoadLaneletButNeverLiveObstacle) {
   const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
   config.require_dynamic_source = true;
-  // HH_260807 - The charger is outside the road lanelet. Only explicit exit
-  // phases may cross it, and the same ordinary command must remain fail-closed.
+  // HH_260904 - The charger is outside the road lanelet. Only explicit
+  // approach/exit phases may cross it, and ordinary motion remains fail-closed.
   auto ordinary_stop = makeMotionCostStop(config);
   ordinary_stop.setMergedGrid(boundary_cost, 0.0);
   ordinary_stop.setLaneletGrid(boundary_cost, 0.0);
   EXPECT_TRUE(ordinary_stop.evaluate(command(0.2), 0.0).lanelet_violation);
 
-  for (const auto &phase : config.drop_zone_lanelet_bypass_phases) {
+  const std::set<std::string> expected_phases{
+      "exit_straight", "align_exit_yaw", "position_parking_point",
+      "align_parking_yaw"};
+  EXPECT_EQ(config.drop_zone_lanelet_bypass_phases, expected_phases);
+  EXPECT_EQ(config.drop_zone_static_bypass_phases, expected_phases);
+
+  for (const auto &phase : expected_phases) {
     SCOPED_TRACE(phase);
     auto cost_stop = makeMotionCostStop(config);
     cost_stop.setManeuverPhases(phase, "");
     cost_stop.setMergedGrid(boundary_cost, 0.0);
     cost_stop.setLaneletGrid(boundary_cost, 0.0);
-    EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+    const bool yaw_phase = phase.find("align_") == 0U;
+    const auto phase_command = yaw_phase ? command(0.0, 0.0, 0.2) : command(0.2);
+    EXPECT_FALSE(cost_stop.evaluate(phase_command, 0.0).blocked);
 
     const auto front_obstacle = makeGrid({{0.4, 0.0, 100}});
     cost_stop.setMergedGrid(front_obstacle, 0.1);
     cost_stop.setSourceGrid("radar", front_obstacle, 0.1);
-    const auto obstacle_decision = cost_stop.evaluate(command(0.2), 0.1);
+    const auto obstacle_decision = cost_stop.evaluate(phase_command, 0.1);
     EXPECT_TRUE(obstacle_decision.blocked);
     EXPECT_TRUE(obstacle_decision.dynamic_obstacle) << obstacle_decision.reason;
   }

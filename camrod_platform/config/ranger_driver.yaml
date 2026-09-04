@@ -84,6 +84,9 @@
     # HH_260819 - Live can0 measured 0x361 at mean 0.243 s, max 0.401 s
     # over 62 frames. Allow normal jitter/missed frames but never join sparse evidence.
     charging_sample_max_gap_s: 1.0                     # Reset any rising/release dwell after a longer BMS gap.
+    # One isolated below-threshold frame may be contact bounce. A second false
+    # frame resets immediately; a following positive must arrive inside this bound.
+    charging_assertion_false_grace_s: 0.75             # One-frame rising-edge grace; does not change 10 s regen filtering.
 
     status_frame_id: "robot_center_link"       # Frame id used in /platform/status header.
     actuator_state_topic: "/actuator_state"     # Actuator state topic from ranger_base (CAN 0x281/0x271).

@@ -82,7 +82,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
 | Normal/crab mode selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann | Nav2 lateral residue cannot select parallel motion; campsite/recovery commands remain explicit crab |
 | Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
-| Campsite return handoff | live lanelet projection `<=0.15 m`, stopped hold `1.20 s` | Return routing starts from the current lane position; exact historical entry XY is used only when the live projection is stale or unavailable |
+| Campsite return handoff | live lanelet projection `<=0.15 m` (latched), or completed lateral exit; stopped hold `1.20 s` | Return routing starts from the current lane position; crab-out never reverses longitudinally to the historical entry XY |
 | Campsite service policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | B11-B13 cap lateral travel at `0.30 m`, skip every zero-turn, finish `CRAB_OUT`, then use a forward one-way return loop |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
@@ -90,7 +90,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | Final parking slowdown | reverse last `0.30 m`; AprilTag camera range `0.80 -> 0.40 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
-| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions and accept the next `0.30 m`; side usable stop windows remain `0.10 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |
+| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions but stop candidates end at the absolute `0.300 m` sensor-face range; side cutoffs remain absolute `0.100 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |
 | Charging mission start | `7.0 s` stopped dwell | A campsite selection is queued while charging; manual, mission, and platform gates stay closed until one station `EXIT` is released |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |

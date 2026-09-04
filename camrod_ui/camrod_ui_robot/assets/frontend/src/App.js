@@ -101,6 +101,20 @@ const ACTIVE_MANUAL_PHASES = new Set([
 const CRITICAL_BATTERY_STOP_PERCENT = 20;
 const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
 
+// HH_260904 - Re-dock events can arrive after the HTTP command response and
+// can be replayed as a websocket snapshot. Keep terminal states distinct so a
+// false wait flag never implies that CAN recovered (expiry/cancel are false too).
+const REDOCK_STATUS_MESSAGES = Object.freeze({
+  idle: '',
+  waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+  alignment_preparing: '재도킹 정렬을 준비합니다',
+  waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+  can_restored: 'CAN 제어 복구됨 · 재도킹 정렬을 시작합니다',
+  alignment_started: '재도킹 정렬을 시작합니다',
+  expired: '재도킹 요청 시간이 만료되었습니다 · 복귀 버튼을 다시 눌러주세요',
+  cancelled: '재도킹 요청이 취소되었습니다',
+});
+
 const emptyBatteryReturnState = () => ({
   pending: false,
   started: false,
@@ -252,7 +266,7 @@ function TrailCarousel({ title, images }) {
 }
 
 // ── 진단 모니터 컴포넌트 ──────────────────────────────────────────────────────
-function DiagnosticsMonitor() {
+function DiagnosticsMonitor({ redockStatus = null }) {
   const [activeTab, setActiveTab] = useState('system');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -265,6 +279,11 @@ function DiagnosticsMonitor() {
   const [steeringTuningAvailable, setSteeringTuningAvailable] = useState(false);
   const [steeringTuningStatus, setSteeringTuningStatus] = useState('드라이버 연결 확인 중');
   const steeringTuningTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!redockStatus?.received) return;
+    setMotionCommandStatus(redockStatus.message || '');
+  }, [redockStatus]);
 
   useEffect(() => {
     if (activeTab !== 'system') return undefined;
@@ -338,7 +357,14 @@ function DiagnosticsMonitor() {
       const response = await fetch('/ui/manual_return', { method: 'POST' });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || '복귀 요청 실패');
-      setMotionCommandStatus('복귀 명령 전송됨');
+      const statusByAction = {
+        parking_alignment: '재도킹 정렬을 시작합니다',
+        parking_alignment_waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+        waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+        parking_in_progress: '도킹이 이미 진행 중입니다',
+        return_in_progress: '복귀가 이미 진행 중입니다',
+      };
+      setMotionCommandStatus(statusByAction[body.action] || '복귀 명령 전송됨');
     } catch (error) {
       setMotionCommandStatus(error.message || '복귀 요청 실패');
     } finally {
@@ -500,7 +526,7 @@ function DiagnosticsMonitor() {
     </div>
         </>
       ) : (
-        <TelemetryWorkspace activeTab={activeTab} />
+        <TelemetryWorkspace activeTab={activeTab} redockStatus={redockStatus} />
       )}
     </div>
   );
@@ -1036,6 +1062,13 @@ function App() {
   const [missionBlockMessage, setMissionBlockMessage] = useState('');
   const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
   const [batteryReturnState, setBatteryReturnState] = useState(emptyBatteryReturnState);
+  const [redockStatus, setRedockStatus] = useState({
+    pending: false,
+    waitingForCan: false,
+    status: 'idle',
+    message: '',
+    received: false,
+  });
   // HH_260819 - Public field-operation evidence stays lightweight and separate
   // from the administrator-only, high-bandwidth telemetry session.
   const serviceMetrics = useServiceMetricsSummary();
@@ -1273,6 +1306,56 @@ function App() {
         }
       }
 
+      // HH_260904 - Preserve asynchronous re-dock progress after the Return
+      // HTTP response. Charger release and CAN handoff can happen later.
+      if (
+        'redock_pending' in data
+        || 'redock_waiting_for_can' in data
+        || 'redock_status' in data
+        || 'redock_message' in data
+      ) {
+        setRedockStatus(previous => {
+          const pending = 'redock_pending' in data
+            ? Boolean(data.redock_pending)
+            : previous.pending;
+          const waitingForCan = 'redock_waiting_for_can' in data
+            ? Boolean(data.redock_waiting_for_can)
+            : previous.waitingForCan;
+          const hasExplicitStatus = 'redock_status' in data;
+          const backendStatus = hasExplicitStatus
+            ? String(data.redock_status || '').trim().toLowerCase()
+            : '';
+          const backendMessage = String(
+            data.redock_message ?? data.message ?? ''
+          ).trim();
+
+          let status = previous.status || 'idle';
+          if (waitingForCan) {
+            status = 'waiting_for_can';
+          } else if (pending) {
+            status = 'waiting_for_disconnect';
+          } else if (hasExplicitStatus) {
+            status = backendStatus || 'idle';
+          } else if (
+            'redock_pending' in data || 'redock_waiting_for_can' in data
+          ) {
+            status = 'idle';
+          }
+
+          let message = '';
+          if (waitingForCan || pending || hasExplicitStatus) {
+            message = Object.prototype.hasOwnProperty.call(
+              REDOCK_STATUS_MESSAGES, status
+            ) ? REDOCK_STATUS_MESSAGES[status] : backendMessage;
+          } else if (backendMessage) {
+            // Compatibility for a backend that sends a terminal message but
+            // no explicit status. Preserve it instead of guessing CAN recovery.
+            message = backendMessage;
+          }
+          return { pending, waitingForCan, status, message, received: true };
+        });
+      }
+
       // 초기 연결 시: {"states": {"B1": false, ...}} 전체 상태 수신
       if ('states' in data) {
         setStates(prev => ({ ...prev, ...data.states }));
@@ -1462,9 +1545,11 @@ function App() {
 
   // ── 이동중 "Yes" 클릭 → 운행 정지 (OFF) ─────────────────────────────────
   const handleStopMove = () => {
-    if (activeSite) {
-      applyToggle(activeSite, false);
-    }
+    // Return, docking, and parking can continue after the active-site toggle
+    // has already cleared. Use the authoritative full stop for every visible
+    // service-motion stop button so all motion owners are cancelled together.
+    fetch('/ui/stop', { method: 'POST' }).catch(() => {});
+    setEngageState(false);
   };
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
@@ -1500,6 +1585,26 @@ function App() {
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
   const serviceEvidenceModalOpen = activeModal === 'service-evidence';
+  const serviceEvidenceModal = serviceEvidenceModalOpen ? (
+    <div className="modal-overlay">
+      <div
+        className="modal-box service-evidence-modal"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <span className="modal-title">실증 운행 현황</span>
+          <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+        </div>
+        <div className="modal-body">
+          <ServiceEvidenceDashboard
+            summaryData={serviceMetrics.data}
+            summaryLoading={serviceMetrics.loading}
+            summaryError={serviceMetrics.error}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
   const adminEntryZone = (
     <div
       className="diag-secret-zone diag-secret-zone-global"
@@ -1594,7 +1699,7 @@ function App() {
                 <span className="modal-title">{modalData?.title || '진단'}</span>
                 <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
-              <div className="modal-body">{modalData?.content || <DiagnosticsMonitor />}</div>
+              <div className="modal-body"><DiagnosticsMonitor redockStatus={redockStatus} /></div>
             </div>
           </div>
         )}
@@ -1713,27 +1818,15 @@ function App() {
         </div>
 
         {/* ── 모달 오버레이 ── */}
-        {activeModal && activeModal !== 'settings' && (modalData || serviceEvidenceModalOpen) && (
+        {serviceEvidenceModal}
+        {activeModal && activeModal !== 'settings' && modalData && (
           <div className="modal-overlay">
-            <div
-              className={`modal-box ${serviceEvidenceModalOpen ? 'service-evidence-modal' : ''}`}
-              onClick={e => e.stopPropagation()}
-            >
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">
-                  {serviceEvidenceModalOpen ? '실증 운행 현황' : modalData.title}
-                </span>
+                <span className="modal-title">{modalData.title}</span>
                 <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
-              <div className="modal-body">
-                {serviceEvidenceModalOpen ? (
-                  <ServiceEvidenceDashboard
-                    summaryData={serviceMetrics.data}
-                    summaryLoading={serviceMetrics.loading}
-                    summaryError={serviceMetrics.error}
-                  />
-                ) : modalData.content}
-              </div>
+              <div className="modal-body">{modalData.content}</div>
             </div>
           </div>
         )}
@@ -1853,6 +1946,10 @@ function App() {
             <>
               <span className="preview-placeholder-title">Drop Zone</span>
               <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <div className="preview-yn-btns">
+                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+              </div>
             </>
           ) : activeSite ? (
             <>
@@ -1895,6 +1992,7 @@ function App() {
             currentService={serviceMetrics.data?.current_service}
             loading={serviceMetrics.loading}
             error={serviceMetrics.error}
+            onOpen={() => setActiveModal('service-evidence')}
           />
         </div>
 
@@ -1969,6 +2067,9 @@ function App() {
         </div>
 
       </div>
+
+      {/* 운행 중에도 현재 미션을 중단하지 않고 누적 운행 기록을 조회한다. */}
+      {serviceEvidenceModal}
 
       {/* ── 출발 최종 확인 팝업 ── */}
       {showArrivalComplete && arrivedSite && (

@@ -177,12 +177,27 @@ def generate_launch_description():
         default_value='/planning/state_machine/return_to_drop_zone',
         description='Typed drop-zone route request published after site exit',
     )
+    planning_camping_site_recall_topic_arg = DeclareLaunchArgument(
+        'planning_camping_site_recall_topic',
+        default_value='/planning/state_machine/camping_site_recall',
+        description='Typed guest campsite roadside-recall request topic',
+    )
     manual_return_preempt_hold_s_arg = DeclareLaunchArgument(
         'manual_return_preempt_hold_s',
         # HH_260819 - This exceeds the 0.35 s command timeout without adding a
         # permanent timer or polling loop on the constrained ARM64 target.
         default_value='0.5',
         description='Stopped hold between cancelling an active Nav2 goal and dispatching Return',
+    )
+    redock_require_can_control_mode_arg = DeclareLaunchArgument(
+        'redock_require_can_control_mode',
+        default_value='true',
+        description='Require authoritative Ranger CAN mode before starting re-dock motion',
+    )
+    parking_method_arg = DeclareLaunchArgument(
+        'parking_method',
+        default_value='reverse',
+        description='Selected final parking controller: reverse or apriltag',
     )
     charging_departure_delay_s_arg = DeclareLaunchArgument(
         'charging_departure_delay_s',
@@ -276,10 +291,16 @@ def generate_launch_description():
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
             'planning_return_to_drop_zone_topic': LaunchConfiguration('planning_return_to_drop_zone_topic'),
+            'planning_camping_site_recall_topic': LaunchConfiguration('planning_camping_site_recall_topic'),
             'manual_return_preempt_hold_s': ParameterValue(
                 LaunchConfiguration('manual_return_preempt_hold_s'),
                 value_type=float,
             ),
+            'redock_require_can_control_mode': ParameterValue(
+                LaunchConfiguration('redock_require_can_control_mode'),
+                value_type=bool,
+            ),
+            'parking_method': LaunchConfiguration('parking_method'),
             'charging_departure_delay_s': ParameterValue(
                 LaunchConfiguration('charging_departure_delay_s'),
                 value_type=float,
@@ -428,7 +449,10 @@ def generate_launch_description():
         platform_drive_enable_topic_arg,
         camping_site_maneuver_controller_operation_topic_arg,
         planning_return_to_drop_zone_topic_arg,
+        planning_camping_site_recall_topic_arg,
         manual_return_preempt_hold_s_arg,
+        redock_require_can_control_mode_arg,
+        parking_method_arg,
         charging_departure_delay_s_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,

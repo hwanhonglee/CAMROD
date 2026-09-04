@@ -40,6 +40,27 @@ printf '%s\\0' "${{COLCON_BUILD_TYPE_SOURCE}}" "${{COLCON_BUILD_ARGS[@]}}"
     return fields[0], fields[1:-1]
 
 
+def _scope_includes(package: str, *args: str) -> bool:
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+    function = _function_source(source, "_build_scope_includes_pkg")
+    script = f"""
+set -euo pipefail
+{function}
+if _build_scope_includes_pkg "$1" "${{@:2}}"; then
+  printf included
+else
+  printf excluded
+fi
+"""
+    result = subprocess.run(
+        ["bash", "-c", script, "build-policy-test", package, *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout == "included"
+
+
 def test_normal_build_defaults_to_release() -> None:
     source, args = _prepared_args("--packages-select", "ground_segmentation_ros2")
 
@@ -95,6 +116,19 @@ def test_inline_cmake_argument_is_preserved_when_adding_release() -> None:
         "-DBUILD_TESTING=OFF",
         "-DCMAKE_BUILD_TYPE=Release",
     ]
+
+
+def test_ui_frontend_build_scope_honors_explicit_select_and_skip() -> None:
+    assert _scope_includes("camrod_ui")
+    assert _scope_includes(
+        "camrod_ui", "--packages-select", "camrod_planning", "camrod_ui"
+    )
+    assert not _scope_includes(
+        "camrod_ui", "--packages-select", "camrod_planning"
+    )
+    assert not _scope_includes("camrod_ui", "--packages-skip", "camrod_ui")
+
+
 def test_wrapper_pins_colcon_outputs_outside_source_checkout() -> None:
     """Following maintained build docs must not recreate src/build/install/log."""
     source = BUILD_WRAPPER.read_text(encoding="utf-8")

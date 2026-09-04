@@ -312,8 +312,9 @@ if(BUILD_TESTING)
     test/test_radar_self_echo_filter.cpp
   )
   target_include_directories(test_radar_self_echo_filter PRIVATE include)
-  # HH_260807 - Verify that the 0.10 m stop-candidate gate does not truncate
-  # the driver's independent 0.50 m level-1 observation contract.
+  # HH_260904 - Verify that per-channel stop cutoffs (absolute 0.30 m front,
+  # 0.10 m side fallback, 0.206 m rear) stay independent from the driver's
+  # 0.50 m level-1 observation contract.
   ament_add_gtest(
     test_radar_stop_range_filter
     test/test_radar_stop_range_filter.cpp

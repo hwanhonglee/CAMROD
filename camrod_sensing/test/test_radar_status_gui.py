@@ -27,16 +27,16 @@ def test_sample_classification_preserves_real_no_target_contract():
     assert classify(0.01, 0.02, 0.8, 0.1, 1.0) == "invalid"
     front1_body = ((0.020, 0.120), (0.120, 0.220))
     assert (
-        classify(0.220, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
+        classify(0.220, 0.02, 0.50, 0.1, 1.0, front1_body, 0.300)
         == "filtered"
     )
     assert (
-        classify(0.221, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
+        classify(0.221, 0.02, 0.50, 0.1, 1.0, front1_body, 0.300)
         == "hit"
     )
-    assert classify(0.520, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520) == "hit"
+    assert classify(0.300, 0.02, 0.50, 0.1, 1.0, front1_body, 0.300) == "hit"
     assert (
-        classify(0.521, 0.02, 0.55, 0.1, 1.0, front1_body, 0.520)
+        classify(0.301, 0.02, 0.50, 0.1, 1.0, front1_body, 0.300)
         == "outside_stop"
     )
 
@@ -108,11 +108,11 @@ def test_active_yaml_supplies_seven_physical_standard_range_topics():
     assert specs[3].port == "/dev/ttyCH9344USB5"
     assert specs[5].port == "/dev/ttyCH9344USB3"
     assert tuple(spec.configured_max_m for spec in specs) == pytest.approx(
-        (0.55, 0.55, 0.50, 0.50, 0.50, 0.50, 0.50)
+        (0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50)
     )
 
 
-def test_live_cost_profile_uses_front_thirty_and_other_ten_centimeter_windows():
+def test_live_cost_profile_uses_absolute_front_thirty_centimeter_cutoff():
     config_path = (
         Path(__file__).resolve().parents[1]
         / "config"
@@ -126,8 +126,8 @@ def test_live_cost_profile_uses_front_thirty_and_other_ten_centimeter_windows():
     assert bands["FRONT2"] == ((0.020, 0.117),)
     assert bands["REAR"] == ((0.020, 0.106),)
     assert tuple(stop_max[name] for name in RADAR_GUI.SENSOR_ORDER) == pytest.approx(
-        (0.520, 0.417, 0.100, 0.100, 0.100, 0.100, 0.206)
+        (0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.206)
     )
-    assert stop_max["FRONT1"] - bands["FRONT1"][-1][1] == pytest.approx(0.30)
-    assert stop_max["FRONT2"] - bands["FRONT2"][-1][1] == pytest.approx(0.30)
+    assert stop_max["FRONT1"] == pytest.approx(0.30)
+    assert stop_max["FRONT2"] == pytest.approx(0.30)
     assert stop_max["REAR"] - bands["REAR"][-1][1] == pytest.approx(0.10)

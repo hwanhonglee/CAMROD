@@ -1292,7 +1292,7 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,ALIGN_PARKING_YAW'),
             'Drop-zone maneuver phases allowed to cross static lanelet cost',
         ),
         # HH_260720 - Site maneuver owns campsite entry/return body motion;
@@ -2490,6 +2490,14 @@ def generate_launch_description():
         # HH_260819 - Keep the Return ownership barrier explicit and tunable at
         # the top-level deployment boundary without adding sustained CPU work.
         'manual_return_preempt_hold_s': lc['api_ui_manual_return_preempt_hold_s'],
+        # Physical re-dock must wait for Ranger CAN authority.  Simulation has
+        # no hardware remote and may intentionally omit platform status.
+        'redock_require_can_control_mode': PythonExpression([
+            "'false' if str('", lc['sim'],
+            "').lower() in ['1', 'true', 'yes', 'on'] else '",
+            lc['control_cmd_vel_gate_require_can_control_mode'], "'",
+        ]),
+        'parking_method': parking_method_resolved,
         # HH_260825 - Propagate the one-shot charger departure dwell from the
         # deployment config into the sole service-state owner.
         'charging_departure_delay_s': lc['api_ui_charging_departure_delay_s'],
@@ -2526,6 +2534,9 @@ def generate_launch_description():
         # HH_260818 - Keep the manual-return planner handoff explicit across
         # the full-bringup -> UI launch boundary.
         'planning_return_to_drop_zone_topic': '/planning/state_machine/return_to_drop_zone',
+        # Guest B1..B13 calls are planning recalls to the signed roadside wait
+        # pose, while operator destination selections remain normal deliveries.
+        'planning_camping_site_recall_topic': '/planning/state_machine/camping_site_recall',
         'camping_site_maneuver_controller_adopt_topic': '/control/camping_site_maneuver_controller/adopt',
         # HH_260721 - Let the UI release final parking before drop-zone departure.
         'parking_operation_topic': '/parking/operation',
