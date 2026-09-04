@@ -10,6 +10,8 @@ with their exact simulation scope and current-map avoidance limitation. -->
 rigid-motion media separately from historical rectangular runtime evidence. -->
 <!-- HH_260810 - Add the matching historical map-v17 ROS road replay and preserve
 the distinction between simulation behavior and physical-road acceptance. -->
+<!-- HH_260904 - Add checksummed v2.2.3 B1-B13 metrics and radar ECHO/COST
+desktop/mobile captures while keeping fixture evidence distinct from field data. -->
 <!-- HH_260819 - Add current B1-B13 Return and event-driven UI scheduler
 evidence while retaining physical-road and ARM64 acceptance limits. -->
 
@@ -73,7 +75,7 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png`, `gnss-left-antenna-lever-arm.png` | Geometry/localization YAML | Exact non-GNSS conversion and measured GNSS Y correction; remaining survey is pending |
 | `camrod_system` | `diagnostic-severity-and-surfaces.png`, `runtime-topology-amd64-ab-20260805.png` | Manifests plus 3-run system-core and 2-run LiDAR amd64 A/B JSON | Core container saves 3 processes/19.7 MiB PSS; LiDAR saves 17.5% CPU but adds 44.0 MiB PSS; Jetson pending |
 | `camrod_system` | `test-results/return-handoff-nav-status-20260810/` PNG/GIF | Deployed `3.0 s` config, UUID-aware policy source, and unit regression cases | Outgoing goal suppressed only inside grace; new/late return abort stays visible; field mission pending |
-| `camrod_ui` | Mission guide, Robot/Guest captures, seven operator-telemetry views, workspace GIF, resource PNG, and `test-results/docking-workspace-20260819/` | UI policy + live sensor/map/path/safety/docking APIs + backend profile JSON + production screenshot | Seven lazy views render without overflow; camera publishers and ARM64 frame pacing remain field-pending |
+| `camrod_ui` | Mission guide, Robot/Guest captures, seven operator-telemetry views, workspace GIF, resource PNG, docking workspace, and `test-results/v2-2-3-radar-service-metrics-20260904/` | UI policy + live sensor/map/path/safety/docking APIs + B1-B13 metrics and ECHO/COST fixtures | Desktop/mobile layouts and data contracts pass; physical radar and ARM64 frame pacing remain field-pending |
 | `camrod_control` / `camrod_bringup` | `test-results/campsite-return-docking-20260819/` and `test-results/b8-return-docking-20260819/` PNG/GIF | Full-graph B8 JSON plus canonical control/parking YAML | Same-anchor seven-phase return reaches `DONE`; parking slowdown is source-derived; physical docking remains pending |
 | `camrod_ui` | `test-results/operator-telemetry-websocket-amd64-20260810/` PNG/GIF | Standalone x86_64 measurement JSON | `9.938 Hz`, p95 `100.792 ms`, close `83.3 ms`, silent lease `12.078 s`; sensor/ARM64 cost pending |
 | `camrod_ui` / `camrod_bringup` | `test-results/manual-return-preemption-amd64-20260819/` JSON/PNG | Production HTTP endpoint plus isolated full ROS graph after `2.019 m` outbound motion | Zero in `5.01 ms`, one recall at `0.508 s`, fresh `2.133 m` reverse path; physical ARM64 braking pending |
@@ -83,7 +85,7 @@ Package-guide files and structured release results are under
 `docs/assets/module-guides/<package>/{guide,evidence,test-results}/`. The
 <!-- HH_260825 - Include the v2.2.1 measured safety-handoff summary in the
 exact package-owned visual inventory. -->
-checked-in inventory contains **82 PNGs and 20 GIFs** under `module-guides`; the former top-level
+checked-in inventory contains **85 PNGs and 21 GIFs** under `module-guides`; the former top-level
 `test_result` content is organized under each package's `test-results/`
 directory. Generated evidence keeps
 its source JSON/log and checksum manifest beside the visual whenever available.

@@ -148,6 +148,11 @@ state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR remains
 disabled; its configured `0.206 m` scalar cutoff is its measured body-return
 upper edge (`0.106 m`) plus the same `0.10 m` usable window.
 
+![Radar raw ECHO versus authoritative COST UI fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
+
+This image is a deterministic UI contract fixture, not a physical radar
+acceptance result. The corresponding field checks remain in `TODOLIST.txt`.
+
 ![v2.2.1 front radar range and cost result](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
 
 The measured integration probe published a fresh FRONT1 `AvgRange` at

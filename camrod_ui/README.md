@@ -139,6 +139,16 @@ after process or workspace rebuilds. Evidence starts accumulating with the
 first accepted service after this version is deployed; it does not invent
 historical runs.
 
+<!-- HH_260904 - Link deterministic v2.2.3 UI captures without presenting
+fixture values as physical service measurements. -->
+![B1-B13 service evidence desktop fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-b1-b13-desktop.png)
+
+![B1-B13 responsive evidence fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-responsive.gif)
+
+The [capture record](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/README.md)
+labels these values as deterministic AMD64 UI fixtures; physical service and
+ARM64 acceptance remain separate.
+
 ## Operator Telemetry Workspace
 
 The administrator diagnostics modal now contains `System` plus seven live views:
@@ -147,6 +157,8 @@ The administrator diagnostics modal now contains `System` plus seven live views:
 consume the same ROS messages used by the standalone tools and RViz. The
 trajectory view can publish a manual goal only after explicit confirmation;
 no view changes sensor authority.
+
+![Radar ECHO and COST telemetry fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
 
 | Previous live tool / RViz display | UI replacement |
 |---|---|
