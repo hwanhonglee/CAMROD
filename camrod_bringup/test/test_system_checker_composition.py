@@ -16,6 +16,12 @@ BRINGUP_DEFAULTS = (
 BRINGUP_IMPL = SRC_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
 
 
+def _imu_parameters(path: Path) -> dict:
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    section = next(iter(document.values()))
+    return section["ros__parameters"]["main"]
+
+
 def _load_system_launch():
     spec = importlib.util.spec_from_file_location("camrod_system_launch", SYSTEM_LAUNCH)
     assert spec is not None and spec.loader is not None
@@ -97,6 +103,48 @@ def test_sparse_diagnostics_profiles_follow_ordered_fallback_chain() -> None:
     source = SYSTEM_LAUNCH.read_text(encoding="utf-8")
     assert "if not fallback_dirs:" in source
     assert 'fallback_dirs = [os.path.join(config_root, "default")]' in source
+
+
+def test_carla_imu_keeps_physics_impulses_out_of_planning_estop() -> None:
+    """CARLA contact impulses must not disable bounded route recovery."""
+    system_config = (
+        SRC_ROOT
+        / "camrod_system"
+        / "config"
+        / "diagnostics"
+        / "carla"
+        / "sensing"
+        / "imu_checker.yaml"
+    )
+    bringup_mirror = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "system"
+        / "diagnostics"
+        / "carla"
+        / "sensing"
+        / "imu_checker.yaml"
+    )
+    default_config = (
+        SRC_ROOT
+        / "camrod_system"
+        / "config"
+        / "diagnostics"
+        / "default"
+        / "sensing"
+        / "imu_checker.yaml"
+    )
+
+    assert system_config.read_bytes() == bringup_mirror.read_bytes()
+    carla = _imu_parameters(system_config)
+    default = _imu_parameters(default_config)
+    assert carla["accel_magnitude_warn"] == 0.0
+    assert carla["accel_magnitude_error"] == 0.0
+    assert carla["expected_hz"] == 2.0
+    assert carla["stale_timeout_s"] == 3.0
+    assert default["accel_magnitude_warn"] == 30.0
+    assert default["accel_magnitude_error"] == 50.0
 
 
 def test_composed_checkers_keep_standalone_entrypoints() -> None:

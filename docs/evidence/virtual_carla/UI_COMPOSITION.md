@@ -197,6 +197,16 @@ evidence_dir=/absolute/path/to/new/evidence/$(date -u +%Y%m%dT%H%M%SZ)
 (cd "$evidence_dir" && sha256sum -c sha256sums.txt)
 ```
 
+여러 사이트의 PNG/GIF 증빙을 연속으로 만들며 디스크 보존량을 줄일 때는
+`--capture-fps 1 --retain-source-video false --allow-short-capture true`를 명시한다.
+matrix가 끝난 뒤 같은 캡처 terminal의 foreground ffmpeg에 `q`를 입력하면 12초 이상인
+실제 녹화 길이로 PNG/GIF를 파생한다. `--allow-short-capture`의 기본값 `false`에서는
+요청 길이와 일치해야 하는 기존 검증이 그대로 적용된다. v4 manifest와
+`exact_commands.txt`에는 요청/실제 시간과 `early_finalized`가 기록된다.
+`--retain-source-video false`는 contact sheet/GIF/ffprobe 검증 후 해당 캡처의 MP4만
+삭제하며, manifest에는 원본의 제거 전 byte/SHA-256과 `retained=false`가 남는다.
+`sha256sums.txt`에는 실제 보존 파일만 들어가므로 그대로 `sha256sum -c`가 통과해야 한다.
+
 title이 중복되면 `--carla-window-id`, `--ui-window-id`를 쓸 수 있지만, 명시한 XID도
 기대 title을 포함하지 않으면 거부된다. X11의 `IsViewable`은 mapped 상태만 뜻하므로 다른
 창이 한동안 위를 가리지 않았다는 것까지 증명하지는 못한다. 이 제한은 v2 capture

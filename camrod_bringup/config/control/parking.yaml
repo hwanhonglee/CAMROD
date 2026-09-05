@@ -135,7 +135,20 @@
     tag_timeout_s: 0.5
     odometry_timeout_s: 0.5
     tag_wait_timeout_s: 60.0
+    # Default-off: ordinary CAMROD keeps the one-way 0.40 m stop and reports
+    # ERROR for excessive lateral offset.  A simulator profile may opt into a
+    # bounded stop-align-forward-reacquire retry without relaxing that stop.
+    enable_bounded_lateral_retry: false
     retry_forward_distance_m: 1.0
+    retry_forward_speed_mps: 0.10
+    retry_forward_timeout_s: 25.0
+    retry_yaw_alignment_timeout_s: 8.0
+    retry_maximum_lateral_error_m: 0.15
+    retry_maximum_heading_error_rad: 0.35
+    retry_maximum_forward_exit_lateral_drift_m: 0.15
+    retry_maximum_odometry_step_m: 0.10
+    retry_minimum_tag_distance_m: 0.35
+    retry_maximum_tag_distance_m: 0.45
     maximum_retries: 5
 
     # =========================================================================

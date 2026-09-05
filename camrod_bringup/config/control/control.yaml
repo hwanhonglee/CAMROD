@@ -89,6 +89,12 @@
     return_lateral_transition_tolerance_m: 0.02
     return_lateral_hysteresis_m: 0.10
     return_steering_settle_s: 1.20
+    # HH_260902 - Simulator support-slope recovery is an explicit opt-in. The
+    # physical/develop profile never changes CRAB_OUT yaw or adds retries.
+    crab_out_yaw_recovery_enable: false
+    crab_out_yaw_recovery_trigger_deg: 8.0
+    crab_out_yaw_recovery_max_attempts: 3
+    crab_out_yaw_recovery_global_timeout_s: 60.0
     # HH_260904 - Complete a normal site exit at the live centerline projection,
     # regardless of longitudinal offset from the historical entry snap. Once a
     # live handoff is acquired it stays latched through steering settlement.

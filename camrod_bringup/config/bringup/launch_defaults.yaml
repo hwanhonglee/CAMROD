@@ -400,6 +400,10 @@ bringup:
     # never the zero or changed-direction command produced after the stop.
     cmd_vel_gate_cost_stop_latch_enable: true
     cmd_vel_gate_cost_stop_clear_required_s: 2.0
+    # Develop retains the historical merged-grid latch probe.  External
+    # simulator profiles may explicitly bind release to the saved dynamic
+    # trigger source when their merged raster also carries dense static costs.
+    cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear: false
     cmd_vel_gate_cost_stop_latch_log_interval_s: 1.0
     # HH_260703 - If the merged inflation cost grid stalls, cmd_vel must fail
     # closed even before diagnostics/state-machine e-stop catches up.
@@ -410,6 +414,7 @@ bringup:
     # camera-LiDAR fusion adds a path-only 2 m stop without raw LiDAR cost.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
     cmd_vel_gate_cost_stop_dynamic_source_labels: radar,fusion
+    cmd_vel_gate_cost_stop_merged_dynamic_source_labels: ""
     cmd_vel_gate_cost_stop_classified_source_labels: fusion
     cmd_vel_gate_cost_stop_classified_front_lookahead_m: 2.0
     # HH_260702 - When Nav2 publishes an avoidance local path, validate that
@@ -475,6 +480,9 @@ bringup:
     # Full-route path-relative recovery was introduced for CARLA mission
     # tuning. Keep it disabled unless a deployment overlay explicitly opts in.
     cmd_vel_gate_route_safety_path_relative_recovery_enable: false
+    # Preserve the shared develop recovery hysteresis. External-simulator
+    # wrappers may widen it explicitly without changing this default.
+    cmd_vel_gate_route_safety_path_center_reentry_m: 0.08
     # HH_260810 - Bound retries per contact region and reset only after the
     # robot progresses beyond the original contact point.
     cmd_vel_gate_route_safety_recovery_max_auto_releases: 50

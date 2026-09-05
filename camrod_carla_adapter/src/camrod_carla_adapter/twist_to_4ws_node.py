@@ -17,11 +17,13 @@ from camrod_carla_adapter.command_mapping import (
     command_age_timed_out,
     map_planar_twist,
     recovery_breakaway_is_authorized,
+    rotation_recovery_breakaway_is_authorized,
     stop_command,
     validate_adapter_timing,
     validate_planar_axes,
     validate_ranger_contract,
     validate_recovery_breakaway_contract,
+    validate_rotation_recovery_breakaway_contract,
 )
 
 
@@ -45,6 +47,15 @@ class TwistToFourWSNode(Node):
         ).value
         self.recovery_breakaway_enable = bool(self.declare_parameter(
             "recovery_breakaway_enable", False).value)
+        self.rotation_recovery_breakaway_status_topic = self.declare_parameter(
+            "rotation_recovery_breakaway_status_topic",
+            "/control/camping_site_maneuver_controller/status",
+        ).value
+        self.rotation_recovery_breakaway_enable = bool(
+            self.declare_parameter(
+                "rotation_recovery_breakaway_enable", False
+            ).value
+        )
         self.base_frame_id = self.declare_parameter(
             "base_frame_id", "robot_center_link").value
 
@@ -59,6 +70,11 @@ class TwistToFourWSNode(Node):
         self.recovery_breakaway_status_timeout_sec = float(
             self.declare_parameter(
                 "recovery_breakaway_status_timeout_sec", 0.30
+            ).value
+        )
+        self.rotation_recovery_breakaway_status_timeout_sec = float(
+            self.declare_parameter(
+                "rotation_recovery_breakaway_status_timeout_sec", 0.30
             ).value
         )
         self.recovery_breakaway_target_minimum_mps = float(
@@ -112,6 +128,28 @@ class TwistToFourWSNode(Node):
                 self._on_recovery_status,
                 recovery_status_qos,
             )
+        self.rotation_recovery_status_subscription = None
+        if self.rotation_recovery_breakaway_enable:
+            # The existing campsite controller publishes a reliable VOLATILE
+            # ModuleState heartbeat.  A transient-local request is DDS-
+            # incompatible with that publisher and would silently receive no
+            # authorization samples, so keep this QoS separate from the
+            # route-safety recovery controller above.
+            rotation_recovery_status_qos = QoSProfile(depth=1)
+            rotation_recovery_status_qos.reliability = (
+                ReliabilityPolicy.RELIABLE
+            )
+            rotation_recovery_status_qos.durability = (
+                DurabilityPolicy.VOLATILE
+            )
+            self.rotation_recovery_status_subscription = (
+                self.create_subscription(
+                    ModuleState,
+                    self.rotation_recovery_breakaway_status_topic,
+                    self._on_rotation_recovery_status,
+                    rotation_recovery_status_qos,
+                )
+            )
 
         self._last_valid_receive_monotonic = None
         self._last_zero_publish_monotonic = None
@@ -122,12 +160,17 @@ class TwistToFourWSNode(Node):
         self._pure_crab_warning_emitted = False
         self._last_recovery_operating_state = ""
         self._last_recovery_status_receive_monotonic = None
+        self._last_rotation_recovery_module_name = ""
+        self._last_rotation_recovery_level = ModuleState.ERROR
+        self._last_rotation_recovery_operating_state = ""
+        self._last_rotation_recovery_message = ""
+        self._last_rotation_recovery_status_receive_monotonic = None
 
         self.watchdog_timer = self.create_timer(
             1.0 / self.watchdog_rate_hz, self._watchdog_tick)
         self.get_logger().info(
             "CAMROD adapter ready: %s -> %s; timeout=%.3fs; "
-            "recovery authority=%s%s/%.2fs"
+            "recovery authority=%s%s/%.2fs; rotation recovery=%s%s/%.2fs"
             % (
                 self.input_topic,
                 self.output_topic,
@@ -135,6 +178,10 @@ class TwistToFourWSNode(Node):
                 "enabled:" if self.recovery_breakaway_enable else "disabled:",
                 self.recovery_breakaway_status_topic,
                 self.recovery_breakaway_status_timeout_sec,
+                ("enabled:" if self.rotation_recovery_breakaway_enable
+                 else "disabled:"),
+                self.rotation_recovery_breakaway_status_topic,
+                self.rotation_recovery_breakaway_status_timeout_sec,
             )
         )
 
@@ -150,6 +197,9 @@ class TwistToFourWSNode(Node):
             self.recovery_breakaway_target_minimum_mps,
             self.recovery_breakaway_target_maximum_mps,
         )
+        validate_rotation_recovery_breakaway_contract(
+            self.rotation_recovery_breakaway_status_timeout_sec
+        )
 
     def _on_recovery_status(self, message):
         """Cache only an authenticated, healthy recovery-controller state."""
@@ -163,20 +213,44 @@ class TwistToFourWSNode(Node):
         else:
             self._last_recovery_operating_state = ""
 
+    def _on_rotation_recovery_status(self, message):
+        """Cache the complete campsite identity used by the exact predicate."""
+
+        self._last_rotation_recovery_status_receive_monotonic = time.monotonic()
+        self._last_rotation_recovery_module_name = message.module_name
+        self._last_rotation_recovery_level = int(message.level)
+        self._last_rotation_recovery_operating_state = message.operating_state
+        self._last_rotation_recovery_message = message.message
+
     def _recovery_breakaway_is_authorized(self, command, now=None):
-        if not self.recovery_breakaway_enable:
-            return False
-        if self._last_recovery_status_receive_monotonic is None:
-            return False
-        return recovery_breakaway_is_authorized(
-            command,
-            self._last_recovery_operating_state,
-            self._last_recovery_status_receive_monotonic,
-            time.monotonic() if now is None else now,
-            self.recovery_breakaway_status_timeout_sec,
-            self.recovery_breakaway_target_minimum_mps,
-            self.recovery_breakaway_target_maximum_mps,
-        )
+        sample_now = time.monotonic() if now is None else now
+        route_authorized = False
+        if (self.recovery_breakaway_enable
+                and self._last_recovery_status_receive_monotonic is not None):
+            route_authorized = recovery_breakaway_is_authorized(
+                command,
+                self._last_recovery_operating_state,
+                self._last_recovery_status_receive_monotonic,
+                sample_now,
+                self.recovery_breakaway_status_timeout_sec,
+                self.recovery_breakaway_target_minimum_mps,
+                self.recovery_breakaway_target_maximum_mps,
+            )
+        rotation_authorized = False
+        if (self.rotation_recovery_breakaway_enable
+                and self._last_rotation_recovery_status_receive_monotonic
+                is not None):
+            rotation_authorized = rotation_recovery_breakaway_is_authorized(
+                command,
+                self._last_rotation_recovery_module_name,
+                self._last_rotation_recovery_level,
+                self._last_rotation_recovery_operating_state,
+                self._last_rotation_recovery_message,
+                self._last_rotation_recovery_status_receive_monotonic,
+                sample_now,
+                self.rotation_recovery_breakaway_status_timeout_sec,
+            )
+        return bool(route_authorized or rotation_authorized)
 
     def _on_twist(self, message):
         now = time.monotonic()

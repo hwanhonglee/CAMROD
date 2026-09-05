@@ -46,6 +46,23 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "rotation_recovery_breakaway_enable",
+            default_value="false",
+            description=(
+                "Authorize only a fresh active CRAB_OUT yaw-recovery lease; "
+                "disabled for ordinary/develop-parity rotation"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "rotation_recovery_breakaway_status_timeout_sec",
+            default_value="0.30",
+            description=(
+                "Freshness lease for the exact campsite CRAB_OUT status; "
+                "the CARLA site wrapper alone raises this for the existing "
+                "1 Hz controller heartbeat"
+            ),
+        ),
+        DeclareLaunchArgument(
             "extended_command_topic",
             default_value=_role_topic("/extended_ackermann_cmd"),
         ),
@@ -106,6 +123,20 @@ def generate_launch_description():
                     "recovery_breakaway_enable": ParameterValue(
                         LaunchConfiguration("recovery_breakaway_enable"),
                         value_type=bool,
+                    ),
+                    "rotation_recovery_breakaway_enable": ParameterValue(
+                        LaunchConfiguration(
+                            "rotation_recovery_breakaway_enable"
+                        ),
+                        value_type=bool,
+                    ),
+                    "rotation_recovery_breakaway_status_timeout_sec": (
+                        ParameterValue(
+                            LaunchConfiguration(
+                                "rotation_recovery_breakaway_status_timeout_sec"
+                            ),
+                            value_type=float,
+                        )
                     ),
                     "use_sim_time": False,
                 },

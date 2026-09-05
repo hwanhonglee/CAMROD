@@ -182,17 +182,40 @@ evidence_dir=/absolute/path/to/ranger_visual_evidence/$(date -u +%Y%m%dT%H%M%SZ)
   --derived-width 960
 ```
 
+B1~B13처럼 장시간 사이트별 PNG/GIF만 보존할 때는 입력을 명시적으로
+`--retain-source-video false`로 둔다. 기본값은 기존 동작과 같은 `true`다. `false`도
+녹화 중에는 MP4가 필요하므로 해당 한 번의 캡처를 담을 여유 공간은 있어야 한다. 녹화와
+ffprobe, contact sheet, GIF 생성·검증이 모두 끝난 뒤 **그 출력 디렉터리의 원본 MP4
+하나만** 제거한다.
+
+```bash
+./scripts/virtual_carla/capture_ui_evidence.sh capture \
+  --output-dir "$evidence_dir" \
+  --duration-seconds 900 --capture-fps 1 \
+  --gif-fps 8 --derived-width 960 \
+  --retain-source-video false \
+  --allow-short-capture true
+```
+
+`--allow-short-capture true`는 사이트 matrix가 900초 전에 끝났을 때 같은 캡처 terminal의
+foreground `ffmpeg`에 `q`를 한 번 입력해 정상 종료할 수 있게 한다. 실제 녹화가 12초
+이상이고 `요청 시간 + fps 기반 허용 오차` 이하일 때만 PNG/GIF를 실제 길이에서 다시
+샘플링한다. manifest와 `exact_commands.txt`에는 요청/실제 시간,
+`allow_short_capture=true`, 실제 조기 종료일 때 `early_finalized=true`가 함께 남는다.
+기본값 `false`는 요청 시간과 일치해야 하는 기존 strict 검증을 그대로 유지한다. 12초 전
+종료, 신호에 의한 ffmpeg 실패, 상한 초과는 opt-in 상태에서도 REJECTED다.
+
 필요하면 위 capture 명령에도 두 `--*-window-id`를 그대로 붙인다. 생성물은 다음과 같다.
 
 | 파일 | 내용 |
 |---|---|
-| `carla_camrod_desktop.mp4` | geometry 검증 뒤 한 번에 녹화한 원본 desktop region |
+| `carla_camrod_desktop.mp4` | geometry 검증 뒤 한 번에 녹화한 원본 desktop region; `--retain-source-video false`이면 파생물 검증 뒤 남기지 않음 |
 | `representative_contact_sheet.png` | 원본 시간의 5%, 22%, 39%, 56%, 73%, 90% 여섯 frame을 2×3으로 배치 |
 | `representative_motion.gif` | 같은 여섯 시각 주변의 짧은 실제 frame 구간 |
 | `ffprobe.json` | 원본 codec, frame rate, resolution, duration 원문 |
-| `exact_commands.txt` | 실제 실행한 x11grab/PNG/GIF ffmpeg 명령과 hash 명령 |
-| `capture_manifest.json` | PASS 상태, 녹화 전후 XID/title/geometry, capture region, sample 시각, scope와 artifact SHA-256 |
-| `sha256sums.txt` | 원본·파생물·명령·manifest 무결성 목록 |
+| `exact_commands.txt` | 실제 실행한 x11grab/PNG/GIF ffmpeg 명령, 요청/실제 시간과 조기 종료 판정, hash 명령 |
+| `capture_manifest.json` | PASS 상태, 녹화 전후 XID/title/geometry, capture region, 요청/실제 시간과 조기 종료 판정, sample 시각, scope와 artifact SHA-256; 제거 모드에서는 원본의 제거 전 byte/hash와 `retained=false`를 기록 |
+| `sha256sums.txt` | 실제로 남아 있는 원본(유지 모드만)·파생물·명령·manifest 무결성 목록 |
 
 ```bash
 (cd "$evidence_dir" && sha256sum -c sha256sums.txt)
@@ -203,7 +226,7 @@ actual wheel angle·torque, sensor source와 mission 결과는 별도 live repor
 `./scripts/virtual_carla/run.sh audit-sensors` 결과로 묶어야 한다. UI 내부 camera 화면도
 CARLA sensor topic의 증거이고, 이 runner가 녹화하는 왼쪽 `CarlaUE4` spectator window와는
 증거 범위가 다르다. 또한 X11 `IsViewable`은 mapped 상태만 확인하므로 제3의 창이 잠시
-가린 적이 전혀 없다는 사실은 증명하지 못하며, 이 한계는 v2 manifest에 기록된다.
+가린 적이 전혀 없다는 사실은 증명하지 못하며, 이 한계는 v4 manifest에 기록된다.
 
 ## 역사 Woraksan-tuned B1 live 결과
 

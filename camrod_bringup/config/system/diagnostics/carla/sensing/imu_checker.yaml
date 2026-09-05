@@ -9,5 +9,10 @@
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4
       stale_timeout_s: 3.0
-      accel_magnitude_warn: 30.0
-      accel_magnitude_error: 50.0
+      # CARLA's rigid-body contact solver emits non-physical one-sample
+      # impulses at wheel/edge contacts.  Disable only magnitude classification
+      # so those impulses cannot turn a recoverable ROUTE_SAFETY_HOLD into
+      # planning ERROR_STOP.  Topic rate, stale and finite-value checks remain
+      # active, and the CARLA collision actor is audited independently.
+      accel_magnitude_warn: 0.0
+      accel_magnitude_error: 0.0

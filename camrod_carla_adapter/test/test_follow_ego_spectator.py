@@ -27,6 +27,26 @@ def transform(x=10.0, y=20.0, z=1.0, yaw=0.0):
     )
 
 
+def test_default_evidence_camera_is_close_and_corridor_centred():
+    args = MODULE.build_parser().parse_args(["--actor-id", "17"])
+    assert args.distance_m == 3.0
+    assert args.side_m == 0.65
+    assert args.height_m == 1.65
+    assert args.target_height_m == 0.65
+
+    values = MODULE.chase_transform_values(
+        transform(yaw=0.0),
+        args.distance_m,
+        args.side_m,
+        args.height_m,
+        args.target_height_m,
+    )
+    assert values["x"] == 7.0
+    assert values["y"] == 20.65
+    assert values["z"] == 2.65
+    assert values["pitch"] < 0.0
+
+
 def test_chase_pose_tracks_actor_heading_and_looks_at_actor():
     values = MODULE.chase_transform_values(
         transform(yaw=0.0), 5.0, 2.0, 3.0, 0.5

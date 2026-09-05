@@ -413,6 +413,9 @@ private:
         declare_parameter<bool>("cost_stop_latch_enable", true);
     motion_cost_stop_config_.clear_required_s =
         declare_parameter<double>("cost_stop_clear_required_s", 2.0);
+    motion_cost_stop_config_.latch_use_trigger_source_for_merged_clear =
+        declare_parameter<bool>(
+            "cost_stop_latch_use_trigger_source_for_merged_clear", false);
     cost_stop_latch_log_interval_s_ =
         declare_parameter<double>("cost_stop_latch_log_interval_s", 1.0);
     motion_cost_stop_config_.stale_stop_enabled =
@@ -441,6 +444,10 @@ private:
         parseLabelSet(declare_parameter<std::string>(
                           "cost_stop_dynamic_source_labels", "radar,fusion"),
                       {"radar", "fusion"});
+    motion_cost_stop_config_.merged_dynamic_source_labels =
+        parseLabelSet(declare_parameter<std::string>(
+                          "cost_stop_merged_dynamic_source_labels", ""),
+                      {});
     motion_cost_stop_config_.classified_dynamic_source_labels =
         parseLabelSet(declare_parameter<std::string>(
                           "cost_stop_classified_source_labels", "fusion"),
@@ -2718,6 +2725,10 @@ private:
         motion_cost_stop_config_.latch_enabled = parameter.as_bool();
       } else if (name == "cost_stop_clear_required_s") {
         motion_cost_stop_config_.clear_required_s = parameter.as_double();
+      } else if (name ==
+                 "cost_stop_latch_use_trigger_source_for_merged_clear") {
+        motion_cost_stop_config_.latch_use_trigger_source_for_merged_clear =
+            parameter.as_bool();
       } else if (name == "cost_grid_stale_stop_enable") {
         motion_cost_stop_config_.stale_stop_enabled = parameter.as_bool();
       } else if (name == "cost_grid_stale_timeout_s") {
@@ -2735,6 +2746,9 @@ private:
       } else if (name == "cost_stop_dynamic_source_labels") {
         motion_cost_stop_config_.dynamic_source_labels =
             parseLabelSet(parameter.as_string(), {"radar", "fusion"});
+      } else if (name == "cost_stop_merged_dynamic_source_labels") {
+        motion_cost_stop_config_.merged_dynamic_source_labels =
+            parseLabelSet(parameter.as_string(), {});
       } else if (name == "cost_stop_classified_source_labels") {
         motion_cost_stop_config_.classified_dynamic_source_labels =
             parseLabelSet(parameter.as_string(), {"fusion"});

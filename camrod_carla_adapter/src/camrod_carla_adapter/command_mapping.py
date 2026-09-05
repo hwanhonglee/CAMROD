@@ -29,6 +29,23 @@ RANGER_RECOVERY_BREAKAWAY_STATUS_TIMEOUT_SEC = 0.30
 RANGER_RECOVERY_BREAKAWAY_TARGET_MINIMUM_MPS = 0.04
 RANGER_RECOVERY_BREAKAWAY_TARGET_MAXIMUM_MPS = 0.06
 RANGER_RECOVERY_BREAKAWAY_LONGITUDINAL_TOLERANCE_MPS = 1.0e-6
+# The develop controller publishes its ModuleState heartbeat at 1 Hz.  The
+# CARLA site wrapper may therefore use a 1.25 s bounded lease; ordinary
+# profiles retain the stricter 0.30 s configured default.
+RANGER_ROTATION_RECOVERY_STATUS_TIMEOUT_SEC = 1.25
+RANGER_ROTATION_RECOVERY_ZERO_TOLERANCE = 1.0e-6
+# ModuleState.module_name is the CAMROD subsystem contract ("control").
+# Controller identity is already pinned by the exact status topic and token.
+CAMPSITE_ROTATION_RECOVERY_MODULE = "control"
+# The lease remains tied to the campsite controller's exact state and an
+# exact status token.  ``ROTATE_180`` uses the same stall-qualified 3/4 N*m
+# backend floor as the already-proven CRAB_OUT correction, but only after the
+# physical yaw rate has actually stalled; normal moving rotation therefore
+# stays on the accepted 2 N*m controller.
+CAMPSITE_ROTATION_RECOVERY_TOKENS = {
+    "CRAB_OUT": "crab_out_yaw_recovery_active=true",
+    "ROTATE_180": "phase=ROTATE_180",
+}
 RECOVERY_BREAKAWAY_OPERATING_STATES = frozenset((
     "CRAB_LEFT",
     "CRAB_RIGHT",
@@ -210,6 +227,22 @@ def validate_recovery_breakaway_contract(
         )
 
 
+def validate_rotation_recovery_breakaway_contract(status_timeout_sec):
+    """Keep the campsite rotation lease at or below its audited freshness."""
+
+    try:
+        timeout = float(status_timeout_sec)
+    except (TypeError, ValueError):
+        raise ValueError("rotation recovery status timeout must be finite")
+    if not math.isfinite(timeout):
+        raise ValueError("rotation recovery status timeout must be finite")
+    if not 0.0 < timeout <= RANGER_ROTATION_RECOVERY_STATUS_TIMEOUT_SEC:
+        raise ValueError(
+            "rotation recovery status timeout must be in (0, %.2f] s"
+            % RANGER_ROTATION_RECOVERY_STATUS_TIMEOUT_SEC
+        )
+
+
 @dataclass(frozen=True)
 class MappedCommand:
     """ROS-independent representation of ``ExtendedAckermannDrive``."""
@@ -288,6 +321,67 @@ def recovery_breakaway_is_authorized(
     return (
         expected_lateral_sign * source_linear_y > 0.0
         and expected_lateral_sign * crab_angle > 0.0
+    )
+
+
+def rotation_recovery_breakaway_is_authorized(
+    command,
+    module_name,
+    level,
+    operating_state,
+    status_message,
+    status_receive_monotonic,
+    now_monotonic,
+    status_timeout_sec=RANGER_ROTATION_RECOVERY_STATUS_TIMEOUT_SEC,
+):
+    """Authorize only a live, explicitly identified campsite rotation.
+
+    The existing message bit is intentionally reused, but this predicate is
+    disjoint from the route-safety CRAB lease: it requires a stationary
+    ZERO_TURN/PIVOT command and a fresh healthy campsite-controller status.
+    The exact state/token pair permits either the directed ROTATE_180 or the
+    already-bounded CRAB_OUT yaw correction.  Substrings, stale samples,
+    unrelated rotation, and commands carrying translation fail closed.
+    """
+
+    validate_rotation_recovery_breakaway_contract(status_timeout_sec)
+    if not isinstance(command, MappedCommand):
+        return False
+    if command.mode not in (DriveMode.ZERO_TURN, DriveMode.PIVOT):
+        return False
+    if str(module_name) != CAMPSITE_ROTATION_RECOVERY_MODULE:
+        return False
+    try:
+        numeric_level = int(level)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    state = str(operating_state)
+    expected_token = CAMPSITE_ROTATION_RECOVERY_TOKENS.get(state)
+    if numeric_level != 0 or expected_token is None:
+        return False
+    if expected_token not in str(status_message).split():
+        return False
+    try:
+        received = float(status_receive_monotonic)
+        now = float(now_monotonic)
+        speed = float(command.speed)
+        yaw_rate = float(command.yaw_rate_cmd)
+        source_x = float(command.source_linear_x)
+        source_y = float(command.source_linear_y)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not all(math.isfinite(value) for value in (
+            received, now, speed, yaw_rate, source_x, source_y)):
+        return False
+    age = now - received
+    if age < 0.0 or age > float(status_timeout_sec):
+        return False
+    tolerance = RANGER_ROTATION_RECOVERY_ZERO_TOLERANCE
+    return (
+        abs(speed) <= tolerance
+        and abs(source_x) <= tolerance
+        and abs(source_y) <= tolerance
+        and abs(yaw_rate) > RANGER_ANGULAR_EPSILON_RADPS
     )
 
 

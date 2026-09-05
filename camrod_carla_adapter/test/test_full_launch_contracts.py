@@ -11,8 +11,32 @@ import yaml
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PACKAGE_ROOT.parent
 FULL_LAUNCH = PACKAGE_ROOT / "launch" / "camrod_carla_full.launch.py"
+DEVELOP_SITE_GEOMETRY_LAUNCH = (
+    PACKAGE_ROOT
+    / "launch"
+    / "camrod_carla_develop_site_geometry.launch.py"
+)
 TUNED_LAUNCH = (
     PACKAGE_ROOT / "launch" / "camrod_carla_woraksan_tuned.launch.py"
+)
+CARLA_APRILTAG_CONFIG = (
+    PACKAGE_ROOT / "config" / "apriltag_parking_detector_carla.yaml"
+)
+CARLA_APRILTAG_CONTROLLER_CONFIG = (
+    PACKAGE_ROOT / "config" / "apriltag_parking_controller_carla.yaml"
+)
+PRODUCTION_APRILTAG_CONFIG = (
+    REPO_ROOT
+    / "camrod_perception"
+    / "config"
+    / "apriltag_parking_detector.yaml"
+)
+BRINGUP_APRILTAG_CONFIG = (
+    REPO_ROOT
+    / "camrod_bringup"
+    / "config"
+    / "perception"
+    / "apriltag_parking_detector.yaml"
 )
 
 
@@ -41,6 +65,286 @@ def _resolve_rate(module, primary_name, primary_value, legacy_value):
     context.launch_configurations["publish_rate_hz"] = legacy_value
     substitution = module._prefer_explicit_legacy_rate(primary_name)
     return perform_substitutions(context, [substitution])
+
+
+def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
+    module = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    source = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
+
+    assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
+        "carla_cmd_vel_gate_speed_scale": "1.0",
+        "return_site_exit_rearm_enabled": "true",
+        "launch_charging_contact_emulator": "true",
+        "carla_charging_contact_parking_status_topic": (
+            "/parking/apriltag_parking_controller/status"
+        ),
+        "recovery_breakaway_enable": "true",
+        "rotation_recovery_breakaway_enable": "true",
+        "rotation_recovery_breakaway_status_timeout_sec": "1.25",
+        "carla_goal_snapper_pose_jump_check_topic": "/localization/pose",
+        "carla_route_safety_path_relative_recovery_enable": "true",
+        "carla_route_safety_path_center_reentry_m": "0.15",
+        "carla_lanelet_safety_footprint_enable": "false",
+        "carla_cost_stop_latch_use_trigger_source_for_merged_clear": "true",
+        "carla_cost_stop_merged_dynamic_source_labels": "radar",
+        "carla_route_safety_zero_hold_pauses_limits": "true",
+        "carla_route_safety_allow_corrective_yaw_beyond_limit": "true",
+        "carla_goal_reissue_while_nav_active": "true",
+        "carla_crab_approach_slowdown_distance_m": "1.0",
+        "carla_crab_approach_min_speed_mps": "0.12",
+        "carla_rotate_180_timeout_s": "90.0",
+        "carla_camping_site_max_angular_speed_radps": "0.45",
+        "carla_entry_position_tolerance_m": "0.05",
+        "carla_rotate_entry_max_position_error_m": "0.05",
+        "carla_rotate_entry_centering_max_initial_error_m": "0.65",
+        "carla_entry_anchor_centering_max_initial_error_m": "0.0",
+        "carla_entry_anchor_centering_max_speed_mps": "0.12",
+        "carla_entry_anchor_centering_timeout_s": "15",
+        "carla_entry_anchor_centering_tolerance_m": "0.05",
+        "carla_crab_entry_max_heading_drift_deg": "0.0",
+        "carla_crab_entry_body_yaw_compensation_deg": "2.0",
+        "carla_crab_entry_body_yaw_alignment_tolerance_deg": "1.5",
+        "carla_crab_entry_body_yaw_alignment_timeout_s": "15",
+        "carla_crab_out_yaw_recovery_enable": "true",
+        "carla_crab_out_yaw_recovery_trigger_deg": "8.0",
+        "carla_crab_out_yaw_recovery_max_attempts": "8",
+        "carla_crab_out_yaw_recovery_global_timeout_s": "90.0",
+    }
+    assert "camrod_carla_full.launch.py" in source
+    assert "camrod_carla_woraksan_tuned.launch.py" not in source
+    resolved = module.develop_site_geometry_arguments("/adapter-share")
+    assert set(resolved) == {
+        *module.DEVELOP_SITE_GEOMETRY_ARGUMENTS,
+        "carla_apriltag_param_file",
+        "carla_parking_runtime_override_param_file",
+        "carla_nav2_reverse_return_param_file",
+    }
+    assert resolved["carla_apriltag_param_file"] == (
+        "/adapter-share/config/apriltag_parking_detector_carla.yaml"
+    )
+    assert resolved["carla_parking_runtime_override_param_file"] == (
+        "/adapter-share/config/apriltag_parking_controller_carla.yaml"
+    )
+    assert resolved["carla_nav2_reverse_return_param_file"] == (
+        "/adapter-share/config/nav2_carla_reverse_return.yaml"
+    )
+    assert resolved["carla_cmd_vel_gate_speed_scale"] == "1.0"
+    assert resolved["carla_lanelet_safety_footprint_enable"] == "false"
+    for forbidden_override in (
+        "use_sim_planning_profile",
+        "use_sim_localization_profile",
+        "use_sim_parking_method",
+        "manual_drive_linear_limit_mps",
+        "carla_navigation_minimum_ackermann_turn_radius_m",
+        "carla_cost_stop_threshold",
+        "carla_lanelet_safety_threshold",
+        "carla_roadside_reverse_return_enable",
+        "camrod_input_adapter_config",
+        "carla_lidar_cost_grid_param_file",
+    ):
+        assert forbidden_override not in module.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+
+    # The B1 plant residual is scoped to this wrapper: full/develop parity
+    # and the historical tuned wrapper remain at their established 0.5 deg.
+    compact_full = "".join(FULL_LAUNCH.read_text(encoding="utf-8").split())
+    compact_tuned = "".join(
+        TUNED_LAUNCH.read_text(encoding="utf-8").split()
+    )
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_crab_entry_body_yaw_alignment_tolerance_deg"
+        ]
+        == "1.5"
+    )
+    assert (
+        '"CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TOLERANCE_DEG","0.5"'
+        in compact_full
+    )
+    assert (
+        '"carla_lanelet_safety_footprint_enable",default_value="true"'
+        in compact_full
+    )
+    assert (
+        '"control_cmd_vel_gate_lanelet_safety_footprint_enable":('
+        'LaunchConfiguration("carla_lanelet_safety_footprint_enable")'
+        in compact_full
+    )
+    assert (
+        '"carla_crab_entry_body_yaw_alignment_tolerance_deg":"0.5"'
+        in compact_tuned
+    )
+
+    # v20 restores exact develop return-latch tolerances.  The narrow B2
+    # simulator contact is handled by the isolated access map, not by masking
+    # controller drift with a larger hysteresis.
+    production = yaml.safe_load(
+        (REPO_ROOT / "camrod_control" / "config" / "control.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/control/camping_site_maneuver_controller"]["ros__parameters"]
+    bringup = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_bringup"
+            / "config"
+            / "control"
+            / "control.yaml"
+        ).read_text(encoding="utf-8")
+    )["/control/camping_site_maneuver_controller"]["ros__parameters"]
+    for parameters in (production, bringup):
+        assert parameters["return_lateral_transition_tolerance_m"] == 0.02
+        assert parameters["return_lateral_hysteresis_m"] == 0.10
+    assert "carla_return_lateral_hysteresis_m" not in (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+    )
+    assert '"CAMROD_CARLA_RETURN_LATERAL_HYSTERESIS_M",""' in compact_full
+    assert '"carla_return_lateral_hysteresis_m"' not in compact_tuned
+
+    # The yaw hook is fully wired but remains inactive in every shared/default
+    # composition; only this wrapper owns the measured CARLA retry budget.
+    for parameters in (production, bringup):
+        assert parameters["crab_out_yaw_recovery_enable"] is False
+        assert parameters["crab_out_yaw_recovery_max_attempts"] == 3
+        assert parameters["crab_out_yaw_recovery_global_timeout_s"] == 60.0
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_crab_out_yaw_recovery_enable"
+        ]
+        == "true"
+    )
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_crab_out_yaw_recovery_max_attempts"
+        ]
+        == "8"
+    )
+
+    # v17 asks only the CARLA site wrapper for enough yaw-rate error to reach
+    # the already accepted 2 N*m/wheel rotation cap. Production/develop and
+    # the generic CARLA launch retain the 0.35 rad/s control.yaml value.
+    for parameters in (production, bringup):
+        assert parameters["max_angular_speed_radps"] == 0.35
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_camping_site_max_angular_speed_radps"
+        ]
+        == "0.45"
+    )
+    assert (
+        '"CAMROD_CARLA_CAMPING_SITE_MAX_ANGULAR_SPEED_RADPS",""'
+        in compact_full
+    )
+    assert '"carla_camping_site_max_angular_speed_radps"' not in compact_tuned
+
+
+def test_site_apriltag_controller_overlay_changes_response_not_safety_limits():
+    parameters = yaml.safe_load(
+        CARLA_APRILTAG_CONTROLLER_CONFIG.read_text(encoding="utf-8")
+    )["/parking/apriltag_parking_controller"]["ros__parameters"]
+
+    assert parameters == {
+        "heading_gain": 1.5,
+        "lateral_to_heading_gain": 2.7,
+        "reverse_approach_speed_mps": 0.2,
+        "final_insertion_speed_mps": 0.05,
+        "enable_bounded_lateral_retry": True,
+        "retry_forward_distance_m": 0.8,
+        "retry_forward_speed_mps": 0.20,
+        "retry_forward_timeout_s": 30.0,
+        "retry_yaw_alignment_timeout_s": 8.0,
+        "retry_maximum_lateral_error_m": 0.15,
+        "retry_maximum_heading_error_rad": 0.35,
+        "retry_maximum_forward_exit_lateral_drift_m": 0.15,
+        "retry_maximum_odometry_step_m": 0.10,
+        "retry_minimum_tag_distance_m": 0.35,
+        "retry_maximum_tag_distance_m": 0.45,
+        "maximum_retries": 2,
+    }
+    source = CARLA_APRILTAG_CONTROLLER_CONFIG.read_text(encoding="utf-8")
+    assert "translation_stop_tag_distance_m" not in parameters
+    assert "final_lateral_tolerance_m" not in parameters
+    assert "minimum_approach_turn_radius_m" not in parameters
+    gated_timeout_budget_m = (
+        parameters["retry_forward_speed_mps"] * 0.5
+        * parameters["retry_forward_timeout_s"]
+    )
+    assert gated_timeout_budget_m == 3.0
+    assert parameters["retry_forward_distance_m"] <= gated_timeout_budget_m
+    assert (
+        parameters["retry_forward_distance_m"]
+        + parameters["retry_maximum_odometry_step_m"]
+    ) == 0.9
+    assert "Do not relax" in source
+    assert "scope collision" in source
+
+
+def test_carla_apriltag_profile_changes_only_detector_decimation():
+    node = "/perception/apriltag_parking_detector"
+    production_document = yaml.safe_load(
+        PRODUCTION_APRILTAG_CONFIG.read_text(encoding="utf-8")
+    )
+    bringup_document = yaml.safe_load(
+        BRINGUP_APRILTAG_CONFIG.read_text(encoding="utf-8")
+    )
+    carla_document = yaml.safe_load(
+        CARLA_APRILTAG_CONFIG.read_text(encoding="utf-8")
+    )
+
+    assert bringup_document == production_document
+    production = dict(production_document[node]["ros__parameters"])
+    carla = dict(carla_document[node]["ros__parameters"])
+    assert production.pop("quad_decimate") == 2.0
+    assert carla.pop("quad_decimate") == 1.0
+    assert carla == production
+    assert carla["tag_family"] == "tag36h11"
+    assert carla["target_tag_id"] == 3
+    assert carla["tag_size"] == 0.16
+    assert carla["n_threads"] == 2
+
+
+def test_carla_perception_overlay_raises_only_rendered_yolo_confidence():
+    shared = yaml.safe_load(
+        (
+            REPO_ROOT / "camrod_perception" / "config" / "perception_params.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    carla = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "perception_carla.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert shared["/perception/yolov9mit"]["ros__parameters"][
+        "min_confidence"
+    ] == 0.5
+    assert carla["/perception/yolov9mit"]["ros__parameters"] == {
+        "min_confidence": 0.95
+    }
+    assert carla["/perception/obstacle_fusion"]["ros__parameters"] == {
+        "extrinsic_x": 0.0,
+        "extrinsic_y": 0.00001,
+        "extrinsic_z": -0.09970,
+    }
+
+
+def test_full_launch_defaults_to_production_apriltag_profile():
+    source = FULL_LAUNCH.read_text(encoding="utf-8")
+    tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+
+    assert 'get_package_share_directory("camrod_perception")' in source
+    assert (
+        'perception_share, "config", "apriltag_parking_detector.yaml"'
+        in source
+    )
+    declaration = source.split('"carla_apriltag_param_file",', 1)[1]
+    declaration = declaration.split("DeclareLaunchArgument", 1)[0]
+    assert "default_value=apriltag_detector_config" in declaration
+    assert (
+        '"apriltag_param_file": LaunchConfiguration(\n'
+        '                    "carla_apriltag_param_file"'
+        in source
+    )
+    assert "carla_apriltag_param_file" not in tuned
 
 
 def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
@@ -151,9 +455,10 @@ def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
     assert '"recovery_breakaway_enable": "true"' in tuned
 
 
-def test_recovery_breakaway_authority_is_tuned_only():
+def test_recovery_breakaway_authority_is_explicit_opt_in_only():
     source = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+    site_geometry = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
     adapter_launch = (
         PACKAGE_ROOT / "launch" / "adapter.launch.py"
     ).read_text(encoding="utf-8")
@@ -168,6 +473,42 @@ def test_recovery_breakaway_authority_is_tuned_only():
     assert '"recovery_breakaway_enable",\n            default_value="false"' in adapter_launch
     assert '"recovery_breakaway_enable": LaunchConfiguration(' in source
     assert '"recovery_breakaway_enable": "true"' in tuned
+    assert (
+        site_geometry.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "recovery_breakaway_enable"
+        ]
+        == "true"
+    )
+
+
+def test_site_recovery_opt_ins_do_not_change_full_launch_defaults():
+    source = FULL_LAUNCH.read_text(encoding="utf-8")
+    site_geometry = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    expected = {
+        "carla_route_safety_path_relative_recovery_enable",
+        "carla_route_safety_zero_hold_pauses_limits",
+        "carla_route_safety_allow_corrective_yaw_beyond_limit",
+        "carla_goal_reissue_while_nav_active",
+    }
+
+    assert {
+        key
+        for key, value in site_geometry.DEVELOP_SITE_GEOMETRY_ARGUMENTS.items()
+        if key in expected and value == "true"
+    } == expected
+    for key in expected:
+        declaration = source.index(f'"{key}"')
+        assert 'default_value="false"' in source[declaration:declaration + 180]
+
+    reentry_key = "carla_route_safety_path_center_reentry_m"
+    assert site_geometry.DEVELOP_SITE_GEOMETRY_ARGUMENTS[reentry_key] == "0.15"
+    declaration = source.index(f'"{reentry_key}"')
+    assert 'default_value="0.08"' in source[declaration:declaration + 260]
+    assert (
+        '"control_cmd_vel_gate_route_safety_path_center_reentry_m"'
+        in source
+    )
+    assert 'LaunchConfiguration(\n                        "' + reentry_key in source
 
 
 def test_full_launch_defaults_carla_route_heading_to_production_profile():
@@ -354,6 +695,15 @@ def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
             "0.05",
             "carla_rotate_entry_max_position_error_m",
         ),
+        (
+            "camping_site_rotate_entry_centering_max_initial_error_m",
+            "rotate_entry_centering_max_initial_error_m",
+            "0.30",
+            "CAMROD_CARLA_ROTATE_ENTRY_CENTERING_MAX_INITIAL_ERROR_M",
+            "0.30",
+            "0.50",
+            "carla_rotate_entry_centering_max_initial_error_m",
+        ),
     )
     for (
         launch_name,
@@ -401,14 +751,54 @@ def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
     context.launch_configurations[
         "camping_site_entry_position_tolerance_m"
     ] = ""
+    context.launch_configurations["return_lateral_hysteresis_m"] = ""
+    context.launch_configurations[
+        "camping_site_max_angular_speed_radps"
+    ] = ""
     overrides = maneuvers_module._camping_site_parameter_overrides(context)
     assert "entry_position_tolerance_m" not in overrides
+    assert "return_lateral_hysteresis_m" not in overrides
+    assert "max_angular_speed_radps" not in overrides
 
     context.launch_configurations[
         "camping_site_entry_position_tolerance_m"
     ] = "0.05"
     overrides = maneuvers_module._camping_site_parameter_overrides(context)
     assert "entry_position_tolerance_m" in overrides
+
+    context.launch_configurations["return_lateral_hysteresis_m"] = "0.13"
+    overrides = maneuvers_module._camping_site_parameter_overrides(context)
+    assert "return_lateral_hysteresis_m" in overrides
+
+    context.launch_configurations[
+        "camping_site_max_angular_speed_radps"
+    ] = "0.45"
+    overrides = maneuvers_module._camping_site_parameter_overrides(context)
+    assert "max_angular_speed_radps" in overrides
+
+    assert (
+        'DeclareLaunchArgument("return_lateral_hysteresis_m",default_value="")'
+        in compact_maneuvers_launch
+    )
+    assert "'control_camping_site_return_lateral_hysteresis_m'," in bringup_launch
+    assert (
+        "'return_lateral_hysteresis_m': lc[\n"
+        "            'control_camping_site_return_lateral_hysteresis_m'\n"
+        "        ]"
+    ) in bringup_launch
+    assert '"control_camping_site_return_lateral_hysteresis_m": (' in full_launch
+    assert (
+        'DeclareLaunchArgument('
+        '"camping_site_max_angular_speed_radps",default_value="")'
+        in compact_maneuvers_launch
+    )
+    assert "'control_camping_site_max_angular_speed_radps'," in bringup_launch
+    assert (
+        "'camping_site_max_angular_speed_radps': lc[\n"
+        "            'control_camping_site_max_angular_speed_radps'\n"
+        "        ]"
+    ) in bringup_launch
+    assert '"control_camping_site_max_angular_speed_radps": (' in full_launch
 
     bringup_entry_default = bringup_launch.split(
         "'control_camping_site_entry_position_tolerance_m',", 1
@@ -424,7 +814,7 @@ def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
             "0",
             "CAMROD_CARLA_ENTRY_ANCHOR_CENTERING_MAX_INITIAL_ERROR_M",
             "0.0",
-            "0.65",
+            "0.0",
         ),
         (
             "entry_anchor_centering_max_speed_mps",
@@ -634,6 +1024,12 @@ def test_carla_runtime_overlay_prescales_forward_rpp_and_isolates_reverse():
     assert controller["RPP"]["min_approach_linear_velocity"] == 0.138889
     assert controller["RPP"]["regulated_linear_scaling_min_speed"] == 0.166667
     assert controller["RPP"]["allow_reversing"] is False
+    assert controller["RotationShim"]["desired_linear_vel"] == 0.555556
+    assert controller["RotationShim"]["min_approach_linear_velocity"] == 0.138889
+    assert (
+        controller["RotationShim"]["regulated_linear_scaling_min_speed"]
+        == 0.166667
+    )
     assert controller["RPPReverse"]["desired_linear_vel"] == 0.20
     assert controller["RPPReverse"]["allow_reversing"] is True
 
@@ -736,10 +1132,11 @@ def test_nav2_radius_stabilizer_is_tuned_only_and_above_adapter_boundary():
     assert bringup_gate["navigation_minimum_ackermann_turn_radius_m"] == 0.0
 
 
-def test_parking_and_charger_emulation_are_tuned_only():
-    """Develop parity keeps production parking and no emulated contact."""
+def test_parking_and_charger_emulation_are_opt_in_carla_profiles_only():
+    """Full/develop parity stays off; tuned and site wrappers opt in."""
     full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
+    site_module = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
     overlay = yaml.safe_load(
         (PACKAGE_ROOT / "config" / "parking_carla.yaml").read_text(
             encoding="utf-8"
@@ -757,12 +1154,24 @@ def test_parking_and_charger_emulation_are_tuned_only():
     assert '"launch_charging_contact_emulator", default_value="false"' in full_launch
     assert 'default_value=parking_runtime_disabled_config' in full_launch
     assert '"launch_charging_contact_emulator": "true"' in tuned_launch
+    assert (
+        site_module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "launch_charging_contact_emulator"
+        ]
+        == "true"
+    )
+    assert site_module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_charging_contact_parking_status_topic"
+    ] == "/parking/apriltag_parking_controller/status"
     assert '"carla_parking_runtime_override_param_file": tuned_parking' in tuned_launch
     assert '"parking_runtime_override_param_file": LaunchConfiguration(' in full_launch
     assert '"carla_charging_contact_position_tolerance_m"' in full_launch
     assert '"carla_charging_contact_speed_tolerance_mps"' in full_launch
     assert '"carla_charging_contact_state_timeout_s"' in full_launch
+    assert '"carla_charging_contact_parking_status_topic"' in full_launch
+    assert 'default_value="/parking/reverse_parking_controller/status"' in full_launch
     assert '"state_timeout_s": LaunchConfiguration(' in full_launch
+    assert '"parking_status_topic": LaunchConfiguration(' in full_launch
 
 
 def test_charging_contact_rate_isolated_from_heartbeat_legacy_alias():
@@ -850,6 +1259,11 @@ def test_pose_jump_source_is_empty_by_default_and_tuned_to_raw_localization():
     assert (
         '"carla_goal_snapper_pose_jump_check_topic": "/localization/pose"'
         in tuned_launch
+    )
+    site_launch = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
+    assert (
+        '"carla_goal_snapper_pose_jump_check_topic": "/localization/pose"'
+        in site_launch
     )
     assert "'planning_goal_snapper_pose_jump_check_topic'," in bringup_source
     assert "'goal_snapper_pose_jump_check_topic': lc[" in bringup_source

@@ -43,6 +43,12 @@ def _camping_site_parameter_overrides(context):
             ),
             value_type=float,
         ),
+        "rotate_entry_centering_max_initial_error_m": ParameterValue(
+            LaunchConfiguration(
+                "camping_site_rotate_entry_centering_max_initial_error_m"
+            ),
+            value_type=float,
+        ),
         "entry_anchor_centering_max_initial_error_m": ParameterValue(
             LaunchConfiguration(
                 "entry_anchor_centering_max_initial_error_m"
@@ -83,6 +89,22 @@ def _camping_site_parameter_overrides(context):
             LaunchConfiguration("crab_entry_body_yaw_alignment_timeout_s"),
             value_type=float,
         ),
+        "crab_out_yaw_recovery_enable": ParameterValue(
+            LaunchConfiguration("crab_out_yaw_recovery_enable"),
+            value_type=bool,
+        ),
+        "crab_out_yaw_recovery_trigger_deg": ParameterValue(
+            LaunchConfiguration("crab_out_yaw_recovery_trigger_deg"),
+            value_type=float,
+        ),
+        "crab_out_yaw_recovery_max_attempts": ParameterValue(
+            LaunchConfiguration("crab_out_yaw_recovery_max_attempts"),
+            value_type=int,
+        ),
+        "crab_out_yaw_recovery_global_timeout_s": ParameterValue(
+            LaunchConfiguration("crab_out_yaw_recovery_global_timeout_s"),
+            value_type=float,
+        ),
         "roadside_reverse_return_enable": ParameterValue(
             LaunchConfiguration("roadside_reverse_return_enable"),
             value_type=bool,
@@ -104,6 +126,32 @@ def _camping_site_parameter_overrides(context):
     if entry_position_tolerance:
         overrides["entry_position_tolerance_m"] = ParameterValue(
             float(entry_position_tolerance),
+            value_type=float,
+        )
+
+    # Keep the develop/hardware value owned by control.yaml unless a wrapper
+    # explicitly supplies an override.  The CARLA campsite profile uses this
+    # narrow hook for measured simulator-plant settling only; an empty value
+    # deliberately leaves production parameter-file precedence unchanged.
+    return_lateral_hysteresis = LaunchConfiguration(
+        "return_lateral_hysteresis_m"
+    ).perform(context).strip()
+    if return_lateral_hysteresis:
+        overrides["return_lateral_hysteresis_m"] = ParameterValue(
+            float(return_lateral_hysteresis),
+            value_type=float,
+        )
+
+    # Keep the production/develop parameter-file value unless a simulator
+    # wrapper explicitly asks the physical plant for a different bounded yaw
+    # rate. This hook changes only the campsite maneuver command; the final
+    # backend remains responsible for its independently gated torque cap.
+    max_angular_speed = LaunchConfiguration(
+        "camping_site_max_angular_speed_radps"
+    ).perform(context).strip()
+    if max_angular_speed:
+        overrides["max_angular_speed_radps"] = ParameterValue(
+            float(max_angular_speed),
             value_type=float,
         )
     return overrides
@@ -155,11 +203,21 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("rotate_180_timeout_s", default_value="0"),
         DeclareLaunchArgument(
+            "camping_site_max_angular_speed_radps", default_value=""
+        ),
+        DeclareLaunchArgument(
             "camping_site_entry_position_tolerance_m", default_value=""
+        ),
+        DeclareLaunchArgument(
+            "return_lateral_hysteresis_m", default_value=""
         ),
         DeclareLaunchArgument(
             "camping_site_rotate_entry_max_position_error_m",
             default_value="0",
+        ),
+        DeclareLaunchArgument(
+            "camping_site_rotate_entry_centering_max_initial_error_m",
+            default_value="0.30",
         ),
         DeclareLaunchArgument(
             "entry_anchor_centering_max_initial_error_m", default_value="0"
@@ -187,6 +245,18 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "crab_entry_body_yaw_alignment_timeout_s", default_value="15"
+        ),
+        DeclareLaunchArgument(
+            "crab_out_yaw_recovery_enable", default_value="false"
+        ),
+        DeclareLaunchArgument(
+            "crab_out_yaw_recovery_trigger_deg", default_value="8.0"
+        ),
+        DeclareLaunchArgument(
+            "crab_out_yaw_recovery_max_attempts", default_value="3"
+        ),
+        DeclareLaunchArgument(
+            "crab_out_yaw_recovery_global_timeout_s", default_value="60.0"
         ),
         DeclareLaunchArgument(
             "roadside_reverse_return_enable", default_value="false"

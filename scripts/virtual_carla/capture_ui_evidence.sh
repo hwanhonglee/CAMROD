@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Reproducible, non-controlling CARLA + CAMROD operator-screen evidence capture.
+# Reproducible, non-controlling CARLA + CAMROD UI evidence capture.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SCRIPT_VERSION="2"
+SCRIPT_VERSION="4"
 DEFAULT_CARLA_TITLE="CarlaUE4"
 DEFAULT_UI_TITLE="CAMROD Operator UI"
 DEFAULT_DURATION_SECONDS="60"
@@ -37,19 +37,26 @@ Options:
   --derived-width PX          width of each PNG/GIF panel, 320..1920 (default: 960)
   --clip-seconds N            GIF seconds around each of six samples, 0.25..5
   --geometry-tolerance-px PX  accepted frame/decorator gap, 0..256 (default: 48)
+  --retain-source-video BOOL  keep the source MP4 after deriving PNG/GIF;
+                              true or false (default: true)
+  --allow-short-capture BOOL  accept an interactive ffmpeg 'q' after at least
+                              12 seconds and derive from the actual duration;
+                              true or false (default: false)
   --display DISPLAY           X11 display (default: current DISPLAY)
   --xauthority PATH           readable Xauthority file (default: current XAUTHORITY)
   --carla-window-title TEXT   literal title substring (default: CarlaUE4)
   --ui-window-title TEXT      literal title substring; use Robot UI for a browser
                               (default: CAMROD Operator UI)
+  --ui-kind KIND              manifest identity: operator or guest
+                              (default: operator)
   --carla-window-id HEX       explicit X11 id if the title is not unique
   --ui-window-id HEX          explicit X11 id if the title is not unique
   -h, --help                  show this help
 
 The script never starts/stops CARLA or ROS, publishes motion, clicks the UI,
 repositions windows, or overwrites evidence. It records the already-visible
-desktop pixels only. Arrange CarlaUE4 on the left and CAMROD Operator UI on the
-right before validate/capture. The resulting visual is not CARLA sensor-camera,
+desktop pixels only. Arrange CarlaUE4 on the left and the selected CAMROD UI on
+the right before validate/capture. The resulting visual is not CARLA sensor-camera,
 physical-hardware, or AI-generated evidence; pair it with runtime gate/topic
 reports for functional acceptance. Window id, title and geometry are checked
 before and after recording; X11 cannot prove that another window never occluded
@@ -115,13 +122,17 @@ PY
 
 print_plan() {
   local shown_output="${OUTPUT_DIR:-/absolute/path/to/new-capture-directory}"
+  local shown_ui_label="CAMROD Operator UI"
+  if [[ "${UI_KIND}" == "guest" ]]; then
+    shown_ui_label="CAMROD Guest UI"
+  fi
   cat <<EOF
 [virtual_carla_capture] PLAN ONLY -- no window query, directory creation, or capture occurred.
 
 Prerequisites:
   1. Start server -> bridge -> pacer -> spawn -> camrod with CARLA_RENDER_MODE=onscreen.
   2. Keep one visible CarlaUE4 window on the left and one visible
-     CAMROD Operator UI window on the right.
+     ${shown_ui_label} window on the right.
   3. Run the read-only geometry check:
 
   ${0@Q} validate
@@ -134,7 +145,12 @@ Explicit recording command (${DEFAULT_DURATION_SECONDS} s default):
 Capture creates only files below that new/empty directory. It uses ffmpeg
 x11grab once for a single already-tiled desktop region, then derives six-sample
 PNG/GIF assets from that MP4 and records exact commands, ffprobe JSON, metadata,
-and SHA-256 hashes. No runtime, ROS topic, UI control, or vehicle command changes.
+and SHA-256 hashes. Source-video retention is ${RETAIN_SOURCE_VIDEO}; when false,
+the MP4 is removed only after the derivatives and metadata have been validated,
+and the manifest records its pre-removal size/hash. Short-capture acceptance is
+${ALLOW_SHORT_CAPTURE}; when true, ffmpeg may be ended with its interactive 'q'
+after 12 seconds and derivatives use the measured duration. No runtime, ROS
+topic, UI control, or vehicle command changes.
 EOF
 }
 
@@ -233,7 +249,7 @@ validate_side_by_side_geometry() {
   (( CARLA_X >= 0 && CARLA_Y >= 0 && UI_X >= 0 && UI_Y >= 0 )) || \
     die "windows must be on the non-negative X11 capture plane"
   (( CARLA_X < UI_X )) || \
-    die "CarlaUE4 must be left of CAMROD Operator UI"
+    die "CarlaUE4 must be left of the selected UI window"
   carla_right=$((CARLA_X + CARLA_WIDTH))
   gap=$((UI_X - carla_right))
   (( gap >= -GEOMETRY_TOLERANCE_PX && gap <= GEOMETRY_TOLERANCE_PX )) || \
@@ -304,6 +320,40 @@ run_and_log_command() {
   "$@"
 }
 
+write_rejection_marker() {
+  local reason="$1"
+  python3 - "${OUTPUT_DIR}" "${SCRIPT_VERSION}" "${reason}" <<'PY'
+import datetime as dt
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+artifacts = {}
+for path in sorted(root.iterdir()):
+    if not path.is_file() or path.name == "capture_rejection.json":
+        continue
+    artifacts[path.name] = {
+        "bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+document = {
+    "schema": "camrod.virtual_carla.desktop_ui_capture_rejection.v1",
+    "status": "REJECTED",
+    "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "script_version": int(sys.argv[2]),
+    "reason": sys.argv[3],
+    "accepted_visual_evidence": False,
+    "replacement_required": True,
+    "retained_unaccepted_artifacts": artifacts,
+}
+(root / "capture_rejection.json").write_text(
+    json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+)
+PY
+}
+
 capture_evidence() {
   prepare_output_directory
   local carla_geometry_before="${CARLA_WIDTH}x${CARLA_HEIGHT}+${CARLA_X}+${CARLA_Y}"
@@ -330,7 +380,10 @@ capture_evidence() {
     -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p
     -movflags +faststart "${video}"
   )
-  run_and_log_command "${commands}" "${capture_command[@]}"
+  if ! run_and_log_command "${commands}" "${capture_command[@]}"; then
+    write_rejection_marker "ffmpeg desktop recording failed"
+    die "ffmpeg desktop recording failed; evidence is not accepted"
+  fi
 
   # Fail closed if either captured window was replaced, moved, resized or
   # unmapped during recording. X11 cannot prove that no other window occluded
@@ -341,12 +394,15 @@ capture_evidence() {
   local carla_geometry_after="${CARLA_WIDTH}x${CARLA_HEIGHT}+${CARLA_X}+${CARLA_Y}"
   local ui_geometry_after="${UI_WIDTH}x${UI_HEIGHT}+${UI_X}+${UI_Y}"
   local region_after="${CAPTURE_WIDTH}x${CAPTURE_HEIGHT}+${CAPTURE_X}+${CAPTURE_Y}"
-  [[ "${CARLA_TITLE_RESOLVED}" == "${carla_title_before}" \
-      && "${UI_TITLE_RESOLVED}" == "${ui_title_before}" \
-      && "${carla_geometry_after}" == "${carla_geometry_before}" \
-      && "${ui_geometry_after}" == "${ui_geometry_before}" \
-      && "${region_after}" == "${region_before}" ]] || \
+  if [[ "${CARLA_TITLE_RESOLVED}" != "${carla_title_before}" \
+      || "${UI_TITLE_RESOLVED}" != "${ui_title_before}" \
+      || "${carla_geometry_after}" != "${carla_geometry_before}" \
+      || "${ui_geometry_after}" != "${ui_geometry_before}" \
+      || "${region_after}" != "${region_before}" ]]; then
+    write_rejection_marker \
+      "window title/geometry changed during capture; evidence is not accepted"
     die "window title/geometry changed during capture; evidence is not accepted"
+  fi
 
   local -a probe_command=(
     ffprobe -v error -show_format -show_streams -of json "${video}"
@@ -359,22 +415,57 @@ capture_evidence() {
     -of default=nw=1:nk=1 "${video}"
   )
   append_exact_command "${commands}" "${duration_probe_command[@]}"
-  local actual_duration
+  local actual_duration duration_policy duration_tolerance early_finalized
   actual_duration="$("${duration_probe_command[@]}")"
   require_float_range "captured duration" "${actual_duration}" "1" "86401"
-  python3 - "${actual_duration}" "${DURATION_SECONDS}" "${CAPTURE_FPS}" <<'PY' || exit 1
+  if ! duration_policy="$(python3 - \
+      "${actual_duration}" "${DURATION_SECONDS}" "${CAPTURE_FPS}" \
+      "${ALLOW_SHORT_CAPTURE}" <<'PY'
 import sys
 
-actual, requested, fps = map(float, sys.argv[1:])
+actual, requested, fps = map(float, sys.argv[1:4])
+allow_short = sys.argv[4] == "true"
 tolerance = max(1.0, 2.0 / fps)
-if not requested - tolerance <= actual <= requested + tolerance:
+if allow_short:
+    valid = 12.0 <= actual <= requested + tolerance
+    expectation = (
+        f"12.000s <= actual <= {requested + tolerance:.3f}s "
+        "(--allow-short-capture=true)"
+    )
+else:
+    valid = requested - tolerance <= actual <= requested + tolerance
+    expectation = (
+        f"{requested - tolerance:.3f}s <= actual <= "
+        f"{requested + tolerance:.3f}s (strict default)"
+    )
+if not valid:
     print(
-        "[virtual_carla_capture] ERROR: captured duration does not match request: "
-        f"actual={actual:.3f}s requested={requested:.3f}s tolerance={tolerance:.3f}s",
+        "[virtual_carla_capture] ERROR: captured duration violates the selected "
+        f"policy: actual={actual:.3f}s requested={requested:.3f}s "
+        f"tolerance={tolerance:.3f}s expected={expectation}",
         file=sys.stderr,
     )
     raise SystemExit(1)
+early_finalized = allow_short and actual < requested - tolerance
+print(f"{tolerance:.6f}")
+print(str(early_finalized).lower())
 PY
+  )"; then
+    write_rejection_marker \
+      "captured duration violates the selected short-capture policy"
+    die "captured duration validation failed; evidence is not accepted"
+  fi
+  duration_tolerance="$(sed -n '1p' <<<"${duration_policy}")"
+  early_finalized="$(sed -n '2p' <<<"${duration_policy}")"
+  [[ "${duration_tolerance}" =~ ^[0-9]+([.][0-9]+)?$ ]] || \
+    die "internal duration tolerance parse failed: ${duration_tolerance}"
+  case "${early_finalized}" in
+    true|false) ;;
+    *) die "internal early-finalized parse failed: ${early_finalized}" ;;
+  esac
+  printf '# capture_duration_policy allow_short_capture=%s requested_duration_s=%s actual_duration_s=%s tolerance_s=%s early_finalized=%s\n' \
+    "${ALLOW_SHORT_CAPTURE}" "${DURATION_SECONDS}" "${actual_duration}" \
+    "${duration_tolerance}" "${early_finalized}" >>"${commands}"
 
   local sample_data
   sample_data="$(python3 - "${actual_duration}" "${CAPTURE_FPS}" "${CLIP_SECONDS}" <<'PY'
@@ -433,12 +524,33 @@ PY
   [[ -s "${sheet}" && -s "${gif}" ]] || \
     die "representative PNG/GIF derivative is empty"
 
-  printf '(cd %q && sha256sum %q %q %q %q %q %q > %q)\n' \
-    "${OUTPUT_DIR}" \
-    "$(basename "${video}")" "$(basename "${sheet}")" \
-    "$(basename "${gif}")" "$(basename "${probe}")" \
-    "$(basename "${commands}")" "$(basename "${manifest}")" \
-    "$(basename "${hashes}")" >>"${commands}"
+  local source_video_bytes source_video_sha256 source_video_removed="false"
+  source_video_bytes="$(stat -c '%s' -- "${video}")"
+  source_video_sha256="$(sha256sum -- "${video}" | awk '{print $1}')"
+  [[ "${source_video_bytes}" =~ ^[0-9]+$ && ${#source_video_sha256} -eq 64 ]] || \
+    die "cannot record source MP4 provenance before retention handling"
+
+  if [[ "${RETAIN_SOURCE_VIDEO}" == "false" ]]; then
+    [[ "${video}" == "${OUTPUT_DIR}/carla_camrod_desktop.mp4" && -f "${video}" ]] || \
+      die "refusing to remove an unexpected source-video path: ${video}"
+    run_and_log_command "${commands}" rm -- "${video}"
+    [[ ! -e "${video}" ]] || die "source MP4 removal did not complete: ${video}"
+    source_video_removed="true"
+  fi
+
+  local -a retained_hash_targets=(
+    "$(basename "${sheet}")"
+    "$(basename "${gif}")"
+    "$(basename "${probe}")"
+    "$(basename "${commands}")"
+    "$(basename "${manifest}")"
+  )
+  if [[ "${RETAIN_SOURCE_VIDEO}" == "true" ]]; then
+    retained_hash_targets=("$(basename "${video}")" "${retained_hash_targets[@]}")
+  fi
+  printf '(cd %q && sha256sum' "${OUTPUT_DIR}" >>"${commands}"
+  printf ' %q' "${retained_hash_targets[@]}" >>"${commands}"
+  printf ' > %q)\n' "$(basename "${hashes}")" >>"${commands}"
 
   export CAPTURE_META_OUTPUT_DIR="${OUTPUT_DIR}"
   export CAPTURE_META_SOURCE_ROOT="${SOURCE_ROOT}"
@@ -448,6 +560,9 @@ PY
   export CAPTURE_META_XAUTHORITY="${XAUTHORITY_VALUE}"
   export CAPTURE_META_REQUESTED_DURATION="${DURATION_SECONDS}"
   export CAPTURE_META_ACTUAL_DURATION="${actual_duration}"
+  export CAPTURE_META_ALLOW_SHORT_CAPTURE="${ALLOW_SHORT_CAPTURE}"
+  export CAPTURE_META_EARLY_FINALIZED="${early_finalized}"
+  export CAPTURE_META_DURATION_TOLERANCE="${duration_tolerance}"
   export CAPTURE_META_CAPTURE_FPS="${CAPTURE_FPS}"
   export CAPTURE_META_GIF_FPS="${GIF_FPS}"
   export CAPTURE_META_DERIVED_WIDTH="${DERIVED_WIDTH}"
@@ -458,6 +573,7 @@ PY
   export CAPTURE_META_CARLA_GEOMETRY_BEFORE="${carla_geometry_before}"
   export CAPTURE_META_CARLA_GEOMETRY_AFTER="${carla_geometry_after}"
   export CAPTURE_META_UI_ID="${UI_ID}"
+  export CAPTURE_META_UI_KIND="${UI_KIND}"
   export CAPTURE_META_UI_TITLE="${UI_TITLE_RESOLVED}"
   export CAPTURE_META_UI_GEOMETRY_BEFORE="${ui_geometry_before}"
   export CAPTURE_META_UI_GEOMETRY_AFTER="${ui_geometry_after}"
@@ -465,6 +581,10 @@ PY
   export CAPTURE_META_COMMANDS="${commands}"
   export CAPTURE_META_PROBE="${probe}"
   export CAPTURE_META_VIDEO="${video}"
+  export CAPTURE_META_RETAIN_SOURCE_VIDEO="${RETAIN_SOURCE_VIDEO}"
+  export CAPTURE_META_SOURCE_VIDEO_REMOVED="${source_video_removed}"
+  export CAPTURE_META_SOURCE_VIDEO_BYTES="${source_video_bytes}"
+  export CAPTURE_META_SOURCE_VIDEO_SHA256="${source_video_sha256}"
   export CAPTURE_META_SHEET="${sheet}"
   export CAPTURE_META_GIF="${gif}"
   python3 - <<'PY'
@@ -516,8 +636,37 @@ except (OSError, subprocess.CalledProcessError):
     git_status = []
 
 probe = json.loads(Path(os.environ["CAPTURE_META_PROBE"]).read_text(encoding="utf-8"))
+ui_kind = os.environ["CAPTURE_META_UI_KIND"]
+ui_key = {
+    "operator": "camrod_operator_ui",
+    "guest": "camrod_guest_ui",
+}[ui_kind]
+ui_label = {
+    "operator": "CAMROD Operator UI",
+    "guest": "CAMROD Guest UI",
+}[ui_kind]
+retain_source_video = os.environ["CAPTURE_META_RETAIN_SOURCE_VIDEO"] == "true"
+source_video_removed = os.environ["CAPTURE_META_SOURCE_VIDEO_REMOVED"] == "true"
+source_video = {
+    "path": Path(os.environ["CAPTURE_META_VIDEO"]).name,
+    "retained": retain_source_video,
+    "removed_after_derivation": source_video_removed,
+    "bytes_before_retention_action": int(
+        os.environ["CAPTURE_META_SOURCE_VIDEO_BYTES"]
+    ),
+    "sha256_before_retention_action": os.environ[
+        "CAPTURE_META_SOURCE_VIDEO_SHA256"
+    ],
+}
+artifacts = {
+    "contact_sheet_png": artifact(os.environ["CAPTURE_META_SHEET"]),
+    "representative_gif": artifact(os.environ["CAPTURE_META_GIF"]),
+}
+if retain_source_video:
+    artifacts["source_mp4"] = artifact(os.environ["CAPTURE_META_VIDEO"])
+
 document = {
-    "schema": "camrod.virtual_carla.desktop_ui_capture.v2",
+    "schema": "camrod.virtual_carla.desktop_ui_capture.v4",
     "status": "PASS",
     "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
     "script_version": int(os.environ["CAPTURE_META_VERSION"]),
@@ -538,7 +687,7 @@ document = {
         "vehicle_motion_or_ui_input_sent_by_capture": False,
         "unoccluded_window_pixels_validated": False,
         "statement": (
-            "The script recorded already-visible CarlaUE4 and CAMROD Operator UI "
+            f"The script recorded already-visible CarlaUE4 and {ui_label} "
             "pixels. It did not command CARLA, ROS, the UI, or the vehicle."
         ),
     },
@@ -558,7 +707,8 @@ document = {
                 "geometry_after": os.environ[
                     "CAPTURE_META_CARLA_GEOMETRY_AFTER"],
             },
-            "camrod_operator_ui": {
+            ui_key: {
+                "kind": ui_kind,
                 "id": os.environ["CAPTURE_META_UI_ID"],
                 "title": os.environ["CAPTURE_META_UI_TITLE"],
                 "geometry_before": os.environ[
@@ -571,8 +721,17 @@ document = {
     "recording": {
         "requested_duration_s": float(os.environ["CAPTURE_META_REQUESTED_DURATION"]),
         "actual_duration_s": float(os.environ["CAPTURE_META_ACTUAL_DURATION"]),
+        "allow_short_capture": (
+            os.environ["CAPTURE_META_ALLOW_SHORT_CAPTURE"] == "true"
+        ),
+        "early_finalized": os.environ["CAPTURE_META_EARLY_FINALIZED"] == "true",
+        "duration_validation_tolerance_s": float(
+            os.environ["CAPTURE_META_DURATION_TOLERANCE"]
+        ),
+        "minimum_short_capture_duration_s": 12.0,
         "capture_fps": int(os.environ["CAPTURE_META_CAPTURE_FPS"]),
         "ffprobe": probe,
+        "source_video": source_video,
     },
     "derivatives": {
         "panel_width_px": int(os.environ["CAPTURE_META_DERIVED_WIDTH"]),
@@ -583,11 +742,11 @@ document = {
     "exact_commands": Path(os.environ["CAPTURE_META_COMMANDS"]).read_text(
         encoding="utf-8"
     ).splitlines(),
-    "artifacts": {
-        "source_mp4": artifact(os.environ["CAPTURE_META_VIDEO"]),
-        "contact_sheet_png": artifact(os.environ["CAPTURE_META_SHEET"]),
-        "representative_gif": artifact(os.environ["CAPTURE_META_GIF"]),
-    },
+    "artifacts": artifacts,
+    "sha256sums_scope": (
+        "retained files only; when source_video.retained is false, its "
+        "pre-removal provenance is recorded under recording.source_video"
+    ),
     "acceptance_limit": (
         "Visual evidence alone does not prove CARLA actor identity, sensor-source "
         "ownership, physical wheel telemetry, safety-gate state, mission success, "
@@ -601,13 +760,7 @@ PY
 
   (
     cd "${OUTPUT_DIR}"
-    sha256sum \
-      "$(basename "${video}")" \
-      "$(basename "${sheet}")" \
-      "$(basename "${gif}")" \
-      "$(basename "${probe}")" \
-      "$(basename "${commands}")" \
-      "$(basename "${manifest}")" >"$(basename "${hashes}")"
+    sha256sum "${retained_hash_targets[@]}" >"$(basename "${hashes}")"
   )
   log "capture complete: ${OUTPUT_DIR}"
   log "verify with: (cd ${OUTPUT_DIR@Q} && sha256sum -c ${hashes##*/})"
@@ -632,14 +785,18 @@ DISPLAY_VALUE="${DISPLAY:-}"
 XAUTHORITY_VALUE="${XAUTHORITY:-}"
 CARLA_TITLE="${DEFAULT_CARLA_TITLE}"
 UI_TITLE="${DEFAULT_UI_TITLE}"
+UI_KIND="operator"
+RETAIN_SOURCE_VIDEO="true"
+ALLOW_SHORT_CAPTURE="false"
 CARLA_WINDOW_ID=""
 UI_WINDOW_ID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir|--duration-seconds|--capture-fps|--gif-fps|--derived-width|\
-    --clip-seconds|--geometry-tolerance-px|--display|--xauthority|\
-    --carla-window-title|--ui-window-title|--carla-window-id|--ui-window-id)
+    --clip-seconds|--geometry-tolerance-px|--retain-source-video|--allow-short-capture|\
+    --display|--xauthority|\
+    --carla-window-title|--ui-window-title|--ui-kind|--carla-window-id|--ui-window-id)
       [[ $# -ge 2 ]] || die "missing value for $1"
       option="$1"; value="$2"; shift 2
       case "${option}" in
@@ -650,10 +807,13 @@ while [[ $# -gt 0 ]]; do
         --derived-width) DERIVED_WIDTH="${value}" ;;
         --clip-seconds) CLIP_SECONDS="${value}" ;;
         --geometry-tolerance-px) GEOMETRY_TOLERANCE_PX="${value}" ;;
+        --retain-source-video) RETAIN_SOURCE_VIDEO="${value}" ;;
+        --allow-short-capture) ALLOW_SHORT_CAPTURE="${value}" ;;
         --display) DISPLAY_VALUE="${value}" ;;
         --xauthority) XAUTHORITY_VALUE="${value}" ;;
         --carla-window-title) CARLA_TITLE="${value}" ;;
         --ui-window-title) UI_TITLE="${value}" ;;
+        --ui-kind) UI_KIND="${value}" ;;
         --carla-window-id) CARLA_WINDOW_ID="${value}" ;;
         --ui-window-id) UI_WINDOW_ID="${value}" ;;
       esac
@@ -684,6 +844,18 @@ if clip * 8.0 > duration:
 PY
 [[ -n "${CARLA_TITLE}" ]] || die "--carla-window-title cannot be empty"
 [[ -n "${UI_TITLE}" ]] || die "--ui-window-title cannot be empty"
+case "${UI_KIND}" in
+  operator|guest) ;;
+  *) die "--ui-kind must be operator or guest: ${UI_KIND}" ;;
+esac
+case "${RETAIN_SOURCE_VIDEO}" in
+  true|false) ;;
+  *) die "--retain-source-video must be true or false: ${RETAIN_SOURCE_VIDEO}" ;;
+esac
+case "${ALLOW_SHORT_CAPTURE}" in
+  true|false) ;;
+  *) die "--allow-short-capture must be true or false: ${ALLOW_SHORT_CAPTURE}" ;;
+esac
 
 case "${ACTION}" in
   plan)

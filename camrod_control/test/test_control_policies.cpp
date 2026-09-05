@@ -3192,13 +3192,16 @@ TEST(CommandSourceArbiter, ExactDropZonePointOwnsCommandBeforeYawAlignment) {
   const auto started = arbiter.setManeuverPhases(
       "POSITION_PARKING_POINT", "IDLE", "IDLE", 1.0);
   EXPECT_TRUE(started.drop_zone_started);
-  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
-  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 1.0),
+            CommandSourceDecision::kAllow);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 1.0),
+            CommandSourceDecision::kIgnore);
 
   const auto align = arbiter.setManeuverPhases(
       "ALIGN_PARKING_YAW", "IDLE", "IDLE", 2.0);
   EXPECT_FALSE(align.maneuver_finished);
-  EXPECT_EQ(arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 2.0),
+            CommandSourceDecision::kIgnore);
 }
 
 TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
@@ -3499,6 +3502,98 @@ TEST(MotionCostStop, FreshTriggerSourceClearReleasesLatchAndStartsHold) {
   EXPECT_FALSE(cost_stop.evaluate(command(0.0), 2.2).blocked);
   EXPECT_FALSE(cost_stop.latched());
   EXPECT_GE(cost_stop.holdUntilSec(), 3.2);
+}
+
+TEST(MotionCostStop,
+     OptInMergedLatchIgnoresUnrelatedStaticCostAfterTriggerSourceClears) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.dynamic_source_labels = {"fusion"};
+  config.classified_dynamic_source_labels = {"fusion"};
+  config.classified_front_lookahead_m = 2.0;
+  config.dynamic_front_use_local_path = true;
+  config.fixed_front_lookahead_m = 3.0;
+  config.latch_enabled = true;
+  config.clear_required_s = 2.0;
+  config.latch_use_trigger_source_for_merged_clear = true;
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {3.0, 0.0}}));
+
+  // Reproduce the live CARLA failure: the semantic point lies beyond fusion's
+  // classified 2 m direct horizon but inside the merged 3 m corridor.  A dense
+  // static lanelet/path cost also occupies that merged corridor.
+  const auto fusion_obstacle = makeGrid({{2.3, 0.0, 90}});
+  // The live fusion point and a cost-100 lanelet cell occupied the same world
+  // cell, so max-merging retained 100 both before and after fusion cleared.
+  const auto merged_trigger = makeGrid({{2.3, 0.0, 100}});
+  cost_stop.setMergedGrid(merged_trigger, 0.0);
+  cost_stop.setSourceGrid("fusion", fusion_obstacle, 0.0);
+  const auto trigger = cost_stop.evaluate(command(0.2), 0.0);
+  ASSERT_TRUE(trigger.blocked);
+  ASSERT_EQ(trigger.reason, "merged_front:fusion");
+
+  // Fresh clear fusion evidence must advance the normal continuous-clear
+  // window even while unrelated static merged costs remain.  Both streams are
+  // updated each time; absence or replayed evidence still fails closed.
+  const auto merged_static_only = makeGrid({{2.3, 0.0, 100}});
+  for (const double now_sec : {0.1, 1.0, 2.0}) {
+    cost_stop.setMergedGrid(merged_static_only, now_sec);
+    cost_stop.setSourceGrid("fusion", makeGrid(), now_sec);
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0), now_sec).blocked);
+    EXPECT_TRUE(cost_stop.latched());
+  }
+  cost_stop.setMergedGrid(merged_static_only, 2.2);
+  cost_stop.setSourceGrid("fusion", makeGrid(), 2.2);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 2.2).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+}
+
+TEST(MotionCostStop, DevelopParityKeepsHistoricalMergedLatchProbeByDefault) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.dynamic_source_labels = {"fusion"};
+  config.classified_dynamic_source_labels = {"fusion"};
+  config.classified_front_lookahead_m = 2.0;
+  config.dynamic_front_use_local_path = true;
+  config.fixed_front_lookahead_m = 3.0;
+  config.latch_enabled = true;
+  config.clear_required_s = 0.5;
+  ASSERT_FALSE(config.latch_use_trigger_source_for_merged_clear);
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {3.0, 0.0}}));
+
+  cost_stop.setMergedGrid(makeGrid({{2.3, 0.0, 100}}), 0.0);
+  cost_stop.setSourceGrid("fusion", makeGrid({{2.3, 0.0, 90}}), 0.0);
+  ASSERT_EQ(cost_stop.evaluate(command(0.2), 0.0).reason,
+            "merged_front:fusion");
+
+  for (const double now_sec : {0.1, 0.7, 1.3}) {
+    cost_stop.setMergedGrid(makeGrid({{2.3, 0.0, 100}}), now_sec);
+    cost_stop.setSourceGrid("fusion", makeGrid(), now_sec);
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0), now_sec).blocked);
+    EXPECT_TRUE(cost_stop.latched());
+  }
+}
+
+TEST(MotionCostStop,
+     MergedAttributionAllowlistKeepsFusionInsideClassifiedDirectHorizon) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.dynamic_source_labels = {"fusion", "radar"};
+  config.merged_dynamic_source_labels = {"radar"};
+  config.classified_dynamic_source_labels = {"fusion"};
+  config.classified_front_lookahead_m = 2.0;
+  config.dynamic_front_use_local_path = true;
+  config.fixed_front_lookahead_m = 3.0;
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {3.0, 0.0}}));
+
+  // A classified fusion cell at 2.3 m is outside its explicit 2 m policy. It
+  // may remain visible in diagnostics but cannot authorize a coincident static
+  // merged cell through the wider speed-dependent corridor.
+  cost_stop.setMergedGrid(makeGrid({{2.3, 0.0, 100}}), 0.0);
+  cost_stop.setSourceGrid("fusion", makeGrid({{2.3, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 }
 
 TEST(MotionCostStop, TriggerPathSnapshotSurvivesReplanWhileLatched) {

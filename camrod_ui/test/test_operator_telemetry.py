@@ -883,6 +883,24 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertTrue(pruned["cameras"]["docking"]["available"])
         self.assertEqual(pruned["lidar"]["points"], [])
 
+    def test_proximity_tab_retains_only_authoritative_radar_cost_evidence(self) -> None:
+        snapshot = UiBackendNode._new_telemetry_snapshot()
+        snapshot["active_view"] = "proximity"
+        snapshot["safety"]["radar_evidence"] = (
+            "active SENSOR=LEFT2 range_m=0.090 cost=95;"
+        )
+        snapshot["safety"]["obstacle_replan"] = "heavy unrelated detail"
+        snapshot["safety"]["gate"] = {"operating_state": "COST_STOP"}
+
+        pruned = UiBackendNode._prune_telemetry_snapshot(snapshot, "proximity")
+
+        self.assertEqual(
+            pruned["safety"]["radar_evidence"],
+            "active SENSOR=LEFT2 range_m=0.090 cost=95;",
+        )
+        self.assertEqual(pruned["safety"]["obstacle_replan"], "")
+        self.assertEqual(pruned["safety"]["gate"], {})
+
     def test_docking_rear_camera_subscription_is_explicitly_opt_in(self) -> None:
         source = (
             Path(__file__).resolve().parents[1]

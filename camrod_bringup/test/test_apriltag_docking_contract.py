@@ -31,6 +31,18 @@ def test_camera_range_thresholds_are_exact() -> None:
     assert parameters["tag_timeout_s"] == 0.5
     assert parameters["tag_wait_timeout_s"] == 60.0
     assert parameters["odometry_timeout_s"] == 0.5
+    assert parameters["enable_bounded_lateral_retry"] is False
+    assert parameters["retry_forward_distance_m"] == 1.0
+    assert parameters["retry_forward_speed_mps"] == 0.10
+    assert parameters["retry_forward_timeout_s"] == 25.0
+    assert parameters["retry_yaw_alignment_timeout_s"] == 8.0
+    assert parameters["retry_maximum_lateral_error_m"] == 0.15
+    assert parameters["retry_maximum_heading_error_rad"] == 0.35
+    assert parameters["retry_maximum_forward_exit_lateral_drift_m"] == 0.15
+    assert parameters["retry_maximum_odometry_step_m"] == 0.10
+    assert parameters["retry_minimum_tag_distance_m"] == 0.35
+    assert parameters["retry_maximum_tag_distance_m"] == 0.45
+    assert parameters["maximum_retries"] == 5
 
 
 def test_tag_reacquisition_wait_is_one_minute_with_immediate_safe_stop() -> None:
@@ -55,15 +67,71 @@ def test_tag_reacquisition_wait_is_one_minute_with_immediate_safe_stop() -> None
     assert "fail();" in waiting_block
 
 
-def test_parking_parameter_mirrors_are_exact() -> None:
-    """Full bringup mirrors the package-owned runtime file byte for byte."""
+def test_default_off_retry_envelope_matches_the_deployment_mirror() -> None:
+    """Retry safety defaults match without changing existing field tuning."""
     package = CONTROL / "config/parking.yaml"
     deployment = BRINGUP / "config/control/parking.yaml"
-    assert package.read_bytes() == deployment.read_bytes()
+    keys = (
+        "enable_bounded_lateral_retry",
+        "retry_forward_distance_m",
+        "retry_forward_speed_mps",
+        "retry_forward_timeout_s",
+        "retry_yaw_alignment_timeout_s",
+        "retry_maximum_lateral_error_m",
+        "retry_maximum_heading_error_rad",
+        "retry_maximum_forward_exit_lateral_drift_m",
+        "retry_maximum_odometry_step_m",
+        "retry_minimum_tag_distance_m",
+        "retry_maximum_tag_distance_m",
+        "maximum_retries",
+    )
+    package_parameters = _parameters(package)
+    deployment_parameters = _parameters(deployment)
+    assert {key: package_parameters[key] for key in keys} == {
+        key: deployment_parameters[key] for key in keys
+    }
+
+
+def test_bounded_retry_validates_raw_parameters_before_storage() -> None:
+    """Malformed retry overrides fail before abs, clamp, or integer narrowing."""
+    source = NODE.read_text(encoding="utf-8")
+    raw_start = source.index(
+        "const camrod_control::AprilTagParkingRetryRawParameters retry_parameters"
+    )
+    raw_end = source.index("pose_filter_gain_ =", raw_start)
+    raw_block = source[raw_start:raw_end]
+
+    for parameter_name in (
+        "retry_forward_distance_m",
+        "retry_forward_speed_mps",
+        "retry_forward_timeout_s",
+        "retry_yaw_alignment_timeout_s",
+        "retry_maximum_lateral_error_m",
+        "retry_maximum_heading_error_rad",
+        "retry_maximum_forward_exit_lateral_drift_m",
+        "retry_maximum_odometry_step_m",
+        "retry_minimum_tag_distance_m",
+        "retry_maximum_tag_distance_m",
+        "maximum_retries",
+    ):
+        assert f'"{parameter_name}"' in raw_block
+
+    validation = raw_block.index("aprilTagParkingRetryRawParametersValid")
+    first_storage = raw_block.index(
+        "retry_forward_distance_m_ = retry_parameters.forward_distance_m"
+    )
+    narrowing = raw_block.index(
+        "static_cast<int>(retry_parameters.maximum_retries)"
+    )
+    assert validation < first_storage
+    assert validation < narrowing
+    assert "std::abs(declare_parameter<double>(\"retry_" not in raw_block
+    assert "std::clamp" not in raw_block
+    assert "bounded lateral retry raw parameters are invalid or unsafe" in raw_block
 
 
 def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
-    """No post-0.40 m phase may restore blind insertion or retry motion."""
+    """The default path stops at 0.40 m; retry is explicit and bounded."""
     source = NODE.read_text(encoding="utf-8")
     assert "tag_camera_distance_m_ <= translation_stop_tag_distance_m_" in source
     assert "transitionTo(State::FINAL_YAW_ALIGNMENT)" in source
@@ -71,6 +139,34 @@ def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
     assert "translation_stop_trigger_tag_distance_m_ = tag_camera_distance_m_" in source
     assert "case State::FINAL_REVERSE_INSERTION" not in source
     assert "startFinalReverseInsertion" not in source
+    assert '"enable_bounded_lateral_retry", false' in source
+
+    reverse_block = source.split("case State::TAG_GUIDED_REVERSE:", 1)[1].split(
+        "case State::RETRY_FORWARD_EXIT:", 1
+    )[0]
+    retry_arm = reverse_block.split(
+        "if (std::fabs(lateral_error_m_) > final_lateral_tolerance_m_)", 1
+    )[1]
+    assert "aprilTagParkingRetryEligible" in retry_arm
+    assert retry_arm.index("publishStop();") < retry_arm.index(
+        "transitionTo(State::RETRY_FORWARD_EXIT)"
+    )
+
+    retry_block = source.split("case State::RETRY_FORWARD_EXIT:", 1)[1].split(
+        "case State::FINAL_YAW_ALIGNMENT:", 1
+    )[0]
+    assert "!odometry_is_fresh || !tag_fresh" in retry_block
+    assert "retry_progress_.forwardProgress() < -0.02" in retry_block
+    assert "retry_progress_.lastStep() > retry_maximum_odometry_step_m_" in retry_block
+    assert "retry_progress_.exceededPathLimit" in retry_block
+    assert "retry_forward_timeout_s_" in retry_block
+    assert "axis_valid_ = false" in retry_block
+    assert "tag_camera_distance_valid_ = false" in retry_block
+    assert "transitionTo(State::WAITING_FOR_TAG)" in retry_block
+    assert "command.linear.x = retry_forward_speed_mps_" in retry_block
+    assert retry_block.index("retry_progress_.reached") < retry_block.index(
+        "command.linear.x = retry_forward_speed_mps_"
+    )
 
     yaw_block = source.split("case State::FINAL_YAW_ALIGNMENT:", 1)[1].split(
         "case State::WAITING_FOR_CHARGING:", 1

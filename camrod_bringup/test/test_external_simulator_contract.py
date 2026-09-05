@@ -324,6 +324,12 @@ def test_production_perception_runtime_overlay_is_empty_and_forwarded_last():
         / "launch"
         / "obstacle_fusion.launch.py"
     ).read_text(encoding="utf-8")
+    yolo_launch = (
+        REPO_ROOT
+        / "camrod_perception"
+        / "launch"
+        / "yolo.launch.py"
+    ).read_text(encoding="utf-8")
     perception_launch = PERCEPTION_LAUNCH_PATH.read_text(encoding="utf-8")
     bringup_launch = (
         REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
@@ -336,6 +342,14 @@ def test_production_perception_runtime_overlay_is_empty_and_forwarded_last():
     assert parameter_chain.index(
         "LaunchConfiguration('perception_param_file')"
     ) < parameter_chain.index(
+        "LaunchConfiguration('perception_runtime_override_param_file')"
+    )
+    yolo_parameter_chain = yolo_launch.split("parameters=[", 1)[1].split(
+        "],", 1
+    )[0]
+    assert yolo_parameter_chain.index(
+        "LaunchConfiguration('perception_param_file')"
+    ) < yolo_parameter_chain.index(
         "LaunchConfiguration('perception_runtime_override_param_file')"
     )
     assert perception_launch.count(
@@ -367,12 +381,24 @@ def test_carla_recovery_behaviors_are_explicit_default_off_overlays():
         "cmd_vel_gate_route_safety_path_relative_recovery_enable",
     ):
         assert defaults["control"][key] is False
+    assert defaults["control"][
+        "cmd_vel_gate_route_safety_path_center_reentry_m"
+    ] == 0.08
+    assert defaults["control"][
+        "cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear"
+    ] is False
+    assert defaults["control"][
+        "cmd_vel_gate_cost_stop_merged_dynamic_source_labels"
+    ] == ""
 
     for launch_argument in (
         "planning_goal_snapper_reissue_active_goal_after_route_recovery_when_nav_active",
         "control_route_safety_recovery_zero_hold_pauses_limits",
         "control_route_safety_recovery_allow_corrective_yaw_beyond_limit",
         "control_cmd_vel_gate_route_safety_path_relative_recovery_enable",
+        "control_cmd_vel_gate_route_safety_path_center_reentry_m",
+        "control_cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear",
+        "control_cmd_vel_gate_cost_stop_merged_dynamic_source_labels",
     ):
         assert launch_argument in source
 

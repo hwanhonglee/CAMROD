@@ -8,6 +8,8 @@ import subprocess
 import sys
 import zipfile
 
+import pytest
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PACKAGE_ROOT.parent
@@ -20,6 +22,8 @@ SENSOR_PREFLIGHT = SCRIPT_ROOT / "check_carla_sensor_streams.py"
 UI_EVIDENCE_CAPTURE = SCRIPT_ROOT / "capture_ui_evidence.sh"
 SCRIPTS = (
     "env.sh",
+    "map_profiles.sh",
+    "site_access.sh",
     "setup.sh",
     "build.sh",
     "prepare_yolo_engine.sh",
@@ -69,6 +73,10 @@ VIRTUAL_ENV_KEYS = (
     "CAMROD_CARLA_STEP_PACING",
     "CAMROD_CARLA_STEP_PERIOD_SECONDS",
     "CARLA_FIXED_DELTA_SECONDS",
+    "CARLA_UE_MAP",
+    "CARLA_TOWN",
+    "CAMROD_CARLA_MAP_PROFILE",
+    "CAMROD_VIRTUAL_CARLA_ENTRYPOINT",
     "CAMROD_LAUNCH_SENSOR_RELAY",
     # env.sh derives these from CARLA_ROOT/UE_ROOT.  Clear parent-shell
     # values in fixture subprocesses so a real local project cannot mask the
@@ -126,6 +134,7 @@ def test_help_is_available_without_external_workspaces() -> None:
         "prepare_yolo_engine.sh",
         "test.sh",
         "run.sh",
+        "site_access.sh",
         "capture_ui_evidence.sh",
     ):
         result = subprocess.run(
@@ -136,6 +145,155 @@ def test_help_is_available_without_external_workspaces() -> None:
             text=True,
         )
         assert "Usage:" in result.stdout
+
+
+def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
+    tmp_path: Path,
+) -> None:
+    direct = _bash(
+        'source scripts/virtual_carla/env.sh; '
+        'printf "%s\\n%s\\n%s\\n" '
+        '"${CAMROD_CARLA_MAP_PROFILE}" "${CARLA_UE_MAP}" "${CARLA_TOWN}"'
+    )
+    direct_lines = direct.stdout.splitlines()
+    assert direct_lines == [
+        "",
+        "/Game/map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/"
+        "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+        "map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/"
+        "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+    ]
+
+    ranger_root = tmp_path / "ranger"
+    (ranger_root / "config").mkdir(parents=True)
+    (ranger_root / "config" / "environment.env").write_text(
+        "CARLA_ROOT=/stale/packaged/carla\n"
+        "CAMROD_CARLA_MAP_PROFILE=stale-profile\n"
+        "CARLA_UE_MAP=/Game/map_package/Maps/stale/stale\n"
+        "CARLA_TOWN=map_package/Maps/stale/stale\n",
+        encoding="utf-8",
+    )
+    selected_carla_root = tmp_path / "selected-carla-source"
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment.update(
+        {
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CARLA_ROOT": str(selected_carla_root),
+        }
+    )
+    selected = subprocess.run(
+        [str(SCRIPT_ROOT / "site_access.sh"), "commands"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v13"
+    expected_relative = f"map_package/Maps/{expected_name}/{expected_name}"
+    assert (
+        "export CAMROD_CARLA_MAP_PROFILE="
+        "woraksan-camrod-site-geometry-v13"
+    ) in selected.stdout
+    assert f"export CARLA_UE_MAP=/Game/{expected_relative}" in selected.stdout
+    assert f"export CARLA_TOWN={expected_relative}" in selected.stdout
+    assert f"export CARLA_ROOT={selected_carla_root}" in selected.stdout
+    assert "/stale/packaged/carla" not in selected.stdout
+    assert "site_access.sh server" in selected.stdout
+    assert "site_access.sh camrod-site-geometry" in selected.stdout
+    assert "site_access.sh camping-sites" in selected.stdout
+    required_lifecycle = selected.stdout.split(
+        "# REQUIRED lifecycle order (five terminals)", 1
+    )[1].split("# Optional historical campsite geometry/control overlay", 1)[0]
+    assert "site_access.sh camrod\n" in required_lifecycle
+    assert "site_access.sh camrod-site-geometry" not in required_lifecycle
+
+
+@pytest.mark.parametrize("version", ("v12", "v11"))
+def test_site_access_wrapper_keeps_previous_maps_as_explicit_legacy_profiles(
+    tmp_path: Path,
+    version: str,
+) -> None:
+    ranger_root = tmp_path / "ranger"
+    (ranger_root / "config").mkdir(parents=True)
+    selected_carla_root = tmp_path / "selected-carla-source"
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment.update(
+        {
+            "RANGER_CARLA_ROOT": str(ranger_root),
+            "CARLA_ROOT": str(selected_carla_root),
+            "CAMROD_CARLA_MAP_PROFILE": f"woraksan-camrod-site-geometry-{version}",
+        }
+    )
+    selected = subprocess.run(
+        [str(SCRIPT_ROOT / "site_access.sh"), "commands"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    expected_name = f"Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_{version}"
+    expected_relative = f"map_package/Maps/{expected_name}/{expected_name}"
+    assert (
+        "export CAMROD_CARLA_MAP_PROFILE="
+        f"woraksan-camrod-site-geometry-{version}"
+    ) in selected.stdout
+    assert f"export CARLA_UE_MAP=/Game/{expected_relative}" in selected.stdout
+    assert f"export CARLA_TOWN={expected_relative}" in selected.stdout
+
+
+def test_site_access_wrapper_rejects_conflicting_caller_map(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment.update(
+        {
+            "RANGER_CARLA_ROOT": str(tmp_path),
+            "CARLA_UE_MAP": "/Game/map_package/Maps/other/other",
+        }
+    )
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "site_access.sh"), "commands"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "refuses conflicting CARLA_UE_MAP" in result.stderr
+
+
+def test_doctor_rejects_mismatched_carla_map_and_town_before_dependencies(
+    tmp_path: Path,
+) -> None:
+    environment = os.environ.copy()
+    for name in VIRTUAL_ENV_KEYS:
+        environment.pop(name, None)
+    environment.update(
+        {
+            "RANGER_CARLA_ROOT": str(tmp_path),
+            "CARLA_UE_MAP": "/Game/map_package/Maps/selected/selected",
+            "CARLA_TOWN": "map_package/Maps/different/different",
+        }
+    )
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "doctor"],
+        cwd=SRC_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "CARLA_UE_MAP and CARLA_TOWN must identify the same map" in combined
+    assert "doctor configuration phase failed" in combined
 
 
 def test_ui_evidence_capture_defaults_to_a_non_mutating_plan(tmp_path) -> None:
@@ -279,12 +437,260 @@ EOF
     assert "does not contain expected" in wrong_ids.stderr
 
 
+def test_ui_evidence_capture_source_video_retention_is_explicit_and_honest(
+    tmp_path: Path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_xwininfo = fake_bin / "xwininfo"
+    fake_xwininfo.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "-root -tree" ]]; then
+  cat <<'EOF'
+     0x100001 "CarlaUE4 (64-bit Development)": ()  960x540+0+0  +0+0
+     0x200002 "CAMROD Operator UI": ()  960x540+960+0  +960+0
+EOF
+  exit 0
+fi
+if [[ "$*" == "-id 0x100001" ]]; then
+  title='CarlaUE4 (64-bit Development)'; x=0
+elif [[ "$*" == "-id 0x200002" ]]; then
+  title='CAMROD Operator UI'; x=960
+else
+  exit 2
+fi
+cat <<EOF
+xwininfo: Window id: ${2} "${title}"
+  Absolute upper-left X:  ${x}
+  Absolute upper-left Y:  0
+  Width: 960
+  Height: 540
+  Map State: IsViewable
+EOF
+""",
+        encoding="utf-8",
+    )
+    fake_xwininfo.chmod(0o755)
+
+    fake_ffmpeg = fake_bin / "ffmpeg"
+    fake_ffmpeg.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+output="${!#}"
+[[ ! -e "${output}" ]] || exit 1
+printf 'fake-ffmpeg-output:%s\n' "${output##*.}" > "${output}"
+""",
+        encoding="utf-8",
+    )
+    fake_ffmpeg.chmod(0o755)
+
+    fake_ffprobe = fake_bin / "ffprobe"
+    fake_ffprobe.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+duration="${FAKE_FFPROBE_DURATION:-12.000}"
+if [[ "$*" == *"format=duration"* ]]; then
+  printf '%s\n' "${duration}"
+else
+  printf '{"streams":[{"codec_name":"h264"}],"format":{"duration":"%s"}}\n' "${duration}"
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_ffprobe.chmod(0o755)
+
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "DISPLAY": ":99",
+            "PATH": f"{fake_bin}:{environment['PATH']}",
+        }
+    )
+    environment.pop("XAUTHORITY", None)
+
+    for retain_source, output_name in ((True, "retained"), (False, "derived-only")):
+        output_dir = tmp_path / output_name
+        command = [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            str(output_dir),
+            "--duration-seconds",
+            "12",
+            "--capture-fps",
+            "1",
+        ]
+        if not retain_source:
+            command += ["--retain-source-video", "false"]
+        subprocess.run(
+            command,
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        manifest = json.loads(
+            (output_dir / "capture_manifest.json").read_text(encoding="utf-8")
+        )
+        source_video = manifest["recording"]["source_video"]
+        assert manifest["schema"] == "camrod.virtual_carla.desktop_ui_capture.v4"
+        assert manifest["recording"]["requested_duration_s"] == 12.0
+        assert manifest["recording"]["actual_duration_s"] == 12.0
+        assert manifest["recording"]["allow_short_capture"] is False
+        assert manifest["recording"]["early_finalized"] is False
+        assert source_video["retained"] is retain_source
+        assert source_video["removed_after_derivation"] is (not retain_source)
+        assert source_video["bytes_before_retention_action"] > 0
+        assert len(source_video["sha256_before_retention_action"]) == 64
+        assert ("source_mp4" in manifest["artifacts"]) is retain_source
+        assert (output_dir / "carla_camrod_desktop.mp4").exists() is retain_source
+        assert (output_dir / "representative_contact_sheet.png").stat().st_size > 0
+        assert (output_dir / "representative_motion.gif").stat().st_size > 0
+
+        hash_list = (output_dir / "sha256sums.txt").read_text(encoding="utf-8")
+        assert ("carla_camrod_desktop.mp4" in hash_list) is retain_source
+        subprocess.run(
+            ["sha256sum", "-c", "sha256sums.txt"],
+            cwd=output_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        commands = (output_dir / "exact_commands.txt").read_text(encoding="utf-8")
+        assert ("rm --" in commands) is (not retain_source)
+        assert "allow_short_capture=false" in commands
+        assert "early_finalized=false" in commands
+
+    strict_output = tmp_path / "strict-short-rejected"
+    strict = subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            str(strict_output),
+            "--duration-seconds",
+            "30",
+            "--capture-fps",
+            "1",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert strict.returncode != 0
+    assert "strict default" in strict.stderr
+    strict_rejection = json.loads(
+        (strict_output / "capture_rejection.json").read_text(encoding="utf-8")
+    )
+    assert strict_rejection["status"] == "REJECTED"
+
+    short_output = tmp_path / "accepted-early-finalized"
+    subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            str(short_output),
+            "--duration-seconds",
+            "30",
+            "--capture-fps",
+            "1",
+            "--allow-short-capture",
+            "true",
+            "--retain-source-video",
+            "false",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    short_manifest = json.loads(
+        (short_output / "capture_manifest.json").read_text(encoding="utf-8")
+    )
+    recording = short_manifest["recording"]
+    assert recording["requested_duration_s"] == 30.0
+    assert recording["actual_duration_s"] == 12.0
+    assert recording["allow_short_capture"] is True
+    assert recording["early_finalized"] is True
+    assert recording["minimum_short_capture_duration_s"] == 12.0
+    assert recording["source_video"]["retained"] is False
+    assert not (short_output / "carla_camrod_desktop.mp4").exists()
+    short_commands = (short_output / "exact_commands.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "allow_short_capture=true" in short_commands
+    assert "requested_duration_s=30" in short_commands
+    assert "actual_duration_s=12.000" in short_commands
+    assert "early_finalized=true" in short_commands
+    subprocess.run(
+        ["sha256sum", "-c", "sha256sums.txt"],
+        cwd=short_output,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    too_short_environment = environment.copy()
+    too_short_environment["FAKE_FFPROBE_DURATION"] = "11.999"
+    too_short_output = tmp_path / "below-minimum-rejected"
+    too_short = subprocess.run(
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "capture",
+            "--output-dir",
+            str(too_short_output),
+            "--duration-seconds",
+            "30",
+            "--allow-short-capture",
+            "true",
+        ],
+        cwd=tmp_path,
+        env=too_short_environment,
+        capture_output=True,
+        text=True,
+    )
+    assert too_short.returncode != 0
+    assert "12.000s <= actual" in too_short.stderr
+
+    invalid = subprocess.run(
+        [str(UI_EVIDENCE_CAPTURE), "plan", "--retain-source-video", "sometimes"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert invalid.returncode != 0
+    assert "must be true or false" in invalid.stderr
+
+    invalid_short = subprocess.run(
+        [str(UI_EVIDENCE_CAPTURE), "plan", "--allow-short-capture", "sometimes"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert invalid_short.returncode != 0
+    assert "must be true or false" in invalid_short.stderr
+
+
 def test_ui_evidence_capture_is_visual_only_and_records_provenance() -> None:
     source = UI_EVIDENCE_CAPTURE.read_text(encoding="utf-8")
 
     assert "ACTION=\"plan\"" in source
     assert "validate_side_by_side_geometry" in source
-    assert "CarlaUE4 must be left of CAMROD Operator UI" in source
+    assert "CarlaUE4 must be left of the selected UI window" in source
+    assert '"camrod_guest_ui"' in source
+    assert '"kind": ui_kind' in source
+    assert "--ui-kind" in source
+    assert "capture_rejection.json" in source
+    assert '"accepted_visual_evidence": False' in source
     assert "-f x11grab" in source
     assert "ffmpeg -n" in source
     assert "-vsync vfr" in source
@@ -294,6 +700,12 @@ def test_ui_evidence_capture_is_visual_only_and_records_provenance() -> None:
     assert "representative_motion.gif" in source
     assert "capture_manifest.json" in source
     assert "sha256sums.txt" in source
+    assert "--retain-source-video" in source
+    assert "--allow-short-capture" in source
+    assert '"early_finalized"' in source
+    assert '"schema": "camrod.virtual_carla.desktop_ui_capture.v4"' in source
+    assert '"removed_after_derivation"' in source
+    assert '"sha256sums_scope"' in source
     assert '"windows_post_composited": False' in source
     assert '"ai_generated_or_enhanced": False' in source
     assert '"vehicle_motion_or_ui_input_sent_by_capture": False' in source
@@ -301,7 +713,7 @@ def test_ui_evidence_capture_is_visual_only_and_records_provenance() -> None:
     assert '"unoccluded_window_pixels_validated": False' in source
     assert '"same_titles_and_geometry_before_after_capture": True' in source
     assert "window title/geometry changed during capture" in source
-    assert "captured duration does not match request" in source
+    assert "captured duration violates the selected" in source
     assert "ros2 topic pub" not in source
     assert "ros2 action send_goal" not in source
     assert "xdotool" not in source
@@ -558,7 +970,7 @@ def test_camrod_requires_spawn_contract_and_live_actor_before_main_cache() -> No
     assert '"${accepted_control}" "${accepted_visual}" <<\'PY\'' in source
     assert "breaks the accepted spawn/alignment cohort" in source
     camrod_case = source.split(
-        "  camrod|camrod-tuned)\n", 1
+        "  camrod|camrod-site-geometry|camrod-tuned)\n", 1
     )[1].split("    ;;\n", 1)[0]
     gate_index = camrod_case.index("validate_runtime_gates")
     spawn_index = camrod_case.index("validate_spawn_file")
@@ -1819,6 +2231,7 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
         "pacer",
         "spawn",
         "camrod",
+        "camrod-site-geometry",
         "camrod-tuned",
     ):
         assert f"run.sh {command}" in result.stdout
@@ -1826,7 +2239,43 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
     assert "--log-level warn" in result.stdout
     assert "carla_spawn_objects.launch.py" in result.stdout
     assert "camrod_carla_full.launch.py" in result.stdout
+    assert "camrod_carla_develop_site_geometry.launch.py" in result.stdout
     assert "camrod_carla_woraksan_tuned.launch.py" in result.stdout
+    parity_command = result.stdout.split(
+        "# Expanded develop-parity CAMROD command;", 1
+    )[1].split("# Expanded develop-parity + CARLA campsite", 1)[0]
+    site_geometry_command = result.stdout.split(
+        "# Expanded develop-parity + CARLA campsite", 1
+    )[1].split("# Expanded historical Woraksan-tuned", 1)[0]
+    tuned_command = result.stdout.split(
+        "# Expanded historical Woraksan-tuned", 1
+    )[1].split("# Expanded spectator command", 1)[0]
+    installed_apriltag_config = (
+        SRC_ROOT.parent
+        / "install"
+        / "camrod_carla_adapter"
+        / "share"
+        / "camrod_carla_adapter"
+        / "config"
+        / "apriltag_parking_detector_carla.yaml"
+    )
+    plain_camrod_boundary_arguments = (
+        "launch_charging_contact_emulator:=true",
+        (
+            "carla_charging_contact_parking_status_topic:="
+            "/parking/apriltag_parking_controller/status"
+        ),
+        f"carla_apriltag_param_file:={installed_apriltag_config}",
+    )
+    for argument in plain_camrod_boundary_arguments:
+        assert argument in parity_command
+        assert argument not in site_geometry_command
+        assert argument not in tuned_command
+    required_lifecycle = result.stdout.split(
+        "# REQUIRED lifecycle order (five terminals)", 1
+    )[1].split("# Optional historical campsite geometry/control overlay", 1)[0]
+    assert "run.sh camrod\n" in required_lifecycle
+    assert "run.sh camrod-site-geometry" not in required_lifecycle
     assert f"camrod_map_path:={SRC_ROOT / 'lanelet2_maps.osm'}" in result.stdout
     assert (
         "camrod_map_path:="
@@ -1921,7 +2370,11 @@ def test_every_runtime_ros_terminal_and_doctor_fail_closed_on_dds_buffers() -> N
         "bridge", "spawn", "camrod", "manual", "audit-sensors",
         "camping-sites",
     ):
-        case_label = "camrod|camrod-tuned" if stage == "camrod" else stage
+        case_label = (
+            "camrod|camrod-site-geometry|camrod-tuned"
+            if stage == "camrod"
+            else stage
+        )
         case_body = source.split(f"  {case_label})\n", 1)[1].split(
             "    ;;\n", 1
         )[0]
@@ -2042,3 +2495,36 @@ def test_adapter_metadata_has_real_maintainer() -> None:
     assert 'maintainer="hwanhonglee"' in setup
     assert "TODO" not in package
     assert "TODO" not in setup
+
+
+def test_camping_matrix_binds_a_fresh_auto_detected_runtime_audit() -> None:
+    runner = (SCRIPT_ROOT / "run.sh").read_text(encoding="utf-8")
+    matrix = (SCRIPT_ROOT / "camping_site_matrix.py").read_text(
+        encoding="utf-8"
+    )
+    auditor = (SCRIPT_ROOT / "audit_runtime_profile.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'matrix_runtime_report="${matrix_output_dir}/runtime_profile_audit.json"' in runner
+    assert "audit_runtime_profile.py" in runner
+    assert "--expected-profile auto" in runner
+    assert '--expected-lanelet-map "${CAMROD_DEVELOP_LANELET_MAP}"' in runner
+    assert '--runtime-profile-report "${matrix_runtime_report}"' in runner
+    assert "--run requires --runtime-profile-report" in matrix
+    assert "load_runtime_profile_audit" in matrix
+    assert "develop-plus-carla-site-geometry-v26" in matrix
+    assert "develop-plus-carla-site-geometry-v26" in runner
+    assert "develop-plus-carla-site-geometry-v26" in auditor
+    assert "develop-plus-carla-site-geometry-v16" not in runner
+    assert "develop-plus-carla-site-geometry-v16" not in matrix
+    assert "develop-plus-carla-site-geometry-v16" not in auditor
+    assert "develop-plus-carla-site-geometry-v14" not in runner
+    assert "develop-plus-carla-site-geometry-v14" not in matrix
+    assert "develop-plus-carla-site-geometry-v14" not in auditor
+    assert "develop-plus-carla-site-geometry-v13" not in runner
+    assert "develop-plus-carla-site-geometry-v13" not in matrix
+    assert "develop-plus-carla-site-geometry-v13" not in auditor
+    assert "camrod_carla_develop_site_geometry.launch.py" in auditor
+    assert "camrod_carla_woraksan_tuned.launch.py" in auditor
+    assert 'choices=("auto", *AUDITED_PROFILE_PARAMETERS)' in auditor

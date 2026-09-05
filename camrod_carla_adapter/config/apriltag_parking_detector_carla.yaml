@@ -1,0 +1,29 @@
+# CARLA-only rear-camera AprilTag detector profile.
+#
+# Keep this file parameter-for-parameter identical to the production detector
+# profile except for quad_decimate.  At the B2 Drop Zone's approximately
+# 4.65 m acquisition distance, the 0.16 m black border spans about 13.8 pixels
+# in CARLA's 800x600, 90-degree image.  Production's 2.0 decimation reduces
+# that to about 6.9 pixels and can alias tag36h11 ID 3.  A 1.0 value preserves
+# the CARLA pixels without increasing camera resolution, render rate, DDS
+# bandwidth, or UI image rate.
+/perception/apriltag_parking_detector:
+  ros__parameters:
+    image_topic: "/sensing/camera/econ_rear/image_rect"
+    camera_info_topic: "/sensing/camera/econ_rear/camera_info"
+    camera_frame_id: "camera_rear"
+
+    tag_family: "tag36h11"
+    target_tag_id: 3
+    tag_size: 0.16
+
+    quad_decimate: 1.0
+    n_threads: 2
+
+    roi_scale: 3.0
+    roi_full_search_interval: 30
+    max_reproj_error_px: 2.0
+
+    publish_tf: true
+    publish_debug_image: true
+    debug_jpeg_quality: 80

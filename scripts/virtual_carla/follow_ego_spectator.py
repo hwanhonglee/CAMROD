@@ -144,10 +144,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--actor-id", required=True, type=int)
     parser.add_argument("--type-id", default=EXPECTED_TYPE_ID)
     parser.add_argument("--role-name", default="ego_vehicle")
-    parser.add_argument("--distance-m", default=5.0, type=float)
-    parser.add_argument("--side-m", default=1.8, type=float)
-    parser.add_argument("--height-m", default=2.7, type=float)
-    parser.add_argument("--target-height-m", default=0.55, type=float)
+    # Keep the evidence camera close to the Ranger and almost inside the
+    # driven corridor.  The former 5.0 m / 1.8 m rear-quarter pose entered
+    # roadside tree crowns around B11 and made the robot too small in the
+    # desktop evidence.  These values are derived from the live Ranger
+    # 1.553 x 1.120 x 1.324 m bounding box; the camera remains above the roof
+    # and looks at the bounding-box centre without changing any actor state.
+    parser.add_argument("--distance-m", default=3.0, type=float)
+    parser.add_argument("--side-m", default=0.65, type=float)
+    parser.add_argument("--height-m", default=1.65, type=float)
+    parser.add_argument("--target-height-m", default=0.65, type=float)
     parser.add_argument("--log-every-frames", default=200, type=int)
     return parser
 

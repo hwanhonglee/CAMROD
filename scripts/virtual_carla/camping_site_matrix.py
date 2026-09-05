@@ -4,9 +4,10 @@
 
 The default action is deliberately read-only: it loads the active CAMROD map
 configuration and writes a plan.  ``--run`` is required before this program
-can call the production UI REST endpoints.  The runner never publishes a
-motion command, a goal pose, an initial pose, or a CARLA teleport.  Movement
-is therefore the same UI -> CAMROD -> controller path an operator uses.
+can call the selected production UI authority (operator REST or the visible
+Guest browser page).  The runner never publishes a motion command, a goal
+pose, an initial pose, or a CARLA teleport.  Movement is therefore the same
+UI -> CAMROD -> controller path a real frontend uses.
 
 ROS imports are intentionally deferred until the live path is selected.  The
 configuration, state-machine, and report helpers can consequently be tested
@@ -39,6 +40,11 @@ WAITING_FOR_CHARGING = 12
 CHARGING = 13
 DROP_ZONE_PARKING = 10
 FAILURE_STATES = {16}
+RETURN_OPERATION = 3
+GUEST_UI_TITLE = "국립공원 로봇 서비스"
+COLLISION_SAMPLE_LIMIT = 256
+COLLISION_FIRST_SAMPLE_LIMIT = 64
+FINAL_OBSERVATION_DRAIN_SECONDS = 0.25
 SITE_TYPE_RE = re.compile(r"^camping_site_(\d+)$", re.IGNORECASE)
 STATIONARY_DROP_ZONE_STATES = {0, WAITING_FOR_CHARGING, CHARGING}
 SITE_PHASES = {
@@ -48,6 +54,234 @@ SITE_PHASES = {
     ),
     "roadside_stop": (
         "CRAB_IN", "UNLOAD_WAIT", "WAIT_RETURN", "CRAB_OUT", "DONE",
+    ),
+}
+DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
+    "/camrod_twist_to_4ws": {
+        "recovery_breakaway_enable": False,
+        "rotation_recovery_breakaway_enable": False,
+        "rotation_recovery_breakaway_status_timeout_sec": 0.30,
+    },
+    "/control/cmd_vel_safety_gate": {
+        "speed_scale": 0.5,
+        "navigation_minimum_ackermann_turn_radius_m": 0.0,
+        "cost_stop_threshold": 85,
+        "lanelet_safety_enable": True,
+        "lanelet_safety_threshold": 85,
+        "lanelet_safety_body_hard_stop_enable": True,
+        "lanelet_safety_body_hard_stop_threshold": 100,
+        "lanelet_safety_footprint_enable": True,
+        "lanelet_safety_check_reverse": False,
+        "route_safety_path_relative_recovery_enable": False,
+        "route_safety_path_center_reentry_m": 0.08,
+    },
+    "/planning/controller_server": {
+        "RPP.desired_linear_vel": 1.111111,
+        "RPP.min_approach_linear_velocity": 0.277778,
+        "RPP.regulated_linear_scaling_min_speed": 0.333333,
+        "RotationShim.desired_linear_vel": 1.111111,
+        "RotationShim.min_approach_linear_velocity": 0.277778,
+        "RotationShim.regulated_linear_scaling_min_speed": 0.333333,
+    },
+    "/control/camping_site_maneuver_controller": {
+        "max_angular_speed_radps": 0.35,
+        "roadside_reverse_return_enable": False,
+        "roadside_reverse_handoff_distance_m": 0.03,
+        "crab_approach_slowdown_distance_m": 0.0,
+        "crab_approach_min_speed_mps": 0.0,
+        "rotate_180_timeout_s": 0.0,
+        "entry_position_tolerance_m": 0.15,
+        "rotate_entry_max_position_error_m": 0.0,
+        "rotate_entry_centering_max_initial_error_m": 0.30,
+        "entry_anchor_centering_max_initial_error_m": 0.0,
+        "entry_anchor_centering_max_speed_mps": 0.12,
+        "entry_anchor_centering_timeout_s": 15.0,
+        "entry_anchor_centering_tolerance_m": 0.05,
+        "enable_live_lanelet_return_handoff": True,
+        "return_lanelet_handoff_distance_m": 0.15,
+        "return_lanelet_handoff_hold_s": 1.20,
+        "return_lateral_transition_tolerance_m": 0.02,
+        "return_lateral_hysteresis_m": 0.10,
+        "crab_entry_max_heading_drift_deg": 0.0,
+        "crab_entry_max_cross_track_error_m": 0.0,
+        "crab_entry_body_yaw_compensation_deg": 0.0,
+        "crab_entry_body_yaw_alignment_tolerance_deg": 0.5,
+        "crab_entry_body_yaw_alignment_timeout_s": 15.0,
+        "crab_out_yaw_recovery_enable": False,
+        "crab_out_yaw_recovery_trigger_deg": 8.0,
+        "crab_out_yaw_recovery_max_attempts": 3,
+        "crab_out_yaw_recovery_global_timeout_s": 60.0,
+    },
+    "/control/route_safety_recovery_controller": {
+        "zero_hold_pauses_limits": False,
+        "allow_corrective_yaw_beyond_limit": False,
+    },
+    "/planning/goal_snapper": {
+        "reverse_auxiliary_input_goal_topic": "",
+        "pose_jump_check_topic": "",
+        "reissue_active_goal_after_route_recovery_when_nav_active": False,
+    },
+    "/parking/apriltag_parking_controller": {
+        "heading_gain": 1.5,
+        "lateral_to_heading_gain": 2.5,
+        # Match the effective latest-develop node defaults selected by the
+        # nested AprilTag detector/controller launch composition.
+        "reverse_approach_speed_mps": 0.2,
+        "final_insertion_speed_mps": 0.05,
+        "translation_stop_tag_distance_m": 0.40,
+        "final_lateral_tolerance_m": 0.03,
+        "minimum_approach_turn_radius_m": 0.85,
+        "tag_wait_timeout_s": 60.0,
+        "enable_bounded_lateral_retry": False,
+        "retry_forward_distance_m": 1.0,
+        "retry_forward_speed_mps": 0.10,
+        "retry_forward_timeout_s": 25.0,
+        "retry_yaw_alignment_timeout_s": 8.0,
+        "retry_maximum_lateral_error_m": 0.15,
+        "retry_maximum_heading_error_rad": 0.35,
+        "retry_maximum_forward_exit_lateral_drift_m": 0.15,
+        "retry_maximum_odometry_step_m": 0.10,
+        "retry_minimum_tag_distance_m": 0.35,
+        "retry_maximum_tag_distance_m": 0.45,
+        "maximum_retries": 5,
+    },
+    "/perception/apriltag_parking_detector": {
+        "image_topic": "/sensing/camera/econ_rear/image_rect",
+        "camera_info_topic": "/sensing/camera/econ_rear/camera_info",
+        "camera_frame_id": "camera_rear",
+        "tag_family": "tag36h11",
+        "target_tag_id": 3,
+        "tag_size": 0.16,
+        "quad_decimate": 1.0,
+        "n_threads": 2,
+        "roi_scale": 3.0,
+        "roi_full_search_interval": 30,
+        "max_reproj_error_px": 2.0,
+        "publish_tf": True,
+        "publish_debug_image": True,
+        "debug_jpeg_quality": 80,
+    },
+    "/carla_charging_contact_emulator": {
+        "drop_zone_id": "drop_zone",
+        "pose_topic": "/localization/pose",
+        "odometry_topic": "/odom",
+        "parking_status_topic": (
+            "/parking/apriltag_parking_controller/status"
+        ),
+        "planning_state_topic": "/planning/state_machine/state",
+        "charging_topic": "/camrod_carla/platform_heartbeat/charging",
+        "position_tolerance_m": 0.35,
+        "speed_tolerance_mps": 0.05,
+        "pose_timeout_s": 0.5,
+        "odometry_timeout_s": 0.5,
+        "state_timeout_s": 2.0,
+        "dwell_s": 1.0,
+        "publish_rate_hz": 10.0,
+    },
+    "/planning/nav2_selector_latch": {
+        "reverse_controller_id": "RPP",
+    },
+    "/ui_backend": {
+        "telemetry_raw_lidar_bbox_overlay_enabled": False,
+        "telemetry_obstacle_cloud_topic": "/perception/obstacles",
+        "charging_departure_delay_s": 7.0,
+    },
+    "/sensing/lidar/lidar_cost_grid": {
+        "raw_lidar_cost_enabled": False,
+        "input_topics": ["/perception/obstacles"],
+        "max_cost": 95,
+    },
+}
+
+
+def _with_site_geometry_runtime_signature(
+    base: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    result = {node: dict(parameters) for node, parameters in base.items()}
+    result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
+    result["/planning/controller_server"].update({
+        "RPP.desired_linear_vel": 0.555556,
+        "RPP.min_approach_linear_velocity": 0.138889,
+        "RPP.regulated_linear_scaling_min_speed": 0.166667,
+        "RotationShim.desired_linear_vel": 0.555556,
+        "RotationShim.min_approach_linear_velocity": 0.138889,
+        "RotationShim.regulated_linear_scaling_min_speed": 0.166667,
+    })
+    result["/camrod_twist_to_4ws"]["recovery_breakaway_enable"] = True
+    result["/camrod_twist_to_4ws"][
+        "rotation_recovery_breakaway_enable"
+    ] = True
+    result["/camrod_twist_to_4ws"][
+        "rotation_recovery_breakaway_status_timeout_sec"
+    ] = 1.25
+    result["/control/cmd_vel_safety_gate"][
+        "route_safety_path_relative_recovery_enable"
+    ] = True
+    result["/control/cmd_vel_safety_gate"][
+        "route_safety_path_center_reentry_m"
+    ] = 0.15
+    result["/control/cmd_vel_safety_gate"][
+        "lanelet_safety_footprint_enable"
+    ] = False
+    result["/control/route_safety_recovery_controller"].update({
+        "zero_hold_pauses_limits": True,
+        "allow_corrective_yaw_beyond_limit": True,
+    })
+    result["/planning/goal_snapper"][
+        "reissue_active_goal_after_route_recovery_when_nav_active"
+    ] = True
+    result["/planning/goal_snapper"][
+        "pose_jump_check_topic"
+    ] = "/localization/pose"
+    result["/parking/apriltag_parking_controller"].update({
+        "heading_gain": 1.5,
+        "lateral_to_heading_gain": 2.7,
+        "reverse_approach_speed_mps": 0.2,
+        "final_insertion_speed_mps": 0.05,
+        "enable_bounded_lateral_retry": True,
+        "retry_forward_distance_m": 0.8,
+        "retry_forward_speed_mps": 0.20,
+        "retry_forward_timeout_s": 30.0,
+        "retry_yaw_alignment_timeout_s": 8.0,
+        "retry_maximum_lateral_error_m": 0.15,
+        "retry_maximum_heading_error_rad": 0.35,
+        "retry_maximum_forward_exit_lateral_drift_m": 0.15,
+        "retry_maximum_odometry_step_m": 0.10,
+        "retry_minimum_tag_distance_m": 0.35,
+        "retry_maximum_tag_distance_m": 0.45,
+        "maximum_retries": 2,
+    })
+    result["/control/camping_site_maneuver_controller"].update({
+        "max_angular_speed_radps": 0.45,
+        "crab_approach_slowdown_distance_m": 1.0,
+        "crab_approach_min_speed_mps": 0.12,
+        "rotate_180_timeout_s": 90.0,
+        "entry_position_tolerance_m": 0.05,
+        "rotate_entry_max_position_error_m": 0.05,
+        "rotate_entry_centering_max_initial_error_m": 0.65,
+        "entry_anchor_centering_max_initial_error_m": 0.0,
+        "entry_anchor_centering_max_speed_mps": 0.12,
+        "entry_anchor_centering_timeout_s": 15.0,
+        "entry_anchor_centering_tolerance_m": 0.05,
+        "crab_entry_max_heading_drift_deg": 0.0,
+        "crab_entry_body_yaw_compensation_deg": 2.0,
+        "crab_entry_body_yaw_alignment_tolerance_deg": 1.5,
+        "crab_entry_body_yaw_alignment_timeout_s": 15.0,
+        "crab_out_yaw_recovery_enable": True,
+        "crab_out_yaw_recovery_trigger_deg": 8.0,
+        "crab_out_yaw_recovery_max_attempts": 8,
+        "crab_out_yaw_recovery_global_timeout_s": 90.0,
+    })
+    return result
+
+
+DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE = (
+    _with_site_geometry_runtime_signature(DEVELOP_PARITY_RUNTIME_SIGNATURE)
+)
+RUNTIME_PROFILE_SIGNATURES = {
+    "develop-parity": DEVELOP_PARITY_RUNTIME_SIGNATURE,
+    "develop-plus-carla-site-geometry-v26": (
+        DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE
     ),
 }
 
@@ -90,8 +324,14 @@ class SiteResult:
     target_pose: dict[str, float]
     status: str = "NOT_ATTEMPTED"
     started_at_utc: str = ""
+    dispatch_started_at_utc: str = ""
     finished_at_utc: str = ""
     elapsed_s: float = 0.0
+    outbound_duration_s: float = 0.0
+    return_duration_s: float = 0.0
+    outbound_distance_m: float = 0.0
+    return_distance_m: float = 0.0
+    total_odom_distance_m: float = 0.0
     milestones: list[dict[str, Any]] = field(default_factory=list)
     failure_reason: str = ""
     start_localization_pose: dict[str, Any] = field(default_factory=dict)
@@ -100,6 +340,9 @@ class SiteResult:
     service_state_sequence: list[str] = field(default_factory=list)
     drop_zone_phase_sequence: list[str] = field(default_factory=list)
     parking_phase_sequence: list[str] = field(default_factory=list)
+    ui_operation_request_sequence: list[dict[str, Any]] = field(
+        default_factory=list
+    )
     motion_metrics: dict[str, Any] = field(default_factory=dict)
     final_service_state: dict[str, Any] = field(default_factory=dict)
     final_parking_status: dict[str, Any] = field(default_factory=dict)
@@ -263,6 +506,85 @@ def arrival_ready_for_return(
     )
 
 
+def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) -> bool:
+    """Require the exact Guest UI RETURN authority when one is selected."""
+    if not expected_source:
+        return True
+    sequences = snapshot.get("sequences")
+    if not isinstance(sequences, Mapping):
+        return False
+    requests = sequences.get("ui_operation_requests")
+    if not isinstance(requests, Sequence) or isinstance(
+        requests, (str, bytes)
+    ):
+        return False
+    for request in requests:
+        if not isinstance(request, Mapping):
+            continue
+        try:
+            operation = int(request.get("operation", -1))
+        except (TypeError, ValueError):
+            continue
+        if (
+            operation == RETURN_OPERATION
+            and request.get("source") == expected_source
+        ):
+            return True
+    return False
+
+
+def mission_segment_metrics(
+    *,
+    dispatch_distance_m: float,
+    arrival_distance_m: float,
+    return_request_distance_m: float,
+    final_distance_m: float,
+    dispatch_monotonic: float,
+    arrival_monotonic: float,
+    return_request_monotonic: float,
+    final_monotonic: float,
+) -> dict[str, float]:
+    """Calculate explicit outbound/return timing and odometry evidence.
+
+    Distances are cumulative values from the same per-site ROS observer.  Any
+    clock or odometry regression is rejected rather than hidden with an
+    absolute value or clamp.
+    """
+    distances = tuple(
+        _finite(value, name)
+        for value, name in (
+            (dispatch_distance_m, "dispatch_distance_m"),
+            (arrival_distance_m, "arrival_distance_m"),
+            (return_request_distance_m, "return_request_distance_m"),
+            (final_distance_m, "final_distance_m"),
+        )
+    )
+    times = tuple(
+        _finite(value, name)
+        for value, name in (
+            (dispatch_monotonic, "dispatch_monotonic"),
+            (arrival_monotonic, "arrival_monotonic"),
+            (return_request_monotonic, "return_request_monotonic"),
+            (final_monotonic, "final_monotonic"),
+        )
+    )
+    if any(next_value + 1.0e-6 < value for value, next_value in zip(distances, distances[1:])):
+        raise MatrixError(
+            "per-site cumulative odometry regressed across dispatch/arrival/return/final"
+        )
+    if any(next_value < value for value, next_value in zip(times, times[1:])):
+        raise MatrixError(
+            "per-site monotonic clock regressed across dispatch/arrival/return/final"
+        )
+    return {
+        "outbound_duration_s": round(times[2] - times[0], 3),
+        "return_duration_s": round(times[3] - times[2], 3),
+        "outbound_distance_m": round(distances[1] - distances[0], 6),
+        "return_distance_m": round(distances[3] - distances[2], 6),
+        "total_odom_distance_m": round(distances[3] - distances[0], 6),
+    }
+
+
 def load_sensor_audit(path: Path, *, maximum_age_s: float = 120.0) -> dict[str, Any]:
     """Validate and bind one fresh fail-closed CARLA sensor-source audit."""
     if not path.is_file():
@@ -311,8 +633,200 @@ def load_sensor_audit(path: Path, *, maximum_age_s: float = 120.0) -> dict[str, 
     }
 
 
+def normalize_carla_map(value: str) -> str:
+    """Normalize `/Game/...` and Python API CARLA map-name spellings."""
+    result = str(value).strip()
+    if result.startswith("/Game/"):
+        result = result[len("/Game/") :]
+    return result.strip("/")
+
+
+def load_runtime_profile_audit(
+    path: Path,
+    *,
+    expected_carla_map: str,
+    expected_carla_town: str,
+    expected_lanelet_map: Path,
+    expected_actor_id: int,
+    expected_role_name: str,
+    maximum_age_s: float = 120.0,
+) -> dict[str, Any]:
+    """Validate and bind one fresh motion-authorized live-profile audit."""
+    if not path.is_file():
+        raise MatrixError(f"runtime-profile audit is missing: {path}")
+    age_s = time.time() - path.stat().st_mtime
+    if not math.isfinite(age_s) or age_s < -5.0 or age_s > maximum_age_s:
+        raise MatrixError(
+            f"runtime-profile audit is not fresh: age={age_s:.3f}s, "
+            f"maximum={maximum_age_s:.3f}s"
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise MatrixError(
+            f"runtime-profile audit is unreadable: {path}: {error}"
+        ) from None
+    if not isinstance(document, Mapping):
+        raise MatrixError(f"runtime-profile audit root must be an object: {path}")
+    mismatches: list[str] = []
+    if document.get("schema") != "camrod.virtual_carla.runtime_profile_audit.v1":
+        mismatches.append(f"schema={document.get('schema')!r}")
+    if document.get("status") != "PASS" or document.get("accepted") is not True:
+        mismatches.append(
+            f"status/accepted={document.get('status')!r}/"
+            f"{document.get('accepted')!r}"
+        )
+    if document.get("errors") != []:
+        mismatches.append(f"errors={document.get('errors')!r}")
+    profile = document.get("profile")
+    profile_signature = (
+        RUNTIME_PROFILE_SIGNATURES.get(profile)
+        if isinstance(profile, str)
+        else None
+    )
+    if profile_signature is None:
+        mismatches.append(f"profile={profile!r}")
+
+    expected_map = normalize_carla_map(expected_carla_map)
+    expected_town = normalize_carla_map(expected_carla_town)
+    if not expected_map or expected_map != expected_town:
+        mismatches.append(
+            f"expected map/town={expected_map!r}/{expected_town!r}"
+        )
+    carla_record = document.get("carla")
+    if not isinstance(carla_record, Mapping):
+        mismatches.append("carla record missing")
+        live_map = ""
+        live_actor_id = 0
+    else:
+        live_map = normalize_carla_map(
+            str(carla_record.get("normalized_map_name", ""))
+        )
+        if live_map != expected_map:
+            mismatches.append(
+                f"live CARLA map={live_map!r} expected {expected_map!r}"
+            )
+        ego = carla_record.get("ego_actor")
+        if not isinstance(ego, Mapping):
+            mismatches.append("CARLA ego actor record missing")
+            live_actor_id = 0
+        else:
+            live_actor_id = ego.get("actor_id", 0)
+            if type(live_actor_id) is not int or live_actor_id != expected_actor_id:
+                mismatches.append(
+                    f"CARLA actor_id={live_actor_id!r} expected {expected_actor_id}"
+                )
+            if ego.get("type_id") != "vehicle.ranger.default":
+                mismatches.append(f"CARLA ego type={ego.get('type_id')!r}")
+            if ego.get("role_name") != expected_role_name:
+                mismatches.append(f"CARLA ego role={ego.get('role_name')!r}")
+        settings = carla_record.get("world_settings")
+        if not isinstance(settings, Mapping):
+            mismatches.append("CARLA world settings missing")
+        else:
+            if settings.get("synchronous_mode") is not True:
+                mismatches.append("CARLA synchronous_mode is not true")
+            fixed_delta = settings.get("fixed_delta_seconds")
+            if type(fixed_delta) is not float or not math.isclose(
+                fixed_delta, 0.05, rel_tol=0.0, abs_tol=1.0e-9
+            ):
+                mismatches.append(f"CARLA fixed_delta_seconds={fixed_delta!r}")
+            if settings.get("no_rendering_mode") is not False:
+                mismatches.append("CARLA no_rendering_mode is not false")
+        umap = carla_record.get("ue_map_asset")
+        if not isinstance(umap, Mapping):
+            mismatches.append("CARLA UE map asset record missing")
+        else:
+            try:
+                umap_path = Path(str(umap["path"])).expanduser().resolve()
+                umap_sha = str(umap["sha256"])
+            except (KeyError, TypeError, ValueError):
+                mismatches.append("CARLA UE map asset path/sha256 malformed")
+            else:
+                if not umap_path.is_file():
+                    mismatches.append(f"CARLA UE map asset missing: {umap_path}")
+                elif sha256_file(umap_path) != umap_sha:
+                    mismatches.append("CARLA UE map asset changed after audit")
+
+    physical = document.get("physical_four_wheel_bridge")
+    if not isinstance(physical, Mapping):
+        mismatches.append("physical 4WS bridge record missing")
+    else:
+        if physical.get("status") != "READY":
+            mismatches.append(f"physical 4WS status={physical.get('status')!r}")
+        if physical.get("actor_id") != expected_actor_id:
+            mismatches.append(
+                f"physical 4WS actor_id={physical.get('actor_id')!r} "
+                f"expected {expected_actor_id}"
+            )
+        if physical.get("motion_backend") != "PHYSX_FOUR_WHEEL_STEERING":
+            mismatches.append(
+                f"physical 4WS backend={physical.get('motion_backend')!r}"
+            )
+
+    lanelet_record = document.get("lanelet_map")
+    if not isinstance(lanelet_record, Mapping):
+        mismatches.append("lanelet_map record missing")
+        lanelet_path = None
+        lanelet_sha = ""
+    else:
+        try:
+            lanelet_path = Path(str(lanelet_record["path"])).expanduser().resolve()
+            lanelet_sha = str(lanelet_record["sha256"])
+        except (KeyError, TypeError, ValueError):
+            lanelet_path = None
+            lanelet_sha = ""
+            mismatches.append("lanelet_map path/sha256 malformed")
+        if lanelet_path is not None:
+            expected_lanelet = expected_lanelet_map.expanduser().resolve()
+            if lanelet_path != expected_lanelet:
+                mismatches.append(
+                    f"lanelet map={lanelet_path} expected {expected_lanelet}"
+                )
+            if not lanelet_path.is_file():
+                mismatches.append(f"lanelet map missing: {lanelet_path}")
+            elif sha256_file(lanelet_path) != lanelet_sha:
+                mismatches.append("lanelet map changed after runtime-profile audit")
+
+    selected = document.get("selected_live_parameters")
+    if not isinstance(selected, Mapping) or not selected:
+        mismatches.append("selected_live_parameters missing")
+    else:
+        for node, parameters in (profile_signature or {}).items():
+            live_parameters = selected.get(node)
+            if not isinstance(live_parameters, Mapping):
+                mismatches.append(f"selected parameters missing node {node}")
+                continue
+            for name, expected in parameters.items():
+                actual = live_parameters.get(name, object())
+                if type(actual) is not type(expected) or actual != expected:
+                    mismatches.append(
+                        f"{node}.{name}={actual!r} expected {expected!r}"
+                    )
+    if mismatches:
+        raise MatrixError(
+            "runtime-profile audit rejected: " + ", ".join(mismatches)
+        )
+    assert lanelet_path is not None
+    return {
+        "path": str(path.resolve()),
+        "sha256": sha256_file(path),
+        "status": "PASS",
+        "profile": profile,
+        "actor_id": expected_actor_id,
+        "age_s_at_matrix_start": round(max(0.0, age_s), 3),
+        "carla_map": live_map,
+        "lanelet_map": {
+            "path": str(lanelet_path),
+            "sha256": lanelet_sha,
+        },
+        "selected_live_parameters": selected,
+    }
+
+
 def build_plan(sites: Mapping[str, Site], selected: Iterable[str], drop_zone: DropZone,
-               *, output: Path, config_paths: Mapping[str, Path]) -> dict[str, Any]:
+               *, output: Path, config_paths: Mapping[str, Path],
+               role_name: str = "ego_vehicle") -> dict[str, Any]:
     """Build a report that contains no runtime claim and no motion side effect."""
     selected_tuple = tuple(selected)
     selected_set = set(selected_tuple)
@@ -344,7 +858,7 @@ def build_plan(sites: Mapping[str, Site], selected: Iterable[str], drop_zone: Dr
             "drop_zone": asdict(drop_zone),
         },
         "sites": results,
-        "runtime_observation_contract": observation_contract(),
+        "runtime_observation_contract": observation_contract(role_name),
         "report_path": str(output),
     }
 
@@ -361,7 +875,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def observation_contract() -> dict[str, Any]:
+def observation_contract(role_name: str = "ego_vehicle") -> dict[str, Any]:
     """Document every live source the runner observes."""
     return {
         "required_topics": [
@@ -369,6 +883,7 @@ def observation_contract() -> dict[str, Any]:
             "/carla/ego_vehicle/odometry",
             "/carla/ego_vehicle/physical_four_wheel_status",
             "/control/camping_site_maneuver_controller/status",
+            "/ui/camping_site_operation_request",
         ],
         "status_topics": [
             "/parking/reverse_parking_controller/status",
@@ -376,6 +891,11 @@ def observation_contract() -> dict[str, Any]:
             "/control/drop_zone_maneuver_controller/status",
             "/control/cmd_vel_safety_gate/status",
         ],
+        "optional_evidence_topics": [f"/carla/{role_name}/collision"],
+        "collision_policy": (
+            "passive bounded evidence only; absence of the topic or events "
+            "never blocks preflight or changes control/planning"
+        ),
         "sensor_policy": "a fresh 36-stream/13-actor CARLA source audit is required; this runner neither publishes nor synthesizes sensor data",
         "readiness_policy": "physical actor id and strict PHYSX_FOUR_WHEEL_STEERING readiness must remain unchanged for the whole mission",
     }
@@ -494,6 +1014,311 @@ class UIClient:
     def stop(self) -> dict[str, Any]:
         return self.post("/ui/stop")
 
+    @property
+    def expected_return_source(self) -> str:
+        return ""
+
+    def close(self) -> None:
+        return None
+
+
+class GuestBrowserClient:
+    """Drive the already-visible production Guest UI through local Chrome CDP.
+
+    The browser remains the sole Guest WebSocket client.  CDP invokes the same
+    page functions as a user click, so the tested boundary is
+    ``navigate -> usage_complete`` rather than a synthetic ROS publication.
+    """
+
+    def __init__(
+        self,
+        debugging_url: str,
+        guest_ui_url: str,
+        operator_ui_url: str,
+        timeout_s: float = 10.0,
+    ) -> None:
+        self.debugging_url = self._local_http_url(
+            debugging_url, "--guest-cdp-url"
+        ).rstrip("/")
+        self.guest_ui_url = self._local_http_url(
+            guest_ui_url, "--guest-ui-url"
+        ).rstrip("/")
+        self.timeout_s = timeout_s
+        self.stop_client = UIClient(operator_ui_url, timeout_s=timeout_s)
+        self._command_id = 0
+        self._connection: Any = None
+        self._target: dict[str, Any] = {}
+        try:
+            self._connect()
+        except BaseException:
+            # A CDP socket can already exist when page readiness evaluation
+            # fails.  Never leave that debugger resource attached.
+            self.close()
+            raise
+
+    @staticmethod
+    def _local_http_url(value: str, option: str) -> str:
+        parsed = urlparse(str(value))
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise MatrixError(
+                f"{option} must be a local http://127.0.0.1 or "
+                "http://localhost endpoint without credentials/query/fragment"
+            )
+        return str(value)
+
+    def _connect(self) -> None:
+        request = Request(
+            f"{self.debugging_url}/json",
+            method="GET",
+            headers={"Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_s) as response:  # nosec B310 - validated localhost CDP
+                targets = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            raise MatrixError(
+                f"Guest browser CDP target discovery failed: {error}"
+            ) from None
+        if not isinstance(targets, list):
+            raise MatrixError("Guest browser CDP /json response must be a list")
+        matches = [
+            item
+            for item in targets
+            if isinstance(item, dict)
+            and item.get("type") == "page"
+            and str(item.get("url", "")).rstrip("/") == self.guest_ui_url
+            and str(item.get("webSocketDebuggerUrl", "")).strip()
+        ]
+        if len(matches) != 1:
+            raise MatrixError(
+                "expected exactly one visible Guest UI CDP page at "
+                f"{self.guest_ui_url}, found {len(matches)}"
+            )
+        self._target = dict(matches[0])
+        websocket_url = str(self._target["webSocketDebuggerUrl"])
+        parsed = urlparse(websocket_url)
+        if (
+            parsed.scheme != "ws"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise MatrixError(
+                f"Guest browser returned a non-local debugger URL: {websocket_url}"
+            )
+        try:
+            import websocket
+
+            self._connection = websocket.create_connection(
+                websocket_url,
+                timeout=self.timeout_s,
+                origin=self.guest_ui_url,
+            )
+        except Exception as error:
+            raise MatrixError(
+                f"Guest browser CDP WebSocket connection failed: {error}"
+            ) from None
+        ready = self._evaluate(
+            "(() => ({"
+            "title: document.title, href: document.location.href, "
+            "ready: document.readyState, visibility: document.visibilityState, "
+            "guestSocketOpen: Boolean(typeof ws !== 'undefined' && ws && "
+            "ws.readyState === WebSocket.OPEN), "
+            "guestFunctionsReady: Boolean("
+            "typeof selectSite === 'function' && "
+            "typeof openConfirm === 'function' && "
+            "typeof confirmNavigate === 'function' && "
+            "typeof sendUsageComplete === 'function' && "
+            "typeof isDispatchReady === 'function')"
+            "}))()"
+        )
+        if (
+            not isinstance(ready, dict)
+            or ready.get("ready") != "complete"
+            or str(ready.get("href", "")).rstrip("/") != self.guest_ui_url
+            or str(ready.get("title", "")).strip() != GUEST_UI_TITLE
+            or ready.get("visibility") != "visible"
+            or ready.get("guestSocketOpen") is not True
+            or ready.get("guestFunctionsReady") is not True
+        ):
+            raise MatrixError(f"visible Guest UI page is not ready: {ready!r}")
+
+    def _call(self, method: str, params: Mapping[str, Any]) -> dict[str, Any]:
+        if self._connection is None:
+            raise MatrixError("Guest browser CDP connection is closed")
+        self._command_id += 1
+        command_id = self._command_id
+        try:
+            self._connection.send(json.dumps({
+                "id": command_id,
+                "method": method,
+                "params": dict(params),
+            }))
+            deadline = time.monotonic() + self.timeout_s
+            while time.monotonic() < deadline:
+                remaining = max(0.01, deadline - time.monotonic())
+                self._connection.settimeout(remaining)
+                payload = json.loads(self._connection.recv())
+                if not isinstance(payload, dict):
+                    raise MatrixError(
+                        "Guest browser CDP frame must be a JSON object"
+                    )
+                if "id" not in payload:
+                    # Runtime events are valid between a command and response.
+                    continue
+                if payload.get("id") != command_id:
+                    raise MatrixError(
+                        "Guest browser CDP returned an unexpected command id: "
+                        f"{payload.get('id')!r} expected {command_id}"
+                    )
+                if payload.get("error"):
+                    raise MatrixError(
+                        f"Guest browser CDP command failed: {payload['error']}"
+                    )
+                if not isinstance(payload.get("result"), Mapping):
+                    raise MatrixError(
+                        "Guest browser CDP command response has no result object"
+                    )
+                return payload
+        except MatrixError:
+            self.close()
+            raise
+        except Exception as error:
+            self.close()
+            raise MatrixError(
+                f"Guest browser CDP command transport failed: {error}"
+            ) from None
+        self.close()
+        raise MatrixError(f"Guest browser CDP command timed out: {method}")
+
+    def _evaluate(self, expression: str) -> Any:
+        payload = self._call(
+            "Runtime.evaluate",
+            {
+                "expression": expression,
+                "returnByValue": True,
+                "awaitPromise": True,
+            },
+        )
+        try:
+            result = payload.get("result")
+            if not isinstance(result, Mapping):
+                raise MatrixError("Guest browser CDP evaluate result is malformed")
+            if result.get("exceptionDetails"):
+                raise MatrixError(
+                    f"Guest UI JavaScript failed: {result['exceptionDetails']}"
+                )
+            remote = result.get("result")
+            if not isinstance(remote, Mapping):
+                raise MatrixError("Guest browser CDP remote object is missing")
+            if "value" not in remote:
+                raise MatrixError(
+                    "Guest browser CDP evaluation did not return a by-value result: "
+                    f"type={remote.get('type')!r}"
+                )
+            return remote["value"]
+        except MatrixError:
+            self.close()
+            raise
+
+    @staticmethod
+    def _accepted(value: Any, action: str) -> dict[str, Any]:
+        if not isinstance(value, dict) or value.get("accepted") is not True:
+            raise MatrixError(f"Guest UI rejected {action}: {value!r}")
+        return dict(value)
+
+    def dispatch(self, site: str) -> dict[str, Any]:
+        literal = json.dumps(site)
+        expression = (
+            "(() => {"
+            f"const requestedSite = {literal};"
+            "if (document.readyState !== 'complete' || typeof ws === 'undefined' || !ws || "
+            "ws.readyState !== WebSocket.OPEN || typeof isDispatchReady !== 'function' || "
+            "typeof selectSite !== 'function' || typeof openConfirm !== 'function' || "
+            "typeof confirmNavigate !== 'function') "
+            "return {accepted:false, reason:'guest_ui_not_ready'};"
+            "if (!isDispatchReady()) return {accepted:false, reason:'dispatch_not_ready', "
+            "phase:currentPhase, state:currentState};"
+            "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
+            "const captureSend = function(payload) { sentFrame = String(payload); "
+            "return originalSend.call(socket, payload); };"
+            "try {"
+            "socket.send = captureSend;"
+            "if (socket.send !== captureSend) return {accepted:false, reason:'send_capture_failed'};"
+            "selectSite(requestedSite);"
+            "if (selectedSite !== requestedSite) "
+            "return {accepted:false, reason:'site_not_selected'};"
+            "openConfirm(); confirmNavigate();"
+            "} finally { socket.send = originalSend; }"
+            "let frame = null; try { frame = JSON.parse(sentFrame); } catch (_) {}"
+            "if (!frame || frame.action !== 'navigate' || frame.site !== requestedSite) "
+            "return {accepted:false, reason:'navigate_frame_not_sent', frame:sentFrame};"
+            "return {accepted:true, action:'navigate', site:requestedSite, "
+            "frame:frame, transport:'visible_guest_page_websocket_via_cdp'};"
+            "})()"
+        )
+        try:
+            value = self._evaluate(expression)
+            return self._accepted(value, "navigate")
+        except BaseException:
+            self.close()
+            raise
+
+    def request_return(self) -> dict[str, Any]:
+        expression = (
+            "(() => {"
+            "if (document.readyState !== 'complete' || typeof ws === 'undefined' || !ws || "
+            "ws.readyState !== WebSocket.OPEN || typeof sendUsageComplete !== 'function') "
+            "return {accepted:false, reason:'guest_ui_not_ready'};"
+            "if (typeof currentPhase === 'undefined' || currentPhase !== 'arrived' || "
+            "typeof currentState === 'undefined' || currentState !== 11) "
+            "return {accepted:false, reason:'guest_ui_not_waiting_for_return', "
+            "phase:currentPhase, state:currentState};"
+            "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
+            "const captureSend = function(payload) { sentFrame = String(payload); "
+            "return originalSend.call(socket, payload); };"
+            "try { socket.send = captureSend;"
+            "if (socket.send !== captureSend) return {accepted:false, reason:'send_capture_failed'};"
+            "sendUsageComplete(); } finally { socket.send = originalSend; }"
+            "let frame = null; try { frame = JSON.parse(sentFrame); } catch (_) {}"
+            "if (!frame || frame.action !== 'usage_complete') "
+            "return {accepted:false, reason:'usage_complete_frame_not_sent', frame:sentFrame};"
+            "return {accepted:true, action:'usage_complete', frame:frame, "
+            "transport:'visible_guest_page_websocket_via_cdp', state:currentState};"
+            "})()"
+        )
+        try:
+            value = self._evaluate(expression)
+            return self._accepted(value, "usage_complete")
+        except BaseException:
+            self.close()
+            raise
+
+    def stop(self) -> dict[str, Any]:
+        return self.stop_client.stop()
+
+    @property
+    def expected_return_source(self) -> str:
+        return "guest:usage_complete"
+
+    def close(self) -> None:
+        connection = self._connection
+        self._connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
 
 def _attr(message: Any, name: str, default: Any = None) -> Any:
     if isinstance(message, Mapping):
@@ -511,6 +1336,55 @@ def _to_jsonable(message: Any, names: Sequence[str]) -> dict[str, Any]:
         if isinstance(value, (str, int, float, bool)):
             result[name] = value
     return result
+
+
+def collision_event_record(message: Any, *, received_at_utc: str | None = None) -> dict[str, Any]:
+    """Convert one CARLA collision event without affecting mission state."""
+    header = _attr(message, "header", None)
+    stamp = _attr(header, "stamp", None)
+    impulse = _attr(message, "normal_impulse", None)
+
+    def finite_or_none(value: Any) -> float | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    try:
+        other_actor_id = int(_attr(message, "other_actor_id", 0))
+    except (TypeError, ValueError):
+        other_actor_id = None
+
+    record = {
+        "received_at_utc": received_at_utc or utc_now(),
+        "other_actor_id": other_actor_id,
+        "normal_impulse": {
+            axis: finite_or_none(_attr(impulse, axis, None))
+            for axis in ("x", "y", "z")
+        },
+    }
+    sec = _attr(stamp, "sec", None)
+    nanosec = _attr(stamp, "nanosec", None)
+    if isinstance(sec, int) and isinstance(nanosec, int):
+        record["timestamp"] = {"sec": sec, "nanosec": nanosec}
+    frame = _attr(message, "frame", _attr(header, "frame_id", None))
+    if frame not in (None, ""):
+        record["frame"] = frame
+    return record
+
+
+def ros_header_stamp_ns(message: Any) -> int | None:
+    """Return a validated ROS header timestamp for queue-boundary filtering."""
+    header = _attr(message, "header", None)
+    stamp = _attr(header, "stamp", None)
+    sec = _attr(stamp, "sec", None)
+    nanosec = _attr(stamp, "nanosec", None)
+    if not isinstance(sec, int) or not isinstance(nanosec, int):
+        return None
+    if sec < 0 or not 0 <= nanosec < 1_000_000_000:
+        return None
+    return sec * 1_000_000_000 + nanosec
 
 
 def validate_physical_status(status: Any, expected_actor_id: int | None = None) -> int:
@@ -569,12 +1443,19 @@ class RosObservation:
                 AvgServiceState,
                 AvgTwist,
                 ModuleState,
+                MotionOperation,
             )
             from nav_msgs.msg import Odometry
             from carla_extended_ackermann_msgs.msg import PhysicalFourWheelStatus
         except (ImportError, ModuleNotFoundError) as error:
             raise MatrixError(f"live ROS interfaces unavailable: {error}") from None
         self.rclpy = rclpy
+        if int(MotionOperation.RETURN) != RETURN_OPERATION:
+            raise MatrixError(
+                "avg_msgs/MotionOperation.RETURN no longer matches the "
+                f"matrix contract: {int(MotionOperation.RETURN)} != "
+                f"{RETURN_OPERATION}"
+            )
         rclpy.init(args=[])
         self.node = rclpy.create_node("camrod_carla_camping_site_matrix")
         self.latest: dict[str, Any] = {
@@ -587,6 +1468,7 @@ class RosObservation:
             "parking": {},
             "drop_zone": None,
             "gate": None,
+            "ui_operation_request": None,
         }
         self.expected_actor_id = expected_actor_id
         self._physical_received_monotonic: float | None = None
@@ -598,14 +1480,30 @@ class RosObservation:
         self._parking_phases: list[str] = []
         self._drop_zone_phases: list[str] = []
         self._gate_states: list[str] = []
+        self._ui_operation_requests: list[dict[str, Any]] = []
         self._cmd_vel_samples = 0
         self._cmd_vel_max_abs = 0.0
         self._motion_command_observed = False
         self._carla_odom_samples = 0
         self._carla_odom_distance_m = 0.0
         self._last_carla_odom_xy: tuple[float, float] | None = None
+        self._latest_odom_stamp_ns: int | None = None
+        self._latest_carla_stamp_ns: int | None = None
         self._physical_samples = 0
+        self._collision_events: list[dict[str, Any]] = []
+        self._collision_total_event_count = 0
+        self._collision_stale_queued_event_count = 0
+        self._collision_max_normal_impulse_norm = 0.0
+        self._collision_cutoff_stamp_ns: int | None = None
+        self._collision_topic = f"/carla/{role_name}/collision"
+        self._collision_subscriber_created = False
         qos = QoSProfile(depth=20, reliability=QoSReliabilityPolicy.BEST_EFFORT)
+        command_qos = QoSProfile(
+            depth=20, reliability=QoSReliabilityPolicy.RELIABLE
+        )
+        collision_qos = QoSProfile(
+            depth=100, reliability=QoSReliabilityPolicy.RELIABLE
+        )
         self.node.create_subscription(AvgServiceState, "/service/state", lambda msg: self._service(msg), qos)
         self.node.create_subscription(AvgPoseStamped, "/localization/pose", lambda msg: self._pose(msg), qos)
         self.node.create_subscription(AvgTwist, "/control/cmd_vel", lambda msg: self._cmd(msg), qos)
@@ -616,6 +1514,17 @@ class RosObservation:
         self.node.create_subscription(ModuleState, "/parking/apriltag_parking_controller/status", lambda msg: self._parking("apriltag", msg), qos)
         self.node.create_subscription(ModuleState, "/control/drop_zone_maneuver_controller/status", lambda msg: self._drop_zone(msg), qos)
         self.node.create_subscription(ModuleState, "/control/cmd_vel_safety_gate/status", lambda msg: self._gate(msg), qos)
+        self.node.create_subscription(MotionOperation, "/ui/camping_site_operation_request", lambda msg: self._ui_operation(msg), command_qos)
+        try:
+            from carla_msgs.msg import CarlaCollisionEvent
+        except (ImportError, ModuleNotFoundError):
+            CarlaCollisionEvent = None
+        if CarlaCollisionEvent is not None:
+            self.node.create_subscription(
+                CarlaCollisionEvent, self._collision_topic,
+                lambda msg: self._collision(msg), collision_qos,
+            )
+            self._collision_subscriber_created = True
 
     def _service(self, msg: Any) -> None:
         state = int(_attr(msg, "state", -1))
@@ -669,6 +1578,12 @@ class RosObservation:
         )
 
     def _odom(self, msg: Any) -> None:
+        stamp_ns = ros_header_stamp_ns(msg)
+        if stamp_ns is not None:
+            self._latest_odom_stamp_ns = stamp_ns
+            self._latest_carla_stamp_ns = max(
+                stamp_ns, self._latest_carla_stamp_ns or stamp_ns
+            )
         pose = _attr(_attr(msg, "pose", None), "pose", None); twist = _attr(_attr(msg, "twist", None), "twist", None)
         position = _attr(pose, "position", None); linear = _attr(twist, "linear", None)
         if position is not None:
@@ -778,6 +1693,43 @@ class RosObservation:
                 f"control safety gate ERROR: {_attr(msg, 'message', '')}"
             )
 
+    def _ui_operation(self, msg: Any) -> None:
+        operation = {
+            "operation": int(_attr(msg, "operation", -1)),
+            "source": str(_attr(msg, "source", "")).strip(),
+        }
+        self.latest["ui_operation_request"] = operation
+        if not self._ui_operation_requests or self._ui_operation_requests[-1] != operation:
+            self._ui_operation_requests.append(operation)
+
+    def _collision(self, msg: Any) -> None:
+        """Passively retain an event; this callback has no control side effect."""
+        stamp_ns = ros_header_stamp_ns(msg)
+        if stamp_ns is not None:
+            latest_stamp = getattr(self, "_latest_carla_stamp_ns", None)
+            self._latest_carla_stamp_ns = max(
+                stamp_ns, latest_stamp or stamp_ns
+            )
+        if (
+            stamp_ns is not None
+            and self._collision_cutoff_stamp_ns is not None
+            and stamp_ns <= self._collision_cutoff_stamp_ns
+        ):
+            self._collision_stale_queued_event_count += 1
+            return
+        self._collision_total_event_count += 1
+        record = collision_event_record(msg)
+        record["event_index"] = self._collision_total_event_count
+        impulse = record["normal_impulse"]
+        if all(impulse[axis] is not None for axis in ("x", "y", "z")):
+            norm = math.sqrt(sum(impulse[axis] ** 2 for axis in ("x", "y", "z")))
+            self._collision_max_normal_impulse_norm = max(
+                self._collision_max_normal_impulse_norm, norm
+            )
+        if len(self._collision_events) >= COLLISION_SAMPLE_LIMIT:
+            self._collision_events.pop(COLLISION_FIRST_SAMPLE_LIMIT)
+        self._collision_events.append(record)
+
     @staticmethod
     def _append_changed(values: list[Any], value: Any) -> None:
         if value in (None, ""):
@@ -793,6 +1745,7 @@ class RosObservation:
         self._parking_phases = []
         self._drop_zone_phases = []
         self._gate_states = []
+        self._ui_operation_requests = []
         self._cmd_vel_samples = 0
         self._cmd_vel_max_abs = 0.0
         self._motion_command_observed = False
@@ -800,9 +1753,45 @@ class RosObservation:
         self._carla_odom_distance_m = 0.0
         self._last_carla_odom_xy = None
         self._physical_samples = 0
+        self._reset_collision_evidence()
         self.latest["site"] = None
         self.latest["parking"] = {}
         self.latest["drop_zone"] = None
+        self.latest["ui_operation_request"] = None
+
+    def begin_motion_measurement(self) -> None:
+        """Start per-site command/odometry metrics at frontend dispatch."""
+        self._cmd_vel_samples = 0
+        self._cmd_vel_max_abs = 0.0
+        self._motion_command_observed = False
+        self._carla_odom_samples = 0
+        self._carla_odom_distance_m = 0.0
+        odometry = self.latest.get("carla_odometry") or {}
+        try:
+            x = float(odometry["x_m"])
+            y = float(odometry["y_m"])
+        except (KeyError, TypeError, ValueError):
+            self._last_carla_odom_xy = None
+        else:
+            self._last_carla_odom_xy = (x, y)
+        # Evidence is scoped to frontend dispatch through mission completion.
+        # Resetting here also discards callbacks drained during live preflight.
+        self._reset_collision_evidence()
+
+    def _reset_collision_evidence(self) -> None:
+        """Start a bounded collision window at the latest observed CARLA time."""
+        self._collision_events = []
+        self._collision_total_event_count = 0
+        self._collision_stale_queued_event_count = 0
+        self._collision_max_normal_impulse_norm = 0.0
+        stamps = (
+            getattr(self, "_latest_odom_stamp_ns", None),
+            getattr(self, "_latest_carla_stamp_ns", None),
+        )
+        valid_stamps = [stamp for stamp in stamps if stamp is not None]
+        self._collision_cutoff_stamp_ns = (
+            max(valid_stamps) if valid_stamps else None
+        )
 
     def spin_once(self, timeout_s: float = 0.2) -> None:
         try:
@@ -818,6 +1807,15 @@ class RosObservation:
                     time.monotonic() - self._physical_received_monotonic > 1.5):
                 raise MatrixError("physical CARLA readiness heartbeat is stale")
 
+    def drain_final_callbacks(self) -> None:
+        """Drain callbacks queued with the terminal state before snapshotting."""
+        deadline = time.monotonic() + FINAL_OBSERVATION_DRAIN_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                return
+            self.spin_once(min(0.01, remaining))
+
     def snapshot(self) -> dict[str, Any]:
         document = dict(self.latest)
         document["sequences"] = {
@@ -827,6 +1825,7 @@ class RosObservation:
             "parking_phases": list(self._parking_phases),
             "drop_zone_phases": list(self._drop_zone_phases),
             "gate_states": list(self._gate_states),
+            "ui_operation_requests": list(self._ui_operation_requests),
         }
         document["motion_metrics"] = {
             "cmd_vel_samples": self._cmd_vel_samples,
@@ -839,6 +1838,39 @@ class RosObservation:
             "physical_status_samples": self._physical_samples,
         }
         document["physical_identity"] = dict(self._physical_identity or {})
+        try:
+            publisher_count = int(self.node.count_publishers(self._collision_topic))
+        except (AttributeError, RuntimeError):
+            publisher_count = None
+        document["collision_evidence"] = {
+            "topic": self._collision_topic,
+            "subscriber_created": self._collision_subscriber_created,
+            "publisher_count": publisher_count,
+            "publisher_discovered": (
+                publisher_count > 0 if publisher_count is not None else None
+            ),
+            "subscriber_and_publisher_discovered": (
+                self._collision_subscriber_created and publisher_count > 0
+                if publisher_count is not None else None
+            ),
+            "event_count": self._collision_total_event_count,
+            "sampled_event_count": len(self._collision_events),
+            "omitted_event_count": max(
+                0, self._collision_total_event_count - len(self._collision_events)
+            ),
+            "stale_queued_event_count": self._collision_stale_queued_event_count,
+            "maximum_normal_impulse_norm": round(
+                self._collision_max_normal_impulse_norm, 6
+            ),
+            "sample_policy": {
+                "maximum_samples": COLLISION_SAMPLE_LIMIT,
+                "preserved_first_samples": COLLISION_FIRST_SAMPLE_LIMIT,
+                "preserved_recent_samples": (
+                    COLLISION_SAMPLE_LIMIT - COLLISION_FIRST_SAMPLE_LIMIT
+                ),
+            },
+            "events": list(self._collision_events),
+        }
         return json.loads(json.dumps(document, allow_nan=False))
 
     def close(self) -> None:
@@ -873,8 +1905,37 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="fresh PASS JSON from carla_sensor_source_audit --json (required with --run)",
     )
+    parser.add_argument(
+        "--runtime-profile-report",
+        type=Path,
+        help=(
+            "fresh PASS JSON from audit_runtime_profile.py "
+            "(required with --run)"
+        ),
+    )
     parser.add_argument("--ui-url", default=os.environ.get("CAMROD_UI_URL", "http://127.0.0.1:8010"))
+    parser.add_argument(
+        "--return-authority",
+        choices=("operator_rest", "guest_browser"),
+        default="operator_rest",
+        help="frontend authority used for dispatch and the Return request",
+    )
+    parser.add_argument(
+        "--guest-cdp-url",
+        default=os.environ.get("CAMROD_GUEST_CDP_URL", "http://127.0.0.1:9223"),
+        help="local Chrome DevTools endpoint for a visible Guest UI browser",
+    )
+    parser.add_argument(
+        "--guest-ui-url",
+        default=os.environ.get("CAMROD_GUEST_UI_URL", "http://127.0.0.1:8012"),
+        help="Guest UI page URL that must own the browser WebSocket",
+    )
     parser.add_argument("--role-name", default=os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"))
+    parser.add_argument(
+        "--expected-actor-id",
+        type=int,
+        help="preflight- and physical-bridge-bound live Ranger actor id",
+    )
     parser.add_argument("--phase-timeout-s", type=float, default=900.0)
     parser.add_argument(
         "--start-drop-zone-tolerance-m",
@@ -903,31 +1964,149 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise MatrixError("--role-name must not be empty")
     if args.run and args.sensor_audit_report is None:
         raise MatrixError("--run requires --sensor-audit-report")
+    if args.run and args.runtime_profile_report is None:
+        raise MatrixError("--run requires --runtime-profile-report")
+    if args.run and (
+        type(args.expected_actor_id) is not int or args.expected_actor_id <= 0
+    ):
+        raise MatrixError("--run requires a positive --expected-actor-id")
+
+
+def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
+    """Return the exact frontend authority and motion path for the report."""
+    if args.return_authority == "guest_browser":
+        return {
+            "return_authority": "guest_browser",
+            "expected_return_operation": RETURN_OPERATION,
+            "expected_return_source": "guest:usage_complete",
+            "ui_endpoints": {
+                "dispatch": (
+                    "visible Guest page selectSite/openConfirm/confirmNavigate "
+                    "-> page-owned WebSocket action=navigate"
+                ),
+                "return": (
+                    "visible Guest page sendUsageComplete -> page-owned "
+                    "WebSocket action=usage_complete"
+                ),
+                "stop": "POST /ui/stop (operator safety endpoint only)",
+            },
+            "motion_path": (
+                "visible Guest browser page -> page-owned Guest WebSocket "
+                "navigate/usage_complete -> camrod_ui_guest ROS commands "
+                "(RETURN source guest:usage_complete) -> CAMROD planning -> "
+                "CAMROD control -> CARLA physical 4WS bridge"
+            ),
+        }
+    return {
+        "return_authority": "operator_rest",
+        "expected_return_operation": None,
+        "expected_return_source": "",
+        "ui_endpoints": {
+            "dispatch": "POST /ui/destination?site=Bx&run=true",
+            "return": "POST /ui/manual_return",
+            "stop": "POST /ui/stop",
+        },
+        "motion_path": (
+            "UI REST -> CAMROD planning -> CAMROD control -> "
+            "CARLA physical 4WS bridge"
+        ),
+    }
 
 
 def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: DropZone, selected: Sequence[str], report: dict[str, Any]) -> int:
     """Execute UI-driven site missions and preserve every milestone."""
-    client = UIClient(args.ui_url)
-    observer = RosObservation(args.role_name)
-    report["status"] = "RUNNING"
-    report["runtime"] = {
-        "started_at_utc": utc_now(),
-        "ui_url": args.ui_url,
-        "carla_town": os.environ.get("CARLA_TOWN", ""),
-        "carla_ue_map": os.environ.get("CARLA_UE_MAP", ""),
-        "ros_domain_id": os.environ.get("ROS_DOMAIN_ID", ""),
-        "rmw_implementation": os.environ.get("RMW_IMPLEMENTATION", ""),
-        "phase_timeout_s": args.phase_timeout_s,
-        "start_drop_zone_tolerance_m": args.start_drop_zone_tolerance_m,
-        "drop_zone_tolerance_m": args.drop_zone_tolerance_m,
-        "motion_path": "UI REST -> CAMROD planning -> CAMROD control -> CARLA physical 4WS bridge",
-    }
-    write_json_atomic(args.output, report)
+    if args.return_authority == "guest_browser":
+        client: Any = GuestBrowserClient(
+            args.guest_cdp_url,
+            args.guest_ui_url,
+            args.ui_url,
+        )
+    else:
+        client = UIClient(args.ui_url)
+    observer: RosObservation | None = None
+    authority = ui_authority_contract(args)
+    try:
+        observer = RosObservation(
+            args.role_name, expected_actor_id=args.expected_actor_id
+        )
+        report["scope"].update({
+            "return_authority": authority["return_authority"],
+            "expected_return_operation": authority["expected_return_operation"],
+            "expected_return_source": authority["expected_return_source"],
+            "ui_endpoints": authority["ui_endpoints"],
+        })
+        report["status"] = "RUNNING"
+        report["runtime"] = {
+            "started_at_utc": utc_now(),
+            "profile": report["runtime_profile_audit"]["profile"],
+            "ui_url": args.ui_url,
+            "carla_town": os.environ.get("CARLA_TOWN", ""),
+            "carla_ue_map": os.environ.get("CARLA_UE_MAP", ""),
+            "ros_domain_id": os.environ.get("ROS_DOMAIN_ID", ""),
+            "rmw_implementation": os.environ.get("RMW_IMPLEMENTATION", ""),
+            "phase_timeout_s": args.phase_timeout_s,
+            "start_drop_zone_tolerance_m": args.start_drop_zone_tolerance_m,
+            "drop_zone_tolerance_m": args.drop_zone_tolerance_m,
+            "motion_path": authority["motion_path"],
+            "return_authority": authority["return_authority"],
+            "expected_return_operation": authority["expected_return_operation"],
+            "expected_return_source": authority["expected_return_source"],
+            "guest_ui_url": (
+                args.guest_ui_url
+                if args.return_authority == "guest_browser"
+                else ""
+            ),
+            "guest_cdp_url": (
+                args.guest_cdp_url
+                if args.return_authority == "guest_browser"
+                else ""
+            ),
+            "per_site_metric_contract": {
+                "elapsed_s": "frontend dispatch attempt through final PASS/FAIL",
+                "milestones[].elapsed_s": (
+                    "live per-site preflight start through milestone"
+                ),
+                "outbound_duration_s": (
+                    "frontend dispatch attempt through frontend return request"
+                ),
+                "return_duration_s": (
+                    "frontend return request attempt through PARKED+CHARGING"
+                ),
+                "outbound_distance_m": (
+                    "CARLA odometry accumulated from dispatch to WAIT_RETURN"
+                ),
+                "return_distance_m": (
+                    "CARLA odometry accumulated from return request to final"
+                ),
+                "total_odom_distance_m": (
+                    "CARLA odometry accumulated from dispatch to final"
+                ),
+            },
+        }
+        write_json_atomic(args.output, report)
+    except BaseException:
+        if observer is not None:
+            try:
+                observer.close()
+            except Exception:
+                pass
+        client.close()
+        raise
+
+    # The guarded construction above guarantees this for type checkers and
+    # for the runtime code below.
+    assert observer is not None
 
     def progress(message: str) -> None:
         print(f"[camping-matrix] {message}", flush=True)
 
     started_monotonic: dict[str, float] = {}
+    dispatch_monotonic: dict[str, float] = {}
+    arrival_monotonic: dict[str, float] = {}
+    return_request_monotonic: dict[str, float] = {}
+    dispatch_distance_m: dict[str, float] = {}
+    arrival_distance_m: dict[str, float] = {}
+    return_request_distance_m: dict[str, float] = {}
 
     def checkpoint(result: dict[str, Any], event: str) -> None:
         elapsed = round(time.monotonic() - started_monotonic.get(result["site"], time.monotonic()), 3)
@@ -964,7 +2143,50 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
         result["parking_phase_sequence"] = list(
             sequences.get("parking_phases") or []
         )
+        result["ui_operation_request_sequence"] = list(
+            sequences.get("ui_operation_requests") or []
+        )
         result["motion_metrics"] = dict(snapshot.get("motion_metrics") or {})
+        result["collision_evidence"] = dict(
+            snapshot.get("collision_evidence") or {}
+        )
+        key = str(result.get("site", ""))
+        current_distance = float(
+            result["motion_metrics"].get("carla_odometry_distance_m", 0.0)
+        )
+        if key in dispatch_distance_m:
+            total_distance = max(
+                0.0, current_distance - dispatch_distance_m[key]
+            )
+            result["total_odom_distance_m"] = round(total_distance, 6)
+            outbound_end_distance = return_request_distance_m.get(
+                key, current_distance
+            )
+            result["outbound_distance_m"] = round(
+                max(
+                    0.0,
+                    outbound_end_distance - dispatch_distance_m[key],
+                ),
+                6,
+            )
+            result["return_distance_m"] = round(
+                max(
+                    0.0,
+                    current_distance - outbound_end_distance,
+                ),
+                6,
+            )
+        now = time.monotonic()
+        if key in dispatch_monotonic:
+            outbound_end = return_request_monotonic.get(
+                key, now
+            )
+            result["outbound_duration_s"] = round(
+                outbound_end - dispatch_monotonic[key], 3
+            )
+            result["return_duration_s"] = round(
+                now - outbound_end, 3
+            )
         update_motion_command_scope(report, snapshot)
 
     try:
@@ -973,8 +2195,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             site = sites[key]
             result["status"] = "RUNNING"
             result["started_at_utc"] = utc_now()
-            started = time.monotonic()
-            started_monotonic[key] = started
+            started_monotonic[key] = time.monotonic()
             observer.begin_site()
             write_json_atomic(args.output, report)
             progress(
@@ -1051,8 +2272,18 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             result["start_drop_zone_error_m"] = start_error
             result["actor_id"] = actor_id
             progress(
-                f"{key} ({index + 1}/{len(selected)}): dispatching via production UI"
+                f"{key} ({index + 1}/{len(selected)}): dispatching via "
+                f"{authority['return_authority']}"
             )
+            observer.begin_motion_measurement()
+            dispatch_snapshot = observer.snapshot()
+            dispatch_distance_m[key] = float(
+                (dispatch_snapshot.get("motion_metrics") or {}).get(
+                    "carla_odometry_distance_m", 0.0
+                )
+            )
+            dispatch_monotonic[key] = time.monotonic()
+            result["dispatch_started_at_utc"] = utc_now()
             response = client.dispatch(key)
             result["dispatch_response"] = response
             checkpoint(result, "dispatch accepted")
@@ -1064,6 +2295,12 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 result,
             )
             arrival = observer.snapshot()
+            arrival_monotonic[key] = time.monotonic()
+            arrival_distance_m[key] = float(
+                (arrival.get("motion_metrics") or {}).get(
+                    "carla_odometry_distance_m", 0.0
+                )
+            )
             result["arrival_localization_pose"] = arrival.get("pose") or {}
             arrival_phases = list(
                 (arrival.get("sequences") or {}).get("site_phases") or []
@@ -1076,8 +2313,19 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     f"{key}: arrival phase sequence is incomplete for "
                     f"{site.service_mode}: {arrival_phases}"
                 )
+            return_request_monotonic[key] = time.monotonic()
+            return_request_distance_m[key] = arrival_distance_m[key]
             result["return_response"] = client.request_return()
             checkpoint(result, "return request accepted")
+            if client.expected_return_source:
+                wait_until(
+                    lambda snap: return_source_observed(
+                        snap, client.expected_return_source
+                    ),
+                    10.0,
+                    f"RETURN source {client.expected_return_source} observed",
+                    result,
+                )
             wait_until(
                 lambda snap: WAITING_FOR_CHARGING
                 in ((snap.get("sequences") or {}).get("service_state_ids") or []),
@@ -1101,8 +2349,29 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 "PARKED and CHARGING",
                 result,
             )
+            # PARKED/CHARGING and a same-frame collision can be ready in the
+            # executor together.  wait_until() returns after the terminal
+            # state callback, so drain the remaining ready callbacks before
+            # freezing per-site evidence.
+            observer.drain_final_callbacks()
             final_snapshot = observer.snapshot()
             copy_final_observation(result, final_snapshot)
+            final_monotonic = time.monotonic()
+            final_distance = float(
+                (final_snapshot.get("motion_metrics") or {}).get(
+                    "carla_odometry_distance_m", 0.0
+                )
+            )
+            result.update(mission_segment_metrics(
+                dispatch_distance_m=dispatch_distance_m[key],
+                arrival_distance_m=arrival_distance_m[key],
+                return_request_distance_m=return_request_distance_m[key],
+                final_distance_m=final_distance,
+                dispatch_monotonic=dispatch_monotonic[key],
+                arrival_monotonic=arrival_monotonic[key],
+                return_request_monotonic=return_request_monotonic[key],
+                final_monotonic=final_monotonic,
+            ))
             missing_observations = [
                 name for name in (
                     "pose", "carla_odometry", "cmd_vel", "site", "parking",
@@ -1167,7 +2436,9 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 raise MatrixError(f"{key}: drop-zone final error {error!r} m exceeds {args.drop_zone_tolerance_m:g} m")
             result["status"] = "PASS"
             result["finished_at_utc"] = utc_now()
-            result["elapsed_s"] = round(time.monotonic() - started, 3)
+            result["elapsed_s"] = round(
+                final_monotonic - dispatch_monotonic[key], 3
+            )
             checkpoint(result, f"PASS; return error={error:.3f} m")
         report["status"] = "PASS"
         report["runtime"]["finished_at_utc"] = utc_now()
@@ -1181,10 +2452,14 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             if item["status"] == "RUNNING":
                 item["status"] = "INTERRUPTED"
                 item["finished_at_utc"] = utc_now()
-                item["elapsed_s"] = round(
-                    time.monotonic()
-                    - started_monotonic.get(item["site"], time.monotonic()),
-                    3,
+                item["elapsed_s"] = (
+                    round(
+                        time.monotonic()
+                        - dispatch_monotonic[item["site"]],
+                        3,
+                    )
+                    if item["site"] in dispatch_monotonic
+                    else 0.0
                 )
                 copy_final_observation(item, observer.snapshot())
         write_json_atomic(args.output, report)
@@ -1202,10 +2477,14 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 item["status"] = "FAIL"
                 item["failure_reason"] = str(error)
                 item["finished_at_utc"] = utc_now()
-                item["elapsed_s"] = round(
-                    time.monotonic()
-                    - started_monotonic.get(item["site"], time.monotonic()),
-                    3,
+                item["elapsed_s"] = (
+                    round(
+                        time.monotonic()
+                        - dispatch_monotonic[item["site"]],
+                        3,
+                    )
+                    if item["site"] in dispatch_monotonic
+                    else 0.0
                 )
                 copy_final_observation(item, observer.snapshot())
             elif item["status"] == "NOT_ATTEMPTED":
@@ -1219,7 +2498,10 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             write_json_atomic(args.output, report)
         return 1
     finally:
-        observer.close()
+        try:
+            observer.close()
+        finally:
+            client.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1237,11 +2519,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         if missing:
             raise MatrixError(f"selected sites are missing from active YAML: {missing}")
         drop_zone = load_drop_zone(drop_path)
-        report = build_plan(all_sites, selected, drop_zone, output=args.output, config_paths={"camping_sites": camping_path, "drop_zones": drop_path})
+        report = build_plan(
+            all_sites,
+            selected,
+            drop_zone,
+            output=args.output,
+            config_paths={
+                "camping_sites": camping_path,
+                "drop_zones": drop_path,
+            },
+            role_name=args.role_name,
+        )
         if args.run:
             assert args.sensor_audit_report is not None
+            assert args.runtime_profile_report is not None
             sensor_audit_path = args.sensor_audit_report.expanduser().resolve()
             report["sensor_source_audit"] = load_sensor_audit(sensor_audit_path)
+            runtime_profile_path = args.runtime_profile_report.expanduser().resolve()
+            report["runtime_profile_audit"] = load_runtime_profile_audit(
+                runtime_profile_path,
+                expected_carla_map=os.environ.get("CARLA_UE_MAP", ""),
+                expected_carla_town=os.environ.get("CARLA_TOWN", ""),
+                expected_lanelet_map=Path(
+                    os.environ.get("CAMROD_DEVELOP_LANELET_MAP", "")
+                ),
+                expected_actor_id=args.expected_actor_id,
+                expected_role_name=args.role_name,
+            )
         if args.run or output_explicit:
             write_json_atomic(args.output, report, create_only=True)
         print(f"[camping-matrix] {'RUN' if args.run else 'PLAN_ONLY'}: {', '.join(selected)}")

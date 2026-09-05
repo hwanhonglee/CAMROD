@@ -10,6 +10,7 @@ from camrod_carla_adapter.command_mapping import (
     command_age_timed_out,
     map_planar_twist,
     recovery_breakaway_is_authorized,
+    rotation_recovery_breakaway_is_authorized,
     validate_adapter_timing,
     validate_planar_axes,
     validate_ranger_contract,
@@ -249,6 +250,46 @@ def test_fresh_recovery_crab_authorizes_only_narrow_breakaway_capability(
     command = map_planar_twist(0.0, lateral, 0.0, CFG)
     assert recovery_breakaway_is_authorized(
         command, state, 10.0, 10.29) is True
+
+
+def test_fresh_campsite_crab_out_rotation_authorizes_exact_control_status():
+    command = map_planar_twist(0.0, 0.0, -0.15, CFG)
+    status = "phase=CRAB_OUT crab_out_yaw_recovery_active=true"
+    assert rotation_recovery_breakaway_is_authorized(
+        command, "control", 0, "CRAB_OUT", status, 10.0, 10.29) is True
+
+
+def test_fresh_campsite_rotate_180_authorizes_stall_breakaway_only():
+    command = map_planar_twist(0.0, 0.0, 0.45, CFG)
+    status = "phase=ROTATE_180 yaw_error_deg=25.50"
+    assert rotation_recovery_breakaway_is_authorized(
+        command, "control", 0, "ROTATE_180", status, 10.0, 10.29) is True
+
+
+@pytest.mark.parametrize(
+    ("module_name", "level", "state", "message", "received", "now"),
+    [
+        ("camping_site_maneuver_controller", 0, "CRAB_OUT",
+         "crab_out_yaw_recovery_active=true", 10.0, 10.1),
+        ("control", 1, "CRAB_OUT",
+         "crab_out_yaw_recovery_active=true", 10.0, 10.1),
+        ("control", "malformed", "CRAB_OUT",
+         "crab_out_yaw_recovery_active=true", 10.0, 10.1),
+        ("control", 0, "ROTATE_180",
+         "crab_out_yaw_recovery_active=true", 10.0, 10.1),
+        ("control", 0, "ROTATE_180",
+         "prefix_phase=ROTATE_180", 10.0, 10.1),
+        ("control", 0, "CRAB_OUT",
+         "prefix_crab_out_yaw_recovery_active=true", 10.0, 10.1),
+        ("control", 0, "CRAB_OUT",
+         "crab_out_yaw_recovery_active=true", 10.0, 11.26),
+    ],
+)
+def test_campsite_rotation_recovery_authority_fails_closed(
+        module_name, level, state, message, received, now):
+    command = map_planar_twist(0.0, 0.0, -0.15, CFG)
+    assert rotation_recovery_breakaway_is_authorized(
+        command, module_name, level, state, message, received, now) is False
 
 
 def test_recovery_breakaway_authority_fails_closed_for_wrong_source_or_age():
