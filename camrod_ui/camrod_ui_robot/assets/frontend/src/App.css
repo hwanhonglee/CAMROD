@@ -675,8 +675,8 @@ body {
   color: #1e6c89;
 }
 
-/* Active service screens expose only the current trip distance so that the
-   arrival, return, and emergency-stop controls retain visual priority. */
+/* Keep the active-service entry compact so arrival, return, and emergency-stop
+   controls retain visual priority while detailed evidence remains accessible. */
 .evidence-trip-badge {
   width: min(100%, 30rem);
   min-height: 2.7rem;
@@ -690,8 +690,15 @@ body {
   border-radius: 12px;
   background: #edf8f1;
   color: #42604b;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.evidence-trip-badge:focus-visible {
+  outline: 3px solid rgba(30, 108, 137, 0.34);
+  outline-offset: 2px;
 }
 
 .evidence-trip-badge strong {
@@ -703,6 +710,13 @@ body {
 .evidence-trip-badge small {
   color: #a76e1b;
   font-size: 0.64rem;
+}
+
+.evidence-trip-more {
+  margin-left: auto;
+  color: #24683a;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .evidence-trip-badge-stale {
@@ -1337,6 +1351,227 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* HH_260904 - Keep the B1-B13 comparison dense, scannable, and responsive. */
+.evidence-site-chart {
+  padding: 0.7rem 0.85rem 0.8rem;
+}
+
+.evidence-site-chart-legend {
+  min-height: 1.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  color: #65716a;
+  font-size: 0.65rem;
+}
+
+.evidence-site-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 800;
+}
+
+.evidence-site-chart-legend i {
+  width: 1.2rem;
+  height: 0.34rem;
+  border-radius: 2px;
+}
+
+.evidence-site-chart-legend i.distance,
+.evidence-site-bar-track i.distance {
+  background: #2f8179;
+}
+
+.evidence-site-chart-legend i.duration,
+.evidence-site-bar-track i.duration {
+  background: #bd782d;
+}
+
+.evidence-site-chart-legend em {
+  margin-left: auto;
+  color: #838b86;
+  font-style: normal;
+}
+
+/* HH_260904 - Pair the exact-value bars with a bounded SVG trend view; an
+internal narrow-screen scroller prevents the chart from widening the page. */
+.evidence-site-trend-block {
+  margin: 0.25rem 0 0.65rem;
+  border: 1px solid #e1e7e3;
+  border-radius: 6px;
+  background: #fbfcfb;
+}
+
+.evidence-site-trend-scale {
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 0.35rem 0.65rem 0;
+  color: #65716a;
+  font-size: 0.62rem;
+}
+
+.evidence-site-trend-scale span {
+  padding-left: 0.55rem;
+  border-left: 3px solid;
+}
+
+.evidence-site-trend-scale span.distance {
+  border-color: #2f8179;
+}
+
+.evidence-site-trend-scale span.duration {
+  border-color: #bd782d;
+}
+
+.evidence-site-trend-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.evidence-site-trend {
+  width: 100%;
+  min-width: 44rem;
+  height: auto;
+  display: block;
+}
+
+.evidence-site-trend-grid line {
+  stroke: #e3e8e5;
+  stroke-width: 1;
+}
+
+.evidence-site-trend-grid text,
+.evidence-site-trend-site {
+  fill: #7a857e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.evidence-site-trend-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.evidence-site-trend-line.distance {
+  stroke: #2f8179;
+}
+
+.evidence-site-trend-line.duration {
+  stroke: #bd782d;
+}
+
+.evidence-site-trend-point {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.evidence-site-trend-point.distance {
+  fill: #2f8179;
+}
+
+.evidence-site-trend-point.duration {
+  fill: #bd782d;
+}
+
+.evidence-site-chart-row {
+  min-height: 2.55rem;
+  display: grid;
+  grid-template-columns: 3.2rem minmax(18rem, 1fr) minmax(10rem, 0.55fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.32rem 0.45rem;
+  border-top: 1px solid #edf0ee;
+  font-variant-numeric: tabular-nums;
+}
+
+.evidence-site-chart-row.active {
+  background: #eef7f9;
+  box-shadow: inset 3px 0 #3486a3;
+}
+
+.evidence-site-chart-row > strong {
+  color: #244c31;
+  font-size: 0.78rem;
+}
+
+.evidence-site-bars {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.evidence-site-bar-line {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) 5.2rem;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.evidence-site-bar-track {
+  height: 0.34rem;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #e9eeeb;
+}
+
+.evidence-site-bar-track i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+.evidence-site-bar-line b {
+  color: #4a5650;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.evidence-site-run-state {
+  overflow: hidden;
+  color: #65716a;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-site-chart-row.active .evidence-site-run-state {
+  color: #226b82;
+}
+
+.evidence-site-table-scroll {
+  max-height: none;
+  border-top: 1px solid #dfe5e1;
+}
+
+.evidence-site-table {
+  min-width: 68rem;
+}
+
+.evidence-site-active-row {
+  background: #eef7f9 !important;
+}
+
+.evidence-current-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.evidence-current-progress small {
+  color: #527b89;
+  font-size: 0.58rem;
+}
+
 .evidence-history-layout {
   min-height: 16rem;
   display: grid;
@@ -1451,6 +1686,14 @@ body {
   .evidence-history-layout {
     grid-template-columns: 1fr;
   }
+
+  .evidence-site-chart-row {
+    grid-template-columns: 2.8rem minmax(12rem, 1fr);
+  }
+
+  .evidence-site-run-state {
+    grid-column: 2;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1476,6 +1719,25 @@ body {
 
   .evidence-service-facts {
     grid-template-columns: 1fr;
+  }
+
+  .evidence-site-chart-legend {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .evidence-site-chart-legend em {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .evidence-site-trend-scale {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .evidence-site-chart-row {
+    grid-template-columns: 2.5rem minmax(8rem, 1fr);
   }
 }
 
@@ -3300,9 +3562,14 @@ h1 {
   stroke-width: 2;
 }
 
-.radar-arc-hit {
+.radar-arc-cost {
   stroke: #ef665f;
   fill: #ef665f;
+}
+
+.radar-arc-echo {
+  stroke: #56a7d8;
+  fill: #56a7d8;
 }
 
 .radar-arc-clear {
@@ -3370,7 +3637,8 @@ h1 {
 
 .legend-lidar { background: #62cfe2 !important; }
 .legend-lidar-raw { background: #a9b2ad !important; }
-.legend-radar-hit { background: #ef665f !important; }
+.legend-radar-echo { background: #56a7d8 !important; }
+.legend-radar-cost { background: #ef665f !important; }
 .legend-body { background: #55a9db !important; }
 .legend-margin { background: #edba39 !important; }
 .legend-global { background: #419ee8 !important; }
@@ -3424,7 +3692,8 @@ h1 {
   font-weight: 800;
 }
 
-.table-state-return { background: #fdeceb; color: #ad3d38; }
+.table-state-cost { background: #fdeceb; color: #ad3d38; }
+.table-state-echo { background: #e8f3fa; color: #286d96; }
 .table-state-clear { background: #eaf7ee; color: #317247; }
 .table-state-stale { background: #fff3dc; color: #906621; }
 
@@ -4434,6 +4703,10 @@ h1 {
   stroke-linejoin: round;
 }
 
+.docking-path-approach {
+  stroke: #5269b3;
+}
+
 .docking-path-reverse {
   stroke: #bd5c4f;
 }
@@ -4455,6 +4728,10 @@ h1 {
 
 .legend-docking-reverse {
   background: #bd5c4f;
+}
+
+.legend-docking-approach {
+  background: #5269b3;
 }
 
 .legend-docking-tag {

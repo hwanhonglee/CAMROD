@@ -45,12 +45,15 @@
     # with distance and reaches min_cost at/beyond far distance.
     min_cost: 85
     max_cost: 95
-    # HH_260825 - Keep 0.10 m as the side/rear/fallback gate. FRONT1 and FRONT2
-    # extend exactly 0.30 m beyond their measured body-return upper edges so an
-    # unclassified near-field object can stop charger departure sooner.
+    # HH_260904 - FRONT1/FRONT2 use an absolute 0.30 m cutoff measured from
+    # each sensor face. Do not add the body-return envelope to this value: that
+    # previously admitted persistent 0.43..0.52 m echoes as stop obstacles.
+    # Side and rear use the original absolute 0.10 m cutoff. The rear channel
+    # remains disabled because its measured chassis return (0.020..0.106 m)
+    # occupies that complete stop window; do not widen the cutoff to compensate.
     stop_candidate_max_range_m: 0.10
     # input_topics order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    stop_candidate_max_ranges_m: [0.520, 0.417, 0.100, 0.100, 0.100, 0.100, 0.206]
+    stop_candidate_max_ranges_m: [0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.100]
     cost_near_distance_m: 0.30
     cost_far_distance_m: 2.00
     obstacle_radius_m: 0.30
@@ -64,9 +67,9 @@
     # =========================================================================
     # Format: "SENSOR:min_m:max_m" (inclusive).
     # HH_260807 - FRONT1, FRONT2, and REAR currently see the vehicle body.
-    # Exclude that complete measured envelope. FRONT1/FRONT2 then admit the next
-    # 0.30 m while side/rear channels keep 0.10 m. A real object at an excluded
-    # scalar range cannot be distinguished and is also ignored (see below).
+    # Exclude that complete measured envelope. FRONT1/FRONT2 then admit valid
+    # returns only through the absolute 0.30 m sensor-face cutoff. A real object
+    # at an excluded scalar range cannot be distinguished and is also ignored.
     fixed_return_filter_enable: true
     fixed_return_bands:
       # FRONT1's 0.020..0.220 m body envelope is split only because each named

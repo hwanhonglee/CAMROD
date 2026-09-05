@@ -68,6 +68,23 @@ struct DelayedRelease
   std::string release_reason;
 };
 
+// A reissue is still the same mission for internal consumers.  Keep its
+// correlation stamp stable while giving Nav2 a fresh action-goal stamp.
+struct ReissuedGoalCopies
+{
+  avg_msgs::msg::AvgPoseStamped correlation_goal;
+  avg_msgs::msg::AvgPoseStamped nav2_goal;
+};
+
+ReissuedGoalCopies makeReissuedGoalCopies(
+  const avg_msgs::msg::AvgPoseStamped & active_goal,
+  const builtin_interfaces::msg::Time & nav2_stamp)
+{
+  ReissuedGoalCopies copies{active_goal, active_goal};
+  copies.nav2_goal.header.stamp = nav2_stamp;
+  return copies;
+}
+
 // Implements `yawToQuat` behavior.
 avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
 {
@@ -725,12 +742,11 @@ private:
     // HH_260729 - Reissue the exact snapped goal and source. It remains the
     // same mission; only Nav2's retained controller/path context is replaced.
     const bool nav_was_aborted = route_goal_recovery_.navAborted();
-    auto goal_pose = active_released_goal_;
-    goal_pose.header.stamp = get_clock()->now();
+    const auto reissued_goals = makeReissuedGoalCopies(
+      active_released_goal_, get_clock()->now());
     publishGoalSource(active_goal_policy_source_);
-    pub_goal_->publish(goal_pose);
-    publishRosGoal(goal_pose);
-    active_released_goal_ = goal_pose;
+    pub_goal_->publish(reissued_goals.correlation_goal);
+    publishRosGoal(reissued_goals.nav2_goal);
     active_released_sec_ = now_sec;
     active_goal_nav2_succeeded_ = false;
     route_goal_recovery_.markReissued(now_sec);
@@ -741,9 +757,10 @@ private:
       "reissued retained %s goal (%.2f, %.2f), attempt=%d",
       nav_was_aborted ? "ABORTED" : "ACCEPTED/EXECUTING",
       active_goal_policy_source_.c_str(),
-      goal_pose.pose.position.x, goal_pose.pose.position.y,
+      reissued_goals.correlation_goal.pose.position.x,
+      reissued_goals.correlation_goal.pose.position.y,
       route_goal_recovery_.reissueCount());
-    publishAvgPlanning(goal_pose);
+    publishAvgPlanning(reissued_goals.correlation_goal);
   }
 
   // Recomputes connected lanelet id set from the given seed lanelet.
@@ -1196,12 +1213,11 @@ private:
       return;
     }
 
-    auto goal_pose = active_released_goal_;
-    goal_pose.header.stamp = this->get_clock()->now();
+    const auto reissued_goals = makeReissuedGoalCopies(
+      active_released_goal_, get_clock()->now());
     publishGoalSource(active_goal_policy_source_);
-    pub_goal_->publish(goal_pose);
-    publishRosGoal(goal_pose);
-    active_released_goal_ = goal_pose;
+    pub_goal_->publish(reissued_goals.correlation_goal);
+    publishRosGoal(reissued_goals.nav2_goal);
     active_released_sec_ = now_sec;
     active_goal_nav2_succeeded_ = false;
     last_pose_jump_reissue_sec_ = now_sec;
@@ -1210,8 +1226,9 @@ private:
       get_logger(),
       "goal_snapper: pose jump %.2fm detected; reissued active snapped goal (%.2f, %.2f) to rebuild Nav2 path",
       pose_jump_distance,
-      goal_pose.pose.position.x, goal_pose.pose.position.y);
-    publishAvgPlanning(goal_pose);
+      reissued_goals.correlation_goal.pose.position.x,
+      reissued_goals.correlation_goal.pose.position.y);
+    publishAvgPlanning(reissued_goals.correlation_goal);
   }
 
   bool activeGoalReadyForNext()

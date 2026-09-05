@@ -126,3 +126,24 @@ def test_setup_rejects_unsafe_extra_rosdep_skip_keys_before_host_actions() -> No
         text=True,
     )
     assert "One-time workspace setup" in result.stdout
+
+
+def test_frontend_sync_publishes_complete_assets_before_atomic_index() -> None:
+    """A running kiosk must never observe an index before its assets exist."""
+    sync_source = (
+        SRC_ROOT / "camrod_ui/scripts/sync_frontend_build.sh"
+    ).read_text(encoding="utf-8")
+    sync_body = sync_source[
+        sync_source.index("sync_build_tree() {"):sync_source.index("\nsynced=0")
+    ]
+
+    assert "set -euo pipefail" in sync_source
+    assert 'find "$SRC" -type f' in sync_body
+    assert 'find "$SRC/static" -type f' in sync_body
+    assert sync_body.index('find "$SRC" -type f') < sync_body.index(
+        'publish_index "$dst"'
+    )
+    assert sync_body.index('find "$SRC/static" -type f') < sync_body.index(
+        'publish_index "$dst"'
+    )
+    assert 'mv -f "$temporary_index" "$dst/index.html"' in sync_source

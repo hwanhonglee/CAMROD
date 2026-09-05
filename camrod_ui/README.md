@@ -44,7 +44,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
 | Operator telemetry transport | latest-value WebSocket `10 Hz`; REST fallback `1 Hz` |
 | Operator telemetry lease | `12 s`; browser heartbeat every `4 s`, immediate disconnect watcher |
-| Docking telemetry | seven lazy subscriptions: tag debug/pose/detected, two paths, two controller states |
+| Docking telemetry | nine lazy subscriptions: tag debug/pose/detected, three paths, three controller states |
 | Manual Return | one `POST /ui/manual_return` authority; `0.50 s` stopped preemption during ordinary travel, duplicate presses coalesced |
 | Charging campsite selection | accepted and queued; `7.0 s` with manual, mission, and platform authorization closed before one station `EXIT` |
 | Service evidence | `Asia/Seoul`; SQLite at `~/.local/state/camrod/service_metrics.sqlite3`; public summary plus 30-day detail |
@@ -121,8 +121,12 @@ change no longer closes the diagnostics view or its telemetry lease.
 
 The public waiting screen shows the current or latest service distance, today's
 distance and completed-service count, and all-time distance and completions.
-Opening the strip shows per-day totals and recent service rows. During an active
-campsite service the control preview also shows the current trip distance.
+Opening the strip shows per-day totals and recent service rows. It also shows
+B1-B13 together as normalized trend lines, exact-value bars, and a table with
+attempts, completions, completion rate, latest run, and active run. Active-run
+percentages are relative to that site's completed-run average; they are not a
+route-completion estimate. During an active campsite service the control
+preview also shows the current trip distance.
 
 A run begins only after destination occupancy and battery admission succeeds.
 It completes at `WAITING_FOR_CHARGING`, `CHARGING`, or `DROP_ZONE_WAIT` and is
@@ -135,6 +139,16 @@ after process or workspace rebuilds. Evidence starts accumulating with the
 first accepted service after this version is deployed; it does not invent
 historical runs.
 
+<!-- HH_260904 - Link deterministic v2.2.3 UI captures without presenting
+fixture values as physical service measurements. -->
+![B1-B13 service evidence desktop fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-b1-b13-desktop.png)
+
+![B1-B13 responsive evidence fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/service-evidence-responsive.gif)
+
+The [capture record](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/README.md)
+labels these values as deterministic AMD64 UI fixtures; physical service and
+ARM64 acceptance remain separate.
+
 ## Operator Telemetry Workspace
 
 The administrator diagnostics modal now contains `System` plus seven live views:
@@ -144,17 +158,19 @@ consume the same ROS messages used by the standalone tools and RViz. The
 trajectory view can publish a manual goal only after explicit confirmation;
 no view changes sensor authority.
 
+![Radar ECHO and COST telemetry fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
+
 | Previous live tool / RViz display | UI replacement |
 |---|---|
 | `util/gnss_status_gui.py` | Fix, RTK carrier, satellites, accuracy, baseline, and heading |
 | `util/gnss_imu_direction_check.py` | GNSS/IMU/localization heading comparison and EKF input health |
-| `camrod_sensing/scripts/radar_status_gui.py` | Seven range channels, real mounts, rounded body, planning boundary, and LiDAR samples |
+| `camrod_sensing/scripts/radar_status_gui.py` | Seven range channels, real mounts, rounded body, planning boundary, and LiDAR samples; finite raw `ECHO` is distinct from cost-producing `COST` evidence |
 | `camrod_platform/scripts/velocity_kph_gui.py` | Speed, yaw rate, motion mode, and pose readout |
 | `camrod_planning/scripts/path_visualizer_node.py` | Lanelet map, global/local/maneuver paths, driven trace, and tracking error |
 | RViz map/perception layers | Lanelet polylines, four cost layers, obstacle cloud/boxes, body, and planning contour |
 | RViz diagnostics and controller markers | Safety-gate reason, service state, maneuver owners, radar evidence, and obstacle replan status |
 | Camera payload probe | Front/rear compressed frames, source rate, age, format, and payload size |
-| AprilTag/parking RViz topics | Docking debug image, exact tag pose/distance, charging boolean, controller phases, and reverse/AprilTag paths |
+| AprilTag/parking RViz topics | Docking debug image, exact tag pose/distance, charging boolean, controller phases, exact lanelet-point path, and reverse/AprilTag paths |
 
 ## Manual Goal Pose
 
@@ -395,7 +411,7 @@ accepted the next campsite without duplicating the destination or motion owner.
 | Subscribe | `/control/cmd_vel_safety_gate/status` | Motion/safety overlay |
 | Subscribe | `/platform/status` | SOC, charging, and platform state |
 | Subscribe | `/system/diagnostics_agg` | Detailed health display |
-| Subscribe | AprilTag debug/pose/detected, two parking paths/statuses | Lazy docking workspace |
+| Subscribe | AprilTag debug/pose/detected, three parking paths/statuses | Lazy docking workspace |
 
 ## HTTP And WebSocket
 
@@ -405,8 +421,8 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /ui/state` | Full UI state snapshot |
 | `GET /ui/destination` | Current/valid destinations |
 | `GET /ui/diagnostics` | Aggregated diagnostic detail |
-| `GET /api/service-metrics/summary` | Current/latest, today, and all-time service evidence without history arrays |
-| `GET /api/service-metrics?days=30&recent_limit=50` | Date totals and recent per-service distance, duration, destination, and result |
+| `GET /api/service-metrics/summary` | Current/latest, today, all-time, and B1-B13 average/latest/current summaries without history arrays |
+| `GET /api/service-metrics?days=30&recent_limit=50` | Date totals, recent services, and the same B1-B13 quantitative comparison |
 | `POST /api/telemetry/session?active=true|false&view=<name>` | Acquire/release one bounded live-view lease |
 | `GET /api/telemetry` | Sensor, localization, route, and safety snapshot |
 | `GET /api/telemetry/map` | Bounded static Lanelet marker geometry |

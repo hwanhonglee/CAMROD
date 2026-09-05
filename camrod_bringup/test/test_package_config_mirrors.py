@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 
@@ -67,3 +69,30 @@ def test_all_package_config_files_have_byte_identical_bringup_mirrors() -> None:
             assert (package_root / relative).is_file(), (
                 f"bringup-only mirrored config: {label}/{relative}"
             )
+
+
+def test_current_parking_reference_follows_canonical_yaml() -> None:
+    """Keep current docs coupled to current config, not a historical release."""
+    # HH_260904 - Historical asset tests must not hard-code today's parking
+    # values. Derive the live documentation contract from the source-of-truth
+    # YAML so a deliberate field tune updates one clearly owned relationship.
+    parking_path = SRC_ROOT / "camrod_control/config/parking.yaml"
+    parking = yaml.safe_load(parking_path.read_text(encoding="utf-8"))
+    april = parking["/parking/apriltag_parking_controller"]["ros__parameters"]
+    reverse = parking["/parking/reverse_parking_controller"]["ros__parameters"]
+    parameter_reference = (
+        SRC_ROOT / "docs/RUNTIME_PARAMETER_REFERENCE.md"
+    ).read_text(encoding="utf-8")
+
+    assert "parallel_command_lateral_deadband_mps" in parameter_reference
+    assert (
+        f"`{float(reverse['slowdown_start_remaining_distance_m']):.2f} m` remaining"
+        in parameter_reference
+    )
+    assert (
+        "UI camera range "
+        f"`{float(april['slowdown_start_tag_distance_m']):.2f} -> "
+        f"{float(april['translation_stop_tag_distance_m']):.2f} m`"
+        in parameter_reference
+    )
+    assert "Charging CAN feedback immediately publishes zero" in parameter_reference

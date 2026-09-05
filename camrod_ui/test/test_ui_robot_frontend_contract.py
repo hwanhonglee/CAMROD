@@ -17,6 +17,13 @@ TELEMETRY_SOURCE = APP_SOURCE.with_name("TelemetryWorkspace.js")
 MANUAL_DRIVE_SOURCE = APP_SOURCE.with_name("ManualDrivePanel.js")
 SERVICE_EVIDENCE_SOURCE = APP_SOURCE.with_name("ServiceEvidence.js")
 PUBLIC_ASSETS = APP_SOURCE.parents[1] / "public"
+UI_BACKEND_SOURCE = (
+    Path(__file__).resolve().parents[1]
+    / "runtime"
+    / "python"
+    / "camrod_ui"
+    / "ui_backend_node.py"
+)
 
 
 class RobotUiFrontendContractTest(unittest.TestCase):
@@ -31,6 +38,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         cls.service_evidence_source = SERVICE_EVIDENCE_SOURCE.read_text(
             encoding="utf-8"
         )
+        cls.backend_source = UI_BACKEND_SOURCE.read_text(encoding="utf-8")
 
     def test_site_verification_owns_virtual_keyboard_input(self) -> None:
         self.assertIn(": setMoveVerifyInput;", self.source)
@@ -54,6 +62,30 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def test_return_status_exits_idle_screen(self) -> None:
         self.assertIn("if (isReturning && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
+
+    def test_return_in_progress_exposes_authoritative_operator_stop(self) -> None:
+        handler_start = self.source.index("const handleStopMove = () => {")
+        handler = self.source[
+            handler_start : self.source.index(
+                "// ── 이용 완료 버튼", handler_start
+            )
+        ]
+        self.assertIn("fetch('/ui/stop', { method: 'POST' })", handler)
+        self.assertNotIn("if (activeSite)", handler)
+
+        returning_preview = self.source[
+            self.source.index(") : displayedReturning ? (") :
+            self.source.index(") : activeSite ? (")
+        ]
+        self.assertIn("운행을 정지하시겠습니까?", returning_preview)
+        self.assertIn("onClick={handleStopMove}", returning_preview)
+
+        returning_states = self.source[
+            self.source.index("const RETURNING_STATES = new Set([") :
+            self.source.index("const MOVING_SERVICE_STATES")
+        ]
+        self.assertIn("SERVICE_STATE.DROP_ZONE_PARKING", returning_states)
+        self.assertIn("SERVICE_STATE.WAITING_FOR_CHARGING", returning_states)
 
     def test_site_keypad_layout_is_bounded_for_windowed_operation(self) -> None:
         self.assertIn("max-height: 94vh", self.css)
@@ -297,12 +329,70 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(token, self.telemetry_source)
         self.assertIn("requestManualReturn", self.source)
+        for token in (
+            "waiting_for_disconnect",
+            "parking_alignment_waiting_for_can",
+            "리모컨을 CAN 모드로 전환하세요",
+        ):
+            self.assertIn(token, self.source)
+            self.assertIn(token, self.telemetry_source)
+        self.assertIn("'redock_pending' in data", self.source)
+        self.assertIn("'redock_waiting_for_can' in data", self.source)
+        self.assertIn("'redock_status' in data", self.source)
+        self.assertIn("'redock_message' in data", self.source)
+        self.assertIn(
+            "expired: '재도킹 요청 시간이 만료되었습니다",
+            self.source,
+        )
+        self.assertIn("data.redock_message ?? data.message", self.source)
+        self.assertIn("setRedockStatus(previous =>", self.source)
+        self.assertIn("redockStatus={redockStatus}", self.source)
+        self.assertIn("function DockingView({ telemetry, redockStatus", self.telemetry_source)
+        self.assertIn(
+            "redock_status = UiBackendNode._redock_status_snapshot(node)",
+            self.backend_source,
+        )
+        self.assertIn("await ws.send_json(redock_status)", self.backend_source)
+        self.assertIn(
+            "snapshot.update(UiBackendNode._redock_status_snapshot(self))",
+            self.backend_source,
+        )
         # HH_260819 - The obsolete Parking ON/OFF switch must not bypass the
         # state-aware Return command or appear in either operator surface.
         for removed in ("manual_parking", "toggleManualParking", "Parking OFF"):
             self.assertNotIn(removed, self.source)
             self.assertNotIn(removed, self.telemetry_source)
         self.assertIn(".docking-layout", self.css)
+
+    def test_robot_operator_recall_is_distinct_from_campsite_delivery(self) -> None:
+        # A roadside recall must never fall through to the existing destination
+        # WebSocket command, which is intentionally ordinary campsite delivery.
+        for token in (
+            "const [destinationIntent, setDestinationIntent] = useState('delivery')",
+            "Recall · 도로 대기",
+            "배송 · 사이트 진입",
+            "사이트 내부로 들어가지 않고 도로 측 대기점",
+            "destinationIntent === 'delivery'",
+            "텐트 · 호출 가능",
+        ):
+            self.assertIn(token, self.source)
+
+        recall_start = self.source.index("const requestCampingSiteRecall")
+        recall_end = self.source.index("const handleToggle", recall_start)
+        recall_source = self.source[recall_start:recall_end]
+        self.assertIn(
+            "/ui/camping_site_recall?site=${encodeURIComponent(site)}&intent=recall",
+            recall_source,
+        )
+        self.assertIn("body.intent !== 'recall'", recall_source)
+        self.assertIn("'robot_recall_site' in data", self.source)
+        self.assertIn(
+            "const activeSite = activeRecallSite ? null : activeStateSite",
+            self.source,
+        )
+        self.assertNotIn("fetch('/ui/destination", recall_source)
+        self.assertNotIn("fetch(`/ui/destination", recall_source)
+        self.assertNotIn("applyToggle", recall_source)
 
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)
@@ -314,6 +404,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "lifetime",
             "daily_history",
             "recent_services",
+            "site_summaries",
             "generated_at",
             "persistence",
         ):
@@ -340,12 +431,32 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("<ServiceTripBadge", self.source)
         self.assertIn("serviceMetrics.data?.current_service", self.source)
         self.assertIn(
-            "serviceActive={Boolean(activeSite || arrivedSite || "
-            "displayedReturning)}",
+            "activeSite || activeRecallSite || arrivedSite || displayedReturning",
             self.source,
         )
         self.assertIn("이번 서비스", self.service_evidence_source)
         self.assertIn(".evidence-trip-badge", self.css)
+
+    def test_active_service_screen_can_open_full_service_evidence(self) -> None:
+        self.assertIn(
+            "onOpen={() => setActiveModal('service-evidence')}",
+            self.source,
+        )
+        self.assertIn("const serviceEvidenceModal = serviceEvidenceModalOpen", self.source)
+        self.assertGreaterEqual(self.source.count("{serviceEvidenceModal}"), 2)
+        self.assertIn("실증 운행 현황 상세 보기", self.service_evidence_source)
+        self.assertIn("evidence-trip-more", self.service_evidence_source)
+
+    def test_frontend_entry_document_is_never_served_from_stale_cache(self) -> None:
+        self.assertIn(
+            '"Cache-Control": "no-store, no-cache, must-revalidate"',
+            self.backend_source,
+        )
+        self.assertIn("if real == index_real", self.backend_source)
+        self.assertIn(
+            "return FileResponse(str(index_real), headers=no_store_headers)",
+            self.backend_source,
+        )
 
     def test_evidence_modal_merges_live_summary_into_bounded_history(self) -> None:
         self.assertIn("...detailData", self.service_evidence_source)
@@ -381,6 +492,49 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn(".evidence-table-scroll", self.css)
         self.assertIn("@media (max-width: 1000px)", self.css)
         self.assertIn("@media (max-width: 700px)", self.css)
+
+    def test_service_evidence_compares_all_sites_with_live_progress(self) -> None:
+        for token in (
+            "B1-B13 서비스 비교",
+            "SiteTrendChart",
+            "buildTrendSeries",
+            "evidence-site-trend-line",
+            "항목별 독립 척도",
+            "average_distance_m",
+            "average_duration_s",
+            "latest_service",
+            "current_service",
+            "current_distance_progress_percentage",
+            "current_duration_progress_percentage",
+            "완료 평균 대비",
+        ):
+            self.assertIn(token, self.service_evidence_source)
+        self.assertIn(".evidence-site-chart-row", self.css)
+        self.assertIn(".evidence-site-trend-scroll", self.css)
+        self.assertIn(".evidence-site-table", self.css)
+
+    def test_radar_echo_is_not_presented_as_stopping_cost(self) -> None:
+        for token in (
+            "radarCostSensors",
+            "safety.radar_evidence",
+            "return 'COST'",
+            "return finite(sample.range_m) ? 'ECHO'",
+            "Radar echo",
+            "Radar cost",
+        ):
+            self.assertIn(token, self.telemetry_source)
+        self.assertNotIn("Radar return", self.telemetry_source)
+        self.assertIn(".radar-arc-echo", self.css)
+        self.assertIn(".radar-arc-cost", self.css)
+
+    def test_docking_view_shows_exact_lanelet_parking_approach(self) -> None:
+        for token in (
+            "drop_zone_parking",
+            "Lanelet parking point",
+            "Exact lanelet point",
+            "docking-path-approach",
+        ):
+            self.assertIn(token, self.telemetry_source)
 
 
 if __name__ == "__main__":

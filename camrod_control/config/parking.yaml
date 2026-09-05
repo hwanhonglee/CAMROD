@@ -98,6 +98,8 @@
     # HH_260818 - Charging CAN contact immediately stops every active phase.
     stop_when_charging: true
 
+    # HH_260904 - This package-owned profile is the runtime source of truth;
+    # keep the bringup deployment mirror byte-identical after field tuning.
     heading_gain: 1.5
     lateral_to_heading_gain: 2.5
     maximum_angular_speed_radps: 1.0

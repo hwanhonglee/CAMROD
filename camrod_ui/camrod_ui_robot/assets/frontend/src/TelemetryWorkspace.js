@@ -74,6 +74,27 @@ function sourceState(telemetry, name, staleAfter = 2.5) {
   };
 }
 
+function radarCostSensors(telemetry) {
+  const evidenceSource = sourceState(telemetry, 'safety.radar_evidence');
+  const evidence = String(telemetry.safety?.radar_evidence || '').trim();
+  if (evidenceSource.state !== 'live' || !evidence.toLowerCase().startsWith('active')) {
+    return new Set();
+  }
+  // HH_260904 - A finite SEN0592 range is only a raw echo. The radar cost-grid
+  // evidence is authoritative for whether that echo survived range exclusion
+  // and route clipping and was actually painted as stopping cost.
+  return new Set(
+    [...evidence.matchAll(/\bSENSOR=([A-Z0-9_]+)/g)].map(match => match[1])
+  );
+}
+
+function radarDisplayState(costSensors, channel, sample, source) {
+  if (source.state !== 'live') return source.label;
+  if (costSensors.has(channel.toUpperCase())) return 'COST';
+  if (sample.no_target) return 'CLEAR';
+  return finite(sample.range_m) ? 'ECHO' : 'NO DATA';
+}
+
 function SourcePill({ telemetry, source, label, staleAfter = 2.5 }) {
   const status = sourceState(telemetry, source, staleAfter);
   return (
@@ -238,6 +259,7 @@ function radarArcPoints(mount, distance, fov) {
 
 function ProximityPlot({ telemetry }) {
   const channels = telemetry.radar?.channels || {};
+  const costSensors = radarCostSensors(telemetry);
   const filtered = telemetry.lidar?.streams?.filtered?.points || telemetry.lidar?.points || [];
   const raw = telemetry.lidar?.streams?.raw?.points || [];
   const planning = telemetry.footprint?.planning_points?.length
@@ -277,6 +299,7 @@ function ProximityPlot({ telemetry }) {
       {RADAR_ORDER.map(channel => {
         const sample = channels[channel] || {};
         const source = sourceState(telemetry, `radar.${channel}`);
+        const state = radarDisplayState(costSensors, channel, sample, source);
         const configuredMax = finite(sample.max_range_m) ? sample.max_range_m : 3;
         const distance = sample.no_target ? configuredMax : sample.range_m;
         if (!finite(distance)) return null;
@@ -284,7 +307,7 @@ function ProximityPlot({ telemetry }) {
         const arc = radarArcPoints(RADAR_MOUNTS[channel], clipped, sample.field_of_view_rad);
         const colorClass = source.state !== 'live'
           ? 'radar-arc-stale'
-          : (sample.no_target || distance > configuredMax ? 'radar-arc-clear' : 'radar-arc-hit');
+          : (state === 'COST' ? 'radar-arc-cost' : (state === 'ECHO' ? 'radar-arc-echo' : 'radar-arc-clear'));
         const [mx, my] = toScreen(RADAR_MOUNTS[channel]);
         return (
           <g key={channel}>
@@ -304,6 +327,7 @@ function ProximityPlot({ telemetry }) {
 
 function ProximityView({ telemetry }) {
   const channels = telemetry.radar?.channels || {};
+  const costSensors = radarCostSensors(telemetry);
   const lidarSource = sourceState(telemetry, 'lidar.filtered');
   const filtered = telemetry.lidar?.streams?.filtered || telemetry.lidar || {};
   const raw = telemetry.lidar?.streams?.raw || {};
@@ -324,7 +348,8 @@ function ProximityView({ telemetry }) {
           <div className="telemetry-legend-row">
             <span><i className="legend-lidar" />LiDAR sample</span>
             <span><i className="legend-lidar-raw" />LiDAR raw</span>
-            <span><i className="legend-radar-hit" />Radar return</span>
+            <span><i className="legend-radar-echo" />Radar echo</span>
+            <span><i className="legend-radar-cost" />Radar cost</span>
             <span><i className="legend-body" />Physical body</span>
             <span><i className="legend-margin" />Planning boundary</span>
           </div>
@@ -338,7 +363,7 @@ function ProximityView({ telemetry }) {
                 {RADAR_ORDER.map(channel => {
                   const sample = channels[channel] || {};
                   const source = sourceState(telemetry, `radar.${channel}`);
-                  const state = source.state !== 'live' ? source.label : (sample.no_target ? 'CLEAR' : (finite(sample.range_m) ? 'RETURN' : 'NO DATA'));
+                  const state = radarDisplayState(costSensors, channel, sample, source);
                   return (
                     <tr key={channel}>
                       <td>{RADAR_LABEL[channel]}</td>
@@ -993,9 +1018,10 @@ function SafetyView({ telemetry }) {
 }
 
 function DockingPathPlot({ telemetry }) {
+  const approach = pointList(telemetry.paths?.maneuvers?.drop_zone_parking);
   const reverse = pointList(telemetry.paths?.maneuvers?.reverse_parking);
   const tagGuided = pointList(telemetry.paths?.maneuvers?.apriltag_parking);
-  const all = [...reverse, ...tagGuided];
+  const all = [...approach, ...reverse, ...tagGuided];
   const width = 760;
   const height = 340;
   if (all.length < 2) {
@@ -1022,7 +1048,8 @@ function DockingPathPlot({ telemetry }) {
   const pathText = points => points
     .map(point => toScreen(point).map(value => value.toFixed(1)).join(','))
     .join(' ');
-  const lastPath = tagGuided.length > 0 ? tagGuided : reverse;
+  const lastPath = tagGuided.length > 0
+    ? tagGuided : (reverse.length > 0 ? reverse : approach);
   const [targetX, targetY] = toScreen(lastPath[lastPath.length - 1]);
   return (
     <svg className="docking-path-plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Parking controller approach trajectories">
@@ -1032,6 +1059,7 @@ function DockingPathPlot({ telemetry }) {
         </pattern>
       </defs>
       <rect width={width} height={height} fill="url(#dockingGrid)" />
+      {approach.length >= 2 && <polyline points={pathText(approach)} className="docking-path docking-path-approach" />}
       {reverse.length >= 2 && <polyline points={pathText(reverse)} className="docking-path docking-path-reverse" />}
       {tagGuided.length >= 2 && <polyline points={pathText(tagGuided)} className="docking-path docking-path-tag" />}
       <circle cx={targetX} cy={targetY} r="8" className="docking-target" />
@@ -1041,10 +1069,11 @@ function DockingPathPlot({ telemetry }) {
   );
 }
 
-function DockingView({ telemetry }) {
+function DockingView({ telemetry, redockStatus = null }) {
   const docking = telemetry.docking || {};
   const tag = docking.tag || {};
   const controllers = telemetry.safety?.controllers || {};
+  const dropZone = controllers.drop_zone || {};
   const reverse = controllers.reverse_parking || {};
   const april = controllers.apriltag_parking || {};
   const mission = telemetry.mission || {};
@@ -1062,6 +1091,14 @@ function DockingView({ telemetry }) {
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
+  useEffect(() => {
+    if (!redockStatus?.received) return;
+    setCommandStatus({
+      tone: redockStatus.pending || redockStatus.waitingForCan ? 'ok' : '',
+      message: redockStatus.message || '',
+    });
+  }, [redockStatus]);
+
   const postCommand = async (name, url, successMessage) => {
     setPending(name);
     setCommandStatus({ tone: '', message: '' });
@@ -1069,7 +1106,17 @@ function DockingView({ telemetry }) {
       const response = await fetch(url, { method: 'POST' });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || '명령 실패');
-      setCommandStatus({ tone: 'ok', message: successMessage });
+      const statusByAction = {
+        parking_alignment: '재도킹 정렬을 시작합니다',
+        parking_alignment_waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+        waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+        parking_in_progress: '도킹이 이미 진행 중입니다',
+        return_in_progress: '복귀가 이미 진행 중입니다',
+      };
+      setCommandStatus({
+        tone: 'ok',
+        message: statusByAction[body.action] || successMessage,
+      });
       return true;
     } catch (error) {
       setCommandStatus({ tone: 'err', message: error.message || '명령 실패' });
@@ -1124,6 +1171,7 @@ function DockingView({ telemetry }) {
             <Metric label="Battery" value={numberText(docking.battery_percentage, 1)} unit="%" />
           </div>
           <div className="docking-controller-list">
+            <div><span>Lanelet parking point</span><strong>{dropZone.operating_state || 'NO DATA'}</strong><em>{dropZone.message || '-'}</em></div>
             <div><span>Docking</span><strong>{april.operating_state || 'NO DATA'}</strong><em>{april.message || '-'}</em></div>
             <div><span>Reverse parking</span><strong>{reverse.operating_state || 'NO DATA'}</strong><em>{reverse.message || '-'}</em></div>
           </div>
@@ -1132,6 +1180,7 @@ function DockingView({ telemetry }) {
           <SectionHeader title="Parking approach path" meta="controller output" />
           <DockingPathPlot telemetry={telemetry} />
           <div className="telemetry-legend-row">
+            <span><i className="legend-docking-approach" />Exact lanelet point</span>
             <span><i className="legend-docking-reverse" />Reverse parking</span>
             <span><i className="legend-docking-tag" />AprilTag docking</span>
             <span><i className="legend-docking-target" />Target</span>
@@ -1142,7 +1191,7 @@ function DockingView({ telemetry }) {
   );
 }
 
-export default function TelemetryWorkspace({ activeTab }) {
+export default function TelemetryWorkspace({ activeTab, redockStatus = null }) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
   const [connectionError, setConnectionError] = useState('');
@@ -1279,9 +1328,11 @@ export default function TelemetryWorkspace({ activeTab }) {
     if (activeTab === 'trajectory') return <TrajectoryView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
-    if (activeTab === 'docking') return <DockingView telemetry={telemetry} />;
+    if (activeTab === 'docking') {
+      return <DockingView telemetry={telemetry} redockStatus={redockStatus} />;
+    }
     return null;
-  }, [activeTab, telemetry, mapData]);
+  }, [activeTab, telemetry, mapData, redockStatus]);
 
   return (
     <div className="telemetry-workspace">

@@ -139,7 +139,7 @@ bringup:
     enable_progress: true
     # HH_260618: Publish thick global/local trajectory markers for RViz readability.
     enable_path_visualization: true
-    # Resolve drop_zone from map-exported semantic area YAML.
+    # Resolve drop_zone from camrod_bringup/config/map/drop_zones.yaml.
     state_machine_keypoints_yaml: map/drop_zones.yaml
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
@@ -482,7 +482,7 @@ bringup:
     # HH_260720 - During explicit drop-zone exit, bypass only static lanelet
     # cost for these control phases; dynamic obstacle stops remain active.
     cmd_vel_gate_drop_zone_maneuver_controller_status_topic: /control/drop_zone_maneuver_controller/status
-    cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
+    cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,ALIGN_PARKING_YAW
     # HH_260720 - Campsite entry/return is control-owned body-frame motion;
     # bypass only static lanelet/global-path cost in these phases.
     cmd_vel_gate_camping_site_maneuver_controller_status_topic: /control/camping_site_maneuver_controller/status

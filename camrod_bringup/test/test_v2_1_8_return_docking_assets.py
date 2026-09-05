@@ -171,7 +171,7 @@ def test_changed_config_mirrors_are_byte_identical() -> None:
     assert ranger_values == [0.02, 0.02]
 
 
-def test_renderer_is_executable_installed_and_documented() -> None:
+def test_historical_renderer_and_live_probe_are_installed() -> None:
     renderer = (
         REPO_ROOT
         / "camrod_bringup/scripts/visualization/render_v2_1_8_return_docking_results.py"

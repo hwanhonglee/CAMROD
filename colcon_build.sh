@@ -20,7 +20,8 @@
 # GNSS/LiDAR diagnostics configs, radar no-target handling, and README updates all
 # land in the install tree through this script.
 # HH_260702: this wrapper also preserves the current validation contract:
-# - run npm install/npm run build before packaging camrod_ui when it is in scope;
+# - validate/reuse matching npm dependencies and run npm build before packaging
+#   camrod_ui when it is in scope;
 # - install synchronized bringup/package configs and README updates together;
 # - leave sim/manual/obstacle/camping/drop-zone validation to
 #   camrod_bringup/scripts/sim_validation_runner.py after launch.
@@ -142,23 +143,35 @@ _build_scope_includes_pkg() {
   # Keep scanning selector arguments until the next option so camrod_ui is
   # recognized even when it is not the first package in --packages-select.
   local in_selector=0
+  local in_skip_selector=0
   local saw_selector=0
+  local matched_selector=0
   for token in "$@"; do
     case "${token}" in
       --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
         saw_selector=1
         in_selector=1
+        in_skip_selector=0
+        continue
+        ;;
+      --packages-skip)
+        in_selector=0
+        in_skip_selector=1
         continue
         ;;
       --*)
         in_selector=0
+        in_skip_selector=0
         ;;
     esac
+    if [[ "${in_skip_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
+      return 1
+    fi
     if [[ "${in_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
-      return 0
+      matched_selector=1
     fi
   done
-  [[ "${saw_selector}" -eq 0 ]]
+  [[ "${saw_selector}" -eq 0 || "${matched_selector}" -eq 1 ]]
 }
 
 # HH_260611: Remove stale per-package CMake build directories whose cached source
@@ -228,13 +241,68 @@ _build_camrod_ui_frontend() {
     return 1
   fi
 
-  log "camrod_ui frontend: npm install (${frontend_dir})"
-  ( cd "${frontend_dir}" && npm install )
+  local dependency_stamp="${frontend_dir}/node_modules/.camrod-deps.sha256"
+  local hidden_lock="${frontend_dir}/node_modules/.package-lock.json"
+  local dependency_fingerprint=""
+  local dependencies_ready=0
+
+  if [[ -f "${frontend_dir}/package-lock.json" ]]; then
+    dependency_fingerprint="$({
+      sha256sum "${frontend_dir}/package.json" "${frontend_dir}/package-lock.json"
+      node --version
+      npm --version
+    } | sha256sum | awk '{print $1}')"
+
+    if [[ -f "${dependency_stamp}" ]] \
+      && [[ "$(<"${dependency_stamp}")" == "${dependency_fingerprint}" ]]; then
+      dependencies_ready=1
+    elif [[ -f "${hidden_lock}" ]] \
+      && [[ "${hidden_lock}" -nt "${frontend_dir}/package.json" ]] \
+      && [[ "${hidden_lock}" -nt "${frontend_dir}/package-lock.json" ]]; then
+      # Bootstrap the stamp for an existing npm install only after npm confirms
+      # the complete dependency tree is usable.
+      if ( cd "${frontend_dir}" && npm ls --ignore-scripts --all >/dev/null 2>&1 ); then
+        printf '%s\n' "${dependency_fingerprint}" > "${dependency_stamp}"
+        dependencies_ready=1
+      fi
+    fi
+  fi
+
+  if [[ "${dependencies_ready}" -eq 1 ]] \
+    && ( cd "${frontend_dir}" && npm ls --ignore-scripts --all >/dev/null 2>&1 ); then
+    log "camrod_ui frontend: dependencies unchanged; skip npm install"
+  else
+    log "camrod_ui frontend: dependency manifest changed; npm ci (${frontend_dir})"
+    ( cd "${frontend_dir}" && npm ci --prefer-offline --no-audit --no-fund )
+    dependency_fingerprint="$({
+      sha256sum "${frontend_dir}/package.json" "${frontend_dir}/package-lock.json"
+      node --version
+      npm --version
+    } | sha256sum | awk '{print $1}')"
+    printf '%s\n' "${dependency_fingerprint}" > "${dependency_stamp}"
+  fi
 
   log "camrod_ui frontend: npm run build"
   ( cd "${frontend_dir}" && npm run build )
 }
 _build_camrod_ui_frontend "$@"
+
+_verify_camrod_ui_frontend_install() {
+  _build_scope_includes_pkg camrod_ui "$@" || return 0
+
+  local source_index="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend/build/index.html"
+  local installed_index="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/index.html"
+  local source_bundle installed_bundle
+  [[ -f "${source_index}" ]] || { log "ERROR: frontend source build index is missing" >&2; return 1; }
+  [[ -f "${installed_index}" ]] || { log "ERROR: installed frontend index is missing" >&2; return 1; }
+  source_bundle="$(grep -o 'main\.[a-z0-9]*\.js' "${source_index}" | head -1)"
+  installed_bundle="$(grep -o 'main\.[a-z0-9]*\.js' "${installed_index}" | head -1)"
+  if [[ -z "${source_bundle}" || "${source_bundle}" != "${installed_bundle}" ]]; then
+    log "ERROR: frontend install mismatch (source=${source_bundle:-missing}, install=${installed_bundle:-missing})" >&2
+    return 1
+  fi
+  log "camrod_ui frontend verified: ${installed_bundle}"
+}
 
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
@@ -384,5 +452,7 @@ colcon --log-base "${WS_ROOT}/log" build \
   --install-base "${WS_ROOT}/install" \
   "${BUILD_SKIP_ARGS[@]}" \
   "${COLCON_BUILD_ARGS[@]}"
+
+_verify_camrod_ui_frontend_install "$@"
 
 log "done.  source ${WS_ROOT}/install/setup.bash"

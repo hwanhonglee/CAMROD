@@ -468,8 +468,9 @@ private:
     // the same control tick from every active insertion phase, including tag
     // guidance and tag waiting, instead of waiting for a distance threshold.
     if (stop_when_charging_ && charging_detected_ && state_ != State::IDLE &&
-      state_ != State::PARKED && state_ != State::ERROR)
+      state_ != State::PARKED)
     {
+      const bool recovered_from_error = state_ == State::ERROR;
       translation_stop_reason_ = "charging";
       translation_stop_trigger_tag_distance_m_ =
         tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0;
@@ -481,6 +482,11 @@ private:
         stateName(state_));
       publishStop();
       transitionTo(State::PARKED);
+      if (recovered_from_error) {
+        RCLCPP_INFO(
+          get_logger(),
+          "parking ERROR recovered by authoritative charging contact");
+      }
       publishStatus();
       return;
     }

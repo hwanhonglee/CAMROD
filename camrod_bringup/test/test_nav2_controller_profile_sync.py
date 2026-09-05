@@ -94,6 +94,19 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         assert deployed == package
 
 
+def test_route_handoff_defers_five_centimeter_positioning_to_drop_zone_control() -> None:
+    """Nav2 must not re-chase GNSS XY while the local owner aligns parking yaw."""
+    package = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
+    deployed = _parameters(BRINGUP_CONFIG / "nav2_base.yaml")
+
+    for profile in (package, deployed):
+        assert profile["goal_checker"]["xy_goal_tolerance"] == 0.3
+        assert profile["DWB"]["xy_goal_tolerance"] == 0.3
+        # Manual RViz goals retain their yaw-aware operator tolerance and do
+        # not participate in the automatic drop-zone return handoff.
+        assert profile["manual_goal_checker"]["xy_goal_tolerance"] == 0.25
+
+
 def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
     """Keep localization prediction and path-control periods synchronized."""
     controller = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
@@ -618,7 +631,10 @@ def test_campsite_return_uses_latched_axis_stages_at_route_goal_anchor() -> None
     assert "non-finite resolved campsite lateral motion" in source
     assert "valid site yaw unavailable for reverse site maneuver" in source
     assert "lateralTargetFromAnchor(" in source
-    assert "campsiteCrabReturnMayComplete(" in source
+    assert "campsiteCrabReturnReadyForRoute(" in source
+    assert "done_current_pose_after_lateral_exit" in source
+    assert "done_roadside_forward_current_pose" in source
+    assert "resuming exact-anchor fallback" not in source
     adopt_body = source[
         source.index("bool adoptWaitReturnState(") : source.index(
             "bool siteGoalMatchesKey("

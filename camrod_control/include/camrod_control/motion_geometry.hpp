@@ -316,10 +316,10 @@ inline std::pair<double, double> bodyAxisPrioritizedTranslationTowardTarget(
   return {axis_command(body_x), 0.0};
 }
 
-// HH_260824 - Return from a campsite with one physical steering transition:
-// pure lateral crab, a stationary wheel-settle dwell, then pure longitudinal
-// correction. The longitudinal stage is latched and can never chatter back to
-// parallel steering when localization noise crosses the lateral threshold.
+// HH_260904 - Return from a campsite with one physical steering transition:
+// pure lateral crab followed by a stationary wheel-settle dwell. The historical
+// longitudinal state is retained as a latched route-ready marker; it must not
+// command motion back to the old entry XY.
 enum class CampsiteCrabReturnStage
 {
   kLateral,
@@ -338,6 +338,16 @@ inline bool campsiteCrabReturnMayComplete(
          radial_error_m <= radial_tolerance_m;
 }
 
+// HH_260904 - Once lateral exit and the zero-degree steering settle have
+// completed, route planning can start from the robot's current lane position.
+// Requiring the historical entry XY here caused an unnecessary longitudinal
+// reverse and could time out even though the robot was already on the road.
+inline bool campsiteCrabReturnReadyForRoute(
+  const CampsiteCrabReturnStage stage)
+{
+  return stage == CampsiteCrabReturnStage::kLongitudinal;
+}
+
 inline const char * campsiteCrabReturnStageName(
   const CampsiteCrabReturnStage stage)
 {
@@ -354,8 +364,8 @@ inline const char * campsiteCrabReturnStageName(
 
 struct CampsiteCrabReturnConfig
 {
-  // Enter the settle stage more tightly than the final radial tolerance so a
-  // pure longitudinal correction can still reach the exact route snap.
+  // Enter the settle stage tightly enough to place the body back on the road
+  // before ordinary routing resumes from its current position.
   double lateral_transition_tolerance_m{0.02};
   // Once lateral completion is latched, absorb ordinary 10 cm localization
   // noise without commanding another +/-90 <-> 0 degree wheel transition.

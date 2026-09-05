@@ -51,6 +51,134 @@ const formatDuration = durationS => {
   return `${seconds}초`;
 };
 
+const formatMeters = distanceM => {
+  const value = finiteNumber(distanceM);
+  if (value === null) return '-';
+  return `${value.toLocaleString('ko-KR', {
+    minimumFractionDigits: value < 10 ? 1 : 0,
+    maximumFractionDigits: 1,
+  })} m`;
+};
+
+const formatPercentage = value => {
+  const parsed = finiteNumber(value);
+  return parsed === null ? '-' : `${parsed.toFixed(1)}%`;
+};
+
+const scaledBarWidth = (value, maximum) => {
+  const parsed = finiteNumber(value);
+  if (parsed === null || !finiteNumber(maximum) || maximum <= 0) return '0%';
+  return `${Math.max(0, Math.min(100, parsed * 100 / maximum)).toFixed(1)}%`;
+};
+
+function buildTrendSeries(sites, valueKey, maximum, geometry) {
+  const { left, top, plotWidth, plotHeight } = geometry;
+  const segments = [];
+  const points = [];
+  let currentSegment = [];
+  sites.forEach((site, index) => {
+    const value = finiteNumber(site[valueKey]);
+    if (value === null || maximum <= 0) {
+      if (currentSegment.length) segments.push(currentSegment);
+      currentSegment = [];
+      return;
+    }
+    const ratio = sites.length <= 1 ? 0.5 : index / (sites.length - 1);
+    const point = {
+      site: site.site,
+      value,
+      x: left + ratio * plotWidth,
+      y: top + (1 - Math.max(0, Math.min(1, value / maximum))) * plotHeight,
+    };
+    points.push(point);
+    currentSegment.push(point);
+  });
+  if (currentSegment.length) segments.push(currentSegment);
+  return { segments, points };
+}
+
+// HH_260904 - Reuse the existing B1-B13 aggregates for an SVG trend layer.
+// Missing-site samples break the line instead of implying measured values, and
+// distance/time retain independent scales because their units are unrelated.
+function SiteTrendChart({ sites, maximumDistance, maximumDuration }) {
+  const width = 1040;
+  const height = 230;
+  const geometry = { left: 52, top: 20, plotWidth: 936, plotHeight: 168 };
+  const distance = buildTrendSeries(
+    sites, 'average_distance_m', maximumDistance, geometry,
+  );
+  const duration = buildTrendSeries(
+    sites, 'average_duration_s', maximumDuration, geometry,
+  );
+  const xFor = index => geometry.left + (
+    sites.length <= 1 ? 0.5 : index / (sites.length - 1)
+  ) * geometry.plotWidth;
+
+  return (
+    <div className="evidence-site-trend-block">
+      <div className="evidence-site-trend-scale">
+        <span className="distance">거리 최대 <b>{formatMeters(maximumDistance)}</b></span>
+        <span className="duration">시간 최대 <b>{formatDuration(maximumDuration)}</b></span>
+      </div>
+      <div className="evidence-site-trend-scroll">
+        <svg
+          className="evidence-site-trend"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="B1부터 B13까지 완료 평균 거리와 시간 꺾은선 그래프"
+        >
+          <title>B1-B13 완료 평균 추세</title>
+          <desc>거리와 시간은 각 항목의 최댓값을 기준으로 독립 정규화됩니다.</desc>
+          {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+            const y = geometry.top + ratio * geometry.plotHeight;
+            return (
+              <g key={ratio} className="evidence-site-trend-grid">
+                <line x1={geometry.left} y1={y} x2={geometry.left + geometry.plotWidth} y2={y} />
+                <text x={geometry.left - 9} y={y + 4} textAnchor="end">{Math.round((1 - ratio) * 100)}%</text>
+              </g>
+            );
+          })}
+          {sites.map((site, index) => (
+            <text
+              key={site.site}
+              className="evidence-site-trend-site"
+              x={xFor(index)}
+              y={height - 12}
+              textAnchor="middle"
+            >
+              {site.site}
+            </text>
+          ))}
+          {distance.segments.map((segment, index) => (
+            <polyline
+              key={`distance-${index}`}
+              className="evidence-site-trend-line distance"
+              points={segment.map(point => `${point.x},${point.y}`).join(' ')}
+            />
+          ))}
+          {duration.segments.map((segment, index) => (
+            <polyline
+              key={`duration-${index}`}
+              className="evidence-site-trend-line duration"
+              points={segment.map(point => `${point.x},${point.y}`).join(' ')}
+            />
+          ))}
+          {distance.points.map(point => (
+            <circle key={`distance-${point.site}`} className="evidence-site-trend-point distance" cx={point.x} cy={point.y} r="4">
+              <title>{point.site} 평균 거리 {formatMeters(point.value)}</title>
+            </circle>
+          ))}
+          {duration.points.map(point => (
+            <circle key={`duration-${point.site}`} className="evidence-site-trend-point duration" cx={point.x} cy={point.y} r="4">
+              <title>{point.site} 평균 시간 {formatDuration(point.value)}</title>
+            </circle>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 const formatDate = value => {
   if (!value) return '-';
   const text = String(value);
@@ -216,7 +344,7 @@ export function ServiceEvidenceSummary({ data, loading, error, onOpen }) {
   );
 }
 
-export function ServiceTripBadge({ serviceActive, currentService, loading, error }) {
+export function ServiceTripBadge({ serviceActive, currentService, loading, error, onOpen }) {
   if (!serviceActive) return null;
   const distance = formatDistance(distanceOf(currentService));
   let value = distance;
@@ -226,12 +354,18 @@ export function ServiceTripBadge({ serviceActive, currentService, loading, error
     else value = '거리 집계 시작 대기';
   }
   return (
-    <div className={`evidence-trip-badge ${error ? 'evidence-trip-badge-stale' : ''}`} aria-live="polite">
+    <button
+      type="button"
+      className={`evidence-trip-badge ${error ? 'evidence-trip-badge-stale' : ''}`}
+      onClick={onOpen}
+      aria-label="실증 운행 현황 상세 보기"
+    >
       <span className="evidence-trip-live-dot" />
       <span>이번 서비스</span>
       <strong>{value}</strong>
       {distance && error && <small>갱신 지연</small>}
-    </div>
+      <span className="evidence-trip-more">상세 보기 ›</span>
+    </button>
   );
 }
 
@@ -275,6 +409,113 @@ function MetricsNotice({ loading, error, hasData, onRetry }) {
       <span>{hasData ? '최근 저장된 집계를 표시합니다. 최신 기록 갱신에 실패했습니다.' : '실증 운행 기록을 불러오지 못했습니다.'}</span>
       <button type="button" onClick={onRetry}>다시 시도</button>
     </div>
+  );
+}
+
+// HH_260904 - Compare every campsite in one bounded render using the backend's
+// completed-run aggregates; active percentages are not route progress.
+function SitePerformance({ sites, loading, error }) {
+  const maximumDistance = Math.max(
+    0,
+    ...sites.map(site => finiteNumber(site.average_distance_m) || 0),
+  );
+  const maximumDuration = Math.max(
+    0,
+    ...sites.map(site => finiteNumber(site.average_duration_s) || 0),
+  );
+
+  if (loading && sites.length === 0) {
+    return <div className="evidence-empty">사이트별 운행 지표를 불러오는 중입니다.</div>;
+  }
+  if (error && sites.length === 0) {
+    return <div className="evidence-empty evidence-empty-error">사이트별 운행 지표를 확인할 수 없습니다.</div>;
+  }
+
+  return (
+    <>
+      <div className="evidence-site-chart" aria-label="B1부터 B13까지 평균 운행 거리와 시간 그래프">
+        <div className="evidence-site-chart-legend">
+          <span><i className="distance" />완료 평균 거리</span>
+          <span><i className="duration" />완료 평균 시간</span>
+          <em>항목별 독립 척도</em>
+        </div>
+        <SiteTrendChart
+          sites={sites}
+          maximumDistance={maximumDistance}
+          maximumDuration={maximumDuration}
+        />
+        {sites.map(site => {
+          const current = isRecord(site.current_service) ? site.current_service : null;
+          const completedCount = finiteNumber(site.completed_service_count);
+          return (
+            <div className={`evidence-site-chart-row ${current ? 'active' : ''}`} key={site.site}>
+              <strong>{site.site}</strong>
+              <div className="evidence-site-bars">
+                <div className="evidence-site-bar-line">
+                  <span className="evidence-site-bar-track">
+                    <i className="distance" style={{ width: scaledBarWidth(site.average_distance_m, maximumDistance) }} />
+                  </span>
+                  <b>{formatMeters(site.average_distance_m)}</b>
+                </div>
+                <div className="evidence-site-bar-line">
+                  <span className="evidence-site-bar-track">
+                    <i className="duration" style={{ width: scaledBarWidth(site.average_duration_s, maximumDuration) }} />
+                  </span>
+                  <b>{formatDuration(site.average_duration_s)}</b>
+                </div>
+              </div>
+              <span className="evidence-site-run-state">
+                {current
+                  ? `운행 중 · ${formatMeters(current.distance_m)} · ${formatDuration(current.duration_s)}`
+                  : (completedCount === null ? '기록 없음' : `${Math.trunc(completedCount)}회 완료`)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="evidence-table-scroll evidence-site-table-scroll">
+        <table className="evidence-table evidence-site-table">
+          <caption className="sr-only">사이트별 평균, 최근 실행, 현재 실행 정량 지표</caption>
+          <thead>
+            <tr>
+              <th>사이트</th><th>완료/시도</th><th>완료율</th>
+              <th>평균 거리</th><th>평균 시간</th><th>최근 실행</th><th>현재 진행</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sites.map(site => {
+              const latest = isRecord(site.latest_service) ? site.latest_service : null;
+              const current = isRecord(site.current_service) ? site.current_service : null;
+              const completedCount = finiteNumber(site.completed_service_count);
+              const attemptCount = finiteNumber(site.service_attempt_count);
+              return (
+                <tr key={site.site} className={current ? 'evidence-site-active-row' : ''}>
+                  <td><strong>{site.site}</strong></td>
+                  <td>{completedCount === null || attemptCount === null
+                    ? '-' : `${Math.trunc(completedCount)}/${Math.trunc(attemptCount)}`}</td>
+                  <td>{formatPercentage(site.completion_rate_percentage)}</td>
+                  <td>{formatMeters(site.average_distance_m)}</td>
+                  <td>{formatDuration(site.average_duration_s)}</td>
+                  <td>{latest
+                    ? `${formatMeters(latest.distance_m)} · ${formatDuration(latest.duration_s)}`
+                    : '-'}</td>
+                  <td>{current
+                    ? (
+                      <span className="evidence-current-progress">
+                        <b>{formatMeters(current.distance_m)} · {formatDuration(current.duration_s)}</b>
+                        <small>
+                          완료 평균 대비 거리 {formatPercentage(site.current_distance_progress_percentage)}
+                          {' · '}시간 {formatPercentage(site.current_duration_progress_percentage)}
+                        </small>
+                      </span>
+                    ) : '-'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -336,6 +577,9 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
   const recentServices = useMemo(() => (
     Array.isArray(detailData?.recent_services) ? detailData.recent_services : []
   ), [detailData]);
+  const siteSummaries = useMemo(() => (
+    Array.isArray(data?.site_summaries) ? data.site_summaries : []
+  ), [data]);
 
   return (
     <div className="service-evidence-dashboard">
@@ -375,6 +619,18 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
           {current && <em>거리 실시간 집계 중</em>}
         </div>
         <ServiceOverview service={current || last} active={Boolean(current)} />
+      </section>
+
+      <section className="evidence-panel evidence-site-performance-panel">
+        <div className="evidence-panel-heading">
+          <div><span>SITE PERFORMANCE</span><h3>B1-B13 서비스 비교</h3></div>
+          <em>현재 진행률은 완료 평균 대비 값</em>
+        </div>
+        <SitePerformance
+          sites={siteSummaries}
+          loading={combinedLoading || summaryLoading}
+          error={combinedError}
+        />
       </section>
 
       <div className="evidence-history-layout">

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import signal
@@ -22,6 +23,7 @@ DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 800
 READINESS_POLL_INTERVAL_S = 0.10
 READINESS_REQUEST_TIMEOUT_S = 0.25
+REVISION_POLL_INTERVAL_S = 1.0
 CHROMIUM_CANDIDATES = (
     "chromium-browser",
     "chromium",
@@ -138,6 +140,27 @@ def _ui_is_ready(url: str, timeout_s: float = READINESS_REQUEST_TIMEOUT_S) -> bo
         return False
 
 
+def _read_ui_revision(
+    url: str,
+    timeout_s: float = READINESS_REQUEST_TIMEOUT_S,
+) -> str | None:
+    """Return a content fingerprint for the current frontend entry document."""
+    try:
+        request = Request(
+            url,
+            headers={
+                "Cache-Control": "no-cache, no-store",
+                "Pragma": "no-cache",
+            },
+        )
+        with urlopen(request, timeout=max(0.05, timeout_s)) as response:
+            if response.status >= 400:
+                return None
+            return hashlib.sha256(response.read()).hexdigest()
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return None
+
+
 def _wait_for_ui_ready(
     url: str,
     stop_requested: threading.Event,
@@ -244,8 +267,13 @@ def _run_webkit(args: argparse.Namespace) -> int:
 
     try:
         context = WebKit2.WebContext.get_default()
-        # HH_260805 - Retain cached React/static assets across reloads without
-        # forcing WebKit's deprecated process-model override.
+        # The React entry point changes its hashed bundle name on every build.
+        # Clear the process-local HTTP cache once at kiosk startup so a robot
+        # restart cannot restore an older index.html and hide a new UI.
+        if hasattr(context, "clear_cache"):
+            context.clear_cache()
+        # Retain the newly fetched hashed assets during this kiosk session
+        # without forcing WebKit's deprecated process-model override.
         if hasattr(context, "set_cache_model"):
             context.set_cache_model(WebKit2.CacheModel.DOCUMENT_BROWSER)
         window = Gtk.Window(title="CAMROD Operator UI")
@@ -296,14 +324,22 @@ def _run_webkit(args: argparse.Namespace) -> int:
     load_failure_count = 0
     readiness_stop = threading.Event()
     readiness_probe_running = False
+    revision_monitor_started = False
+    revision_lock = threading.Lock()
+    active_revision: str | None = None
+    pending_revision: str | None = None
 
     def request_load() -> None:
-        nonlocal attempt_failed, load_attempt_count, load_in_progress
+        nonlocal active_revision, attempt_failed, load_attempt_count, load_in_progress
         if window_closed or load_succeeded or load_in_progress:
             return
         attempt_failed = False
         load_in_progress = True
         load_attempt_count += 1
+        revision = _read_ui_revision(args.url)
+        if revision is not None:
+            with revision_lock:
+                active_revision = revision
         web_view.load_uri(args.url)
 
     def mark_load_failed(detail: str) -> None:
@@ -323,8 +359,8 @@ def _run_webkit(args: argparse.Namespace) -> int:
         start_readiness_probe()
 
     def on_load_changed(_view: Any, load_event: Any) -> None:
-        nonlocal load_in_progress, load_succeeded
-        if window_closed or load_succeeded:
+        nonlocal active_revision, load_in_progress, load_succeeded, pending_revision
+        if window_closed:
             return
         if load_event == WebKit2.LoadEvent.STARTED:
             load_in_progress = True
@@ -333,14 +369,29 @@ def _run_webkit(args: argparse.Namespace) -> int:
             return
 
         load_in_progress = False
-        if attempt_failed:
+        if attempt_failed and not load_succeeded:
             return
 
         main_resource = web_view.get_main_resource()
         response = main_resource.get_response() if main_resource is not None else None
         status_code = response.get_status_code() if response is not None else 0
         if status_code >= 400:
+            if load_succeeded:
+                with revision_lock:
+                    pending_revision = None
+                return
             mark_load_failed(f"HTTP {status_code}")
+            return
+
+        if load_succeeded:
+            with revision_lock:
+                if pending_revision is not None:
+                    active_revision = pending_revision
+                    pending_revision = None
+            print(
+                "camrod_ui_window: frontend build changed; reloaded current UI",
+                flush=True,
+            )
             return
 
         load_succeeded = True
@@ -350,6 +401,7 @@ def _run_webkit(args: argparse.Namespace) -> int:
             f"(attempt {load_attempt_count}, WebKit)",
             flush=True,
         )
+        start_revision_monitor()
 
     def on_load_failed(
         _view: Any,
@@ -357,11 +409,72 @@ def _run_webkit(args: argparse.Namespace) -> int:
         _failing_uri: str,
         error: Any,
     ) -> bool:
-        if window_closed or load_succeeded:
+        nonlocal pending_revision
+        if window_closed:
             return True
         detail = getattr(error, "message", str(error))
+        if load_succeeded:
+            with revision_lock:
+                pending_revision = None
+            print(
+                f"camrod_ui_window: frontend refresh failed ({detail}); will retry",
+                file=sys.stderr,
+                flush=True,
+            )
+            return True
         mark_load_failed(detail)
         return True
+
+    def reload_changed_frontend() -> bool:
+        if window_closed:
+            return GLib.SOURCE_REMOVE
+        reload_without_cache = getattr(web_view, "reload_bypass_cache", None)
+        if reload_without_cache is not None:
+            reload_without_cache()
+        else:
+            web_view.reload()
+        return GLib.SOURCE_REMOVE
+
+    def start_revision_monitor() -> None:
+        nonlocal revision_monitor_started
+        if revision_monitor_started or window_closed:
+            return
+        revision_monitor_started = True
+
+        def monitor() -> None:
+            nonlocal active_revision, pending_revision
+            candidate_revision: str | None = None
+            candidate_observations = 0
+            while not readiness_stop.is_set():
+                revision = _read_ui_revision(args.url)
+                reload_required = False
+                if revision is not None:
+                    with revision_lock:
+                        if active_revision is None:
+                            active_revision = revision
+                        elif pending_revision is not None:
+                            pass
+                        elif revision == active_revision:
+                            candidate_revision = None
+                            candidate_observations = 0
+                        elif revision == candidate_revision:
+                            candidate_observations += 1
+                            if candidate_observations >= 2:
+                                pending_revision = revision
+                                reload_required = True
+                        else:
+                            candidate_revision = revision
+                            candidate_observations = 1
+                if reload_required:
+                    GLib.idle_add(reload_changed_frontend)
+                if readiness_stop.wait(REVISION_POLL_INTERVAL_S):
+                    break
+
+        threading.Thread(
+            target=monitor,
+            name="camrod-ui-revision-monitor",
+            daemon=True,
+        ).start()
 
     def load_after_ready() -> bool:
         nonlocal readiness_probe_running
