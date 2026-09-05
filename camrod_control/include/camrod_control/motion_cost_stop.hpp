@@ -37,6 +37,11 @@ struct MotionCostStopConfig
   double stop_hold_s{1.0};
   bool latch_enabled{true};
   double clear_required_s{2.0};
+  // A merged-grid trigger may overlap unrelated static lanelet/path costs.
+  // Keep this false for develop parity; simulator profiles can opt in so the
+  // saved dynamic source, rather than an unrelated static merged cell, proves
+  // that the original obstacle remains present during latch release.
+  bool latch_use_trigger_source_for_merged_clear{false};
   bool stale_stop_enabled{true};
   double stale_timeout_s{1.0};
   // HH_260803 - Static route raster updates are slower than dynamic obstacle
@@ -46,6 +51,10 @@ struct MotionCostStopConfig
   // Keep the library-compatible lidar label for standalone policy users. The
   // deployed gate narrows this explicitly to radar,fusion in its ROS config.
   std::set<std::string> dynamic_source_labels{"lidar", "radar", "fusion"};
+  // Empty preserves the historical policy: every dynamic source may attribute
+  // a merged-grid hit. Profiles can narrow this when a classified source has
+  // its own stricter direct horizon and must not authorize static merged cost.
+  std::set<std::string> merged_dynamic_source_labels{};
   // HH_260818 - Classified camera-LiDAR cost is an early route stop with a
   // fixed 2 m horizon. Near-field radar keeps its independent corridor range.
   std::set<std::string> classified_dynamic_source_labels{"fusion"};
@@ -362,6 +371,7 @@ private:
   std::optional<double> closestPathDistance() const;
   bool sourceIsDynamic(const std::string & label) const;
   bool sourceIsClassifiedDynamic(const std::string & label) const;
+  bool sourceCanAttributeMerged(const std::string & label) const;
   std::optional<std::string> sourceGridBlockingPoint(
     const GridHit & hit,
     int threshold,

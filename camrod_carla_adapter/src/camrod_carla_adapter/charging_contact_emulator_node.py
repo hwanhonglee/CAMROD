@@ -110,8 +110,15 @@ def contact_candidate(sample, station, config=ContactConfig()):
     checked = validate_contact_config(config)
     parking_state = str(sample.parking_state).strip().upper()
     planning_state = str(sample.planning_state).strip().upper()
+    # The reverse-parking controller reports WAIT_FOR_CHARGING, while the
+    # AprilTag controller uses WAITING_FOR_CHARGING for the same physical
+    # terminal state.  Accept both exact spellings; every pose, odometry,
+    # speed, freshness, station-radius, and dwell check below still has to
+    # pass before contact can be asserted.
     terminal_parking_evidence = parking_state in {
-        "WAIT_FOR_CHARGING", "PARKED"
+        "WAIT_FOR_CHARGING",
+        "WAITING_FOR_CHARGING",
+        "PARKED",
     }
 
     # HH_260831 - A CAMROD-only restart cannot restore the in-memory PARKED

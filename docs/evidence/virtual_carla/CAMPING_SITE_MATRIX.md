@@ -203,6 +203,14 @@ B12 역사 실행은 약 14분이었으므로 13개 전체는 맵 경로와 주�
 즉시 출력한다. PNG/GIF는 별도
 [`capture_ui_evidence.sh`](../../../scripts/virtual_carla/capture_ui_evidence.sh)로 실제
 CARLA/UI 창을 동시에 녹화해야 하며, matrix JSON의 UTC milestone과 맞춰 파생물을 만든다.
+B1~B13 사이트별 장시간 캡처는
+`--capture-fps 1 --retain-source-video false --allow-short-capture true`를 쓰면 matrix
+완료 직후 같은 캡처 terminal의 ffmpeg에 `q`를 입력해 실제 길이(최소 12초)로 PNG/GIF를
+만들고, ffprobe/manifest/SHA 목록은 남기면서 임시 MP4만 파생 완료 후 제거할 수 있다.
+manifest와 `exact_commands.txt`는 요청/실제 시간 및 `early_finalized=true`를 기록한다.
+`--allow-short-capture` 기본값 `false`는 요청 길이 strict 검증을 유지하고,
+`--retain-source-video` 기본값 `true`는 원본 MP4도 유지한다. 제거 모드에서도 녹화 중
+원본을 담을 순간 여유 공간은 필요하다.
 
 2026-08-31 host에서는 gate 두 개와 실제 sensor source audit가 모두 검증된 뒤
 현재 `camrod-tuned`로 분류한 구성의 B1 matrix가 PASS했다. 그 결과만

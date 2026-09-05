@@ -17,6 +17,13 @@ controller_server:
       # Preserve the production final-approach and curvature-floor speeds.
       min_approach_linear_velocity: 0.138889
       regulated_linear_scaling_min_speed: 0.166667
+    RotationShim:
+      # Keep every forward Nav2 controller at the same physical cruise limit.
+      # The campsite CRAB/ROTATE controller is a separate node, so these
+      # pre-limits do not reduce its unity-gate maneuver commands.
+      desired_linear_vel: 0.555556
+      min_approach_linear_velocity: 0.138889
+      regulated_linear_scaling_min_speed: 0.166667
     RPPReverse:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       allow_reversing: true

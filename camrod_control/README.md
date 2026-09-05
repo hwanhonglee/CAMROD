@@ -212,6 +212,15 @@ If the projection is missing, stale, non-finite, or in another frame, the
 existing axis-separated exact-anchor sequence remains the deterministic
 fallback and still requires `return_position_tolerance_m=0.04`.
 
+The shared/physical profile keeps `crab_out_yaw_recovery_enable=false`, so its
+`CRAB_OUT` commands and transitions are unchanged. An external-simulator
+composition may explicitly enable the bounded hook while the return sequencer
+is still in its lateral stage. Heading drift beyond its configured retrace-yaw
+threshold publishes one full zero tick, then reuses the existing bounded
+rotate/yaw-rate/settle controller before resuming the same lateral sequencer.
+The retry count and the non-resetting steady-clock episode are hard limits;
+invalid evidence or either exhausted limit enters `ERROR` with zero command.
+
 ![v2.2.1 current-lane campsite handoff](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/v2-2-1-safety-handoff-summary.png)
 
 The [v2.2.1 measured run](../docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md)
@@ -256,6 +265,7 @@ current source and runtime contract below uses the updated `0.40 m` stop.
 | Final pose not reached | active parking phase | `DROP_ZONE_PARKING` |
 | Tag missing before the `0.40 m` latch | `WAITING_FOR_TAG`, zero command for up to `60 s` | `DROP_ZONE_PARKING` |
 | Tag range `<= 0.40 m`; yaw correcting | `FINAL_YAW_ALIGNMENT` | `DROP_ZONE_PARKING` |
+| CARLA site profile only: bounded lateral retry | `RETRY_FORWARD_EXIT` | `DROP_ZONE_PARKING` |
 | Yaw settled; CAN charge absent | `WAITING_FOR_CHARGING` | `WAITING_FOR_CHARGING` |
 | Parking complete; CAN charge true | `PARKED` | `CHARGING` |
 | Parked; no active charge feedback | `PARKED` | `DROP_ZONE_WAIT` |
@@ -275,6 +285,23 @@ The status message reports `configured_stop_tag_m`, `stop_reason`, and the exact
 Before the `0.40 m` translation latch, a Tag sample older than `0.5 s` holds
 zero. A fresh valid target can resume within the `60 s` `WAITING_FOR_TAG`
 window; expiration enters `ERROR` and requires a new parking START.
+
+Ordinary CAMROD and the develop-parity CARLA launch keep
+`enable_bounded_lateral_retry: false`: an excessive lateral error at the
+`0.40 m` latch remains an immediate stopped `ERROR`. The explicitly selected
+CARLA campsite profile may instead accept only `0.03 < |lateral| <= 0.15 m`,
+`|heading| <= 0.35 rad`, a fresh `0.35--0.45 m` Tag, fresh odometry, and no
+charging contact. It stays stopped while aligning yaw, then makes one measured
+`0.8 m` forward exit at raw `0.20 m/s` (final `0.10 m/s` after the gate), with
+an `8 s` yaw limit and `30 s` translation limit. The v12 live run established
+that raw `0.10 m/s` with `25 s` reached only `0.444 m` signed progress
+(`0.490 m` path) before timeout; v13 therefore changes only these two CARLA
+lease values. Its theoretical gated timeout budget is `3.0 m`, but the target
+stop remains `0.8 m` and accumulated path remains capped at `0.9 m`. Wrong-way
+progress, more than
+`0.15 m` lateral drift, a single odometry step above `0.10 m`, excess path
+length, stale input, or timeout stops in `ERROR`. Completion discards the old
+Tag/axis estimate and requires a fresh acquisition before reverse resumes.
 
 ## Campsite Sequencing Evidence
 

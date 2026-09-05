@@ -13,6 +13,10 @@ def generate_launch_description():
         get_package_share_directory('camrod_perception'),
         'config', 'perception_params.yaml',
     )
+    default_runtime_override = os.path.join(
+        get_package_share_directory('camrod_perception'),
+        'config', 'perception_runtime_profiles', 'disabled.yaml',
+    )
 
     # Resolve model path from camrod_perception share (models/ installed by CMakeLists).
     # Resolve labels path from yolov9mit_ros share (built in camera_lidar_fusion/yolo_ws).
@@ -34,6 +38,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace',      default_value='perception'),
         DeclareLaunchArgument('perception_param_file', default_value=default_param),
+        DeclareLaunchArgument(
+            'perception_runtime_override_param_file',
+            default_value=default_runtime_override,
+            description='Final sparse YOLO runtime overlay; ordinary CAMROD is empty',
+        ),
         DeclareLaunchArgument('enable_yolo',           default_value='true'),
         DeclareLaunchArgument('yolo_model_path',       default_value=default_model),
         DeclareLaunchArgument('yolo_labels_path',      default_value=default_labels),
@@ -46,6 +55,7 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 LaunchConfiguration('perception_param_file'),
+                LaunchConfiguration('perception_runtime_override_param_file'),
                 {
                     'model_path':       LaunchConfiguration('yolo_model_path'),
                     'class_label_path': LaunchConfiguration('yolo_labels_path'),

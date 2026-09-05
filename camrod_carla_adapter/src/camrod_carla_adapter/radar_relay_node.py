@@ -5,7 +5,10 @@ import time
 
 from avg_msgs.msg import AvgBool, AvgRange
 from camrod_carla_adapter.radar_mapping import (
+    CarlaRadarDetection,
     build_channel_specs,
+    build_co_moving_near_field_exclusions,
+    filter_co_moving_near_field_detections,
     select_nearest_range,
 )
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
@@ -57,6 +60,38 @@ def ranges_from_carla_cloud(message: PointCloud2) -> list[float]:
     except (AssertionError, TypeError, ValueError) as error:
         raise ValueError(f'invalid CARLA radar PointCloud2: {error}') from error
     return [float(value) for value in points[range_field]]
+
+
+def detections_from_carla_cloud(
+    message: PointCloud2,
+) -> list[CarlaRadarDetection]:
+    """Extract CARLA range, Doppler and ray angles without scalarizing first."""
+    names = {field.name.lower(): field.name for field in message.fields}
+    required = ('range', 'velocity', 'azimuthangle', 'elevationangle')
+    missing = [name for name in required if name not in names]
+    if missing:
+        raise ValueError(
+            'CARLA radar PointCloud2 lacks raw filter fields: '
+            + ','.join(missing)
+        )
+    field_names = [names[name] for name in required]
+    try:
+        points = point_cloud2.read_points(
+            message,
+            field_names=field_names,
+            skip_nans=False,
+        )
+    except (AssertionError, TypeError, ValueError) as error:
+        raise ValueError(f'invalid CARLA radar PointCloud2: {error}') from error
+    return [
+        CarlaRadarDetection(
+            range_m=float(point[field_names[0]]),
+            velocity_mps=float(point[field_names[1]]),
+            azimuth_rad=float(point[field_names[2]]),
+            elevation_rad=float(point[field_names[3]]),
+        )
+        for point in points
+    ]
 
 
 class CarlaRadarRelayNode(Node):
@@ -114,6 +149,38 @@ class CarlaRadarRelayNode(Node):
         ):
             raise ValueError('stream_timeout_sec must be finite and positive')
 
+        self._co_moving_near_field_filter_enable = bool(
+            self.declare_parameter(
+                'co_moving_near_field_filter_enable', False
+            ).value
+        )
+        self._co_moving_near_field_max_abs_velocity_mps = float(
+            self.declare_parameter(
+                'co_moving_near_field_filter_max_abs_velocity_mps', 0.05
+            ).value
+        )
+        raw_exclusions = tuple(self.declare_parameter(
+            'co_moving_near_field_filter_exclusions', []
+        ).value)
+        self._co_moving_near_field_exclusions = (
+            build_co_moving_near_field_exclusions(raw_exclusions, names)
+        )
+        # Validate the velocity bound even when no cloud has arrived.  A bad
+        # safety profile must fail at startup rather than silently stop filtering.
+        filter_co_moving_near_field_detections(
+            names[0] if names else '',
+            (),
+            self._co_moving_near_field_exclusions,
+            self._co_moving_near_field_max_abs_velocity_mps,
+        )
+        if (
+            self._co_moving_near_field_filter_enable
+            and not self._co_moving_near_field_exclusions
+        ):
+            raise ValueError(
+                'co-moving near-field filter enabled without exclusions'
+            )
+
         self._specs = build_channel_specs(
             names,
             input_topics,
@@ -170,6 +237,7 @@ class CarlaRadarRelayNode(Node):
         self._last_ranges = [math.nan] * len(self._specs)
         self._last_input_counts = [0] * len(self._specs)
         self._last_valid_counts = [0] * len(self._specs)
+        self._last_filtered_counts = [0] * len(self._specs)
         self._stream_errors = [''] * len(self._specs)
         self._status_publisher = self.create_publisher(
             DiagnosticArray, '/camrod_carla/radar_relay/status', 10
@@ -188,13 +256,36 @@ class CarlaRadarRelayNode(Node):
             'CARLA radar relay configured for '
             f'{len(self._specs)} physical-simulation channels'
         )
+        if self._co_moving_near_field_filter_enable:
+            self.get_logger().warn(
+                'CARLA co-moving near-field return filter active: '
+                f'exclusions={len(self._co_moving_near_field_exclusions)} '
+                'range-only filtering is forbidden'
+            )
 
     def _on_cloud(self, index, message):
         spec = self._specs[index]
         try:
-            detections = ranges_from_carla_cloud(message)
+            filtered_count = 0
+            if self._co_moving_near_field_filter_enable:
+                raw_detections = detections_from_carla_cloud(message)
+                detections, filtered_count = (
+                    filter_co_moving_near_field_detections(
+                        spec.name,
+                        raw_detections,
+                        self._co_moving_near_field_exclusions,
+                        self._co_moving_near_field_max_abs_velocity_mps,
+                    )
+                )
+                detection_ranges = [
+                    detection.range_m for detection in detections
+                ]
+                input_detection_count = len(raw_detections)
+            else:
+                detection_ranges = ranges_from_carla_cloud(message)
+                input_detection_count = len(detection_ranges)
             selection = select_nearest_range(
-                detections,
+                detection_ranges,
                 spec.min_range_m,
                 spec.max_range_m,
                 self._no_return_epsilon_m,
@@ -237,8 +328,9 @@ class CarlaRadarRelayNode(Node):
         self._global_dummy_publisher.publish(physical)
         self._last_seen[index] = time.monotonic()
         self._last_ranges[index] = selection.range_m
-        self._last_input_counts[index] = selection.input_detection_count
+        self._last_input_counts[index] = input_detection_count
         self._last_valid_counts[index] = selection.valid_detection_count
+        self._last_filtered_counts[index] = filtered_count
         self._stream_errors[index] = ''
 
     def _publish_status(self):
@@ -265,6 +357,10 @@ class CarlaRadarRelayNode(Node):
                         f'{self._last_valid_counts[index]}/'
                         f'{self._last_input_counts[index]}'
                     ),
+                ),
+                KeyValue(
+                    key=f'{spec.name}_filtered_co_moving_near_field',
+                    value=str(self._last_filtered_counts[index]),
                 ),
             ))
             if self._stream_errors[index]:

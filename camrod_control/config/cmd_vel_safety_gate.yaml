@@ -86,6 +86,7 @@
     # triggered the stop; a later zero or changed-direction cmd_vel cannot clear it.
     cost_stop_latch_enable: true
     cost_stop_clear_required_s: 2.0
+    cost_stop_latch_use_trigger_source_for_merged_clear: false
     cost_stop_latch_log_interval_s: 1.0
     cost_grid_stale_stop_enable: true
     cost_grid_stale_timeout_s: 1.0
@@ -106,6 +107,9 @@
     cost_source_debug_labels: ["lanelet", "radar", "fusion", "global_path"]
     cost_stop_require_dynamic_source: true
     cost_stop_dynamic_source_labels: "radar,fusion"
+    # Empty preserves develop behavior. Simulator profiles may restrict which
+    # live source can authorize an otherwise-static merged-grid hit.
+    cost_stop_merged_dynamic_source_labels: ""
     # HH_260818 - Semantic fusion stops only on the active local path up to
     # 2.0 m. Radar remains an independent near-field fail-safe source.
     cost_stop_classified_source_labels: "fusion"

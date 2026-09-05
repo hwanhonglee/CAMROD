@@ -25,6 +25,10 @@ CONFIG_MIRRORS = {
 # Dedicated controller-profile tests constrain the exact differing keys, while
 # this generic mirror test still verifies that both copies exist.
 INTENTIONAL_DEPLOYMENT_OVERRIDES = {
+    # Existing field gains and parked distance intentionally differ from the
+    # package standalone profile. The dedicated AprilTag contract test still
+    # requires the new default-off retry safety envelope to match exactly.
+    ("control", Path("parking.yaml")),
     ("planning", Path("nav2_base.yaml")),
     ("planning", Path("nav2_vehicle.yaml")),
     ("platform", Path("ranger_driver.yaml")),

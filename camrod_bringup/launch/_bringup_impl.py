@@ -1301,6 +1301,15 @@ def generate_launch_description():
             'Continuous clear duration required to release dynamic cost-stop latch',
         ),
         (
+            'control_cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear',
+                False,
+            ),
+            'Use the exact dynamic trigger source to clear a merged-grid latch',
+        ),
+        (
             'control_cmd_vel_gate_cost_stop_latch_log_interval_s',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_latch_log_interval_s', 1.0),
             'Log interval while waiting for dynamic cost-stop latch release',
@@ -1337,6 +1346,15 @@ def generate_launch_description():
                 'radar,fusion',
             ),
             'Comma-separated source labels that can trigger dynamic cost-stop',
+        ),
+        (
+            'control_cmd_vel_gate_cost_stop_merged_dynamic_source_labels',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_cost_stop_merged_dynamic_source_labels',
+                '',
+            ),
+            'Optional source allowlist for merged-grid dynamic attribution',
         ),
         (
             'control_cmd_vel_gate_cost_stop_classified_source_labels',
@@ -1598,6 +1616,15 @@ def generate_launch_description():
                 False,
             ),
             'Enable full-route path-relative correction in the cmd_vel safety gate',
+        ),
+        (
+            'control_cmd_vel_gate_route_safety_path_center_reentry_m',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_route_safety_path_center_reentry_m',
+                0.08,
+            ),
+            'Path-relative recovery CTE re-entry hysteresis in metres',
         ),
         (
             'control_cmd_vel_gate_route_safety_recovery_max_auto_releases',
@@ -2295,6 +2322,15 @@ def generate_launch_description():
             'Wall-clock campsite 180-degree rotation timeout; zero disables it',
         ),
         (
+            'control_camping_site_max_angular_speed_radps',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_max_angular_speed_radps',
+                '',
+            ),
+            'Optional campsite yaw-rate limit override; empty keeps control.yaml',
+        ),
+        (
             'control_camping_site_entry_position_tolerance_m',
             cfg_get(
                 launch_cfg,
@@ -2304,6 +2340,15 @@ def generate_launch_description():
             'Optional campsite crab-entry tolerance override; empty keeps the parameter file',
         ),
         (
+            'control_camping_site_return_lateral_hysteresis_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_return_lateral_hysteresis_m',
+                '',
+            ),
+            'Optional campsite crab-return latched-band hysteresis override; empty keeps the parameter file',
+        ),
+        (
             'control_camping_site_rotate_entry_max_position_error_m',
             cfg_get(
                 launch_cfg,
@@ -2311,6 +2356,15 @@ def generate_launch_description():
                 0.0,
             ),
             'Maximum position error allowed before campsite rotation; zero disables it',
+        ),
+        (
+            'control_camping_site_rotate_entry_centering_max_initial_error_m',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_rotate_entry_centering_max_initial_error_m',
+                0.30,
+            ),
+            'Maximum initial campsite rotation-center recovery error',
         ),
         (
             'control_camping_site_entry_anchor_centering_max_initial_error_m',
@@ -2392,6 +2446,42 @@ def generate_launch_description():
                 15.0,
             ),
             'Wall-clock timeout for the stationary crab-entry body alignment',
+        ),
+        (
+            'control_camping_site_crab_out_yaw_recovery_enable',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_out_yaw_recovery_enable',
+                False,
+            ),
+            'Enable bounded stationary retrace-yaw recovery during CRAB_OUT lateral motion',
+        ),
+        (
+            'control_camping_site_crab_out_yaw_recovery_trigger_deg',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_out_yaw_recovery_trigger_deg',
+                8.0,
+            ),
+            'Heading drift that stops CRAB_OUT translation and starts yaw recovery',
+        ),
+        (
+            'control_camping_site_crab_out_yaw_recovery_max_attempts',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_out_yaw_recovery_max_attempts',
+                3,
+            ),
+            'Maximum stationary yaw recoveries in one CRAB_OUT phase',
+        ),
+        (
+            'control_camping_site_crab_out_yaw_recovery_global_timeout_s',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_out_yaw_recovery_global_timeout_s',
+                60.0,
+            ),
+            'Steady-clock bound from first CRAB_OUT yaw recovery trigger',
         ),
         (
             'control_camping_site_roadside_reverse_return_enable',
@@ -3161,11 +3251,20 @@ def generate_launch_description():
         'rotate_180_timeout_s': lc[
             'control_camping_site_rotate_180_timeout_s'
         ],
+        'camping_site_max_angular_speed_radps': lc[
+            'control_camping_site_max_angular_speed_radps'
+        ],
         'camping_site_entry_position_tolerance_m': lc[
             'control_camping_site_entry_position_tolerance_m'
         ],
+        'return_lateral_hysteresis_m': lc[
+            'control_camping_site_return_lateral_hysteresis_m'
+        ],
         'camping_site_rotate_entry_max_position_error_m': lc[
             'control_camping_site_rotate_entry_max_position_error_m'
+        ],
+        'camping_site_rotate_entry_centering_max_initial_error_m': lc[
+            'control_camping_site_rotate_entry_centering_max_initial_error_m'
         ],
         'entry_anchor_centering_max_initial_error_m': lc[
             'control_camping_site_entry_anchor_centering_max_initial_error_m'
@@ -3193,6 +3292,18 @@ def generate_launch_description():
         ],
         'crab_entry_body_yaw_alignment_timeout_s': lc[
             'control_camping_site_crab_entry_body_yaw_alignment_timeout_s'
+        ],
+        'crab_out_yaw_recovery_enable': lc[
+            'control_camping_site_crab_out_yaw_recovery_enable'
+        ],
+        'crab_out_yaw_recovery_trigger_deg': lc[
+            'control_camping_site_crab_out_yaw_recovery_trigger_deg'
+        ],
+        'crab_out_yaw_recovery_max_attempts': lc[
+            'control_camping_site_crab_out_yaw_recovery_max_attempts'
+        ],
+        'crab_out_yaw_recovery_global_timeout_s': lc[
+            'control_camping_site_crab_out_yaw_recovery_global_timeout_s'
         ],
         'roadside_reverse_return_enable': lc[
             'control_camping_site_roadside_reverse_return_enable'

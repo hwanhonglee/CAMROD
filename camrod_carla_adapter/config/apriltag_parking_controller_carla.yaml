@@ -1,0 +1,42 @@
+# CARLA-only AprilTag approach steering response.
+#
+# Official B2 CARLA returns on 2026-09-02 proved that gain alone is not
+# repeatable across the observed arrival-pose spread: gain 2.7 reached -0.006 m
+# after final yaw in v11 but reached the same 0.40 m stop at -0.088 m in v12.
+# Keep the interpolated 2.7 response and add only the bounded site-only retry
+# below; changing the gain again would merely trade error sign between runs.
+# Pin the other live values so this overlay remains reproducible despite the
+# legacy detector/controller parameter-file scope collision in parking.launch.py.
+#
+# Do not relax the stop distance, lateral tolerance, approach-angle bound, or
+# minimum turn radius here.
+/parking/apriltag_parking_controller:
+  ros__parameters:
+    heading_gain: 1.5
+    lateral_to_heading_gain: 2.7
+    reverse_approach_speed_mps: 0.2
+    final_insertion_speed_mps: 0.05
+    # CARLA Drop-Zone arrivals vary by more than the production lateral
+    # tolerance. Preserve the immutable 0.40 m stop, +/-0.03 m acceptance,
+    # and 0.85 m turn radius. Fresh B2 v14 evidence measured the first stop at
+    # 0.054 m lateral error, a bounded 0.804 m exit, then a second stop at
+    # 0.042 m. Both stops were outside the unchanged 0.03 m completion band,
+    # so permit exactly one additional bounded exit/reacquisition. No retry
+    # distance, speed, drift, heading, odometry, path, or timeout envelope is
+    # relaxed here.
+    # v12 measured only 0.444 m signed progress (0.490 m path) before the
+    # 0.10 m/s, 25 s command timed out.  v13 raises only the CARLA raw command
+    # and timeout.  The 0.5 gate yields 0.10 m/s and a 3.0 m timeout budget,
+    # while the 0.8 m target and 0.9 m accumulated-path cap still stop motion.
+    enable_bounded_lateral_retry: true
+    retry_forward_distance_m: 0.8
+    retry_forward_speed_mps: 0.20
+    retry_forward_timeout_s: 30.0
+    retry_yaw_alignment_timeout_s: 8.0
+    retry_maximum_lateral_error_m: 0.15
+    retry_maximum_heading_error_rad: 0.35
+    retry_maximum_forward_exit_lateral_drift_m: 0.15
+    retry_maximum_odometry_step_m: 0.10
+    retry_minimum_tag_distance_m: 0.35
+    retry_maximum_tag_distance_m: 0.45
+    maximum_retries: 2

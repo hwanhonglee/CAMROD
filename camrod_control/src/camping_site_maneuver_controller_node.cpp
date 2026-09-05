@@ -291,6 +291,23 @@ public:
         declare_parameter<double>("return_lateral_hysteresis_m", 0.10));
     return_steering_settle_s_ =
         std::abs(declare_parameter<double>("return_steering_settle_s", 1.20));
+    // HH_260902 - Production/develop stays byte-for-byte inactive at false.
+    // A simulator wrapper may opt into bounded stationary retrace-yaw
+    // corrections while CRAB_OUT still owns the lateral steering stage.
+    crab_out_yaw_recovery_enable_ =
+        declare_parameter<bool>("crab_out_yaw_recovery_enable", false);
+    crab_out_yaw_recovery_trigger_deg_ =
+        declare_parameter<double>("crab_out_yaw_recovery_trigger_deg", 8.0);
+    crab_out_yaw_recovery_max_attempts_ =
+        declare_parameter<int>("crab_out_yaw_recovery_max_attempts", 3);
+    crab_out_yaw_recovery_global_timeout_s_ = declare_parameter<double>(
+        "crab_out_yaw_recovery_global_timeout_s", 60.0);
+    crab_out_yaw_recovery_guard_.setConfig(
+        camrod_control::CampsiteCrabOutYawRecoveryConfig{
+            crab_out_yaw_recovery_enable_,
+            crab_out_yaw_recovery_trigger_deg_,
+            crab_out_yaw_recovery_max_attempts_,
+            crab_out_yaw_recovery_global_timeout_s_});
     // HH_260825 - Normal campsite exit hands planning the live lanelet
     // projection instead of forcing the robot back to the historical entry XY.
     // The old exact-anchor sequencer remains available as a stale-projection
@@ -2154,6 +2171,12 @@ private:
                  .count());
   }
 
+  double steadyNowSeconds() const {
+    return std::chrono::duration<double>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+  }
+
   double activeYawErrorRad(const double current_yaw) {
     if (phase_ == CampingSiteManeuverPhase::kRotate180 &&
         rotate_direction_sign_ != 0.0) {
@@ -2226,6 +2249,7 @@ private:
     }
     if (phase_ == CampingSiteManeuverPhase::kCrabOut &&
         last_pose_.has_value()) {
+      crab_out_yaw_recovery_guard_.reset();
       crab_return_sequencer_.reset(now().seconds());
       const auto live_distance_m = liveLaneletProjectionDistance();
       const bool use_live_target =
@@ -2684,6 +2708,73 @@ private:
       command.linear.y = velocity.linear_y_mps;
     }
     command_publisher_->publish(command);
+  }
+
+  bool handleCrabOutYawRecovery() {
+    const bool lateral_stage =
+        crab_return_sequencer_.stage() ==
+        camrod_control::CampsiteCrabReturnStage::kLateral;
+    const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+    const double yaw_error =
+        camrod_control::normalizeAngle(target_yaw_ - current_yaw);
+    const double steady_now_s = steadyNowSeconds();
+    const auto action = crab_out_yaw_recovery_guard_.update(
+        lateral_stage, yaw_error, steady_now_s);
+    const double yaw_error_deg = std::abs(yaw_error) * 180.0 / M_PI;
+    using Action = camrod_control::CampsiteCrabOutYawRecoveryAction;
+    if (action == Action::kBypass || action == Action::kTranslate) {
+      return false;
+    }
+    if (action == Action::kFailInvalidInput) {
+      setError("CRAB_OUT yaw recovery invalid input/configuration");
+      return true;
+    }
+    if (action == Action::kFailAttemptLimit) {
+      setError("CRAB_OUT yaw recovery attempt limit exhausted: attempts=" +
+               std::to_string(crab_out_yaw_recovery_guard_.attemptCount()) +
+               " max=" +
+               std::to_string(crab_out_yaw_recovery_max_attempts_) +
+               " drift=" + fixed(yaw_error_deg, 2) + "deg");
+      return true;
+    }
+    if (action == Action::kFailGlobalTimeout) {
+      setError("CRAB_OUT yaw recovery global steady timeout: elapsed=" +
+               fixed(crab_out_yaw_recovery_guard_.elapsedSeconds(
+                         steady_now_s),
+                     1) +
+               "s limit=" +
+               fixed(crab_out_yaw_recovery_global_timeout_s_, 1) + "s");
+      return true;
+    }
+    if (action == Action::kBeginAlignment) {
+      // Publish one complete stationary tick before asking the existing
+      // bounded rotate/settle controller to move any wheel.
+      yaw_alignment_settling_.reset();
+      publishZero();
+      phase_detail_ =
+          "CRAB_OUT yaw recovery stopped translation: attempt=" +
+          std::to_string(crab_out_yaw_recovery_guard_.attemptCount()) + "/" +
+          std::to_string(crab_out_yaw_recovery_max_attempts_) +
+          " drift=" + fixed(yaw_error_deg, 2) + "deg trigger=" +
+          fixed(crab_out_yaw_recovery_trigger_deg_, 2) +
+          "deg target=" + fixed(target_yaw_ * 180.0 / M_PI, 2) + "deg";
+      RCLCPP_WARN(get_logger(), "%s", phase_detail_.c_str());
+      return true;
+    }
+    if (action == Action::kContinueAlignment) {
+      if (publishRotate()) {
+        crab_out_yaw_recovery_guard_.alignmentCompleted();
+        publishZero();
+        phase_detail_ =
+            "CRAB_OUT yaw recovery settled; resume lateral stage: attempt=" +
+            std::to_string(crab_out_yaw_recovery_guard_.attemptCount()) +
+            " residual=" + fixed(yaw_error_deg, 2) + "deg";
+        RCLCPP_INFO(get_logger(), "%s", phase_detail_.c_str());
+      }
+      return true;
+    }
+    setError("CRAB_OUT yaw recovery returned unknown action");
+    return true;
   }
 
   void publishReversePath(const double start_x, const double start_y,
@@ -3147,6 +3238,9 @@ private:
         } else if (elapsed > crab_return_timeout_s_) {
           setError("crab return timeout before reaching live lanelet or "
                    "fallback anchor");
+        } else if (handleCrabOutYawRecovery()) {
+          // The recovery hook published either a stationary, bounded-yaw, or
+          // fail-closed command. Never mix translation into the same tick.
         } else {
           publishCrabReturnToAnchor();
         }
@@ -3171,6 +3265,9 @@ private:
         }
       } else if (elapsed > crab_return_timeout_s_) {
         setError("crab return timeout before completing lateral road exit");
+      } else if (handleCrabOutYawRecovery()) {
+        // The recovery hook published either a stationary, bounded-yaw, or
+        // fail-closed command. Never mix translation into the same tick.
       } else {
         publishCrabReturnToAnchor();
       }
@@ -3243,6 +3340,8 @@ private:
         (yaw_available ? fixed(yaw_error * 180.0 / M_PI, 2) : "unavailable") +
         " yaw_rate_degps=" + fixed(active_alignment_yaw_rate_degps, 2) +
         " last_angular_cmd_radps=" + fixed(last_angular_command_radps_, 3) +
+        " crab_out_yaw_recovery_active=" +
+        (crab_out_yaw_recovery_guard_.active() ? "true" : "false") +
         " crab_body_yaw_alignment=" + crabEntryBodyYawAlignmentPurposeName() +
         " crab_body_yaw_compensation_state=" +
         crab_entry_body_yaw_compensation_state_ + " detail=" + phase_detail_ +
@@ -3387,6 +3486,21 @@ private:
             {"crab_return_stage", camrod_control::campsiteCrabReturnStageName(
                                       crab_return_sequencer_.stage())},
             {"crab_return_timeout_s", fixed(crab_return_timeout_s_)},
+            {"crab_out_yaw_recovery_enable",
+             crab_out_yaw_recovery_enable_ ? "true" : "false"},
+            {"crab_out_yaw_recovery_active",
+             crab_out_yaw_recovery_guard_.active() ? "true" : "false"},
+            {"crab_out_yaw_recovery_attempts",
+             std::to_string(crab_out_yaw_recovery_guard_.attemptCount())},
+            {"crab_out_yaw_recovery_trigger_deg",
+             fixed(crab_out_yaw_recovery_trigger_deg_)},
+            {"crab_out_yaw_recovery_max_attempts",
+             std::to_string(crab_out_yaw_recovery_max_attempts_)},
+            {"crab_out_yaw_recovery_global_timeout_s",
+             fixed(crab_out_yaw_recovery_global_timeout_s_)},
+            {"crab_out_yaw_recovery_elapsed_s",
+             fixed(crab_out_yaw_recovery_guard_.elapsedSeconds(
+                 steadyNowSeconds()))},
         }));
     last_status_publish_time_ = current_time;
   }
@@ -3442,6 +3556,12 @@ private:
   double return_lateral_transition_tolerance_m_{0.02};
   double return_lateral_hysteresis_m_{0.10};
   double return_steering_settle_s_{1.20};
+  bool crab_out_yaw_recovery_enable_{false};
+  double crab_out_yaw_recovery_trigger_deg_{8.0};
+  int crab_out_yaw_recovery_max_attempts_{3};
+  double crab_out_yaw_recovery_global_timeout_s_{60.0};
+  camrod_control::CampsiteCrabOutYawRecoveryGuard
+      crab_out_yaw_recovery_guard_;
   bool enable_live_lanelet_return_handoff_{true};
   double return_lanelet_handoff_distance_m_{0.15};
   double roadside_reverse_handoff_distance_m_{0.03};

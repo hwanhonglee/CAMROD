@@ -75,7 +75,10 @@ def generate_launch_description():
         "carla_rotate_180_timeout_s": "60.0",
         "carla_entry_position_tolerance_m": "0.05",
         "carla_rotate_entry_max_position_error_m": "0.05",
-        "carla_entry_anchor_centering_max_initial_error_m": "0.65",
+        "carla_rotate_entry_centering_max_initial_error_m": "0.50",
+        # Follow develop's live-lanelet/current-pose return handoff instead of
+        # recovering the historical inbound snap before campsite entry.
+        "carla_entry_anchor_centering_max_initial_error_m": "0.0",
         "carla_entry_anchor_centering_max_speed_mps": "0.12",
         "carla_entry_anchor_centering_timeout_s": "15",
         "carla_entry_anchor_centering_tolerance_m": "0.05",

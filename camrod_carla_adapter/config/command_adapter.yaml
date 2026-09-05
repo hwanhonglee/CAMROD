@@ -15,6 +15,14 @@
     recovery_breakaway_target_minimum_mps: 0.04
     recovery_breakaway_target_maximum_mps: 0.06
 
+    # Separate fail-closed lease for the CARLA campsite CRAB_OUT yaw recovery.
+    # The develop-site wrapper alone enables it. The adapter also requires a
+    # fresh healthy campsite status with the exact active-recovery token and a
+    # stationary ZERO_TURN/PIVOT command; ordinary rotations remain unmarked.
+    rotation_recovery_breakaway_enable: false
+    rotation_recovery_breakaway_status_topic: "/control/camping_site_maneuver_controller/status"
+    rotation_recovery_breakaway_status_timeout_sec: 0.30
+
     # Match CAMROD Ranger mode selection exactly at the command boundary.
     lateral_deadband_mps: 0.02
     angular_epsilon_radps: 0.000001

@@ -48,6 +48,7 @@ def generate_launch_description():
     bringup_share = get_package_share_directory("camrod_bringup")
     control_share = get_package_share_directory("camrod_control")
     localization_share = get_package_share_directory("camrod_localization")
+    perception_share = get_package_share_directory("camrod_perception")
     planning_share = get_package_share_directory("camrod_planning")
     sensing_share = get_package_share_directory("camrod_sensing")
     system_share = get_package_share_directory("camrod_system")
@@ -100,6 +101,9 @@ def generate_launch_description():
     )
     perception_carla_config = os.path.join(
         adapter_share, "config", "perception_carla.yaml"
+    )
+    apriltag_detector_config = os.path.join(
+        perception_share, "config", "apriltag_parking_detector.yaml"
     )
     system_checker_config = os.path.join(
         system_share, "config", "system_checker.yaml"
@@ -180,6 +184,22 @@ def generate_launch_description():
                 "Woraksan recovery runs; parity mode adds no such authority"
             ),
         ),
+        DeclareLaunchArgument(
+            "rotation_recovery_breakaway_enable",
+            default_value="false",
+            description=(
+                "Opt-in CARLA campsite CRAB_OUT rotational-stall lease; "
+                "ordinary and develop-parity rotation retain 2 N*m"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "rotation_recovery_breakaway_status_timeout_sec",
+            default_value="0.30",
+            description=(
+                "Freshness lease for the CARLA campsite rotation recovery "
+                "status; develop parity retains 0.30 s"
+            ),
+        ),
         DeclareLaunchArgument("launch_sensor_relay", default_value="true"),
         DeclareLaunchArgument(
             "launch_lidar_processing", default_value="true"
@@ -238,6 +258,14 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "launch_charging_contact_emulator", default_value="false"
+        ),
+        DeclareLaunchArgument(
+            "carla_charging_contact_parking_status_topic",
+            default_value="/parking/reverse_parking_controller/status",
+            description=(
+                "Parking-state source used only when the opt-in CARLA "
+                "charging-contact emulator is launched"
+            ),
         ),
         DeclareLaunchArgument(
             "platform_heartbeat_publish_rate_hz", default_value="5.0"
@@ -327,10 +355,34 @@ def generate_launch_description():
             "carla_cost_stop_threshold", default_value="85"
         ),
         DeclareLaunchArgument(
+            "carla_cost_stop_latch_use_trigger_source_for_merged_clear",
+            default_value="false",
+            description=(
+                "CARLA-only opt-in: release a merged-grid dynamic latch from "
+                "fresh clear evidence on its saved trigger source"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_cost_stop_merged_dynamic_source_labels",
+            default_value="",
+            description=(
+                "Optional CARLA-only allowlist for dynamic sources that may "
+                "attribute a merged-grid stop"
+            ),
+        ),
+        DeclareLaunchArgument(
             "carla_lanelet_safety_threshold", default_value="85"
         ),
         DeclareLaunchArgument(
             "carla_lanelet_safety_current_threshold", default_value="85"
+        ),
+        DeclareLaunchArgument(
+            "carla_lanelet_safety_footprint_enable",
+            default_value="true",
+            description=(
+                "CARLA-only planning-envelope lanelet check switch; true "
+                "preserves the develop/full-launch safety default"
+            ),
         ),
         DeclareLaunchArgument(
             "carla_lanelet_safety_check_reverse", default_value="false"
@@ -347,6 +399,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_route_safety_path_relative_recovery_enable",
             default_value="false",
+        ),
+        DeclareLaunchArgument(
+            "carla_route_safety_path_center_reentry_m",
+            default_value="0.08",
+            description=(
+                "CARLA-only path-relative recovery CTE re-entry hysteresis; "
+                "the full/develop-parity default remains 0.08 m"
+            ),
         ),
         DeclareLaunchArgument(
             "carla_route_safety_zero_hold_pauses_limits",
@@ -445,6 +505,16 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "carla_camping_site_max_angular_speed_radps",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CAMPING_SITE_MAX_ANGULAR_SPEED_RADPS", ""
+            ),
+            description=(
+                "Optional CARLA-only campsite yaw-rate limit; empty preserves "
+                "the develop control.yaml value"
+            ),
+        ),
+        DeclareLaunchArgument(
             "carla_entry_position_tolerance_m",
             default_value=os.environ.get(
                 "CAMROD_CARLA_ENTRY_POSITION_TOLERANCE_M", "0.15"
@@ -452,6 +522,16 @@ def generate_launch_description():
             description=(
                 "CARLA-only crab-entry completion tolerance selected for the "
                 "narrow v3 campsite geometry; ordinary CAMROD keeps 0.15 m"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_return_lateral_hysteresis_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_RETURN_LATERAL_HYSTERESIS_M", ""
+            ),
+            description=(
+                "Optional CARLA-only crab-return latched-band hysteresis; "
+                "empty preserves the develop control.yaml value"
             ),
         ),
         DeclareLaunchArgument(
@@ -463,6 +543,18 @@ def generate_launch_description():
                 "CARLA-only certified center tolerance for starting "
                 "ROTATE_180 after bounded axis-by-axis centering; ordinary "
                 "CAMROD keeps this disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_rotate_entry_centering_max_initial_error_m",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_ROTATE_ENTRY_CENTERING_MAX_INITIAL_ERROR_M",
+                "0.30",
+            ),
+            description=(
+                "CARLA-only maximum initial error recoverable by bounded "
+                "axis-by-axis centering before ROTATE_180; ordinary CAMROD "
+                "keeps its 0.30 m controller default"
             ),
         ),
         DeclareLaunchArgument(
@@ -559,6 +651,40 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "carla_crab_out_yaw_recovery_enable",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_OUT_YAW_RECOVERY_ENABLE", "false"
+            ),
+            description=(
+                "CARLA-only bounded stationary yaw recovery during the "
+                "CRAB_OUT lateral stage; ordinary CAMROD keeps it disabled"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_out_yaw_recovery_trigger_deg",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_OUT_YAW_RECOVERY_TRIGGER_DEG", "8.0"
+            ),
+            description="CARLA-only CRAB_OUT yaw-recovery trigger",
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_out_yaw_recovery_max_attempts",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_OUT_YAW_RECOVERY_MAX_ATTEMPTS", "3"
+            ),
+            description="CARLA-only CRAB_OUT yaw-recovery attempt bound",
+        ),
+        DeclareLaunchArgument(
+            "carla_crab_out_yaw_recovery_global_timeout_s",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_OUT_YAW_RECOVERY_GLOBAL_TIMEOUT_S", "60.0"
+            ),
+            description=(
+                "CARLA-only steady-clock bound from the first CRAB_OUT "
+                "yaw-recovery trigger"
+            ),
+        ),
+        DeclareLaunchArgument(
             "carla_roadside_reverse_handoff_distance_m",
             default_value=os.environ.get(
                 "CAMROD_CARLA_ROADSIDE_REVERSE_HANDOFF_DISTANCE_M", "0.03"
@@ -588,6 +714,16 @@ def generate_launch_description():
             default_value=perception_carla_config,
             description=(
                 "CARLA-only sparse camera-to-LiDAR geometry overlay"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_apriltag_param_file",
+            default_value=apriltag_detector_config,
+            description=(
+                "AprilTag detector profile forwarded into CAMROD bringup. "
+                "The full/develop-parity default is the production profile; "
+                "a CARLA wrapper may explicitly select a sensor-resolution "
+                "adaptation without changing shared perception defaults"
             ),
         ),
         DeclareLaunchArgument(
@@ -711,6 +847,9 @@ def generate_launch_description():
                     "accepted_carla_python_egg"
                 ),
                 "python_egg_cache": LaunchConfiguration("python_egg_cache"),
+                "rotation_recovery_breakaway_enable": LaunchConfiguration(
+                    "rotation_recovery_breakaway_enable"
+                ),
             },
             condition=IfCondition(
                 LaunchConfiguration("launch_vehicle_control")
@@ -725,6 +864,14 @@ def generate_launch_description():
                 ),
                 "recovery_breakaway_enable": LaunchConfiguration(
                     "recovery_breakaway_enable"
+                ),
+                "rotation_recovery_breakaway_enable": LaunchConfiguration(
+                    "rotation_recovery_breakaway_enable"
+                ),
+                "rotation_recovery_breakaway_status_timeout_sec": (
+                    LaunchConfiguration(
+                        "rotation_recovery_breakaway_status_timeout_sec"
+                    )
                 ),
                 # The standard /odom boundary is consumed by the unmodified
                 # ranger_platform_bridge, which remains the sole owner of the
@@ -798,6 +945,9 @@ def generate_launch_description():
                 ),
                 "state_timeout_s": LaunchConfiguration(
                     "carla_charging_contact_state_timeout_s"
+                ),
+                "parking_status_topic": LaunchConfiguration(
+                    "carla_charging_contact_parking_status_topic"
                 ),
             },
             condition=IfCondition(
@@ -883,6 +1033,11 @@ def generate_launch_description():
                         "carla_perception_runtime_override_param_file"
                     )
                 ),
+                # Full/develop parity resolves to the production detector file.
+                # Only an explicit CARLA wrapper may replace this input.
+                "apriltag_param_file": LaunchConfiguration(
+                    "carla_apriltag_param_file"
+                ),
                 # CARLA wall-clock sensor cadence depends on rendered server
                 # load. Apply only CARLA sensor thresholds, then inherit every
                 # other simulation diagnostic before hardware defaults.
@@ -933,12 +1088,27 @@ def generate_launch_description():
                 "control_camping_site_rotate_180_timeout_s": (
                     LaunchConfiguration("carla_rotate_180_timeout_s")
                 ),
+                "control_camping_site_max_angular_speed_radps": (
+                    LaunchConfiguration(
+                        "carla_camping_site_max_angular_speed_radps"
+                    )
+                ),
                 "control_camping_site_entry_position_tolerance_m": (
                     LaunchConfiguration("carla_entry_position_tolerance_m")
+                ),
+                "control_camping_site_return_lateral_hysteresis_m": (
+                    LaunchConfiguration(
+                        "carla_return_lateral_hysteresis_m"
+                    )
                 ),
                 "control_camping_site_rotate_entry_max_position_error_m": (
                     LaunchConfiguration(
                         "carla_rotate_entry_max_position_error_m"
+                    )
+                ),
+                "control_camping_site_rotate_entry_centering_max_initial_error_m": (
+                    LaunchConfiguration(
+                        "carla_rotate_entry_centering_max_initial_error_m"
                     )
                 ),
                 "control_camping_site_entry_anchor_centering_max_initial_error_m": (
@@ -984,6 +1154,26 @@ def generate_launch_description():
                 "control_camping_site_crab_entry_body_yaw_alignment_timeout_s": (
                     LaunchConfiguration(
                         "carla_crab_entry_body_yaw_alignment_timeout_s"
+                    )
+                ),
+                "control_camping_site_crab_out_yaw_recovery_enable": (
+                    LaunchConfiguration(
+                        "carla_crab_out_yaw_recovery_enable"
+                    )
+                ),
+                "control_camping_site_crab_out_yaw_recovery_trigger_deg": (
+                    LaunchConfiguration(
+                        "carla_crab_out_yaw_recovery_trigger_deg"
+                    )
+                ),
+                "control_camping_site_crab_out_yaw_recovery_max_attempts": (
+                    LaunchConfiguration(
+                        "carla_crab_out_yaw_recovery_max_attempts"
+                    )
+                ),
+                "control_camping_site_crab_out_yaw_recovery_global_timeout_s": (
+                    LaunchConfiguration(
+                        "carla_crab_out_yaw_recovery_global_timeout_s"
                     )
                 ),
                 "control_camping_site_roadside_reverse_return_enable": (
@@ -1037,6 +1227,11 @@ def generate_launch_description():
                         "carla_route_safety_path_relative_recovery_enable"
                     )
                 ),
+                "control_cmd_vel_gate_route_safety_path_center_reentry_m": (
+                    LaunchConfiguration(
+                        "carla_route_safety_path_center_reentry_m"
+                    )
+                ),
                 "control_route_safety_recovery_zero_hold_pauses_limits": (
                     LaunchConfiguration(
                         "carla_route_safety_zero_hold_pauses_limits"
@@ -1083,11 +1278,26 @@ def generate_launch_description():
                 "control_cmd_vel_gate_cost_threshold": LaunchConfiguration(
                     "carla_cost_stop_threshold"
                 ),
+                "control_cmd_vel_gate_cost_stop_latch_use_trigger_source_for_merged_clear": (
+                    LaunchConfiguration(
+                        "carla_cost_stop_latch_use_trigger_source_for_merged_clear"
+                    )
+                ),
+                "control_cmd_vel_gate_cost_stop_merged_dynamic_source_labels": (
+                    LaunchConfiguration(
+                        "carla_cost_stop_merged_dynamic_source_labels"
+                    )
+                ),
                 "control_cmd_vel_gate_lanelet_safety_threshold": (
                     LaunchConfiguration("carla_lanelet_safety_threshold")
                 ),
                 "control_cmd_vel_gate_lanelet_safety_current_threshold": (
                     LaunchConfiguration("carla_lanelet_safety_current_threshold")
+                ),
+                "control_cmd_vel_gate_lanelet_safety_footprint_enable": (
+                    LaunchConfiguration(
+                        "carla_lanelet_safety_footprint_enable"
+                    )
                 ),
                 "planning_nav2_bt_xml_nav_to_pose": LaunchConfiguration(
                     "nav2_bt_xml_nav_to_pose"

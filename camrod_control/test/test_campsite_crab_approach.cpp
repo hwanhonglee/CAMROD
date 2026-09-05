@@ -237,6 +237,83 @@ TEST(CampsiteCrabEntrySafety, EnabledLimitRejectsNonfiniteEvidence) {
   EXPECT_TRUE(result.invalid_input);
 }
 
+TEST(CampsiteCrabOutYawRecovery, DisabledDefaultIsExactIdentity) {
+  CampsiteCrabOutYawRecoveryGuard guard;
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_EQ(guard.update(true, nan, nan),
+            CampsiteCrabOutYawRecoveryAction::kBypass);
+  EXPECT_FALSE(guard.active());
+  EXPECT_EQ(guard.attemptCount(), 0);
+}
+
+TEST(CampsiteCrabOutYawRecovery,
+     TriggersOnlyAboveBoundDuringLateralStageAndResumes) {
+  constexpr double degrees_to_radians = 0.017453292519943295769236907684886;
+  CampsiteCrabOutYawRecoveryGuard guard(
+      CampsiteCrabOutYawRecoveryConfig{true, 8.0, 3, 60.0});
+
+  EXPECT_EQ(guard.update(false, 62.0 * degrees_to_radians, 10.0),
+            CampsiteCrabOutYawRecoveryAction::kBypass);
+  EXPECT_EQ(guard.update(true, 8.0 * degrees_to_radians, 10.0),
+            CampsiteCrabOutYawRecoveryAction::kTranslate);
+  EXPECT_EQ(guard.update(true, 8.01 * degrees_to_radians, 10.1),
+            CampsiteCrabOutYawRecoveryAction::kBeginAlignment);
+  EXPECT_TRUE(guard.active());
+  EXPECT_EQ(guard.attemptCount(), 1);
+  EXPECT_EQ(guard.update(true, 2.0 * degrees_to_radians, 11.0),
+            CampsiteCrabOutYawRecoveryAction::kContinueAlignment);
+
+  guard.alignmentCompleted();
+  EXPECT_FALSE(guard.active());
+  EXPECT_EQ(guard.update(true, 2.0 * degrees_to_radians, 11.1),
+            CampsiteCrabOutYawRecoveryAction::kTranslate);
+}
+
+TEST(CampsiteCrabOutYawRecovery, AttemptLimitFailsClosed) {
+  constexpr double degrees_to_radians = 0.017453292519943295769236907684886;
+  CampsiteCrabOutYawRecoveryGuard guard(
+      CampsiteCrabOutYawRecoveryConfig{true, 8.0, 2, 60.0});
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    EXPECT_EQ(guard.update(true, 9.0 * degrees_to_radians,
+                           10.0 + attempt),
+              CampsiteCrabOutYawRecoveryAction::kBeginAlignment);
+    guard.alignmentCompleted();
+  }
+  EXPECT_EQ(guard.update(true, 9.0 * degrees_to_radians, 12.0),
+            CampsiteCrabOutYawRecoveryAction::kFailAttemptLimit);
+  EXPECT_EQ(guard.attemptCount(), 2);
+}
+
+TEST(CampsiteCrabOutYawRecovery, GlobalTimeoutUsesSteadyEpisodeClock) {
+  constexpr double degrees_to_radians = 0.017453292519943295769236907684886;
+  CampsiteCrabOutYawRecoveryGuard guard(
+      CampsiteCrabOutYawRecoveryConfig{true, 8.0, 3, 60.0});
+  EXPECT_EQ(guard.update(true, 9.0 * degrees_to_radians, 100.0),
+            CampsiteCrabOutYawRecoveryAction::kBeginAlignment);
+  guard.alignmentCompleted();
+  EXPECT_EQ(guard.update(true, 1.0 * degrees_to_radians, 159.999),
+            CampsiteCrabOutYawRecoveryAction::kTranslate);
+  EXPECT_EQ(guard.update(true, 1.0 * degrees_to_radians, 160.0),
+            CampsiteCrabOutYawRecoveryAction::kFailGlobalTimeout);
+  EXPECT_NEAR(guard.elapsedSeconds(160.0), 60.0, 1.0e-12);
+}
+
+TEST(CampsiteCrabOutYawRecovery, InvalidEnabledConfigurationFailsClosed) {
+  CampsiteCrabOutYawRecoveryGuard invalid_threshold(
+      CampsiteCrabOutYawRecoveryConfig{true, 0.0, 3, 60.0});
+  EXPECT_EQ(invalid_threshold.update(true, 0.0, 1.0),
+            CampsiteCrabOutYawRecoveryAction::kFailInvalidInput);
+  CampsiteCrabOutYawRecoveryGuard invalid_attempts(
+      CampsiteCrabOutYawRecoveryConfig{true, 8.0, 0, 60.0});
+  EXPECT_EQ(invalid_attempts.update(true, 0.0, 1.0),
+            CampsiteCrabOutYawRecoveryAction::kFailInvalidInput);
+  CampsiteCrabOutYawRecoveryGuard invalid_timeout(
+      CampsiteCrabOutYawRecoveryConfig{true, 8.0, 3,
+                                       std::numeric_limits<double>::infinity()});
+  EXPECT_EQ(invalid_timeout.update(true, 0.0, 1.0),
+            CampsiteCrabOutYawRecoveryAction::kFailInvalidInput);
+}
+
 TEST(CampsiteCrabApproachSpeed, DisabledWindowKeepsMaximumSpeed) {
   EXPECT_DOUBLE_EQ(campsiteCrabApproachSpeed(0.40, 0.10, 0.0, 2.0), 0.40);
   EXPECT_DOUBLE_EQ(campsiteCrabApproachSpeed(0.40, 0.10, 0.0, 0.0), 0.40);

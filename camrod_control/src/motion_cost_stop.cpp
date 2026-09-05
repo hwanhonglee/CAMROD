@@ -921,6 +921,21 @@ MotionCostStopDecision MotionCostStop::evaluateLatchedHazard(const double now_se
   const TimedGrid * probe_grid = nullptr;
   if (context.probe_merged_grid) {
     probe_grid = &merged_grid_;
+    if (config_.latch_use_trigger_source_for_merged_clear &&
+      context.source_label.has_value())
+    {
+      const auto source = source_grids_.find(*context.source_label);
+      if (source != source_grids_.end()) {
+        // HH_260902 - The merged raster also contains static lanelet and global
+        // path costs.  A transient semantic hit can therefore be attributed to
+        // fusion at trigger time but remain latched forever after fusion clears
+        // because an unrelated static cell still occupies the saved corridor.
+        // Freshness is still required from both merged and exact source grids by
+        // latchEvidenceFresh(); only the occupancy release probe is narrowed to
+        // the authenticated trigger source for this opt-in profile.
+        probe_grid = &source->second;
+      }
+    }
   } else if (context.source_label.has_value()) {
     const auto source = source_grids_.find(*context.source_label);
     if (source != source_grids_.end()) {
@@ -1591,11 +1606,20 @@ bool MotionCostStop::sourceIsClassifiedDynamic(const std::string & label) const
     normalizeLabel(label), config_.classified_dynamic_source_labels);
 }
 
+bool MotionCostStop::sourceCanAttributeMerged(const std::string & label) const
+{
+  if (!sourceIsDynamic(label)) {
+    return false;
+  }
+  return config_.merged_dynamic_source_labels.empty() ||
+         labelMatches(normalizeLabel(label), config_.merged_dynamic_source_labels);
+}
+
 std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(
   const GridHit & hit, const int threshold, const double now_sec) const
 {
   for (const auto & source : source_grids_) {
-    if (!sourceIsDynamic(source.first) || !source.second.available ||
+    if (!sourceCanAttributeMerged(source.first) || !source.second.available ||
       (config_.source_max_age_s > 0.0 &&
       now_sec - source.second.receive_sec > config_.source_max_age_s))
     {

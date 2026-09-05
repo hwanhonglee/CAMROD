@@ -178,7 +178,9 @@ def generate_launch_description():
              'module_namespace', 'perception_param_file', 'enable_lidar_obstacle'),
 
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'yolo.launch.py')),
-             'module_namespace', 'perception_param_file', enable_yolo=LaunchConfiguration('enable_yolo_effective')),
+             'module_namespace', 'perception_param_file',
+             'perception_runtime_override_param_file',
+             enable_yolo=LaunchConfiguration('enable_yolo_effective')),
 
         # HH_260723 - Occupancy depends on semantic camera-LiDAR Detection3D.
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'campsite_occupancy.launch.py')),

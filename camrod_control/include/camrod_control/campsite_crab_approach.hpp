@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cmath>
 #include <limits>
 
@@ -118,6 +119,116 @@ struct CampsiteCrabEntrySafetyResult {
   bool invalid_input{false};
   bool heading_drift_exceeded{false};
   bool cross_track_exceeded{false};
+};
+
+// HH_260902 - Keep the simulator-only CRAB_OUT yaw-recovery lease independent
+// from ROS, CARLA, and command publication.  The shared controller constructs
+// this guard in every profile, but the exact production default is disabled.
+// Once enabled, only the still-latched lateral stage may start a correction;
+// every correction is stationary and both the retry count and the complete
+// recovery episode have hard fail-closed bounds.
+enum class CampsiteCrabOutYawRecoveryAction {
+  kBypass,
+  kTranslate,
+  kBeginAlignment,
+  kContinueAlignment,
+  kFailInvalidInput,
+  kFailAttemptLimit,
+  kFailGlobalTimeout,
+};
+
+struct CampsiteCrabOutYawRecoveryConfig {
+  bool enabled{false};
+  double trigger_deg{8.0};
+  int max_attempts{3};
+  double global_timeout_s{60.0};
+};
+
+class CampsiteCrabOutYawRecoveryGuard {
+public:
+  explicit CampsiteCrabOutYawRecoveryGuard(
+      CampsiteCrabOutYawRecoveryConfig config = {})
+      : config_(config) {}
+
+  void setConfig(const CampsiteCrabOutYawRecoveryConfig &config) {
+    config_ = config;
+  }
+
+  void reset() {
+    active_ = false;
+    started_ = false;
+    attempt_count_ = 0;
+    first_trigger_s_ = 0.0;
+  }
+
+  CampsiteCrabOutYawRecoveryAction update(const bool lateral_stage,
+                                           const double yaw_error_rad,
+                                           const double steady_now_s) {
+    // Disabled is an exact identity: do not consult the remaining parameters
+    // or pose evidence, which preserves production/develop semantics.
+    if (!config_.enabled) {
+      return CampsiteCrabOutYawRecoveryAction::kBypass;
+    }
+    // This hook never changes steering or ownership after the lateral latch.
+    if (!lateral_stage) {
+      return CampsiteCrabOutYawRecoveryAction::kBypass;
+    }
+    if (!validConfig() || !std::isfinite(yaw_error_rad) ||
+        !std::isfinite(steady_now_s) ||
+        (started_ && steady_now_s < first_trigger_s_)) {
+      return CampsiteCrabOutYawRecoveryAction::kFailInvalidInput;
+    }
+    if (started_ &&
+        steady_now_s - first_trigger_s_ >= config_.global_timeout_s) {
+      return CampsiteCrabOutYawRecoveryAction::kFailGlobalTimeout;
+    }
+    if (active_) {
+      return CampsiteCrabOutYawRecoveryAction::kContinueAlignment;
+    }
+    constexpr double kRadiansToDegrees =
+        57.295779513082320876798154814105;
+    if (std::abs(yaw_error_rad) * kRadiansToDegrees <= config_.trigger_deg) {
+      return CampsiteCrabOutYawRecoveryAction::kTranslate;
+    }
+    if (attempt_count_ >= config_.max_attempts) {
+      return CampsiteCrabOutYawRecoveryAction::kFailAttemptLimit;
+    }
+    if (!started_) {
+      started_ = true;
+      first_trigger_s_ = steady_now_s;
+    }
+    ++attempt_count_;
+    active_ = true;
+    return CampsiteCrabOutYawRecoveryAction::kBeginAlignment;
+  }
+
+  void alignmentCompleted() { active_ = false; }
+
+  bool active() const { return active_; }
+  bool started() const { return started_; }
+  int attemptCount() const { return attempt_count_; }
+
+  double elapsedSeconds(const double steady_now_s) const {
+    if (!started_ || !std::isfinite(steady_now_s) ||
+        steady_now_s < first_trigger_s_) {
+      return 0.0;
+    }
+    return steady_now_s - first_trigger_s_;
+  }
+
+private:
+  bool validConfig() const {
+    return std::isfinite(config_.trigger_deg) && config_.trigger_deg > 0.0 &&
+           config_.max_attempts > 0 &&
+           std::isfinite(config_.global_timeout_s) &&
+           config_.global_timeout_s > 0.0;
+  }
+
+  CampsiteCrabOutYawRecoveryConfig config_;
+  bool active_{false};
+  bool started_{false};
+  int attempt_count_{0};
+  double first_trigger_s_{0.0};
 };
 
 inline bool campsiteCrabEntryBodyYawCompensationEligible(

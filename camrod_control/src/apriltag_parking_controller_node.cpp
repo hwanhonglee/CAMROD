@@ -8,13 +8,16 @@
 //
 // State machine:
 //   WAITING_FOR_TAG -> TAG_GUIDED_REVERSE -> FINAL_YAW_ALIGNMENT
-//                              |                       |
+//                              |       |               |
+//                              |       +-> bounded RETRY_FORWARD_EXIT
 //                              +-> ERROR       WAITING_FOR_CHARGING -> PARKED
 
 #include <memory>
 #include <string>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
+#include <stdexcept>
 
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/conversions.hpp>
@@ -34,6 +37,7 @@
 #include <diagnostic_msgs/msg/key_value.hpp>
 
 #include "camrod_control/parking_speed_profile.hpp"
+#include "camrod_control/apriltag_parking_retry.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 
 #include <tf2_ros/buffer.h>
@@ -59,7 +63,8 @@ class AprilTagParkingControllerNode : public rclcpp::Node
 public:
   // HH_260720 - State names describe the physical motion performed in each phase.
   enum class State { IDLE, WAITING_FOR_TAG, TAG_GUIDED_REVERSE,
-    FINAL_YAW_ALIGNMENT, WAITING_FOR_CHARGING, PARKED, ERROR };
+    RETRY_FORWARD_EXIT, FINAL_YAW_ALIGNMENT, WAITING_FOR_CHARGING,
+    PARKED, ERROR };
 
   AprilTagParkingControllerNode()
   : Node("apriltag_parking_controller"),
@@ -140,9 +145,52 @@ public:
     tag_timeout_s_ = declare_parameter<double>("tag_timeout_s", 0.5);
     odometry_timeout_s_ = std::abs(declare_parameter<double>("odometry_timeout_s", 0.5));
     tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 60.0);
-    retry_forward_distance_m_ =
-      declare_parameter<double>("retry_forward_distance_m", 1.0);
-    max_retries_ = declare_parameter<int>("maximum_retries", 5);
+    enable_bounded_lateral_retry_ = declare_parameter<bool>(
+      "enable_bounded_lateral_retry", false);
+    const camrod_control::AprilTagParkingRetryRawParameters retry_parameters{
+      declare_parameter<double>("retry_forward_distance_m", 1.0),
+      declare_parameter<double>("retry_forward_speed_mps", 0.10),
+      declare_parameter<double>("retry_forward_timeout_s", 25.0),
+      declare_parameter<double>("retry_yaw_alignment_timeout_s", 8.0),
+      declare_parameter<double>("retry_maximum_lateral_error_m", 0.15),
+      declare_parameter<double>("retry_maximum_heading_error_rad", 0.35),
+      declare_parameter<double>(
+        "retry_maximum_forward_exit_lateral_drift_m", 0.15),
+      declare_parameter<double>("retry_maximum_odometry_step_m", 0.10),
+      declare_parameter<double>("retry_minimum_tag_distance_m", 0.35),
+      declare_parameter<double>("retry_maximum_tag_distance_m", 0.45),
+      declare_parameter<int64_t>("maximum_retries", 5)};
+    const bool retry_parameters_valid =
+      camrod_control::aprilTagParkingRetryRawParametersValid(
+      retry_parameters, final_lateral_tolerance_m_,
+      final_heading_tolerance_rad_, translation_stop_tag_distance_m_);
+    if (!camrod_control::aprilTagParkingRetryStartupPermitted(
+        enable_bounded_lateral_retry_, retry_parameters_valid))
+    {
+      throw std::invalid_argument(
+              "bounded lateral retry raw parameters are invalid or unsafe");
+    }
+    if (retry_parameters_valid) {
+      // Narrow and store only after the raw integer and floating-point values
+      // have passed their complete fail-closed envelope validation.
+      retry_forward_distance_m_ = retry_parameters.forward_distance_m;
+      retry_forward_speed_mps_ = retry_parameters.forward_speed_mps;
+      retry_forward_timeout_s_ = retry_parameters.forward_timeout_s;
+      retry_yaw_alignment_timeout_s_ = retry_parameters.yaw_alignment_timeout_s;
+      retry_maximum_lateral_error_m_ = retry_parameters.maximum_lateral_error_m;
+      retry_maximum_heading_error_rad_ = retry_parameters.maximum_heading_error_rad;
+      retry_maximum_forward_exit_lateral_drift_m_ =
+        retry_parameters.maximum_forward_exit_lateral_drift_m;
+      retry_maximum_odometry_step_m_ = retry_parameters.maximum_odometry_step_m;
+      retry_minimum_tag_distance_m_ = retry_parameters.minimum_tag_distance_m;
+      retry_maximum_tag_distance_m_ = retry_parameters.maximum_tag_distance_m;
+      max_retries_ = static_cast<int>(retry_parameters.maximum_retries);
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "ignoring invalid bounded lateral retry parameters because the "
+        "feature is disabled");
+    }
 
     pose_filter_gain_ = declare_parameter<double>("pose_filter_gain", 0.3);
     control_rate_hz_ = declare_parameter<double>("control_rate_hz", 30.0);
@@ -409,6 +457,8 @@ private:
       return false;
     }
     retries_ = 0;
+    retry_forward_started_ = false;
+    retry_progress_.reset();
     axis_valid_ = false;
     tag_camera_distance_valid_ = false;
     translation_stop_reason_ = "none";
@@ -557,13 +607,48 @@ private:
               translation_stop_trigger_tag_distance_m_, translation_stop_tag_distance_m_,
               lateral_error_m_, heading_error_rad_);
             // After this point no tag loss, yaw error, or missing charge may
-            // restart translation. Lateral error cannot be corrected by yaw-only motion.
+            // restart reverse translation.  An explicitly enabled bounded
+            // retry may first align yaw, drive a measured short distance
+            // forward, reset the tag-axis estimate, and reacquire the tag.
             if (std::fabs(lateral_error_m_) > final_lateral_tolerance_m_) {
+              const camrod_control::AprilTagParkingRetryConfig retry_config{
+                enable_bounded_lateral_retry_,
+                max_retries_,
+                final_lateral_tolerance_m_,
+                retry_maximum_lateral_error_m_,
+                retry_maximum_heading_error_rad_,
+                retry_minimum_tag_distance_m_,
+                retry_maximum_tag_distance_m_};
+              if (camrod_control::aprilTagParkingRetryEligible(
+                  retry_config, retries_, tag_fresh, odometry_is_fresh,
+                  charging_detected_, tag_camera_distance_m_, lateral_error_m_,
+                  heading_error_rad_))
+              {
+                ++retries_;
+                retry_forward_started_ = false;
+                retry_progress_.reset();
+                yaw_alignment_settling_.reset();
+                yaw_alignment_settled_logged_ = false;
+                publishStop();
+                RCLCPP_WARN(
+                  get_logger(),
+                  "bounded lateral retry %d/%d armed: tag=%.3fm "
+                  "lateral=%.3fm heading=%.3frad; align then exit %.2fm "
+                  "at %.2fm/s",
+                  retries_, max_retries_, tag_camera_distance_m_,
+                  lateral_error_m_, heading_error_rad_,
+                  retry_forward_distance_m_, retry_forward_speed_mps_);
+                transitionTo(State::RETRY_FORWARD_EXIT);
+                break;
+              }
               RCLCPP_ERROR(
                 get_logger(),
                 "tag translation stop reached with unsafe lateral error: "
-                "tag=%.3fm lateral=%.3fm tolerance=%.3fm",
-                tag_camera_distance_m_, lateral_error_m_, final_lateral_tolerance_m_);
+                "tag=%.3fm lateral=%.3fm tolerance=%.3fm retry=%d/%d "
+                "retry_enabled=%s",
+                tag_camera_distance_m_, lateral_error_m_, final_lateral_tolerance_m_,
+                retries_, max_retries_,
+                enable_bounded_lateral_retry_ ? "true" : "false");
               fail();
               break;
             }
@@ -590,6 +675,138 @@ private:
             angular_speed_radps, reverse_speed_mps, minimum_approach_turn_radius_m_);
           command.linear.x = -reverse_speed_mps;
           command.angular.z = angular_speed_radps;
+          break;
+        }
+
+      // CARLA may enter the same Drop Zone from measurably different poses.
+      // When the immutable 0.40 m translation stop is reached outside the
+      // immutable lateral tolerance, an opt-in profile may make one or more
+      // tightly bounded attempts: align yaw while stopped, drive only forward
+      // along the measured parking axis, then discard the old filtered axis
+      // and require a fresh tag acquisition before reversing again.
+      case State::RETRY_FORWARD_EXIT: {
+          if (!odometry_is_fresh || !tag_fresh) {
+            RCLCPP_ERROR(
+              get_logger(),
+              "bounded lateral retry lost fresh %s; stopping",
+              !odometry_is_fresh ? "odometry" : "parking tag");
+            fail();
+            break;
+          }
+          if (std::fabs(lateral_error_m_) > retry_maximum_lateral_error_m_ ||
+            std::fabs(heading_error_rad_) > retry_maximum_heading_error_rad_)
+          {
+            RCLCPP_ERROR(
+              get_logger(),
+              "bounded lateral retry exceeded geometry envelope: "
+              "lateral=%.3fm max=%.3fm heading=%.3frad max=%.3frad",
+              lateral_error_m_, retry_maximum_lateral_error_m_,
+              heading_error_rad_, retry_maximum_heading_error_rad_);
+            fail();
+            break;
+          }
+
+          if (!retry_forward_started_) {
+            const bool settled = yaw_alignment_settling_.observe(
+              heading_error_rad_, vehicle_odometry_yaw_rad_,
+              last_odometry_time_.seconds());
+            if (stateElapsed() > retry_yaw_alignment_timeout_s_) {
+              RCLCPP_ERROR(
+                get_logger(),
+                "bounded lateral retry yaw alignment timed out after %.1fs",
+                retry_yaw_alignment_timeout_s_);
+              fail();
+              break;
+            }
+            if (!yaw_alignment_settling_.withinTolerance()) {
+              command.angular.z = clamp(
+                heading_gain_ * heading_error_rad_,
+                -final_yaw_angular_speed_radps_,
+                final_yaw_angular_speed_radps_);
+            } else if (settled) {
+              if (!retry_progress_.begin(
+                  vehicle_odometry_x_m_, vehicle_odometry_y_m_,
+                  vehicle_odometry_yaw_rad_))
+              {
+                RCLCPP_ERROR(
+                  get_logger(), "bounded lateral retry start pose is invalid");
+                fail();
+                break;
+              }
+              retry_forward_started_ = true;
+              retry_forward_start_time_ = current_time;
+              RCLCPP_INFO(
+                get_logger(),
+                "bounded lateral retry %d/%d forward exit started: "
+                "distance=%.2fm speed=%.2fm/s timeout=%.1fs",
+                retries_, max_retries_, retry_forward_distance_m_,
+                retry_forward_speed_mps_, retry_forward_timeout_s_);
+            }
+            break;
+          }
+
+          if (!retry_progress_.observe(
+              vehicle_odometry_x_m_, vehicle_odometry_y_m_))
+          {
+            RCLCPP_ERROR(
+              get_logger(), "bounded lateral retry odometry progress is invalid");
+            fail();
+            break;
+          }
+          const double retry_elapsed_s =
+            (current_time - retry_forward_start_time_).seconds();
+          if (retry_elapsed_s < 0.0 || retry_elapsed_s > retry_forward_timeout_s_) {
+            RCLCPP_ERROR(
+              get_logger(),
+              "bounded lateral retry forward exit timed out: elapsed=%.2fs "
+              "progress=%.3fm path=%.3fm",
+              retry_elapsed_s, retry_progress_.forwardProgress(),
+              retry_progress_.distance());
+            fail();
+            break;
+          }
+          if (retry_progress_.forwardProgress() < -0.02 ||
+            retry_progress_.lastStep() > retry_maximum_odometry_step_m_ ||
+            std::fabs(retry_progress_.lateralDrift()) >
+            retry_maximum_forward_exit_lateral_drift_m_ ||
+            retry_progress_.exceededPathLimit(retry_forward_distance_m_, 0.10))
+          {
+            RCLCPP_ERROR(
+              get_logger(),
+              "bounded lateral retry left its forward envelope: "
+              "forward=%.3fm lateral=%.3fm path=%.3fm step=%.3fm",
+              retry_progress_.forwardProgress(), retry_progress_.lateralDrift(),
+              retry_progress_.distance(), retry_progress_.lastStep());
+            fail();
+            break;
+          }
+          if (retry_progress_.reached(retry_forward_distance_m_)) {
+            RCLCPP_INFO(
+              get_logger(),
+              "bounded lateral retry %d/%d forward exit complete: "
+              "forward=%.3fm lateral=%.3fm path=%.3fm; reacquiring tag",
+              retries_, max_retries_, retry_progress_.forwardProgress(),
+              retry_progress_.lateralDrift(), retry_progress_.distance());
+            publishStop();
+            retry_forward_started_ = false;
+            retry_progress_.reset();
+            axis_valid_ = false;
+            tag_camera_distance_valid_ = false;
+            translation_stop_reason_ = "none";
+            translation_stop_trigger_tag_distance_m_ = -1.0;
+            yaw_alignment_settling_.reset();
+            transitionTo(State::WAITING_FOR_TAG);
+            break;
+          }
+
+          command.linear.x = retry_forward_speed_mps_;
+          double angular_speed_radps = clamp(
+            heading_gain_ * heading_error_rad_,
+            -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
+          command.angular.z =
+            camrod_control::limitApproachAngularSpeedForTurnRadius(
+              angular_speed_radps, retry_forward_speed_mps_,
+              minimum_approach_turn_radius_m_);
           break;
         }
 
@@ -789,6 +1006,7 @@ private:
       case State::IDLE:           return "IDLE";
       case State::WAITING_FOR_TAG: return "WAITING_FOR_TAG";
       case State::TAG_GUIDED_REVERSE: return "TAG_GUIDED_REVERSE";
+      case State::RETRY_FORWARD_EXIT: return "RETRY_FORWARD_EXIT";
       case State::FINAL_YAW_ALIGNMENT: return "FINAL_YAW_ALIGNMENT";
       case State::WAITING_FOR_CHARGING: return "WAITING_FOR_CHARGING";
       case State::PARKED:          return "PARKED";
@@ -836,18 +1054,25 @@ private:
     {
       return;
     }
-    char buf[320];
+    const double retry_elapsed_s = retry_forward_started_ &&
+      retry_forward_start_time_.nanoseconds() > 0 ?
+      std::max(0.0, (current_time - retry_forward_start_time_).seconds()) : 0.0;
+    char buf[440];
     snprintf(
       buf, sizeof(buf), "phase=%s tag_distance_m=%.3f axis_distance_m=%.3f "
       "lateral_m=%.3f heading_rad=%.3f remaining_tag_m=%.3f "
       "configured_stop_tag_m=%.3f stop_reason=%s stop_trigger_tag_m=%.3f "
-      "retry=%d charging=%s",
+      "retry=%d retry_forward_started=%s retry_forward_progress_m=%.3f "
+      "retry_path_m=%.3f retry_elapsed_s=%.2f charging=%s",
       stateName(state_), tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0,
       distance_along_parking_axis_m_, lateral_error_m_, heading_error_rad_,
       tag_camera_distance_valid_ ? camrod_control::tagApproachRemainingDistance(
         tag_camera_distance_m_, translation_stop_tag_distance_m_) : -1.0,
       translation_stop_tag_distance_m_, translation_stop_reason_.c_str(),
       translation_stop_trigger_tag_distance_m_, retries_,
+      retry_forward_started_ ? "true" : "false",
+      retry_progress_.forwardProgress(), retry_progress_.distance(),
+      retry_elapsed_s,
       charging_detected_ ? "true" : "false");
 
     uint8_t level = avg_msgs::msg::ModuleState::OK;
@@ -913,7 +1138,16 @@ private:
   double final_yaw_settle_max_rate_degps_{3.0};
   double final_insertion_start_distance_m_, parked_distance_from_tag_m_;
   double tag_timeout_s_, odometry_timeout_s_, tag_wait_timeout_s_;
-  double retry_forward_distance_m_, pose_filter_gain_, control_rate_hz_, status_rate_hz_;
+  bool enable_bounded_lateral_retry_{false};
+  double retry_forward_distance_m_{1.0}, retry_forward_speed_mps_{0.10};
+  double retry_forward_timeout_s_{25.0}, retry_yaw_alignment_timeout_s_{8.0};
+  double retry_maximum_lateral_error_m_{0.15};
+  double retry_maximum_heading_error_rad_{0.35};
+  double retry_maximum_forward_exit_lateral_drift_m_{0.15};
+  double retry_maximum_odometry_step_m_{0.10};
+  double retry_minimum_tag_distance_m_{0.35};
+  double retry_maximum_tag_distance_m_{0.45};
+  double pose_filter_gain_, control_rate_hz_, status_rate_hz_;
   int max_retries_{5};
 
   // HH_260720 - State-machine bookkeeping.
@@ -922,6 +1156,9 @@ private:
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_service_state_time_{0, 0, RCL_ROS_TIME};
   int retries_{0};
+  bool retry_forward_started_{false};
+  rclcpp::Time retry_forward_start_time_{0, 0, RCL_ROS_TIME};
+  camrod_control::AprilTagParkingRetryProgress retry_progress_;
 
   // HH_260720 - Fixed tag and parking-axis estimate in the odometry frame.
   double tag_odometry_x_m_{0.0}, tag_odometry_y_m_{0.0};

@@ -6,6 +6,8 @@
 _virtual_carla_env_dir="$(
   cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 )"
+# shellcheck disable=SC1091
+source "${_virtual_carla_env_dir}/map_profiles.sh"
 
 export CAMROD_SRC_ROOT="${CAMROD_SRC_ROOT:-$(
   cd "${_virtual_carla_env_dir}/../.." >/dev/null 2>&1 && pwd
@@ -45,6 +47,8 @@ _virtual_carla_config_names=(
   CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ
   CAMROD_CARLA_SENSOR_MIN_RATE_HZ
   CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
+  CAMROD_GUEST_UI_URL
+  CAMROD_GUEST_CDP_URL
   CAMROD_CARLA_YOLO_MODEL_PATH
   CAMROD_CARLA_YOLO_DEVICE
   CAMROD_CARLA_YOLO_WORKSPACE_MIB
@@ -70,6 +74,10 @@ _virtual_carla_config_names=(
   RANGER_PHYSICAL_MANIFEST
   RANGER_SPAWN_FILE
   CAMROD_LAUNCH_SENSOR_RELAY
+  CAMROD_CARLA_MAP_PROFILE
+  CAMROD_VIRTUAL_CARLA_ENTRYPOINT
+  CARLA_UE_MAP
+  CARLA_TOWN
 )
 declare -A _virtual_carla_explicit_values=()
 for _virtual_carla_name in "${_virtual_carla_config_names[@]}"; do
@@ -146,6 +154,7 @@ export CAMROD_CARLA_STEP_PERIOD_SECONDS="${CAMROD_CARLA_STEP_PERIOD_SECONDS:-${C
 
 export CARLA_UE_MAP="${CARLA_UE_MAP:-/Game/map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/Woraksan_v1_0_3_parking_lot_hegiht_fit}"
 export CARLA_TOWN="${CARLA_TOWN:-map_package/Maps/Woraksan_v1_0_3_parking_lot_hegiht_fit/Woraksan_v1_0_3_parking_lot_hegiht_fit}"
+export CAMROD_CARLA_MAP_PROFILE="${CAMROD_CARLA_MAP_PROFILE:-}"
 
 export UE_EDITOR="${UE_EDITOR:-${UE_ROOT:+${UE_ROOT}/Engine/Binaries/Linux/UE4Editor}}"
 export CARLA_UPROJECT="${CARLA_UPROJECT:-${CARLA_ROOT:+${CARLA_ROOT}/Unreal/CarlaUE4/CarlaUE4.uproject}}"
@@ -194,6 +203,8 @@ export CAMROD_LAUNCH_DEFAULTS_FILE="${CAMROD_LAUNCH_DEFAULTS_FILE:-${CAMROD_SRC_
 
 export CAMROD_UI_PORT="${CAMROD_UI_PORT:-8010}"
 export CAMROD_UI_URL="${CAMROD_UI_URL:-http://127.0.0.1:${CAMROD_UI_PORT}}"
+export CAMROD_GUEST_UI_URL="${CAMROD_GUEST_UI_URL:-http://127.0.0.1:8012}"
+export CAMROD_GUEST_CDP_URL="${CAMROD_GUEST_CDP_URL:-http://127.0.0.1:9223}"
 export CAMROD_ENABLE_OPERATOR_WINDOW="${CAMROD_ENABLE_OPERATOR_WINDOW:-true}"
 export CAMROD_ENABLE_VOICE="${CAMROD_ENABLE_VOICE:-false}"
 export CAMROD_ENABLE_RVIZ="${CAMROD_ENABLE_RVIZ:-false}"
@@ -450,6 +461,60 @@ virtual_carla_map_asset_file() {
     "${CARLA_ROOT}/Unreal/CarlaUE4/Content/${relative_map}.umap"
 }
 
+virtual_carla_normalize_map_name() {
+  local value="$1"
+  value="${value#/Game/}"
+  value="${value#/}"
+  value="${value%/}"
+  printf '%s\n' "${value}"
+}
+
+virtual_carla_validate_map_selection() {
+  local normalized_ue_map normalized_town
+  normalized_ue_map="$(virtual_carla_normalize_map_name "${CARLA_UE_MAP}")"
+  normalized_town="$(virtual_carla_normalize_map_name "${CARLA_TOWN}")"
+
+  if [[ -z "${normalized_ue_map}" || \
+        "${normalized_ue_map}" != "${normalized_town}" ]]; then
+    virtual_carla_die \
+      "CARLA_UE_MAP and CARLA_TOWN must identify the same map: ${CARLA_UE_MAP} != ${CARLA_TOWN}"
+    return 1
+  fi
+
+  case "${CAMROD_CARLA_MAP_PROFILE}" in
+    "") ;;
+    "${CAMROD_CARLA_SITE_ACCESS_PROFILE_ID}")
+      if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_UE_MAP}" || \
+            "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_TOWN}" ]]; then
+        virtual_carla_die \
+          "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_UE_MAP}"
+        return 1
+      fi
+      ;;
+    "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_PROFILE_ID}")
+      if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_UE_MAP}" || \
+            "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_TOWN}" ]]; then
+        virtual_carla_die \
+          "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_UE_MAP}"
+        return 1
+      fi
+      ;;
+    "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V11_PROFILE_ID}")
+      if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V11_UE_MAP}" || \
+            "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V11_TOWN}" ]]; then
+        virtual_carla_die \
+          "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_LEGACY_V11_UE_MAP}"
+        return 1
+      fi
+      ;;
+    *)
+      virtual_carla_die \
+        "unsupported CAMROD_CARLA_MAP_PROFILE: ${CAMROD_CARLA_MAP_PROFILE}"
+      return 1
+      ;;
+  esac
+}
+
 virtual_carla_print_environment() {
   cat <<EOF
 CONFIG_PRECEDENCE=caller environment > RANGER_ENV_FILE > derived defaults
@@ -471,7 +536,9 @@ RANGER_PHYSICAL_MANIFEST=${RANGER_PHYSICAL_MANIFEST}
 RANGER_CARLA_PYTHON_EGG=${RANGER_CARLA_PYTHON_EGG}
 CARLA_PYTHON_EGG=${CARLA_PYTHON_EGG}
 CARLA endpoint=${CARLA_HOST}:${CARLA_PORT}
+CARLA map profile=${CAMROD_CARLA_MAP_PROFILE:-direct-runner-default-or-caller}
 CARLA map=${CARLA_UE_MAP}
+CARLA town=${CARLA_TOWN}
 CARLA render mode=${CARLA_RENDER_MODE}
 CARLA render maximum fps=${CARLA_RENDER_MAX_FPS}
 CARLA synchronous=${CARLA_SYNCHRONOUS_MODE}

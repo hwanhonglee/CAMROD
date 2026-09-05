@@ -118,12 +118,18 @@ File pair: `camrod_control/config/control.yaml` and its bringup mirror.
 | `entry_position_tolerance_m` | `0.15 m` | Completes crab-in position |
 | `return_position_tolerance_m` | `0.04 m` | Legacy exact-anchor tolerance retained for non-crab return checks; crab-out routes from current XY |
 | `return_lateral_transition_tolerance_m` | `0.02 m` | Latches lateral correction complete before steering settle |
-| `return_lateral_hysteresis_m` | `0.10 m` | Fails closed if lateral error escapes the latched band; never switches back to crab |
+| `return_lateral_hysteresis_m` | `0.10 m` | Fails closed if lateral error escapes the latched band; never switches back to crab. The current CARLA site profile preserves this develop value. |
+| `crab_out_yaw_recovery_enable` | `false` | Exact production bypass. Only the CARLA site-geometry wrapper enables stationary retrace-yaw recovery during the CRAB_OUT lateral stage. |
+| `crab_out_yaw_recovery_trigger_deg` | `8.0 deg` | Stops translation before starting the existing bounded rotate/settle controller. |
+| `crab_out_yaw_recovery_max_attempts` | `3` shared; `8` CARLA site overlay | Exhaustion fails closed in `ERROR`; the enabled CARLA budget covers six measured B2 threshold crossings. |
+| `crab_out_yaw_recovery_global_timeout_s` | `60 s` shared; `90 s` CARLA site overlay | Non-resetting steady-clock bound from the first trigger; timeout publishes zero and fails closed. |
 | `return_steering_settle_s` | `1.20 s` | Zero-command hold for the deployed `+/-90 -> 0 deg` steering transition |
 | `enable_live_lanelet_return_handoff` | `true` | Normal exit completes at a fresh live lanelet projection instead of requiring historical entry XY |
 | `return_lanelet_handoff_distance_m` | `0.15 m` | Maximum current-pose to live-projection separation for route handoff |
 | `return_lanelet_handoff_hold_s` | `1.20 s` | Zero-command steering-settle hold after the first eligible live projection; the eligibility latch does not drop on GNSS jitter |
 | `crab_return_timeout_s` | `90 s` | Time available for exit plus repeated boundary recovery |
+| `crab_entry_body_yaw_alignment_tolerance_deg` | `0.5 deg` | Production/develop-parity and historical tuned stationary prealignment band; CARLA site-geometry alone uses `1.5 deg` for the measured B1 `1.27 deg` plant residual |
+| `max_angular_speed_radps` | `0.35 rad/s` | Production/develop campsite yaw-rate request. CARLA campsite v17 alone requests `0.45 rad/s`, which reaches the unchanged physical `2.0 N*m/wheel` rotation cap |
 | `rotate_yaw_tolerance_deg` | `4 deg` | 180-degree target tolerance |
 | `rotate_settle_hold_s` | `0.8 s` | Continuous settled-yaw proof before translation |
 | `rotate_settle_max_rate_degps` | `3 deg/s` | Maximum residual yaw rate during settle proof |
@@ -210,6 +216,7 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 | Final-yaw odometry freshness | controller-specific | `0.5 s`; stale input holds zero |
 | Tag sample freshness | controller-specific | `0.5 s`; stale input immediately holds zero |
 | Tag initial/reacquisition wait | controller-specific | `60.0 s` stopped wait before terminal `ERROR` |
+| Bounded lateral retry | controller-specific | default `false`; CARLA campsite profile only: one `0.8 m` forward exit |
 | `stop_when_charging` | `true` | `true` |
 | Charging required | `complete_without_charging: false` | `require_charging_for_completion: true` |
 | Charging wait | `45 s` | explicit stopped `WAITING_FOR_CHARGING` phase |
@@ -219,12 +226,58 @@ File pair: `camrod_control/config/parking.yaml` and its bringup mirror.
 forced to `reverse` because fake sensors do not publish a rear-camera tag.
 The AprilTag thresholds consume the unmodified camera pose 3D norm, exactly as
 the UI `Tag distance` does; deprecated robot-center longitudinal parameters stay
-loadable but no longer own motion. After the `0.40 m` crossing, tag loss cannot
-restart insertion or retry translation. Controller status preserves the active
+loadable but no longer own motion. In ordinary CAMROD, after the `0.40 m`
+crossing, tag loss cannot restart insertion or retry translation. The CARLA
+campsite v18 profile is an explicit default-off exception: only bounded lateral
+errors (`0.03 < |e| <= 0.15 m`, `|heading| <= 0.35 rad`) with a fresh
+`0.35--0.45 m` Tag may stop, yaw-align, move forward `0.8 m` per retry at final
+`0.10 m/s`, discard the old axis, and reacquire. v12 measured only `0.444 m`
+signed progress (`0.490 m` path) before the raw `0.10 m/s`, `25 s` lease timed
+out. v13 changed only the CARLA retry command to raw `0.20 m/s` and the timeout
+to `30 s` (`0.10 m/s` after the `0.5` gate; `3.0 m` theoretical timeout
+budget). v14 retained those retry bounds and changed only the site-wrapper
+stationary crab prealignment tolerance from `0.5 deg` to `1.5 deg`: B1 measured
+target `-61.25 deg`, final `-62.52 deg`, and `1.27 deg` residual after the
+unchanged `15 s` timeout. Develop-parity and historical tuned remain
+`0.5 deg`. B2 then measured a first `0.054 m` lateral error, one bounded
+`0.804 m` exit, and a second `0.042 m` lateral error. Because both remain
+outside the unchanged `0.03 m` completion band, v15 changes only the CARLA
+site-wrapper `maximum_retries` from `1` to `2`; all retry motion envelopes stay
+fixed. Motion still stops at the `0.8 m` target and the accumulated-path cap
+remains `0.9 m`. Its yaw/translation limits are
+`8 s`/`30 s`; stale input, wrong-way motion, `>0.15 m` lateral drift,
+`>0.10 m` odometry step, or excess path length stops in `ERROR`.
+Controller status preserves the active
 `configured_stop_tag_m`, `stop_reason`, and exact `stop_trigger_tag_m` sample.
 Before that translation latch, a stale tag commands zero and enters
 `WAITING_FOR_TAG`; a fresh valid target may resume the maneuver for up to
 `60.0 s` before the controller enters terminal `ERROR`.
+Separately, the B2 v15 campsite return latched lateral completion and then
+reported `0.12 m` drift at the develop combined limit
+(`0.02 m` transition + `0.10 m` hysteresis). v16 keeps the transition exactly
+`0.02 m` and changes only the CARLA site-wrapper hysteresis to `0.13 m`, for a
+bounded combined threshold of `0.15 m`. The production and bringup control
+YAMLs remain `0.02/0.10 m`; full/develop-parity CARLA and the historical tuned
+wrapper do not supply this optional override.
+Finally, B2 v16 entered `ROTATE_180` at the same physical center used by the
+successful v14/v15 runs but timed out after `60 s` with `61.24 deg` remaining,
+an observed yaw rate of only `0.78 deg/s`, and a continuing `0.35 rad/s`
+command. With the accepted physical controller gain of
+`5 N*m/(rad/s)`, that sample requested about `1.68 N*m/wheel`, below the
+unchanged `2.0 N*m/wheel` rotation cap. v17 changes only the CARLA site
+wrapper's `max_angular_speed_radps` from `0.35` to `0.45`: the larger error
+request lets the existing controller saturate at `2.0 N*m/wheel`. The bridge
+hard cap remains `20 N*m`; the physical controller configuration, `60 s`
+timeout, `4 deg` yaw tolerance, `0.05 m` rotation-center tolerance, and all
+settle checks remain unchanged. Production/develop and generic CARLA keep
+`0.35 rad/s` because the new launch override is empty by default.
+The resulting B2 v17 run completed the rotation in about `20 s`, then stopped
+in `CRAB_OUT` when physical settling produced a formatted `0.15 m` lateral
+drift just beyond the v16 combined `0.15 m` boundary. v18 keeps the transition
+at `0.02 m` and changes only the CARLA site-wrapper hysteresis from `0.13 m` to
+`0.18 m`, yielding a bounded combined `0.20 m` fail-closed envelope. The
+production/bringup YAML value remains `0.10 m`; route and cost safety continue
+to guard motion independently.
 Charging CAN feedback immediately publishes zero
 in any active final-parking phase, then the internal phase becomes
 `PARKED` and public state is `CHARGING`. Radar-backed dynamic rotation protection

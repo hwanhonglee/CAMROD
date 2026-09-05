@@ -32,6 +32,151 @@ class RadarRangeSelection:
     has_target: bool
 
 
+@dataclass(frozen=True)
+class CarlaRadarDetection:
+    """One detection from the standard CARLA radar PointCloud2 contract."""
+
+    range_m: float
+    velocity_mps: float
+    azimuth_rad: float
+    elevation_rad: float
+
+
+@dataclass(frozen=True)
+class CoMovingNearFieldExclusion:
+    """Tight raw-signature exclusion for a proven co-moving CARLA return."""
+
+    channel_name: str
+    min_range_m: float
+    max_range_m: float
+    min_azimuth_rad: float
+    max_azimuth_rad: float
+    min_elevation_rad: float
+    max_elevation_rad: float
+
+
+def build_co_moving_near_field_exclusions(
+    entries: Sequence[str],
+    channel_names: Sequence[str],
+) -> tuple[CoMovingNearFieldExclusion, ...]:
+    """Parse bounded ``channel:r0:r1:a0:a1:e0:e1`` exclusions.
+
+    The hard geometry limits deliberately prevent this CARLA-only mechanism
+    from becoming a broad radar disable.  Every exclusion must stay within a
+    0.50 m near field and occupy only a small angular cell.
+    """
+    known_channels = {str(name).strip().lower() for name in channel_names}
+    exclusions = []
+    for raw_entry in entries:
+        parts = [part.strip() for part in str(raw_entry).split(':')]
+        if len(parts) != 7:
+            raise ValueError(
+                'co-moving near-field exclusion must use '
+                'CHANNEL:min_range:max_range:min_azimuth:max_azimuth:'
+                'min_elevation:max_elevation'
+            )
+        channel_name = parts[0].lower()
+        if channel_name not in known_channels:
+            raise ValueError(
+                f'unknown radar channel in near-field exclusion: {parts[0]!r}'
+            )
+        try:
+            values = tuple(float(value) for value in parts[1:])
+        except ValueError as error:
+            raise ValueError(
+                f'invalid numeric near-field exclusion: {raw_entry!r}'
+            ) from error
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError('near-field exclusion values must be finite')
+        (
+            min_range,
+            max_range,
+            min_azimuth,
+            max_azimuth,
+            min_elevation,
+            max_elevation,
+        ) = values
+        if not 0.0 <= min_range < max_range <= 0.50:
+            raise ValueError(
+                'near-field exclusion range must satisfy '
+                '0 <= min < max <= 0.50 m'
+            )
+        if max_range - min_range > 0.15:
+            raise ValueError('near-field exclusion range span exceeds 0.15 m')
+        if not -math.pi / 2 <= min_azimuth < max_azimuth <= math.pi / 2:
+            raise ValueError('near-field exclusion azimuth bounds are invalid')
+        if max_azimuth - min_azimuth > 0.08:
+            raise ValueError('near-field exclusion azimuth span exceeds 0.08 rad')
+        if not -math.pi / 2 <= min_elevation < max_elevation <= math.pi / 2:
+            raise ValueError('near-field exclusion elevation bounds are invalid')
+        if max_elevation - min_elevation > 0.06:
+            raise ValueError('near-field exclusion elevation span exceeds 0.06 rad')
+        exclusions.append(CoMovingNearFieldExclusion(
+            channel_name=channel_name,
+            min_range_m=min_range,
+            max_range_m=max_range,
+            min_azimuth_rad=min_azimuth,
+            max_azimuth_rad=max_azimuth,
+            min_elevation_rad=min_elevation,
+            max_elevation_rad=max_elevation,
+        ))
+    return tuple(exclusions)
+
+
+def filter_co_moving_near_field_detections(
+    channel_name: str,
+    detections: Iterable[CarlaRadarDetection],
+    exclusions: Sequence[CoMovingNearFieldExclusion],
+    max_abs_velocity_mps: float,
+) -> tuple[tuple[CarlaRadarDetection, ...], int]:
+    """Remove only detections matching a tight, near-zero-Doppler raw cell.
+
+    Range alone is intentionally insufficient.  A moving target in the same
+    location is retained, as are all detections outside the configured raw
+    azimuth/elevation cell.
+    """
+    velocity_limit = float(max_abs_velocity_mps)
+    if (
+        not math.isfinite(velocity_limit)
+        or velocity_limit < 0.0
+        or velocity_limit > 0.10
+    ):
+        raise ValueError(
+            'co-moving near-field max_abs_velocity_mps must be in [0, 0.10]'
+        )
+    channel = str(channel_name).strip().lower()
+    relevant = tuple(
+        exclusion
+        for exclusion in exclusions
+        if exclusion.channel_name == channel
+    )
+    kept = []
+    filtered_count = 0
+    for detection in detections:
+        matched = (
+            math.isfinite(detection.range_m)
+            and math.isfinite(detection.velocity_mps)
+            and math.isfinite(detection.azimuth_rad)
+            and math.isfinite(detection.elevation_rad)
+            and abs(detection.velocity_mps) <= velocity_limit
+            and any(
+                exclusion.min_range_m <= detection.range_m <= exclusion.max_range_m
+                and exclusion.min_azimuth_rad
+                <= detection.azimuth_rad
+                <= exclusion.max_azimuth_rad
+                and exclusion.min_elevation_rad
+                <= detection.elevation_rad
+                <= exclusion.max_elevation_rad
+                for exclusion in relevant
+            )
+        )
+        if matched:
+            filtered_count += 1
+        else:
+            kept.append(detection)
+    return tuple(kept), filtered_count
+
+
 def select_nearest_range(
     detections_m: Iterable[float],
     min_range_m: float,

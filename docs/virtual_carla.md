@@ -365,6 +365,8 @@ $RANGER_CARLA_ROOT/
 | `CARLA_PYTHON_EGG` | 위 egg와 동일해야 하는 CAMROD launch alias |
 | `RANGER_PYTHON_EGG_CACHE` | 실행마다 새로 만든 빈 절대 경로 |
 | `RANGER_SPAWN_FILE` | actor/sensor JSON; rendered mode는 정렬된 `ranger_spawn_camrod_full_sensors.json`, `nullrhi`는 control-only smoke가 기본 |
+| `CAMROD_CARLA_MAP_PROFILE` | 빈 값이면 기존 direct-runner map 선택을 유지한다. `site_access.sh`는 B1-B13 access-map ID를 고정하며 임의 override를 거부한다. |
+| `CARLA_UE_MAP` / `CARLA_TOWN` | UE server와 ROS bridge가 동일한 map을 가리켜야 한다. `doctor`가 정규화 후 불일치하면 시작 전에 실패한다. |
 | `CAMROD_DEVELOP_LANELET_MAP` / `CAMROD_LANELET_MAP` | `camrod`가 쓰는 원본 develop `lanelet2_maps.osm`; 후자는 caller override 호환 이름 |
 | `CAMROD_WORAKSAN_TUNED_LANELET_MAP` | `camrod-tuned`에서만 쓰는 terrain-clearance 보정 OSM |
 | `CAMROD_MAP_ALIGNMENT_FILE` | CARLA↔CAMROD SE(2) alignment YAML |
@@ -575,6 +577,122 @@ YOLO 및 camera-LiDAR fusion도 명시적으로 끈다. 따라서 이 모드에�
 요구하거나 camera/perception 성공으로 해석하지 않는다.
 
 ## 9. 실행 순서
+
+### 9.1 B1-B13 campsite-access map 선택
+
+최신 develop 알고리즘 위에 CARLA 전용 campsite geometry launch만 얹어 시험할 때는
+`run.sh` 대신 아래 고정 profile wrapper를 모든 terminal에서 사용한다.
+
+```bash
+export RANGER_CARLA_ROOT=/home/hong/Downloads/ranger-carla-4ws-pipeline
+# packaged `CarlaUE4.sh`가 아니라 custom map Content를 가진 source checkout
+export CARLA_ROOT=/absolute/path/to/carla-source-checkout
+export CARLA_RENDER_MODE=onscreen
+./scripts/virtual_carla/site_access.sh doctor
+./scripts/virtual_carla/site_access.sh commands
+```
+
+이 wrapper가 선택하는 map은
+`Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v13`이며 map-profile ID는
+`woraksan-camrod-site-geometry-v13`다.
+원본 Woraksan map, 일반 `run.sh camrod` 기본 map, develop launch 기본값은 바꾸지 않는다.
+다른 `CARLA_UE_MAP`, `CARLA_TOWN` 또는 map-profile 값이 이미 export돼 있으면 서로
+섞어 실행하지 않고 즉시 실패한다. `doctor`는 선택한 `.umap` 존재 여부뿐 아니라
+UE map과 bridge town이 같은 identity인지도 확인한다. `CARLA_ROOT`는 machine마다
+caller가 명시하며 wrapper가 하드코딩하지 않는다. 출력된 `commands`에도 caller의
+source-checkout 경로가 그대로 유지된다. packaged runtime 또는 선택한 custom map이
+없는 source root는 `doctor`/`server`에서 fail closed한다.
+
+직전 v12 또는 그 이전 v11 증빙을 재현해야 할 때만 모든 terminal에서 해당 legacy
+profile을 명시한다. 각 선택은 정확히 같은 version의 UE map/town 쌍만 허용한다.
+
+```bash
+export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v12
+./scripts/virtual_carla/site_access.sh commands
+
+# 더 이전 v11 증빙 재현
+export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v11
+./scripts/virtual_carla/site_access.sh commands
+```
+
+각 terminal의 실행 순서는 다음과 같다.
+
+```bash
+./scripts/virtual_carla/site_access.sh server
+./scripts/virtual_carla/site_access.sh bridge
+./scripts/virtual_carla/site_access.sh pacer
+./scripts/virtual_carla/site_access.sh spawn
+./scripts/virtual_carla/site_access.sh camrod-site-geometry
+
+# 위 다섯 단계가 healthy인 뒤 별도 terminal에서
+./scripts/virtual_carla/site_access.sh camping-sites-plan
+./scripts/virtual_carla/site_access.sh camping-sites
+```
+
+`site_access.sh camrod`도 실행할 수 있지만 B1-B13 지형 검증에는 현재 develop과
+검증된 CARLA-only site-geometry subset을 조합하는 `camrod-site-geometry`가 필수다.
+wrapper는 motion/goal을 자동 전송하지 않으며 `camping-sites`를 명시 실행한 때만
+production UI dispatcher가 왕복 mission을 보낸다.
+
+runtime auditor가 이 조합을 구분하는 profile ID는
+`develop-plus-carla-site-geometry-v26`다. v24의 전역 `speed_scale=1.0`은
+B10 경사면 CRAB을 통과시켰지만 B11의 일반 Nav2 명령도
+`0.555 -> 1.111 m/s`로 두 배 올렸다. 반대로 v25의 전역 `0.5`는 일반 속도는
+복원했지만 B10의 사이트 선회·CRAB까지 절반으로 줄여 회전 중심 오차가 커졌다.
+v26은 CARLA Nav2 overlay에서 RPP/RotationShim의 선속도만 `0.555556 m/s`로
+pre-limit하고 final gate는 `1.0`으로 둔다. 따라서 일반 경로는 B1--B9 속도를
+유지하면서 campsite maneuver는 B10 v22 성공 당시 출력과 accepted
+extreme-crab Kp=8을 그대로 사용한다. 일반 develop 설정과 실제 Ranger 제어
+코드는 변경하지 않는다.
+또한 도착 시 닫힌 command gate를 CARLA에서 Return operation보다 먼저 다시
+열어 B11-B13의 짧은 roadside CRAB_OUT이 `STANDBY`에서 timeout되지 않게 한다.
+공유 full/develop launch의 `return_site_exit_rearm_enabled=false`는 그대로다.
+이 profile의 정지 crab 진입 사전 정렬
+허용 오차는 CARLA plant 전용 `1.5 deg`다. B1 실주행에서 목표 `-61.25 deg`,
+최종 `-62.52 deg`로 측정된
+`1.27 deg` 잔차가 기존 `0.5 deg` band 밖에서 15초 timeout을 일으킨 결과만
+반영한다. 일반 `camrod` develop-parity와 역사 `camrod-tuned`는 모두 기존
+`0.5 deg`를 유지하며 timeout `15 s`도 바꾸지 않는다. v22는 B1에서 물리
+4WS가 계속 움직이고 접근 corridor 안에 있는데도 CARLA 전용 heading guard가
+`5.10 deg > 5.00 deg`에서 기존 bounded centering보다 먼저 정지한 결과를
+반영한다. 최신 develop의 CRAB_IN에는 이 추가 guard가 없으므로 site wrapper의
+`crab_entry_max_heading_drift_deg`만 `0`(비활성)으로 되돌린다. production/develop
+설정과 목표 거리, timeout, 회전 중심 및 centering 한계는 변경하지 않는다.
+또한 B2 v14 실주행은 첫 접근 횡오차 `0.054 m`, 첫 bounded exit `0.804 m`,
+두 번째 접근 횡오차 `0.042 m`를 측정했다. 두 접근 모두 그대로 유지한 최종
+허용 오차 `0.03 m` 밖이었으므로 v15는 CARLA site wrapper의
+`maximum_retries`만 `1`에서 `2`로 올린다. retry 거리/속도/timeout과 heading,
+lateral drift, odometry step, 누적 path envelope는 변경하지 않는다.
+이후 B2 v15~v18 실주행은 outbound와 회전까지 완료한 뒤 `CRAB_OUT`의 lateral
+correction을 latch하고 steering settle로 전환했지만, 좁은 시뮬레이터 접근면
+경계 접촉으로 차체 yaw가 반복적으로 약 `53 deg` 틀어졌다. hysteresis를
+`0.10 -> 0.13 -> 0.18 m`로 넓혀도 실패 시점만 늦어졌으므로 v19에서는 해당
+CARLA override를 제거했다. 일반 develop과 동일하게 transition `0.02 m`,
+hysteresis `0.10 m`를 사용하고, B2 접근 collision cut만 반폭 `1.10 -> 2.00 m`,
+시작/끝 여유 `0.85/1.15 -> 1.25/1.50 m`로 국소 확장한다. 인공 ramp와 전역
+collision disable은 사용하지 않으며 B1/B3~B10과 B11~B13 지형은 유지한다.
+v19 wheel telemetry에서는 네 바퀴가 모두 접지된 채 동일한 `88 deg`, `8 N*m`
+명령을 받았지만, 우측 접촉면의 큰 경사가 `CRAB_OUT` 차체 yaw를 반복적으로
+틀어놓는 것이 확인됐다. v20은 이 simulator plant 현상만 격리한다.
+`CRAB_OUT`의 lateral stage에서 retrace yaw 오차가 `8 deg`를 넘으면 먼저 한 tick
+완전 정지하고, 기존 bounded rotate/settle 제어로 yaw를 복원한 뒤 동일 lateral
+sequencer를 재개한다. 측정 궤적에서 8도 crossing이 약 여섯 번 발생했으므로
+CARLA site wrapper만 최대 `8`회, 첫 trigger부터 reset되지 않는 steady-clock
+`90 s`를 허용한다. 횟수/시간 초과 또는 비정상 입력은 `ERROR`와 zero command로
+종료된다. 공용/develop 설정의 `crab_out_yaw_recovery_enable=false`는 그대로다.
+그 다음 B2 v16은 v14/v15가 성공했던 것과 같은 회전 중심에서
+`ROTATE_180`을 시작했지만, `60 s` 뒤에도 `61.24 deg`가 남고 실제 yaw rate가
+`0.78 deg/s`까지 낮아졌다. 당시 계속 출력된 `0.35 rad/s` 요청은 물리 제어기의
+`5 N*m/(rad/s)` gain에서 약 `1.68 N*m/wheel`만 요구해, 검증된 회전 상한
+`2.0 N*m/wheel`을 다 쓰지 못했다. v17은 CARLA site wrapper의 campsite
+`max_angular_speed_radps`만 `0.35`에서 `0.45`로 올려 기존 제어기가 그
+`2.0 N*m/wheel` 상한에 도달하게 한다. bridge hard cap `20 N*m`, 물리 controller
+설정, `60 s` timeout, `4 deg` yaw tolerance, `0.05 m` 회전 중심 허용오차와 settle
+조건은 그대로다. 일반 develop과 일반 `camrod`는 launch override 기본값이 빈
+문자열이므로 production YAML의 `0.35 rad/s`를 계속 사용한다.
+회전 토크 보정과 B2 접근면 확장은 서로 독립이다. 전자는 180° 회전 시간을
+줄이고, 후자는 `CRAB_OUT` 후진 보정 중 한쪽 바퀴/차체가 cut 경계에 닿는 것을
+막는다. route/cost safety 및 production/develop 제어 허용오차는 변경하지 않는다.
 
 복사 가능한 현재 환경 명령을 먼저 볼 수 있다. 이 명령은 아무 프로세스도 시작하지
 않는다.

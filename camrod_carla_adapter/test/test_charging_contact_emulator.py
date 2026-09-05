@@ -64,6 +64,9 @@ def test_contact_fails_closed_without_complete_fresh_stopped_evidence(sample):
 
 def test_waiting_or_parked_vehicle_at_station_is_a_contact_candidate():
     assert contact_candidate(GOOD, STATION) is True
+    assert contact_candidate(
+        replace(GOOD, parking_state="WAITING_FOR_CHARGING"), STATION
+    )
     assert contact_candidate(replace(GOOD, parking_state="PARKED"), STATION)
 
 
