@@ -135,11 +135,13 @@ struct MotionCostStopConfig
   bool lanelet_route_reentry_require_front_cmd{true};
 
   // HH_260721 - Keep static-cost exceptions bounded to configured maneuver phases.
-  std::set<std::string> drop_zone_static_bypass_phases{"exit_straight", "align_exit_yaw"};
-  // HH_260807 - The charger approach/exit area is intentionally outside the
-  // road lanelet. Only the bounded drop-zone departure controller may cross
-  // that semantic boundary; live obstacle grids remain authoritative.
-  std::set<std::string> drop_zone_lanelet_bypass_phases{"exit_straight", "align_exit_yaw"};
+  std::set<std::string> drop_zone_static_bypass_phases{
+    "exit_straight", "align_exit_yaw", "position_parking_point", "align_parking_yaw"};
+  // HH_260904 - The charger approach and exit area is intentionally outside
+  // the road lanelet. Only bounded drop-zone controller phases may cross that
+  // semantic boundary; live LiDAR/radar grids remain authoritative.
+  std::set<std::string> drop_zone_lanelet_bypass_phases{
+    "exit_straight", "align_exit_yaw", "position_parking_point", "align_parking_yaw"};
   // HH_260721 - Name the campsite exception after its same-lanelet retrace behavior.
   std::set<std::string> campsite_static_bypass_phases{
     "align_entry_yaw", "reverse_in", "crab_in", "rotate_180",

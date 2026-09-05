@@ -379,6 +379,19 @@
       box-shadow: 0 4px 18px rgba(59,130,246,0.3);
     }
     .btn-complete:active { transform: scale(0.97); }
+    .cancel-card { border-top-color: #ef4444; }
+    .btn-mission-cancel {
+      background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 18px rgba(239,68,68,0.25);
+    }
+    .btn-mission-cancel:active { transform: scale(0.97); }
+    .btn-mission-cancel:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      box-shadow: none;
+      cursor: wait;
+    }
 
     /* ── Destination tag (shown when moving/arrived) ─────────────── */
     .dest-tag {
@@ -426,7 +439,7 @@
     <div class="confirm-site-tag" id="confirmSiteTag">--</div>
     <div class="confirm-title">호출하시겠습니까?</div>
     <div class="confirm-desc">
-      목적지를 선택하면<br><strong>취소할 수 없습니다.</strong>
+      목적지를 선택한 뒤에도<br><strong>이동 중 운행을 취소할 수 있습니다.</strong>
     </div>
     <div class="confirm-btns">
       <button class="btn-cancel" onclick="closeConfirm()">취소</button>
@@ -447,7 +460,7 @@
     </div>
   </div>
   <div class="header-badges">
-    <div class="wh-wifi">
+    <div class="wh-wifi" id="wifiBadge">
       <svg id="wifiSvg" width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path id="wArc3" d="M1.5 8.5C5.1 4.9 10.3 3 12 3s6.9 1.9 10.5 5.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
         <path id="wArc2" d="M4.5 11.5C6.9 9.1 9.7 8 12 8s5.1 1.1 7.5 3.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
@@ -505,6 +518,17 @@
     </button>
   </div>
 
+  <!-- Active mission cancel (site travel, return, and final docking) -->
+  <div class="card cancel-card" id="cancelCard" style="display:none">
+    <div class="card-title">운행 취소</div>
+    <div class="site-grid-label" id="cancelHelp">
+      현재 운행을 중단하고 로봇을 정지합니다.
+    </div>
+    <button class="action-btn btn-mission-cancel" id="cancelMissionBtn" onclick="sendCancel()">
+      현재 운행 취소
+    </button>
+  </div>
+
 </div><!-- /main-content -->
 
 <script>
@@ -525,6 +549,7 @@
   // from service state alone while SOC is missing or below the 35% margin.
   let missionBatteryReady = false;
   let minimumBatteryPercentage = 35;
+  let cancelRequestPending = false;
   // HH_260803 - Control safety is an overlay; the service state remains the
   // scenario source underneath it and resumes when the gate clears.
   let safetyHold = false;
@@ -580,6 +605,14 @@
         controlGateState = String(d.control_gate_state || 'UNKNOWN');
         updateUI();
       }
+      if (d.cancel_requested === true) {
+        cancelRequestPending = true;
+        updateUI();
+      }
+      if (d.error !== undefined && cancelRequestPending) {
+        cancelRequestPending = false;
+        updateUI();
+      }
       if (d.service_state_name !== undefined) {
         currentServiceStateName = String(d.service_state_name || 'PREPARING');
       }
@@ -597,6 +630,7 @@
       if (ws === socket) ws = null;
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
+      cancelRequestPending = false;
       setConn(false);
       if (!isLocked && !isGrace) setTimeout(connect, 3000);
     };
@@ -632,7 +666,8 @@
 
   function setConn(on) {
     // 연결 상태를 WiFi 배지 투명도로 표현
-    document.getElementById('wifiBadge').style.opacity = on ? '1' : '0.4';
+    const badge = document.getElementById('wifiBadge');
+    if (badge) badge.style.opacity = on ? '1' : '0.4';
   }
 
   /* ── Battery ── */
@@ -668,6 +703,21 @@
     OPERATOR_STOPPED: 'Stopped by operator',
   });
 
+  function isMissionCancellablePhase() {
+    return currentPhase === 'moving'
+      || currentPhase === 'returning'
+      || currentPhase === 'recall'
+      || currentPhase === 'parking';
+  }
+
+  function showMissionCancel(label) {
+    const cancelCard = document.getElementById('cancelCard');
+    const cancelBtn = document.getElementById('cancelMissionBtn');
+    cancelCard.style.display = 'block';
+    cancelBtn.disabled = cancelRequestPending;
+    cancelBtn.textContent = cancelRequestPending ? '취소 요청 중...' : label;
+  }
+
   function updateUI() {
     const dot      = document.getElementById('statusDot');
     const phaseLbl = document.getElementById('statusPhase');
@@ -676,14 +726,17 @@
     const destTag  = document.getElementById('destTag');
     const siteCard    = document.getElementById('siteCard');
     const completeCard = document.getElementById('completeCard');
+    const cancelCard = document.getElementById('cancelCard');
 
     // reset
     dot.className = 'status-indicator';
     banner.className = 'info-banner';
     banner.textContent = '';
     destTag.style.display = 'none';
+    cancelCard.style.display = 'none';
 
     const phase = currentPhase;
+    if (!isMissionCancellablePhase()) cancelRequestPending = false;
 
     if (safetyHold) {
       dot.classList.add('si-busy');
@@ -693,6 +746,7 @@
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
       banner.textContent = 'Automatic bounded recovery is in progress. Please keep clear.';
+      if (isMissionCancellablePhase()) showMissionCancel('안전 정지 · 운행 취소');
       return;
     }
 
@@ -730,6 +784,7 @@
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-moving');
       banner.textContent = 'The robot is moving. Please wait.';
+      showMissionCancel('사이트 이동 취소');
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
@@ -748,16 +803,31 @@
         destTag.style.display = 'inline-flex';
       }
 
-    } else if (phase === 'parking' || phase === 'waiting_for_charging') {
+    } else if (phase === 'waiting_for_charging') {
+      // Parking is complete at this point.  Charger contact is optional for a
+      // new mission, so retain the explicit status while exposing the same
+      // battery-gated site picker as DROP_ZONE_WAIT and CHARGING.
+      dot.classList.add('si-idle');
+      phaseLbl.textContent = 'Waiting for charging';
+      stateLbl.textContent = 'Parked at drop zone; charger connection pending';
+      siteCard.style.display = sites.length ? 'block' : 'none';
+      completeCard.style.display = 'none';
+      setSiteGridEnabled(missionBatteryReady);
+      banner.classList.add('show', 'info-returning');
+      banner.textContent = missionBatteryReady
+        ? 'The robot is parked and ready for a new mission.'
+        : 'Charge the robot to ' + minimumBatteryPercentage + '% before dispatch.';
+      lastDestSite = null;
+
+    } else if (phase === 'parking') {
       dot.classList.add('si-returning');
-      phaseLbl.textContent = phase === 'parking' ? 'Parking' : 'Waiting for charging';
-      stateLbl.textContent = phase === 'parking'
-        ? 'Reverse parking at drop zone'
-        : 'Waiting for charger connection';
+      phaseLbl.textContent = 'Parking';
+      stateLbl.textContent = 'Reverse parking at drop zone';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
       banner.textContent = stateLbl.textContent;
+      showMissionCancel('도킹 취소');
 
     } else if (phase === 'returning' || phase === 'recall') {
       dot.classList.add('si-returning');
@@ -769,6 +839,7 @@
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
       banner.textContent = 'The robot is returning to the drop zone.';
+      showMissionCancel(phase === 'recall' ? '호출 취소' : '복귀 취소');
 
     } else if (phase === 'stopped') {
       dot.classList.add('si-busy');
@@ -824,9 +895,14 @@
     }
   }
 
-  // HH_260721 - Charging is a dispatch-ready state because control owns charger departure.
+  // Parking completion is sufficient; control owns the station departure even
+  // when charger contact is still pending or absent.
   function isDispatchReady() {
-    return missionBatteryReady && (currentPhase === 'idle' || currentPhase === 'charging');
+    return missionBatteryReady && (
+      currentPhase === 'idle'
+      || currentPhase === 'waiting_for_charging'
+      || currentPhase === 'charging'
+    );
   }
 
   /* ── Confirm dialog ── */
@@ -857,6 +933,16 @@
   function sendUsageComplete() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ action: 'usage_complete' }));
+    }
+  }
+
+  function sendCancel() {
+    if (!isMissionCancellablePhase() || cancelRequestPending) return;
+    if (!window.confirm('현재 운행을 취소하고 로봇을 정지하시겠습니까?')) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      cancelRequestPending = true;
+      updateUI();
+      ws.send(JSON.stringify({ action: 'cancel' }));
     }
   }
 

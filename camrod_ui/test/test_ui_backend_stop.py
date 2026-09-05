@@ -5,6 +5,7 @@ import sys
 import threading
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 from builtin_interfaces.msg import Time as RosTime
 
@@ -20,6 +21,7 @@ from avg_msgs.msg import (  # noqa: E402
     CampsiteOccupancy,
     ModuleState,
     MotionOperation,
+    UiDestinationCommand,
 )
 from camrod_ui.ui_backend_node import ApiState, UiBackendNode  # noqa: E402
 
@@ -144,6 +146,40 @@ class _FakeBackend:
 
 
 class UiBackendStopTest(unittest.TestCase):
+
+    def test_ui_camping_operation_cancel_uses_full_operator_stop_path(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _stop_active_service=lambda source: events.append(("stop", source)),
+            _request_return_to_drop_zone=(
+                lambda source: events.append(("return", source))
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+        message = MotionOperation()
+        message.operation = MotionOperation.CANCEL
+        message.source = "guest:return_cancel"
+
+        UiBackendNode._on_ui_camping_site_operation_request(backend, message)
+
+        self.assertEqual(events, [("stop", "guest:return_cancel")])
+
+    def test_ui_camping_operation_return_behavior_is_preserved(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _stop_active_service=lambda source: events.append(("stop", source)),
+            _request_return_to_drop_zone=(
+                lambda source: events.append(("return", source))
+            ),
+            get_logger=lambda: _FakeLogger(),
+        )
+        message = MotionOperation()
+        message.operation = MotionOperation.RETURN
+        message.source = "guest:return"
+
+        UiBackendNode._on_ui_camping_site_operation_request(backend, message)
+
+        self.assertEqual(events, [("return", "guest:return")])
 
     def test_manual_return_defers_planning_until_site_exit_reaches_anchor(self) -> None:
         events = []
@@ -399,12 +435,26 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(events[2][1].source, "test:return")
 
     def test_manual_return_at_drop_zone_starts_alignment_without_nav_loop(self) -> None:
-        operations = []
+        events = []
         backend = SimpleNamespace(
             _latest_service_state=int(AvgServiceState.DROP_ZONE_WAIT),
             _latest_platform_is_charging=False,
-            _publish_drop_zone_operation=lambda operation, source: operations.append(
-                (operation, source)
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=True,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_engage=lambda enabled, source: events.append(
+                ("engage", enabled, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
             ),
         )
 
@@ -413,7 +463,16 @@ class UiBackendStopTest(unittest.TestCase):
         )
 
         self.assertEqual(action, "parking_alignment")
-        self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
+        self.assertEqual(
+            [(event[0], event[1]) for event in events],
+            [
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+                ("engage", True),
+                ("mission_engage", True),
+                ("drop_zone", MotionOperation.ALIGN_FOR_PARKING),
+            ],
+        )
 
     def test_second_return_button_does_not_restart_active_return_route(self) -> None:
         backend = SimpleNamespace(
@@ -431,12 +490,23 @@ class UiBackendStopTest(unittest.TestCase):
     def test_manual_return_realigns_when_charging_contact_was_lost(self) -> None:
         # HH_260818 - A stale public CHARGING state without current CAN contact
         # is a parking retry, not a reason to create another drop-zone Nav2 loop.
-        operations = []
+        events = []
         backend = SimpleNamespace(
             _latest_service_state=int(AvgServiceState.CHARGING),
             _latest_platform_is_charging=False,
-            _publish_drop_zone_operation=lambda operation, source: operations.append(
-                (operation, source)
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
             ),
         )
 
@@ -445,7 +515,483 @@ class UiBackendStopTest(unittest.TestCase):
         )
 
         self.assertEqual(action, "parking_alignment")
-        self.assertEqual(operations[0][0], MotionOperation.ALIGN_FOR_PARKING)
+        self.assertEqual(
+            [(event[0], event[1]) for event in events],
+            [
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+                ("mission_engage", True),
+                ("drop_zone", MotionOperation.ALIGN_FOR_PARKING),
+            ],
+        )
+
+    def test_return_while_charging_waits_for_release_then_redocks_once(self) -> None:
+        events = []
+        broadcasts = []
+        backend = SimpleNamespace(
+            _latest_service_state=int(AvgServiceState.CHARGING),
+            _latest_platform_is_charging=True,
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            _redock_after_disconnect_lock=threading.Lock(),
+            _redock_after_disconnect_pending=False,
+            _redock_after_disconnect_source="",
+            _redock_after_disconnect_requested_at_s=0.0,
+            redock_request_timeout_s=10.0,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _runtime_policy=SimpleNamespace(update_platform=lambda **_kwargs: None),
+            _update_runtime_state=lambda callback: callback(),
+            _publish_service_state=lambda state, source: events.append(
+                ("service_state", state, source)
+            ),
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
+            ),
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:charged_redock"
+        )
+        self.assertEqual(action, "waiting_for_disconnect")
+        self.assertTrue(backend._redock_after_disconnect_pending)
+        self.assertEqual(events, [])
+
+        released = AvgPlatformStatus()
+        released.is_charging = False
+        released.control_mode = 1
+        released.battery_state_available = False
+        UiBackendNode._on_platform_status(backend, released)
+
+        self.assertFalse(backend._redock_after_disconnect_pending)
+        self.assertEqual(
+            [(event[0], event[1]) for event in events],
+            [
+                ("service_state", AvgServiceState.DROP_ZONE_WAIT),
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+                ("mission_engage", True),
+                ("drop_zone", MotionOperation.ALIGN_FOR_PARKING),
+            ],
+        )
+
+        UiBackendNode._on_platform_status(backend, released)
+        self.assertEqual(
+            sum(
+                event[0] == "drop_zone"
+                and event[1] == MotionOperation.ALIGN_FOR_PARKING
+                for event in events
+            ),
+            1,
+        )
+
+    def test_parking_rearm_waits_for_old_parked_heartbeat_interval(self) -> None:
+        events = []
+        timers = []
+        backend = SimpleNamespace(
+            parking_rearm_hold_s=0.6,
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _parking_rearm_transition_lock=threading.Lock(),
+            _parking_rearm_transition_pending=False,
+            _parking_rearm_transition_timer=None,
+            _parking_rearm_transition_source="",
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
+            ),
+            create_timer=lambda period, callback: timers.append(
+                _FakeTimer(period, callback)
+            ) or timers[-1],
+            destroy_timer=lambda timer: events.append(("destroy_timer", timer)),
+        )
+
+        UiBackendNode._start_drop_zone_parking_alignment(
+            backend, "test:serialized_redock"
+        )
+        self.assertEqual(
+            [(event[0], event[1]) for event in events],
+            [
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+            ],
+        )
+        hold_timer = next(timer for timer in timers if timer.period_s == 0.6)
+        self.assertTrue(backend._parking_rearm_transition_pending)
+
+        hold_timer.callback()
+        self.assertFalse(backend._parking_rearm_transition_pending)
+        self.assertEqual(
+            [(event[0], event[1]) for event in events if event[0] != "destroy_timer"],
+            [
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+                ("mission_engage", True),
+                ("drop_zone", MotionOperation.ALIGN_FOR_PARKING),
+            ],
+        )
+
+    def test_redock_defers_align_until_can_then_resumes_same_generation(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=3,
+            redock_require_can_control_mode=True,
+            parking_rearm_hold_s=0.0,
+            redock_request_timeout_s=10.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
+            ),
+            _schedule_broadcast=lambda payload: events.append(("broadcast", payload)),
+        )
+
+        self.assertTrue(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, "test:rc_wait"
+        ))
+        self.assertTrue(backend._parking_rearm_waiting_for_can)
+        self.assertFalse(any(
+            event[0] == "drop_zone"
+            and event[1] == MotionOperation.ALIGN_FOR_PARKING
+            for event in events
+        ))
+
+        backend._latest_platform_control_mode = 1
+        request = UiBackendNode._take_parking_rearm_waiting_for_can(backend)
+        self.assertIsNotNone(request)
+        source, generation = request
+        self.assertTrue(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, source, generation=generation
+        ))
+        self.assertEqual(
+            sum(
+                event[0] == "drop_zone"
+                and event[1] == MotionOperation.ALIGN_FOR_PARKING
+                for event in events
+            ),
+            1,
+        )
+
+    def test_stop_generation_invalidates_taken_release_before_start(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=True,
+            redock_request_timeout_s=10.0,
+            parking_rearm_hold_s=0.0,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+        )
+        queued, _ = UiBackendNode._queue_redock_after_disconnect(
+            backend, "test:race"
+        )
+        self.assertTrue(queued)
+        backend._latest_platform_is_charging = False
+        request = UiBackendNode._take_pending_redock_after_disconnect(backend)
+        self.assertIsNotNone(request)
+
+        UiBackendNode._cancel_pending_redock_after_disconnect(backend, "stop")
+        source, generation = request
+        self.assertFalse(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, source, generation=generation
+        ))
+        self.assertEqual(events, [])
+
+    def test_concurrent_second_return_does_not_invalidate_first_rearm(self) -> None:
+        events = []
+        timers = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            redock_request_timeout_s=10.0,
+            parking_rearm_hold_s=0.6,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            create_timer=lambda period, callback: timers.append(
+                _FakeTimer(period, callback)
+            ) or timers[-1],
+            destroy_timer=lambda _timer: None,
+        )
+
+        self.assertTrue(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, "test:first"
+        ))
+        first_generation = backend._redock_generation
+        self.assertFalse(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, "test:second"
+        ))
+        self.assertEqual(backend._redock_generation, first_generation)
+        self.assertEqual(
+            [(event[0], event[1]) for event in events],
+            [
+                ("parking", MotionOperation.CANCEL),
+                ("drop_zone", MotionOperation.CANCEL),
+            ],
+        )
+        self.assertEqual(sum(timer.period_s == 0.6 for timer in timers), 1)
+
+    def test_queue_rechecks_a_release_edge_before_installing_pending(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=1,
+            redock_require_can_control_mode=True,
+            redock_request_timeout_s=10.0,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("mission_engage", enabled, source)
+            ),
+        )
+
+        queued, generation = UiBackendNode._queue_redock_after_disconnect(
+            backend, "test:edge_won"
+        )
+        self.assertFalse(queued)
+        self.assertTrue(UiBackendNode._start_drop_zone_parking_alignment(
+            backend, "test:edge_won", generation=generation
+        ))
+        self.assertFalse(backend._redock_after_disconnect_pending)
+        self.assertTrue(any(
+            event[0] == "drop_zone"
+            and event[1] == MotionOperation.ALIGN_FOR_PARKING
+            for event in events
+        ))
+
+    def test_can_wait_expires_and_cannot_move_later(self) -> None:
+        events = []
+        timers = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=3,
+            redock_require_can_control_mode=True,
+            redock_request_timeout_s=10.0,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda operation, source: events.append(
+                ("parking", operation, source)
+            ),
+            _publish_drop_zone_operation=lambda operation, source: events.append(
+                ("drop_zone", operation, source)
+            ),
+            _schedule_broadcast=lambda payload: events.append(("broadcast", payload)),
+            create_timer=lambda period, callback: timers.append(
+                _FakeTimer(period, callback)
+            ) or timers[-1],
+            destroy_timer=lambda timer: events.append(("destroy_timer", timer)),
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        UiBackendNode._start_drop_zone_parking_alignment(backend, "test:expiry")
+        self.assertTrue(backend._parking_rearm_waiting_for_can)
+        expiry_timer = next(timer for timer in timers if timer.period_s == 10.0)
+        expiry_timer.callback()
+        self.assertFalse(backend._parking_rearm_waiting_for_can)
+        expiry_updates = [
+            event[1]
+            for event in events
+            if event[0] == "broadcast"
+            and event[1].get("redock_status") == "expired"
+        ]
+        self.assertEqual(len(expiry_updates), 1)
+        self.assertFalse(expiry_updates[0]["redock_waiting_for_can"])
+        self.assertEqual(backend._redock_status, "expired")
+        self.assertEqual(
+            UiBackendNode._redock_status_snapshot(backend)["redock_status"],
+            "expired",
+        )
+        backend._latest_platform_control_mode = 1
+        self.assertIsNone(
+            UiBackendNode._take_parking_rearm_waiting_for_can(backend)
+        )
+        self.assertFalse(any(
+            event[0] == "drop_zone"
+            and event[1] == MotionOperation.ALIGN_FOR_PARKING
+            for event in events
+        ))
+
+    def test_contact_bounce_does_not_extend_original_redock_deadline(self) -> None:
+        timers = []
+        backend = SimpleNamespace(
+            _latest_platform_is_charging=True,
+            redock_request_timeout_s=10.0,
+            create_timer=lambda period, callback: timers.append(
+                _FakeTimer(period, callback)
+            ) or timers[-1],
+            destroy_timer=lambda _timer: None,
+        )
+        with mock.patch(
+            "camrod_ui.ui_backend_node.time.monotonic", return_value=1.0
+        ):
+            queued, generation = UiBackendNode._queue_redock_after_disconnect(
+                backend, "test:first_contact"
+            )
+        self.assertTrue(queued)
+        original_timer = backend._redock_after_disconnect_timer
+        with mock.patch(
+            "camrod_ui.ui_backend_node.time.monotonic", return_value=8.0
+        ):
+            UiBackendNode._queue_redock_after_disconnect_locked(
+                backend, "test:contact_bounce", generation
+            )
+        self.assertEqual(backend._redock_after_disconnect_requested_at_s, 1.0)
+        self.assertIs(backend._redock_after_disconnect_timer, original_timer)
+
+    def test_only_selected_parking_controller_error_enables_manual_retry(self) -> None:
+        def make_backend(method):
+            events = []
+            backend = SimpleNamespace(
+                parking_method=method,
+                _parking_controller_operating_states={
+                    "reverse_parking": "ERROR",
+                    "apriltag_parking": "PARKED",
+                },
+                _latest_service_state=int(AvgServiceState.DROP_ZONE_PARKING),
+                _latest_platform_is_charging=False,
+                _latest_platform_control_mode=1,
+                redock_require_can_control_mode=True,
+                redock_request_timeout_s=10.0,
+                parking_rearm_hold_s=0.0,
+                publish_engage_from_destination=False,
+                publish_mission_engage_from_destination=True,
+                _publish_parking_operation=lambda operation, source: events.append(
+                    ("parking", operation, source)
+                ),
+                _publish_drop_zone_operation=lambda operation, source: events.append(
+                    ("drop_zone", operation, source)
+                ),
+                _publish_mission_engage=lambda enabled, source: events.append(
+                    ("mission_engage", enabled, source)
+                ),
+            )
+            return backend, events
+
+        apriltag_backend, apriltag_events = make_backend("apriltag")
+        self.assertEqual(
+            UiBackendNode._request_return_to_drop_zone(
+                apriltag_backend, "test:non_selected_error"
+            ),
+            "parking_in_progress",
+        )
+        self.assertEqual(apriltag_events, [])
+
+        reverse_backend, reverse_events = make_backend("reverse")
+        self.assertEqual(
+            UiBackendNode._request_return_to_drop_zone(
+                reverse_backend, "test:selected_error"
+            ),
+            "parking_alignment",
+        )
+        self.assertTrue(any(
+            event[0] == "drop_zone"
+            and event[1] == MotionOperation.ALIGN_FOR_PARKING
+            for event in reverse_events
+        ))
+
+    def test_redock_started_in_rc_mode_reports_can_mode_wait(self) -> None:
+        backend = SimpleNamespace(
+            _latest_service_state=int(AvgServiceState.DROP_ZONE_WAIT),
+            _latest_platform_is_charging=False,
+            _latest_platform_control_mode=3,
+            parking_rearm_hold_s=0.0,
+            publish_engage_from_destination=False,
+            publish_mission_engage_from_destination=True,
+            _publish_parking_operation=lambda *_args, **_kwargs: None,
+            _publish_drop_zone_operation=lambda *_args, **_kwargs: None,
+            _publish_mission_engage=lambda *_args, **_kwargs: None,
+            _schedule_broadcast=lambda *_args, **_kwargs: None,
+        )
+
+        action = UiBackendNode._request_return_to_drop_zone(
+            backend, "test:rc_redock"
+        )
+
+        self.assertEqual(action, "parking_alignment_waiting_for_can")
+        self.assertTrue(backend._parking_rearm_waiting_for_can)
+
+    def test_queued_redock_expires_instead_of_moving_on_a_late_unplug(self) -> None:
+        broadcasts = []
+        logger = _FakeLogger()
+        backend = SimpleNamespace(
+            _redock_after_disconnect_lock=threading.Lock(),
+            _redock_after_disconnect_pending=True,
+            _redock_after_disconnect_source="test:stale_redock",
+            _redock_after_disconnect_requested_at_s=1.0,
+            redock_request_timeout_s=10.0,
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: logger,
+        )
+
+        with mock.patch(
+            "camrod_ui.ui_backend_node.time.monotonic", return_value=20.0
+        ):
+            source = UiBackendNode._take_pending_redock_after_disconnect(backend)
+
+        self.assertIsNone(source)
+        self.assertFalse(backend._redock_after_disconnect_pending)
+        self.assertEqual(broadcasts[-1]["redock_pending"], False)
+        self.assertEqual(broadcasts[-1]["redock_status"], "expired")
+        self.assertIn("expired", broadcasts[-1]["redock_message"])
+        self.assertIn("queued re-dock expired", logger.warning_messages[-1])
+
+    def test_redock_snapshot_preserves_async_wait_state_for_reconnect(self) -> None:
+        backend = SimpleNamespace(
+            _redock_after_disconnect_lock=threading.RLock(),
+            _redock_after_disconnect_pending=True,
+            _parking_rearm_waiting_for_can=False,
+            _redock_status="waiting_for_disconnect",
+            _redock_status_message="Charging release pending",
+        )
+
+        self.assertEqual(
+            UiBackendNode._redock_status_snapshot(backend),
+            {
+                "redock_pending": True,
+                "redock_waiting_for_can": False,
+                "redock_status": "waiting_for_disconnect",
+                "redock_message": "Charging release pending",
+            },
+        )
 
     def test_readiness_timer_can_rebroadcast_unchanged_authoritative_state(self) -> None:
         broadcasts = []
@@ -570,6 +1116,369 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertFalse(result["goal_pose_published"])
         self.assertIn("already pending", result["message"])
 
+    def test_guest_calls_b1_through_b13_publish_typed_roadside_recall(self) -> None:
+        events = []
+        recalls = []
+
+        class RecallPublisher:
+            @staticmethod
+            def publish(message) -> None:
+                recalls.append(message)
+                events.append(("recall", message.site_name, message.source))
+
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _charging_departure_delay_pending=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=True,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=True,
+            publish_mission_engage_from_destination=True,
+            planning_camping_site_recall_topic=(
+                "/planning/state_machine/camping_site_recall"
+            ),
+            pub_planning_camping_site_recall=RecallPublisher(),
+            charging_departure_delay_s=7.0,
+        )
+        backend.get_clock = lambda: SimpleNamespace(
+            now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=9, nanosec=7))
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = (
+            lambda site: f"camping_site_{int(site[1:])}"
+        )
+        # A tent is expected at every called site. Guest recall must therefore
+        # bypass both the delivery occupancy guard and in-site adoption check.
+        backend._is_site_occupied = lambda site: self.fail(
+            f"guest recall consulted delivery occupancy for {site}"
+        )
+        backend._site_arrival_match = lambda site: self.fail(
+            f"guest recall consulted delivery arrival adoption for {site}"
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_engage = lambda enabled, source: events.append(
+            ("engage", enabled, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._publish_platform_drive_enable = lambda enabled, source: events.append(
+            ("platform", enabled, source)
+        )
+        backend._publish_goal_for_site = lambda **kwargs: self.fail(
+            f"guest recall published ordinary delivery goal: {kwargs}"
+        )
+
+        with mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_redock_after_disconnect",
+            return_value=None,
+        ), mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_parking_rearm_transition",
+            return_value=None,
+        ):
+            results = [
+                UiBackendNode._apply_destination_command(
+                    backend, site=f"B{index}", run=True, source="guest"
+                )
+                for index in range(1, 14)
+            ]
+
+        self.assertEqual(
+            [message.site_name for message in recalls],
+            [f"camping_site_{index}" for index in range(1, 14)],
+        )
+        self.assertEqual([message.source for message in recalls], ["guest"] * 13)
+        self.assertTrue(all(result["recall_request_published"] for result in results))
+        self.assertTrue(all(not result["goal_pose_published"] for result in results))
+        self.assertEqual(
+            [event[1] for event in events if event[0] == "state"],
+            [AvgServiceState.RECALL_TO_SITE_ROAD] * 13,
+        )
+
+    def test_destination_topic_preserves_guest_prefix_for_recall_dispatch(self) -> None:
+        dispatches = []
+        broadcasts = []
+        backend = SimpleNamespace()
+        backend.get_logger = lambda: _FakeLogger()
+        backend._is_recent_direct_destination_echo = lambda *_args: False
+        backend._apply_destination_command = lambda site, run, source: (
+            dispatches.append((site, run, source))
+            or {"mission_key": "camping_site_7", "recall_request_published": True}
+        )
+        backend._schedule_broadcast = broadcasts.append
+
+        command = UiDestinationCommand()
+        command.site = "B7"
+        command.run = True
+        command.source = "  guest:kiosk  "
+        UiBackendNode._on_destination_command(backend, command)
+
+        self.assertEqual(dispatches, [("B7", True, "guest:kiosk")])
+        self.assertEqual(broadcasts, [{"guest_navigate": "B7"}])
+
+    def test_robot_ui_recall_uses_explicit_roadside_source_and_skips_occupancy(self) -> None:
+        events = []
+        backend = SimpleNamespace(
+            site_names=["B1", "B2"],
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(ws_site_states={"B1": False, "B2": False}),
+            _last_direct_destination_echo=None,
+            get_clock=lambda: SimpleNamespace(
+                now=lambda: SimpleNamespace(nanoseconds=12_500_000_000)
+            ),
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_destination_command = lambda site, run, source: (
+            events.append(("destination", site, run, source))
+            or {"site": site, "run": run}
+        )
+        backend._apply_destination_command = lambda site, run, source: (
+            events.append(("dispatch", site, run, source))
+            or {
+                "recall_request_published": False,
+                "message": "recall request pending drop-zone exit",
+            }
+        )
+        backend._is_site_occupied = lambda site: self.fail(
+            f"robot recall incorrectly consulted occupancy for {site}"
+        )
+
+        result = UiBackendNode.set_campsite_recall(backend, "B2")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["intent"], "recall")
+        self.assertEqual(result["site"], "B2")
+        self.assertEqual(backend._state.ws_site_states, {"B1": False, "B2": True})
+        self.assertIn(
+            ("destination", "B2", True, "robot_ui:recall"), events
+        )
+        self.assertIn(("dispatch", "B2", True, "robot_ui:recall"), events)
+        self.assertTrue(
+            UiBackendNode._is_guest_recall_source("robot_ui:recall")
+        )
+        self.assertFalse(
+            UiBackendNode._is_guest_recall_source("http_ui_destination")
+        )
+        self.assertEqual(
+            backend._last_direct_destination_echo,
+            ("B2", True, "robot_ui:recall", 12.5),
+        )
+
+    def test_operator_destination_stays_normal_delivery_not_guest_recall(self) -> None:
+        events = []
+
+        class RecallPublisher:
+            @staticmethod
+            def publish(message) -> None:
+                events.append(("recall", message))
+
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _charging_departure_delay_pending=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=True,
+            _drop_zone_exit_cancel_suppressed=False,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=True,
+            publish_mission_engage_from_destination=True,
+            pub_planning_camping_site_recall=RecallPublisher(),
+            charging_departure_delay_s=7.0,
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_4"
+        backend._is_site_occupied = lambda _site: False
+        backend._site_arrival_match = lambda _site: (
+            False,
+            "camping_site_4",
+            10.0,
+            "outside_arrival_radius",
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_engage = lambda enabled, source: events.append(
+            ("engage", enabled, source)
+        )
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+        backend._publish_goal_for_site = lambda site, source: {
+            "mission_key": "camping_site_4",
+            "goal_pose_published": events.append(("goal", site, source)) is None,
+            "message": "ok",
+        }
+
+        with mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_redock_after_disconnect",
+            return_value=None,
+        ), mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_parking_rearm_transition",
+            return_value=None,
+        ):
+            result = UiBackendNode._apply_destination_command(
+                backend, site="B4", run=True, source="http_ui_destination"
+            )
+
+        self.assertTrue(result["goal_pose_published"])
+        self.assertFalse(result["recall_request_published"])
+        self.assertIn(("state", AvgServiceState.MOVING_TO_SITE, "http_ui_destination:start"), events)
+        self.assertIn(("goal", "B4", "http_ui_destination"), events)
+        self.assertNotIn("recall", [event[0] for event in events])
+
+    def test_guest_recall_from_fresh_backend_exits_drop_zone_before_planning(self) -> None:
+        events = []
+        recalls = []
+
+        class RecallPublisher:
+            @staticmethod
+            def publish(message) -> None:
+                recalls.append(message)
+                events.append(("recall", message.site_name, message.source))
+
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=False,
+            _charging_departure_delay_pending=False,
+            _pending_site_after_drop_zone_exit=None,
+            _drop_zone_exit_handoff_ready=False,
+            _drop_zone_exit_failure_latched=False,
+            _drop_zone_exit_waiting_for_fresh_status=False,
+            _drop_zone_exit_cancel_suppressed=False,
+            # This mirrors the field failure: the backend started without a
+            # retained service-state sample while the robot was physically
+            # parked at the drop zone.
+            _latest_platform_is_charging=False,
+            _latest_service_state=None,
+            _active_mission_site="",
+            _service_metrics=None,
+            _lock=threading.Lock(),
+            _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
+            publish_engage_from_destination=True,
+            publish_mission_engage_from_destination=True,
+            charging_departure_delay_s=0.0,
+            _charging_departure_from_charger=False,
+            planning_camping_site_recall_topic=(
+                "/planning/state_machine/camping_site_recall"
+            ),
+            pub_planning_camping_site_recall=RecallPublisher(),
+        )
+        backend.get_clock = lambda: SimpleNamespace(
+            now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=11, nanosec=3))
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._resolve_mission_key_for_site = lambda _site: "camping_site_11"
+        backend._is_site_occupied = lambda site: self.fail(
+            f"guest recall consulted delivery occupancy for {site}"
+        )
+        backend._site_arrival_match = lambda site: self.fail(
+            f"guest recall consulted delivery arrival adoption for {site}"
+        )
+        backend._mission_dispatch_battery_block = lambda _site: None
+        backend._update_runtime_state = lambda callback: callback()
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend._publish_engage = lambda enabled, source, **kwargs: events.append(
+            ("engage", enabled, source)
+        )
+        backend._publish_mission_engage = lambda enabled, source: events.append(
+            ("mission_engage", enabled, source)
+        )
+        backend._publish_platform_drive_enable = lambda enabled, source: events.append(
+            ("platform", enabled, source)
+        )
+        backend._publish_parking_operation = lambda operation, source: events.append(
+            ("parking_operation", operation, source)
+        )
+        backend._publish_drop_zone_operation = lambda operation, source: events.append(
+            ("drop_zone_operation", operation, source)
+        )
+
+        def publish_state(state, source):
+            backend._latest_service_state = int(state)
+            events.append(("state", state, source))
+
+        backend._publish_service_state = publish_state
+        backend._publish_site_mission_key = lambda *args: self.fail(
+            f"guest recall published ordinary mission key: {args}"
+        )
+        backend._publish_site_goal_pose = lambda *args: self.fail(
+            f"guest recall published ordinary site goal: {args}"
+        )
+
+        with mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_redock_after_disconnect",
+            return_value=None,
+        ), mock.patch.object(
+            UiBackendNode,
+            "_cancel_pending_parking_rearm_transition",
+            return_value=None,
+        ):
+            result = UiBackendNode._apply_destination_command(
+                backend, site="B11", run=True, source="guest:kiosk"
+            )
+
+        self.assertFalse(result["recall_request_published"])
+        self.assertEqual(
+            backend._pending_site_after_drop_zone_exit,
+            ("B11", "camping_site_11", "guest:kiosk"),
+        )
+        self.assertEqual(recalls, [])
+        self.assertEqual(
+            [event[1] for event in events if event[0] == "drop_zone_operation"],
+            [MotionOperation.CANCEL, MotionOperation.EXIT],
+        )
+        self.assertEqual(
+            [event[1] for event in events if event[0] == "parking_operation"],
+            [MotionOperation.CANCEL],
+        )
+        self.assertIn(
+            (
+                "state",
+                AvgServiceState.DEPARTING_DROP_ZONE,
+                "guest:kiosk:drop_zone_departure",
+            ),
+            events,
+        )
+
+        complete = AvgBool()
+        complete.data = True
+        UiBackendNode._on_drop_zone_exit_complete(backend, complete)
+
+        self.assertEqual(len(recalls), 1)
+        self.assertEqual(recalls[0].site_name, "camping_site_11")
+        self.assertEqual(recalls[0].source, "guest:kiosk")
+        self.assertEqual(
+            [event[1] for event in events if event[0] == "state"][-1],
+            AvgServiceState.RECALL_TO_SITE_ROAD,
+        )
+        self.assertFalse(backend._drop_zone_exit_active)
+        self.assertIsNone(backend._pending_site_after_drop_zone_exit)
+
     def test_charging_destination_waits_seven_seconds_before_one_exit(self) -> None:
         events = []
         timers = []
@@ -664,7 +1573,7 @@ class UiBackendStopTest(unittest.TestCase):
                 for event in events
                 if event[0] == "drop_zone_operation"
             ],
-            [MotionOperation.EXIT],
+            [MotionOperation.CANCEL, MotionOperation.EXIT],
         )
         self.assertTrue(
             any(event[0] == "mission_engage" and event[1] for event in events)
@@ -780,23 +1689,14 @@ class UiBackendStopTest(unittest.TestCase):
                 operation_events = [
                     event for event in events if event[0].endswith("operation")
                 ]
-                if service_state == AvgServiceState.DROP_ZONE_PARKING:
-                    self.assertEqual(
-                        [(event[0], event[1]) for event in operation_events],
-                        [
-                            ("drop_zone_operation", MotionOperation.CANCEL),
-                            ("parking_operation", MotionOperation.CANCEL),
-                            ("drop_zone_operation", MotionOperation.EXIT),
-                        ],
-                    )
-                else:
-                    self.assertEqual(
-                        [(event[0], event[1]) for event in operation_events],
-                        [
-                            ("parking_operation", MotionOperation.CANCEL),
-                            ("drop_zone_operation", MotionOperation.EXIT),
-                        ],
-                    )
+                self.assertEqual(
+                    [(event[0], event[1]) for event in operation_events],
+                    [
+                        ("drop_zone_operation", MotionOperation.CANCEL),
+                        ("parking_operation", MotionOperation.CANCEL),
+                        ("drop_zone_operation", MotionOperation.EXIT),
+                    ],
+                )
                 self.assertEqual(events[-1][0], "state")
 
     def test_service_heartbeat_restores_restart_departure_without_duplicate_edges(self) -> None:
@@ -1760,6 +2660,25 @@ class UiBackendStopTest(unittest.TestCase):
         )
         self.assertEqual(backend.broadcasts[0], {"occupied_sites": ["B3"]})
         self.assertEqual(backend.broadcasts[1]["error"], "campsite_occupied")
+
+    def test_enabled_occupancy_guard_preserves_active_guest_recall(self) -> None:
+        backend = self._occupancy_backend(
+            AvgServiceState.RECALL_TO_SITE_ROAD, enabled=True
+        )
+        backend._active_mission_site = "B3"
+        backend._active_mission_source = "guest:kiosk"
+
+        UiBackendNode._on_campsite_occupancy(
+            backend, self._occupancy_message("camping_site_3")
+        )
+
+        # A guest is calling the robot to an existing tent, so perception of
+        # that tent must neither clear the target nor synthesize run=false.
+        self.assertEqual(backend._state.occupied_sites, ["B3"])
+        self.assertTrue(backend._state.ws_site_states["B3"])
+        self.assertTrue(backend._state.destination["run"])
+        self.assertEqual(backend.stops, [])
+        self.assertEqual(backend.broadcasts, [{"occupied_sites": ["B3"]}])
 
     def test_enabled_occupancy_guard_does_not_cancel_committed_entry(self) -> None:
         backend = self._occupancy_backend(

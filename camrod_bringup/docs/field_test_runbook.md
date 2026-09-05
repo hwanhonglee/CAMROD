@@ -372,20 +372,32 @@ Run these in order and take a `snapshot` after any failure.
      `/sensing/cost_grid/radar`.
    - Confirm `/planning/cost_grid/inflation` updates.
    - Confirm `cmd_vel_safety_gate` reports the stop source.
+   - Confirm FRONT1/FRONT2 read back hardware range level `1` and publish a
+     `0.50 m` software maximum. After fixed-return filtering, FRONT1 accepts
+     `(0.220, 0.300] m` and FRONT2 accepts `(0.117, 0.300] m` as stop
+     candidates.
+   - Sweep each front channel across `0.300 m`: a valid on-path return at
+     `0.300 m` must create radar cost, while `0.301..0.500 m` remains visible
+     as a raw echo but must not create radar cost or a radar stop.
 
-3. Side and rear radar stop
-   - Test left, right, and rear separately.
+3. Side radar stop and rear quarantine
+   - Test left and right separately. REAR remains disabled and must publish only
+     its explicit dummy contract unless a supervised test authorizes re-enable.
    - Confirm the correct radar topic updates.
    - Confirm the cost-grid side matches the physical side.
    <!-- HH_260728 - Verify narrow self-return notches without recreating the
         old one-sided LEFT2 blind zone. -->
    - With the area clear, confirm stationary readings inside the configured
      fixed-return bands do not create radar cost.
-   - Place an obstacle at approximately 0.50 m from LEFT2. It is below the old
-     0.75 m floor but outside the new notches, so it must create cost and stop.
+   - Place an obstacle at approximately `0.09 m` from each side sensor, outside
+     any named exclusion. It is inside the absolute `0.10 m` candidate cutoff
+     and must create cost and stop when the motion/path gate applies.
+   - Also place it at `0.43 m`. The finite sample may remain visible as a raw
+     echo, but it is outside the side cutoff and must not create cost or stop.
    - Move the obstacle through several distances on each channel. Values outside
-     the configured narrow bands must remain obstacles; never widen a band from
-     a single startup sample containing a wall or person.
+     configured narrow bands remain obstacles only while they are also at or
+     below that channel's stop cutoff; never widen a band from a single startup
+     sample containing a wall or person.
    - HH_260729 - The active field profile has
      `startup_return_learning_enable: false`; normal bringup must not report a
      newly learned exclusion. For a supervised calibration only, clear every
@@ -422,13 +434,13 @@ Run these in order and take a `snapshot` after any failure.
      `clear`, and no radar source appears in a cmd_vel stop reason. A visible
      LEFT2 Range marker or DUMMY diagnostic is transport status, not an
      obstacle.
-   - Save the effective `sensor_enabled` array and startup log before calling a
-     radar-ON run a seven-channel test. One DUMMY channel means it is not a
-     seven-channel physical acceptance run.
-   - A return from a channel with a known nearby object is not a self echo merely
-     because it falls inside a fixed-return exclusion. Remove the object and
-     repeat, then place a test obstacle at the same distance to prove the
-     exclusion does not hide it.
+   - Save the effective `sensor_enabled` array and startup log. The production
+     profile is a six-physical-channel run with REAR quarantined; call it a
+     seven-channel physical acceptance run only after supervised REAR enable.
+   - A scalar return inside a fixed-return exclusion is unavoidably filtered
+     whether it comes from the body or a real obstacle at the same distance.
+     Remove known nearby objects before calibrating and record this blind-range
+     limitation; do not claim that a same-distance placement can disambiguate it.
    - Radar-OFF acceptance requires one 600-second summary containing every
      range count/value, channel/global dummy state, evidence clear/active count,
      radar-grid high-cost cells, gate status, and `/rosout` radar cost-stop

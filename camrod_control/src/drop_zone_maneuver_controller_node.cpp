@@ -24,6 +24,7 @@
 #include "avg_msgs/srv/request_motion_operation.hpp"
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/drop_zone_exit_target_policy.hpp"
+#include "camrod_control/drop_zone_parking_approach.hpp"
 #include "camrod_control/drop_zone_station_pose.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/reverse_parking_axis.hpp"
@@ -39,6 +40,7 @@ enum class DropZoneManeuverPhase {
   kIdle,
   kExitStraight,
   kAlignExitYaw,
+  kPositionParkingPoint,
   kAlignParkingYaw,
   kError,
 };
@@ -51,6 +53,8 @@ std::string phaseName(const DropZoneManeuverPhase phase) {
     return "EXIT_STRAIGHT";
   case DropZoneManeuverPhase::kAlignExitYaw:
     return "ALIGN_EXIT_YAW";
+  case DropZoneManeuverPhase::kPositionParkingPoint:
+    return "POSITION_PARKING_POINT";
   case DropZoneManeuverPhase::kAlignParkingYaw:
     return "ALIGN_PARKING_YAW";
   case DropZoneManeuverPhase::kError:
@@ -86,6 +90,11 @@ public:
         "lanelet_pose_topic", "/planning/lanelet_pose");
     drop_zone_goal_topic_ = declare_parameter<std::string>(
         "drop_zone_goal_topic", "/planning/drop_zone_goal_raw");
+    // HH_260904 - The route planner stops inside its goal tolerance. Preserve
+    // the exact centerline projection separately so parking begins at one
+    // deterministic point instead of wherever Nav2 reports GOAL_REACHED.
+    parking_approach_goal_topic_ = declare_parameter<std::string>(
+        "parking_approach_goal_topic", "/planning/goal_pose_snapped");
     operation_topic_ = declare_parameter<std::string>(
         "operation_topic", "/control/drop_zone_maneuver_controller/operation");
     exit_complete_topic_ = declare_parameter<std::string>(
@@ -95,6 +104,9 @@ public:
     exit_path_topic_ = declare_parameter<std::string>(
         "exit_path_topic",
         "/control/drop_zone_maneuver_controller/exit_path_ros");
+    parking_approach_path_topic_ = declare_parameter<std::string>(
+        "parking_approach_path_topic",
+        "/control/drop_zone_maneuver_controller/parking_approach_path_ros");
     parking_operation_topic_ = declare_parameter<std::string>(
         "parking_operation_topic", "/parking/operation");
     diagnostics_topic_ = declare_parameter<std::string>("diagnostics_topic",
@@ -141,6 +153,35 @@ public:
         camrod_control::YawAlignmentSettlingConfig{yaw_tolerance_deg_,
                                                    yaw_settle_hold_s_,
                                                    yaw_settle_max_rate_degps_});
+    require_exact_parking_approach_for_auto_ = declare_parameter<bool>(
+        "require_exact_parking_approach_for_auto", true);
+    parking_approach_goal_max_station_distance_m_ = std::abs(
+        declare_parameter<double>(
+            "parking_approach_goal_max_station_distance_m", 8.0));
+    parking_approach_config_ = camrod_control::DropZoneParkingApproachConfig{
+        std::abs(declare_parameter<double>(
+            "parking_approach_position_tolerance_m", 0.05)),
+        declare_parameter<double>("parking_approach_proportional_gain", 0.8),
+        std::abs(declare_parameter<double>(
+            "parking_approach_minimum_speed_mps", 0.06)),
+        std::abs(declare_parameter<double>(
+            "parking_approach_maximum_speed_mps", 0.20)),
+        std::abs(declare_parameter<double>(
+            "parking_approach_maximum_correction_m", 0.75))};
+    parking_approach_settle_hold_s_ = std::abs(
+        declare_parameter<double>("parking_approach_settle_hold_s", 0.5));
+    parking_approach_timeout_s_ = std::abs(
+        declare_parameter<double>("parking_approach_timeout_s", 12.0));
+    if (!camrod_control::dropZoneParkingApproachConfigIsValid(
+            parking_approach_config_) ||
+        !std::isfinite(parking_approach_goal_max_station_distance_m_) ||
+        parking_approach_goal_max_station_distance_m_ <= 0.0 ||
+        !std::isfinite(parking_approach_settle_hold_s_) ||
+        !std::isfinite(parking_approach_timeout_s_) ||
+        parking_approach_timeout_s_ <= parking_approach_settle_hold_s_) {
+      throw std::invalid_argument(
+          "invalid drop-zone parking-approach safety configuration");
+    }
     exit_distance_m_ =
         std::abs(declare_parameter<double>("exit_distance_m", 1.2));
     require_lanelet_exit_target_ =
@@ -197,6 +238,8 @@ public:
         service_state_topic_, 10);
     exit_path_publisher_ =
         create_publisher<nav_msgs::msg::Path>(exit_path_topic_, 10);
+    parking_approach_path_publisher_ =
+        create_publisher<nav_msgs::msg::Path>(parking_approach_path_topic_, 10);
     exit_complete_publisher_ =
         create_publisher<avg_msgs::msg::AvgBool>(exit_complete_topic_, 10);
     parking_operation_publisher_ =
@@ -228,6 +271,13 @@ public:
             drop_zone_goal_topic_, 10,
             [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
               onDropZoneGoal(*message);
+            });
+    parking_approach_goal_subscription_ =
+        create_subscription<avg_msgs::msg::AvgPoseStamped>(
+            parking_approach_goal_topic_, 10,
+            [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
+              last_snapped_goal_ = *message;
+              last_snapped_goal_time_ = now();
             });
     planning_state_subscription_ =
         create_subscription<avg_msgs::msg::PlanningState>(
@@ -288,6 +338,15 @@ private:
                   "ignored drop-zone goal update while maneuver is active");
       return;
     }
+    last_drop_zone_goal_ = message;
+    if (last_snapped_goal_.has_value() &&
+        messageStampAvailable(message) &&
+        messageStampAvailable(*last_snapped_goal_) &&
+        !messageStampsMatch(message, *last_snapped_goal_)) {
+      // A new raw return goal invalidates a projection from an older mission.
+      // The matching goal-snapper output normally follows immediately.
+      last_snapped_goal_.reset();
+    }
     station_pose_ = camrod_control::DropZoneStationPose{
         message.pose.position.x, message.pose.position.y,
         camrod_control::yawFromPose(message)};
@@ -314,13 +373,14 @@ private:
       return;
     }
     last_auto_alignment_key_ = alignment_key;
-    startParkingAlignment("planning_state:return_to_drop_zone");
+    startParkingAlignment("planning_state:return_to_drop_zone",
+                          require_exact_parking_approach_for_auto_);
   }
 
   std::pair<bool, std::string> applyOperation(const uint8_t operation,
                                               const std::string &source) {
     if (operation == avg_msgs::msg::MotionOperation::ALIGN_FOR_PARKING) {
-      return startParkingAlignment(source);
+      return startParkingAlignment(source, false);
     }
     if (operation == avg_msgs::msg::MotionOperation::EXIT) {
       return startExit(source);
@@ -358,8 +418,85 @@ private:
         allow_unstamped_pose_fallback_, pose_timeout_s_);
   }
 
+  static bool messageStampAvailable(
+      const avg_msgs::msg::AvgPoseStamped &message) {
+    return message.header.stamp.sec != 0 || message.header.stamp.nanosec != 0U;
+  }
+
+  static bool messageStampsMatch(
+      const avg_msgs::msg::AvgPoseStamped &left,
+      const avg_msgs::msg::AvgPoseStamped &right) {
+    const double left_sec = static_cast<double>(left.header.stamp.sec) +
+                            left.header.stamp.nanosec * 1.0e-9;
+    const double right_sec = static_cast<double>(right.header.stamp.sec) +
+                             right.header.stamp.nanosec * 1.0e-9;
+    // The state machine publishes the snap request and semantic station with
+    // two consecutive clock reads. Correlate that pair without accepting an
+    // older mission's latched goal.
+    return std::abs(left_sec - right_sec) <= 0.5;
+  }
+
+  bool selectParkingApproachTarget(std::string &detail) {
+    parking_approach_target_.reset();
+    parking_approach_within_since_.reset();
+    if (!last_snapped_goal_.has_value()) {
+      detail = "snapped parking approach goal unavailable";
+      return false;
+    }
+    const auto &candidate = *last_snapped_goal_;
+    if (!std::isfinite(candidate.pose.position.x) ||
+        !std::isfinite(candidate.pose.position.y) ||
+        candidate.header.frame_id.empty()) {
+      detail = "snapped parking approach goal is invalid";
+      return false;
+    }
+    if (last_drop_zone_goal_.has_value() &&
+        messageStampAvailable(*last_drop_zone_goal_) &&
+        messageStampAvailable(candidate) &&
+        !messageStampsMatch(*last_drop_zone_goal_, candidate)) {
+      detail = "snapped goal stamp does not match drop-zone return goal";
+      return false;
+    }
+    if (last_vehicle_pose_.has_value() &&
+        !last_vehicle_pose_->header.frame_id.empty() &&
+        last_vehicle_pose_->header.frame_id != candidate.header.frame_id) {
+      detail = "parking approach goal frame does not match vehicle pose";
+      return false;
+    }
+    const double station_projection_distance_m = std::hypot(
+        candidate.pose.position.x - station_pose_.x_m,
+        candidate.pose.position.y - station_pose_.y_m);
+    if (!std::isfinite(station_projection_distance_m) ||
+        station_projection_distance_m >
+            parking_approach_goal_max_station_distance_m_) {
+      detail = "snapped goal is not a plausible drop-zone projection: " +
+               fixed(station_projection_distance_m) + "m";
+      return false;
+    }
+    const auto command = camrod_control::makeDropZoneParkingApproachCommand(
+        parking_approach_config_, last_vehicle_pose_->pose.position.x,
+        last_vehicle_pose_->pose.position.y,
+        camrod_control::yawFromPose(*last_vehicle_pose_),
+        candidate.pose.position.x, candidate.pose.position.y);
+    if (!command.valid) {
+      detail = "parking approach correction exceeds " +
+               fixed(parking_approach_config_.maximum_correction_m) + "m";
+      return false;
+    }
+    parking_approach_target_ = candidate;
+    parking_approach_start_x_m_ = last_vehicle_pose_->pose.position.x;
+    parking_approach_start_y_m_ = last_vehicle_pose_->pose.position.y;
+    parking_approach_last_command_ = command;
+    detail = "target=(" + fixed(candidate.pose.position.x) + "," +
+             fixed(candidate.pose.position.y) + ") error=" +
+             fixed(command.distance_m) + "m station_projection=" +
+             fixed(station_projection_distance_m) + "m";
+    return true;
+  }
+
   std::pair<bool, std::string>
-  startParkingAlignment(const std::string &source) {
+  startParkingAlignment(const std::string &source,
+                        const bool require_exact_approach) {
     if (isActive()) {
       return {false, "drop-zone maneuver already active: " + phaseName(phase_)};
     }
@@ -369,8 +506,28 @@ private:
       return {false, "fresh pose unavailable for parking alignment"};
     }
     target_body_yaw_rad_ = selectParkingBodyYaw();
-    setPhase(DropZoneManeuverPhase::kAlignParkingYaw, "start=" + source);
-    return {true, "drop-zone parking alignment started"};
+    std::string approach_detail;
+    if (selectParkingApproachTarget(approach_detail)) {
+      if (parking_approach_last_command_.reached) {
+        setPhase(DropZoneManeuverPhase::kAlignParkingYaw,
+                 "start=" + source + "; exact parking point already reached; " +
+                     approach_detail);
+      } else {
+        setPhase(DropZoneManeuverPhase::kPositionParkingPoint,
+                 "start=" + source + "; " + approach_detail);
+      }
+      return {true, "drop-zone exact parking approach started"};
+    }
+    if (require_exact_approach) {
+      setError("exact parking approach rejected: " + approach_detail);
+      return {false, "exact parking approach rejected: " + approach_detail};
+    }
+    // Maintenance ALIGN_FOR_PARKING remains usable without an active Nav2
+    // return goal, but automatic service parking is fail-closed above.
+    setPhase(DropZoneManeuverPhase::kAlignParkingYaw,
+             "start=" + source + "; manual alignment fallback: " +
+                 approach_detail);
+    return {true, "drop-zone parking yaw alignment started"};
   }
 
   std::pair<bool, std::string> startExit(const std::string &source) {
@@ -471,6 +628,9 @@ private:
     if (phase_ == DropZoneManeuverPhase::kExitStraight ||
         phase_ == DropZoneManeuverPhase::kAlignExitYaw) {
       publishExitPath();
+    } else if (phase_ == DropZoneManeuverPhase::kPositionParkingPoint ||
+               phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
+      publishParkingApproachPath();
     }
     publishServiceState(detail);
     publishStatus(true);
@@ -492,7 +652,8 @@ private:
                           : avg_msgs::msg::AvgServiceState::DEPARTING_DROP_ZONE;
       message.state_name = exit_started_while_charging_ ? "DEPARTING_CHARGER"
                                                         : "DEPARTING_DROP_ZONE";
-    } else if (phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
+    } else if (phase_ == DropZoneManeuverPhase::kPositionParkingPoint ||
+               phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
       message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING;
       message.state_name = "DROP_ZONE_PARKING";
     } else {
@@ -551,6 +712,43 @@ private:
     exit_path_publisher_->publish(path);
   }
 
+  void publishParkingApproachPath() const {
+    if (!parking_approach_target_.has_value()) {
+      return;
+    }
+    nav_msgs::msg::Path path;
+    path.header.frame_id = parking_approach_target_->header.frame_id;
+    path.header.stamp = now();
+    geometry_msgs::msg::PoseStamped start;
+    start.header = path.header;
+    start.pose.position.x = parking_approach_start_x_m_;
+    start.pose.position.y = parking_approach_start_y_m_;
+    start.pose.orientation.x =
+        parking_approach_target_->pose.orientation.x;
+    start.pose.orientation.y =
+        parking_approach_target_->pose.orientation.y;
+    start.pose.orientation.z =
+        parking_approach_target_->pose.orientation.z;
+    start.pose.orientation.w =
+        parking_approach_target_->pose.orientation.w;
+    path.poses.push_back(start);
+    geometry_msgs::msg::PoseStamped target;
+    target.header = path.header;
+    target.pose.position.x = parking_approach_target_->pose.position.x;
+    target.pose.position.y = parking_approach_target_->pose.position.y;
+    target.pose.position.z = parking_approach_target_->pose.position.z;
+    target.pose.orientation.x =
+        parking_approach_target_->pose.orientation.x;
+    target.pose.orientation.y =
+        parking_approach_target_->pose.orientation.y;
+    target.pose.orientation.z =
+        parking_approach_target_->pose.orientation.z;
+    target.pose.orientation.w =
+        parking_approach_target_->pose.orientation.w;
+    path.poses.push_back(target);
+    parking_approach_path_publisher_->publish(path);
+  }
+
   double selectParkingBodyYaw() const {
     const double configured_yaw = configuredParkingBodyYaw();
     if (!automatically_select_reverse_approach_yaw_ ||
@@ -595,6 +793,57 @@ private:
         maximum_angular_speed_radps_);
     command_publisher_->publish(command);
     return false;
+  }
+
+  camrod_control::DropZoneParkingApproachCommand
+  currentParkingApproachCommand() const {
+    if (!last_vehicle_pose_.has_value() ||
+        !parking_approach_target_.has_value()) {
+      return {};
+    }
+    return camrod_control::makeDropZoneParkingApproachCommand(
+        parking_approach_config_, last_vehicle_pose_->pose.position.x,
+        last_vehicle_pose_->pose.position.y,
+        camrod_control::yawFromPose(*last_vehicle_pose_),
+        parking_approach_target_->pose.position.x,
+        parking_approach_target_->pose.position.y);
+  }
+
+  void publishParkingApproachCommand() {
+    if (!vehiclePoseIsFresh()) {
+      setError("pose timeout during exact parking-point approach");
+      return;
+    }
+    if ((now() - phase_start_time_).seconds() >= parking_approach_timeout_s_) {
+      setError("exact parking-point approach timeout: error=" +
+               fixed(parking_approach_last_command_.distance_m) + "m");
+      return;
+    }
+    const auto command_result = currentParkingApproachCommand();
+    parking_approach_last_command_ = command_result;
+    if (!command_result.valid) {
+      setError("exact parking-point correction left bounded envelope");
+      return;
+    }
+    if (command_result.reached) {
+      publishZero();
+      if (!parking_approach_within_since_.has_value()) {
+        parking_approach_within_since_ = now();
+        return;
+      }
+      if ((now() - *parking_approach_within_since_).seconds() >=
+          parking_approach_settle_hold_s_) {
+        setPhase(DropZoneManeuverPhase::kAlignParkingYaw,
+                 "exact lanelet parking point settled; rotating 90-degree "
+                 "parking heading");
+      }
+      return;
+    }
+    parking_approach_within_since_.reset();
+    avg_msgs::msg::AvgTwist command;
+    command.linear.x = command_result.linear_x_mps;
+    command.linear.y = command_result.linear_y_mps;
+    command_publisher_->publish(command);
   }
 
   double distanceFromExitStart() const {
@@ -663,6 +912,8 @@ private:
         publishExitComplete(true);
         setPhase(DropZoneManeuverPhase::kIdle, "drop-zone exit aligned");
       }
+    } else if (phase_ == DropZoneManeuverPhase::kPositionParkingPoint) {
+      publishParkingApproachCommand();
     } else if (phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
       if (publishAlignmentCommand()) {
         requestParkingStart();
@@ -693,11 +944,23 @@ private:
         " exit_target_source=" +
         camrod_control::dropZoneExitTargetSourceName(exit_target_.source) +
         " exit_target_error_m=" + fixed(exitTargetError()) +
+        " parking_point_error_m=" +
+        fixed(parking_approach_last_command_.distance_m) +
+        " parking_point_body_forward_m=" +
+        fixed(parking_approach_last_command_.body_forward_error_m) +
+        " parking_point_body_lateral_m=" +
+        fixed(parking_approach_last_command_.body_lateral_error_m) +
         " target_yaw_deg=" + fixed(target_body_yaw_rad_ * 180.0 / M_PI, 2) +
         " settle_s=" + fixed(yaw_alignment_settling_.stableDurationS(), 2) +
         " yaw_rate_degps=" + fixed(yaw_alignment_settling_.yawRateDegps(), 2);
     status_publisher_->publish(camrod_control::makeModuleState(
         *this, "control", module_level, message, operating_state));
+    if (phase_ == DropZoneManeuverPhase::kPositionParkingPoint ||
+        phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
+      // A telemetry tab can subscribe after the maneuver starts; repeat this
+      // two-point proof path with the low-rate status heartbeat.
+      publishParkingApproachPath();
+    }
     if (!force) {
       // HH_260819 - Reconstruct in-progress departure after a UI restart.
       // `_on_service_state` treats identical heartbeats as edge-idempotent.
@@ -727,6 +990,24 @@ private:
             {"exit_target_initial_lateral_m",
              fixed(exit_target_.initial_lateral_m)},
             {"exit_target_error_m", fixed(exitTargetError())},
+            {"parking_approach_target_x_m",
+             parking_approach_target_.has_value()
+                 ? fixed(parking_approach_target_->pose.position.x)
+                 : "unavailable"},
+            {"parking_approach_target_y_m",
+             parking_approach_target_.has_value()
+                 ? fixed(parking_approach_target_->pose.position.y)
+                 : "unavailable"},
+            {"parking_approach_error_m",
+             fixed(parking_approach_last_command_.distance_m)},
+            {"parking_approach_body_forward_error_m",
+             fixed(parking_approach_last_command_.body_forward_error_m)},
+            {"parking_approach_body_lateral_error_m",
+             fixed(parking_approach_last_command_.body_lateral_error_m)},
+            {"parking_approach_goal_age_s",
+             last_snapped_goal_time_.nanoseconds() > 0
+                 ? fixed((current_time - last_snapped_goal_time_).seconds())
+                 : "unavailable"},
             {"station_x_m", fixed(station_pose_.x_m)},
             {"station_y_m", fixed(station_pose_.y_m)},
             {"station_yaw_deg", fixed(station_pose_.yaw_rad * 180.0 / M_PI)},
@@ -740,10 +1021,12 @@ private:
   std::string planning_state_topic_;
   std::string lanelet_pose_topic_;
   std::string drop_zone_goal_topic_;
+  std::string parking_approach_goal_topic_;
   std::string operation_topic_;
   std::string exit_complete_topic_;
   std::string status_topic_;
   std::string exit_path_topic_;
+  std::string parking_approach_path_topic_;
   std::string parking_operation_topic_;
   std::string diagnostics_topic_;
   std::string service_state_topic_;
@@ -760,6 +1043,11 @@ private:
   double maximum_angular_speed_radps_{0.35};
   double yaw_settle_hold_s_{1.0};
   double yaw_settle_max_rate_degps_{3.0};
+  bool require_exact_parking_approach_for_auto_{true};
+  double parking_approach_goal_max_station_distance_m_{8.0};
+  camrod_control::DropZoneParkingApproachConfig parking_approach_config_;
+  double parking_approach_settle_hold_s_{0.5};
+  double parking_approach_timeout_s_{12.0};
   double exit_distance_m_{1.2};
   bool require_lanelet_exit_target_{true};
   bool allow_fixed_distance_fallback_{false};
@@ -780,16 +1068,25 @@ private:
   DropZoneManeuverPhase phase_{DropZoneManeuverPhase::kIdle};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_vehicle_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> last_lanelet_pose_;
+  std::optional<avg_msgs::msg::AvgPoseStamped> last_drop_zone_goal_;
+  std::optional<avg_msgs::msg::AvgPoseStamped> last_snapped_goal_;
+  std::optional<avg_msgs::msg::AvgPoseStamped> parking_approach_target_;
   rclcpp::Time last_vehicle_pose_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_lanelet_pose_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_snapped_goal_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time phase_start_time_{0, 0, RCL_ROS_TIME};
   double exit_start_x_m_{0.0};
   double exit_start_y_m_{0.0};
   double exit_heading_yaw_rad_{0.0};
   double target_body_yaw_rad_{0.0};
+  double parking_approach_start_x_m_{0.0};
+  double parking_approach_start_y_m_{0.0};
   camrod_control::DropZoneExitTargetPolicyConfig exit_target_policy_config_;
   camrod_control::DropZoneExitTargetSelection exit_target_;
   std::string exit_target_frame_id_{"map"};
+  camrod_control::DropZoneParkingApproachCommand
+      parking_approach_last_command_;
+  std::optional<rclcpp::Time> parking_approach_within_since_;
   camrod_control::YawAlignmentSettling yaw_alignment_settling_;
   bool is_charging_{false};
   bool exit_started_while_charging_{false};
@@ -804,6 +1101,8 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgServiceState>::SharedPtr
       service_state_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr exit_path_publisher_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr
+      parking_approach_path_publisher_;
   rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr exit_complete_publisher_;
   rclcpp::Publisher<avg_msgs::msg::MotionOperation>::SharedPtr
       parking_operation_publisher_;
@@ -815,6 +1114,8 @@ private:
       lanelet_pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr
       drop_zone_goal_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr
+      parking_approach_goal_subscription_;
   rclcpp::Subscription<avg_msgs::msg::PlanningState>::SharedPtr
       planning_state_subscription_;
   rclcpp::Subscription<avg_msgs::msg::MotionOperation>::SharedPtr

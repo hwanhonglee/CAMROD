@@ -94,10 +94,12 @@ public:
       0.0, declare_parameter<double>("charging_fast_status_ttl_s", 1.5));
     charging_sample_max_gap_s_ = std::max(
       0.0, declare_parameter<double>("charging_sample_max_gap_s", 1.0));
+    charging_assertion_false_grace_s_ = std::max(
+      0.0, declare_parameter<double>("charging_assertion_false_grace_s", 0.75));
     charging_detection_.setConfig(ChargingDetectionConfig{
       std::max(1, charging_min_consecutive_samples_),
       charging_confirm_s_, charging_fast_confirm_s_, charging_release_s_,
-      charging_sample_max_gap_s_});
+      charging_sample_max_gap_s_, charging_assertion_false_grace_s_});
     charging_fast_arm_.setTtl(charging_fast_status_ttl_s_);
     // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
@@ -178,14 +180,14 @@ public:
       "odom=%s fallback=%s (%.1fs) actuator=%s system_state=%s battery=%s"
       " -> odom=%s vel=%s wheel=%s status=%s frame=%s status_rate=%.1fHz; "
       "charging global=%.1fs/release=%.1fs, AprilTag fast=%.1fs ttl=%.1fs "
-      "sample_gap<=%.1fs status=%s",
+      "sample_gap<=%.1fs assertion_false_grace<=%.2fs status=%s",
       odom_input_topic_.c_str(), odom_fallback_topic_.c_str(), odom_fallback_timeout_s_,
       actuator_state_topic_.c_str(), system_state_topic_.c_str(), battery_state_topic_.c_str(),
       status_odom_topic_.c_str(), status_velocity_topic_.c_str(),
       status_wheel_topic_.c_str(), platform_status_topic_.c_str(), status_frame_id_.c_str(),
       platform_status_publish_rate_hz_, charging_confirm_s_, charging_release_s_,
       charging_fast_confirm_s_, charging_fast_status_ttl_s_,
-      charging_sample_max_gap_s_,
+      charging_sample_max_gap_s_, charging_assertion_false_grace_s_,
       apriltag_parking_status_topic_.c_str());
   }
 
@@ -598,6 +600,7 @@ private:
   double       charging_fast_confirm_s_{1.5};
   double       charging_fast_status_ttl_s_{1.5};
   double       charging_sample_max_gap_s_{1.0};
+  double       charging_assertion_false_grace_s_{0.75};
   ChargingDetectionPolicy charging_detection_;
   AprilTagChargingFastArm charging_fast_arm_;
   bool         charging_debounced_{false};

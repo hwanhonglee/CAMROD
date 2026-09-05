@@ -49,6 +49,10 @@
     # HH_260819 - B11-B13 remain immediately beside the narrow road: cap the
     # lateral service offset at 0.30 m and skip the on-site zero-turn.
     roadside_max_lateral_offset_m: 0.30
+    # Guest recall treats every occupied B1-B13 site as a roadside pickup.
+    # This is measured from the current map-derived lanelet snap toward the
+    # signed site side, never from a separately guessed coordinate.
+    recall_wait_lateral_offset_m: 0.30
     # Production keeps B11-B13 on the legal forward loop. Simulator-specific
     # launch files may explicitly leave the site first and follow the inverted
     # shortest route in reverse without turning in the constrained corridor.
@@ -85,10 +89,11 @@
     return_lateral_transition_tolerance_m: 0.02
     return_lateral_hysteresis_m: 0.10
     return_steering_settle_s: 1.20
-    # HH_260825 - Complete a normal site exit at the live centerline projection,
-    # regardless of longitudinal offset from the historical entry snap. Hold
-    # zero for steering settlement before LaneletRoute plans from the current XY.
-    # If the live projection is stale, the exact-anchor sequence remains fallback.
+    # HH_260904 - Complete a normal site exit at the live centerline projection,
+    # regardless of longitudinal offset from the historical entry snap. Once a
+    # live handoff is acquired it stays latched through steering settlement.
+    # If the live projection is unavailable, finish after the lateral exit and
+    # steering settlement at the current XY; never reverse to the old entry XY.
     enable_live_lanelet_return_handoff: true
     return_lanelet_handoff_distance_m: 0.15
     # Reverse RPP restores ordinary footprint checks: reach the lane center
@@ -168,11 +173,15 @@
     # HH_260720 - Drop-zone control consumes the generated lanelet pose directly.
     lanelet_pose_topic: "/planning/lanelet_pose"
     drop_zone_goal_topic: "/planning/drop_zone_goal_raw"
+    # HH_260904 - Preserve the exact perpendicular centerline projection used
+    # by Nav2; GOAL_REACHED itself permits a positional tolerance.
+    parking_approach_goal_topic: "/planning/goal_pose_snapped"
     # HH_260720 - ALIGN_FOR_PARKING/EXIT/CANCEL use one generated operation topic.
     operation_topic: "/control/drop_zone_maneuver_controller/operation"
     exit_complete_topic: "/control/drop_zone/exit_complete"
     status_topic: "/control/drop_zone_maneuver_controller/status"
     exit_path_topic: "/control/drop_zone_maneuver_controller/exit_path_ros"
+    parking_approach_path_topic: "/control/drop_zone_maneuver_controller/parking_approach_path_ros"
     # HH_260720 - Start whichever parking method is selected by the control launch.
     parking_operation_topic: "/parking/operation"
     diagnostics_topic: "/system/diagnostics"
@@ -205,6 +214,18 @@
     # HH_260810 - Keep the platform stationary before reverse-parking handoff.
     yaw_settle_hold_s: 1.0
     yaw_settle_max_rate_degps: 3.0
+    # HH_260904 - Automatic return must first settle within 5 cm of the exact
+    # snapped lanelet point. The final gate applies its 0.5 speed scale, so the
+    # 0.20 m/s raw cap reaches the platform as at most 0.10 m/s (0.36 km/h).
+    require_exact_parking_approach_for_auto: true
+    parking_approach_goal_max_station_distance_m: 8.0
+    parking_approach_position_tolerance_m: 0.05
+    parking_approach_proportional_gain: 0.8
+    parking_approach_minimum_speed_mps: 0.06
+    parking_approach_maximum_speed_mps: 0.20
+    parking_approach_maximum_correction_m: 0.75
+    parking_approach_settle_hold_s: 0.5
+    parking_approach_timeout_s: 12.0
     # HH_260819 - Production departure ends at one fresh lanelet snap captured
     # at EXIT start. Never declare an off-lane fixed-distance exit successful.
     require_lanelet_exit_target: true

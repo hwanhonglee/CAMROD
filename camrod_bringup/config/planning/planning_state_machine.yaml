@@ -56,9 +56,10 @@
     # 4. MISSION AND RETURN TOPICS
     # =========================================================================
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
-    # Recall request published from a camping site.
-    # avg_msgs/PlanningRecallRequest.site_name = camping site name (e.g. "camping_site_3").
-    # Triggers recall flow to "<site>_road" keypoint when defined.
+    # Guest recall to B1-B13. Planning routes to the site's lanelet snap while
+    # control derives a signed 0.30 m recall_wait_pose toward the authored site;
+    # it never sends the robot to the occupied site center.
+    # site_name accepts either "B3" or "camping_site_3".
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     # Publishes avg_msgs/PlanningMissionKey with the current mission key and source.
     mission_source_topic: "/planning/state_machine/mission_source"
