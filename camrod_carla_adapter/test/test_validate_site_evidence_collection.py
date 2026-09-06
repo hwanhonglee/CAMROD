@@ -32,6 +32,24 @@ sys.modules[SPEC.name] = validator
 SPEC.loader.exec_module(validator)
 
 
+def test_operator_return_source_accepts_only_current_mission_nonce_shape():
+    expected = "ws:usage_complete:site_exit_first"
+    assert validator._return_source_matches(expected, expected)
+    assert validator._return_source_matches(
+        "ws:usage_complete:ui_return_token="
+        "g1788692609018001-s1-326ebcaa9335f:site_exit_first",
+        expected,
+    )
+    for rejected in (
+        "ws:usage_complete:ui_return_token=:site_exit_first",
+        "ws:usage_complete:ui_return_token=g0-s1-deadbeef:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1-s1-NOTHEX:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1-s1-deadbeef:spoof:site_exit_first",
+        "ws-spoof:usage_complete:ui_return_token=g1-s1-deadbeef:site_exit_first",
+    ):
+        assert not validator._return_source_matches(rejected, expected)
+
+
 def _write_json(path: Path, value: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

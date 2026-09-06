@@ -55,6 +55,7 @@ SITE_RE = re.compile(r"^B([1-9]|1[0-3])$")
 SITE_DIR_RE = re.compile(r"^B[0-9]+$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_OBJECT_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+UI_RETURN_TOKEN_RE = re.compile(r"^g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+$")
 OUTPUT_FILES = (
     "site_evidence_collection.json",
     "site_evidence_collection.csv",
@@ -1189,6 +1190,25 @@ def parse_sites(raw: str) -> tuple[str, ...]:
     return sites
 
 
+def _return_source_matches(observed: Any, expected: str) -> bool:
+    """Accept the legacy exact source or the current mission-bound nonce."""
+    if observed == expected:
+        return True
+    if not isinstance(observed, str) or not expected:
+        return False
+    site_exit_suffix = ":site_exit_first"
+    if not expected.endswith(site_exit_suffix):
+        return False
+    authority = expected[: -len(site_exit_suffix)]
+    token_prefix = f"{authority}:ui_return_token="
+    if not observed.startswith(token_prefix) or not observed.endswith(
+        site_exit_suffix
+    ):
+        return False
+    token = observed[len(token_prefix) : -len(site_exit_suffix)]
+    return UI_RETURN_TOKEN_RE.fullmatch(token) is not None
+
+
 def _authority_contract(authority: str, mission_intent: str) -> dict[str, Any]:
     key = (authority, mission_intent)
     contracts = {
@@ -1376,7 +1396,9 @@ def _validate_native_matrix(
         if not any(
             isinstance(request, dict)
             and request.get("operation") == 3
-            and request.get("source") == contract["expected_return_source"]
+            and _return_source_matches(
+                request.get("source"), contract["expected_return_source"]
+            )
             for request in controller_requests
         ):
             raise CollectionValidationError(

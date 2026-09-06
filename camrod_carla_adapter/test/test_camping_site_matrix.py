@@ -659,7 +659,7 @@ def test_operator_dispatch_selects_delivery_or_typed_recall_endpoint():
     ]
 
 
-def test_guest_return_authority_requires_exact_usage_complete_source():
+def test_guest_return_authority_requires_authenticated_usage_complete_source():
     snapshot = {
         "sequences": {
             "ui_operation_requests": [
@@ -696,6 +696,43 @@ def test_guest_return_authority_requires_exact_usage_complete_source():
     assert matrix.return_source_observed(
         controller_snapshot, "ws:usage_complete:site_exit_first"
     )
+
+    tokenized_controller_snapshot = {
+        "sequences": {
+            "controller_operation_requests": [{
+                "operation": matrix.RETURN_OPERATION,
+                "source": (
+                    "ws:usage_complete:ui_return_token="
+                    "g1788692609018001-s1-326ebcaa9335f:site_exit_first"
+                ),
+            }]
+        }
+    }
+    assert matrix.return_source_observed(
+        tokenized_controller_snapshot,
+        "ws:usage_complete:site_exit_first",
+    )
+
+    for rejected_source in (
+        "ws:usage_complete:ui_return_token=:site_exit_first",
+        "ws:usage_complete:ui_return_token=g0-s1-deadbeef:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1-s0-deadbeef:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1-s1-NOTHEX:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1-s1-deadbeef:spoof:site_exit_first",
+        "ws-spoof:usage_complete:ui_return_token=g1-s1-deadbeef:site_exit_first",
+    ):
+        rejected = {
+            "sequences": {
+                "controller_operation_requests": [{
+                    "operation": matrix.RETURN_OPERATION,
+                    "source": rejected_source,
+                }]
+            }
+        }
+        assert not matrix.return_source_observed(
+            rejected,
+            "ws:usage_complete:site_exit_first",
+        )
 
 
 def test_operator_browser_dispatch_source_is_bound_to_ros_message_type():
