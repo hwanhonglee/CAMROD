@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${SCRIPT_DIR}/run_site_evidence_matrix.sh"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SCRIPT_VERSION="9"
 DEFAULT_SITES="B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13"
@@ -538,7 +539,7 @@ write_run_manifest() {
   local status="$1" failure_site="$2" reason="$3" exit_code="$4"
   python3 - "${OUTPUT_ROOT}" "${SITES_CSV}" "${status}" "${failure_site}" \
       "${reason}" "${exit_code}" "${RUN_STARTED_AT_UTC}" "${SCRIPT_VERSION}" \
-      "${SOURCE_ROOT}" "${BASH_SOURCE[0]}" "${RUNNER}" "${AUTHORITY}" \
+      "${SOURCE_ROOT}" "${SCRIPT_PATH}" "${RUNNER}" "${AUTHORITY}" \
       "${MISSION_INTENT}" \
       "${MATRIX_SUBCOMMAND}" "${MATRIX_ROOT}" "${MATRIX_RETURN_AUTHORITY}" \
       "${EXPECTED_RETURN_SOURCE}" "${CAPTURE_UI_KIND}" \

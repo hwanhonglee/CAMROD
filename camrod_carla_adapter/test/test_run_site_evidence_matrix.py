@@ -59,6 +59,13 @@ def test_script_is_executable_and_help_is_offline() -> None:
     assert "<output>.strict_validation" in result.stdout
 
 
+def test_run_manifest_always_binds_the_absolute_runner_path() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'SCRIPT_PATH="${SCRIPT_DIR}/run_site_evidence_matrix.sh"' in source
+    assert '"${SOURCE_ROOT}" "${SCRIPT_PATH}" "${RUNNER}"' in source
+    assert '"${SOURCE_ROOT}" "${BASH_SOURCE[0]}" "${RUNNER}"' not in source
+
+
 def test_default_lifecycle_chain_is_parseable_and_checked_before_live_evidence() -> None:
     """The site wrapper and its delegate must fail before evidence or motion."""
 
