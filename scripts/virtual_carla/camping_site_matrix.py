@@ -684,20 +684,6 @@ def dispatch_source_observed(
     sequences = snapshot.get("sequences")
     if not isinstance(sequences, Mapping):
         return False
-    if mission_intent == "delivery":
-        requests = sequences.get("destination_requests")
-        site_key = "site"
-        requires_run = True
-    elif mission_intent == "recall":
-        requests = sequences.get("recall_requests")
-        site_key = "site_name"
-        requires_run = False
-    else:
-        return False
-    if not isinstance(requests, Sequence) or isinstance(
-        requests, (str, bytes)
-    ):
-        return False
     def source_matches(observed: Any) -> bool:
         if observed == expected_source:
             return True
@@ -715,13 +701,40 @@ def dispatch_source_observed(
         marker = observed[len(marker_prefix):]
         return bool(marker) and marker == marker.strip() and "|" not in marker
 
-    return any(
-        isinstance(request, Mapping)
-        and request.get(site_key) == site
-        and source_matches(request.get("source"))
-        and (not requires_run or request.get("run") is True)
-        for request in requests
-    )
+    def request_observed(
+        sequence_name: str, site_key: str, *, requires_run: bool
+    ) -> bool:
+        requests = sequences.get(sequence_name)
+        if not isinstance(requests, Sequence) or isinstance(
+            requests, (str, bytes)
+        ):
+            return False
+        return any(
+            isinstance(request, Mapping)
+            and request.get(site_key) == site
+            and source_matches(request.get("source"))
+            and (not requires_run or request.get("run") is True)
+            for request in requests
+        )
+
+    if mission_intent == "delivery":
+        return request_observed(
+            "destination_requests", "site", requires_run=True
+        )
+    if mission_intent == "recall":
+        # A recall admitted while CHARGING is intentionally deferred until the
+        # charging dwell and Drop-Zone exit finish.  The backend publishes its
+        # authenticated direct-destination echo immediately, while the typed
+        # PlanningRecallRequest is emitted only after that physical departure.
+        # Bind dispatch to either exact ROS boundary without weakening source
+        # validation; otherwise a valid recall is falsely rejected by the
+        # short pre-motion dispatch timeout.
+        return request_observed(
+            "destination_requests", "site", requires_run=True
+        ) or request_observed(
+            "recall_requests", "site_name", requires_run=False
+        )
+    return False
 
 
 def mission_segment_metrics(
