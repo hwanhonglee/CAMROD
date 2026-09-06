@@ -1101,12 +1101,16 @@
     closeConfirm();
     if (!selectedSite || !isDispatchReady()) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      lastDestSite = selectedSite;
+      // updateUI() disables the grid once this request owns the Guest UI and
+      // intentionally clears selectedSite.  Snapshot the accepted identity
+      // first so the WebSocket frame cannot be degraded to {site:null}.
+      const dispatchSite = selectedSite;
+      lastDestSite = dispatchSite;
       activeRequestIntent = 'recall';
       activeRequestOwner = 'guest';
       activeRequestRetryable = false;
       updateUI();
-      ws.send(JSON.stringify({ action: 'navigate', site: selectedSite }));
+      ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite }));
     }
   }
 

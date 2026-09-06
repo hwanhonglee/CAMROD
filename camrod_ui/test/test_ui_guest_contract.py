@@ -1072,7 +1072,18 @@ class GuestUiContractTest(unittest.TestCase):
             html,
         )
         self.assertIn("activeRequestOwner === 'guest'", html)
-        self.assertIn("updateUI();\n      ws.send(JSON.stringify({ action: 'navigate'", html)
+        dispatch_snapshot = html.index("const dispatchSite = selectedSite;")
+        dispatch_update = html.index("updateUI();", dispatch_snapshot)
+        dispatch_send = html.index(
+            "ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite }))",
+            dispatch_snapshot,
+        )
+        self.assertLess(dispatch_snapshot, dispatch_update)
+        self.assertLess(dispatch_update, dispatch_send)
+        self.assertNotIn(
+            "ws.send(JSON.stringify({ action: 'navigate', site: selectedSite }))",
+            html,
+        )
 
     def test_guest_uses_control_hold_not_generic_warning_as_safety_overlay(self) -> None:
         self.assertTrue(guest_gate_safety_hold("ROUTE_SAFETY_HOLD"))
