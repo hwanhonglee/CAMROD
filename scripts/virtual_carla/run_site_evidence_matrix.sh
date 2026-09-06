@@ -785,6 +785,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 (
@@ -837,6 +838,23 @@ def load_json(path: Path, label: str):
     except (OSError, json.JSONDecodeError) as error:
         reasons.append(f"invalid {label}: {error}")
         return None
+
+def return_source_matches(observed, expected):
+    if observed == expected:
+        return True
+    if not isinstance(observed, str) or not expected:
+        return False
+    suffix = ":site_exit_first"
+    if not expected.endswith(suffix):
+        return False
+    authority = expected[:-len(suffix)]
+    prefix = f"{authority}:ui_return_token="
+    if not observed.startswith(prefix) or not observed.endswith(suffix):
+        return False
+    token = observed[len(prefix):-len(suffix)]
+    return re.fullmatch(
+        r"g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+", token
+    ) is not None
 
 if matrix_exit != 0:
     reasons.append(f"run.sh {matrix_subcommand} exited {matrix_exit}")
@@ -994,7 +1012,9 @@ if matrix_report_raw:
             if not any(
                 isinstance(request, dict)
                 and request.get("operation") == 3
-                and request.get("source") == expected_return_source
+                and return_source_matches(
+                    request.get("source"), expected_return_source
+                )
                 for request in controller_requests
             ):
                 reasons.append(

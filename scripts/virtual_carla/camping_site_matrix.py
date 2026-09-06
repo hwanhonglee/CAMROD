@@ -46,6 +46,7 @@ CHARGING = 13
 DROP_ZONE_PARKING = 10
 FAILURE_STATES = {16}
 RETURN_OPERATION = 3
+UI_RETURN_TOKEN_RE = re.compile(r"^g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+$")
 GUEST_UI_TITLE = "국립공원 로봇 서비스"
 OPERATOR_UI_TITLE = "Robot UI"
 COLLISION_SAMPLE_LIMIT = 256
@@ -625,8 +626,27 @@ def required_service_state_ids(mission_intent: str) -> tuple[int, ...]:
     )
 
 
+def return_source_matches(observed: Any, expected_source: str) -> bool:
+    """Match a frontend RETURN source, including its current mission nonce."""
+    if observed == expected_source:
+        return True
+    if not isinstance(observed, str) or not expected_source:
+        return False
+    site_exit_suffix = ":site_exit_first"
+    if not expected_source.endswith(site_exit_suffix):
+        return False
+    authority = expected_source[: -len(site_exit_suffix)]
+    token_prefix = f"{authority}:ui_return_token="
+    if not observed.startswith(token_prefix) or not observed.endswith(
+        site_exit_suffix
+    ):
+        return False
+    token = observed[len(token_prefix) : -len(site_exit_suffix)]
+    return UI_RETURN_TOKEN_RE.fullmatch(token) is not None
+
+
 def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) -> bool:
-    """Require the exact frontend RETURN source at a ROS command boundary."""
+    """Require the authenticated frontend RETURN source at a ROS boundary."""
     if not expected_source:
         return True
     sequences = snapshot.get("sequences")
@@ -647,7 +667,7 @@ def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) ->
                 continue
             if (
                 operation == RETURN_OPERATION
-                and request.get("source") == expected_source
+                and return_source_matches(request.get("source"), expected_source)
             ):
                 return True
     return False
