@@ -280,6 +280,14 @@ def generate_launch_description():
             "manual_cmd_vel_ros_topic",
             default_value="/control/manual_cmd_vel_ros",
         ),
+        DeclareLaunchArgument(
+            "carla_allow_manual_departure_while_charging",
+            default_value="false",
+            description=(
+                "CARLA-only opt-in for authenticated manual drive to release "
+                "only the charging interlock; generic/develop parity stays false"
+            ),
+        ),
         # CARLA may use the complete audited Ranger adapter envelope.  These
         # remain launch arguments so the operator can select a lower ceiling;
         # ordinary CAMROD keeps the UI package's conservative 0.20 defaults.
@@ -1259,6 +1267,11 @@ def generate_launch_description():
                 # as the always-on physical body and planning footprint checks.
                 "control_cmd_vel_gate_lanelet_safety_check_reverse": (
                     LaunchConfiguration("carla_lanelet_safety_check_reverse")
+                ),
+                "control_cmd_vel_gate_allow_manual_departure_while_charging": (
+                    LaunchConfiguration(
+                        "carla_allow_manual_departure_while_charging"
+                    )
                 ),
                 "control_cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases": (
                     LaunchConfiguration(

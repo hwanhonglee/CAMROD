@@ -83,6 +83,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
         "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
         "carla_cmd_vel_gate_speed_scale": "1.0",
+        "carla_allow_manual_departure_while_charging": "true",
         "return_site_exit_rearm_enabled": "true",
         "launch_charging_contact_emulator": "true",
         "carla_charging_contact_parking_status_topic": (
@@ -1654,8 +1655,41 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     ).read_text(encoding="utf-8")
     full = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned = TUNED_LAUNCH.read_text(encoding="utf-8")
+    gate_source = (
+        REPO_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+    ).read_text(encoding="utf-8")
+    gate_defaults = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "camrod_control"
+            / "config"
+            / "cmd_vel_safety_gate.yaml"
+        ).read_text(encoding="utf-8")
+    )["/**"]["ros__parameters"]
     assert '"manual_cmd_vel_ros_topic": LaunchConfiguration(' in subset
     assert '"control_manual_cmd_vel_ros_topic": LaunchConfiguration(' in full
+    assert gate_defaults["allow_manual_departure_while_charging"] is False
+    assert gate_defaults["manual_charging_departure_command_timeout_s"] == 0.35
+    assert '"carla_allow_manual_departure_while_charging"' in full
+    declaration = full.index('"carla_allow_manual_departure_while_charging"')
+    assert 'default_value="false"' in full[declaration:declaration + 420]
+    assert (
+        '"control_cmd_vel_gate_allow_manual_departure_while_charging": ('
+        in full
+    )
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_allow_manual_departure_while_charging"
+    ] == "true"
+    for token in (
+        "manual_charging_departure_command_timeout_s",
+        "command_source_arbiter_.manualSourceActive()",
+        "!command_source_arbiter_.maneuverActive()",
+        "!gate_policy_.missionEnabled()",
+        'charging_departure_auth=" +',
+        '"manual_drive"',
+    ):
+        assert token in gate_source
     for name, parity_default, tuned_default in (
         ("manual_drive_linear_limit_mps", "0.20", "1.40"),
         ("manual_drive_lateral_limit_mps", "0.20", "1.00"),

@@ -2538,6 +2538,8 @@ def generate_launch_description():
         ('control_cmd_vel_gate_platform_status_timeout_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_platform_status_timeout_s', 0.5), 'Platform status timeout'),
         ('control_cmd_vel_gate_block_on_platform_status_stale', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_platform_status_stale', True), 'Block on missing or stale platform status'),
         ('control_cmd_vel_gate_block_on_charging', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_charging', True), 'Block normal commands while charging'),
+        ('control_cmd_vel_gate_allow_manual_departure_while_charging', cfg_get(launch_cfg, 'control/cmd_vel_gate_allow_manual_departure_while_charging', False), 'Allow an explicit simulator manual owner to release only the charging interlock'),
+        ('control_cmd_vel_gate_manual_charging_departure_command_timeout_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_manual_charging_departure_command_timeout_s', 0.35), 'Maximum age of a dedicated manual heartbeat while releasing simulated charging contact'),
         ('control_cmd_vel_gate_allow_mission_departure_while_charging', cfg_get(launch_cfg, 'control/cmd_vel_gate_allow_mission_departure_while_charging', True), 'Allow a new mission to release from charger'),
         ('control_cmd_vel_gate_charging_departure_grace_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_charging_departure_grace_s', 15.0), 'Bounded charger departure window'),
         # HH_260720 - A concrete campsite mission request authorizes charger departure.

@@ -105,6 +105,10 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
     # This keeps B11 on its tight route while preserving the B10-v22-proven
     # maneuver dynamics and accepted extreme-crab Kp=8.
     "carla_cmd_vel_gate_speed_scale": "1.0",
+    # The simulated charger has no hardware undock handshake.  Permit only
+    # the authenticated manual owner (mission off, drive-enable on, SOC ready)
+    # to release that one interlock; all other gate reasons remain active.
+    "carla_allow_manual_departure_while_charging": "true",
     # Arrival intentionally closes both production command gates.  In CARLA,
     # explicitly reopen mission authorization before publishing the campsite
     # RETURN operation so a short B11-B13 roadside CRAB_OUT cannot spend its
