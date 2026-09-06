@@ -35,6 +35,7 @@
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/drop_zone_charging_departure_authorization.hpp"
+#include "camrod_control/manual_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/path_relative_route_recovery.hpp"
@@ -323,17 +324,19 @@ private:
         declare_parameter<bool>("block_on_charging", true);
     // Ordinary CAMROD remains fail-closed.  A simulator composition can opt
     // in without disabling the charging interlock for mission/raw owners.
-    allow_manual_departure_while_charging_ =
-        declare_parameter<bool>("allow_manual_departure_while_charging", false);
-    manual_charging_departure_command_timeout_s_ = declare_parameter<double>(
+    ManualChargingDepartureAuthorizationConfig manual_departure_config;
+    manual_departure_config.enabled = declare_parameter<bool>(
+        "allow_manual_departure_while_charging", false);
+    manual_departure_config.command_timeout_s = declare_parameter<double>(
         "manual_charging_departure_command_timeout_s", 0.35);
-    if (!std::isfinite(manual_charging_departure_command_timeout_s_) ||
-        manual_charging_departure_command_timeout_s_ < 0.10 ||
-        manual_charging_departure_command_timeout_s_ > 1.00) {
+    if (!manualChargingDepartureAuthorizationConfigIsValid(
+            manual_departure_config)) {
       throw std::invalid_argument(
           "manual_charging_departure_command_timeout_s must be finite and in "
           "[0.10, 1.00]");
     }
+    manual_charging_departure_authorization_.setConfig(
+        manual_departure_config);
     gate_config_.block_on_platform_error_code =
         declare_parameter<bool>("block_on_platform_error_code", true);
     gate_config_.require_can_control_mode =
@@ -854,9 +857,10 @@ private:
           "[0, 10]");
     }
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
-    if (allow_manual_departure_while_charging_ &&
+    if (manual_charging_departure_authorization_.config().enabled &&
         (input_timeout_s_ <= 0.0 ||
-         manual_charging_departure_command_timeout_s_ > input_timeout_s_)) {
+         manual_charging_departure_authorization_.config().command_timeout_s >
+             input_timeout_s_)) {
       throw std::invalid_argument(
           "manual charging departure timeout must not exceed the enabled "
           "final command input timeout");
@@ -1891,7 +1895,20 @@ private:
   }
 
   void resetManualChargingDepartureAuthorization() {
-    manual_charging_departure_until_sec_ = 0.0;
+    manual_charging_departure_authorization_.reset();
+  }
+
+  ManualChargingDepartureContext manualChargingDepartureContext() const {
+    return {
+        !manual_input_topic_.empty(),
+        command_source_arbiter_.manualSourceActive(),
+        command_source_arbiter_.maneuverActive(),
+        gate_policy_.manualEnabled(),
+        gate_policy_.missionEnabled(),
+        gate_policy_.platformDriveEnabled(),
+        charging_mission_override_.charging(),
+        charging_mission_override_.batteryReadyForDeparture(),
+    };
   }
 
   void activateManualChargingDepartureAuthorization(const double now_sec) {
@@ -1900,33 +1917,15 @@ private:
     // exclusive manual provenance. The 10 Hz page heartbeat must therefore
     // remain healthy; disconnect/deadman or one missed command-timeout window
     // restores the charging interlock.
-    if (!allow_manual_departure_while_charging_ ||
-        manual_input_topic_.empty() ||
-        !command_source_arbiter_.manualSourceActive() ||
-        command_source_arbiter_.maneuverActive() ||
-        !gate_policy_.manualEnabled() || gate_policy_.missionEnabled() ||
-        !gate_policy_.platformDriveEnabled() ||
-        !charging_mission_override_.charging() ||
-        !charging_mission_override_.batteryReadyForDeparture()) {
-      resetManualChargingDepartureAuthorization();
-      return;
-    }
-    manual_charging_departure_until_sec_ =
-        now_sec + manual_charging_departure_command_timeout_s_;
+    manual_charging_departure_authorization_.observeAcceptedDedicatedManual(
+        now_sec, manualChargingDepartureContext());
   }
 
   bool manualChargingDepartureActive(const double now_sec) const {
     // This removes only the charging reason.  Platform freshness/mode/error,
     // e-stop, critical SOC, cost and watchdog checks remain authoritative.
-    return allow_manual_departure_while_charging_ &&
-           manual_charging_departure_until_sec_ > now_sec &&
-           !manual_input_topic_.empty() &&
-           charging_mission_override_.charging() &&
-           charging_mission_override_.batteryReadyForDeparture() &&
-           gate_policy_.manualEnabled() && !gate_policy_.missionEnabled() &&
-           gate_policy_.platformDriveEnabled() &&
-           command_source_arbiter_.manualSourceActive() &&
-           !command_source_arbiter_.maneuverActive();
+    return manual_charging_departure_authorization_.isActive(
+        now_sec, manualChargingDepartureContext());
   }
 
   bool chargingMotionOverrideActive(const double now_sec) const {
@@ -2002,11 +2001,9 @@ private:
         " drop_zone_auth_age_s=" +
         fixed(drop_zone_departure_authorization_.receiptAgeSec(now_sec), 2) +
         " manual_departure_remaining_s=" +
-        fixed(
-            manual_charging_override_active
-                ? std::max(0.0, manual_charging_departure_until_sec_ - now_sec)
-                : 0.0,
-            2) +
+        fixed(manual_charging_departure_authorization_.remainingSec(
+                  now_sec, manualChargingDepartureContext()),
+              2) +
         " battery=" + batteryText() + " route_clear_s=" +
         fixed(route_safety_recovery_.clearElapsed(now_sec), 2) +
         " route_releases=" +
@@ -2706,6 +2703,9 @@ private:
     double route_yaw_rate_candidate = route_safety_candidate_yaw_rate_radps_;
     double navigation_minimum_ackermann_turn_radius_candidate =
         navigation_minimum_ackermann_turn_radius_m_;
+    auto manual_departure_candidate =
+        manual_charging_departure_authorization_.config();
+    double input_timeout_candidate = input_timeout_s_;
     for (const auto &parameter : parameters) {
       const std::string &name = parameter.get_name();
       if (name == "route_safety_recovery_clear_required_s") {
@@ -2745,6 +2745,13 @@ private:
                  "navigation_minimum_ackermann_turn_radius_m") {
         navigation_minimum_ackermann_turn_radius_candidate =
             parameter.as_double();
+      } else if (name == "allow_manual_departure_while_charging") {
+        manual_departure_candidate.enabled = parameter.as_bool();
+      } else if (name ==
+                 "manual_charging_departure_command_timeout_s") {
+        manual_departure_candidate.command_timeout_s = parameter.as_double();
+      } else if (name == "input_timeout_s") {
+        input_timeout_candidate = parameter.as_double();
       }
     }
     if (const auto error = routeRecoveryConfigError(
@@ -2779,11 +2786,33 @@ private:
           "[0, 10]";
       return result;
     }
+    if (!manualChargingDepartureAuthorizationConfigIsValid(
+            manual_departure_candidate)) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason =
+          "manual_charging_departure_command_timeout_s must be finite and in "
+          "[0.10, 1.00]";
+      return result;
+    }
+    if (manual_departure_candidate.enabled &&
+        (input_timeout_candidate <= 0.0 ||
+         manual_departure_candidate.command_timeout_s >
+             input_timeout_candidate)) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason =
+          "manual charging departure timeout must not exceed the enabled "
+          "final command input timeout";
+      return result;
+    }
 
     bool recreate_timeout_timer = false;
     bool reload_yaw_zones = false;
     bool reset_path_relative_state = false;
     bool reset_path_relative_command_latch = false;
+    bool manual_departure_config_changed = false;
+    bool reset_manual_departure_authorization = false;
     for (const auto &parameter : parameters) {
       const std::string &name = parameter.get_name();
       if (name == "speed_scale") {
@@ -2796,7 +2825,13 @@ private:
         // continue across an atomic runtime retune.
         reset_path_relative_command_latch = true;
       } else if (name == "input_timeout_s") {
-        input_timeout_s_ = parameter.as_double();
+        input_timeout_s_ = input_timeout_candidate;
+        reset_manual_departure_authorization = true;
+      } else if (name == "allow_manual_departure_while_charging" ||
+                 name ==
+                     "manual_charging_departure_command_timeout_s") {
+        manual_departure_config_changed = true;
+        reset_manual_departure_authorization = true;
       } else if (name == "zero_publish_rate_hz") {
         zero_publish_rate_hz_ = parameter.as_double();
         recreate_timeout_timer = true;
@@ -2973,6 +3008,18 @@ private:
         route_heading_active_ = false;
       }
     }
+    if (manual_departure_config_changed) {
+      manual_charging_departure_authorization_.setConfig(
+          manual_departure_candidate);
+    } else if (reset_manual_departure_authorization) {
+      manual_charging_departure_authorization_.reset();
+    }
+    if (reset_manual_departure_authorization) {
+      // A runtime safety-envelope change cannot inherit a command admitted
+      // under the previous timeout/enable contract.
+      publishZero();
+      publishState();
+    }
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
     route_safety_recovery_config_.minimum_translation_mps =
         motion_cost_stop_config_.min_translation_mps;
@@ -3088,9 +3135,8 @@ private:
   MotionCostStop motion_cost_stop_;
   RouteSafetyRecovery route_safety_recovery_;
   CommandSourceArbiter command_source_arbiter_;
-  bool allow_manual_departure_while_charging_{false};
-  double manual_charging_departure_command_timeout_s_{0.35};
-  double manual_charging_departure_until_sec_{0.0};
+  ManualChargingDepartureAuthorization
+      manual_charging_departure_authorization_;
 
   std::string input_topic_;
   std::string navigation_input_topic_;
