@@ -337,6 +337,14 @@ def test_manual_4ws_ui_axes_are_mapped_to_ros_twist_axes() -> None:
     assert module.ui_axes_to_twist_axes((0, 0, 1)) == (0, 1, 0)
     assert module.ui_axes_to_twist_axes((0, 1, 0)) == (0, 0, 1)
 
+    source = MANUAL_4WS_EVIDENCE.read_text(encoding="utf-8")
+    assert 'settled_start_ns = int(phase["start_ns"]) + 500_000_000' in source
+    assert (
+        "samples_in_window(\n"
+        "                ros_records, topic, settled_start_ns, int(phase[\"end_ns\"])"
+        in source
+    )
+
 
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     tmp_path: Path,
