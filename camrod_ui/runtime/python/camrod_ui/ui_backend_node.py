@@ -1955,8 +1955,17 @@ class UiBackendNode(Node):
             return False, float("inf"), "missing_drop_zone_geometry"
         x, y = xy
         distance = math.hypot(x - float(target.x), y - float(target.y))
-        if target.corners and self._point_in_polygon(x, y, target.corners):
-            return True, distance, "inside_drop_zone_polygon"
+        # An exported station polygon is the authoritative physical boundary.
+        # Do not re-admit an outside point through the legacy center-radius
+        # fallback: the CARLA road-front spawn is intentionally close to the
+        # station center while already sitting on its lanelet handoff.  Such a
+        # false match starts an unnecessary bounded EXIT whose nearest-lanelet
+        # target is correctly rejected as being behind/too close.  Radius-only
+        # deployments retain the historical behavior when no polygon exists.
+        if target.corners:
+            if self._point_in_polygon(x, y, target.corners):
+                return True, distance, "inside_drop_zone_polygon"
+            return False, distance, "outside_drop_zone_polygon"
         if distance <= float(getattr(self, "drop_zone_arrival_radius_m", 4.0)):
             return True, distance, "near_drop_zone_center"
         return False, distance, "outside_drop_zone"
