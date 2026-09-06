@@ -12,6 +12,9 @@ WHEEL_SUMMARIZER="${SCRIPT_DIR}/summarize_physical_wheel_telemetry.py"
 SCENARIOS=(straight turn crab zero_turn)
 CAPTURE_DURATION_SECONDS=86400
 MINIMUM_CAPTURE_SECONDS=12
+RECORDER_SHUTDOWN_SECONDS=10
+CAPTURE_SHUTDOWN_SECONDS=45
+TERMINATE_SHUTDOWN_SECONDS=5
 
 usage() {
   cat <<'EOF'
@@ -44,7 +47,9 @@ The script does not launch, stop, respawn, teleport, publish ROS, or call a
 CARLA control API. It requires the server, bridge, pacer, Ranger, CAMROD and a
 single visible Robot UI CDP page to be running already. Its only motion source
 is actual CDP pointer/text/keyboard input delivered to that page. ROS and CARLA
-wheel access are passive subscribers/readback recorders.
+wheel access are passive subscribers/readback recorders. Before ARM, a unique
+temporary title proves that the CDP page is the exact X11 Robot UI window pinned
+for every pixel capture; the normal title is restored before motion.
 
 Output:
   <root>/session/session_setup.json
@@ -216,7 +221,17 @@ if [[ -n "${XAUTHORITY_VALUE}" ]]; then
   capture_validate+=(--xauthority "${XAUTHORITY_VALUE}")
 fi
 log "preflight: validating already-visible CarlaUE4 + Robot UI windows"
-"${capture_validate[@]}"
+capture_validation_output="$("${capture_validate[@]}")"
+printf '%s\n' "${capture_validation_output}"
+CARLA_WINDOW_ID="$(sed -n 's/.*geometry VERIFIED: carla=\(0x[0-9a-fA-F]*\) .*/\1/p' <<<"${capture_validation_output}")"
+UI_WINDOW_ID="$(sed -n 's/.*geometry VERIFIED: ui=\(0x[0-9a-fA-F]*\) .*/\1/p' <<<"${capture_validation_output}")"
+[[ "${CARLA_WINDOW_ID}" =~ ^0x[0-9a-fA-F]+$ ]] || \
+  die "could not bind the validated CarlaUE4 X11 window id"
+[[ "${UI_WINDOW_ID}" =~ ^0x[0-9a-fA-F]+$ ]] || \
+  die "could not bind the validated Robot UI X11 window id"
+[[ "${CARLA_WINDOW_ID,,}" != "${UI_WINDOW_ID,,}" ]] || \
+  die "CarlaUE4 and Robot UI resolved to the same X11 window"
+log "CDP commands and every capture are pinned to Robot UI X11 id ${UI_WINDOW_ID}"
 
 mkdir -p -- "${OUTPUT_ROOT}"
 OUTPUT_ROOT="$(readlink -m "${OUTPUT_ROOT}")"
@@ -225,7 +240,7 @@ CURRENT_CAPTURE_PID=""
 CURRENT_RECORDER_PID=""
 CURRENT_CAPTURE_FD=""
 CURRENT_CAPTURE_FIFO=""
-CURRENT_CAPTURE_STARTED=0
+CURRENT_CAPTURE_READY_MONOTONIC=""
 CURRENT_SCENARIO=""
 MANUAL_ARMED=false
 RUN_COMPLETE=false
@@ -245,13 +260,69 @@ wait_for_file_from_process() {
   return 1
 }
 
-finish_observers() {
-  local capture_status=0 recorder_status=0 elapsed
-  if [[ -n "${CURRENT_CAPTURE_PID}" ]] && kill -0 "${CURRENT_CAPTURE_PID}" 2>/dev/null; then
-    elapsed=$((SECONDS - CURRENT_CAPTURE_STARTED))
-    if (( elapsed < MINIMUM_CAPTURE_SECONDS )); then
-      sleep "$((MINIMUM_CAPTURE_SECONDS - elapsed))"
+process_is_running() {
+  local pid="$1" state
+  kill -0 "${pid}" 2>/dev/null || return 1
+  state="$(ps -o stat= -p "${pid}" 2>/dev/null | awk 'NR == 1 {print $1}')"
+  [[ -n "${state}" && "${state}" != Z* ]]
+}
+
+bounded_reap() {
+  local pid="$1" label="$2" graceful_seconds="$3"
+  local deadline status forced=false
+  deadline=$((SECONDS + graceful_seconds))
+  while process_is_running "${pid}"; do
+    if (( SECONDS >= deadline )); then
+      forced=true
+      log "${label} exceeded ${graceful_seconds}s graceful shutdown; sending TERM"
+      kill -TERM "${pid}" 2>/dev/null || true
+      break
     fi
+    sleep 0.1
+  done
+  if [[ "${forced}" == "true" ]]; then
+    deadline=$((SECONDS + TERMINATE_SHUTDOWN_SECONDS))
+    while process_is_running "${pid}"; do
+      if (( SECONDS >= deadline )); then
+        log "${label} ignored TERM for ${TERMINATE_SHUTDOWN_SECONDS}s; sending KILL"
+        kill -KILL "${pid}" 2>/dev/null || true
+        break
+      fi
+      sleep 0.1
+    done
+  fi
+  if wait "${pid}"; then
+    status=0
+  else
+    status=$?
+  fi
+  [[ "${forced}" == "false" && ${status} -eq 0 ]]
+}
+
+wait_for_minimum_capture() {
+  local started="$1"
+  [[ -n "${started}" ]] || return 0
+  python3 - "${started}" "${MINIMUM_CAPTURE_SECONDS}" "${CAPTURE_FPS}" <<'PY'
+import math
+import sys
+import time
+
+started, minimum, fps = map(float, sys.argv[1:])
+if not all(math.isfinite(value) for value in (started, minimum, fps)):
+    raise SystemExit("invalid monotonic capture timing")
+# The extra frame/encoder margin makes the ffprobe duration safely >= 12 s,
+# including a 1 fps run and fractional process/file-start timing.
+target = minimum + max(1.0, 2.0 / fps)
+remaining = target - (time.monotonic() - started)
+if remaining > 0.0:
+    time.sleep(remaining)
+PY
+}
+
+finish_observers() {
+  local capture_status=0 recorder_status=0
+  if [[ -n "${CURRENT_CAPTURE_PID}" ]] && kill -0 "${CURRENT_CAPTURE_PID}" 2>/dev/null; then
+    wait_for_minimum_capture "${CURRENT_CAPTURE_READY_MONOTONIC}"
     [[ -z "${CURRENT_CAPTURE_FD}" ]] || printf 'q' >&"${CURRENT_CAPTURE_FD}" || true
   fi
   if [[ -n "${CURRENT_CAPTURE_FD}" ]]; then
@@ -262,21 +333,18 @@ finish_observers() {
     kill -INT "${CURRENT_RECORDER_PID}" 2>/dev/null
   fi
   if [[ -n "${CURRENT_RECORDER_PID}" ]]; then
-    if ! wait "${CURRENT_RECORDER_PID}"; then
-      recorder_status=$?
-      (( recorder_status != 0 )) || recorder_status=1
-    fi
+    bounded_reap "${CURRENT_RECORDER_PID}" "physical wheel recorder" \
+      "${RECORDER_SHUTDOWN_SECONDS}" || recorder_status=$?
   fi
   if [[ -n "${CURRENT_CAPTURE_PID}" ]]; then
-    if ! wait "${CURRENT_CAPTURE_PID}"; then
-      capture_status=$?
-      (( capture_status != 0 )) || capture_status=1
-    fi
+    bounded_reap "${CURRENT_CAPTURE_PID}" "X11 capture/derivative process" \
+      "${CAPTURE_SHUTDOWN_SECONDS}" || capture_status=$?
   fi
   CURRENT_RECORDER_PID=""
   CURRENT_CAPTURE_PID=""
   [[ -z "${CURRENT_CAPTURE_FIFO}" ]] || rm -f -- "${CURRENT_CAPTURE_FIFO}"
   CURRENT_CAPTURE_FIFO=""
+  CURRENT_CAPTURE_READY_MONOTONIC=""
   (( recorder_status == 0 && capture_status == 0 ))
 }
 
@@ -284,7 +352,8 @@ cleanup() {
   local status=$?
   trap - EXIT INT TERM
   set +e
-  finish_observers || true
+  # A recorder/ffmpeg finalizer can block or hang.  ZERO/DISARM therefore
+  # always precedes child shutdown in the asynchronous cleanup path.
   if [[ "${MANUAL_ARMED}" == "true" ]]; then
     failsafe_dir="${OUTPUT_ROOT}/failsafe_teardown"
     if [[ ! -e "${failsafe_dir}" ]]; then
@@ -293,9 +362,13 @@ cleanup() {
         --output-dir "${failsafe_dir}" \
         --ui-url "${UI_URL}" \
         --operator-cdp-url "${OPERATOR_CDP_URL}" \
+        --x11-window-id "${UI_WINDOW_ID}" \
+        --display "${DISPLAY_VALUE}" \
+        --xauthority "${XAUTHORITY_VALUE}" \
         --role-name "${CARLA_ROLE_NAME}" || true
     fi
   fi
+  finish_observers || true
   if [[ "${RUN_COMPLETE}" != "true" && ! -e "${OUTPUT_ROOT}/manual_4ws_summary.json" ]]; then
     python3 "${PYTHON_RUNNER}" summarize \
       --output-root "${OUTPUT_ROOT}" --status FAIL \
@@ -319,12 +392,18 @@ trap on_signal INT TERM
 
 mkdir -- "${OUTPUT_ROOT}/session"
 FAILURE_REASON="visible administrator login or manual ARM failed"
+# Treat the whole setup attempt as requiring a fail-safe teardown.  The Python
+# helper already handles a partially successful ARM click, while this outer
+# guard remains a second safety layer if that helper itself is interrupted.
+MANUAL_ARMED=true
 python3 "${PYTHON_RUNNER}" setup \
   --output-dir "${OUTPUT_ROOT}/session" \
   --ui-url "${UI_URL}" \
   --operator-cdp-url "${OPERATOR_CDP_URL}" \
+  --x11-window-id "${UI_WINDOW_ID}" \
+  --display "${DISPLAY_VALUE}" \
+  --xauthority "${XAUTHORITY_VALUE}" \
   --role-name "${CARLA_ROLE_NAME}"
-MANUAL_ARMED=true
 
 for scenario in "${SCENARIOS[@]}"; do
   CURRENT_SCENARIO="${scenario}"
@@ -368,6 +447,8 @@ for scenario in "${SCENARIOS[@]}"; do
     --display "${DISPLAY_VALUE}"
     --ui-window-title "Robot UI"
     --ui-kind operator
+    --carla-window-id "${CARLA_WINDOW_ID}"
+    --ui-window-id "${UI_WINDOW_ID}"
   )
   if [[ -n "${XAUTHORITY_VALUE}" ]]; then
     capture_command+=(--xauthority "${XAUTHORITY_VALUE}")
@@ -375,11 +456,16 @@ for scenario in "${SCENARIOS[@]}"; do
   log "${scenario}: starting actual side-by-side X11 capture"
   "${capture_command[@]}" <"${capture_fifo}" >"${scenario_dir}/capture.log" 2>&1 &
   CURRENT_CAPTURE_PID=$!
-  CURRENT_CAPTURE_STARTED=${SECONDS}
   FAILURE_REASON="${scenario} X11 capture failed before motion"
   wait_for_file_from_process \
     "${CURRENT_CAPTURE_PID}" "${visual_dir}/carla_camrod_desktop.mp4" \
     "${scenario} X11 capture" 300
+  CURRENT_CAPTURE_READY_MONOTONIC="$(python3 -c 'import time; print(time.monotonic())')"
+
+  process_is_running "${CURRENT_RECORDER_PID}" || \
+    die "${scenario} physical wheel recorder exited immediately before motion"
+  process_is_running "${CURRENT_CAPTURE_PID}" || \
+    die "${scenario} X11 capture exited immediately before motion"
 
   FAILURE_REASON="${scenario} visible Robot UI or ROS observation failed"
   log "${scenario}: issuing only real Robot UI keyboard events"
@@ -388,6 +474,9 @@ for scenario in "${SCENARIOS[@]}"; do
     --output-dir "${scenario_dir}" \
     --ui-url "${UI_URL}" \
     --operator-cdp-url "${OPERATOR_CDP_URL}" \
+    --x11-window-id "${UI_WINDOW_ID}" \
+    --display "${DISPLAY_VALUE}" \
+    --xauthority "${XAUTHORITY_VALUE}" \
     --role-name "${CARLA_ROLE_NAME}" \
     --hold-s "${HOLD_S}" \
     --zero-hold-s "${ZERO_HOLD_S}" \
@@ -414,6 +503,9 @@ python3 "${PYTHON_RUNNER}" teardown \
   --output-dir "${OUTPUT_ROOT}/session_teardown" \
   --ui-url "${UI_URL}" \
   --operator-cdp-url "${OPERATOR_CDP_URL}" \
+  --x11-window-id "${UI_WINDOW_ID}" \
+  --display "${DISPLAY_VALUE}" \
+  --xauthority "${XAUTHORITY_VALUE}" \
   --role-name "${CARLA_ROLE_NAME}"
 MANUAL_ARMED=false
 

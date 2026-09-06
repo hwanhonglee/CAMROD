@@ -21,7 +21,11 @@ import json
 import math
 import os
 from pathlib import Path
+import re
+import secrets
+import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
@@ -194,6 +198,151 @@ def require_output_directory(raw: str) -> Path:
 
 class ManualDriveBrowser(BASE.OperatorBrowserClient):
     """Visible-page-only administrator/manual-drive interaction boundary."""
+
+    def bind_x11_window(
+        self,
+        window_id: str,
+        display: str,
+        xauthority: str = "",
+    ) -> dict[str, Any]:
+        """Prove that this exact CDP target owns the selected visible X11 window.
+
+        A unique, short-lived title is written to the already connected page and
+        must appear on the explicit X11 window id.  The original title is then
+        restored and verified through both CDP and X11 before any drive action.
+        This closes the otherwise ambiguous gap between a matching CDP URL and
+        a separate same-title browser window selected by the pixel recorder.
+        """
+        if re.fullmatch(r"0x[0-9a-fA-F]+", str(window_id)) is None:
+            raise MatrixError(f"X11 Robot UI window id must be hexadecimal: {window_id!r}")
+        if not str(display).strip():
+            raise MatrixError("X11 DISPLAY is required to bind the CDP target")
+        if xauthority:
+            authority = Path(xauthority).expanduser()
+            if not authority.is_file() or not os.access(authority, os.R_OK):
+                raise MatrixError(f"X11 authority is not a readable file: {authority}")
+
+        environment = os.environ.copy()
+        environment["DISPLAY"] = str(display)
+        environment["LC_ALL"] = "C.UTF-8"
+        if xauthority:
+            environment["XAUTHORITY"] = str(Path(xauthority).expanduser())
+
+        def inspect() -> str:
+            try:
+                completed = subprocess.run(
+                    ["xwininfo", "-id", str(window_id)],
+                    env=environment,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=min(2.0, self.timeout_s),
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                raise MatrixError(f"cannot inspect bound X11 Robot UI window: {error}") from None
+            if completed.returncode != 0:
+                raise MatrixError(
+                    "cannot inspect bound X11 Robot UI window "
+                    f"{window_id}: {completed.stderr.strip()}"
+                )
+            return completed.stdout
+
+        original = self._evaluate("document.title")
+        if str(original).strip() != EXPECTED_UI_TITLE:
+            raise MatrixError(f"CDP Robot UI title changed before X11 binding: {original!r}")
+        token = f"{EXPECTED_UI_TITLE} [camrod-bind-{secrets.token_hex(12)}]"
+        observed_token = False
+        try:
+            changed = self._evaluate(
+                "(() => {document.title=" + json.dumps(token) + "; return document.title;})()"
+            )
+            if changed != token:
+                raise MatrixError("CDP target refused the temporary X11 binding title")
+            deadline = time.monotonic() + min(3.0, self.timeout_s)
+            while time.monotonic() < deadline:
+                if token in inspect():
+                    observed_token = True
+                    break
+                time.sleep(0.05)
+            if not observed_token:
+                raise MatrixError(
+                    "selected X11 Robot UI window is not the connected CDP target: "
+                    f"window_id={window_id} target_id={self._target.get('id')!r}"
+                )
+        finally:
+            # Restoration is safety-relevant: a tokenized title must never be
+            # mistaken for a normal evidence window after a failed binding.
+            try:
+                self._evaluate(
+                    "(() => {document.title=" + json.dumps(str(original))
+                    + "; return document.title;})()"
+                )
+            except Exception as error:
+                raise MatrixError(
+                    "failed to restore the Robot UI title after X11 binding"
+                ) from error
+
+        deadline = time.monotonic() + min(3.0, self.timeout_s)
+        restored_x11 = False
+        while time.monotonic() < deadline:
+            info = inspect()
+            if token not in info and EXPECTED_UI_TITLE in info and "Map State: IsViewable" in info:
+                restored_x11 = True
+                break
+            time.sleep(0.05)
+        restored_cdp = self._evaluate("document.title")
+        if not restored_x11 or restored_cdp != EXPECTED_UI_TITLE:
+            raise MatrixError(
+                "Robot UI title/X11 visibility did not recover after target binding: "
+                f"cdp={restored_cdp!r} x11_restored={restored_x11}"
+            )
+        self._bound_x11 = {
+            "verified": True,
+            "method": "temporary unique document.title observed on explicit X11 window",
+            "target_id": str(self._target.get("id", "")),
+            "window_id": str(window_id).lower(),
+            "display": str(display),
+            "title_restored": EXPECTED_UI_TITLE,
+        }
+        self._bound_x11_inspect = inspect
+        return dict(self._bound_x11)
+
+    def assert_motion_liveness(self, description: str) -> dict[str, Any]:
+        value = self._evaluate(
+            "(() => {"
+            "const panel=document.querySelector('[data-ui=\"manual-drive-panel\"]');"
+            "const state=document.querySelector('[data-ui=\"manual-drive-state\"]');"
+            "return {title:document.title, href:document.location.href,"
+            "ready:document.readyState, visibility:document.visibilityState,"
+            "panelVisible:Boolean(panel && panel.getBoundingClientRect().width>0 && "
+            "panel.getBoundingClientRect().height>0),"
+            "connected:panel ? panel.dataset.connected === 'true' : false,"
+            "armed:panel ? panel.dataset.armed === 'true' : false,"
+            "stateText:state ? state.textContent.trim() : ''};})()"
+        )
+        accepted = (
+            isinstance(value, Mapping)
+            and value.get("ready") == "complete"
+            and value.get("visibility") == "visible"
+            and str(value.get("href", "")).rstrip("/") == self.operator_ui_url
+            and value.get("title") == EXPECTED_UI_TITLE
+            and value.get("panelVisible") is True
+            and value.get("connected") is True
+            and value.get("armed") is True
+            and value.get("stateText") == "ARMED"
+        )
+        if not accepted:
+            raise MatrixError(f"Robot UI liveness failed during {description}: {value!r}")
+        binding = getattr(self, "_bound_x11", None)
+        inspect = getattr(self, "_bound_x11_inspect", None)
+        if not isinstance(binding, Mapping) or binding.get("verified") is not True or not callable(inspect):
+            raise MatrixError("Robot UI motion refused without a verified CDP-to-X11 binding")
+        info = inspect()
+        if EXPECTED_UI_TITLE not in info or "Map State: IsViewable" not in info:
+            raise MatrixError(
+                f"bound Robot UI X11 window lost visibility during {description}"
+            )
+        return dict(value)
 
     def _connect_operator(self) -> None:
         request = Request(
@@ -511,7 +660,7 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
         )
         return {"snapshot": snapshot, "frames": frames, "interactions": list(self._interactions)}
 
-    def fail_safe(self, held_keys: Iterable[str] = ()) -> None:
+    def fail_safe(self, held_keys: Iterable[str] = ()) -> bool:
         for code in reversed(tuple(held_keys)):
             try:
                 self.dispatch_key(code, False)
@@ -522,6 +671,15 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
                 self.key_press(code)
             except Exception:
                 pass
+        try:
+            snapshot = self.snapshot()
+        except Exception:
+            return False
+        return (
+            snapshot.get("panelVisible") is True
+            and snapshot.get("armed") is False
+            and snapshot.get("stateText") in {"STANDBY", "OFFLINE"}
+        )
 
 
 def _message_stamp(message: Any) -> dict[str, int] | None:
@@ -662,6 +820,7 @@ class RosTraceObserver:
         self.started_ns = time.time_ns()
         self.records: list[dict[str, Any]] = []
         self.counts = {topic: 0 for topic in CRITICAL_TOPICS}
+        self.last_received_ns = {topic: 0 for topic in CRITICAL_TOPICS}
         self.publisher_counts: dict[str, int] = {}
         self.fatal_error = ""
         self.expected_actor_id: int | None = None
@@ -751,6 +910,7 @@ class RosTraceObserver:
             }
             self.records.append(record)
             self.counts[topic] = self.counts.get(topic, 0) + 1
+            self.last_received_ns[topic] = received_ns
             self._write(record)
         except Exception as error:
             self.fatal_error = f"{topic}: {error}"
@@ -785,6 +945,45 @@ class RosTraceObserver:
             "timed out waiting for physical status/odometry: "
             f"physical={self.counts.get(physical, 0)} odometry={self.counts.get(odometry, 0)}"
         )
+
+    def assert_motion_liveness(self, maximum_age_s: float = 2.0) -> dict[str, Any]:
+        """Fail closed if the subscriber graph or live control feedback disappears."""
+        if self.closed or not self.rclpy.ok():
+            raise MatrixError("ROS observation context is not live")
+        if self.fatal_error:
+            raise MatrixError(f"ROS observation failed closed: {self.fatal_error}")
+        required = (
+            "/control/manual_cmd_vel_ros",
+            "/control/cmd_vel_ros",
+            "/carla/ego_vehicle/extended_ackermann_cmd",
+            "/carla/ego_vehicle/physical_four_wheel_cmd",
+            "/carla/ego_vehicle/physical_four_wheel_status",
+            "/carla/ego_vehicle/odometry",
+        )
+        publisher_counts = {
+            topic: int(self.node.count_publishers(topic)) for topic in required
+        }
+        missing = [topic for topic, count in publisher_counts.items() if count < 1]
+        if missing:
+            raise MatrixError(
+                "motion refused because critical ROS publishers disappeared: "
+                + ", ".join(missing)
+            )
+        now_ns = time.time_ns()
+        stale = []
+        ages: dict[str, float] = {}
+        for topic in required:
+            received_ns = int(self.last_received_ns.get(topic, 0))
+            age_s = (now_ns - received_ns) / 1.0e9 if received_ns > 0 else math.inf
+            ages[topic] = age_s
+            if not math.isfinite(age_s) or age_s > maximum_age_s:
+                stale.append(f"{topic}={age_s:.3f}s")
+        if stale:
+            raise MatrixError(
+                "motion refused because critical ROS feedback is stale: "
+                + ", ".join(stale)
+            )
+        return {"publisher_counts": publisher_counts, "age_seconds": ages}
 
     def close(self, status: str = "COMPLETED", error: str = "") -> None:
         if self.closed:
@@ -1484,6 +1683,44 @@ def _browser_arguments(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _bind_browser_to_capture(
+    browser: ManualDriveBrowser, args: argparse.Namespace
+) -> dict[str, Any]:
+    return browser.bind_x11_window(
+        args.x11_window_id,
+        args.display,
+        args.xauthority,
+    )
+
+
+def _force_visible_fail_safe(
+    browser: ManualDriveBrowser | None,
+    args: argparse.Namespace,
+    held_keys: Iterable[str] = (),
+) -> bool:
+    """Use the existing page connection, then one fresh CDP attachment if needed."""
+    if browser is not None and browser.fail_safe(held_keys):
+        return True
+    if browser is not None:
+        browser.close()
+    fallback: ManualDriveBrowser | None = None
+    try:
+        fallback = ManualDriveBrowser(**_browser_arguments(args))
+        try:
+            _bind_browser_to_capture(fallback, args)
+        except Exception:
+            # The target list still proved exactly one local Robot UI URL.  A
+            # safety ZERO/DISARM must not be withheld merely because X11 went
+            # away; the run will remain FAIL and cannot become evidence.
+            pass
+        return fallback.fail_safe(held_keys)
+    except Exception:
+        return False
+    finally:
+        if fallback is not None:
+            fallback.close()
+
+
 def command_setup(args: argparse.Namespace) -> int:
     output = require_output_directory(args.output_dir)
     document_path = output / "session_setup.json"
@@ -1491,14 +1728,19 @@ def command_setup(args: argparse.Namespace) -> int:
     browser: ManualDriveBrowser | None = None
     observer: RosTraceObserver | None = None
     armed = False
+    arm_attempted = False
     try:
         browser = ManualDriveBrowser(**_browser_arguments(args))
+        x11_binding = _bind_browser_to_capture(browser, args)
         observer = RosTraceObserver(trace_path, role_name=args.role_name)
         observer.wait_ready(args.ros_ready_timeout_s, require_odometry=False)
         authentication = browser.ensure_fresh_administrator_session()
+        arm_attempted = True
         arm_result = browser.arm()
         armed = True
         observer.spin_for(1.0)
+        browser.assert_motion_liveness("post-ARM setup verification")
+        observer.assert_motion_liveness()
         frames = browser.probe().get("websocket", [])
         arm_frame = _control_frame(frames, "arm")
         snapshot = browser.snapshot()
@@ -1521,6 +1763,7 @@ def command_setup(args: argparse.Namespace) -> int:
                 "server_authenticated": False,
                 "frontend_administrator_gate_exercised": True,
                 "direct_websocket_or_ros_command": False,
+                "cdp_x11_binding": x11_binding,
             },
             "authentication": authentication,
             "arm": {
@@ -1541,8 +1784,12 @@ def command_setup(args: argparse.Namespace) -> int:
         print(f"[manual-4ws] setup PASS: {document_path}")
         return 0
     except BaseException as error:
-        if browser is not None and armed:
-            browser.fail_safe()
+        # arm() can fail after its visible click changed page/backend state.
+        # Treat every attempted ARM as potentially live and always force the
+        # same visible-page ZERO/DISARM path before finalizing observers.
+        fail_safe_confirmed = False
+        if browser is not None and (armed or arm_attempted):
+            fail_safe_confirmed = _force_visible_fail_safe(browser, args)
         if observer is not None:
             try:
                 observer.spin_for(0.5)
@@ -1555,6 +1802,7 @@ def command_setup(args: argparse.Namespace) -> int:
             "status": "FAIL",
             "created_at_utc": utc_now(),
             "error": str(error),
+            "fail_safe_zero_disarm_confirmed": fail_safe_confirmed,
         }
         if not document_path.exists():
             write_json_exclusive(document_path, failure)
@@ -1582,6 +1830,22 @@ def _release_chord(browser: ManualDriveBrowser, keys: Sequence[str]) -> int:
     return release_ns
 
 
+def _observe_with_motion_liveness(
+    observer: RosTraceObserver,
+    browser: ManualDriveBrowser,
+    duration_s: float,
+    description: str,
+) -> None:
+    """Spin subscriptions while continuously proving UI and ROS authority health."""
+    deadline = time.monotonic() + max(0.0, duration_s)
+    browser.assert_motion_liveness(description)
+    observer.assert_motion_liveness()
+    while time.monotonic() < deadline:
+        observer.spin_for(min(0.20, max(0.0, deadline - time.monotonic())))
+        browser.assert_motion_liveness(description)
+        observer.assert_motion_liveness()
+
+
 def command_scenario(args: argparse.Namespace) -> int:
     output = require_output_directory(args.output_dir)
     spec = SCENARIOS[args.scenario]
@@ -1591,10 +1855,10 @@ def command_scenario(args: argparse.Namespace) -> int:
     browser: ManualDriveBrowser | None = None
     observer: RosTraceObserver | None = None
     held: list[str] = []
-    succeeded = False
     phases: dict[str, dict[str, int]] = {}
     try:
         browser = ManualDriveBrowser(**_browser_arguments(args))
+        x11_binding = _bind_browser_to_capture(browser, args)
         snapshot_before = browser.snapshot()
         if (
             not snapshot_before.get("panelVisible")
@@ -1610,11 +1874,20 @@ def command_scenario(args: argparse.Namespace) -> int:
         browser.clear_probe()
         observer = RosTraceObserver(trace_path, role_name=args.role_name)
         observer.wait_ready(args.ros_ready_timeout_s, require_odometry=True)
-        observer.spin_for(args.initial_zero_s)
+        # Graph discovery can make status/odometry ready a fraction of a
+        # second before all already-armed zero-command streams arrive.
+        observer.spin_for(0.5)
+        _observe_with_motion_liveness(
+            observer, browser, args.initial_zero_s, "initial zero phase"
+        )
 
         held = list(spec.positive_keys)
+        browser.assert_motion_liveness("immediately before positive motion")
+        observer.assert_motion_liveness()
         positive_start_ns = _press_chord(browser, held)
-        observer.spin_for(args.hold_s)
+        _observe_with_motion_liveness(
+            observer, browser, args.hold_s, "positive motion phase"
+        )
         positive_end_ns = time.time_ns()
         positive_release_ns = _release_chord(browser, held)
         held = []
@@ -1624,11 +1897,17 @@ def command_scenario(args: argparse.Namespace) -> int:
             "end_ns": positive_end_ns,
             "release_ns": positive_release_ns,
         }
-        observer.spin_for(args.zero_hold_s)
+        _observe_with_motion_liveness(
+            observer, browser, args.zero_hold_s, "inter-leg exact-zero phase"
+        )
 
         held = list(spec.inverse_keys)
+        browser.assert_motion_liveness("immediately before inverse motion")
+        observer.assert_motion_liveness()
         inverse_start_ns = _press_chord(browser, held)
-        observer.spin_for(args.hold_s)
+        _observe_with_motion_liveness(
+            observer, browser, args.hold_s, "inverse motion phase"
+        )
         inverse_end_ns = time.time_ns()
         inverse_release_ns = _release_chord(browser, held)
         held = []
@@ -1638,7 +1917,9 @@ def command_scenario(args: argparse.Namespace) -> int:
             "end_ns": inverse_end_ns,
             "release_ns": inverse_release_ns,
         }
-        observer.spin_for(args.settle_s)
+        _observe_with_motion_liveness(
+            observer, browser, args.settle_s, "final exact-zero settle phase"
+        )
 
         websocket_records = [
             dict(item) for item in browser.probe().get("websocket", [])
@@ -1687,6 +1968,7 @@ def command_scenario(args: argparse.Namespace) -> int:
                 "snapshot_before": snapshot_before,
                 "snapshot_after": snapshot_after,
                 "checks": ui_checks,
+                "cdp_x11_binding": x11_binding,
             },
             "websocket_records": websocket_records,
             "ros_observation": {
@@ -1701,12 +1983,10 @@ def command_scenario(args: argparse.Namespace) -> int:
             },
         }
         write_json_exclusive(run_path, document)
-        succeeded = True
         print(f"[manual-4ws] {spec.name} UI/ROS phase PASS: {run_path}")
         return 0
     except BaseException as error:
-        if browser is not None:
-            browser.fail_safe(held)
+        fail_safe_confirmed = _force_visible_fail_safe(browser, args, held)
         if observer is not None:
             try:
                 observer.spin_for(0.75)
@@ -1724,12 +2004,11 @@ def command_scenario(args: argparse.Namespace) -> int:
                 "error": str(error),
                 "phases": phases,
                 "fail_safe_zero_disarm_attempted": browser is not None,
+                "fail_safe_zero_disarm_confirmed": fail_safe_confirmed,
             })
         raise
     finally:
         if browser is not None:
-            if not succeeded and held:
-                browser.fail_safe(held)
             browser.close()
 
 
@@ -1741,6 +2020,7 @@ def command_teardown(args: argparse.Namespace) -> int:
     observer: RosTraceObserver | None = None
     try:
         browser = ManualDriveBrowser(**_browser_arguments(args))
+        x11_binding = _bind_browser_to_capture(browser, args)
         browser._interactions = []
         browser.clear_probe()
         observer = RosTraceObserver(trace_path, role_name=args.role_name)
@@ -1761,6 +2041,7 @@ def command_teardown(args: argparse.Namespace) -> int:
             "status": "PASS",
             "created_at_utc": utc_now(),
             "fail_safe": {"zero_before_disarm": True, "frame": disarm_frame},
+            "cdp_x11_binding": x11_binding,
             "snapshot": snapshot,
             "ros_observation": {
                 "subscriber_only": True,
@@ -1773,8 +2054,7 @@ def command_teardown(args: argparse.Namespace) -> int:
         print(f"[manual-4ws] teardown PASS: {document_path}")
         return 0
     except BaseException as error:
-        if browser is not None:
-            browser.fail_safe()
+        fail_safe_confirmed = _force_visible_fail_safe(browser, args)
         if observer is not None:
             try:
                 observer.spin_for(0.5)
@@ -1789,6 +2069,7 @@ def command_teardown(args: argparse.Namespace) -> int:
                 "created_at_utc": utc_now(),
                 "error": str(error),
                 "fail_safe_zero_disarm_attempted": browser is not None,
+                "fail_safe_zero_disarm_confirmed": fail_safe_confirmed,
             })
         raise
     finally:
@@ -1924,6 +2205,98 @@ def write_text_exclusive(path: Path, text: str) -> None:
         os.fsync(stream.fileno())
 
 
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_collection_atomically(
+    root: Path,
+    document: Mapping[str, Any],
+    csv_text: str,
+    report_text: str,
+) -> None:
+    """Publish a collection with the JSON status as the final commit marker.
+
+    All content and hashes are completed in a same-filesystem private staging
+    directory.  CSV, report, and hashes are linked into place first; the
+    summary JSON is linked last.  Any exception removes only artifacts linked
+    by this invocation, so the shell cleanup can still publish a FAIL summary.
+    """
+    filenames = (
+        "manual_4ws_summary.json",
+        "manual_4ws_summary.csv",
+        "manual_4ws_report.md",
+        "SHA256SUMS",
+    )
+    finals = {name: root / name for name in filenames}
+    occupied = [str(path) for path in finals.values() if path.exists() or path.is_symlink()]
+    if occupied:
+        raise MatrixError(
+            "refusing to overwrite collection artifacts: " + ", ".join(occupied)
+        )
+    staging = Path(tempfile.mkdtemp(prefix=".manual-4ws-summary-", dir=root))
+    published: list[Path] = []
+    try:
+        write_json_exclusive(staging / "manual_4ws_summary.json", document)
+        write_text_exclusive(staging / "manual_4ws_summary.csv", csv_text)
+        write_text_exclusive(staging / "manual_4ws_report.md", report_text)
+
+        hash_entries: dict[str, str] = {}
+        for path in root.rglob("*"):
+            if staging == path or staging in path.parents:
+                continue
+            if path in finals.values():
+                continue
+            if path.is_file() and not path.is_symlink():
+                relative = str(path.relative_to(root))
+                hash_entries[relative] = sha256_file(path)
+        for name in filenames[:3]:
+            hash_entries[name] = sha256_file(staging / name)
+        hashes_text = "".join(
+            f"{digest}  {relative}\n"
+            for relative, digest in sorted(hash_entries.items())
+        )
+        write_text_exclusive(staging / "SHA256SUMS", hashes_text)
+        _fsync_directory(staging)
+
+        # The PASS/FAIL summary is intentionally last: observing it guarantees
+        # that every sibling index/report/hash artifact was already durable.
+        for name in (
+            "manual_4ws_summary.csv",
+            "manual_4ws_report.md",
+            "SHA256SUMS",
+            "manual_4ws_summary.json",
+        ):
+            os.link(staging / name, finals[name])
+            published.append(finals[name])
+        _fsync_directory(root)
+    except BaseException:
+        for path in reversed(published):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        try:
+            _fsync_directory(root)
+        except OSError:
+            pass
+        raise
+    finally:
+        for name in filenames:
+            try:
+                (staging / name).unlink()
+            except OSError:
+                pass
+        try:
+            staging.rmdir()
+        except OSError:
+            pass
+
+
 def command_summarize(args: argparse.Namespace) -> int:
     root = require_output_directory(args.output_root)
     summary_path = root / "manual_4ws_summary.json"
@@ -1975,8 +2348,6 @@ def command_summarize(args: argparse.Namespace) -> int:
             "subscriber/readback-only evidence sources."
         ),
     }
-    write_json_exclusive(summary_path, document)
-    csv_path = root / "manual_4ws_summary.csv"
     rows = [
         ["scenario", "status", "path_positive_m", "path_inverse_m", "return_translation_m", "return_yaw_deg"],
     ]
@@ -1990,13 +2361,10 @@ def command_summarize(args: argparse.Namespace) -> int:
             str(kinematics.get("inverse", {}).get("path_distance_m", "")),
             str(retrace.get("translation_m", "")), str(retrace.get("yaw_degrees", "")),
         ])
-    csv_lines: list[str] = []
     import io
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerows(rows)
-    write_text_exclusive(csv_path, buffer.getvalue())
-    report_path = root / "manual_4ws_report.md"
     report = [
         "# Manual 4WS CARLA evidence",
         "",
@@ -2018,13 +2386,12 @@ def command_summarize(args: argparse.Namespace) -> int:
         )
     if status == "FAIL":
         report.extend(["", f"Failure: `{args.failure_scenario}` — {args.failure_reason}"])
-    write_text_exclusive(report_path, "\n".join(report) + "\n")
-    hashes_path = root / "SHA256SUMS"
-    lines = []
-    for path in sorted(root.rglob("*")):
-        if path.is_file() and not path.is_symlink() and path != hashes_path:
-            lines.append(f"{sha256_file(path)}  {path.relative_to(root)}")
-    write_text_exclusive(hashes_path, "\n".join(lines) + "\n")
+    publish_collection_atomically(
+        root,
+        document,
+        buffer.getvalue(),
+        "\n".join(report) + "\n",
+    )
     print(f"[manual-4ws] collection {status}: {summary_path}")
     return 0 if status == "PASS" else 1
 
@@ -2050,6 +2417,12 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--ui-url", default="http://127.0.0.1:8010")
         command.add_argument("--operator-cdp-url", default="http://127.0.0.1:9224")
         command.add_argument("--role-name", default="ego_vehicle")
+        command.add_argument(
+            "--x11-window-id", required=True,
+            help="explicit X11 Robot UI window id proven to own the CDP target",
+        )
+        command.add_argument("--display", required=True)
+        command.add_argument("--xauthority", default="")
         command.add_argument("--timeout-s", type=float, default=10.0)
         command.add_argument("--ros-ready-timeout-s", type=float, default=10.0)
         return command
@@ -2082,6 +2455,10 @@ def validate_cli(args: argparse.Namespace) -> None:
             raise MatrixError(f"{name} must be in [0.25, 30]")
     if hasattr(args, "role_name") and args.role_name != "ego_vehicle":
         raise MatrixError("manual physical evidence is restricted to role_name=ego_vehicle")
+    if hasattr(args, "x11_window_id") and re.fullmatch(
+        r"0x[0-9a-fA-F]+", str(args.x11_window_id)
+    ) is None:
+        raise MatrixError("x11_window_id must be an explicit hexadecimal X11 id")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

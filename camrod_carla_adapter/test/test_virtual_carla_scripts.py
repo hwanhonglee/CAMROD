@@ -187,6 +187,80 @@ def test_manual_4ws_evidence_plan_is_offline_and_authority_is_visible_ui(
     assert "Input.dispatchMouseEvent" in source
     assert 'EXPECTED_UI_TITLE = "Robot UI"' in source
 
+    shell_source = (SCRIPT_ROOT / "run_manual_4ws_evidence.sh").read_text(
+        encoding="utf-8"
+    )
+    cleanup_body = shell_source.split("cleanup() {", 1)[1].split(
+        "\n}\n\non_signal()", 1
+    )[0]
+    assert cleanup_body.index('python3 "${PYTHON_RUNNER}" teardown') < (
+        cleanup_body.index("finish_observers")
+    )
+    assert "bounded_reap" in shell_source
+    assert "wait_for_minimum_capture" in shell_source
+    assert "time.monotonic()" in shell_source
+    assert '--x11-window-id "${UI_WINDOW_ID}"' in shell_source
+    assert "assert_motion_liveness" in source
+    assert "arm_attempted = True" in source
+    assert "publish_collection_atomically" in source
+
+
+def _load_manual_4ws_evidence_module():
+    import importlib.util
+
+    name = "manual_4ws_evidence_test"
+    spec = importlib.util.spec_from_file_location(name, MANUAL_4WS_EVIDENCE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_manual_4ws_collection_rolls_back_partial_publish_and_can_emit_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    module = _load_manual_4ws_evidence_module()
+    root = tmp_path / "collection"
+    root.mkdir()
+    args = SimpleNamespace(
+        output_root=str(root),
+        status="FAIL",
+        failure_scenario="straight",
+        failure_reason="injected publication failure",
+    )
+    original_link = module.os.link
+
+    def fail_before_hash_publish(source, destination):
+        if Path(destination).name == "SHA256SUMS":
+            raise OSError("injected hash publication failure")
+        return original_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", fail_before_hash_publish)
+    with pytest.raises(OSError, match="injected hash publication failure"):
+        module.command_summarize(args)
+    for name in (
+        "manual_4ws_summary.json",
+        "manual_4ws_summary.csv",
+        "manual_4ws_report.md",
+        "SHA256SUMS",
+    ):
+        assert not (root / name).exists()
+    assert not list(root.glob(".manual-4ws-summary-*"))
+
+    monkeypatch.setattr(module.os, "link", original_link)
+    assert module.command_summarize(args) == 1
+    summary = json.loads((root / "manual_4ws_summary.json").read_text())
+    assert summary["status"] == "FAIL"
+    assert (root / "manual_4ws_summary.csv").is_file()
+    assert (root / "manual_4ws_report.md").is_file()
+    hashes = (root / "SHA256SUMS").read_text(encoding="utf-8")
+    assert "manual_4ws_summary.json" in hashes
+    assert "manual_4ws_summary.csv" in hashes
+    assert "manual_4ws_report.md" in hashes
+
 
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     tmp_path: Path,
