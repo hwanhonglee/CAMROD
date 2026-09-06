@@ -20,6 +20,7 @@
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
 #include "camrod_control/drop_zone_charging_departure_authorization.hpp"
+#include "camrod_control/manual_charging_departure_authorization.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/path_relative_route_recovery.hpp"
@@ -1213,6 +1214,64 @@ TEST(DropZoneChargingDepartureAuthorization, InvalidConfigurationFailsClosed) {
   EXPECT_FALSE(authorization.observe("control", "EXIT_STRAIGHT", true, 1.0,
                                      std::optional<double>{1.0}));
   EXPECT_FALSE(authorization.isActive(1.0));
+}
+
+TEST(ManualChargingDepartureAuthorization,
+     DefaultIsDisabledAndOptInExpiresExactly) {
+  ManualChargingDepartureContext context{
+      true, true, false, true, false, true, true, true};
+  ManualChargingDepartureAuthorization authorization;
+  EXPECT_FALSE(
+      authorization.observeAcceptedDedicatedManual(10.0, context));
+
+  auto config = authorization.config();
+  config.enabled = true;
+  authorization.setConfig(config);
+  ASSERT_TRUE(authorization.observeAcceptedDedicatedManual(10.0, context));
+  EXPECT_TRUE(authorization.isActive(10.349, context));
+  EXPECT_FALSE(authorization.isActive(10.350, context));
+  EXPECT_DOUBLE_EQ(authorization.remainingSec(10.350, context), 0.0);
+}
+
+TEST(ManualChargingDepartureAuthorization,
+     EveryOwnershipAndSafetyConditionFailsClosed) {
+  ManualChargingDepartureAuthorizationConfig config;
+  config.enabled = true;
+  ManualChargingDepartureAuthorization authorization(config);
+  const ManualChargingDepartureContext accepted{
+      true, true, false, true, false, true, true, true};
+  ASSERT_TRUE(
+      authorization.observeAcceptedDedicatedManual(20.0, accepted));
+
+  const std::vector<ManualChargingDepartureContext> rejected{
+      {false, true, false, true, false, true, true, true},
+      {true, false, false, true, false, true, true, true},
+      {true, true, true, true, false, true, true, true},
+      {true, true, false, false, false, true, true, true},
+      {true, true, false, true, true, true, true, true},
+      {true, true, false, true, false, false, true, true},
+      {true, true, false, true, false, true, false, true},
+      {true, true, false, true, false, true, true, false},
+  };
+  for (const auto & context : rejected) {
+    EXPECT_FALSE(authorization.isActive(20.1, context));
+  }
+
+  authorization.reset();
+  EXPECT_FALSE(authorization.isActive(20.1, accepted));
+  EXPECT_FALSE(authorization.observeAcceptedDedicatedManual(
+      std::numeric_limits<double>::quiet_NaN(), accepted));
+}
+
+TEST(ManualChargingDepartureAuthorization, InvalidTimeoutFailsClosed) {
+  ManualChargingDepartureAuthorizationConfig config;
+  config.enabled = true;
+  config.command_timeout_s = 1.01;
+  EXPECT_FALSE(manualChargingDepartureAuthorizationConfigIsValid(config));
+  ManualChargingDepartureAuthorization authorization(config);
+  const ManualChargingDepartureContext context{
+      true, true, false, true, false, true, true, true};
+  EXPECT_FALSE(authorization.observeAcceptedDedicatedManual(1.0, context));
 }
 
 TEST(MotionCostStop, ForwardThresholdAndBelowThreshold) {

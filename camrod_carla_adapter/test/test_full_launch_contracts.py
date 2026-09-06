@@ -1658,6 +1658,13 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     gate_source = (
         REPO_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
     ).read_text(encoding="utf-8")
+    manual_departure_policy = (
+        REPO_ROOT
+        / "camrod_control"
+        / "include"
+        / "camrod_control"
+        / "manual_charging_departure_authorization.hpp"
+    ).read_text(encoding="utf-8")
     gate_defaults = yaml.safe_load(
         (
             REPO_ROOT
@@ -1684,12 +1691,19 @@ def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
     for token in (
         "manual_charging_departure_command_timeout_s",
         "command_source_arbiter_.manualSourceActive()",
-        "!command_source_arbiter_.maneuverActive()",
-        "!gate_policy_.missionEnabled()",
+        "command_source_arbiter_.maneuverActive()",
+        "gate_policy_.missionEnabled()",
         'charging_departure_auth=" +',
         '"manual_drive"',
     ):
         assert token in gate_source
+    for token in (
+        "context.manual_source_active && !context.maneuver_active",
+        "context.manual_engaged && !context.mission_engaged",
+        "context.platform_drive_enabled && context.charging",
+        "context.battery_ready_for_departure",
+    ):
+        assert token in manual_departure_policy
     for name, parity_default, tuned_default in (
         ("manual_drive_linear_limit_mps", "0.20", "1.40"),
         ("manual_drive_lateral_limit_mps", "0.20", "1.00"),
