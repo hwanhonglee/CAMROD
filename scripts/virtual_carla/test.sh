@@ -76,6 +76,7 @@ env \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_full_launch_contracts.py" \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_virtual_carla_scripts.py" \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_run_site_evidence_matrix.py" \
+  "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_curate_final_evidence.py" \
   "${CAMROD_SRC_ROOT}/camrod_bringup/test/test_colcon_build_policy.py" \
   "${CAMROD_SRC_ROOT}/camrod_bringup/test/test_workspace_shell_tools.py"
 

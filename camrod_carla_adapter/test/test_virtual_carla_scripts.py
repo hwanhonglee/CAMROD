@@ -203,6 +203,11 @@ def test_manual_4ws_evidence_plan_is_offline_and_authority_is_visible_ui(
     assert "assert_motion_liveness" in source
     assert "arm_attempted = True" in source
     assert "publish_collection_atomically" in source
+    assert "element.scrollIntoView({block:'center', inline:'nearest'})" in source
+    assert "document.elementFromPoint(x, y)" in source
+    assert source.index("scroll_pointer_target_into_view(") < source.index(
+        "self.clear_probe()"
+    )
 
 
 def _load_manual_4ws_evidence_module():
