@@ -678,10 +678,27 @@ def dispatch_source_observed(
         requests, (str, bytes)
     ):
         return False
+    def source_matches(observed: Any) -> bool:
+        if observed == expected_source:
+            return True
+        # Direct Robot-UI destination admission publishes one observable ROS
+        # echo after the backend has already applied the command.  Its source
+        # retains the exact browser authority before an unguessable per-process
+        # marker used to suppress its own subscription callback.  Accept only
+        # that canonical suffix; a loose prefix match would let another source
+        # impersonate the browser in the evidence report.
+        if not isinstance(observed, str):
+            return False
+        marker_prefix = f"{expected_source}|ui_backend_echo="
+        if not observed.startswith(marker_prefix):
+            return False
+        marker = observed[len(marker_prefix):]
+        return bool(marker) and marker == marker.strip() and "|" not in marker
+
     return any(
         isinstance(request, Mapping)
         and request.get(site_key) == site
-        and request.get("source") == expected_source
+        and source_matches(request.get("source"))
         and (not requires_run or request.get("run") is True)
         for request in requests
     )

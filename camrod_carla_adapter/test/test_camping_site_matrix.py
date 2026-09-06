@@ -729,6 +729,46 @@ def test_operator_browser_dispatch_source_is_bound_to_ros_message_type():
     )
 
 
+def test_operator_browser_dispatch_accepts_only_canonical_backend_echo_marker():
+    canonical = {
+        "sequences": {
+            "destination_requests": [{
+                "site": "B1",
+                "run": True,
+                "source": "ws|ui_backend_echo=1938466-885848621332495-1",
+            }]
+        }
+    }
+    assert matrix.dispatch_source_observed(
+        canonical,
+        site="B1",
+        mission_intent="delivery",
+        expected_source="ws",
+    )
+
+    for rejected_source in (
+        "ws-spoof|ui_backend_echo=1938466-1-1",
+        "ws|ui_backend_echo=",
+        "ws|ui_backend_echo=token|spoof",
+        "ws:usage_complete",
+    ):
+        rejected = {
+            "sequences": {
+                "destination_requests": [{
+                    "site": "B1",
+                    "run": True,
+                    "source": rejected_source,
+                }]
+            }
+        }
+        assert not matrix.dispatch_source_observed(
+            rejected,
+            site="B1",
+            mission_intent="delivery",
+            expected_source="ws",
+        )
+
+
 def test_guest_browser_arguments_are_local_and_opt_in():
     default = matrix._parser().parse_args([])
     assert default.return_authority == "operator_rest"
