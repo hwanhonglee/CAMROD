@@ -668,6 +668,38 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
         }
     }
     assert matrix.return_source_observed(snapshot, "guest:usage_complete")
+    current_snapshot = {
+        "sequences": {
+            "ui_operation_requests": [{
+                "operation": matrix.RETURN_OPERATION,
+                "source": "guest:usage_complete:site=B13:g=1788726927385002",
+            }]
+        }
+    }
+    assert matrix.return_source_observed(
+        current_snapshot, "guest:usage_complete", "B13"
+    )
+    assert not matrix.return_source_observed(
+        current_snapshot, "guest:usage_complete", "B12"
+    )
+    for rejected_guest_source in (
+        "guest:usage_complete:site=B0:g=1",
+        "guest:usage_complete:site=B14:g=1",
+        "guest:usage_complete:site=B1:g=0",
+        "guest:usage_complete:site=B1:g=not-a-generation",
+        "spoof:guest:usage_complete:site=B1:g=1",
+    ):
+        rejected = {
+            "sequences": {
+                "ui_operation_requests": [{
+                    "operation": matrix.RETURN_OPERATION,
+                    "source": rejected_guest_source,
+                }]
+            }
+        }
+        assert not matrix.return_source_observed(
+            rejected, "guest:usage_complete", "B1"
+        )
     assert not matrix.return_source_observed(snapshot, "http:manual_return")
     assert not matrix.return_source_observed(
         {"sequences": {"ui_operation_requests": [

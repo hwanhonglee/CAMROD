@@ -50,6 +50,29 @@ def test_operator_return_source_accepts_only_current_mission_nonce_shape():
         assert not validator._return_source_matches(rejected, expected)
 
 
+def test_guest_return_source_accepts_only_site_bound_generation_shape():
+    expected = "guest:usage_complete"
+    assert validator._return_source_matches(expected, expected, "B13")
+    assert validator._return_source_matches(
+        "guest:usage_complete:site=B13:g=1788726927385002",
+        expected,
+        "B13",
+    )
+    assert not validator._return_source_matches(
+        "guest:usage_complete:site=B12:g=1788726927385002",
+        expected,
+        "B13",
+    )
+    for rejected in (
+        "guest:usage_complete:site=B0:g=1",
+        "guest:usage_complete:site=B14:g=1",
+        "guest:usage_complete:site=B1:g=0",
+        "guest:usage_complete:site=B1:g=not-a-generation",
+        "spoof:guest:usage_complete:site=B1:g=1",
+    ):
+        assert not validator._return_source_matches(rejected, expected, "B1")
+
+
 def _write_json(path: Path, value: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

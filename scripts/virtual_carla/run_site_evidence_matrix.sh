@@ -840,11 +840,19 @@ def load_json(path: Path, label: str):
         reasons.append(f"invalid {label}: {error}")
         return None
 
-def return_source_matches(observed, expected):
+def return_source_matches(observed, expected, expected_site=""):
     if observed == expected:
         return True
     if not isinstance(observed, str) or not expected:
         return False
+    if expected == "guest:usage_complete":
+        match = re.fullmatch(
+            r"guest:usage_complete:site=(B(?:[1-9]|1[0-3])):g=([1-9][0-9]*)",
+            observed,
+        )
+        return match is not None and (
+            not expected_site or match.group(1) == expected_site
+        )
     suffix = ":site_exit_first"
     if not expected.endswith(suffix):
         return False
@@ -942,7 +950,9 @@ if matrix_report_raw:
             if not any(
                 isinstance(request, dict)
                 and request.get("operation") == 3
-                and request.get("source") == expected_return_source
+                and return_source_matches(
+                    request.get("source"), expected_return_source, site
+                )
                 for request in requests
             ):
                 reasons.append(
