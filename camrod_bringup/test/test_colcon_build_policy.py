@@ -153,6 +153,9 @@ def test_ui_frontend_install_verification_is_content_and_freshness_closed() -> N
     fingerprint = _function_source(
         source, "_camrod_ui_frontend_input_fingerprint"
     )
+    materialization = _function_source(
+        source, "_materialize_camrod_ui_runtime_identity"
+    )
     verification = _function_source(source, "_verify_camrod_ui_frontend_install")
 
     for contract in (
@@ -163,6 +166,21 @@ def test_ui_frontend_install_verification_is_content_and_freshness_closed() -> N
         "sha256sum",
     ):
         assert contract in fingerprint
+
+    for contract in (
+        'identity_files+=("static/js/${source_bundle}")',
+        'install -m 0644 -- "${source_file}" "${temporary}"',
+        'mv -fT -- "${temporary}" "${installed_file}"',
+        '[[ -f "${installed_file}" && ! -L "${installed_file}" ]]',
+        'cmp -s "${source_file}" "${installed_file}"',
+    ):
+        assert contract in materialization
+
+    materialize_call = source.rindex(
+        '_materialize_camrod_ui_runtime_identity "$@"'
+    )
+    verify_call = source.rindex('_verify_camrod_ui_frontend_install "$@"')
+    assert materialize_call < verify_call
 
     for contract in (
         '"${frontend_source}" -nt "${source_bundle_path}"',

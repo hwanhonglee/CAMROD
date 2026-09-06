@@ -395,6 +395,61 @@ _build_camrod_ui_frontend() {
 }
 _build_camrod_ui_frontend "$@"
 
+# `--symlink-install` is useful for Python packages, but the four files that
+# bind the exact browser code to its canonical build inputs must be immutable
+# regular files in the runtime prefix.  The v27 runtime audit deliberately
+# rejects source-pointing symlinks here: otherwise an edit after launch could
+# change the UI without changing the recorded install identity.
+_materialize_camrod_ui_runtime_identity() {
+  _build_scope_includes_pkg camrod_ui "$@" || return 0
+
+  local source_build="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend/build"
+  local installed_build="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build"
+  local source_index="${source_build}/index.html"
+  local source_bundle relative source_file installed_file temporary
+  local -a identity_files=(
+    ".camrod-build-env.json"
+    ".camrod-inputs.sha256"
+    "index.html"
+  )
+
+  [[ -f "${source_index}" && ! -L "${source_index}" ]] || {
+    log "ERROR: frontend source index is not a regular file" >&2
+    return 1
+  }
+  source_bundle="$(grep -o 'main\.[a-z0-9]*\.js' "${source_index}" | head -1)"
+  [[ -n "${source_bundle}" ]] || {
+    log "ERROR: frontend source index has no unique main bundle" >&2
+    return 1
+  }
+  identity_files+=("static/js/${source_bundle}")
+
+  for relative in "${identity_files[@]}"; do
+    source_file="${source_build}/${relative}"
+    installed_file="${installed_build}/${relative}"
+    [[ -f "${source_file}" && ! -L "${source_file}" ]] || {
+      log "ERROR: frontend identity source is not a regular file: ${source_file}" >&2
+      return 1
+    }
+    [[ -e "${installed_file}" || -L "${installed_file}" ]] || {
+      log "ERROR: frontend identity install is missing: ${installed_file}" >&2
+      return 1
+    }
+    temporary="${installed_file}.materialize.$$"
+    install -m 0644 -- "${source_file}" "${temporary}"
+    mv -fT -- "${temporary}" "${installed_file}"
+    [[ -f "${installed_file}" && ! -L "${installed_file}" ]] || {
+      log "ERROR: frontend identity install is not a regular file: ${installed_file}" >&2
+      return 1
+    }
+    cmp -s "${source_file}" "${installed_file}" || {
+      log "ERROR: materialized frontend identity differs: ${installed_file}" >&2
+      return 1
+    }
+  done
+  log "camrod_ui runtime identity materialized: ${source_bundle}"
+}
+
 _verify_camrod_ui_frontend_install() {
   _build_scope_includes_pkg camrod_ui "$@" || return 0
 
@@ -605,6 +660,7 @@ colcon --log-base "${WS_ROOT}/log" build \
   "${BUILD_SKIP_ARGS[@]}" \
   "${COLCON_BUILD_ARGS[@]}"
 
+_materialize_camrod_ui_runtime_identity "$@"
 _verify_camrod_ui_frontend_install "$@"
 
 log "done.  source ${WS_ROOT}/install/setup.bash"
