@@ -1436,6 +1436,7 @@ def validate_ros_trace(
         ]
         if len(active) < 5:
             raise MatrixError(f"{name} has fewer than five active physical 4WD commands")
+        energized_samples = 0
         for record in active:
             message = record["message"]
             if (
@@ -1444,9 +1445,26 @@ def validate_ros_trace(
                 or message["requires_independent_wheel_drive"] is not True
             ):
                 raise MatrixError(f"{name} physical command lost its gate/backend contract")
-            if any(abs(float(value)) <= 0.01 or abs(float(value)) > 20.000001 for value in message["torques_nm"]):
+            torques = [float(value) for value in message["torques_nm"]]
+            if len(torques) != 4 or any(
+                not math.isfinite(value) or abs(value) > 20.000001
+                for value in torques
+            ):
                 raise MatrixError(f"{name} physical command has invalid four-wheel torque")
-        physical_modes[name] = {"samples": len(selected), "active_samples": len(active)}
+            # Closed-loop zero-turn torque legitimately crosses zero while
+            # regulating yaw rate.  Require repeated simultaneous four-wheel
+            # effort, not a non-zero value in every individual sample.
+            if all(abs(value) > 0.01 for value in torques):
+                energized_samples += 1
+        if energized_samples < 5:
+            raise MatrixError(
+                f"{name} lacks five simultaneous four-wheel torque samples"
+            )
+        physical_modes[name] = {
+            "samples": len(selected),
+            "active_samples": len(active),
+            "simultaneous_four_wheel_torque_samples": energized_samples,
+        }
 
     statuses = trace_samples(records, status_topic)
     if not statuses:
