@@ -344,6 +344,9 @@ def test_manual_4ws_ui_axes_are_mapped_to_ros_twist_axes() -> None:
         "                ros_records, topic, settled_start_ns, int(phase[\"end_ns\"])"
         in source
     )
+    assert "simultaneous_four_wheel_torque_samples" in source
+    assert "not math.isfinite(value) or abs(value) > 20.000001" in source
+    assert "if energized_samples < 5:" in source
 
 
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
