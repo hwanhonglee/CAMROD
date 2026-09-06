@@ -56,6 +56,9 @@ SITE_DIR_RE = re.compile(r"^B[0-9]+$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_OBJECT_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 UI_RETURN_TOKEN_RE = re.compile(r"^g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+$")
+GUEST_RETURN_SOURCE_RE = re.compile(
+    r"^guest:usage_complete:site=(B(?:[1-9]|1[0-3])):g=([1-9][0-9]*)$"
+)
 OUTPUT_FILES = (
     "site_evidence_collection.json",
     "site_evidence_collection.csv",
@@ -1190,12 +1193,21 @@ def parse_sites(raw: str) -> tuple[str, ...]:
     return sites
 
 
-def _return_source_matches(observed: Any, expected: str) -> bool:
+def _return_source_matches(
+    observed: Any,
+    expected: str,
+    expected_site: str = "",
+) -> bool:
     """Accept the legacy exact source or the current mission-bound nonce."""
     if observed == expected:
         return True
     if not isinstance(observed, str) or not expected:
         return False
+    if expected == "guest:usage_complete":
+        match = GUEST_RETURN_SOURCE_RE.fullmatch(observed)
+        return match is not None and (
+            not expected_site or match.group(1) == expected_site
+        )
     site_exit_suffix = ":site_exit_first"
     if not expected.endswith(site_exit_suffix):
         return False
@@ -1329,7 +1341,11 @@ def _validate_native_matrix(
             if not any(
                 isinstance(request, dict)
                 and request.get("operation") == 3
-                and request.get("source") == contract["expected_return_source"]
+                and _return_source_matches(
+                    request.get("source"),
+                    contract["expected_return_source"],
+                    site,
+                )
                 for request in requests
             ):
                 raise CollectionValidationError(

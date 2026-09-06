@@ -47,6 +47,9 @@ DROP_ZONE_PARKING = 10
 FAILURE_STATES = {16}
 RETURN_OPERATION = 3
 UI_RETURN_TOKEN_RE = re.compile(r"^g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+$")
+GUEST_RETURN_SOURCE_RE = re.compile(
+    r"^guest:usage_complete:site=(B(?:[1-9]|1[0-3])):g=([1-9][0-9]*)$"
+)
 GUEST_UI_TITLE = "국립공원 로봇 서비스"
 OPERATOR_UI_TITLE = "Robot UI"
 COLLISION_SAMPLE_LIMIT = 256
@@ -626,12 +629,21 @@ def required_service_state_ids(mission_intent: str) -> tuple[int, ...]:
     )
 
 
-def return_source_matches(observed: Any, expected_source: str) -> bool:
+def return_source_matches(
+    observed: Any,
+    expected_source: str,
+    expected_site: str = "",
+) -> bool:
     """Match a frontend RETURN source, including its current mission nonce."""
     if observed == expected_source:
         return True
     if not isinstance(observed, str) or not expected_source:
         return False
+    if expected_source == "guest:usage_complete":
+        match = GUEST_RETURN_SOURCE_RE.fullmatch(observed)
+        return match is not None and (
+            not expected_site or match.group(1) == expected_site
+        )
     site_exit_suffix = ":site_exit_first"
     if not expected_source.endswith(site_exit_suffix):
         return False
@@ -645,7 +657,11 @@ def return_source_matches(observed: Any, expected_source: str) -> bool:
     return UI_RETURN_TOKEN_RE.fullmatch(token) is not None
 
 
-def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) -> bool:
+def return_source_observed(
+    snapshot: Mapping[str, Any],
+    expected_source: str,
+    expected_site: str = "",
+) -> bool:
     """Require the authenticated frontend RETURN source at a ROS boundary."""
     if not expected_source:
         return True
@@ -667,7 +683,9 @@ def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) ->
                 continue
             if (
                 operation == RETURN_OPERATION
-                and return_source_matches(request.get("source"), expected_source)
+                and return_source_matches(
+                    request.get("source"), expected_source, expected_site
+                )
             ):
                 return True
     return False
@@ -3217,7 +3235,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             if client.expected_return_source:
                 wait_until(
                     lambda snap: return_source_observed(
-                        snap, client.expected_return_source
+                        snap, client.expected_return_source, key
                     ),
                     10.0,
                     f"RETURN source {client.expected_return_source} observed",
