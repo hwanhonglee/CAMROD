@@ -1474,6 +1474,8 @@ class UiBackendStopTest(unittest.TestCase):
             _active_mission_site="",
             _service_metrics=None,
             _lock=threading.Lock(),
+            _pending_site_route_goal_stamps={},
+            _site_route_anchors={},
             _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
             publish_engage_from_destination=True,
             publish_mission_engage_from_destination=True,
@@ -1483,8 +1485,13 @@ class UiBackendStopTest(unittest.TestCase):
             pub_planning_camping_site_recall=RecallPublisher(),
             charging_departure_delay_s=7.0,
         )
+        recall_stamp_nanoseconds = iter(range(7, 20))
         backend.get_clock = lambda: SimpleNamespace(
-            now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=9, nanosec=7))
+            now=lambda: SimpleNamespace(
+                to_msg=lambda: RosTime(
+                    sec=9, nanosec=next(recall_stamp_nanoseconds)
+                )
+            )
         )
         backend._revoke_manual_drive = lambda _reason: None
         backend.get_logger = lambda: _FakeLogger()
@@ -1542,6 +1549,13 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(
             [message.site_name for message in recalls],
             [f"camping_site_{index}" for index in range(1, 14)],
+        )
+        self.assertEqual(
+            backend._pending_site_route_goal_stamps,
+            {
+                (9, index + 6): f"camping_site_{index}"
+                for index in range(1, 14)
+            },
         )
         self.assertEqual([message.source for message in recalls], ["guest"] * 13)
         self.assertTrue(all(result["recall_request_published"] for result in results))
@@ -2814,6 +2828,8 @@ class UiBackendStopTest(unittest.TestCase):
             _active_mission_site="",
             _service_metrics=None,
             _lock=threading.Lock(),
+            _pending_site_route_goal_stamps={},
+            _site_route_anchors={},
             _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
             publish_engage_from_destination=True,
             publish_mission_engage_from_destination=True,
