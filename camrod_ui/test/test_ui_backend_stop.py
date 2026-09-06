@@ -190,6 +190,72 @@ class _FakeBackend:
 
 class UiBackendStopTest(unittest.TestCase):
 
+    def test_drop_zone_polygon_rejects_road_front_spawn_inside_legacy_radius(
+        self,
+    ) -> None:
+        backend = SimpleNamespace(
+            _drop_zone_keypoint=SimpleNamespace(
+                x=-14.2347,
+                y=39.7863,
+                corners=[
+                    (-15.3642, 37.6080),
+                    (-15.8144, 41.6643),
+                    (-13.1156, 41.9521),
+                    (-12.6380, 37.9376),
+                ],
+            ),
+            drop_zone_arrival_radius_m=4.0,
+            _point_in_polygon=UiBackendNode._point_in_polygon,
+        )
+        with mock.patch.object(
+            UiBackendNode,
+            "_fresh_arrival_xy",
+            return_value=((-13.7453892983, 43.3360220244), "fresh_pose"),
+        ):
+            matched, distance_m, reason = UiBackendNode._drop_zone_arrival_match(
+                backend
+            )
+
+        self.assertFalse(matched)
+        self.assertAlmostEqual(distance_m, 3.58328779, places=6)
+        self.assertEqual(reason, "outside_drop_zone_polygon")
+
+    def test_drop_zone_polygon_accepts_physical_station_interior(self) -> None:
+        backend = SimpleNamespace(
+            _drop_zone_keypoint=SimpleNamespace(
+                x=0.0,
+                y=0.0,
+                corners=[(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)],
+            ),
+            drop_zone_arrival_radius_m=0.1,
+            _point_in_polygon=UiBackendNode._point_in_polygon,
+        )
+        with mock.patch.object(
+            UiBackendNode,
+            "_fresh_arrival_xy",
+            return_value=((0.5, 0.5), "fresh_pose"),
+        ):
+            self.assertEqual(
+                UiBackendNode._drop_zone_arrival_match(backend),
+                (True, 2 ** -0.5, "inside_drop_zone_polygon"),
+            )
+
+    def test_drop_zone_radius_remains_fallback_without_polygon(self) -> None:
+        backend = SimpleNamespace(
+            _drop_zone_keypoint=SimpleNamespace(x=0.0, y=0.0, corners=[]),
+            drop_zone_arrival_radius_m=4.0,
+            _point_in_polygon=UiBackendNode._point_in_polygon,
+        )
+        with mock.patch.object(
+            UiBackendNode,
+            "_fresh_arrival_xy",
+            return_value=((3.5, 0.0), "fresh_pose"),
+        ):
+            self.assertEqual(
+                UiBackendNode._drop_zone_arrival_match(backend),
+                (True, 3.5, "near_drop_zone_center"),
+            )
+
     def test_ui_camping_operation_cancel_uses_full_operator_stop_path(self) -> None:
         events = []
         backend = SimpleNamespace(
