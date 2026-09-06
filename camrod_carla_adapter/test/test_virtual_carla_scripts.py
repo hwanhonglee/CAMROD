@@ -205,6 +205,10 @@ def test_manual_4ws_evidence_plan_is_offline_and_authority_is_visible_ui(
     assert "publish_collection_atomically" in source
     assert "element.scrollIntoView({block:'center', inline:'nearest'})" in source
     assert "document.elementFromPoint(x, y)" in source
+    assert "from avg_msgs.msg import AvgBool, ModuleState" in source
+    assert "from std_msgs.msg import Bool" not in source
+    assert 'subscribe(\n            AvgBool,\n            "/planning/engage"' in source
+    assert 'subscribe(\n            AvgBool,\n            "/platform/drive_enable"' in source
     assert source.index("scroll_pointer_target_into_view(") < source.index(
         "self.clear_probe()"
     )
