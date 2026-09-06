@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 
 from avg_msgs.msg import PlanningRecallRequest
+from builtin_interfaces.msg import Time as RosTime
 from rclpy.time import Time
 
 
@@ -135,6 +136,66 @@ class RecallTargetPolicyTest(unittest.TestCase):
             (auto_stamp.sec, auto_stamp.nanosec),
         )
 
+    def test_recall_auto_goal_preserves_valid_request_stamp(self) -> None:
+        auto_publisher = _RecordingPublisher()
+        fixed_now = Time(seconds=123, nanoseconds=456789)
+        keypoint = MODULE.Keypoint(
+            name="camping_site_4",
+            frame_id="map",
+            x=19.31,
+            y=-3.27,
+            z=0.0,
+            yaw_deg=-67.4,
+        )
+        node = SimpleNamespace(
+            return_mission_key="drop_zone",
+            pub_auto_goal_snapper=auto_publisher,
+            auto_goal_snapper_input_topic="/planning/auto_goal_raw",
+            min_goal_publish_interval_s=0.0,
+            _last_goal_publish_time=Time(seconds=1),
+            startup_goal_sent=False,
+            _goal_reached_since=None,
+            _goal_reached_latched=True,
+            _drop_zone_arrival_notified=True,
+        )
+        node.get_clock = lambda: SimpleNamespace(now=lambda: fixed_now)
+        node.get_logger = lambda: SimpleNamespace(
+            info=lambda *_: None,
+            warn=lambda *_: None,
+            error=lambda *_: None,
+        )
+        node._goal_keypoint = lambda _key: keypoint
+        node._reset_nav2_goal_status = lambda: None
+
+        request_stamp = RosTime(sec=41, nanosec=73)
+        self.assertTrue(
+            PlanningStateMachineNode._publish_auto_goal(
+                node,
+                "camping_site_4",
+                "recall:camping_site_4",
+                force=True,
+                correlation_stamp=request_stamp,
+            )
+        )
+        emitted = auto_publisher.messages[0].header.stamp
+        self.assertEqual((emitted.sec, emitted.nanosec), (41, 73))
+
+        self.assertTrue(
+            PlanningStateMachineNode._publish_auto_goal(
+                node,
+                "camping_site_4",
+                "legacy_recall",
+                force=True,
+                correlation_stamp=RosTime(),
+            )
+        )
+        fallback = auto_publisher.messages[1].header.stamp
+        now_msg = fixed_now.to_msg()
+        self.assertEqual(
+            (fallback.sec, fallback.nanosec),
+            (now_msg.sec, now_msg.nanosec),
+        )
+
     def test_b1_through_b13_resolve_to_semantic_site_not_legacy_road_key(self) -> None:
         node = _policy_fixture()
         for index in range(1, 14):
@@ -190,8 +251,15 @@ class RecallTargetPolicyTest(unittest.TestCase):
         node.recall_requested = False
         node.warn_goal_sent = True
         node._publish_auto_goal = (
-            lambda key, source, force=False: events.append(
-                ("goal", key, source, force)
+            lambda key, source, force=False, correlation_stamp=None: events.append(
+                (
+                    "goal",
+                    key,
+                    source,
+                    force,
+                    correlation_stamp.sec,
+                    correlation_stamp.nanosec,
+                )
             )
             or True
         )
@@ -200,6 +268,7 @@ class RecallTargetPolicyTest(unittest.TestCase):
         )
 
         request = PlanningRecallRequest()
+        request.header.stamp = RosTime(sec=41, nanosec=73)
         request.site_name = "B13"
         request.source = "guest:B13"
         PlanningStateMachineNode._on_camping_site_recall(node, request)
@@ -216,7 +285,7 @@ class RecallTargetPolicyTest(unittest.TestCase):
                     PlanningStateMachineNode.SCENARIO_RECALL_TO_SITE,
                     "recall_topic",
                 ),
-                ("goal", "camping_site_13", "recall:B13", True),
+                ("goal", "camping_site_13", "recall:B13", True, 41, 73),
             ],
         )
 
@@ -231,8 +300,8 @@ class RecallTargetPolicyTest(unittest.TestCase):
             lambda scenario, reason: events.append(("scenario", scenario, reason))
         )
         node._publish_auto_goal = (
-            lambda key, source, force=False: events.append(
-                ("goal", key, source, force)
+            lambda key, source, force=False, correlation_stamp=None: events.append(
+                ("goal", key, source, force, correlation_stamp)
             )
             or False
         )

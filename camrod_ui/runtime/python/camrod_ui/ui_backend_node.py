@@ -3832,9 +3832,16 @@ class UiBackendNode(Node):
         return yaw if math.isfinite(yaw) else None
 
     def _remember_pending_site_route_goal(
-        self, raw_goal: PoseStamped, mission_key: str
+        self, raw_goal: Any, mission_key: str
     ) -> None:
-        stamp_key = self._route_goal_stamp_key(raw_goal)
+        """Bind a raw-goal stamp to one mission until GoalSnapper echoes it.
+
+        ``raw_goal`` may be either a pose or a typed recall request.  Only its
+        ROS header stamp is consumed here; the snapped pose is still accepted
+        exclusively by :meth:`_on_planning_route_goal` after an exact stamp
+        match.
+        """
+        stamp_key = UiBackendNode._route_goal_stamp_key(raw_goal)
         with self._lock:
             if stamp_key not in self._pending_site_route_goal_stamps:
                 self._pending_site_route_goal_stamps[stamp_key] = mission_key
@@ -7076,6 +7083,17 @@ class UiBackendNode(Node):
         # Preserve the original marker exactly; downstream logs can distinguish
         # guest, guest:kiosk, and future guest transport variants.
         recall.source = str(source)
+
+        # HH_260907 - A typed recall asks planning_state_machine to create the
+        # raw campsite goal, unlike ordinary delivery where this backend owns
+        # that pose publication.  Arm the same exact-stamp correlation before
+        # publishing the request.  Planning preserves this header stamp on its
+        # auto goal and GoalSnapper preserves it again on the snapped ROS goal,
+        # so a freshly restarted backend can validate the real roadside anchor
+        # without adopting an unrelated/manual or stale route.
+        UiBackendNode._remember_pending_site_route_goal(
+            self, recall, canonical_key
+        )
 
         # Match normal destination authorization, but publish only the typed
         # recall request.  No UI-owned mission-key/site-pose pair may race the
