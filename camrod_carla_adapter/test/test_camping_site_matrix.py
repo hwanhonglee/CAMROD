@@ -806,6 +806,58 @@ def test_operator_browser_dispatch_accepts_only_canonical_backend_echo_marker():
         )
 
 
+def test_operator_recall_dispatch_accepts_deferred_charging_destination_echo():
+    canonical = {
+        "sequences": {
+            "destination_requests": [{
+                "site": "B1",
+                "run": True,
+                "source": (
+                    "robot_ui:recall|ui_backend_echo="
+                    "2013497-890842327946299-14"
+                ),
+            }],
+            "recall_requests": [],
+        }
+    }
+    assert matrix.dispatch_source_observed(
+        canonical,
+        site="B1",
+        mission_intent="recall",
+        expected_source="robot_ui:recall",
+    )
+
+    for rejected in (
+        {
+            "site": "B2",
+            "run": True,
+            "source": canonical["sequences"]["destination_requests"][0]["source"],
+        },
+        {
+            "site": "B1",
+            "run": False,
+            "source": canonical["sequences"]["destination_requests"][0]["source"],
+        },
+        {
+            "site": "B1",
+            "run": True,
+            "source": "ws|ui_backend_echo=2013497-1-1",
+        },
+    ):
+        snapshot = {
+            "sequences": {
+                "destination_requests": [rejected],
+                "recall_requests": [],
+            }
+        }
+        assert not matrix.dispatch_source_observed(
+            snapshot,
+            site="B1",
+            mission_intent="recall",
+            expected_source="robot_ui:recall",
+        )
+
+
 def test_guest_browser_arguments_are_local_and_opt_in():
     default = matrix._parser().parse_args([])
     assert default.return_authority == "operator_rest"
