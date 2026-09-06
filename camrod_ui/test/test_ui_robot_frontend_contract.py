@@ -584,6 +584,30 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(hook, self.source)
 
+        for hook in (
+            'data-ui="operator-admin-entry"',
+            'data-ui="operator-admin-login-modal"',
+            'data-ui="operator-admin-id"',
+            'data-ui="operator-admin-password"',
+            'data-ui="operator-admin-login"',
+            'data-ui={`operator-diagnostic-tab-${tab.id}`}',
+        ):
+            self.assertIn(hook, self.source)
+
+        for hook in (
+            'data-ui="manual-drive-panel"',
+            'data-ui="manual-drive-state"',
+            'data-ui="manual-drive-toggle"',
+            'data-ui="manual-drive-arm"',
+            'data-ui="manual-drive-zero"',
+            'data-ui="manual-drive-disarm"',
+            'data-ui="manual-drive-scale"',
+            "data-connected={manual.connected ? 'true' : 'false'}",
+            "data-armed={manual.armed ? 'true' : 'false'}",
+            "data-mode={driveMode}",
+        ):
+            self.assertIn(hook, self.manual_drive_source)
+
     def test_primary_robot_status_and_camera_headings_are_korean(self) -> None:
         for text in (
             "INITIALIZING: '초기화 중'",
