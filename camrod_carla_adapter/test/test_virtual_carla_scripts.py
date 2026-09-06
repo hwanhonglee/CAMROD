@@ -20,6 +20,7 @@ PHYSICAL_PREFLIGHT = SCRIPT_ROOT / "check_physical_bridge_status.py"
 UI_MANUAL_PREFLIGHT = SCRIPT_ROOT / "check_camrod_ui_manual_ready.py"
 SENSOR_PREFLIGHT = SCRIPT_ROOT / "check_carla_sensor_streams.py"
 UI_EVIDENCE_CAPTURE = SCRIPT_ROOT / "capture_ui_evidence.sh"
+MANUAL_4WS_EVIDENCE = SCRIPT_ROOT / "manual_4ws_evidence.py"
 SCRIPTS = (
     "env.sh",
     "map_profiles.sh",
@@ -30,6 +31,7 @@ SCRIPTS = (
     "test.sh",
     "run.sh",
     "capture_ui_evidence.sh",
+    "run_manual_4ws_evidence.sh",
 )
 VIRTUAL_ENV_KEYS = (
     "CAMROD_CYCLONEDDS_CONFIG",
@@ -122,6 +124,7 @@ def test_entrypoints_are_executable_and_parse() -> None:
         PHYSICAL_PREFLIGHT,
         UI_MANUAL_PREFLIGHT,
         SENSOR_PREFLIGHT,
+        MANUAL_4WS_EVIDENCE,
     ):
         source = path.read_text(encoding="utf-8")
         compile(source, str(path), "exec")
@@ -136,6 +139,7 @@ def test_help_is_available_without_external_workspaces() -> None:
         "run.sh",
         "site_access.sh",
         "capture_ui_evidence.sh",
+        "run_manual_4ws_evidence.sh",
     ):
         result = subprocess.run(
             [str(SCRIPT_ROOT / filename), "--help"],
@@ -145,6 +149,43 @@ def test_help_is_available_without_external_workspaces() -> None:
             text=True,
         )
         assert "Usage:" in result.stdout
+
+
+def test_manual_4ws_evidence_plan_is_offline_and_authority_is_visible_ui(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "must-not-exist"
+    result = subprocess.run(
+        [
+            str(SCRIPT_ROOT / "run_manual_4ws_evidence.sh"),
+            "plan",
+            "--output-root",
+            str(output_root),
+        ],
+        cwd="/tmp",
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "DISPLAY": "", "XAUTHORITY": ""},
+    )
+    assert not output_root.exists()
+    assert "PLAN ONLY" in result.stdout
+    assert "Actual 1.65 s administrator-entry long press" in result.stdout
+    assert "page-owned /ws/manual-drive remains the sole authority" in result.stdout
+    assert "straight" in result.stdout
+    assert "turn" in result.stdout
+    assert "crab" in result.stdout
+    assert "zero_turn" in result.stdout
+
+    source = MANUAL_4WS_EVIDENCE.read_text(encoding="utf-8")
+    compile(source, str(MANUAL_4WS_EVIDENCE), "exec")
+    assert ".create_publisher(" not in source
+    assert ".publish(" not in source
+    assert "apply_control" not in source
+    assert "set_wheel_physics" not in source
+    assert "Input.dispatchKeyEvent" in source
+    assert "Input.dispatchMouseEvent" in source
+    assert 'EXPECTED_UI_TITLE = "Robot UI"' in source
 
 
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(

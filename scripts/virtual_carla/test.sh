@@ -46,6 +46,7 @@ shell_tools=(
   test.sh
   run.sh
   run_site_evidence_matrix.sh
+  run_manual_4ws_evidence.sh
 )
 for tool in "${shell_tools[@]}"; do
   bash -n "${script_dir}/${tool}"

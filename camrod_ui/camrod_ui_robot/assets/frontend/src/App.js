@@ -391,6 +391,7 @@ function DiagnosticsMonitor({ redockStatus = null }) {
           <button
             key={tab.id}
             type="button"
+            data-ui={`operator-diagnostic-tab-${tab.id}`}
             className={`diag-tab-button ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
             aria-selected={activeTab === tab.id}
@@ -1969,6 +1970,7 @@ function App() {
   ) : null;
   const adminEntryZone = (
     <div
+      data-ui="operator-admin-entry"
       className="diag-secret-zone diag-secret-zone-global"
       onMouseDown={handleDiagPressStart}
       onMouseUp={handleDiagPressEnd}
@@ -1996,10 +1998,18 @@ function App() {
       <div className="admin-runtime-shell">
         {showLoginModal ? (
           <div className="modal-overlay">
-            <div className="modal-box login-modal-box" onClick={e => e.stopPropagation()}>
+            <div
+              className="modal-box login-modal-box"
+              data-ui="operator-admin-login-modal"
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-header">
                 <span className="modal-title">진단 관리자 인증</span>
-                <button className="modal-back-btn" onClick={() => setShowLoginModal(false)}>뒤로가기</button>
+                <button
+                  className="modal-back-btn"
+                  data-ui="operator-admin-login-cancel"
+                  onClick={() => setShowLoginModal(false)}
+                >뒤로가기</button>
               </div>
               <div className="modal-body login-modal-body">
                 <div className="login-fields-row">
@@ -2007,6 +2017,7 @@ function App() {
                     <label>아이디</label>
                     <input
                       type="text"
+                      data-ui="operator-admin-id"
                       value={loginId}
                       onChange={e => setLoginId(e.target.value)}
                       onFocus={() => setActiveField('id')}
@@ -2019,6 +2030,7 @@ function App() {
                     <input
                       id="login-pw-input"
                       type="password"
+                      data-ui="operator-admin-password"
                       value={loginPw}
                       onChange={e => setLoginPw(e.target.value)}
                       onFocus={() => setActiveField('pw')}
@@ -2027,7 +2039,11 @@ function App() {
                     />
                   </div>
                 </div>
-                <button className="login-submit-btn" onClick={handleLogin}>확인</button>
+                <button
+                  className="login-submit-btn"
+                  data-ui="operator-admin-login"
+                  onClick={handleLogin}
+                >확인</button>
                 {loginError && <p className="login-error">{loginError}</p>}
                 <div className="vkb-wrap">
                   <div className="vkb-field-tabs">
@@ -2059,7 +2075,11 @@ function App() {
             <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">{modalData?.title || '진단'}</span>
-                <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+                <button
+                  className="modal-back-btn"
+                  data-ui="operator-admin-exit"
+                  onClick={() => setActiveModal(null)}
+                >뒤로가기</button>
               </div>
               <div className="modal-body"><DiagnosticsMonitor redockStatus={redockStatus} /></div>
             </div>

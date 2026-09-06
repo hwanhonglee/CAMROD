@@ -409,6 +409,13 @@ export default function ManualDrivePanel() {
   return (
     <section
       className={`telemetry-section manual-drive-panel ${collapsed ? 'collapsed' : 'expanded'}`}
+      data-ui="manual-drive-panel"
+      data-connected={manual.connected ? 'true' : 'false'}
+      data-armed={manual.armed ? 'true' : 'false'}
+      data-mode={driveMode}
+      data-linear-limit-mps={Number(manual.limits?.linear_x_mps || 0)}
+      data-lateral-limit-mps={Number(manual.limits?.lateral_y_mps || 0)}
+      data-angular-limit-radps={Number(manual.limits?.angular_z_radps || 0)}
       aria-label="CARLA manual drive controls"
     >
       <div className="manual-drive-header">
@@ -423,19 +430,24 @@ export default function ManualDrivePanel() {
           <span>Yaw {Number(command.angular_z || 0).toFixed(2)}</span>
         </div>
         <div className="manual-drive-header-actions">
-          <div className={`manual-drive-state ${manual.armed ? 'armed' : (armPending ? 'pending' : '')}`}>
+          <div
+            className={`manual-drive-state ${manual.armed ? 'armed' : (armPending ? 'pending' : '')}`}
+            data-ui="manual-drive-state"
+          >
             <span />{manual.armed ? 'ARMED' : (armPending ? 'ARMING' : (manual.connected ? 'STANDBY' : 'OFFLINE'))}
           </div>
           <div className="manual-drive-compact-actions">
             <button
               type="button"
               className="manual-drive-compact-stop"
+              data-ui="manual-drive-zero"
               onClick={() => clearMotion(false)}
               disabled={!manual.armed}
             >ZERO</button>
             <button
               type="button"
               className="manual-drive-compact-disarm"
+              data-ui="manual-drive-disarm"
               onClick={() => clearMotion(true)}
               disabled={!manual.armed && !armPending}
             >DISARM</button>
@@ -443,6 +455,7 @@ export default function ManualDrivePanel() {
           <button
             type="button"
             className="manual-drive-toggle"
+            data-ui="manual-drive-toggle"
             aria-expanded={!collapsed}
             aria-controls="manual-drive-expanded-controls"
             onClick={toggleCollapsed}
@@ -498,6 +511,7 @@ export default function ManualDrivePanel() {
           <button
             type="button"
             className={`manual-drive-arm ${manual.armed ? 'active' : ''}`}
+            data-ui="manual-drive-arm"
             onClick={toggleArm}
             disabled={!manual.available || !manual.connected || armPending}
           >
@@ -509,6 +523,7 @@ export default function ManualDrivePanel() {
             속도 {activeSpeed.axis} {activeSpeed.value.toFixed(2)} {activeSpeed.unit} · {Math.round(scale * 100)}%
             <input
               type="range"
+              data-ui="manual-drive-scale"
               min="0.1"
               max="1.0"
               step="0.05"
