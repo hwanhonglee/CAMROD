@@ -329,6 +329,15 @@ def test_manual_4ws_already_disarmed_cleanup_requires_durable_zero_proof() -> No
     assert "validate_already_disarmed_trace(observer.records)" in teardown
 
 
+def test_manual_4ws_ui_axes_are_mapped_to_ros_twist_axes() -> None:
+    module = _load_manual_4ws_evidence_module()
+
+    assert module.ui_axes_to_twist_axes((1, 0, 0)) == (1, 0, 0)
+    assert module.ui_axes_to_twist_axes((1, 1, 0)) == (1, 0, 1)
+    assert module.ui_axes_to_twist_axes((0, 0, 1)) == (0, 1, 0)
+    assert module.ui_axes_to_twist_axes((0, 1, 0)) == (0, 0, 1)
+
+
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     tmp_path: Path,
 ) -> None:

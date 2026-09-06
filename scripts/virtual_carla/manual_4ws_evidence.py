@@ -1118,6 +1118,14 @@ def semantic_twist_match(
     return True
 
 
+def ui_axes_to_twist_axes(
+    axes: tuple[int, int, int],
+) -> tuple[int, int, int]:
+    """Map UI (forward, turn, crab) into ROS (x, y, yaw) ordering."""
+    forward, turn, crab = axes
+    return forward, crab, turn
+
+
 def validate_ui_frames(
     records: Sequence[Mapping[str, Any]],
     spec: ScenarioSpec,
@@ -1365,11 +1373,19 @@ def validate_ros_trace(
         raise MatrixError("critical ROS publishers were absent: " + ", ".join(missing_publishers))
 
     motion: dict[str, Any] = {}
-    for name, axes in (("positive", spec.positive_axes), ("inverse", spec.inverse_axes)):
+    for name, ui_axes in (
+        ("positive", spec.positive_axes),
+        ("inverse", spec.inverse_axes),
+    ):
         phase = phases[name]
+        twist_axes = ui_axes_to_twist_axes(ui_axes)
         motion[name] = {
-            "manual": _rate_and_semantics(records, manual_topic, phase, axes, hold_s),
-            "safety_output": _rate_and_semantics(records, final_topic, phase, axes, hold_s),
+            "manual": _rate_and_semantics(
+                records, manual_topic, phase, twist_axes, hold_s
+            ),
+            "safety_output": _rate_and_semantics(
+                records, final_topic, phase, twist_axes, hold_s
+            ),
         }
     zero = {
         topic: [
