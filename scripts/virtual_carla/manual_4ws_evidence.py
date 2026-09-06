@@ -855,8 +855,7 @@ class RosTraceObserver:
             from rclpy.qos import QoSProfile, QoSReliabilityPolicy
             from geometry_msgs.msg import Twist
             from nav_msgs.msg import Odometry
-            from std_msgs.msg import Bool
-            from avg_msgs.msg import ModuleState
+            from avg_msgs.msg import AvgBool, ModuleState
             from carla_extended_ackermann_msgs.msg import (
                 ExtendedAckermannDrive,
                 PhysicalFourWheelControl,
@@ -923,8 +922,22 @@ class RosTraceObserver:
         )
         subscribe(Odometry, f"/carla/{role_name}/odometry", decode_odometry, best_effort)
         subscribe(ModuleState, "/control/cmd_vel_safety_gate/status", decode_module_state, reliable)
-        subscribe(Bool, "/planning/engage", lambda message: {"data": bool(message.data)}, reliable)
-        subscribe(Bool, "/platform/drive_enable", lambda message: {"data": bool(message.data)}, reliable)
+        # CAMROD publishes both safety-arm boundaries as avg_msgs/AvgBool.
+        # Subscribing with std_msgs/Bool leaves a same-named DDS endpoint in
+        # the graph but can never receive a sample because the ROS types do
+        # not match, which made a real visible UI ARM look like a failure.
+        subscribe(
+            AvgBool,
+            "/planning/engage",
+            lambda message: {"data": bool(message.data)},
+            reliable,
+        )
+        subscribe(
+            AvgBool,
+            "/platform/drive_enable",
+            lambda message: {"data": bool(message.data)},
+            reliable,
+        )
         try:
             from carla_msgs.msg import CarlaCollisionEvent
         except (ImportError, ModuleNotFoundError):
