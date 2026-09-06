@@ -630,13 +630,29 @@ try:
     git_branch = subprocess.check_output(
         ["git", "-C", git_root, "branch", "--show-current"], text=True
     ).strip()
+    git_status_excluded_paths = [
+        "camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/cmake/vanjee_driverConfig.cmake",
+    ]
     git_status = subprocess.check_output(
-        ["git", "-C", git_root, "status", "--short", "--untracked-files=all"],
+        [
+            "git",
+            "-C",
+            git_root,
+            "status",
+            "--short",
+            "--untracked-files=all",
+            "--",
+            *[
+                f":(top,exclude){path}"
+                for path in git_status_excluded_paths
+            ],
+        ],
         text=True,
     ).splitlines()
 except (OSError, subprocess.CalledProcessError):
     git_root = git_head = git_branch = ""
     git_status = []
+    git_status_excluded_paths = []
 
 probe = json.loads(Path(os.environ["CAPTURE_META_PROBE"]).read_text(encoding="utf-8"))
 ui_kind = os.environ["CAPTURE_META_UI_KIND"]
@@ -679,6 +695,7 @@ document = {
         "head": git_head,
         "worktree_clean": not git_status,
         "worktree_status": git_status,
+        "worktree_status_excluded_paths": git_status_excluded_paths,
         "capture_script": artifact(os.environ["CAPTURE_META_SCRIPT"]),
     },
     "scope": {
