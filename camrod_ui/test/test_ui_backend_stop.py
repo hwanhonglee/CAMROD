@@ -190,6 +190,30 @@ class _FakeBackend:
 
 class UiBackendStopTest(unittest.TestCase):
 
+    def test_service_state_qos_preserves_tokenized_return_transition_burst(
+        self,
+    ) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+        block_start = source.index("service_heartbeat_qos = QoSProfile(")
+        block_end = source.index(")", block_start)
+        qos_block = source[block_start:block_end]
+
+        self.assertIn("history=HistoryPolicy.KEEP_LAST", qos_block)
+        self.assertIn("depth=10", qos_block)
+        self.assertIn("reliability=ReliabilityPolicy.RELIABLE", qos_block)
+        self.assertIn("durability=DurabilityPolicy.VOLATILE", qos_block)
+        self.assertGreaterEqual(
+            int(qos_block.split("depth=", 1)[1].split(",", 1)[0]),
+            3,
+            "ALIGN_RETRACE_YAW/CRAB_OUT/DONE must survive dispatch-lock delay",
+        )
+
     def test_drop_zone_polygon_rejects_road_front_spawn_inside_legacy_radius(
         self,
     ) -> None:

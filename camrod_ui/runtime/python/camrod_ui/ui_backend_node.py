@@ -1591,9 +1591,20 @@ class UiBackendNode(Node):
         # a 2 Hz heartbeat.  Keep QoS compatible with the existing volatile
         # publishers; the periodic value, rather than a latched historical
         # event, restores departure_required after a UI restart.
+        #
+        # HH_260906 - RETURN ownership is acknowledged by the campsite
+        # controller's first token-bearing RETURN_WITH_CARGO sample.  The HTTP
+        # dispatch transaction deliberately holds _destination_dispatch_lock,
+        # so ALIGN_RETRACE_YAW, CRAB_OUT, and DONE can queue before the executor
+        # enters this subscription callback.  A depth-one reader replaced the
+        # unique token-bearing edge with the following heartbeat and left the
+        # mission unable to accept otherwise valid parking/charging terminal
+        # states.  Preserve the bounded transition burst without changing the
+        # reliable/volatile wire contract or weakening generation, token, and
+        # physical-pose validation below.
         service_heartbeat_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
-            depth=1,
+            depth=10,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
         )
