@@ -1,5 +1,7 @@
-# CARLA rendered-camera contract. Sensor actors are authored at 800x600 and
-# wall-clock cadence may fall below simulation cadence under GPU load.
+# CARLA rendered-camera contract.  The front actor remains 800x600.  The rear
+# parking camera is 960x720 so the 0.16 m tag stays decodable at the measured
+# 4.35 m Drop Zone handoff; wall-clock cadence may fall below simulation cadence
+# under GPU load.
 /system/camera_checker:
   ros__parameters:
     publish_rate_hz: 1.0
@@ -19,7 +21,7 @@
 
     econ_rear:
       # CARLA relay already produces this JPEG from the real rear actor.  The
-      # checker only needs cadence/dimensions, so subscribing to the 1.9 MB raw
+      # checker only needs cadence/dimensions, so subscribing to the raw
       # frame would add avoidable DDS and callback load to manual UI sessions.
       image_topic: "/sensing/camera/econ_rear/image_raw/compressed"
       image_type: "compressed"
@@ -28,6 +30,6 @@
       fps_warn_ratio: 0.7
       fps_error_ratio: 0.4
       stale_timeout_s: 3.0
-      expected_width: 800
-      expected_height: 600
+      expected_width: 960
+      expected_height: 720
       expected_encoding: ""

@@ -2,14 +2,57 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
+
+
+def _state_machine_node(context):
+    """Create the node without masking values from its selected YAML file."""
+    return_goal_reached_distance = LaunchConfiguration(
+        'planning_state_machine_return_goal_reached_distance_m'
+    ).perform(context).strip()
+    runtime_parameters = {
+        'keypoints_yaml': LaunchConfiguration(
+            'planning_state_machine_keypoints_yaml'
+        ),
+        'camping_sites_yaml': LaunchConfiguration(
+            'planning_state_machine_camping_sites_yaml'
+        ),
+        'reverse_auto_goal_snapper_input_topic': LaunchConfiguration(
+            'planning_state_machine_reverse_auto_goal_snapper_input_topic'
+        ),
+    }
+    if return_goal_reached_distance:
+        runtime_parameters['return_goal_reached_distance_m'] = ParameterValue(
+            LaunchConfiguration(
+                'planning_state_machine_return_goal_reached_distance_m'
+            ),
+            value_type=float,
+        )
+
+    return [Node(
+        package='camrod_planning',
+        executable='planning_state_machine_node.py',
+        name='planning_state_machine',
+        namespace=LaunchConfiguration('module_namespace'),
+        output='screen',
+        # HH_260702 - The state machine owns planning soft-estop/scenario
+        # state, so a transient crash should recover without full bringup.
+        respawn=True,
+        respawn_delay=2.0,
+        parameters=[
+            LaunchConfiguration('planning_state_machine_param_file'),
+            runtime_parameters,
+        ],
+        condition=IfCondition(LaunchConfiguration('enable_state_machine')),
+    )]
 
 
 def generate_launch_description():
@@ -32,27 +75,14 @@ def generate_launch_description():
             'planning_state_machine_reverse_auto_goal_snapper_input_topic',
             default_value='',
         ),
-
-        Node(
-            package='camrod_planning',
-            executable='planning_state_machine_node.py',
-            name='planning_state_machine',
-            namespace=LaunchConfiguration('module_namespace'),
-            output='screen',
-            # HH_260702 - The state machine owns planning soft-estop/scenario
-            # state, so a transient crash should recover without full bringup.
-            respawn=True,
-            respawn_delay=2.0,
-            parameters=[
-                LaunchConfiguration('planning_state_machine_param_file'),
-                {
-                    'keypoints_yaml': LaunchConfiguration('planning_state_machine_keypoints_yaml'),
-                    'camping_sites_yaml': LaunchConfiguration('planning_state_machine_camping_sites_yaml'),
-                    'reverse_auto_goal_snapper_input_topic': LaunchConfiguration(
-                        'planning_state_machine_reverse_auto_goal_snapper_input_topic'
-                    ),
-                },
-            ],
-            condition=IfCondition(LaunchConfiguration('enable_state_machine')),
+        DeclareLaunchArgument(
+            'planning_state_machine_return_goal_reached_distance_m',
+            default_value='',
+            description=(
+                'Optional return-route geometric handoff override. Empty '
+                'preserves the selected YAML value; simulator wrappers may '
+                'explicitly opt into a bounded pose-reference margin.'
+            ),
         ),
+        OpaqueFunction(function=_state_machine_node),
     ])

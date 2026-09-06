@@ -61,6 +61,7 @@ def test_plan_is_explicitly_read_only_and_records_config_provenance(tmp_path):
     assert decoded["scope"]["pose_teleport_used"] is False
     assert decoded["scope"]["fake_sensor_data_used"] is False
     assert decoded["scope"]["selected_sites"] == ["B1", "B12"]
+    assert decoded["scope"]["mission_intent"] == "delivery"
     assert decoded["scope"]["unattempted_sites"] == [f"B{i}" for i in range(2, 12)] + ["B13"]
     assert decoded["sites"][0]["elapsed_s"] == 0.0
     assert decoded["sites"][0]["dispatch_started_at_utc"] == ""
@@ -69,6 +70,8 @@ def test_plan_is_explicitly_read_only_and_records_config_provenance(tmp_path):
     assert decoded["sites"][0]["outbound_distance_m"] == 0.0
     assert decoded["sites"][0]["return_distance_m"] == 0.0
     assert decoded["sites"][0]["total_odom_distance_m"] == 0.0
+    assert decoded["sites"][0]["mission_intent"] == "delivery"
+    assert decoded["sites"][0]["configured_service_mode"] == "turnaround"
     assert len(decoded["active_configuration"]["sha256"]["camping_sites"]) == 64
     assert len(decoded["active_configuration"]["sha256"]["drop_zones"]) == 64
     assert not list(tmp_path.glob("*.tmp"))
@@ -189,6 +192,35 @@ def test_return_waits_for_service_state_and_ordered_controller_phase():
     assert not matrix.arrival_ready_for_return(out_of_order, expected)
 
 
+def test_recall_waits_for_guest_loading_and_always_uses_roadside_policy():
+    turnaround_site = matrix.Site(
+        "B1", "camping_site_1", 1.0, 2.0, 0.0, 0.0, "turnaround"
+    )
+    expected = matrix.SITE_PHASES["roadside_stop"]
+    snapshot = {
+        "service_state": {"state": matrix.GUEST_LOADING_WAIT},
+        "sequences": {
+            "site_phases": ["CRAB_IN", "UNLOAD_WAIT", "WAIT_RETURN"]
+        },
+    }
+
+    assert matrix.effective_service_mode(turnaround_site, "recall") == "roadside_stop"
+    assert matrix.arrival_ready_for_return(
+        snapshot,
+        expected,
+        expected_service_state=matrix.GUEST_LOADING_WAIT,
+    )
+    assert not matrix.arrival_ready_for_return(snapshot, expected)
+    assert matrix.required_service_state_ids("recall") == (
+        matrix.RECALL_TO_SITE_ROAD,
+        matrix.GUEST_LOADING_WAIT,
+        matrix.RETURN_WITH_CARGO,
+        matrix.DROP_ZONE_PARKING,
+        matrix.WAITING_FOR_CHARGING,
+        matrix.CHARGING,
+    )
+
+
 def test_sensor_audit_requires_exact_36_streams_and_13_actors(tmp_path):
     audit = tmp_path / "sensor-audit.json"
     document = {
@@ -277,11 +309,6 @@ def test_runtime_profile_audit_binds_live_map_lanelet_and_parameters(tmp_path):
             "quad_decimate",
             2.0,
         ),
-        (
-            "/carla_charging_contact_emulator",
-            "parking_status_topic",
-            "/parking/reverse_parking_controller/status",
-        ),
     ):
         expected_value = matrix.DEVELOP_PARITY_RUNTIME_SIGNATURE[node][parameter]
         document["selected_live_parameters"][node][parameter] = stale_value
@@ -297,7 +324,7 @@ def test_runtime_profile_audit_binds_live_map_lanelet_and_parameters(tmp_path):
             )
         document["selected_live_parameters"][node][parameter] = expected_value
 
-    document["profile"] = "develop-plus-carla-site-geometry-v26"
+    document["profile"] = "develop-plus-carla-site-geometry-v27"
     document["selected_live_parameters"] = json.loads(
         json.dumps(matrix.DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE)
     )
@@ -310,7 +337,7 @@ def test_runtime_profile_audit_binds_live_map_lanelet_and_parameters(tmp_path):
         expected_actor_id=actor_id,
         expected_role_name="ego_vehicle",
     )
-    assert accepted["profile"] == "develop-plus-carla-site-geometry-v26"
+    assert accepted["profile"] == "develop-plus-carla-site-geometry-v27"
 
     document["profile"] = "develop-plus-carla-site-geometry-v17"
     profile.write_text(json.dumps(document), encoding="utf-8")
@@ -324,21 +351,47 @@ def test_runtime_profile_audit_binds_live_map_lanelet_and_parameters(tmp_path):
             expected_role_name="ego_vehicle",
         )
 
-    document["profile"] = "develop-plus-carla-site-geometry-v26"
+    document["profile"] = "develop-plus-carla-site-geometry-v27"
 
-    document["selected_live_parameters"][
-        "/control/camping_site_maneuver_controller"
-    ]["entry_anchor_centering_max_initial_error_m"] = 0.65
-    profile.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(matrix.MatrixError, match="expected 0.0"):
-        matrix.load_runtime_profile_audit(
-            profile,
-            expected_carla_map=f"/Game/{live_map}",
-            expected_carla_town=live_map,
-            expected_lanelet_map=lanelet,
-            expected_actor_id=actor_id,
-            expected_role_name="ego_vehicle",
-        )
+    for node, parameter, stale_value in (
+        (
+            "/control/camping_site_maneuver_controller",
+            "entry_anchor_centering_max_initial_error_m",
+            0.65,
+        ),
+        (
+            "/planning/planning_state_machine",
+            "return_goal_reached_distance_m",
+            0.30,
+        ),
+        ("/perception/yolov9mit", "min_confidence", 0.50),
+        ("/ui_backend", "return_site_exit_rearm_enabled", False),
+        (
+            "/control/cmd_vel_safety_gate",
+            "cost_stop_latch_use_trigger_source_for_merged_clear",
+            False,
+        ),
+        (
+            "/control/cmd_vel_safety_gate",
+            "camping_site_maneuver_controller_static_bypass_phases",
+            "",
+        ),
+    ):
+        expected_value = matrix.DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE[
+            node
+        ][parameter]
+        document["selected_live_parameters"][node][parameter] = stale_value
+        profile.write_text(json.dumps(document), encoding="utf-8")
+        with pytest.raises(matrix.MatrixError, match=parameter):
+            matrix.load_runtime_profile_audit(
+                profile,
+                expected_carla_map=f"/Game/{live_map}",
+                expected_carla_town=live_map,
+                expected_lanelet_map=lanelet,
+                expected_actor_id=actor_id,
+                expected_role_name="ego_vehicle",
+            )
+        document["selected_live_parameters"][node][parameter] = expected_value
 
     document["profile"] = "woraksan-tuned"
     profile.write_text(json.dumps(document), encoding="utf-8")
@@ -361,22 +414,27 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
 
     assert tuple(matrix.RUNTIME_PROFILE_SIGNATURES) == (
         "develop-parity",
-        "develop-plus-carla-site-geometry-v26",
+        "develop-plus-carla-site-geometry-v27",
     )
     charger = "/carla_charging_contact_emulator"
     detector = "/perception/apriltag_parking_detector"
-    assert set(site) == set(parity)
+    assert set(site) == set(parity) | {charger}
     recovery_nodes = {
         "/control/cmd_vel_safety_gate",
         "/control/route_safety_recovery_controller",
         "/planning/goal_snapper",
         "/planning/controller_server",
+        "/planning/nav2_selector_latch",
+        "/planning/planning_state_machine",
         "/parking/apriltag_parking_controller",
+        "/perception/yolov9mit",
+        "/ui_backend",
     }
     for node in parity:
         if node not in ({controller, command_adapter} | recovery_nodes):
             assert site[node] == parity[node]
-    assert site[charger] == parity[charger] == {
+    assert charger not in parity
+    assert site[charger] == {
         "drop_zone_id": "drop_zone",
         "pose_topic": "/localization/pose",
         "odometry_topic": "/odom",
@@ -409,6 +467,22 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
         "publish_debug_image": True,
         "debug_jpeg_quality": 80,
     }
+    assert parity["/ui_backend"][
+        "telemetry_docking_rear_camera_fallback_enabled"
+    ] is False
+    assert site["/ui_backend"][
+        "telemetry_docking_rear_camera_fallback_enabled"
+    ] is True
+    assert parity["/ui_backend"]["return_site_exit_rearm_enabled"] is False
+    assert site["/ui_backend"]["return_site_exit_rearm_enabled"] is True
+    assert parity["/planning/planning_state_machine"][
+        "return_goal_reached_distance_m"
+    ] == 0.30
+    assert site["/planning/planning_state_machine"][
+        "return_goal_reached_distance_m"
+    ] == 0.35
+    assert parity["/perception/yolov9mit"]["min_confidence"] == 0.5
+    assert site["/perception/yolov9mit"]["min_confidence"] == 0.95
     assert parity[command_adapter]["recovery_breakaway_enable"] is False
     assert site[command_adapter]["recovery_breakaway_enable"] is True
     assert parity[command_adapter][
@@ -441,6 +515,12 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert site["/control/cmd_vel_safety_gate"][
         "lanelet_safety_footprint_enable"
     ] is False
+    assert parity["/control/cmd_vel_safety_gate"][
+        "lanelet_safety_check_reverse"
+    ] is False
+    assert site["/control/cmd_vel_safety_gate"][
+        "lanelet_safety_check_reverse"
+    ] is True
     for profile in (parity, site):
         gate = profile["/control/cmd_vel_safety_gate"]
         assert gate["lanelet_safety_enable"] is True
@@ -458,6 +538,24 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
         site["/planning/goal_snapper"]["pose_jump_check_topic"]
         == "/localization/pose"
     )
+    assert parity["/planning/goal_snapper"][
+        "reverse_auxiliary_input_goal_topic"
+    ] == ""
+    assert site["/planning/goal_snapper"][
+        "reverse_auxiliary_input_goal_topic"
+    ] == "/planning/auto_reverse_goal_raw"
+    assert parity["/planning/nav2_selector_latch"][
+        "reverse_controller_id"
+    ] == "RPP"
+    assert site["/planning/nav2_selector_latch"][
+        "reverse_controller_id"
+    ] == "RPPReverse"
+    assert site["/planning/controller_server"]["controller_plugins"] == [
+        "RPP", "RPPReverse", "RotationShim"
+    ]
+    assert site["/planning/controller_server"][
+        "RPPReverse.allow_reversing"
+    ] is True
     parking = "/parking/apriltag_parking_controller"
     assert parity[parking]["heading_gain"] == 1.5
     assert parity[parking]["lateral_to_heading_gain"] == 2.5
@@ -499,6 +597,9 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert site[controller]["rotate_180_timeout_s"] == 90.0
     assert parity[controller]["max_angular_speed_radps"] == 0.35
     assert site[controller]["max_angular_speed_radps"] == 0.45
+    assert parity[controller]["roadside_reverse_return_enable"] is False
+    assert site[controller]["roadside_reverse_return_enable"] is True
+    assert site[controller]["roadside_reverse_handoff_distance_m"] == 0.03
     assert site[controller]["entry_position_tolerance_m"] == 0.05
     assert site[controller]["rotate_entry_centering_max_initial_error_m"] == 0.65
     assert site[controller]["entry_anchor_centering_max_initial_error_m"] == 0.0
@@ -539,6 +640,25 @@ def test_report_create_only_and_ui_endpoint_are_fail_closed(tmp_path):
         matrix.UIClient("https://example.com:8010")
 
 
+def test_operator_dispatch_selects_delivery_or_typed_recall_endpoint():
+    client = matrix.UIClient("http://127.0.0.1:8010")
+    calls = []
+    client.post = lambda path, query=None: calls.append((path, query)) or {
+        "success": True
+    }
+
+    client.dispatch("B1", "delivery")
+    client.dispatch("B2", "recall")
+
+    assert calls == [
+        ("/ui/destination", {"site": "B1", "run": "true"}),
+        (
+            "/ui/camping_site_recall",
+            {"site": "B2", "intent": "recall"},
+        ),
+    ]
+
+
 def test_guest_return_authority_requires_exact_usage_complete_source():
     snapshot = {
         "sequences": {
@@ -565,16 +685,67 @@ def test_guest_return_authority_requires_exact_usage_complete_source():
         {"sequences": "malformed"}, "guest:usage_complete"
     )
 
+    controller_snapshot = {
+        "sequences": {
+            "controller_operation_requests": [{
+                "operation": matrix.RETURN_OPERATION,
+                "source": "ws:usage_complete:site_exit_first",
+            }]
+        }
+    }
+    assert matrix.return_source_observed(
+        controller_snapshot, "ws:usage_complete:site_exit_first"
+    )
+
+
+def test_operator_browser_dispatch_source_is_bound_to_ros_message_type():
+    snapshot = {
+        "sequences": {
+            "destination_requests": [
+                {"site": "B4", "run": True, "source": "ws"}
+            ],
+            "recall_requests": [
+                {"site_name": "B7", "source": "robot_ui:recall"}
+            ],
+        }
+    }
+    assert matrix.dispatch_source_observed(
+        snapshot,
+        site="B4",
+        mission_intent="delivery",
+        expected_source="ws",
+    )
+    assert matrix.dispatch_source_observed(
+        snapshot,
+        site="B7",
+        mission_intent="recall",
+        expected_source="robot_ui:recall",
+    )
+    assert not matrix.dispatch_source_observed(
+        snapshot,
+        site="B4",
+        mission_intent="delivery",
+        expected_source="robot_ui:recall",
+    )
+
 
 def test_guest_browser_arguments_are_local_and_opt_in():
     default = matrix._parser().parse_args([])
     assert default.return_authority == "operator_rest"
+    assert default.mission_intent == "delivery"
     guest = matrix._parser().parse_args([
         "--return-authority", "guest_browser",
+        "--mission-intent", "recall",
         "--guest-cdp-url", "http://127.0.0.1:9223",
         "--guest-ui-url", "http://localhost:8012",
     ])
     assert guest.return_authority == "guest_browser"
+    matrix._validate_args(guest)
+    invalid_guest = matrix._parser().parse_args([
+        "--return-authority", "guest_browser",
+    ])
+    with pytest.raises(matrix.MatrixError, match="requires --mission-intent recall"):
+        matrix._validate_args(invalid_guest)
     assert matrix.GuestBrowserClient._local_http_url(
         guest.guest_cdp_url, "--guest-cdp-url"
     ) == "http://127.0.0.1:9223"
@@ -582,6 +753,20 @@ def test_guest_browser_arguments_are_local_and_opt_in():
         matrix.GuestBrowserClient._local_http_url(
             "http://example.com:9223", "--guest-cdp-url"
         )
+
+    operator_browser = matrix._parser().parse_args([
+        "--return-authority", "operator_browser",
+        "--operator-cdp-url", "http://127.0.0.1:9224",
+    ])
+    matrix._validate_args(operator_browser)
+    assert operator_browser.operator_cdp_url == "http://127.0.0.1:9224"
+    operator_contract = matrix.ui_authority_contract(operator_browser)
+    assert operator_contract["return_authority"] == "operator_browser"
+    assert operator_contract["expected_dispatch_source"] == "ws"
+    assert operator_contract["expected_return_source"] == (
+        "ws:usage_complete:site_exit_first"
+    )
+    assert "pointer/text events" in operator_contract["motion_path"]
 
 
 def test_authority_contract_preserves_operator_and_identifies_guest_path():
@@ -596,13 +781,24 @@ def test_authority_contract_preserves_operator_and_identifies_guest_path():
 
     guest = matrix._parser().parse_args([
         "--return-authority", "guest_browser",
+        "--mission-intent", "recall",
     ])
     guest_contract = matrix.ui_authority_contract(guest)
     assert "visible Guest browser page" in guest_contract["motion_path"]
     assert "page-owned Guest WebSocket" in guest_contract["motion_path"]
     assert guest_contract["expected_return_operation"] == matrix.RETURN_OPERATION
     assert guest_contract["expected_return_source"] == "guest:usage_complete"
+    assert guest_contract["expected_arrival_state"] == matrix.GUEST_LOADING_WAIT
+    assert guest_contract["mission_intent"] == "recall"
     assert "sendUsageComplete" in guest_contract["ui_endpoints"]["return"]
+
+    operator_recall = matrix._parser().parse_args([
+        "--mission-intent", "recall",
+    ])
+    recall_contract = matrix.ui_authority_contract(operator_recall)
+    assert recall_contract["expected_arrival_state"] == matrix.GUEST_LOADING_WAIT
+    assert "camping_site_recall" in recall_contract["ui_endpoints"]["dispatch"]
+    assert "typed PlanningRecallRequest" in recall_contract["motion_path"]
 
 
 def test_site_metrics_expose_outbound_return_and_total_distance_and_time():
@@ -719,7 +915,8 @@ def test_collision_accumulator_resets_per_site_and_snapshot_does_not_fail_withou
     for name in (
         "_service_state_ids", "_service_state_names", "_site_phases",
         "_parking_phases", "_drop_zone_phases", "_gate_states",
-        "_ui_operation_requests",
+        "_ui_operation_requests", "_controller_operation_requests",
+        "_destination_requests", "_recall_requests",
     ):
         setattr(observer, name, [])
     observer._cmd_vel_samples = 0
@@ -815,7 +1012,8 @@ def test_collision_publisher_discovery_is_not_reported_as_a_dds_match():
     for name in (
         "_service_state_ids", "_service_state_names", "_site_phases",
         "_parking_phases", "_drop_zone_phases", "_gate_states",
-        "_ui_operation_requests",
+        "_ui_operation_requests", "_controller_operation_requests",
+        "_destination_requests", "_recall_requests",
     ):
         setattr(observer, name, [])
     observer._cmd_vel_samples = 0
@@ -946,7 +1144,7 @@ def test_guest_actions_call_page_lexicals_and_verify_exact_ws_frames():
     assert "frame.action !== 'navigate'" in dispatch_expression
     assert "frame.site !== requestedSite" in dispatch_expression
     assert "currentPhase !== 'arrived'" in return_expression
-    assert "currentState !== 11" in return_expression
+    assert "currentState !== 8" in return_expression
     assert "sendUsageComplete()" in return_expression
     assert "frame.action !== 'usage_complete'" in return_expression
 
@@ -959,6 +1157,100 @@ def test_guest_actions_call_page_lexicals_and_verify_exact_ws_frames():
     with pytest.raises(matrix.MatrixError, match="rejected navigate"):
         rejected.dispatch("B2")
     assert rejected_connection.closed is True
+
+
+def _operator_client_with_fake_visible_dom(probe):
+    client = matrix.OperatorBrowserClient.__new__(matrix.OperatorBrowserClient)
+    client.timeout_s = 1.0
+    client._interactions = []
+    client._typed_value = ""
+    client.cdp_calls = []
+    client._install_transport_probe = lambda: None
+
+    def element(selector):
+        return {
+            "count": 1,
+            "visibleCount": 1,
+            "disabled": False,
+            "pressed": "true",
+            "x": 100.0,
+            "y": 200.0,
+            "value": (
+                client._typed_value
+                if selector == '[data-ui="operator-site-code-input"]'
+                else None
+            ),
+        }
+
+    def call(method, params):
+        client.cdp_calls.append((method, dict(params)))
+        if method == "Input.insertText":
+            client._typed_value = params["text"]
+        return {"result": {}}
+
+    client._element = element
+    client._call = call
+    client._wait_probe = lambda predicate, description: predicate(probe)
+    return client
+
+
+def test_operator_browser_uses_real_pointer_and_text_events_for_full_flow():
+    probe = {
+        "websocket": [
+            {"frame": {"site": "B7", "state": True}},
+            {"frame": {"usage_complete": True}},
+        ],
+        "http": [],
+    }
+    client = _operator_client_with_fake_visible_dom(probe)
+
+    dispatch = client.dispatch("B7", "delivery")
+    returned = client.request_return()
+
+    assert dispatch["source"] == "ws"
+    assert dispatch["transport"] == (
+        "visible_operator_page_websocket_via_cdp_input"
+    )
+    assert returned["source"] == "ws:usage_complete"
+    assert returned["expected_ros_source"] == (
+        "ws:usage_complete:site_exit_first"
+    )
+    methods = [method for method, _ in client.cdp_calls]
+    assert "Input.dispatchMouseEvent" in methods
+    assert methods.count("Input.insertText") == 1
+    selectors = [item["selector"] for item in dispatch["interactions"]]
+    assert '[data-ui="operator-intent-delivery"]' in selectors
+    assert '[data-ui="operator-site-page-1"]' in selectors
+    assert '[data-ui="operator-site-B7"]' in selectors
+    assert '[data-ui="operator-site-code-confirm"]' in selectors
+    assert returned["interactions"][0]["selector"] == (
+        '[data-ui="operator-arrival-return-confirm"]'
+    )
+
+
+def test_operator_browser_recall_requires_real_successful_frontend_http_record():
+    probe = {
+        "websocket": [],
+        "http": [{
+            "url": (
+                "http://127.0.0.1:8010/ui/camping_site_recall?"
+                "site=B10&intent=recall"
+            ),
+            "method": "POST",
+            "status": 200,
+            "ok": True,
+            "body": {"success": True, "intent": "recall", "site": "B10"},
+        }],
+    }
+    client = _operator_client_with_fake_visible_dom(probe)
+    response = client.dispatch("B10", "recall")
+
+    assert response["intent"] == "recall"
+    assert response["source"] == "robot_ui:recall"
+    assert response["transport"] == "visible_operator_page_http_via_cdp_input"
+    selectors = [item["selector"] for item in response["interactions"]]
+    assert '[data-ui="operator-intent-recall"]' in selectors
+    assert '[data-ui="operator-site-page-1"]' in selectors
 
 
 def test_guest_constructor_closes_cdp_socket_when_readiness_fails(monkeypatch):
@@ -1002,6 +1294,7 @@ def test_run_matrix_closes_guest_client_when_ros_observer_init_fails(
     monkeypatch.setattr(matrix, "RosObservation", fail_observer)
     args = matrix._parser().parse_args([
         "--return-authority", "guest_browser",
+        "--mission-intent", "recall",
         "--output", str(tmp_path / "report.json"),
     ])
     report = {"scope": {}}

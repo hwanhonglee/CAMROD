@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # HJ_260601: Guest UI backend for WiFi-accessible robot recall service.
 #            Single-user WebSocket lock, GUEST_RECALL_SERVICE(4) publish on recall.
-# (확장) 사이트 선택 호출(경우 B) 지원:
-#            mobile에서 B1~B13 선택 → /ui/selected_destination publish →
-#            기존 ui_backend_node가 goal_pose/engage 반응. usage_complete 추가.
+# Site-specific recall:
+#            mobile B1~B13 selection -> typed /ui/selected_destination ->
+#            ui_backend_node publishes PlanningRecallRequest for the roadside
+#            wait pose. usage_complete uses the shared typed RETURN operation.
 """Guest UI backend: mobile/laptop access for robot recall service.
 
 Binds to 0.0.0.0 so devices on the same WiFi can reach it.
@@ -13,6 +14,7 @@ Only one WebSocket client is allowed at a time (exclusive lock).
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import math
 import os
@@ -37,6 +39,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 
 def normalize_platform_battery_percent(value: float) -> int:
@@ -46,8 +49,23 @@ def normalize_platform_battery_percent(value: float) -> int:
     return max(0, min(100, int(round(float(value) * 100.0))))
 
 
-def guest_mission_dispatch_ready(state: int, battery: int, minimum: int) -> bool:
-    """Apply the Robot UI's stationary-state and SOC admission boundary."""
+def destination_request_owner(source: str) -> str:
+    """Classify which UI is allowed to operate an accepted destination."""
+    normalized = str(source).strip().lower()
+    if normalized.startswith("guest"):
+        return "guest"
+    if normalized.startswith("robot_ui:"):
+        return "robot"
+    return "operator" if normalized else ""
+
+
+def guest_mission_dispatch_ready(
+    state: int,
+    battery: int,
+    minimum: int,
+    active_request_intent: str = "",
+) -> bool:
+    """Apply stationary/SOC admission and reject an already reserved mission."""
     return state in {
         int(AvgServiceState.DROP_ZONE_WAIT),
         # Parking has already completed before this healthy charger-contact
@@ -55,22 +73,47 @@ def guest_mission_dispatch_ready(state: int, battery: int, minimum: int) -> bool
         # sufficiently charged robot from starting the station-exit sequence.
         int(AvgServiceState.WAITING_FOR_CHARGING),
         int(AvgServiceState.CHARGING),
-    } and battery >= minimum
+    } and battery >= minimum and not str(active_request_intent).strip()
 
 
-def guest_mission_cancel_available(state: int) -> bool:
-    """Limit Guest UI cancel requests to a mission that can still be stopped."""
-    return int(state) in {
-        int(AvgServiceState.MOVING_TO_SITE),
-        int(AvgServiceState.RETURNING_TO_DROP_ZONE),
-        int(AvgServiceState.GUEST_RECALL_SERVICE),
-        int(AvgServiceState.SITE_ENTRY),
-        int(AvgServiceState.RECALL_TO_SITE_ROAD),
-        int(AvgServiceState.RETURN_WITH_CARGO),
-        int(AvgServiceState.DROP_ZONE_PARKING),
-        int(AvgServiceState.DEPARTING_CHARGER),
-        int(AvgServiceState.DEPARTING_DROP_ZONE),
-    }
+def guest_mission_cancel_available(
+    state: int,
+    request_intent: str,
+    active_site: str,
+    request_owner: str,
+) -> bool:
+    """Allow public cancellation only for the Guest UI's own active recall."""
+    return (
+        str(request_intent).strip() == "recall"
+        and str(request_owner).strip() == "guest"
+        and bool(str(active_site).strip())
+        and int(state) in {
+            int(AvgServiceState.MOVING_TO_SITE),
+            int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+            int(AvgServiceState.GUEST_RECALL_SERVICE),
+            int(AvgServiceState.SITE_ENTRY),
+            int(AvgServiceState.RECALL_TO_SITE_ROAD),
+            int(AvgServiceState.RETURN_WITH_CARGO),
+            int(AvgServiceState.DROP_ZONE_PARKING),
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+        }
+    )
+
+
+def guest_usage_complete_available(
+    state: int,
+    request_intent: str,
+    active_site: str,
+    request_owner: str,
+) -> bool:
+    """Allow return only after the active Guest recall reached its wait pose."""
+    return (
+        int(state) == int(AvgServiceState.GUEST_LOADING_WAIT)
+        and str(request_intent).strip() == "recall"
+        and str(request_owner).strip() == "guest"
+        and bool(str(active_site).strip())
+    )
 
 
 def guest_gate_safety_hold(operating_state: str, message: str = "") -> bool:
@@ -106,6 +149,12 @@ class UiGuestNode(Node):
             ).value
         )
         self.grace_period_s = int(self.declare_parameter("grace_period_s", 60).value)
+        self.dispatch_ack_timeout_s = max(
+            1.0,
+            float(
+                self.declare_parameter("dispatch_ack_timeout_s", 5.0).value
+            ),
+        )
         self.minimum_mission_dispatch_battery_percent = max(
             0,
             min(
@@ -126,6 +175,12 @@ class UiGuestNode(Node):
         self.ui_destination_topic = str(
             self.declare_parameter("ui_destination_topic", "/ui/selected_destination").value
         )
+        self.ui_destination_dispatch_status_topic = str(
+            self.declare_parameter(
+                "ui_destination_dispatch_status_topic",
+                "/ui/destination_dispatch_status",
+            ).value
+        )
         self.ui_camping_site_operation_request_topic = str(
             self.declare_parameter(
                 "ui_camping_site_operation_request_topic",
@@ -141,6 +196,27 @@ class UiGuestNode(Node):
 
         self._lock = threading.Lock()
         self._service_state: int = AvgServiceState.DROP_ZONE_WAIT
+        self._active_site: str = ""
+        # Persist the accepted UiDestinationCommand source classification so
+        # a refreshed/reconnected browser does not guess recall from a shared
+        # service state such as RETURN_WITH_CARGO.
+        self._active_request_intent: str = ""
+        # Preserve who accepted the recall. The public Guest UI may observe a
+        # Robot UI recall, but it must not cancel or return that operator-owned
+        # mission.
+        self._active_request_owner: str = ""
+        # Backend-issued generation binds CANCEL/RETURN to the exact accepted
+        # Guest mission. A delayed operation from a previous B-site (or a
+        # previous visit to the same B-site) cannot affect its successor.
+        self._active_mission_generation: int = 0
+        self._dispatch_request_sequence: int = 0
+        self._pending_dispatch_nonce: str = ""
+        self._pending_dispatch_deadline_s: float = 0.0
+        self._active_request_retryable: bool = False
+        self._mission_terminal_clear_armed: bool = False
+        # Guard repeated browser clicks while the service-state transition from
+        # GUEST_LOADING_WAIT to RETURN_WITH_CARGO is still in flight.
+        self._guest_return_request_pending: bool = False
         self._battery: int = -1
         self._safety_hold: bool = False
         self._control_gate_state: str = "UNKNOWN"
@@ -149,11 +225,17 @@ class UiGuestNode(Node):
 
         # Single-client WebSocket exclusive lock.
         self._guest_ws: Optional[WebSocket] = None
+        self._guest_ws_initializing: Optional[WebSocket] = None
+        self._guest_ws_initializing_queue: list[dict] = []
         self._guest_ws_lock = threading.Lock()
         # HJ_260804 - ROS callbacks and request responses can schedule writes
         # concurrently. Serialize frames on the uvicorn event loop so one
         # connection never receives overlapping send_json() calls.
         self._guest_ws_send_lock = asyncio.Lock()
+        # Every identity mutation carries a monotonic revision. The browser
+        # can reject a timeout frame that was scheduled after, but represents
+        # state older than, a concurrent backend admission ACK.
+        self._dispatch_identity_revision: int = 0
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
         self._uvicorn_server: Optional[uvicorn.Server] = None
         self._server_thread: Optional[threading.Thread] = None
@@ -169,12 +251,12 @@ class UiGuestNode(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
-        self.sub_service_state = self.create_subscription(
-            AvgServiceState,
-            self.service_state_topic,
-            self._on_service_state,
-            10,
-        )
+        # Do not subscribe to raw controller /service/state heartbeats here.
+        # ui_backend_node first validates mission generation, return token, and
+        # physical arrival, then mirrors the accepted lifecycle in the
+        # transient-local destination-dispatch stream below. Consuming both
+        # would let a stale raw arrival expose a false Guest Return button.
+        self.sub_service_state = None
         self.sub_battery = self.create_subscription(
             AvgPlatformStatus,
             self.battery_topic,
@@ -184,8 +266,14 @@ class UiGuestNode(Node):
         self.sub_destination = self.create_subscription(
             UiDestinationCommand,
             self.ui_destination_topic,
-            self._on_destination_cleared,
+            self._on_destination_command,
             10,
+        )
+        self.sub_destination_dispatch_status = self.create_subscription(
+            String,
+            self.ui_destination_dispatch_status_topic,
+            self._on_destination_dispatch_status,
+            state_qos,
         )
         self.sub_control_gate_status = self.create_subscription(
             ModuleState,
@@ -197,7 +285,8 @@ class UiGuestNode(Node):
         self.pub_service_state = self.create_publisher(
             AvgServiceState, self.service_state_topic, 10
         )
-        # (확장) 사이트 선택 → 목적지 토픽 publish (ui_backend_node가 goal_pose 처리)
+        # The guest source marker makes this a roadside recall; the backend
+        # must never translate it into an ordinary campsite-entry goal.
         self.pub_destination = self.create_publisher(
             UiDestinationCommand,
             self.ui_destination_topic,
@@ -207,6 +296,15 @@ class UiGuestNode(Node):
             MotionOperation,
             self.ui_camping_site_operation_request_topic,
             10,
+        )
+
+        # A request topic is volatile and the backend can be restarting.  This
+        # bounded watchdog releases only a local generation-0 reservation when
+        # no authoritative dispatch ACK arrives; accepted missions (generation
+        # > 0) are never timed out here.
+        self._dispatch_ack_watchdog = self.create_timer(
+            min(0.5, self.dispatch_ack_timeout_s),
+            self._expire_pending_dispatch_ack,
         )
 
         self._start_fastapi_server()
@@ -252,13 +350,33 @@ class UiGuestNode(Node):
     def _on_service_state(self, msg: AvgServiceState) -> None:
         state = int(msg.state)
         with self._lock:
+            previous_state = self._service_state
             self._service_state = state
+            # Service state is lifecycle telemetry, not mission-identity
+            # authority. Clearing site/owner here can race a newly admitted
+            # mission from the backend's separate DataWriter. The backend's
+            # dispatch-status snapshot is the only authority for identity.
+            if (
+                previous_state == int(AvgServiceState.GUEST_LOADING_WAIT)
+                and state != previous_state
+            ):
+                self._guest_return_request_pending = False
+            active_site = self._active_site
+            request_intent = self._active_request_intent
+            request_owner = getattr(self, "_active_request_owner", "")
+            identity_revision = int(
+                getattr(self, "_dispatch_identity_revision", 0)
+            )
         phase = str(msg.state_name).strip() or self._state_name_of(state)
         # HH_260721 - Forward both numeric and symbolic service state to guest clients.
         self._schedule_broadcast({
             "service_state": state,
             "service_state_name": phase,
             "phase": self._phase_of(state),
+            "site": active_site,
+            "request_intent": request_intent,
+            "request_owner": request_owner,
+            "identity_revision": identity_revision,
         })
         self.get_logger().info(f"[guest] Service state received: {phase}({state})")
 
@@ -281,25 +399,230 @@ class UiGuestNode(Node):
             "mission_battery_ready": pct >= self.minimum_mission_dispatch_battery_percent,
         })
 
-    def _on_destination_cleared(self, msg: UiDestinationCommand) -> None:
-        if msg.run:
-            return
-        with self._lock:
-            # HH_260721 - Clearing a destination must not hide active charging.
-            state = (
-                AvgServiceState.CHARGING
-                if self._is_charging
-                else AvgServiceState.DROP_ZONE_WAIT
-            )
-            self._service_state = state
-        self._schedule_broadcast({
-            "service_state": state,
-            "service_state_name": self._state_name_of(state),
-            "phase": self._phase_of(state),
-        })
+    def _on_destination_command(self, msg: UiDestinationCommand) -> None:
+        # The command topic is a request, not admission proof. The backend may
+        # reject it because another UI already owns station departure; only
+        # _on_destination_dispatch_status is authoritative for site/owner.
         self.get_logger().info(
-            f"[guest] Destination cleared -> {self._state_name_of(state)}"
+            "[guest] destination request observed; awaiting backend admission: "
+            f"site={str(msg.site).strip()} run={bool(msg.run)} "
+            f"source={str(msg.source).strip()}"
         )
+
+    def _on_destination_dispatch_status(self, msg: String) -> None:
+        """Apply only the backend-authoritative destination owner and site."""
+        try:
+            payload = json.loads(str(msg.data))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            self.get_logger().warn("[guest] invalid destination dispatch status")
+            return
+        if not isinstance(payload, dict):
+            self.get_logger().warn("[guest] destination dispatch status is not an object")
+            return
+
+        accepted = bool(payload.get("accepted", False))
+        active_site = str(payload.get("active_site", "")).strip()
+        active_source = str(payload.get("active_source", "")).strip()
+        active_intent = str(payload.get("active_intent", "")).strip()
+        retryable = bool(payload.get("retryable", False))
+        try:
+            active_generation = int(payload.get("active_generation", 0))
+        except (TypeError, ValueError):
+            active_generation = 0
+        has_service_state = "service_state" in payload
+        try:
+            authoritative_service_state = (
+                int(payload["service_state"])
+                if has_service_state
+                else int(getattr(self, "_service_state", -1))
+            )
+        except (TypeError, ValueError):
+            self.get_logger().warn(
+                "[guest] dispatch status has invalid service state"
+            )
+            return
+        authoritative_service_name = ""
+        if has_service_state:
+            authoritative_service_name = str(
+                payload.get("service_state_name", "")
+            ).strip() or UiGuestNode._state_name_of(
+                self, authoritative_service_state
+            )
+        if active_site and active_site not in self.site_names:
+            self.get_logger().warn(
+                f"[guest] dispatch status has invalid active site: {active_site}"
+            )
+            return
+        if active_intent not in {"", "delivery", "recall"}:
+            self.get_logger().warn(
+                f"[guest] dispatch status has invalid intent: {active_intent}"
+            )
+            return
+        request_owner = destination_request_owner(active_source)
+        request_source = str(payload.get("request_source", "")).strip()
+        with self._lock:
+            pending_nonce = str(
+                getattr(self, "_pending_dispatch_nonce", "")
+            ).strip()
+            request_nonce = ""
+            for component in request_source.split(":"):
+                if component.startswith("r="):
+                    request_nonce = component.split("=", 1)[1].strip()
+            # A local generation-0 reservation is intentionally stronger than
+            # an older Guest operation/lifecycle frame.  usage_complete and
+            # cancel statuses predate the dispatch nonce, so merely checking a
+            # *present* mismatching nonce allowed their late arrival to erase a
+            # freshly selected B-site.  During this short ACK window accept
+            # only the exact Guest dispatch nonce, or an explicit positive
+            # generation claimed by another UI (which is newer authority).
+            local_generation = int(
+                getattr(self, "_active_mission_generation", 0)
+            )
+            status_owner = destination_request_owner(request_source)
+            active_owner = destination_request_owner(active_source)
+            correlated_guest_ack = bool(
+                status_owner == "guest" and request_nonce == pending_nonce
+            )
+            newer_cross_owner_authority = bool(
+                active_site
+                and active_generation > 0
+                and active_owner in {"operator", "robot"}
+            )
+            if (
+                pending_nonce
+                and local_generation == 0
+                and not correlated_guest_ack
+                and not newer_cross_owner_authority
+            ):
+                self.get_logger().warn(
+                    "[guest] stale/unrelated dispatch status ignored during "
+                    "pending reservation: "
+                    f"owner={status_owner or 'none'} request_nonce="
+                    f"{request_nonce or 'none'} pending={pending_nonce}"
+                )
+                return
+            previous_identity = (
+                self._active_site,
+                self._active_request_intent,
+                getattr(self, "_active_request_owner", ""),
+                int(getattr(self, "_active_mission_generation", 0)),
+            )
+            previous_service_state = int(
+                getattr(self, "_service_state", -1)
+            )
+            if has_service_state:
+                self._service_state = authoritative_service_state
+                if (
+                    previous_service_state
+                    == int(AvgServiceState.GUEST_LOADING_WAIT)
+                    and authoritative_service_state
+                    != previous_service_state
+                ):
+                    self._guest_return_request_pending = False
+            self._active_site = active_site
+            self._active_request_intent = active_intent if active_site else ""
+            self._active_request_owner = request_owner if active_site else ""
+            self._active_mission_generation = (
+                active_generation if active_site else 0
+            )
+            self._active_request_retryable = bool(active_site and retryable)
+            # Any current authoritative status resolves a generation-0 local
+            # reservation. For Guest responses, a nonce mismatch was rejected
+            # above; operator/Robot ownership is independently authoritative.
+            self._pending_dispatch_nonce = ""
+            self._pending_dispatch_deadline_s = 0.0
+            next_identity = (
+                self._active_site,
+                self._active_request_intent,
+                self._active_request_owner,
+                self._active_mission_generation,
+            )
+            if next_identity != previous_identity:
+                self._mission_terminal_clear_armed = False
+                self._guest_return_request_pending = False
+            elif (
+                not accepted
+                and destination_request_owner(request_source) == "guest"
+            ):
+                # A correlated Guest operation rejection must release its
+                # one-shot UI latch. Unrelated operator/Robot ACKs preserve it.
+                self._guest_return_request_pending = False
+            request_intent = self._active_request_intent
+            request_owner = self._active_request_owner
+            mission_retryable = self._active_request_retryable
+            self._dispatch_identity_revision = int(
+                getattr(self, "_dispatch_identity_revision", 0)
+            ) + 1
+            identity_revision = self._dispatch_identity_revision
+
+        broadcast = {
+            "site": active_site,
+            "request_intent": request_intent,
+            "request_owner": request_owner,
+            "mission_generation": active_generation if active_site else 0,
+            "dispatch_accepted": accepted,
+            "dispatch_error": str(payload.get("error", "")),
+            "dispatch_request_site": str(payload.get("request_site", "")).strip(),
+            "mission_retryable": mission_retryable,
+            "identity_revision": identity_revision,
+        }
+        if has_service_state:
+            broadcast.update({
+                "service_state": authoritative_service_state,
+                "service_state_name": authoritative_service_name,
+                "phase": UiGuestNode._phase_of(
+                    self, authoritative_service_state
+                ),
+            })
+        self._schedule_broadcast(broadcast)
+
+    def _expire_pending_dispatch_ack(self) -> None:
+        """Release a Guest picker reservation if the backend never ACKed it."""
+        expired_site = ""
+        expired_nonce = ""
+        with self._lock:
+            deadline = float(
+                getattr(self, "_pending_dispatch_deadline_s", 0.0)
+            )
+            generation = int(
+                getattr(self, "_active_mission_generation", 0)
+            )
+            if (
+                not getattr(self, "_pending_dispatch_nonce", "")
+                or deadline <= 0.0
+                or time.monotonic() < deadline
+                or generation > 0
+            ):
+                return
+            expired_site = str(self._active_site).strip()
+            expired_nonce = str(self._pending_dispatch_nonce).strip()
+            self._active_site = ""
+            self._active_request_intent = ""
+            self._active_request_owner = ""
+            self._active_mission_generation = 0
+            self._active_request_retryable = False
+            self._mission_terminal_clear_armed = False
+            self._guest_return_request_pending = False
+            self._pending_dispatch_nonce = ""
+            self._pending_dispatch_deadline_s = 0.0
+            self._dispatch_identity_revision = int(
+                getattr(self, "_dispatch_identity_revision", 0)
+            ) + 1
+            identity_revision = self._dispatch_identity_revision
+        self.get_logger().warn(
+            "[guest] destination ACK timeout; local reservation released: "
+            f"site={expired_site} nonce={expired_nonce}"
+        )
+        self._schedule_broadcast({
+            "error": "dispatch_ack_timeout",
+            "site": "",
+            "request_intent": "",
+            "request_owner": "",
+            "mission_generation": 0,
+            "mission_retryable": False,
+            "identity_revision": identity_revision,
+            "message": "Robot controller did not acknowledge the request; retry",
+        })
 
     def _on_control_gate_status(self, msg: ModuleState) -> None:
         # HH_260803 - Safety hold is an overlay on the service lifecycle. A
@@ -325,6 +648,11 @@ class UiGuestNode(Node):
 
     async def _broadcast(self, payload: dict) -> None:
         with self._guest_ws_lock:
+            if self._guest_ws_initializing is not None:
+                self._guest_ws_initializing_queue.append(
+                    copy.deepcopy(payload)
+                )
+                return
             ws = self._guest_ws
         if ws is None:
             return
@@ -349,11 +677,15 @@ class UiGuestNode(Node):
         """Claim the single guest slot without awaiting under a thread lock."""
         now = time.time() if now_s is None else float(now_s)
         with self._guest_ws_lock:
-            if self._guest_ws is not None:
+            if (
+                self._guest_ws is not None
+                or getattr(self, "_guest_ws_initializing", None) is not None
+            ):
                 return 0
             if now < self._grace_until and client_ip != self._last_client_ip:
                 return max(1, math.ceil(self._grace_until - now))
-            self._guest_ws = ws
+            self._guest_ws_initializing = ws
+            self._guest_ws_initializing_queue = []
             self._last_client_ip = client_ip
             self._grace_until = 0.0
         return None
@@ -368,6 +700,10 @@ class UiGuestNode(Node):
         with self._guest_ws_lock:
             if self._guest_ws is ws:
                 self._guest_ws = None
+                self._grace_until = now + self.grace_period_s
+            elif getattr(self, "_guest_ws_initializing", None) is ws:
+                self._guest_ws_initializing = None
+                self._guest_ws_initializing_queue = []
                 self._grace_until = now + self.grace_period_s
 
     # ── ROS2 publish ─────────────────────────────────────────────────────────
@@ -429,22 +765,29 @@ class UiGuestNode(Node):
         )
 
     def _publish_navigate(self, site: str) -> None:
-        """(확장) 사이트 선택 호출 → ui_backend_node가 받아 goal_pose/engage를 반응."""
+        """Publish a site-specific guest request for typed roadside recall."""
+        with self._lock:
+            nonce = str(
+                getattr(self, "_pending_dispatch_nonce", "")
+            ).strip()
         msg = UiDestinationCommand()
         msg.site = site
         msg.run = True
-        msg.source = "guest"
+        msg.source = f"guest:dispatch:r={nonce}" if nonce else "guest"
         self.pub_destination.publish(msg)
         self.get_logger().info(
-            f"[guest] navigate -> {self.ui_destination_topic}: site={site}"
+            f"[guest] roadside recall -> {self.ui_destination_topic}: site={site}"
         )
 
     def _publish_usage_complete(self) -> None:
         """Request the same backend-owned return sequence as the Robot UI."""
+        with self._lock:
+            site = str(self._active_site).strip()
+            generation = int(self._active_mission_generation)
         msg = MotionOperation()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.operation = MotionOperation.RETURN
-        msg.source = "guest:usage_complete"
+        msg.source = f"guest:usage_complete:site={site}:g={generation}"
         self.pub_operation_request.publish(msg)
         self.get_logger().info(
             "[guest] usage_complete -> RETURN request -> "
@@ -453,15 +796,119 @@ class UiGuestNode(Node):
 
     def _publish_cancel(self) -> None:
         """Request a backend-owned stop of the active guest mission."""
+        with self._lock:
+            site = str(self._active_site).strip()
+            generation = int(self._active_mission_generation)
         msg = MotionOperation()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.operation = MotionOperation.CANCEL
-        msg.source = "guest:cancel"
+        msg.source = f"guest:cancel:site={site}:g={generation}"
         self.pub_operation_request.publish(msg)
         self.get_logger().info(
             "[guest] cancel -> CANCEL request -> "
             f"{self.ui_camping_site_operation_request_topic}"
         )
+
+    def _reserve_guest_recall_request(
+        self, site: str
+    ) -> tuple[bool, str, int, int]:
+        """Atomically admit one Guest recall before ROS callbacks can echo it.
+
+        The charger/drop-zone departure controller deliberately keeps a
+        terminal service state for several seconds.  Reserving the intent
+        under the same lock as admission prevents a second browser click from
+        replacing the accepted B-site during that interval.
+        """
+        with self._lock:
+            current = int(self._service_state)
+            battery = int(self._battery)
+            active_intent = str(self._active_request_intent).strip()
+            active_site = str(self._active_site).strip()
+            active_owner = str(
+                getattr(self, "_active_request_owner", "")
+            ).strip()
+            retry_same_guest_recall = bool(
+                getattr(self, "_active_request_retryable", False)
+                and active_intent == "recall"
+                and active_owner == "guest"
+                and active_site == str(site).strip()
+            )
+            if not guest_mission_dispatch_ready(
+                current,
+                battery,
+                self.minimum_mission_dispatch_battery_percent,
+                "" if retry_same_guest_recall else active_intent,
+            ):
+                if active_intent:
+                    error = "mission_already_active"
+                elif battery < self.minimum_mission_dispatch_battery_percent:
+                    error = "battery_not_ready"
+                else:
+                    error = "robot_not_ready"
+                return False, error, current, battery
+
+            reserved_site = str(site).strip()
+            self._active_site = reserved_site
+            self._active_request_intent = "recall"
+            self._active_request_owner = "guest"
+            self._active_mission_generation = 0
+            self._dispatch_request_sequence = int(
+                getattr(self, "_dispatch_request_sequence", 0)
+            ) + 1
+            self._pending_dispatch_nonce = (
+                f"{self._dispatch_request_sequence}-{time.monotonic_ns():x}"
+            )
+            self._pending_dispatch_deadline_s = (
+                time.monotonic()
+                + float(getattr(self, "dispatch_ack_timeout_s", 5.0))
+            )
+            self._active_request_retryable = False
+            self._mission_terminal_clear_armed = False
+            self._guest_return_request_pending = False
+            self._dispatch_identity_revision = int(
+                getattr(self, "_dispatch_identity_revision", 0)
+            ) + 1
+            identity_revision = self._dispatch_identity_revision
+
+        self._schedule_broadcast({
+            "site": reserved_site,
+            "request_intent": "recall",
+            "request_owner": "guest",
+            "mission_retryable": False,
+            "mission_generation": 0,
+            "identity_revision": identity_revision,
+        })
+        return True, "", current, battery
+
+    def _reserve_guest_return_request(self) -> tuple[bool, str, int]:
+        """Authorize exactly one return click for this Guest recall arrival."""
+        with self._lock:
+            current = int(self._service_state)
+            if int(getattr(self, "_active_mission_generation", 0)) <= 0:
+                return False, "awaiting_admission_ack", current
+            if self._guest_return_request_pending:
+                return False, "request_in_progress", current
+            if not guest_usage_complete_available(
+                current,
+                self._active_request_intent,
+                self._active_site,
+                getattr(self, "_active_request_owner", ""),
+            ):
+                return False, "not_guest_recall_arrival", current
+            self._guest_return_request_pending = True
+        return True, "", current
+
+    def _guest_cancel_is_owned(self) -> tuple[bool, int]:
+        """Check that a public cancel targets the Guest UI's own recall."""
+        with self._lock:
+            current = int(self._service_state)
+            available = guest_mission_cancel_available(
+                current,
+                self._active_request_intent,
+                self._active_site,
+                getattr(self, "_active_request_owner", ""),
+            ) and int(getattr(self, "_active_mission_generation", 0)) > 0
+        return available, current
 
     # ── Path resolution ───────────────────────────────────────────────────────
 
@@ -517,6 +964,12 @@ class UiGuestNode(Node):
                 # an aborted first frame cannot leave the guest slot occupied.
                 with node._lock:
                     state = node._service_state
+                    active_site = node._active_site
+                    request_intent = node._active_request_intent
+                    request_owner = node._active_request_owner
+                    mission_retryable = node._active_request_retryable
+                    mission_generation = node._active_mission_generation
+                    identity_revision = node._dispatch_identity_revision
                     battery = node._battery
                     safety_hold = node._safety_hold
                     control_gate_state = node._control_gate_state
@@ -524,6 +977,12 @@ class UiGuestNode(Node):
                     "service_state": state,
                     "service_state_name": node._state_name_of(state),
                     "phase": node._phase_of(state),
+                    "site": active_site,
+                    "request_intent": request_intent,
+                    "request_owner": request_owner,
+                    "mission_retryable": mission_retryable,
+                    "mission_generation": mission_generation,
+                    "identity_revision": identity_revision,
                     "battery": battery,
                     "minimum_battery_percentage": (
                         node.minimum_mission_dispatch_battery_percent
@@ -535,6 +994,28 @@ class UiGuestNode(Node):
                     "control_gate_state": control_gate_state,
                     "sites": node.site_names,
                 })
+
+                # The socket remains in an initializing queue from claim until
+                # this snapshot and every newer callback frame are delivered.
+                # Promotion to the live slot is atomic with observing an empty
+                # queue, so a lifecycle update cannot arrive before an older
+                # initial snapshot and roll the browser backward.
+                while True:
+                    with node._guest_ws_lock:
+                        if node._guest_ws_initializing is not ws:
+                            raise RuntimeError(
+                                "guest websocket initialization was cancelled"
+                            )
+                        if not node._guest_ws_initializing_queue:
+                            node._guest_ws_initializing = None
+                            node._guest_ws = ws
+                            break
+                        pending_payloads = list(
+                            node._guest_ws_initializing_queue
+                        )
+                        node._guest_ws_initializing_queue.clear()
+                    for queued_payload in pending_payloads:
+                        await node._send_guest_payload(ws, queued_payload)
 
                 idle_cycles = 0
                 while True:
@@ -561,7 +1042,8 @@ class UiGuestNode(Node):
                     if action == "heartbeat":
                         continue
 
-                    # (확장) 사이트 선택 호출 (경우 B): B1~B13 중 선택 → 해당 사이트로 이동
+                    # Keep the legacy browser action name while publishing a
+                    # typed roadside recall for the selected B1-B13 site.
                     if action == "navigate":
                         site = str(payload.get("site", "")).strip()
                         if site not in node.site_names:
@@ -569,33 +1051,18 @@ class UiGuestNode(Node):
                                 ws, {"error": "invalid_site", "site": site}
                             )
                         else:
-                            # Keep ROS lock contention and publish work off the
-                            # single uvicorn event-loop thread.
-                            def _dispatch_navigate() -> tuple[int, int]:
-                                with node._lock:
-                                    current = node._service_state
-                                    battery = node._battery
-                                if guest_mission_dispatch_ready(
-                                    current,
-                                    battery,
-                                    node.minimum_mission_dispatch_battery_percent,
-                                ):
-                                    node._publish_navigate(site)
-                                return current, battery
-
-                            current, battery = await asyncio.to_thread(
-                                _dispatch_navigate
-                            )
-                            if not guest_mission_dispatch_ready(
-                                current,
-                                battery,
-                                node.minimum_mission_dispatch_battery_percent,
-                            ):
-                                error = (
-                                    "battery_not_ready"
-                                    if battery < node.minimum_mission_dispatch_battery_percent
-                                    else "robot_not_ready"
+                            # Admission and reservation are one critical
+                            # section. Publishing happens only after ownership
+                            # is recorded, so the terminal departure dwell can
+                            # never admit a competing B-site.
+                            admitted, error, current, battery = (
+                                await asyncio.to_thread(
+                                    node._reserve_guest_recall_request, site
                                 )
+                            )
+                            if admitted:
+                                await asyncio.to_thread(node._publish_navigate, site)
+                            else:
                                 await node._send_guest_payload(ws, {
                                     "error": error,
                                     "service_state": current,
@@ -605,43 +1072,47 @@ class UiGuestNode(Node):
                                     ),
                                 })
 
-                    # 단순 호출 (드롭존으로) — 기존 동작 유지
+                    # Legacy no-site recall action retained for compatibility.
                     elif action == "recall":
-                        def _dispatch_recall() -> int:
-                            with node._lock:
-                                current = node._service_state
-                            if current in {
-                                AvgServiceState.DROP_ZONE_WAIT,
-                                AvgServiceState.CHARGING,
-                            }:
-                                node._publish_guest_recall()
-                            return current
-
-                        current = await asyncio.to_thread(_dispatch_recall)
-                        if current not in {
-                            AvgServiceState.DROP_ZONE_WAIT,
-                            AvgServiceState.CHARGING,
-                        }:
+                        admitted, error, current, battery = (
+                            await asyncio.to_thread(
+                                node._reserve_guest_recall_request, "legacy"
+                            )
+                        )
+                        if admitted:
+                            await asyncio.to_thread(node._publish_guest_recall)
+                        else:
                             await node._send_guest_payload(ws, {
-                                "error": "robot_not_ready",
+                                "error": error,
                                 "service_state": current,
+                                "battery": battery,
                             })
 
                     # (확장) 이용 완료 → 드롭존 복귀
                     elif action == "usage_complete":
-                        await asyncio.to_thread(node._publish_usage_complete)
+                        admitted, error, current = await asyncio.to_thread(
+                            node._reserve_guest_return_request
+                        )
+                        if admitted:
+                            try:
+                                await asyncio.to_thread(node._publish_usage_complete)
+                            except Exception:
+                                with node._lock:
+                                    node._guest_return_request_pending = False
+                                raise
+                        else:
+                            await node._send_guest_payload(ws, {
+                                "error": error,
+                                "service_state": current,
+                            })
 
                     # 이동/복귀/도킹 중 취소 → Robot UI와 동일한 backend stop 경로.
                     elif action == "cancel":
-                        def _dispatch_cancel() -> int:
-                            with node._lock:
-                                current = node._service_state
-                            if guest_mission_cancel_available(current):
-                                node._publish_cancel()
-                            return current
-
-                        current = await asyncio.to_thread(_dispatch_cancel)
-                        if guest_mission_cancel_available(current):
+                        available, current = await asyncio.to_thread(
+                            node._guest_cancel_is_owned
+                        )
+                        if available:
+                            await asyncio.to_thread(node._publish_cancel)
                             await node._send_guest_payload(
                                 ws, {"cancel_requested": True}
                             )

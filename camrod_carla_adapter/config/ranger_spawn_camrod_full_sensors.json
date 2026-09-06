@@ -22,11 +22,11 @@
         "roll": 0.0,
         "pitch": 0.0,
         "yaw": 6.8785247802734375
-      },
-      "sensors": [
-        {
-          "type": "sensor.camera.rgb",
-          "id": "rgb_view",
+        },
+        "sensors": [
+          {
+            "type": "sensor.camera.rgb",
+            "id": "rgb_view",
           "spawn_point": {
             "x": 0.76337,
             "y": 0.0,
@@ -35,14 +35,14 @@
             "pitch": 0.0,
             "yaw": 0.0
           },
-          "image_size_x": 800,
-          "image_size_y": 600,
+            "image_size_x": 800,
+            "image_size_y": 600,
           "fov": 90.0,
           "sensor_tick": 0.1
-        },
-        {
-          "type": "sensor.camera.rgb",
-          "id": "rgb_rear",
+          },
+          {
+            "type": "sensor.camera.rgb",
+            "id": "rgb_rear",
           "spawn_point": {
             "x": -0.61933,
             "y": 0.0,
@@ -51,8 +51,8 @@
             "pitch": 0.0,
             "yaw": 180.0
           },
-          "image_size_x": 800,
-          "image_size_y": 600,
+            "image_size_x": 960,
+            "image_size_y": 720,
           "fov": 90.0,
           "sensor_tick": 0.1
         },

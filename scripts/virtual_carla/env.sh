@@ -49,6 +49,7 @@ _virtual_carla_config_names=(
   CAMROD_CARLA_SENSOR_MAX_SAMPLE_AGE_SECONDS
   CAMROD_GUEST_UI_URL
   CAMROD_GUEST_CDP_URL
+  CAMROD_OPERATOR_CDP_URL
   CAMROD_CARLA_YOLO_MODEL_PATH
   CAMROD_CARLA_YOLO_DEVICE
   CAMROD_CARLA_YOLO_WORKSPACE_MIB
@@ -205,6 +206,10 @@ export CAMROD_UI_PORT="${CAMROD_UI_PORT:-8010}"
 export CAMROD_UI_URL="${CAMROD_UI_URL:-http://127.0.0.1:${CAMROD_UI_PORT}}"
 export CAMROD_GUEST_UI_URL="${CAMROD_GUEST_UI_URL:-http://127.0.0.1:8012}"
 export CAMROD_GUEST_CDP_URL="${CAMROD_GUEST_CDP_URL:-http://127.0.0.1:9223}"
+# A separately launched visible Chrome page is the click-evidence authority.
+# Keeping it on a distinct local-only debugger port avoids attaching to either
+# the production WebKit window or the Guest UI browser.
+export CAMROD_OPERATOR_CDP_URL="${CAMROD_OPERATOR_CDP_URL:-http://127.0.0.1:9224}"
 export CAMROD_ENABLE_OPERATOR_WINDOW="${CAMROD_ENABLE_OPERATOR_WINDOW:-true}"
 export CAMROD_ENABLE_VOICE="${CAMROD_ENABLE_VOICE:-false}"
 export CAMROD_ENABLE_RVIZ="${CAMROD_ENABLE_RVIZ:-false}"
@@ -488,6 +493,14 @@ virtual_carla_validate_map_selection() {
             "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_TOWN}" ]]; then
         virtual_carla_die \
           "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_UE_MAP}"
+        return 1
+      fi
+      ;;
+    "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_PROFILE_ID}")
+      if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_UE_MAP}" || \
+            "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_TOWN}" ]]; then
+        virtual_carla_die \
+          "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_UE_MAP}"
         return 1
       fi
       ;;

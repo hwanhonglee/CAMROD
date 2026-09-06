@@ -57,6 +57,29 @@ def _policy_fixture() -> SimpleNamespace:
 
 
 class RecallTargetPolicyTest(unittest.TestCase):
+    def test_return_handoff_margin_still_requires_fresh_nav2_success(self) -> None:
+        now = Time(seconds=100)
+        node = SimpleNamespace(
+            require_nav2_success_for_goal_reached=True,
+            _nav2_goal_succeeded=True,
+            _nav2_terminal_time=Time(seconds=99),
+            nav_success_latch_s=15.0,
+        )
+        node.get_clock = lambda: SimpleNamespace(now=lambda: now)
+        node._active_goal_distance = lambda: 0.338
+
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.30))
+        self.assertTrue(PlanningStateMachineNode._goal_reached(node, 0.35))
+
+        node._active_goal_distance = lambda: 0.351
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
+        node._active_goal_distance = lambda: 0.338
+        node._nav2_goal_succeeded = False
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
+        node._nav2_goal_succeeded = True
+        node._nav2_terminal_time = Time(seconds=80)
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
+
     def test_initial_drop_zone_raw_goal_uses_exact_auto_goal_stamp(self) -> None:
         auto_publisher = _RecordingPublisher()
         raw_publisher = _RecordingPublisher()

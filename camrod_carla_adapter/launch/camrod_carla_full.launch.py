@@ -15,6 +15,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 
+DEVELOP_CAMPSITE_BYPASS_PHASES = (
+    "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,"
+    "REVERSE_OUT,CRAB_OUT"
+)
+
+
 def _environment_path(name, ranger_relative_path=None, default=""):
     """Resolve a portable launch default without embedding a host home path."""
     configured = os.environ.get(name, "").strip()
@@ -388,6 +394,24 @@ def generate_launch_description():
             "carla_lanelet_safety_check_reverse", default_value="false"
         ),
         DeclareLaunchArgument(
+            "carla_camping_site_maneuver_controller_static_bypass_phases",
+            default_value=DEVELOP_CAMPSITE_BYPASS_PHASES,
+            description=(
+                "Campsite phases allowed to bypass static map cost. The full "
+                "launch retains the develop list; a CARLA site wrapper may "
+                "explicitly extend it without changing production defaults"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_camping_site_maneuver_controller_lanelet_bypass_phases",
+            default_value=DEVELOP_CAMPSITE_BYPASS_PHASES,
+            description=(
+                "Campsite phases allowed outside lanelet geometry. The full "
+                "launch retains the develop list; a CARLA site wrapper may "
+                "explicitly extend it without changing production defaults"
+            ),
+        ),
+        DeclareLaunchArgument(
             "carla_nav2_reverse_controller", default_value=""
         ),
         DeclareLaunchArgument(
@@ -693,6 +717,15 @@ def generate_launch_description():
                 "CARLA-only B11-B13 reverse centerline handoff. The live "
                 "v27 brake/raycast audit retains about 0.25 m LEFT2 Terrain "
                 "clearance at 0.10 m; hardware keeps its 0.03 m default"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "carla_return_goal_reached_distance_m",
+            default_value="",
+            description=(
+                "Optional planning return-route handoff override. Empty "
+                "preserves the selected CAMROD YAML; an explicit CARLA site "
+                "wrapper may add a bounded pose-reference margin."
             ),
         ),
         DeclareLaunchArgument(
@@ -1213,6 +1246,11 @@ def generate_launch_description():
                 "planning_state_machine_reverse_auto_goal_snapper_input_topic": (
                     LaunchConfiguration("carla_reverse_goal_topic")
                 ),
+                "planning_state_machine_return_goal_reached_distance_m": (
+                    LaunchConfiguration(
+                        "carla_return_goal_reached_distance_m"
+                    )
+                ),
                 "parking_runtime_override_param_file": LaunchConfiguration(
                     "carla_parking_runtime_override_param_file"
                 ),
@@ -1221,6 +1259,16 @@ def generate_launch_description():
                 # as the always-on physical body and planning footprint checks.
                 "control_cmd_vel_gate_lanelet_safety_check_reverse": (
                     LaunchConfiguration("carla_lanelet_safety_check_reverse")
+                ),
+                "control_cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases": (
+                    LaunchConfiguration(
+                        "carla_camping_site_maneuver_controller_static_bypass_phases"
+                    )
+                ),
+                "control_cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases": (
+                    LaunchConfiguration(
+                        "carla_camping_site_maneuver_controller_lanelet_bypass_phases"
+                    )
                 ),
                 "control_cmd_vel_gate_route_safety_path_relative_recovery_enable": (
                     LaunchConfiguration(

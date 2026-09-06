@@ -33,6 +33,10 @@ case "${selected_profile}" in
     selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_UE_MAP}"
     selected_town="${CAMROD_CARLA_SITE_ACCESS_TOWN}"
     ;;
+  "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_PROFILE_ID}")
+    selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_UE_MAP}"
+    selected_town="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_TOWN}"
+    ;;
   "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_PROFILE_ID}")
     selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_UE_MAP}"
     selected_town="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V12_TOWN}"

@@ -1061,6 +1061,15 @@ def generate_launch_description():
             'Optional planning-state-machine output for reverse auto goals',
         ),
         (
+            'planning_state_machine_return_goal_reached_distance_m',
+            cfg_get(
+                launch_cfg,
+                'planning/state_machine_return_goal_reached_distance_m',
+                '',
+            ),
+            'Optional return-route handoff override; empty preserves parameter YAML',
+        ),
+        (
             'planning_nav2_runtime_override_param_file',
             nav2_runtime_override_param_default,
             'Final sparse Nav2 runtime overlay; ordinary CAMROD uses an empty profile',
@@ -3126,6 +3135,9 @@ def generate_launch_description():
         'planning_state_machine_reverse_auto_goal_snapper_input_topic': lc[
             'planning_state_machine_reverse_auto_goal_snapper_input_topic'
         ],
+        'planning_state_machine_return_goal_reached_distance_m': lc[
+            'planning_state_machine_return_goal_reached_distance_m'
+        ],
         'nav2_runtime_override_param_file': lc[
             'planning_nav2_runtime_override_param_file'
         ],
@@ -3407,6 +3419,10 @@ def generate_launch_description():
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
+        # Return completion is accepted only at this same authored station
+        # polygon.  Passing the resolved bringup file avoids an independently
+        # installed camrod_map default drifting from planning/control.
+        'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
         # HH_260623 - UI campsite missions publish a separate mission engage latch
         # so the manual ENGAGE button cannot stop an accepted scenario.
         'planning_engage_topic': lc['planning_engage_topic'],

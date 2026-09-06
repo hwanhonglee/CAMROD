@@ -142,6 +142,9 @@ bringup:
     # Resolve drop_zone from camrod_bringup/config/map/drop_zones.yaml.
     state_machine_keypoints_yaml: map/drop_zones.yaml
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
+    # Empty preserves the selected production state-machine YAML. Simulator
+    # compositions may explicitly override it for measured pose-reference skew.
+    state_machine_return_goal_reached_distance_m: ""
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
     # ---- Nav2 profile selection ----

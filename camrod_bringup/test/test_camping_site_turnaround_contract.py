@@ -15,11 +15,36 @@ PACKAGE_CONTROL_CONFIG = SRC_ROOT / "camrod_control" / "config" / "control.yaml"
 BRINGUP_CONTROL_CONFIG = (
     SRC_ROOT / "camrod_bringup" / "config" / "control" / "control.yaml"
 )
+PACKAGE_GATE_CONFIG = (
+    SRC_ROOT / "camrod_control" / "config" / "cmd_vel_safety_gate.yaml"
+)
+BRINGUP_GATE_CONFIG = (
+    SRC_ROOT
+    / "camrod_bringup"
+    / "config"
+    / "control"
+    / "cmd_vel_safety_gate.yaml"
+)
 LAUNCH_DEFAULTS = (
     SRC_ROOT / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
 )
 MANEUVERS_LAUNCH = SRC_ROOT / "camrod_control" / "launch" / "maneuvers.launch.py"
 BRINGUP_LAUNCH = SRC_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+GATE_SOURCE = SRC_ROOT / "camrod_control" / "src" / "cmd_vel_safety_gate_node.cpp"
+COMMAND_SOURCE_ARBITER = (
+    SRC_ROOT
+    / "camrod_control"
+    / "include"
+    / "camrod_control"
+    / "command_source_arbiter.hpp"
+)
+MOTION_COST_STOP = (
+    SRC_ROOT
+    / "camrod_control"
+    / "include"
+    / "camrod_control"
+    / "motion_cost_stop.hpp"
+)
 CONTROLLER_SOURCE = (
     SRC_ROOT
     / "camrod_control"
@@ -51,6 +76,16 @@ def _controller_params(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))[
         "/control/camping_site_maneuver_controller"
     ]["ros__parameters"]
+
+
+def _gate_params(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["/**"][
+        "ros__parameters"
+    ]
+
+
+def _phase_set(value: str) -> set[str]:
+    return {phase.strip().lower() for phase in value.split(",") if phase.strip()}
 
 
 def test_active_campsite_config_is_byte_synchronized() -> None:
@@ -223,6 +258,62 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
         ': "done_retry"'
         in _normalized_source(controller_source)
     )
+
+
+def test_outbound_lane_alignment_keeps_ownership_without_production_map_bypass(
+) -> None:
+    """The opt-in reverse handoff stays owned but is not a default map bypass."""
+    phase = "align_outbound_lane_yaw"
+    package_gate = _gate_params(PACKAGE_GATE_CONFIG)
+    bringup_gate = _gate_params(BRINGUP_GATE_CONFIG)
+    launch_control = yaml.safe_load(LAUNCH_DEFAULTS.read_text(encoding="utf-8"))[
+        "bringup"
+    ]["control"]
+
+    configured_phase_lists = (
+        package_gate["camping_site_maneuver_controller_static_bypass_phases"],
+        package_gate["camping_site_maneuver_controller_lanelet_bypass_phases"],
+        bringup_gate["camping_site_maneuver_controller_static_bypass_phases"],
+        bringup_gate["camping_site_maneuver_controller_lanelet_bypass_phases"],
+        launch_control[
+            "cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases"
+        ],
+        launch_control[
+            "cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases"
+        ],
+    )
+    for phase_list in configured_phase_lists:
+        assert phase not in _phase_set(phase_list)
+
+    assert package_gate == bringup_gate
+    assert COMMAND_SOURCE_ARBITER.read_text(encoding="utf-8").count(
+        f'"{phase}"'
+    ) == 1
+    assert MOTION_COST_STOP.read_text(encoding="utf-8").count(
+        f'"{phase}"'
+    ) == 0
+    assert GATE_SOURCE.read_text(encoding="utf-8").count(
+        "ALIGN_OUTBOUND_LANE_YAW"
+    ) == 0
+    assert GATE_SOURCE.read_text(encoding="utf-8").count(
+        '"align_outbound_lane_yaw"'
+    ) == 0
+    assert BRINGUP_LAUNCH.read_text(encoding="utf-8").count(
+        "ALIGN_OUTBOUND_LANE_YAW"
+    ) == 0
+
+    controller_source = CONTROLLER_SOURCE.read_text(encoding="utf-8")
+    service_state_block = controller_source.split(
+        "void publishServiceState(const std::string &detail) const {", 1
+    )[1].split("void publishZero()", 1)[0]
+    return_state_block = service_state_block.split(
+        "phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw", 1
+    )[1].split("} else {", 1)[0]
+    assert (
+        "CampingSiteManeuverPhase::kAlignOutboundLaneYaw" in return_state_block
+    )
+    assert "avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO" in return_state_block
+    assert 'message.state_name = "RETURN_WITH_CARGO";' in return_state_block
 
 
 def test_roadside_sites_use_map_centers_without_legacy_service_pose() -> None:

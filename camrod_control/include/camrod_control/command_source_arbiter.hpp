@@ -194,7 +194,8 @@ private:
     return value == "align_entry_yaw" || value == "reverse_in" || value == "crab_in" ||
            value == "rotate_180" || value == "unload_wait" || value == "wait_return" ||
            value == "align_retrace_yaw" || value == "align_return_route_yaw" ||
-           value == "reverse_out" || value == "crab_out";
+           value == "align_outbound_lane_yaw" || value == "reverse_out" ||
+           value == "crab_out";
   }
 
   static bool dropZoneOwnsCommand(const std::string & phase)

@@ -62,13 +62,26 @@ if git -C "${CAMROD_SRC_ROOT}" ls-files --stage | \
   exit 1
 fi
 
-PYTHONDONTWRITEBYTECODE=1 python3 -m pytest \
+# The source-contract subprocess fixtures deliberately distinguish a caller's
+# explicit map override from values loaded by env.sh.  Do not leak this test
+# runner's own resolved map/profile back into those fixtures; each test adds an
+# explicit override when that behaviour is what it is exercising.
+env \
+  -u CAMROD_CARLA_MAP_PROFILE \
+  -u CARLA_UE_MAP \
+  -u CARLA_TOWN \
+  PYTHONDONTWRITEBYTECODE=1 python3 -m pytest \
   -q -p no:cacheprovider \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_full_launch_contracts.py" \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_virtual_carla_scripts.py" \
   "${CAMROD_SRC_ROOT}/camrod_carla_adapter/test/test_run_site_evidence_matrix.py" \
   "${CAMROD_SRC_ROOT}/camrod_bringup/test/test_colcon_build_policy.py" \
   "${CAMROD_SRC_ROOT}/camrod_bringup/test/test_workspace_shell_tools.py"
+
+# Keep the same isolation for colcon/ament pytest subprocesses below.  Those
+# tests launch dry-run shells of their own and must not mistake values resolved
+# by this wrapper's env.sh for explicit caller map overrides.
+unset CAMROD_CARLA_MAP_PROFILE CARLA_UE_MAP CARLA_TOWN
 
 if [[ "${mode}" == "source" ]]; then
   virtual_carla_log "source contracts passed"

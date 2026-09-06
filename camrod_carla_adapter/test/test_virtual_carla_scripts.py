@@ -191,11 +191,11 @@ def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
         capture_output=True,
         text=True,
     )
-    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v13"
+    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15"
     expected_relative = f"map_package/Maps/{expected_name}/{expected_name}"
     assert (
         "export CAMROD_CARLA_MAP_PROFILE="
-        "woraksan-camrod-site-geometry-v13"
+        "woraksan-camrod-site-geometry-v15"
     ) in selected.stdout
     assert f"export CARLA_UE_MAP=/Game/{expected_relative}" in selected.stdout
     assert f"export CARLA_TOWN={expected_relative}" in selected.stdout
@@ -206,12 +206,15 @@ def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     assert "site_access.sh camping-sites" in selected.stdout
     required_lifecycle = selected.stdout.split(
         "# REQUIRED lifecycle order (five terminals)", 1
-    )[1].split("# Optional historical campsite geometry/control overlay", 1)[0]
+    )[1].split("# Historical Woraksan tuning", 1)[0]
     assert "site_access.sh camrod\n" in required_lifecycle
-    assert "site_access.sh camrod-site-geometry" not in required_lifecycle
+    assert "site_access.sh camrod-site-geometry" in required_lifecycle
+    assert "REQUIRED fifth stage instead of camrod for current B1-B13 v27" in (
+        required_lifecycle
+    )
 
 
-@pytest.mark.parametrize("version", ("v12", "v11"))
+@pytest.mark.parametrize("version", ("v13", "v12", "v11"))
 def test_site_access_wrapper_keeps_previous_maps_as_explicit_legacy_profiles(
     tmp_path: Path,
     version: str,
@@ -360,7 +363,7 @@ def test_ui_evidence_capture_requires_explicit_safe_output_directory(tmp_path) -
     assert (occupied_dir / "existing-evidence.txt").read_text() == "keep\n"
 
 
-def test_ui_evidence_capture_validates_fake_x11_geometry_without_writes(
+def test_ui_evidence_capture_validates_utf8_guest_x11_geometry_without_writes(
     tmp_path,
 ) -> None:
     fake_bin = tmp_path / "bin"
@@ -369,17 +372,18 @@ def test_ui_evidence_capture_validates_fake_x11_geometry_without_writes(
     fake_xwininfo.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
+[[ "${LC_ALL:-}" == "C.UTF-8" ]]
 if [[ "$*" == "-root -tree" ]]; then
   cat <<'EOF'
      0x100001 "CarlaUE4 (64-bit Development)": ()  960x540+0+0  +0+0
-     0x200002 "CAMROD Operator UI": ()  960x540+960+0  +960+0
+     0x200002 "국립공원 로봇 서비스": ()  960x540+960+0  +960+0
 EOF
   exit 0
 fi
 if [[ "$*" == "-id 0x100001" ]]; then
   title='CarlaUE4 (64-bit Development)'; x=0
 elif [[ "$*" == "-id 0x200002" ]]; then
-  title='CAMROD Operator UI'; x=960
+  title='국립공원 로봇 서비스'; x=960
 else
   exit 2
 fi
@@ -405,7 +409,14 @@ EOF
     environment.pop("XAUTHORITY", None)
 
     result = subprocess.run(
-        [str(UI_EVIDENCE_CAPTURE), "validate"],
+        [
+            str(UI_EVIDENCE_CAPTURE),
+            "validate",
+            "--ui-kind",
+            "guest",
+            "--ui-window-title",
+            "국립공원 로봇 서비스",
+        ],
         cwd=tmp_path,
         env=environment,
         check=True,
@@ -415,6 +426,7 @@ EOF
 
     assert "geometry VERIFIED: carla=0x100001 960x540+0+0" in result.stdout
     assert "geometry VERIFIED: ui=0x200002 960x540+960+0" in result.stdout
+    assert "국립공원 로봇 서비스" in result.stdout
     assert "single desktop capture region=1920x540+0+0 gap=0px" in result.stdout
     assert "validation only; no files were written" in result.stdout
     assert sorted(path.name for path in tmp_path.iterdir()) == ["bin"]
@@ -427,6 +439,8 @@ EOF
             "0x200002",
             "--ui-window-id",
             "0x100001",
+            "--ui-window-title",
+            "국립공원 로봇 서비스",
         ],
         cwd=tmp_path,
         env=environment,
@@ -2259,23 +2273,33 @@ def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:
         / "config"
         / "apriltag_parking_detector_carla.yaml"
     )
-    plain_camrod_boundary_arguments = (
+    plain_camrod_charging_arguments = (
         "launch_charging_contact_emulator:=true",
         (
             "carla_charging_contact_parking_status_topic:="
             "/parking/apriltag_parking_controller/status"
         ),
-        f"carla_apriltag_param_file:={installed_apriltag_config}",
     )
-    for argument in plain_camrod_boundary_arguments:
-        assert argument in parity_command
+    for argument in plain_camrod_charging_arguments:
+        assert argument not in parity_command
         assert argument not in site_geometry_command
         assert argument not in tuned_command
+    # The camera detector is a CARLA sensor-boundary adapter and remains in the
+    # parity command; only simulated charger contact is site-profile-only.
+    apriltag_argument = (
+        f"carla_apriltag_param_file:={installed_apriltag_config}"
+    )
+    assert apriltag_argument in parity_command
+    assert apriltag_argument not in site_geometry_command
+    assert apriltag_argument not in tuned_command
     required_lifecycle = result.stdout.split(
         "# REQUIRED lifecycle order (five terminals)", 1
-    )[1].split("# Optional historical campsite geometry/control overlay", 1)[0]
+    )[1].split("# Historical Woraksan tuning", 1)[0]
     assert "run.sh camrod\n" in required_lifecycle
-    assert "run.sh camrod-site-geometry" not in required_lifecycle
+    assert "run.sh camrod-site-geometry" in required_lifecycle
+    assert "REQUIRED fifth stage instead of camrod for current B1-B13 v27" in (
+        required_lifecycle
+    )
     assert f"camrod_map_path:={SRC_ROOT / 'lanelet2_maps.osm'}" in result.stdout
     assert (
         "camrod_map_path:="
@@ -2508,14 +2532,17 @@ def test_camping_matrix_binds_a_fresh_auto_detected_runtime_audit() -> None:
 
     assert 'matrix_runtime_report="${matrix_output_dir}/runtime_profile_audit.json"' in runner
     assert "audit_runtime_profile.py" in runner
-    assert "--expected-profile auto" in runner
+    assert "--expected-profile develop-plus-carla-site-geometry-v27" in runner
+    assert "--expected-profile auto" not in runner
+    assert '--source-root "${CAMROD_SRC_ROOT}"' in runner
+    assert '--install-root "${CAMROD_WS_ROOT}/install"' in runner
     assert '--expected-lanelet-map "${CAMROD_DEVELOP_LANELET_MAP}"' in runner
     assert '--runtime-profile-report "${matrix_runtime_report}"' in runner
     assert "--run requires --runtime-profile-report" in matrix
     assert "load_runtime_profile_audit" in matrix
-    assert "develop-plus-carla-site-geometry-v26" in matrix
-    assert "develop-plus-carla-site-geometry-v26" in runner
-    assert "develop-plus-carla-site-geometry-v26" in auditor
+    assert "develop-plus-carla-site-geometry-v27" in matrix
+    assert "develop-plus-carla-site-geometry-v27" in runner
+    assert "develop-plus-carla-site-geometry-v27" in auditor
     assert "develop-plus-carla-site-geometry-v16" not in runner
     assert "develop-plus-carla-site-geometry-v16" not in matrix
     assert "develop-plus-carla-site-geometry-v16" not in auditor
@@ -2528,3 +2555,4 @@ def test_camping_matrix_binds_a_fresh_auto_detected_runtime_audit() -> None:
     assert "camrod_carla_develop_site_geometry.launch.py" in auditor
     assert "camrod_carla_woraksan_tuned.launch.py" in auditor
     assert 'choices=("auto", *AUDITED_PROFILE_PARAMETERS)' in auditor
+    assert '"software_identity": software_identity' in auditor

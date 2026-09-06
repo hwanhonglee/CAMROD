@@ -77,8 +77,15 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source.index(") : displayedReturning ? (") :
             self.source.index(") : activeSite ? (")
         ]
-        self.assertIn("운행을 정지하시겠습니까?", returning_preview)
+        self.assertIn("대기·충전 장소로 복귀 중입니다.", returning_preview)
+        self.assertIn("필요하면 아래 버튼으로 운행을 중지할 수 있습니다.", returning_preview)
+        self.assertIn(">운행 중지</button>", returning_preview)
         self.assertIn("onClick={handleStopMove}", returning_preview)
+        self.assertIn("serviceStateName !== 'WAITING_FOR_CHARGING'", returning_preview)
+        self.assertIn(
+            "주차를 마치고 충전기 연결을 기다리고 있습니다.",
+            returning_preview,
+        )
 
         returning_states = self.source[
             self.source.index("const RETURNING_STATES = new Set([") :
@@ -319,9 +326,10 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "const rearFallbackEnabled = telemetry.options?.docking_rear_camera_fallback_enabled === true",
             "const useRearFallback = rearFallbackEnabled && !hasFreshDockingDebug",
             "const dockingCameraName = useRearFallback ? 'rear' : 'docking'",
-            ": 'AprilTag docking debug';",
+            ": 'AprilTag 도킹 디버그 영상';",
             "{rearFallbackEnabled && (",
-            "Docking camera · CARLA rear fallback",
+            "도킹 화면 · CARLA 실제 후방카메라 대체 영상",
+            "CARLA 실제 후방카메라 · 대체 영상",
             "camera={dockingCameraName}",
             "DockingPathPlot",
             "tag_detected",
@@ -352,7 +360,13 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "redock_status = UiBackendNode._redock_status_snapshot(node)",
             self.backend_source,
         )
-        self.assertIn("await ws.send_json(redock_status)", self.backend_source)
+        self.assertIn("**redock_status,", self.backend_source)
+        self.assertIn(
+            "await UiBackendNode._send_ws_json(node, ws, initial_payload)",
+            self.backend_source,
+        )
+        self.assertNotIn("await ws.send_json(initial_payload)", self.backend_source)
+        self.assertNotIn("await ws.send_json(redock_status)", self.backend_source)
         self.assertIn(
             "snapshot.update(UiBackendNode._redock_status_snapshot(self))",
             self.backend_source,
@@ -369,11 +383,20 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # WebSocket command, which is intentionally ordinary campsite delivery.
         for token in (
             "const [destinationIntent, setDestinationIntent] = useState('delivery')",
-            "Recall · 도로 대기",
-            "배송 · 사이트 진입",
+            "이용객 호출 · 도로 대기",
+            "배송 · 사이트 내부 진입",
             "사이트 내부로 들어가지 않고 도로 측 대기점",
             "destinationIntent === 'delivery'",
             "텐트 · 호출 가능",
+            "도로 측 대기점에 도착했습니다.",
+            "적재 완료 · 복귀",
+            "수령 완료 · 복귀",
+            "짐을 모두 실은 후",
+            "배송 물품을 모두 내린 후",
+            "serviceStateName === 'GUEST_LOADING_WAIT'",
+            "serviceStateName === 'RETURN_WITH_CARGO'",
+            "이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다.",
+            "배송을 마치고 대기·충전 장소로 복귀 중입니다.",
         ):
             self.assertIn(token, self.source)
 
@@ -386,6 +409,26 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         )
         self.assertIn("body.intent !== 'recall'", recall_source)
         self.assertIn("'robot_recall_site' in data", self.source)
+        self.assertIn('"site": active_mission_site', self.backend_source)
+        self.assertIn(
+            '"robot_recall_site": recall_site,',
+            self.backend_source,
+        )
+        self.assertNotIn(
+            'await ws.send_json({"robot_recall_site": recall_site})',
+            self.backend_source,
+        )
+        self.assertIn("mission_dispatch_active", self.backend_source)
+        self.assertIn("missionDispatchActiveRef.current", self.source)
+        self.assertIn("!missionDispatchActiveRef.current", self.source)
+        self.assertRegex(
+            self.backend_source,
+            r"active_mission_site\s+and UiBackendNode\._is_guest_recall_source\(",
+        )
+        self.assertNotIn(
+            "states.get(active_mission_site, False)\n                        and UiBackendNode._is_guest_recall_source",
+            self.backend_source,
+        )
         self.assertIn(
             "const activeSite = activeRecallSite ? null : activeStateSite",
             self.source,
@@ -393,6 +436,171 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertNotIn("fetch('/ui/destination", recall_source)
         self.assertNotIn("fetch(`/ui/destination", recall_source)
         self.assertNotIn("applyToggle", recall_source)
+
+        presentation = self.source[
+            self.source.index("const hasExplicitRecallIntent") :
+            self.source.index("// ── 운영시간 게이트 확인")
+        ]
+        self.assertIn(
+            "hasExplicitRecallIntent\n    && serviceStateName === 'RETURN_WITH_CARGO'",
+            presentation,
+        )
+        self.assertNotIn(
+            "serviceStateName === 'RETURN_WITH_CARGO'\n    ||",
+            presentation,
+        )
+        self.assertIn(
+            "serviceState === SERVICE_STATE.WAITING_FOR_CHARGING",
+            self.source,
+        )
+        terminal_start = self.source.index(
+            "serviceState === SERVICE_STATE.DROP_ZONE_WAIT"
+        )
+        terminal_end = self.source.index(
+            "} else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED)",
+            terminal_start,
+        )
+        self.assertNotIn(
+            "setActiveRecallSite(null)",
+            self.source[terminal_start:terminal_end],
+        )
+        self.assertIn(
+            "destinationIntentRef.current !== 'recall'",
+            self.source[terminal_start:terminal_end],
+        )
+        self.assertIn(
+            "&& !missionDispatchActiveRef.current",
+            self.source[terminal_start:terminal_end],
+        )
+        self.assertIn(
+            "authoritative\n          // empty robot_recall_site",
+            self.source[terminal_start:terminal_end],
+        )
+        replay_start = self.source.index("if ('robot_recall_site' in data)")
+        replay_end = self.source.index(
+            "if ('occupied_sites' in data", replay_start
+        )
+        replay_source = self.source[replay_start:replay_end]
+        self.assertIn("setShowWaiting(false)", replay_source)
+        self.assertIn("destinationIntentRef.current = 'delivery'", replay_source)
+
+    def test_robot_ws_commands_echo_mission_generation_and_reconnect_is_atomic(
+        self,
+    ) -> None:
+        self.assertIn(
+            "body.mission_dispatch_generation || 0",
+            self.source,
+        )
+        self.assertIn(
+            "missionDispatchGenerationRef.current = admittedGeneration",
+            self.source,
+        )
+        self.assertIn(
+            "missionDispatchOwnerRef.current = admittedOwner",
+            self.source,
+        )
+        self.assertIn(
+            "mission_generation: st ? 0 : missionDispatchGenerationRef.current",
+            self.source,
+        )
+        self.assertIn(
+            "mission_generation: missionDispatchGenerationRef.current",
+            self.source,
+        )
+        self.assertIn(
+            '"error": "stale_or_unowned_destination_stop"',
+            self.backend_source,
+        )
+        self.assertIn(
+            '"error": "stale_or_unowned_return"',
+            self.backend_source,
+        )
+        registration = self.backend_source.index(
+            "node._ws_initializing_clients[ws] = []"
+        )
+        send_lock_registration = self.backend_source.index(
+            "node._ws_client_send_locks[ws] = asyncio.Lock()", registration
+        )
+        initial_send = self.backend_source.index(
+            "await UiBackendNode._send_ws_json(node, ws, initial_payload)",
+            send_lock_registration,
+        )
+        activation = self.backend_source.index(
+            "node._ws_clients.add(ws)", initial_send
+        )
+        self.assertLess(registration, initial_send)
+        self.assertLess(send_lock_registration, initial_send)
+        self.assertLess(initial_send, activation)
+        self.assertIn(
+            "queued.append(copy.deepcopy(payload))",
+            self.backend_source,
+        )
+        self.assertIn("async with send_lock:", self.backend_source)
+        self.assertIn(
+            "node._ws_client_send_locks.pop(ws, None)",
+            self.backend_source,
+        )
+
+    def test_robot_recall_ignores_late_http_authority_and_orphan_socket(self) -> None:
+        recall_start = self.source.index("const requestCampingSiteRecall")
+        recall_end = self.source.index("const handleToggle", recall_start)
+        recall_source = self.source[recall_start:recall_end]
+        for token in (
+            "const authorityRevisionAtRequest = missionAuthorityRevisionRef.current",
+            "recallRequestEpochRef.current !== requestEpoch",
+            "missionAuthorityRevisionRef.current !== authorityRevisionAtRequest",
+            "currentAuthorityMatches",
+            "이전 호출 응답을 무시했습니다.",
+        ):
+            self.assertIn(token, recall_source)
+
+        connect_start = self.source.index("const connect = useCallback")
+        connect_end = self.source.index(
+            "// ── 컴포넌트 마운트/언마운트 시 WebSocket 관리", connect_start
+        )
+        connect_source = self.source[connect_start:connect_end]
+        for token in (
+            "wsMountedRef.current",
+            "wsGenerationRef.current !== connectionGeneration",
+            "wsRef.current !== ws",
+            "wsReconnectTimerRef.current = setTimeout",
+        ):
+            self.assertIn(token, connect_source)
+
+    def test_visible_operator_acceptance_has_stable_minimal_dom_hooks(self) -> None:
+        for hook in (
+            'data-ui="operator-waiting-screen"',
+            'data-ui="operator-open-destination"',
+            'data-ui="operator-control-screen"',
+            'data-ui="operator-intent-delivery"',
+            'data-ui="operator-intent-recall"',
+            'data-ui={`operator-site-${site}`}',
+            'data-ui={`operator-site-page-${i}`}',
+            'data-ui="operator-site-preview-confirm"',
+            'data-ui="operator-move-confirm-yes"',
+            'data-ui="operator-site-code-input"',
+            'data-ui="operator-site-code-confirm"',
+            'data-ui="operator-arrival-return-confirm"',
+        ):
+            self.assertIn(hook, self.source)
+
+    def test_primary_robot_status_and_camera_headings_are_korean(self) -> None:
+        for text in (
+            "INITIALIZING: '초기화 중'",
+            "OK: '시스템 정상'",
+            "배터리 상태 확인 중",
+            "수동 운행",
+            "캠핑 사이트 선택",
+        ):
+            self.assertIn(text, self.source)
+        for text in (
+            "전방 카메라",
+            "후방 카메라",
+            "도킹 상태",
+            "주차 접근 경로",
+            "영상 없음",
+        ):
+            self.assertIn(text, self.telemetry_source)
 
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)
@@ -530,8 +738,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def test_docking_view_shows_exact_lanelet_parking_approach(self) -> None:
         for token in (
             "drop_zone_parking",
-            "Lanelet parking point",
-            "Exact lanelet point",
+            "Lanelet 주차 지점",
+            "정확한 Lanelet 지점",
             "docking-path-approach",
         ):
             self.assertIn(token, self.telemetry_source)

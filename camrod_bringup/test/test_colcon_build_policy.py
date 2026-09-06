@@ -45,6 +45,7 @@ def _scope_includes(package: str, *args: str) -> bool:
     function = _function_source(source, "_build_scope_includes_pkg")
     script = f"""
 set -euo pipefail
+SRC_ROOT={str(SRC_ROOT)!r}
 {function}
 if _build_scope_includes_pkg "$1" "${{@:2}}"; then
   printf included
@@ -127,6 +128,110 @@ def test_ui_frontend_build_scope_honors_explicit_select_and_skip() -> None:
         "camrod_ui", "--packages-select", "camrod_planning"
     )
     assert not _scope_includes("camrod_ui", "--packages-skip", "camrod_ui")
+
+
+def test_ui_frontend_build_scope_honors_packages_up_to_dependency_closure() -> None:
+    assert _scope_includes(
+        "camrod_ui", "--packages-up-to", "camrod_bringup"
+    )
+    assert not _scope_includes(
+        "camrod_ui", "--packages-up-to", "camrod_planning"
+    )
+    # Colcon combines selectors. An explicit selection that excludes camrod_ui
+    # must remain authoritative even when another target depends on the UI.
+    assert not _scope_includes(
+        "camrod_ui",
+        "--packages-up-to",
+        "camrod_bringup",
+        "--packages-select",
+        "camrod_planning",
+    )
+
+
+def test_ui_frontend_install_verification_is_content_and_freshness_closed() -> None:
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+    fingerprint = _function_source(
+        source, "_camrod_ui_frontend_input_fingerprint"
+    )
+    verification = _function_source(source, "_verify_camrod_ui_frontend_install")
+
+    for contract in (
+        "find src public -type f -print0",
+        "package.json package-lock.json",
+        "camrod-build-env.json",
+        "sort -z",
+        "sha256sum",
+    ):
+        assert contract in fingerprint
+
+    for contract in (
+        '"${frontend_source}" -nt "${source_bundle_path}"',
+        'cmp -s "${source_bundle_path}" "${installed_bundle_path}"',
+        '_camrod_ui_frontend_input_fingerprint "${frontend_dir}"',
+        'cmp -s "${source_fingerprint}" "${installed_fingerprint}"',
+        "grep -Fq 'operator-open-destination'",
+        "frontend bundle is older than App.js",
+        "frontend bundle does not match current src/public/manifests",
+        "installed frontend bundle content differs from source build",
+        "frontend canonical build environment differs from source/install evidence",
+    ):
+        assert contract in verification
+
+
+def test_ui_frontend_build_environment_is_canonical_and_rejects_dotenv(
+    tmp_path: Path,
+) -> None:
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+    function = _function_source(
+        source, "_prepare_camrod_ui_build_environment"
+    )
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    script = f"""
+set -euo pipefail
+log() {{ :; }}
+{function}
+export PUBLIC_URL=/ambient
+export REACT_APP_OPERATING_HOURS_GATE_ENABLED=true
+export REACT_APP_OPERATING_HOURS_START=18
+export REACT_APP_OPERATING_HOURS_END=19
+export REACT_APP_UNRELATED=host-dependent
+_prepare_camrod_ui_build_environment "$1"
+printf '%s\\0' \
+  "$PUBLIC_URL" \
+  "$REACT_APP_OPERATING_HOURS_GATE_ENABLED" \
+  "$REACT_APP_OPERATING_HOURS_START" \
+  "$REACT_APP_OPERATING_HOURS_END" \
+  "${{REACT_APP_UNRELATED+x}}" \
+  "$BUILD_PATH" "$NODE_ENV" "$GENERATE_SOURCEMAP"
+"""
+    result = subprocess.run(
+        ["bash", "-c", script, "ui-env-test", str(frontend)],
+        check=True,
+        capture_output=True,
+    )
+    assert result.stdout.decode().split("\0") == [
+        "",
+        "false",
+        "3",
+        "23",
+        "",
+        "build",
+        "production",
+        "false",
+        "",
+    ]
+
+    (frontend / ".env.production").write_text(
+        "PUBLIC_URL=/noncanonical\n", encoding="utf-8"
+    )
+    rejected = subprocess.run(
+        ["bash", "-c", script, "ui-env-test", str(frontend)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rejected.returncode != 0
 
 
 def test_wrapper_pins_colcon_outputs_outside_source_checkout() -> None:

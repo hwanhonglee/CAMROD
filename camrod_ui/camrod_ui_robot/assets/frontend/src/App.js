@@ -2,7 +2,7 @@
  * App.js — 로봇 사이트별 토글 컨트롤 메인 컴포넌트
  *
  * 역할:
- *   1. B1~B12 사이트별 토글 버튼 12개를 그리드로 렌더링
+ *   1. B1~B13 사이트별 목적지 버튼을 페이지 단위로 렌더링
  *   2. WebSocket으로 FastAPI 백엔드와 실시간 통신
  *   3. 버튼 클릭 시 {"site": "B1", "state": true}를 백엔드에 전송
  *   4. 백엔드에서 받은 상태로 각 버튼 UI 동기화
@@ -57,21 +57,22 @@ const SERVICE_STATE_NAME_BY_ID = Object.freeze(
 );
 // HH_260730 - Manual RViz and regulated UI goals share one runtime vocabulary.
 const MISSION_PHASE_LABELS = Object.freeze({
-  INITIALIZING: 'Initialization',
-  READY: 'Ready',
-  GOAL_RECEIVED: 'Goal received',
-  PATH_PREPARING: 'Preparing path',
-  DRIVING: 'Driving',
-  SAFETY_STOP: 'Safety stop',
-  ARRIVED: 'Arrived',
-  STOPPED: 'Stopped',
+  INITIALIZING: '초기화 중',
+  READY: '운행 준비 완료',
+  GOAL_RECEIVED: '목표 수신',
+  PATH_PREPARING: '경로 준비 중',
+  DRIVING: '주행 중',
+  SAFETY_STOP: '안전 정지',
+  ARRIVED: '도착',
+  STOPPED: '운행 정지',
 });
 const SYSTEM_HEALTH_LABELS = Object.freeze({
-  // HH_260721 - Keep health labels English and independent from service progress.
-  STARTING: 'System starting',
-  OK: 'System normal',
-  WARNING: 'System warning',
-  ERROR: 'System error',
+  // HH_260906 - Health remains independent from service progress, while the
+  // primary operator status is presented consistently in Korean.
+  STARTING: '시스템 시작 중',
+  OK: '시스템 정상',
+  WARNING: '시스템 경고',
+  ERROR: '시스템 오류',
 });
 const ARRIVAL_STATES = new Set([
   SERVICE_STATE.SITE_ARRIVED,
@@ -141,12 +142,12 @@ const formatBatteryReturnMessage = (data) => {
     ? `배터리 잔량이 ${battery}%입니다.`
     : '배터리 잔량이 낮습니다.';
   if (data.battery_return_started) {
-    return `${prefix} 복귀 요청이 확인되어 충전 구역으로 이동합니다.`;
+    return `${prefix} 복귀 요청이 확인되어 대기·충전 장소로 이동합니다.`;
   }
   if (data.battery_return_waiting_for_user) {
-    return `${prefix} 짐을 모두 내린 뒤 이용 완료 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.`;
+    return `${prefix} 짐 처리를 마친 뒤 완료·복귀 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.`;
   }
-  return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.`;
+  return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 대기·충전 장소 복귀를 기다립니다.`;
 };
 
 const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
@@ -154,24 +155,24 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   const battery = Number(batteryPct);
   const batteryText = Number.isFinite(battery) && battery >= 0 ? `${battery}%` : '';
   if (batteryReturnState.started) {
-    return { tone: 'warning', label: `Low battery return active ${batteryText}`.trim() };
+    return { tone: 'warning', label: `저전력 자동 복귀 중 ${batteryText}`.trim() };
   }
   if (batteryReturnState.waitingForUser) {
-    return { tone: 'warning', label: `Waiting for user return ${batteryText}`.trim() };
+    return { tone: 'warning', label: `이용 완료·복귀 요청 대기 ${batteryText}`.trim() };
   }
   if (batteryReturnState.pending) {
-    return { tone: 'warning', label: `Finish mission then return ${batteryText}`.trim() };
+    return { tone: 'warning', label: `현재 임무 완료 후 복귀 ${batteryText}`.trim() };
   }
   if (!Number.isFinite(battery) || battery < 0) {
-    return { tone: 'warning', label: 'Battery status pending' };
+    return { tone: 'warning', label: '배터리 상태 확인 중' };
   }
   if (battery <= CRITICAL_BATTERY_STOP_PERCENT) {
-    return { tone: 'error', label: `Critical battery stop ${battery}%` };
+    return { tone: 'error', label: `배터리 위험 수준 · 운행 정지 ${battery}%` };
   }
   if (battery < MISSION_DISPATCH_MINIMUM_PERCENT) {
-    return { tone: 'warning', label: `Mission hold below ${MISSION_DISPATCH_MINIMUM_PERCENT}% (${battery}%)` };
+    return { tone: 'warning', label: `임무 보류 · ${MISSION_DISPATCH_MINIMUM_PERCENT}% 미만 (${battery}%)` };
   }
-  return { tone: 'ok', label: `Mission battery ready ${battery}%` };
+  return { tone: 'ok', label: `임무 배터리 준비 완료 ${battery}%` };
 };
 
 // HH_260721 - Reuse one health/service presentation on waiting and destination screens.
@@ -385,7 +386,7 @@ function DiagnosticsMonitor({ redockStatus = null }) {
 
   return (
     <div className="diag-monitor-wrap">
-      <nav className="diag-tab-bar" aria-label="Operator diagnostics views">
+      <nav className="diag-tab-bar" aria-label="관리자 진단 화면">
         {[{ id: 'system', label: '시스템' }, ...TELEMETRY_TABS].map(tab => (
           <button
             key={tab.id}
@@ -402,7 +403,7 @@ function DiagnosticsMonitor({ redockStatus = null }) {
         <>
       {/* ── 상단 컨트롤 바 ── */}
       <div className="diag-control-bar">
-        <span className="diag-control-label">Manual Motion</span>
+        <span className="diag-control-label">수동 운행</span>
         <button
           type="button"
           className="manual-return-btn"
@@ -410,7 +411,7 @@ function DiagnosticsMonitor({ redockStatus = null }) {
           disabled={Boolean(motionCommandPending)}
           title="현재 서비스 상태와 관계없이 drop zone 복귀를 요청"
         >
-          {motionCommandPending === 'return' ? 'Return 요청 중' : 'Return'}
+          {motionCommandPending === 'return' ? '복귀 요청 중' : '복귀'}
         </button>
         <span className="manual-motion-status">{motionCommandStatus || '명령 대기'}</span>
       </div>
@@ -454,7 +455,7 @@ function DiagnosticsMonitor({ redockStatus = null }) {
       <div className="diag-tree">
         <div className="diag-tree-header">
           Device groups
-          <span className="diag-count">{items.length} items</span>
+          <span className="diag-count">{items.length}개 항목</span>
         </div>
         {groups.map(g => {
           const lvl = g.lvls[0];
@@ -734,9 +735,9 @@ const SIDE_BUTTONS = [
           <div className="guide-card-body">
             {[
               '대기 화면의 목적지 선택을 터치해 제어 패널로 이동합니다.',
-              '원하는 목적지(B1 ~ B12)를 선택합니다.',
+              '배송 또는 이용객 호출을 선택한 뒤 원하는 사이트(B1 ~ B13)를 선택합니다.',
               '목적지 이미지와 "이동하시겠습니까?" 를 확인합니다.',
-              '[예] 버튼을 눌러 배송 로봇 출발을 확정합니다.',
+              '[예] 버튼을 누르고 사이트명을 입력해 로봇 출발을 확정합니다.',
             ].map((text, i) => (
               <div key={i} className="guide-step">
                 <span className="guide-step-num" style={{ background: '#2d6e40' }}>{i + 1}</span>
@@ -761,7 +762,7 @@ const SIDE_BUTTONS = [
               '배송 로봇 이동 중에는 경로 접근을 최소화해 주세요.',
               '경로 위의 장애물은 미리 치워 주세요.',
               '어린이·반려동물이 배송 로봇 주변에 가까이 가지 않도록 주의해주세요.',
-              '로봇이 이동중에 목적지 변경은 불가능하니 신중히 선택해 주세요.',
+              '로봇이 이동 중일 때는 목적지를 변경할 수 없으니 신중히 선택해 주세요.',
             ].map((text, i) => (
               <div key={i} className="guide-bullet">
                 <span className="guide-bullet-dot" style={{ color: '#e65100' }}>⚠</span>
@@ -783,7 +784,7 @@ const SIDE_BUTTONS = [
           <div className="guide-card-body">
             {[
               '배송 로봇 이동 중 왼쪽 프리뷰 패널 하단을 확인합니다.',
-              '"운행을 정지하시겠습니까?" 아래의 [예] 버튼을 누릅니다.',
+              '[운행 중지] 버튼을 누릅니다.',
               '배송 로봇이 즉시 운행을 멈추고 목적지 ON 상태가 해제됩니다.',
             ].map((text, i) => (
               <div key={i} className="guide-step">
@@ -1037,6 +1038,9 @@ function App() {
   });
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
   const wsRef = useRef(null);
+  const wsMountedRef = useRef(false);
+  const wsGenerationRef = useRef(0);
+  const wsReconnectTimerRef = useRef(null);
   const idleTimerRef = useRef(null);                    // 전체 OFF 시 10초 타이머
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
@@ -1045,11 +1049,17 @@ function App() {
   // roadside wait pose. Keep the intent explicit through both confirmations.
   const [destinationIntent, setDestinationIntent] = useState('delivery');
   const destinationIntentRef = useRef('delivery');
+  const missionDispatchActiveRef = useRef(false);
+  const missionDispatchGenerationRef = useRef(0);
+  const missionDispatchSiteRef = useRef('');
+  const missionDispatchOwnerRef = useRef('');
+  const missionAuthorityRevisionRef = useRef(0);
+  const recallRequestEpochRef = useRef(0);
   const [recallRequestPending, setRecallRequestPending] = useState(false);
   const [activeRecallSite, setActiveRecallSite] = useState(null);
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
-  const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
+  const [isReturning, setIsReturning] = useState(false);                 // 대기·충전 장소 복귀 중
   const [activeModal, setActiveModal] = useState(null);           // 현재 열린 모달 ID
   const [showLoginModal, setShowLoginModal] = useState(false);   // 설정 로그인 모달
   const [loginId, setLoginId] = useState('');
@@ -1178,6 +1188,20 @@ function App() {
     && ACTIVE_MANUAL_PHASES.has(missionPhase);
   const displayedReturning =
     isReturning && missionPhase !== 'INITIALIZING';
+  // RETURN_WITH_CARGO is shared by delivery and recall in the controller.
+  // Require the accepted/replayed recall site as explicit request intent;
+  // the service state alone must never turn an ordinary delivery into recall
+  // wording after a refresh or during its return leg.
+  const hasExplicitRecallIntent = Boolean(activeRecallSite);
+  const recallArrivalPresentation =
+    hasExplicitRecallIntent
+    && (
+      serviceStateName === 'GUEST_LOADING_WAIT'
+      || activeRecallSite === arrivedSite
+    );
+  const recallReturnPresentation =
+    hasExplicitRecallIntent
+    && serviceStateName === 'RETURN_WITH_CARGO';
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1270,17 +1294,40 @@ function App() {
 
   // ── WebSocket 연결 함수 ─────────────────────────────────────────────────
   const connect = useCallback(() => {
+    if (!wsMountedRef.current) return;
+    if (wsReconnectTimerRef.current !== null) {
+      clearTimeout(wsReconnectTimerRef.current);
+      wsReconnectTimerRef.current = null;
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host = window.location.host || 'localhost:8010';
+    const connectionGeneration = wsGenerationRef.current + 1;
+    wsGenerationRef.current = connectionGeneration;
 
     // FastAPI 백엔드의 WebSocket 엔드포인트에 연결 (same host:port as HTTP)
     const ws = new WebSocket(`${protocol}://${host}/ws`);
+    wsRef.current = ws;
 
     // 연결 성공 시 → 연결 상태 녹색 표시
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) {
+        ws.close();
+        return;
+      }
+      setConnected(true);
+    };
 
     // 서버에서 메시지 수신 시 → 상태 업데이트
     ws.onmessage = (event) => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
       const data = JSON.parse(event.data);
 
       if (data.error === 'battery_below_mission_minimum') {
@@ -1299,6 +1346,69 @@ function App() {
         setEngageState(false);
         setMissionBlockMessage(formatMissionBlockMessage(data));
         return;
+      }
+      if (data.error === 'mission_already_active') {
+        setSelectedSite(null);
+        setShowMoveConfirm(false);
+        setShowMoveVerify(false);
+        setMoveVerifyInput('');
+        setMoveVerifyError(false);
+        setMissionBlockMessage(
+          data.message || '다른 목적지 운행이 이미 진행 중입니다.'
+        );
+      }
+      if (
+        data.error === 'stale_or_unowned_return'
+        || data.error === 'stale_or_unowned_destination_stop'
+        || data.error === 'return_not_at_service_wait'
+      ) {
+        // A delayed browser frame must not alter a newer mission. Revert the
+        // optimistic presentation; the authoritative mission snapshot and
+        // site-state map carried in this same response are applied below.
+        setIsReturning(false);
+        setMissionBlockMessage(
+          data.message || '현재 운행과 일치하지 않는 이전 요청이 취소되었습니다.'
+        );
+        const authoritativeWaitSite = String(
+          data.return_wait_site || ''
+        ).trim();
+        const authoritativeWaitOwner = String(
+          data.return_wait_owner || ''
+        ).trim();
+        if (
+          data.return_wait_active === true
+          && SITE_NAMES.includes(authoritativeWaitSite)
+          && ['operator', 'robot'].includes(authoritativeWaitOwner)
+        ) {
+          // The optimistic click hid the modal before the backend could reject
+          // it. Restore the exact still-active service wait from the rejection
+          // snapshot; campsite WAIT phases are transitions, not heartbeats, so
+          // waiting for another ROS message could otherwise strand the UI.
+          setArrivedSite(authoritativeWaitSite);
+          setShowArrivalComplete(true);
+        } else {
+          setArrivedSite(null);
+          setShowArrivalComplete(false);
+        }
+      }
+      if (data.departure_failed && data.mission_retryable) {
+        const retrySite = String(data.mission_retry_site || '선택 사이트');
+        const retryOwner = String(data.mission_retry_owner || '');
+        setMissionBlockMessage(
+          data.message || `${retrySite} 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.`
+        );
+        if (retryOwner !== 'guest') {
+          const cleared = {};
+          SITE_NAMES.forEach(site => { cleared[site] = false; });
+          setStates(cleared);
+          setSelectedSite(null);
+          setActiveRecallSite(null);
+          setShowMoveConfirm(false);
+          setShowMoveVerify(false);
+          setMoveVerifyInput('');
+          setMoveVerifyError(false);
+          missionDispatchActiveRef.current = false;
+        }
       }
 
       if ('battery_return_pending' in data) {
@@ -1366,6 +1476,45 @@ function App() {
       }
 
       // 초기 연결 시: {"states": {"B1": false, ...}} 전체 상태 수신
+      if ('mission_dispatch_active' in data) {
+        const dispatchActive = Boolean(data.mission_dispatch_active);
+        const dispatchIntent = String(data.mission_dispatch_intent || '');
+        const dispatchSite = String(data.mission_dispatch_site || '');
+        const dispatchGeneration = dispatchActive
+          ? Number(data.mission_dispatch_generation || 0)
+          : 0;
+        const dispatchOwner = dispatchActive
+          ? String(data.mission_dispatch_owner || '')
+          : '';
+        if (
+          missionDispatchActiveRef.current !== dispatchActive
+          || missionDispatchGenerationRef.current !== dispatchGeneration
+          || missionDispatchSiteRef.current !== (dispatchActive ? dispatchSite : '')
+          || missionDispatchOwnerRef.current !== dispatchOwner
+        ) {
+          missionAuthorityRevisionRef.current += 1;
+        }
+        missionDispatchActiveRef.current = dispatchActive;
+        missionDispatchGenerationRef.current = dispatchGeneration;
+        missionDispatchSiteRef.current = dispatchActive ? dispatchSite : '';
+        missionDispatchOwnerRef.current = dispatchOwner;
+        if (dispatchActive) {
+          setShowWaiting(false);
+          if (dispatchIntent === 'recall' && SITE_NAMES.includes(dispatchSite)) {
+            destinationIntentRef.current = 'recall';
+            setDestinationIntent('recall');
+            setActiveRecallSite(dispatchSite);
+          } else if (dispatchIntent === 'delivery') {
+            destinationIntentRef.current = 'delivery';
+            setDestinationIntent('delivery');
+            setActiveRecallSite(null);
+          }
+        } else if (!dispatchIntent) {
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
+        }
+      }
       if ('states' in data) {
         setStates(prev => ({ ...prev, ...data.states }));
       }
@@ -1373,14 +1522,26 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      if (
-        'robot_recall_site' in data
-        && SITE_NAMES.includes(data.robot_recall_site)
-      ) {
-        destinationIntentRef.current = 'recall';
-        setDestinationIntent('recall');
-        setActiveRecallSite(data.robot_recall_site);
-        setSelectedSite(null);
+      if ('robot_recall_site' in data) {
+        const replayedRecallSite = String(data.robot_recall_site || '');
+        if (SITE_NAMES.includes(replayedRecallSite)) {
+          destinationIntentRef.current = 'recall';
+          setDestinationIntent('recall');
+          setActiveRecallSite(replayedRecallSite);
+          setSelectedSite(null);
+          // A reconnect can happen while the robot is still in the bounded
+          // charger-departure dwell and the service state therefore remains
+          // CHARGING.  Keep the accepted recall visible instead of allowing
+          // that terminal heartbeat to reopen the standby screen.
+          setShowWaiting(false);
+        } else {
+          // The backend sends an explicit empty replay when the recall-owned
+          // site mirror reaches its terminal state.  Do not infer intent from
+          // the shared RETURN_WITH_CARGO state after that point.
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
+        }
       }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
@@ -1398,7 +1559,10 @@ function App() {
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
-        setShowArrivalComplete(true);
+        // The public Guest UI owns its recall and Return button. Robot UI may
+        // observe that lifecycle but must not expose a second authority that
+        // the backend will correctly reject.
+        setShowArrivalComplete(missionDispatchOwnerRef.current !== 'guest');
       }
       // Service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
       if ('service_state' in data) {
@@ -1407,16 +1571,29 @@ function App() {
         if (nextStateName) setServiceStateName(nextStateName);
         if (
           serviceState === SERVICE_STATE.DROP_ZONE_WAIT
+          || serviceState === SERVICE_STATE.WAITING_FOR_CHARGING
           || serviceState === SERVICE_STATE.CHARGING
         ) {
           // HH_260721 - Charging remains a stopped standby state with destination selection enabled.
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
-          setShowWaiting(true);
+          // CHARGING/DROP_ZONE_WAIT is also the state during the bounded
+          // departure dwell immediately after a recall is accepted.  Only
+          // the backend's explicit empty robot_recall_site is completion
+          // authority; until then, retain the recall screen across heartbeats.
+          if (
+            destinationIntentRef.current !== 'recall'
+            && !missionDispatchActiveRef.current
+          ) {
+            setShowWaiting(true);
+          }
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
-          setActiveRecallSite(null);
+          // Do not clear recall intent from a terminal-state heartbeat alone.
+          // A newly accepted recall remains CHARGING/WAITING while its bounded
+          // station-departure dwell runs.  The backend sends the authoritative
+          // empty robot_recall_site only after a return/parking leg completes.
         } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
           // HH_260724 - Operator stop/cancel clears mission selection but remains visible as service state.
           const cleared = {};
@@ -1433,6 +1610,18 @@ function App() {
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
           setActiveRecallSite(null);
+          if (
+            missionDispatchActiveRef.current
+            || missionDispatchGenerationRef.current !== 0
+            || missionDispatchSiteRef.current
+            || missionDispatchOwnerRef.current
+          ) {
+            missionAuthorityRevisionRef.current += 1;
+          }
+          missionDispatchActiveRef.current = false;
+          missionDispatchGenerationRef.current = 0;
+          missionDispatchSiteRef.current = '';
+          missionDispatchOwnerRef.current = '';
         } else if (MOVING_SERVICE_STATES.has(serviceState)) {
           // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
           setSelectedSite(null);
@@ -1442,7 +1631,9 @@ function App() {
           setMoveVerifyError(false);
         } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
           setArrivedSite(data.site);
-          setShowArrivalComplete(true);
+          setShowArrivalComplete(
+            missionDispatchOwnerRef.current !== 'guest'
+          );
           setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
           setShowArrivalComplete(false);
@@ -1490,18 +1681,38 @@ function App() {
 
     // HH_260708 - Reconnect the operator WebSocket after transient disconnects.
     ws.onclose = () => {
+      if (
+        wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
+      wsRef.current = null;
       setConnected(false);
-      setTimeout(connect, 2000);
+      if (wsMountedRef.current) {
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      }
     };
 
     ws.onerror = () => ws.close();
-    wsRef.current = ws;
   }, []);
 
   // ── 컴포넌트 마운트/언마운트 시 WebSocket 관리 ──────────────────────────
   useEffect(() => {
+    wsMountedRef.current = true;
     connect();
-    return () => { if (wsRef.current) wsRef.current.close(); };
+    return () => {
+      wsMountedRef.current = false;
+      wsGenerationRef.current += 1;
+      if (wsReconnectTimerRef.current !== null) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
+      }
+      const socket = wsRef.current;
+      wsRef.current = null;
+      if (socket) socket.close();
+    };
   }, [connect]);
 
   useEffect(() => {
@@ -1555,6 +1766,9 @@ function App() {
   };
 
   const requestCampingSiteRecall = async (site) => {
+    const requestEpoch = recallRequestEpochRef.current + 1;
+    recallRequestEpochRef.current = requestEpoch;
+    const authorityRevisionAtRequest = missionAuthorityRevisionRef.current;
     setRecallRequestPending(true);
     setMissionBlockMessage('');
     try {
@@ -1567,28 +1781,71 @@ function App() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.success) {
         const unavailable = response.status === 404
-          ? 'Recall API가 아직 백엔드에 연결되지 않았습니다.'
-          : 'Recall 요청이 거부되었습니다.';
+          ? '이용객 호출 기능이 아직 백엔드에 연결되지 않았습니다.'
+          : '이용객 호출 요청이 거부되었습니다.';
         throw new Error(body.message || unavailable);
       }
       // Require an intent echo so a miswired ordinary destination endpoint
       // cannot be presented to the operator as a safe roadside recall.
       if (body.intent !== 'recall') {
-        throw new Error('백엔드가 typed Recall 응답을 확인하지 않았습니다.');
+        throw new Error('백엔드가 호출 전용 응답을 확인하지 않았습니다.');
+      }
+      const admittedGeneration = Number(
+        body.mission_dispatch_generation || 0
+      );
+      const admittedSite = String(
+        body.mission_dispatch_site || ''
+      ).trim();
+      const admittedOwner = String(
+        body.mission_dispatch_owner || ''
+      ).trim();
+      if (
+        body.mission_dispatch_active !== true
+        || admittedSite !== site
+        || admittedOwner !== 'robot'
+        || !Number.isSafeInteger(admittedGeneration)
+        || admittedGeneration <= 0
+      ) {
+        throw new Error('백엔드가 호출 운행 세대를 확정하지 않았습니다.');
+      }
+      const currentAuthorityMatches = Boolean(
+        missionDispatchActiveRef.current
+        && missionDispatchSiteRef.current === admittedSite
+        && missionDispatchOwnerRef.current === admittedOwner
+        && missionDispatchGenerationRef.current === admittedGeneration
+      );
+      if (
+        recallRequestEpochRef.current !== requestEpoch
+        || (
+          missionAuthorityRevisionRef.current !== authorityRevisionAtRequest
+          && !currentAuthorityMatches
+        )
+      ) {
+        throw new Error(
+          '요청 처리 중 운행 권한이 변경되어 이전 호출 응답을 무시했습니다.'
+        );
       }
       setActiveRecallSite(site);
+      missionDispatchActiveRef.current = true;
+      missionDispatchSiteRef.current = admittedSite;
+      missionDispatchOwnerRef.current = admittedOwner;
+      missionDispatchGenerationRef.current = admittedGeneration;
       setArrivedSite(null);
       setShowArrivalComplete(false);
       setIsReturning(false);
       setSelectedSite(null);
       return true;
     } catch (error) {
-      setMissionBlockMessage(
-        error.message || 'Recall 요청을 전송하지 못했습니다.'
-      );
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setMissionBlockMessage(
+          error.message || '이용객 호출 요청을 전송하지 못했습니다.'
+        );
+      }
       return false;
     } finally {
-      setRecallRequestPending(false);
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setRecallRequestPending(false);
+      }
     }
   };
 
@@ -1628,7 +1885,7 @@ function App() {
     }
   };
 
-  // ── 이동중 "Yes" 클릭 → 운행 정지 (OFF) ─────────────────────────────────
+  // ── 이동 중 "운행 중지" 클릭 → 전체 운행 정지 ────────────────────────────
   const handleStopMove = () => {
     // Return, docking, and parking can continue after the active-site toggle
     // has already cleared. Use the authoritative full stop for every visible
@@ -1639,8 +1896,20 @@ function App() {
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
   const handleArrivalComplete = () => {
+    if (
+      !missionDispatchSiteRef.current
+      || missionDispatchGenerationRef.current <= 0
+      || !['operator', 'robot'].includes(missionDispatchOwnerRef.current)
+    ) {
+      setMissionBlockMessage('현재 운행의 복귀 권한이 이 화면에 없습니다.');
+      return;
+    }
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ usage_complete: true }));
+      wsRef.current.send(JSON.stringify({
+        usage_complete: true,
+        site: missionDispatchSiteRef.current,
+        mission_generation: missionDispatchGenerationRef.current,
+      }));
     }
     setShowArrivalComplete(false);
     setArrivedSite(null);
@@ -1653,6 +1922,7 @@ function App() {
     const updated = {};
     SITE_NAMES.forEach(s => { updated[s] = false; });
     if (newState) updated[site] = true;
+    missionDispatchActiveRef.current = Boolean(newState);
 
     setStates(updated);
 
@@ -1660,7 +1930,11 @@ function App() {
       SITE_NAMES.forEach(s => {
         const st = updated[s];
         if (st !== states[s]) {
-          wsRef.current.send(JSON.stringify({ site: s, state: st }));
+          wsRef.current.send(JSON.stringify({
+            site: s,
+            state: st,
+            mission_generation: st ? 0 : missionDispatchGenerationRef.current,
+          }));
         }
       });
     }
@@ -1798,7 +2072,7 @@ function App() {
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
     return (
-      <div className="waiting-screen">
+      <div className="waiting-screen" data-ui="operator-waiting-screen">
         {/* ── 상단 헤더 배너 ── */}
         <div className="waiting-header">
           {/* [REMOVED decorative sky/sun/cloud/bird/mountain elements — replaced with clean white header] */}
@@ -1873,7 +2147,11 @@ function App() {
           />
 
           {/* ── 목적지 선택 ── */}
-          <button className="waiting-grid-btn" onClick={handleWaitingClick}>
+          <button
+            className="waiting-grid-btn"
+            data-ui="operator-open-destination"
+            onClick={handleWaitingClick}
+          >
             <span className="waiting-grid-btn-icon">
               <div style={{ width: '100%', height: '100%' }}>
                 <RobotAnimation />
@@ -1923,7 +2201,7 @@ function App() {
         {showGuestRecall && (
           <div className="guest-recall-overlay">
             <div className="guest-recall-box">
-              <p className="guest-recall-msg">로봇이 이용객의 위치로 이동 중입니다</p>
+              <p className="guest-recall-msg">이용객 호출 요청을 받았습니다</p>
             </div>
           </div>
         )}
@@ -1931,7 +2209,7 @@ function App() {
         {guestNavigateSite && (
           <div className="guest-recall-overlay">
             <div className="guest-recall-box">
-              <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
+              <p className="guest-recall-msg">{guestNavigateSite} 사이트 이용객이 도로 대기점으로 로봇을 호출했습니다</p>
             </div>
           </div>
         )}
@@ -1955,7 +2233,12 @@ function App() {
   }
 
   return (
-    <div className="main-layout" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+    <div
+      className="main-layout"
+      data-ui="operator-control-screen"
+      onClick={resetIdleTimer}
+      onTouchStart={resetIdleTimer}
+    >
       {adminEntryZone}
 
       {/* ── 상단 헤더 배너 ── */}
@@ -1998,7 +2281,7 @@ function App() {
         <div className="preview-panel">
           {missionPhase === 'INITIALIZING' ? (
             <>
-              <span className="preview-placeholder-title">Initialization</span>
+              <span className="preview-placeholder-title">초기화 중</span>
               <span className="preview-placeholder">
                 센서, 위치, 지도 및 주행 시스템을 확인하고 있습니다
               </span>
@@ -2013,12 +2296,13 @@ function App() {
               <p className="preview-site-name">{selectedSite}</p>
               <p className="preview-question">
                 {destinationIntent === 'recall'
-                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 호출하시겠습니까?'
+                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 로봇을 호출하시겠습니까?'
                   : '배송을 위해 사이트 내부로 이동하시겠습니까?'}
               </p>
               <div className="preview-yn-btns">
                 <button
                   className="preview-yes-btn"
+                  data-ui="operator-site-preview-confirm"
                   onClick={() => setShowMoveConfirm(true)}
                   disabled={recallRequestPending}
                 >
@@ -2036,22 +2320,40 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">
-                {activeRecallSite === arrivedSite
-                  ? 'Recall 도로 대기 지점에 도착했습니다.'
-                  : '배송 로봇이 목적지에 도착했습니다.'}
+                {recallArrivalPresentation
+                  ? '도로 측 대기점에 도착했습니다.'
+                  : '배송 로봇이 사이트 내부 목적지에 도착했습니다.'}
               </p>
-              <button className="preview-return-btn" onClick={handleArrivalComplete}>
-                {activeRecallSite === arrivedSite ? '적재 완료 · 복귀' : '복귀'}
+              <button
+                className="preview-return-btn"
+                data-ui="operator-arrival-return"
+                onClick={handleArrivalComplete}
+              >
+                {recallArrivalPresentation
+                  ? '적재 완료 · 복귀'
+                  : '수령 완료 · 복귀'}
               </button>
             </>
           ) : displayedReturning ? (
             <>
-              <span className="preview-placeholder-title">Drop Zone</span>
-              <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
-              <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
-              </div>
+              <span className="preview-placeholder-title">대기·충전 장소</span>
+              <p className="preview-returning">
+                {serviceStateName === 'WAITING_FOR_CHARGING'
+                  ? '주차를 마치고 충전기 연결을 기다리고 있습니다.'
+                  : serviceStateName === 'DROP_ZONE_PARKING'
+                    ? '대기·충전 장소에서 주차 중입니다.'
+                    : recallReturnPresentation
+                      ? '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다.'
+                      : '배송을 마치고 대기·충전 장소로 복귀 중입니다.'}
+              </p>
+              {serviceStateName !== 'WAITING_FOR_CHARGING' && (
+                <>
+                  <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
+                  <div className="preview-yn-btns">
+                    <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
+                  </div>
+                </>
+              )}
             </>
           ) : activeSite ? (
             <>
@@ -2061,10 +2363,10 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">배송 로봇이 이동중 입니다.</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-moving">배송을 위해 사이트 내부로 이동 중입니다.</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>
             </>
           ) : activeRecallSite ? (
@@ -2074,32 +2376,32 @@ function App() {
                 alt={`${activeRecallSite} recall site`}
                 className="preview-image"
               />
-              <p className="preview-site-name">{activeRecallSite} Recall</p>
-              <p className="preview-moving">도로 측 대기 지점으로 이동 중입니다.</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-site-name">{activeRecallSite} 이용객 호출</p>
+              <p className="preview-moving">사이트 도로 측 대기점으로 이동 중입니다.</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>
             </>
           ) : manualDriveActive ? (
             <>
-              <span className="preview-placeholder-title">Manual RViz Goal</span>
+              <span className="preview-placeholder-title">수동 RViz 목표</span>
               <p className="preview-moving">
                 {MISSION_PHASE_LABELS[missionPhase] || missionPhase}
               </p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleManualStop}>예</button>
+                <button className="preview-stop-btn" onClick={handleManualStop}>운행 중지</button>
               </div>
             </>
           ) : serviceStateName === 'OPERATOR_STOPPED' ? (
             <>
-              <span className="preview-placeholder-title">Operator Stopped</span>
+              <span className="preview-placeholder-title">관리자 운행 정지</span>
               <p className="preview-returning">운행이 정지되었습니다.</p>
             </>
           ) : (
             <>
-              <span className="preview-placeholder-title">Camping Site Viewer</span>
+              <span className="preview-placeholder-title">캠핑 사이트 선택</span>
               <span className="preview-placeholder">목적지 선택 버튼을 눌러주세요</span>
             </>
           )}
@@ -2116,30 +2418,32 @@ function App() {
 
         {/* ── 오른쪽: 컨트롤 패널 ── */}
         <div className="app">
-          <h1>{destinationIntent === 'recall' ? 'Recall 사이트 선택' : '배송 목적지 선택'}</h1>
+          <h1>{destinationIntent === 'recall' ? '이용객 호출 사이트 선택' : '배송 목적지 선택'}</h1>
           <div className="preview-yn-btns" role="group" aria-label="사이트 운행 목적">
             <button
               type="button"
+              data-ui="operator-intent-delivery"
               className={destinationIntent === 'delivery' ? 'preview-yes-btn' : 'preview-no-btn'}
               aria-pressed={destinationIntent === 'delivery'}
               disabled={missionSelectionLocked}
               onClick={() => selectDestinationIntent('delivery')}
             >
-              배송 · 사이트 진입
+              배송 · 사이트 내부 진입
             </button>
             <button
               type="button"
+              data-ui="operator-intent-recall"
               className={destinationIntent === 'recall' ? 'preview-yes-btn' : 'preview-no-btn'}
               aria-pressed={destinationIntent === 'recall'}
               disabled={missionSelectionLocked}
               onClick={() => selectDestinationIntent('recall')}
             >
-              Recall · 도로 대기
+              이용객 호출 · 도로 대기
             </button>
           </div>
           <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
             {destinationIntent === 'recall'
-              ? '텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
+              ? '텐트가 설치된 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
               : '빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.'}
           </p>
 
@@ -2159,6 +2463,7 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
+                  data-ui={`operator-site-${site}`}
                   className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${missionSelectionLocked && !states[site] ? 'locked' : ''} ${destinationIntent === 'delivery' && occupiedSites.includes(site) ? 'occupied' : ''}`}
                   onClick={() => handleToggle(site)}
                   disabled={
@@ -2212,7 +2517,12 @@ function App() {
           {/* 페이지 인디케이터 (점) */}
           <div className="page-dots">
             {Array.from({ length: Math.ceil(SITE_NAMES.length / 6) }).map((_, i) => (
-              <span key={i} className={`page-dot ${togglePage === i ? 'active' : ''}`} onClick={() => setTogglePage(i)} />
+              <span
+                key={i}
+                data-ui={`operator-site-page-${i}`}
+                className={`page-dot ${togglePage === i ? 'active' : ''}`}
+                onClick={() => setTogglePage(i)}
+              />
             ))}
           </div>
 
@@ -2235,13 +2545,23 @@ function App() {
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
-              짐을 내려놓은 후,<br /><strong>[이용 완료]</strong> 버튼을 눌러주세요
+              {recallArrivalPresentation ? (
+                <>짐을 모두 실은 후,<br /><strong>[적재 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+              ) : (
+                <>배송 물품을 모두 내린 후,<br /><strong>[수령 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+              )}
             </p>
             <p className="arrival-complete-sub">
-              이용 완료 버튼을 누르면 로봇이 이동합니다.
+              버튼을 누르면 로봇이 대기·충전 장소로 복귀합니다.
             </p>
-            <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              복귀
+            <button
+              className="arrival-complete-btn"
+              data-ui="operator-arrival-return-confirm"
+              onClick={handleArrivalComplete}
+            >
+              {recallArrivalPresentation
+                ? '적재 완료 · 복귀'
+                : '수령 완료 · 복귀'}
             </button>
           </div>
         </div>
@@ -2253,19 +2573,20 @@ function App() {
             <p className="move-confirm-msg">
               {destinationIntent === 'recall' ? (
                 <>
-                  Recall은 사이트 내부로 진입하지 않습니다.<br />
+                  이용객 호출은 사이트 내부로 진입하지 않습니다.<br />
                   도로 측 대기점으로 호출하시겠습니까?
                 </>
               ) : (
                 <>
-                  로봇이 출발하면 정차할 수 없습니다.<br />
-                  배송을 위해 이동하시겠습니까?
+                  로봇이 사이트 내부까지 배송 운행을 시작합니다.<br />
+                  계속하시겠습니까?
                 </>
               )}
             </p>
             <div className="move-confirm-btns">
               <button
                 className="move-confirm-yes"
+                data-ui="operator-move-confirm-yes"
                 onClick={() => {
                   setShowMoveConfirm(false);
                   setMoveVerifyInput('');
@@ -2293,8 +2614,8 @@ function App() {
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
               {destinationIntent === 'recall'
-                ? '지금 Recall 호출할 사이트는'
-                : '지금 배송 이동할 사이트는'}<br />
+                ? '지금 로봇을 호출할 사이트는'
+                : '지금 배송할 사이트는'}<br />
               <span className="move-verify-site">{selectedSite}</span><br />
               입니다
             </p>
@@ -2302,11 +2623,12 @@ function App() {
             {moveVerifyError && (
               <div className="move-verify-error-box">
                 <span className="move-verify-wrong">"{moveVerifyInput}"</span>
-                <span className="move-verify-error-msg">로 이동하시는게 맞으십니까?</span>
+                <span className="move-verify-error-msg">로 이동하는 것이 맞습니까?</span>
                 <p className="move-verify-retry">숫자를 다시 입력해주세요</p>
               </div>
             )}
             <input
+              data-ui="operator-site-code-input"
               className={`move-verify-input${moveVerifyError ? ' error' : ''}`}
               value={moveVerifyInput}
               onChange={e => { setMoveVerifyInput(e.target.value.toUpperCase()); setMoveVerifyError(false); }}
@@ -2344,6 +2666,7 @@ function App() {
               </button>
               <button
                 className="move-confirm-yes"
+                data-ui="operator-site-code-confirm"
                 onClick={() => {
                   if (moveVerifyInput.trim().toUpperCase() === selectedSite.toUpperCase()) {
                     setShowMoveVerify(false);
@@ -2396,7 +2719,7 @@ function App() {
       {showGuestRecall && (
         <div className="guest-recall-overlay">
           <div className="guest-recall-box">
-            <p className="guest-recall-msg">로봇이 이용객의 위치로 이동 중입니다</p>
+            <p className="guest-recall-msg">이용객 호출 요청을 받았습니다</p>
           </div>
         </div>
       )}
@@ -2404,7 +2727,7 @@ function App() {
       {guestNavigateSite && (
         <div className="guest-recall-overlay">
           <div className="guest-recall-box">
-            <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
+            <p className="guest-recall-msg">{guestNavigateSite} 사이트 이용객이 도로 대기점으로 로봇을 호출했습니다</p>
           </div>
         </div>
       )}

@@ -243,6 +243,14 @@ def generate_launch_description():
             'planning_state_machine_camping_sites_yaml',
             default_value=planning_state_machine_camping_sites_default,
         ),
+        DeclareLaunchArgument(
+            'planning_state_machine_return_goal_reached_distance_m',
+            default_value='',
+            description=(
+                'Optional return-route handoff override forwarded to the '
+                'state machine; empty preserves the selected parameter YAML.'
+            ),
+        ),
         DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_center_link'),
         DeclareLaunchArgument(
             'nav2_selected_planner',
@@ -384,6 +392,7 @@ def generate_launch_description():
                 'planning_state_machine_keypoints_yaml',
                 'planning_state_machine_camping_sites_yaml',
                 'planning_state_machine_reverse_auto_goal_snapper_input_topic',
+                'planning_state_machine_return_goal_reached_distance_m',
             ).items(),
         ),
 

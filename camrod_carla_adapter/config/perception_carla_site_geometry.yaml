@@ -1,0 +1,23 @@
+# CARLA site-validation perception overlay.
+#
+# Keep this file separate from perception_carla.yaml: ordinary `camrod`
+# preserves develop's YOLO min_confidence=0.50 and applies only the measured
+# camera-to-LiDAR extrinsic.  `camrod-site-geometry` explicitly selects this
+# combined overlay for the Woraksan campsite evidence profile.
+/perception/obstacle_fusion:
+  ros__parameters:
+    # Spawn coordinates use raw LiDAR axes; fusion uses the Vanjee effective
+    # frame.  See perception_carla.yaml for the measured-frame derivation.
+    extrinsic_x: 0.0
+    extrinsic_y: 0.00001
+    extrinsic_z: -0.09970
+
+# HH_260903 - Bright Woraksan foliage repeatedly produced unrelated COCO
+# boxes (for example dog, surfboard, broccoli and toaster).  A live 56-frame
+# sample reached 0.9233 confidence and associated ordinary terrain LiDAR
+# points with the semantic safety cloud, latching an otherwise-clear B11
+# return.  This simulator/site profile alone uses 0.95 to reject that measured
+# false-positive cohort.  Radar remains an independent dynamic-obstacle source.
+/perception/yolov9mit:
+  ros__parameters:
+    min_confidence: 0.95
