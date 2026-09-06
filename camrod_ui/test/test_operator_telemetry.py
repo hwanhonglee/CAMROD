@@ -203,13 +203,30 @@ class OperatorTelemetryTest(unittest.TestCase):
             update_goal_received=lambda source: events.append(("policy", source))
         )
         backend = SimpleNamespace(
+            _command_epoch_lock=threading.Lock(),
+            _command_epoch=0,
+            _generation_zero_authority="",
+            _generation_zero_authority_epoch=0,
             _normalize_manual_goal=UiBackendNode._normalize_manual_goal,
             _manual_goal_dispatch_block=lambda: None,
+            _revoke_manual_drive=lambda reason: events.append(
+                ("manual_revoke", reason)
+            ),
+            _cancel_service_motion_writers=lambda source: events.append(
+                ("controller_cancel", source)
+            ),
             _yaw_deg_to_quaternion=lambda yaw: UiBackendNode._yaw_deg_to_quaternion(
                 None, yaw
             ),
             _lock=threading.Lock(),
             _active_mission_site="B6",
+            _active_mission_source="ws",
+            _active_mission_generation=7,
+            _return_requested_generation=0,
+            _return_progress_generation=0,
+            _return_operation_token="",
+            _terminal_clear_armed_generation=0,
+            _active_mission_retryable=False,
             _state=SimpleNamespace(
                 ws_site_states={"B6": True},
                 destination={"site": "B6", "run": True},
@@ -233,6 +250,14 @@ class OperatorTelemetryTest(unittest.TestCase):
         self.assertTrue(result["success"])
         goal_index = next(index for index, event in enumerate(events) if event[0] == "goal")
         engage_index = next(index for index, event in enumerate(events) if event[0] == "engage")
+        revoke_index = next(
+            index for index, event in enumerate(events) if event[0] == "manual_revoke"
+        )
+        cancel_index = next(
+            index for index, event in enumerate(events) if event[0] == "controller_cancel"
+        )
+        self.assertLess(revoke_index, cancel_index)
+        self.assertLess(cancel_index, goal_index)
         self.assertLess(goal_index, engage_index)
         pose = events[goal_index][1]
         self.assertEqual(pose.header.frame_id, "map")
