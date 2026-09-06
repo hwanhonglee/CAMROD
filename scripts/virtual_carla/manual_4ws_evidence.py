@@ -1687,9 +1687,15 @@ def validate_physical_wheel_readback(
     phase_results: dict[str, Any] = {}
     for phase_name in ("positive", "inverse"):
         phase = phases[phase_name]
+        # The controller enables bounded wheel torque while steering slews out
+        # of the previous zero pose.  Judge the commanded geometry over the
+        # same 0.5 s settled window used for physical wheel readback below;
+        # otherwise a legitimate first zero-angle transition frame is falsely
+        # treated as the requested steady 4WS pose.
+        settled_start_ns = int(phase["start_ns"]) + 500_000_000
         commands = [
             record for record in samples_in_window(
-                ros_records, topic, int(phase["start_ns"]), int(phase["end_ns"])
+                ros_records, topic, settled_start_ns, int(phase["end_ns"])
             )
             if int(record["message"]["drive_mode"]) == spec.mode_id
             and bool(record["message"]["independent_wheel_torque_active"])
@@ -1700,7 +1706,7 @@ def validate_physical_wheel_readback(
             validate_wheel_command_pattern(spec, command["message"])
         selected_wheels = _wheel_window(
             wheel_samples,
-            int(phase["start_ns"]) + 500_000_000,
+            settled_start_ns,
             int(phase["end_ns"]),
         )
         comparisons = 0
