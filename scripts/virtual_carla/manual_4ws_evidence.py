@@ -468,6 +468,56 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
         )
         return dict(value) if isinstance(value, Mapping) else {}
 
+    def scroll_pointer_target_into_view(
+        self, selector: str, description: str
+    ) -> dict[str, Any]:
+        """Expose one enabled element and prove its center is a real hit target.
+
+        The expanded manual-drive dock can place the ARM button a few pixels
+        below Chrome's content viewport even though the element itself has a
+        non-zero layout rectangle.  CDP pointer coordinates outside that
+        viewport are silently ignored.  Scrolling is only viewport navigation;
+        the subsequent control action remains a real CDP mouse event.
+        """
+        literal = json.dumps(selector)
+        value = self._evaluate(
+            "(() => {"
+            f"const selector = {literal};"
+            "const matches = Array.from(document.querySelectorAll(selector));"
+            "if (matches.length !== 1) return {accepted:false, count:matches.length};"
+            "const element = matches[0];"
+            "element.scrollIntoView({block:'center', inline:'nearest'});"
+            "const rect = element.getBoundingClientRect();"
+            "const x = rect.left + rect.width / 2;"
+            "const y = rect.top + rect.height / 2;"
+            "const inViewport = x >= 0 && y >= 0 && "
+            "x < window.innerWidth && y < window.innerHeight;"
+            "const hit = inViewport ? document.elementFromPoint(x, y) : null;"
+            "const accepted = Boolean(!element.disabled && inViewport && hit && "
+            "(hit === element || element.contains(hit)));"
+            "return {accepted:accepted, count:1, disabled:Boolean(element.disabled),"
+            "x:x, y:y, viewportWidth:window.innerWidth,"
+            "viewportHeight:window.innerHeight,"
+            "hitTag:hit ? hit.tagName : '',"
+            "hitUi:hit ? hit.getAttribute('data-ui') : ''};"
+            "})()"
+        )
+        self._accepted(value, f"visible pointer target for {description}")
+        record = {
+            "stage": f"scroll {description} into visible viewport",
+            "selector": selector,
+            "x": round(float(value["x"]), 3),
+            "y": round(float(value["y"]), 3),
+            "viewport_width": int(value["viewportWidth"]),
+            "viewport_height": int(value["viewportHeight"]),
+            "hit_tag": str(value.get("hitTag", "")),
+            "hit_ui": str(value.get("hitUi", "")),
+            "transport": "CDP.Runtime.evaluate scrollIntoView/read-only hit test",
+            "at_unix_ns": time.time_ns(),
+        }
+        self._interactions.append(record)
+        return record
+
     def wait_snapshot(
         self,
         predicate: Callable[[Mapping[str, Any]], bool],
@@ -616,6 +666,9 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
             raise MatrixError(f"manual-drive panel is not connected: {snapshot!r}")
         if snapshot.get("armed"):
             raise MatrixError("manual-drive panel was unexpectedly already ARMED")
+        self.scroll_pointer_target_into_view(
+            '[data-ui="manual-drive-arm"]', "ARM manual drive"
+        )
         self.clear_probe()
         self._click('[data-ui="manual-drive-arm"]', "ARM manual drive")
         armed = self.wait_snapshot(
