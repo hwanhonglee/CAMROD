@@ -1,0 +1,16 @@
+{
+  "BUILD_PATH": "build",
+  "CI": "false",
+  "DISABLE_ESLINT_PLUGIN": "false",
+  "GENERATE_SOURCEMAP": "false",
+  "IMAGE_INLINE_SIZE_LIMIT": "10000",
+  "INLINE_RUNTIME_CHUNK": "true",
+  "NODE_ENV": "production",
+  "NODE_PATH": "",
+  "PUBLIC_URL": "",
+  "REACT_APP_OPERATING_HOURS_END": "23",
+  "REACT_APP_OPERATING_HOURS_GATE_ENABLED": "false",
+  "REACT_APP_OPERATING_HOURS_START": "3",
+  "SKIP_PREFLIGHT_CHECK": "false",
+  "TSC_COMPILE_ON_ERROR": "false"
+}

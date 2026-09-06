@@ -166,7 +166,10 @@ require_capture_tools() {
 }
 
 x11_command_prefix() {
-  X11_PREFIX=(env "DISPLAY=${DISPLAY_VALUE}" LC_ALL=C)
+  # Keep xwininfo's field labels deterministic while preserving UTF-8 window
+  # titles such as the Korean Guest UI.  Plain LC_ALL=C converts the UTF-8
+  # _NET_WM_NAME to ASCII and makes exact title discovery fail closed.
+  X11_PREFIX=(env "DISPLAY=${DISPLAY_VALUE}" LC_ALL=C.UTF-8)
   if [[ -n "${XAUTHORITY_VALUE}" ]]; then
     X11_PREFIX+=("XAUTHORITY=${XAUTHORITY_VALUE}")
   fi

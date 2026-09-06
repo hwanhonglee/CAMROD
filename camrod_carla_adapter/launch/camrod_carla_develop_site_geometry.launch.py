@@ -2,11 +2,14 @@
 
 This wrapper preserves the ordinary control, planning, safety, localization,
 parking, and UI defaults from ``camrod_carla_full.launch.py`` except for the
-explicit CARLA route-recovery adaptations listed below.  Its perception
-algorithm, tag identity, physical tag size, validation threshold, ROI policy,
-thread count, and outputs remain production-parity; only detector decimation
-is disabled so CARLA's 800x600 rear image retains enough tag pixels at the
-Drop Zone acquisition distance.  It also selects the campsite-geometry
+explicit CARLA route-recovery adaptations listed below.  Its perception graph,
+tag identity, physical tag size, AprilTag validation threshold, ROI policy,
+thread count, and outputs remain production-parity; only AprilTag detector
+decimation is disabled so CARLA's 960x720 rear image retains enough tag pixels
+at the Drop Zone acquisition distance.  Separately, this wrapper explicitly
+selects the measured Woraksan YOLO `min_confidence=0.95` overlay; ordinary
+`camrod` retains develop's `0.50` value and only applies the CARLA camera-to-
+LiDAR extrinsic.  It also selects the campsite-geometry
 parameters exercised by the 7a095ee B1 physical round-trip and one
 authenticated CARLA-plant recovery lease.  The site profile also opts into
 full-route-relative recovery, zero-hold timing, corrective yaw, and bounded
@@ -18,12 +21,14 @@ for a 0.04--0.06 m/s recovery command.  Live B2 return evidence on 2026-09-02
 showed that the unassisted 0.05 m/s crab moved only 0.263 m before the 90 s
 bounded limit, leaving the robot safely stopped at the lanelet edge.
 
-The current develop return contract is also preserved explicitly: after
-``CRAB_OUT`` the controller accepts a fresh live lanelet projection, holds
-zero for 1.20 s, and asks LaneletRoute to plan from the robot's current XY.
-The former CARLA entry-anchor centering lease is pinned off; enabling it would
-make the robot recover the historical inbound snap before the maneuver and
-would defeat that current-pose return behavior.
+The current develop return contract is also preserved explicitly for ordinary
+and turnaround sites: after ``CRAB_OUT`` the controller accepts a fresh live
+lanelet projection, holds zero for 1.20 s, and asks LaneletRoute to plan from
+the robot's current XY.  B11--B13 are the scoped CARLA exception: their
+roadside exit must first reach the 0.03 m lanelet band, retain outbound yaw,
+and select the separately tagged RPPReverse route.  The former CARLA entry-
+anchor centering lease remains pinned off; enabling it before the maneuver
+would defeat develop's current-pose arrival behavior.
 
 CARLA Drop-Zone arrival poses also showed run-to-run lateral variation larger
 than the immutable AprilTag completion tolerance. This wrapper alone enables
@@ -89,6 +94,11 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 # Keep this mapping explicit and host-independent: the live runtime auditor
 # checks the corresponding ROS parameters before a campsite matrix may move.
 DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
+    # CARLA publishes a real rear RGB stream, but the AprilTag debug JPEG is
+    # intentionally event-driven and can be stale before acquisition.  Only
+    # this simulator evidence profile may show the live rear stream in that
+    # empty docking slot; full/develop/production launches remain fail-closed.
+    "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
     # Do not halve campsite CRAB/ROTATE commands in the final gate. Ordinary
     # Nav2 is independently pre-limited by the CARLA runtime overlay to the
     # same 0.555556 m/s physical cruise produced by develop's 1.111111 * 0.5.
@@ -144,6 +154,37 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
     # 0.15 m site-only re-entry band admits that still fully projected inward
     # correction while retaining a hard stop at 0.10 m regression from best.
     "carla_route_safety_path_center_reentry_m": "0.15",
+    # B11 v13 reached the ordinary 0.15 m live-lanelet handoff while still
+    # 0.41 m from its inbound anchor. The resulting forward loop immediately
+    # put the physical body on a cost-100 edge, then Nav2 recovery rotated the
+    # front radar to 0.16 m. Keep the develop current-pose policy everywhere
+    # else, but make the existing roadside-only CARLA exception atomic: crab
+    # to the 0.03 m band, retain outbound yaw, tag the goal as reverse, select
+    # RPPReverse, and enforce the reverse lanelet corridor.
+    "carla_roadside_reverse_return_enable": "true",
+    "carla_roadside_reverse_handoff_distance_m": "0.03",
+    "carla_nav2_reverse_controller": "RPPReverse",
+    "carla_reverse_goal_topic": "/planning/auto_reverse_goal_raw",
+    "carla_lanelet_safety_check_reverse": "true",
+    # ALIGN_OUTBOUND_LANE_YAW is a CARLA roadside-return geometry lease, not a
+    # develop safety default. Command ownership remains production-equivalent;
+    # only this explicit wrapper lets the phase cross the measured static and
+    # lanelet boundary while live classified/radar stops remain authoritative.
+    "carla_camping_site_maneuver_controller_static_bypass_phases": (
+        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,"
+        "ALIGN_OUTBOUND_LANE_YAW,REVERSE_OUT,CRAB_OUT"
+    ),
+    "carla_camping_site_maneuver_controller_lanelet_bypass_phases": (
+        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,"
+        "ALIGN_OUTBOUND_LANE_YAW,REVERSE_OUT,CRAB_OUT"
+    ),
+    # Nav2 and the planning state machine measure the same snapped return goal
+    # from different live pose references. B2 operator recall recorded Nav2
+    # SUCCEEDED at 0.338 m in the planning reference while the production
+    # 0.300 m handoff remained closed. Match the already-proven generic 0.35 m
+    # arrival bound only in this site wrapper; Nav2 success, its 15 s latch,
+    # the 0.75 m local correction cap and 0.05 m parking tolerance stay exact.
+    "carla_return_goal_reached_distance_m": "0.35",
     # B11 v13 completed outbound and CRAB_OUT with collision=0 and every
     # physical wheel grounded, then the road-return command repeatedly hit
     # lanelet_footprint_cost at body=(-0.63,-0.63).  That cell is outside the
@@ -213,6 +254,14 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
 def develop_site_geometry_arguments(adapter_share):
     """Bind the proven site profile to its CARLA-only sensor/plant configs."""
     arguments = dict(DEVELOP_SITE_GEOMETRY_ARGUMENTS)
+    # Unlike full/develop-parity, this evidence profile explicitly opts into
+    # the measured Woraksan YOLO false-positive filter as well as the shared
+    # CARLA camera-to-LiDAR extrinsic.
+    arguments["carla_perception_runtime_override_param_file"] = os.path.join(
+        adapter_share,
+        "config",
+        "perception_carla_site_geometry.yaml",
+    )
     arguments["carla_apriltag_param_file"] = os.path.join(
         adapter_share,
         "config",

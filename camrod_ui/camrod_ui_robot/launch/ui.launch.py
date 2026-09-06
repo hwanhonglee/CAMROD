@@ -54,9 +54,29 @@ def _resolve_default_camping_sites_yaml() -> str:
     return ''
 
 
+def _resolve_default_drop_zones_yaml() -> str:
+    """Resolve the authored station polygon used for terminal validation."""
+    try:
+        map_share = get_package_share_directory('camrod_map')
+        candidate = os.path.join(map_share, 'config', 'drop_zones.yaml')
+        if os.path.isfile(candidate):
+            return candidate
+    except PackageNotFoundError:
+        pass
+
+    source_ws_candidate = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), '..', '..', '..',
+            'camrod_map', 'config', 'drop_zones.yaml',
+        )
+    )
+    return source_ws_candidate if os.path.isfile(source_ws_candidate) else ''
+
+
 def generate_launch_description():
     default_frontend_dir = _resolve_default_frontend_dir()
     default_camping_sites_yaml = _resolve_default_camping_sites_yaml()
+    default_drop_zones_yaml = _resolve_default_drop_zones_yaml()
 
     enable_ui_backend_arg = DeclareLaunchArgument(
         'enable_ui_backend',
@@ -190,6 +210,14 @@ def generate_launch_description():
         'camping_sites_yaml',
         default_value=default_camping_sites_yaml,
         description='Camping site coordinates YAML used for destination->goal_pose dispatch',
+    )
+    drop_zones_yaml_arg = DeclareLaunchArgument(
+        'drop_zones_yaml',
+        default_value=default_drop_zones_yaml,
+        description=(
+            'Authored drop-zone polygon used to reject stale return-terminal '
+            'service states outside the station'
+        ),
     )
     enable_campsite_occupancy_guard_arg = DeclareLaunchArgument(
         'enable_campsite_occupancy_guard',
@@ -495,6 +523,7 @@ def generate_launch_description():
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
+            'drop_zones_yaml': LaunchConfiguration('drop_zones_yaml'),
             # HH_260818 - One bringup flag controls both UI admission and the
             # control-side occupied-site start gate.
             'enable_campsite_occupancy_guard': ParameterValue(
@@ -584,6 +613,7 @@ def generate_launch_description():
         operator_ui_window_fullscreen_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
+        drop_zones_yaml_arg,
         enable_campsite_occupancy_guard_arg,
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,

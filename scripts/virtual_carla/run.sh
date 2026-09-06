@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|camrod-site-geometry|camrod-tuned|spectator|guest-ui|manual|audit-sensors|camping-sites-plan|camping-sites|camping-sites-guest|doctor>
+Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|camrod-site-geometry|camrod-tuned|spectator|guest-ui|operator-ui|manual|audit-sensors|camping-sites-plan|camping-sites|camping-sites-recall|camping-sites-guest|camping-sites-browser|camping-sites-browser-recall|doctor>
 
   commands  print copyable terminal commands; start nothing
   server    run the UE 4.26 CARLA server in CARLA_RENDER_MODE
@@ -14,11 +14,13 @@ Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|camrod-site-geometry|ca
   spawn     spawn the configured Ranger actor/sensors
   camrod    run develop-parity CAMROD over the CARLA bridge (default)
   camrod-site-geometry
-            run develop-parity plus only the proven CARLA campsite geometry
+            run latest develop plus the explicit v27 CARLA campsite test overlay
   camrod-tuned
             run the historical Woraksan-specific tuned mission profile
   spectator follow the exact live Ranger in the visible CARLA window; visual only
   guest-ui launch one visible isolated Guest UI Chrome app with local-only CDP
+  operator-ui
+            launch one visible isolated Robot UI Chrome app with local-only CDP
   manual    terminal-keyboard fallback through CAMROD safety/physical 4WS
   audit-sensors
             prove all 36 CARLA-source/UI sensor streams and 13 actors live
@@ -26,13 +28,20 @@ Usage: run.sh <commands|server|bridge|pacer|spawn|camrod|camrod-site-geometry|ca
             print the B1-B13 round-trip plan; create nothing and send no command
   camping-sites
             execute UI-driven Drop Zone -> B1-B13 -> Drop Zone live evidence
+  camping-sites-recall
+            execute Robot UI roadside recall -> Return live evidence
   camping-sites-guest
-            execute Guest navigate -> usage_complete round-trip live evidence
+            execute Guest navigate -> usage_complete roadside recall evidence
+  camping-sites-browser
+            execute Robot UI visible clicks for delivery and Return evidence
+  camping-sites-browser-recall
+            execute Robot UI visible clicks for roadside recall and Return evidence
   doctor    validate paths, overlays, gates, Python API and renderer readiness
 
-Required order in separate terminals: server -> bridge -> pacer -> spawn -> camrod.
-Use camrod for B1-B13 campsite validation. The CARLA sensor/charger boundary
-adaptations are enabled there without changing develop control or planning.
+Required base order in separate terminals: server -> bridge -> pacer -> spawn.
+Use camrod for strict develop-parity smoke checks. Use camrod-site-geometry as
+the fifth stage for B1-B13 evidence; its v27 simulator-only maneuver, recovery,
+charger, camera and safety opt-ins leave ordinary develop defaults unchanged.
 Wait for each preceding stage to report success. The camrod stage refuses to
 start unless exactly one vehicle.ranger.default with CARLA_ROLE_NAME exists.
 After camrod is healthy, the preferred manual control is in the UI Admin >
@@ -175,8 +184,6 @@ camrod_command() {
   )
   if [[ "${launch_file}" == "camrod_carla_full.launch.py" ]]; then
     CAMROD_COMMAND+=(
-      launch_charging_contact_emulator:=true
-      carla_charging_contact_parking_status_topic:=/parking/apriltag_parking_controller/status
       "carla_apriltag_param_file:=${CAMROD_WS_ROOT}/install/camrod_carla_adapter/share/camrod_carla_adapter/config/apriltag_parking_detector_carla.yaml"
     )
   fi
@@ -299,6 +306,40 @@ if not plain_local_http(cdp_url, port=9223):
 PY
 }
 
+validate_operator_browser_endpoints() {
+  python3 - "${CAMROD_UI_URL}" "${CAMROD_OPERATOR_CDP_URL}" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+operator_url = urlparse(sys.argv[1])
+cdp_url = urlparse(sys.argv[2])
+
+def plain_local_http(parsed, *, port):
+    return (
+        parsed.scheme == "http"
+        and parsed.hostname == "127.0.0.1"
+        and parsed.port == port
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path in ("", "/")
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+if not plain_local_http(operator_url, port=8010):
+    raise SystemExit(
+        "CAMROD_UI_URL must be exactly the local Robot UI endpoint "
+        "http://127.0.0.1:8010"
+    )
+if not plain_local_http(cdp_url, port=9224):
+    raise SystemExit(
+        "CAMROD_OPERATOR_CDP_URL must be exactly the local-only CDP endpoint "
+        "http://127.0.0.1:9224"
+    )
+PY
+}
+
 require_guest_ui_page() {
   python3 - "${CAMROD_GUEST_UI_URL}" <<'PY'
 import sys
@@ -330,8 +371,32 @@ if missing:
 PY
 }
 
-guest_browser_target_ready() {
-  python3 - "${CAMROD_GUEST_CDP_URL}" "${CAMROD_GUEST_UI_URL}" <<'PY'
+require_operator_ui_page() {
+  python3 - "${CAMROD_UI_URL}" <<'PY'
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+url = sys.argv[1]
+request = Request(url, headers={"Accept": "text/html"})
+try:
+    with urlopen(request, timeout=3.0) as response:  # nosec B310 - endpoint validated as 127.0.0.1
+        status = int(response.status)
+        body = response.read(2_000_000).decode("utf-8", errors="replace")
+except (HTTPError, URLError, TimeoutError, OSError) as error:
+    raise SystemExit(f"Robot UI page is unavailable at {url}: {error}") from None
+if status < 200 or status >= 300:
+    raise SystemExit(f"Robot UI page returned HTTP {status}: {url}")
+if "<title>Robot UI</title>" not in body or 'id="root"' not in body:
+    raise SystemExit(
+        "Robot UI page does not expose the production React root/title contract"
+    )
+PY
+}
+
+browser_target_ready() {
+  local cdp_url="$1" page_url="$2"
+  python3 - "${cdp_url}" "${page_url}" <<'PY'
 import json
 import sys
 from urllib.parse import urlparse
@@ -361,6 +426,16 @@ debugger = urlparse(str(matches[0]["webSocketDebuggerUrl"]))
 if debugger.scheme != "ws" or debugger.hostname != "127.0.0.1":
     raise SystemExit(1)
 PY
+}
+
+
+guest_browser_target_ready() {
+  browser_target_ready "${CAMROD_GUEST_CDP_URL}" "${CAMROD_GUEST_UI_URL}"
+}
+
+
+operator_browser_target_ready() {
+  browser_target_ready "${CAMROD_OPERATOR_CDP_URL}" "${CAMROD_UI_URL}"
 }
 
 resolve_guest_browser() {
@@ -1224,6 +1299,8 @@ case "${subcommand}" in
       "${CAMROD_GUEST_UI_URL}"
     printf 'export CAMROD_GUEST_CDP_URL=%q\n' \
       "${CAMROD_GUEST_CDP_URL}"
+    printf 'export CAMROD_OPERATOR_CDP_URL=%q\n' \
+      "${CAMROD_OPERATOR_CDP_URL}"
     printf 'export CAMROD_CARLA_YOLO_MODEL_PATH=%q\n' \
       "${CAMROD_CARLA_YOLO_MODEL_PATH}"
     printf 'export CAMROD_CARLA_YOLO_DEVICE=%q\n' \
@@ -1249,9 +1326,10 @@ case "${subcommand}" in
     printf '%q bridge\n' "${lifecycle_runner}"
     printf '%q pacer\n' "${lifecycle_runner}"
     printf '%q spawn\n' "${lifecycle_runner}"
-    printf '# Fifth stage for B1-B13: latest develop plus CARLA plant-boundary adapters only\n'
+    printf '# Fifth stage for strict latest-develop parity smoke checks\n'
     printf '%q camrod\n\n' "${lifecycle_runner}"
-    printf '# Optional historical campsite geometry/control overlay; not develop parity\n'
+    printf '# REQUIRED fifth stage instead of camrod for current B1-B13 v27 evidence\n'
+    printf '# This is latest develop plus explicit simulator-only site test opt-ins.\n'
     printf '%q camrod-site-geometry\n\n' "${lifecycle_runner}"
     printf '# Historical Woraksan tuning is explicit and is not the parity default\n'
     printf '%q camrod-tuned\n\n' "${lifecycle_runner}"
@@ -1259,6 +1337,8 @@ case "${subcommand}" in
     printf '%q spectator\n\n' "${lifecycle_runner}"
     printf '# Visible production Guest UI; keep this isolated browser terminal open\n'
     printf '%q guest-ui\n\n' "${lifecycle_runner}"
+    printf '# Visible Robot UI click authority; set CAMROD_ENABLE_OPERATOR_WINDOW=false before camrod to omit WebKit\n'
+    printf '%q operator-ui\n\n' "${lifecycle_runner}"
     printf '# Optional after CAMROD and physical 4WS status are healthy\n'
     printf '%q manual\n\n' "${lifecycle_runner}"
     printf '# Required live proof after opening a UI sensor tab\n'
@@ -1266,8 +1346,13 @@ case "${subcommand}" in
     printf '# B1-B13 plan is read-only; live matrix uses the production UI and sends motion\n'
     printf '%q camping-sites-plan\n' "${lifecycle_runner}"
     printf '%q camping-sites\n' "${lifecycle_runner}"
+    printf '# Robot UI recall authority uses /ui/camping_site_recall -> manual Return\n'
+    printf '%q camping-sites-recall\n' "${lifecycle_runner}"
     printf '# Guest authority uses the visible browser: navigate -> usage_complete\n'
     printf '%q camping-sites-guest\n\n' "${lifecycle_runner}"
+    printf '# Robot authority uses visible browser pointer/text input and the arrival Return button\n'
+    printf '%q camping-sites-browser\n' "${lifecycle_runner}"
+    printf '%q camping-sites-browser-recall\n\n' "${lifecycle_runner}"
 
     printf '# Expanded server command\n'
     print_command "${SERVER_COMMAND[@]}"
@@ -1355,7 +1440,7 @@ case "${subcommand}" in
     camrod_lanelet_map="${CAMROD_LANELET_MAP}"
     if [[ "${subcommand}" == "camrod-site-geometry" ]]; then
       camrod_launch_file="camrod_carla_develop_site_geometry.launch.py"
-      camrod_profile="develop-plus-carla-site-geometry-v26"
+      camrod_profile="develop-plus-carla-site-geometry-v27"
     elif [[ "${subcommand}" == "camrod-tuned" ]]; then
       camrod_launch_file="camrod_carla_woraksan_tuned.launch.py"
       camrod_profile="woraksan-tuned"
@@ -1512,6 +1597,94 @@ case "${subcommand}" in
       exit "${guest_browser_status}"
     fi
     ;;
+  operator-ui)
+    [[ -n "${DISPLAY:-}" ]] || virtual_carla_die \
+      "operator-ui requires DISPLAY for a visible browser"
+    validate_operator_browser_endpoints || virtual_carla_die \
+      "refusing Robot UI launch with a non-canonical endpoint"
+    require_operator_ui_page || virtual_carla_die \
+      "production Robot UI page preflight failed"
+    if tcp_port_is_listening 9224; then
+      virtual_carla_die \
+        "CDP port 127.0.0.1:9224 is already listening; refusing an ambiguous or duplicate Robot UI browser"
+      exit 1
+    fi
+    operator_browser="$(resolve_guest_browser)"
+    operator_browser_temp_root="$(readlink -m "${TMPDIR:-/tmp}")"
+    virtual_carla_require_dir \
+      "${operator_browser_temp_root}" "Robot UI browser temporary root"
+    operator_browser_profile="$(
+      mktemp -d "${operator_browser_temp_root}/camrod-operator-chrome.XXXXXX"
+    )"
+    operator_browser_pid=""
+    operator_browser_cleanup() {
+      trap - EXIT INT TERM
+      if [[ -n "${operator_browser_pid}" ]] && \
+          kill -0 "${operator_browser_pid}" >/dev/null 2>&1; then
+        kill -TERM "${operator_browser_pid}" >/dev/null 2>&1 || true
+        wait "${operator_browser_pid}" >/dev/null 2>&1 || true
+      fi
+      case "${operator_browser_profile}" in
+        "${operator_browser_temp_root}"/camrod-operator-chrome.*)
+          rm -rf -- "${operator_browser_profile}"
+          ;;
+        *)
+          virtual_carla_die \
+            "refusing to remove unexpected Robot UI browser profile path: ${operator_browser_profile}"
+          ;;
+      esac
+    }
+    trap operator_browser_cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    "${operator_browser}" \
+      "--app=${CAMROD_UI_URL}" \
+      --remote-debugging-address=127.0.0.1 \
+      --remote-debugging-port=9224 \
+      "--remote-allow-origins=*" \
+      "--user-data-dir=${operator_browser_profile}" \
+      --no-first-run \
+      --no-default-browser-check \
+      --disable-session-crashed-bubble &
+    operator_browser_pid=$!
+
+    operator_browser_ready=false
+    operator_browser_deadline=$((SECONDS + 20))
+    while (( SECONDS < operator_browser_deadline )); do
+      if ! kill -0 "${operator_browser_pid}" >/dev/null 2>&1; then
+        wait "${operator_browser_pid}" >/dev/null 2>&1 || true
+        virtual_carla_die \
+          "Robot UI browser exited before its single production page became CDP-ready"
+        exit 1
+      fi
+      if operator_browser_target_ready; then
+        operator_browser_ready=true
+        break
+      fi
+      sleep 0.25
+    done
+    if [[ "${operator_browser_ready}" != "true" ]]; then
+      virtual_carla_die \
+        "Robot UI browser did not expose exactly one ${CAMROD_UI_URL} page on local-only CDP ${CAMROD_OPERATOR_CDP_URL} within 20 seconds"
+      exit 1
+    fi
+    virtual_carla_log \
+      "visible isolated Robot UI ready: page=${CAMROD_UI_URL} cdp=${CAMROD_OPERATOR_CDP_URL}"
+    virtual_carla_log \
+      "keep this terminal/browser open while running camping-sites-browser or camping-sites-browser-recall"
+    if wait "${operator_browser_pid}"; then
+      operator_browser_status=0
+    else
+      operator_browser_status=$?
+    fi
+    operator_browser_pid=""
+    if [[ "${operator_browser_status}" -ne 0 ]]; then
+      virtual_carla_die \
+        "Robot UI browser exited with status ${operator_browser_status}"
+      exit "${operator_browser_status}"
+    fi
+    ;;
   manual)
     [[ -t 0 ]] || virtual_carla_die \
       "manual requires an interactive terminal (TTY)"
@@ -1570,14 +1743,40 @@ case "${subcommand}" in
     if [[ -n "${CAMROD_CARLA_CAMPING_SITES:-}" ]]; then
       matrix_command+=(--sites "${CAMROD_CARLA_CAMPING_SITES}")
     fi
+    matrix_command+=(
+      --mission-intent "${CAMROD_CARLA_MATRIX_MISSION_INTENT:-delivery}"
+    )
     "${matrix_command[@]}"
     ;;
+  camping-sites-browser)
+    matrix_mission_intent="delivery"
+    matrix_return_authority="operator_browser"
+    matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_browser_delivery"
+    ;&
+  camping-sites-browser-recall)
+    if [[ "${subcommand}" == "camping-sites-browser-recall" ]]; then
+      matrix_mission_intent="recall"
+      matrix_return_authority="operator_browser"
+      matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_browser_recall"
+    fi
+    ;&
   camping-sites)
-    matrix_return_authority="operator_rest"
-    matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix"
+    if [[ "${subcommand}" == "camping-sites" ]]; then
+      matrix_mission_intent="delivery"
+      matrix_return_authority="operator_rest"
+      matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix"
+    fi
+    ;&
+  camping-sites-recall)
+    if [[ "${subcommand}" == "camping-sites-recall" ]]; then
+      matrix_mission_intent="recall"
+      matrix_return_authority="operator_rest"
+      matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_recall"
+    fi
     ;&
   camping-sites-guest)
     if [[ "${subcommand}" == "camping-sites-guest" ]]; then
+      matrix_mission_intent="recall"
       matrix_return_authority="guest_browser"
       matrix_root="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_guest_usage_complete"
       validate_guest_browser_endpoints || virtual_carla_die \
@@ -1588,6 +1787,16 @@ case "${subcommand}" in
         "Guest browser CDP is not listening at ${CAMROD_GUEST_CDP_URL}; run ./scripts/virtual_carla/run.sh guest-ui first"
       guest_browser_target_ready || virtual_carla_die \
         "Guest browser must expose exactly one visible ${CAMROD_GUEST_UI_URL} page through local-only CDP"
+    fi
+    if [[ "${matrix_return_authority}" == "operator_browser" ]]; then
+      validate_operator_browser_endpoints || virtual_carla_die \
+        "refusing Robot UI browser matrix with a non-canonical endpoint"
+      require_operator_ui_page || virtual_carla_die \
+        "production Robot UI page preflight failed"
+      tcp_port_is_listening 9224 || virtual_carla_die \
+        "Robot UI browser CDP is not listening at ${CAMROD_OPERATOR_CDP_URL}; run ./scripts/virtual_carla/run.sh operator-ui first"
+      operator_browser_target_ready || virtual_carla_die \
+        "Robot UI browser must expose exactly one visible ${CAMROD_UI_URL} page through local-only CDP"
     fi
     [[ "${CARLA_RENDER_MODE}" != "nullrhi" ]] || virtual_carla_die \
       "camping-site matrix requires rendered CARLA and the 36-stream sensor audit"
@@ -1637,13 +1846,15 @@ case "${subcommand}" in
     # so the matrix binds the newest passive CARLA snapshot immediately before
     # it is allowed to send a mission.
     virtual_carla_log \
-      "auto-detecting and binding the live audited profile, actor and CARLA/lanelet map: ${matrix_runtime_report}"
+      "binding the required current v27 site-evidence profile, actor and CARLA/lanelet map: ${matrix_runtime_report}"
     if python3 "${script_dir}/audit_runtime_profile.py" \
-      --expected-profile auto \
+      --expected-profile develop-plus-carla-site-geometry-v27 \
       --expected-carla-map "${CARLA_UE_MAP}" \
       --expected-carla-town "${CARLA_TOWN}" \
       --expected-lanelet-map "${CAMROD_DEVELOP_LANELET_MAP}" \
       --expected-umap "${matrix_umap}" \
+      --source-root "${CAMROD_SRC_ROOT}" \
+      --install-root "${CAMROD_WS_ROOT}/install" \
       --expected-actor-id "${RANGER_LIVE_ACTOR_ID}" \
       --role-name "${CARLA_ROLE_NAME}" \
       --expected-fixed-delta-seconds "${CARLA_FIXED_DELTA_SECONDS}" \
@@ -1673,6 +1884,7 @@ case "${subcommand}" in
       --runtime-profile-report "${matrix_runtime_report}"
       --output "${matrix_report}"
       --ui-url "${CAMROD_UI_URL}"
+      --mission-intent "${matrix_mission_intent}"
       --return-authority "${matrix_return_authority}"
       --role-name "${CARLA_ROLE_NAME}"
       --expected-actor-id "${RANGER_LIVE_ACTOR_ID}"
@@ -1689,11 +1901,16 @@ case "${subcommand}" in
         --guest-cdp-url "${CAMROD_GUEST_CDP_URL}"
       )
     fi
+    if [[ "${matrix_return_authority}" == "operator_browser" ]]; then
+      matrix_command+=(
+        --operator-cdp-url "${CAMROD_OPERATOR_CDP_URL}"
+      )
+    fi
     if [[ -n "${CAMROD_CARLA_CAMPING_SITES:-}" ]]; then
       matrix_command+=(--sites "${CAMROD_CARLA_CAMPING_SITES}")
     fi
     virtual_carla_log \
-      "starting ${matrix_return_authority} camping-site matrix; progress is saved after every milestone"
+      "starting ${matrix_return_authority} ${matrix_mission_intent} camping-site matrix; progress is saved after every milestone"
     if "${matrix_command[@]}"; then
       virtual_carla_log "camping-site matrix PASS: ${matrix_report}"
     else

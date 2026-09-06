@@ -233,6 +233,22 @@ def test_carla_lidar_is_a_deterministic_forward_solid_state_approximation():
     assert lidar["noise_stddev"] == pytest.approx(0.0)
 
 
+def test_rear_parking_camera_preserves_tag_pixels_at_drop_zone_handoff():
+    sensors = _vehicle(VISUAL_SPAWN)["sensors"]
+    front = next(sensor for sensor in sensors if sensor["id"] == "rgb_view")
+    rear = next(sensor for sensor in sensors if sensor["id"] == "rgb_rear")
+
+    # The navigation camera keeps the original bandwidth contract.  At the
+    # measured 4.35 m parking handoff an 800x600 rear frame can rasterize the
+    # 0.16 m tag into an undecodable ~18 px pattern.  960x720 was verified over
+    # ten consecutive rendered frames (tag36h11 ID 3, hamming 0) while adding
+    # only 44% to the rear-camera pixel rate.
+    assert (front["image_size_x"], front["image_size_y"]) == (800, 600)
+    assert (rear["image_size_x"], rear["image_size_y"]) == (960, 720)
+    assert rear["fov"] == pytest.approx(90.0)
+    assert rear["sensor_tick"] == pytest.approx(0.1)
+
+
 def test_rendered_default_uses_visual_profile_and_nullrhi_stays_control_only():
     source = (
         REPO_ROOT / "scripts" / "virtual_carla" / "env.sh"

@@ -404,12 +404,12 @@ function CameraFeed({ telemetry, camera, label }) {
         {canDisplay ? (
           <img
             src={`/api/camera/${camera}?frame=${data.sequence}`}
-            alt={`${label} live ROS camera`}
+            alt={`${label} 실시간 ROS 영상`}
             onError={() => setLoadFailed(true)}
           />
         ) : (
           <div className="camera-empty">
-            <strong>NO FRAME</strong>
+            <strong>영상 없음</strong>
             <span>{camera === 'front'
               ? '/sensing/camera/econ_front/image_rect/compressed'
               : (camera === 'docking'
@@ -419,12 +419,12 @@ function CameraFeed({ telemetry, camera, label }) {
         )}
       </div>
       <div className="camera-metadata">
-        <span>Frame <b>{data.frame_id || '-'}</b></span>
-        <span>Format <b>{data.format || '-'}</b></span>
-        <span>Source <b>{data.source || '-'}</b></span>
-        <span>Sensor target <b>10 Hz</b></span>
-        <span>Payload <b>{finite(data.bytes) ? `${(data.bytes / 1024).toFixed(1)} KiB` : '-'}</b></span>
-        <span>Age <b>{finite(source.age) ? `${source.age.toFixed(2)} s` : '-'}</b></span>
+        <span>프레임 <b>{data.frame_id || '-'}</b></span>
+        <span>형식 <b>{data.format || '-'}</b></span>
+        <span>출처 <b>{data.source || '-'}</b></span>
+        <span>센서 목표 주기 <b>10 Hz</b></span>
+        <span>데이터 크기 <b>{finite(data.bytes) ? `${(data.bytes / 1024).toFixed(1)} KiB` : '-'}</b></span>
+        <span>수신 경과 <b>{finite(source.age) ? `${source.age.toFixed(2)} s` : '-'}</b></span>
       </div>
     </section>
   );
@@ -434,12 +434,12 @@ function CameraView({ telemetry }) {
   return (
     <div className="telemetry-view telemetry-camera-view">
       <div className="telemetry-source-row">
-        <SourcePill telemetry={telemetry} source="camera.front" label="Front · target 10 Hz" staleAfter={3} />
-        <SourcePill telemetry={telemetry} source="camera.rear" label="Rear · target 10 Hz" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.front" label="전방 · 목표 10 Hz" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.rear" label="후방 · 목표 10 Hz" staleAfter={3} />
       </div>
       <div className="camera-grid">
-        <CameraFeed telemetry={telemetry} camera="front" label="Front camera" />
-        <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" />
+        <CameraFeed telemetry={telemetry} camera="front" label="전방 카메라" />
+        <CameraFeed telemetry={telemetry} camera="rear" label="후방 카메라" />
       </div>
     </div>
   );
@@ -1086,8 +1086,8 @@ function DockingView({ telemetry, redockStatus = null }) {
   const useRearFallback = rearFallbackEnabled && !hasFreshDockingDebug;
   const dockingCameraName = useRearFallback ? 'rear' : 'docking';
   const dockingCameraLabel = useRearFallback
-    ? 'Docking camera · CARLA rear fallback'
-    : 'AprilTag docking debug';
+    ? '도킹 화면 · CARLA 실제 후방카메라 대체 영상'
+    : 'AprilTag 도킹 디버그 영상';
   const [pending, setPending] = useState('');
   const [commandStatus, setCommandStatus] = useState({ tone: '', message: '' });
 
@@ -1129,15 +1129,15 @@ function DockingView({ telemetry, redockStatus = null }) {
   return (
     <div className="telemetry-view telemetry-docking-view">
       <div className="telemetry-source-row">
-        <SourcePill telemetry={telemetry} source="camera.docking" label="AprilTag debug" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.docking" label="AprilTag 디버그 영상" staleAfter={3} />
         {rearFallbackEnabled && (
-          <SourcePill telemetry={telemetry} source="camera.rear" label="CARLA rear fallback" staleAfter={3} />
+          <SourcePill telemetry={telemetry} source="camera.rear" label="CARLA 실제 후방카메라 · 대체 영상" staleAfter={3} />
         )}
-        <SourcePill telemetry={telemetry} source="docking.tag_detected" label="Tag detection" />
-        <SourcePill telemetry={telemetry} source="docking.tag_pose" label="Tag pose" />
-        <SourcePill telemetry={telemetry} source="platform.velocity" label="Charging CAN" />
-        <SourcePill telemetry={telemetry} source="controller.apriltag_parking" label="Docking controller" />
-        <SourcePill telemetry={telemetry} source="controller.reverse_parking" label="Parking controller" />
+        <SourcePill telemetry={telemetry} source="docking.tag_detected" label="태그 감지" />
+        <SourcePill telemetry={telemetry} source="docking.tag_pose" label="태그 자세" />
+        <SourcePill telemetry={telemetry} source="platform.velocity" label="충전 CAN" />
+        <SourcePill telemetry={telemetry} source="controller.apriltag_parking" label="도킹 제어기" />
+        <SourcePill telemetry={telemetry} source="controller.reverse_parking" label="주차 제어기" />
       </div>
       <div className="docking-command-bar">
         <button
@@ -1153,37 +1153,37 @@ function DockingView({ telemetry, redockStatus = null }) {
       <div className="docking-layout">
         <CameraFeed telemetry={telemetry} camera={dockingCameraName} label={dockingCameraLabel} />
         <section className="telemetry-section docking-status-section">
-          <SectionHeader title="Docking state" meta={mission.service_state_name || 'service state unavailable'} />
+          <SectionHeader title="도킹 상태" meta={mission.service_state_name || '서비스 상태 미수신'} />
           <div className="docking-state-banner">
             <div className={docking.tag_detected ? 'detected' : 'missing'}>
-              <span>TAG</span><strong>{docking.tag_detected ? 'DETECTED' : 'NOT DETECTED'}</strong>
+              <span>태그</span><strong>{docking.tag_detected ? '감지됨' : '감지 안 됨'}</strong>
             </div>
             <div className={docking.is_charging ? 'charging' : 'idle'}>
-              <span>CHARGING</span><strong>{docking.is_charging ? 'TRUE · STOP' : 'FALSE'}</strong>
+              <span>충전</span><strong>{docking.is_charging ? '연결됨 · 정지' : '연결 안 됨'}</strong>
             </div>
           </div>
           <div className="telemetry-metric-grid telemetry-metric-grid-3">
-            <Metric label="Tag distance" value={numberText(tag.distance_m, 3)} unit="m" tone={docking.tag_detected ? 'ok' : 'warn'} />
-            <Metric label="Camera X" value={numberText(tag.x_m, 3)} unit="m" />
-            <Metric label="Camera Y" value={numberText(tag.y_m, 3)} unit="m" />
-            <Metric label="Camera Z" value={numberText(tag.z_m, 3)} unit="m" />
-            <Metric label="Tag yaw" value={numberText(tag.yaw_deg, 1)} unit="°" />
-            <Metric label="Battery" value={numberText(docking.battery_percentage, 1)} unit="%" />
+            <Metric label="태그 거리" value={numberText(tag.distance_m, 3)} unit="m" tone={docking.tag_detected ? 'ok' : 'warn'} />
+            <Metric label="카메라 X" value={numberText(tag.x_m, 3)} unit="m" />
+            <Metric label="카메라 Y" value={numberText(tag.y_m, 3)} unit="m" />
+            <Metric label="카메라 Z" value={numberText(tag.z_m, 3)} unit="m" />
+            <Metric label="태그 Yaw" value={numberText(tag.yaw_deg, 1)} unit="°" />
+            <Metric label="배터리" value={numberText(docking.battery_percentage, 1)} unit="%" />
           </div>
           <div className="docking-controller-list">
-            <div><span>Lanelet parking point</span><strong>{dropZone.operating_state || 'NO DATA'}</strong><em>{dropZone.message || '-'}</em></div>
-            <div><span>Docking</span><strong>{april.operating_state || 'NO DATA'}</strong><em>{april.message || '-'}</em></div>
-            <div><span>Reverse parking</span><strong>{reverse.operating_state || 'NO DATA'}</strong><em>{reverse.message || '-'}</em></div>
+            <div><span>Lanelet 주차 지점</span><strong>{dropZone.operating_state || '데이터 없음'}</strong><em>{dropZone.message || '-'}</em></div>
+            <div><span>AprilTag 도킹</span><strong>{april.operating_state || '데이터 없음'}</strong><em>{april.message || '-'}</em></div>
+            <div><span>후진 주차</span><strong>{reverse.operating_state || '데이터 없음'}</strong><em>{reverse.message || '-'}</em></div>
           </div>
         </section>
         <section className="telemetry-section docking-path-section">
-          <SectionHeader title="Parking approach path" meta="controller output" />
+          <SectionHeader title="주차 접근 경로" meta="제어기 출력" />
           <DockingPathPlot telemetry={telemetry} />
           <div className="telemetry-legend-row">
-            <span><i className="legend-docking-approach" />Exact lanelet point</span>
-            <span><i className="legend-docking-reverse" />Reverse parking</span>
-            <span><i className="legend-docking-tag" />AprilTag docking</span>
-            <span><i className="legend-docking-target" />Target</span>
+            <span><i className="legend-docking-approach" />정확한 Lanelet 지점</span>
+            <span><i className="legend-docking-reverse" />후진 주차</span>
+            <span><i className="legend-docking-tag" />AprilTag 도킹</span>
+            <span><i className="legend-docking-target" />목표</span>
           </div>
         </section>
       </div>

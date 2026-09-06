@@ -25,6 +25,12 @@ CARLA_APRILTAG_CONFIG = (
 CARLA_APRILTAG_CONTROLLER_CONFIG = (
     PACKAGE_ROOT / "config" / "apriltag_parking_controller_carla.yaml"
 )
+CARLA_PERCEPTION_CONFIG = (
+    PACKAGE_ROOT / "config" / "perception_carla.yaml"
+)
+CARLA_SITE_GEOMETRY_PERCEPTION_CONFIG = (
+    PACKAGE_ROOT / "config" / "perception_carla_site_geometry.yaml"
+)
 PRODUCTION_APRILTAG_CONFIG = (
     REPO_ROOT
     / "camrod_perception"
@@ -37,6 +43,9 @@ BRINGUP_APRILTAG_CONFIG = (
     / "config"
     / "perception"
     / "apriltag_parking_detector.yaml"
+)
+STATE_MACHINE_LAUNCH = (
+    REPO_ROOT / "camrod_planning" / "launch" / "state_machine.launch.py"
 )
 
 
@@ -72,6 +81,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     source = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
 
     assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
+        "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
         "carla_cmd_vel_gate_speed_scale": "1.0",
         "return_site_exit_rearm_enabled": "true",
         "launch_charging_contact_emulator": "true",
@@ -84,6 +94,20 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "carla_goal_snapper_pose_jump_check_topic": "/localization/pose",
         "carla_route_safety_path_relative_recovery_enable": "true",
         "carla_route_safety_path_center_reentry_m": "0.15",
+        "carla_roadside_reverse_return_enable": "true",
+        "carla_roadside_reverse_handoff_distance_m": "0.03",
+        "carla_nav2_reverse_controller": "RPPReverse",
+        "carla_reverse_goal_topic": "/planning/auto_reverse_goal_raw",
+        "carla_lanelet_safety_check_reverse": "true",
+        "carla_camping_site_maneuver_controller_static_bypass_phases": (
+            "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,"
+            "ALIGN_RETRACE_YAW,ALIGN_OUTBOUND_LANE_YAW,REVERSE_OUT,CRAB_OUT"
+        ),
+        "carla_camping_site_maneuver_controller_lanelet_bypass_phases": (
+            "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,"
+            "ALIGN_RETRACE_YAW,ALIGN_OUTBOUND_LANE_YAW,REVERSE_OUT,CRAB_OUT"
+        ),
+        "carla_return_goal_reached_distance_m": "0.35",
         "carla_lanelet_safety_footprint_enable": "false",
         "carla_cost_stop_latch_use_trigger_source_for_merged_clear": "true",
         "carla_cost_stop_merged_dynamic_source_labels": "radar",
@@ -115,10 +139,14 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     resolved = module.develop_site_geometry_arguments("/adapter-share")
     assert set(resolved) == {
         *module.DEVELOP_SITE_GEOMETRY_ARGUMENTS,
+        "carla_perception_runtime_override_param_file",
         "carla_apriltag_param_file",
         "carla_parking_runtime_override_param_file",
         "carla_nav2_reverse_return_param_file",
     }
+    assert resolved["carla_perception_runtime_override_param_file"] == (
+        "/adapter-share/config/perception_carla_site_geometry.yaml"
+    )
     assert resolved["carla_apriltag_param_file"] == (
         "/adapter-share/config/apriltag_parking_detector_carla.yaml"
     )
@@ -129,6 +157,12 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "/adapter-share/config/nav2_carla_reverse_return.yaml"
     )
     assert resolved["carla_cmd_vel_gate_speed_scale"] == "1.0"
+    assert (
+        resolved[
+            "operator_telemetry_docking_rear_camera_fallback_enabled"
+        ]
+        == "true"
+    )
     assert resolved["carla_lanelet_safety_footprint_enable"] == "false"
     for forbidden_override in (
         "use_sim_planning_profile",
@@ -138,11 +172,21 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "carla_navigation_minimum_ackermann_turn_radius_m",
         "carla_cost_stop_threshold",
         "carla_lanelet_safety_threshold",
-        "carla_roadside_reverse_return_enable",
         "camrod_input_adapter_config",
         "carla_lidar_cost_grid_param_file",
     ):
         assert forbidden_override not in module.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+
+    # The shared CARLA full launch keeps this false.  Only the site-geometry
+    # evidence overlay may substitute the real rear CARLA frame when the
+    # event-driven AprilTag debug image is stale.
+    full_source = FULL_LAUNCH.read_text(encoding="utf-8")
+    fallback_declaration = full_source.index(
+        '"operator_telemetry_docking_rear_camera_fallback_enabled"'
+    )
+    assert 'default_value="false"' in full_source[
+        fallback_declaration:fallback_declaration + 360
+    ]
 
     # The B1 plant residual is scoped to this wrapper: full/develop parity
     # and the historical tuned wrapper remain at their established 0.5 deg.
@@ -150,6 +194,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     compact_tuned = "".join(
         TUNED_LAUNCH.read_text(encoding="utf-8").split()
     )
+    full_module = _load_module(FULL_LAUNCH)
     assert (
         module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
             "carla_crab_entry_body_yaw_alignment_tolerance_deg"
@@ -165,8 +210,44 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         in compact_full
     )
     assert (
+        '"carla_return_goal_reached_distance_m",default_value=""'
+        in compact_full
+    )
+    assert (
         '"control_cmd_vel_gate_lanelet_safety_footprint_enable":('
         'LaunchConfiguration("carla_lanelet_safety_footprint_enable")'
+        in compact_full
+    )
+    base_bypass = (
+        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,"
+        "ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
+    )
+    assert full_module.DEVELOP_CAMPSITE_BYPASS_PHASES == base_bypass
+    assert compact_full.count(
+        "default_value=DEVELOP_CAMPSITE_BYPASS_PHASES"
+    ) == 2
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_camping_site_maneuver_controller_static_bypass_phases"
+        ].split(",").count("ALIGN_OUTBOUND_LANE_YAW")
+        == 1
+    )
+    assert (
+        module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+            "carla_camping_site_maneuver_controller_lanelet_bypass_phases"
+        ].split(",").count("ALIGN_OUTBOUND_LANE_YAW")
+        == 1
+    )
+    assert (
+        '"control_cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases":('
+        'LaunchConfiguration('
+        '"carla_camping_site_maneuver_controller_static_bypass_phases"))'
+        in compact_full
+    )
+    assert (
+        '"control_cmd_vel_gate_camping_site_maneuver_controller_lanelet_bypass_phases":('
+        'LaunchConfiguration('
+        '"carla_camping_site_maneuver_controller_lanelet_bypass_phases"))'
         in compact_full
     )
     assert (
@@ -302,29 +383,45 @@ def test_carla_apriltag_profile_changes_only_detector_decimation():
     assert carla["n_threads"] == 2
 
 
-def test_carla_perception_overlay_raises_only_rendered_yolo_confidence():
+def test_carla_perception_overlays_keep_develop_parity_and_scope_site_tuning():
     shared = yaml.safe_load(
         (
             REPO_ROOT / "camrod_perception" / "config" / "perception_params.yaml"
         ).read_text(encoding="utf-8")
     )
-    carla = yaml.safe_load(
-        (PACKAGE_ROOT / "config" / "perception_carla.yaml").read_text(
-            encoding="utf-8"
-        )
+    carla = yaml.safe_load(CARLA_PERCEPTION_CONFIG.read_text(encoding="utf-8"))
+    site = yaml.safe_load(
+        CARLA_SITE_GEOMETRY_PERCEPTION_CONFIG.read_text(encoding="utf-8")
     )
 
     assert shared["/perception/yolov9mit"]["ros__parameters"][
         "min_confidence"
     ] == 0.5
-    assert carla["/perception/yolov9mit"]["ros__parameters"] == {
+    assert "/perception/yolov9mit" not in carla
+    assert site["/perception/yolov9mit"]["ros__parameters"] == {
         "min_confidence": 0.95
     }
-    assert carla["/perception/obstacle_fusion"]["ros__parameters"] == {
+    expected_extrinsic = {
         "extrinsic_x": 0.0,
         "extrinsic_y": 0.00001,
         "extrinsic_z": -0.09970,
     }
+    assert carla["/perception/obstacle_fusion"]["ros__parameters"] == (
+        expected_extrinsic
+    )
+    assert site["/perception/obstacle_fusion"]["ros__parameters"] == (
+        expected_extrinsic
+    )
+
+
+def test_full_and_site_launches_select_distinct_perception_overlays():
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+
+    assert 'adapter_share, "config", "perception_carla.yaml"' in full
+    assert site.develop_site_geometry_arguments("/adapter-share")[
+        "carla_perception_runtime_override_param_file"
+    ] == "/adapter-share/config/perception_carla_site_geometry.yaml"
 
 
 def test_full_launch_defaults_to_production_apriltag_profile():
@@ -555,10 +652,11 @@ def test_full_launch_defaults_carla_route_heading_to_production_profile():
     )
 
 
-def test_reverse_roadside_return_is_tuned_only_and_not_a_full_default():
-    """Develop-parity stays forward-only; the historical profile opts in."""
+def test_reverse_roadside_return_is_profile_scoped_and_not_a_full_default():
+    """Develop-parity stays forward-only; CARLA site wrappers opt in."""
     full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
     production_defaults = yaml.safe_load(
         (
             REPO_ROOT
@@ -606,6 +704,21 @@ def test_reverse_roadside_return_is_tuned_only_and_not_a_full_default():
     assert '"carla_roadside_reverse_return_enable": "true"' in tuned_launch
     assert '"carla_roadside_reverse_handoff_distance_m": "0.10"' in tuned_launch
     assert '"carla_lanelet_safety_check_reverse": "true"' in tuned_launch
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_roadside_reverse_return_enable"
+    ] == "true"
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_roadside_reverse_handoff_distance_m"
+    ] == "0.03"
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_nav2_reverse_controller"
+    ] == "RPPReverse"
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_reverse_goal_topic"
+    ] == "/planning/auto_reverse_goal_raw"
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
+        "carla_lanelet_safety_check_reverse"
+    ] == "true"
     assert (
         production_defaults["control"][
             "camping_site_roadside_reverse_return_enable"
@@ -902,9 +1015,10 @@ def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
 
 
 def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
-    """The retained reverse overlay is reachable only through tuned mode."""
+    """The reverse overlay is reachable through the scoped CARLA wrappers."""
     full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
     overlay_path = PACKAGE_ROOT / "config" / "nav2_carla_reverse_return.yaml"
     overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
     controller = overlay["controller_server"]["ros__parameters"]
@@ -989,6 +1103,9 @@ def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
         in tuned_launch
     )
     assert '"carla_nav2_reverse_return_param_file": tuned_nav2' in tuned_launch
+    assert site.develop_site_geometry_arguments("/adapter-share")[
+        "carla_nav2_reverse_return_param_file"
+    ] == "/adapter-share/config/nav2_carla_reverse_return.yaml"
 
 
 def test_carla_runtime_overlay_prescales_forward_rpp_and_isolates_reverse():
@@ -1200,6 +1317,16 @@ def test_reverse_runtime_overlay_is_forwarded_last_without_production_mutation()
     planning_source = (
         REPO_ROOT / "camrod_planning" / "launch" / "planning.launch.py"
     ).read_text(encoding="utf-8")
+    state_machine_source = (
+        REPO_ROOT / "camrod_planning" / "launch" / "state_machine.launch.py"
+    ).read_text(encoding="utf-8")
+    launch_defaults = yaml.safe_load((
+        REPO_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "bringup"
+        / "launch_defaults.yaml"
+    ).read_text(encoding="utf-8"))["bringup"]
     nav2_source = (
         REPO_ROOT / "camrod_planning" / "launch" / "nav2_lanelet.launch.py"
     ).read_text(encoding="utf-8")
@@ -1210,15 +1337,49 @@ def test_reverse_runtime_overlay_is_forwarded_last_without_production_mutation()
     assert "'nav2_reverse_controller': lc['planning_nav2_reverse_controller']" in bringup_source
     assert "'goal_snapper_reverse_auxiliary_input_goal_topic': lc[" in bringup_source
     assert "'planning_state_machine_reverse_auto_goal_snapper_input_topic': lc[" in bringup_source
+    assert "'planning_state_machine_return_goal_reached_distance_m': lc[" in bringup_source
     assert "'nav2_runtime_override_param_file'," in planning_source
     assert "'nav2_reverse_controller'," in planning_source
     assert "'goal_snapper_reverse_auxiliary_input_goal_topic'," in planning_source
     assert "'planning_state_machine_reverse_auto_goal_snapper_input_topic'," in planning_source
+    assert "'planning_state_machine_return_goal_reached_distance_m'," in planning_source
+    assert (
+        launch_defaults["planning"][
+            "state_machine_return_goal_reached_distance_m"
+        ]
+        == ""
+    )
+    assert "default_value=''" in state_machine_source
+    assert "if return_goal_reached_distance:" in state_machine_source
+    assert (
+        "runtime_parameters['return_goal_reached_distance_m']"
+        in state_machine_source
+    )
+    assert (
+        "'return_goal_reached_distance_m': LaunchConfiguration("
+        not in state_machine_source
+    )
     assert "nav2_runtime_override_params = RewrittenYaml(" in nav2_source
     chain_start = nav2_source.index("nav2_param_chain = [")
     runtime_index = nav2_source.index("nav2_runtime_override_params,", chain_start)
     immutable_index = nav2_source.index("force_base_link_overrides,", chain_start)
     assert runtime_index < immutable_index
+
+
+def test_return_handoff_override_is_optional_and_explicit_030_is_preserved():
+    module = _load_module(STATE_MACHINE_LAUNCH)
+    module.Node = lambda **kwargs: kwargs
+
+    def runtime_parameters(value: str):
+        context = LaunchContext()
+        context.launch_configurations[
+            "planning_state_machine_return_goal_reached_distance_m"
+        ] = value
+        return module._state_machine_node(context)[0]["parameters"][1]
+
+    assert "return_goal_reached_distance_m" not in runtime_parameters("")
+    assert "return_goal_reached_distance_m" in runtime_parameters("0.30")
+    assert "return_goal_reached_distance_m" in runtime_parameters("0.35")
 
 
 def test_pose_jump_source_is_empty_by_default_and_tuned_to_raw_localization():
@@ -1427,6 +1588,20 @@ def test_full_launch_uses_production_localization_and_tuned_uses_metric_pose():
     assert carla_params["utm_pose_topic"] == "/camrod_carla/metric_pose"
     assert carla_params["navsat_topic"] == "/camrod_carla/unused_navsat"
     assert carla_params["enable_gnss_heading"] is False
+
+
+def test_ui_return_terminal_uses_the_same_authored_drop_zone_as_bringup():
+    bringup = (
+        REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py"
+    ).read_text(encoding="utf-8")
+    ui_launch = (
+        REPO_ROOT / "camrod_ui" / "camrod_ui_robot" / "launch" / "ui.launch.py"
+    ).read_text(encoding="utf-8")
+
+    assert "'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml']" in bringup
+    assert "drop_zones_yaml_arg = DeclareLaunchArgument(" in ui_launch
+    assert "'drop_zones_yaml': LaunchConfiguration('drop_zones_yaml')" in ui_launch
+    assert "drop_zones_yaml_arg," in ui_launch
 
 
 def test_dedicated_manual_twist_is_enabled_only_by_carla_compositions():
@@ -1681,6 +1856,8 @@ def test_carla_diagnostics_match_rendered_sensor_contract():
     assert camera["econ_rear"]["expected_fps"] == 2.0
     assert camera["econ_front"]["expected_width"] == 800
     assert camera["econ_front"]["expected_height"] == 600
+    assert camera["econ_rear"]["expected_width"] == 960
+    assert camera["econ_rear"]["expected_height"] == 720
     assert camera["econ_rear"]["image_type"] == "compressed"
     assert camera["econ_rear"]["image_topic"] == (
         "/sensing/camera/econ_rear/image_raw/compressed"

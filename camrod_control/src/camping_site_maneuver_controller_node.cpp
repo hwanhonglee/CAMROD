@@ -777,6 +777,7 @@ private:
     if (isActivePhase() && goal_changed) {
       publishZero();
       return_requested_ = false;
+      pending_return_source_.clear();
       return_published_ = false;
       return_acknowledged_ = false;
       setPhase(CampingSiteManeuverPhase::kIdle,
@@ -1103,6 +1104,7 @@ private:
         std::max(0.01, activeCrabSpeedMps() * crab_timeout_speed_scale_);
     crab_duration_s_ = offset > 0.0 ? offset / effective_speed : 0.0;
     return_requested_ = false;
+    pending_return_source_.clear();
     return_published_ = false;
     return_acknowledged_ = false;
     entry_anchor_centering_active_ = false;
@@ -1346,6 +1348,8 @@ private:
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
       publishZero();
       active_recall_wait_mission_ = false;
+      return_requested_ = false;
+      pending_return_source_.clear();
       setPhase(CampingSiteManeuverPhase::kIdle, "cancel=" + source);
       return {true, "camping-site maneuver cancelled"};
     }
@@ -1638,6 +1642,7 @@ private:
       return configured;
     }
     return_requested_ = false;
+    pending_return_source_.clear();
     return_published_ = false;
     return_acknowledged_ = false;
     last_return_request_publish_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -1769,6 +1774,7 @@ private:
     crab_duration_s_ = distance / std::max(0.01, reverse_entry_speed_mps_ *
                                                      crab_timeout_speed_scale_);
     return_requested_ = false;
+    pending_return_source_.clear();
     return_published_ = false;
     return_acknowledged_ = false;
     entry_yaw_alignment_for_crab_ = false;
@@ -1790,7 +1796,9 @@ private:
   std::pair<bool, std::string> requestReturn(const std::string &source) {
     if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       return_requested_ = true;
+      pending_return_source_ = source;
       beginReturnExit("return=" + source);
+      pending_return_source_.clear();
       return {true, "site maneuver return started"};
     }
     if (phase_ == CampingSiteManeuverPhase::kIdle ||
@@ -1799,6 +1807,9 @@ private:
               "site maneuver is not waiting for return: " + phaseName(phase_)};
     }
     return_requested_ = true;
+    if (pending_return_source_.empty()) {
+      pending_return_source_ = source;
+    }
     return {true, "return request latched during " + phaseName(phase_)};
   }
 
@@ -2305,6 +2316,7 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
                phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
+               phase_ == CampingSiteManeuverPhase::kAlignOutboundLaneYaw ||
                phase_ == CampingSiteManeuverPhase::kReverseOut ||
                phase_ == CampingSiteManeuverPhase::kCrabOut ||
                phase_ == CampingSiteManeuverPhase::kDone) {
@@ -3165,7 +3177,13 @@ private:
       publishZero();
       if (elapsed >= unload_wait_s_) {
         if (auto_return_after_unload_wait_ || return_requested_) {
-          beginReturnExit("unload wait complete");
+          const std::string return_reason =
+              return_requested_ && !pending_return_source_.empty()
+                  ? "return=" + pending_return_source_ +
+                        "; unload wait complete"
+                  : "automatic unload wait complete";
+          beginReturnExit(return_reason);
+          pending_return_source_.clear();
         } else {
           setPhase(CampingSiteManeuverPhase::kWaitReturn,
                    "waiting external return command");
@@ -3692,6 +3710,7 @@ private:
   bool entry_yaw_alignment_for_crab_{false};
   std::string last_auto_key_;
   bool return_requested_{false};
+  std::string pending_return_source_;
   bool return_published_{false};
   bool return_acknowledged_{false};
   rclcpp::Time last_return_request_publish_time_{0, 0, RCL_ROS_TIME};

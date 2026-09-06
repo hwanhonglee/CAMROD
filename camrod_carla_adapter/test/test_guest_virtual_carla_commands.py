@@ -19,9 +19,11 @@ def test_guest_environment_and_commands_are_explicit() -> None:
     assert 'CAMROD_GUEST_CDP_URL:-http://127.0.0.1:9223' in env_source
     assert "guest-ui)" in run_source
     assert "camping-sites)" in run_source
+    assert "camping-sites-recall)" in run_source
     assert "camping-sites-guest)" in run_source
     assert 'matrix_return_authority="operator_rest"\n' in run_source
-    assert "    ;&\n  camping-sites-guest)" in run_source
+    assert 'matrix_mission_intent="delivery"' in run_source
+    assert 'matrix_mission_intent="recall"' in run_source
     assert '"--app=${CAMROD_GUEST_UI_URL}"' in run_source
     assert "--remote-debugging-address=127.0.0.1" in run_source
     assert "--remote-debugging-port=9223" in run_source
@@ -29,9 +31,28 @@ def test_guest_environment_and_commands_are_explicit() -> None:
     assert 'mktemp -d "${guest_browser_temp_root}/camrod-guest-chrome.XXXXXX"' in run_source
     assert "guest_browser_target_ready" in run_source
     assert "--return-authority \"${matrix_return_authority}\"" in run_source
+    assert "--mission-intent \"${matrix_mission_intent}\"" in run_source
     assert "--guest-ui-url \"${CAMROD_GUEST_UI_URL}\"" in run_source
     assert "--guest-cdp-url \"${CAMROD_GUEST_CDP_URL}\"" in run_source
     assert "camrod_camping_site_matrix_guest_usage_complete" in run_source
+
+
+def test_visible_operator_browser_commands_are_isolated_and_explicit() -> None:
+    env_source = ENVIRONMENT.read_text(encoding="utf-8")
+    run_source = RUNNER.read_text(encoding="utf-8")
+
+    assert 'CAMROD_OPERATOR_CDP_URL:-http://127.0.0.1:9224' in env_source
+    assert "operator-ui)" in run_source
+    assert "camping-sites-browser)" in run_source
+    assert "camping-sites-browser-recall)" in run_source
+    assert 'matrix_return_authority="operator_browser"' in run_source
+    assert '"--app=${CAMROD_UI_URL}"' in run_source
+    assert "--remote-debugging-port=9224" in run_source
+    assert 'mktemp -d "${operator_browser_temp_root}/camrod-operator-chrome.XXXXXX"' in run_source
+    assert "operator_browser_target_ready" in run_source
+    assert '--operator-cdp-url "${CAMROD_OPERATOR_CDP_URL}"' in run_source
+    assert "camrod_camping_site_matrix_operator_browser_delivery" in run_source
+    assert "camrod_camping_site_matrix_operator_browser_recall" in run_source
 
 
 def test_guest_commands_are_listed_in_help() -> None:
@@ -44,7 +65,10 @@ def test_guest_commands_are_listed_in_help() -> None:
     )
     assert "guest-ui" in result.stdout
     assert "camping-sites-guest" in result.stdout
+    assert "camping-sites-recall" in result.stdout
     assert "navigate -> usage_complete" in result.stdout
+    assert "operator-ui" in result.stdout
+    assert "camping-sites-browser" in result.stdout
 
 
 def test_guest_ui_refuses_headless_or_noncanonical_endpoints() -> None:

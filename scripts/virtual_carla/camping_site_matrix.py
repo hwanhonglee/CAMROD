@@ -4,8 +4,9 @@
 
 The default action is deliberately read-only: it loads the active CAMROD map
 configuration and writes a plan.  ``--run`` is required before this program
-can call the selected production UI authority (operator REST or the visible
-Guest browser page).  The runner never publishes a motion command, a goal
+can call the selected production UI authority (operator REST, the visible
+Robot UI browser, or the visible Guest browser page).  The runner never
+publishes a motion command, a goal
 pose, an initial pose, or a CARLA teleport.  Movement is therefore the same
 UI -> CAMROD -> controller path a real frontend uses.
 
@@ -19,6 +20,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import importlib.util
 import json
 import math
 import os
@@ -35,6 +37,9 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_SITES = tuple(f"B{i}" for i in range(1, 14))
+RECALL_TO_SITE_ROAD = 7
+GUEST_LOADING_WAIT = 8
+RETURN_WITH_CARGO = 9
 WAITING_FOR_RETURN_REQUEST = 11
 WAITING_FOR_CHARGING = 12
 CHARGING = 13
@@ -42,6 +47,7 @@ DROP_ZONE_PARKING = 10
 FAILURE_STATES = {16}
 RETURN_OPERATION = 3
 GUEST_UI_TITLE = "국립공원 로봇 서비스"
+OPERATOR_UI_TITLE = "Robot UI"
 COLLISION_SAMPLE_LIMIT = 256
 COLLISION_FIRST_SAMPLE_LIMIT = 64
 FINAL_OBSERVATION_DRAIN_SECONDS = 0.25
@@ -56,6 +62,7 @@ SITE_PHASES = {
         "CRAB_IN", "UNLOAD_WAIT", "WAIT_RETURN", "CRAB_OUT", "DONE",
     ),
 }
+MISSION_INTENTS = ("delivery", "recall")
 DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
     "/camrod_twist_to_4ws": {
         "recovery_breakaway_enable": False,
@@ -161,28 +168,12 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "publish_debug_image": True,
         "debug_jpeg_quality": 80,
     },
-    "/carla_charging_contact_emulator": {
-        "drop_zone_id": "drop_zone",
-        "pose_topic": "/localization/pose",
-        "odometry_topic": "/odom",
-        "parking_status_topic": (
-            "/parking/apriltag_parking_controller/status"
-        ),
-        "planning_state_topic": "/planning/state_machine/state",
-        "charging_topic": "/camrod_carla/platform_heartbeat/charging",
-        "position_tolerance_m": 0.35,
-        "speed_tolerance_mps": 0.05,
-        "pose_timeout_s": 0.5,
-        "odometry_timeout_s": 0.5,
-        "state_timeout_s": 2.0,
-        "dwell_s": 1.0,
-        "publish_rate_hz": 10.0,
-    },
     "/planning/nav2_selector_latch": {
         "reverse_controller_id": "RPP",
     },
     "/ui_backend": {
         "telemetry_raw_lidar_bbox_overlay_enabled": False,
+        "telemetry_docking_rear_camera_fallback_enabled": False,
         "telemetry_obstacle_cloud_topic": "/perception/obstacles",
         "charging_departure_delay_s": 7.0,
     },
@@ -198,14 +189,40 @@ def _with_site_geometry_runtime_signature(
     base: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     result = {node: dict(parameters) for node, parameters in base.items()}
+    result["/carla_charging_contact_emulator"] = {
+        "drop_zone_id": "drop_zone",
+        "pose_topic": "/localization/pose",
+        "odometry_topic": "/odom",
+        "parking_status_topic": (
+            "/parking/apriltag_parking_controller/status"
+        ),
+        "planning_state_topic": "/planning/state_machine/state",
+        "charging_topic": "/camrod_carla/platform_heartbeat/charging",
+        "position_tolerance_m": 0.35,
+        "speed_tolerance_mps": 0.05,
+        "pose_timeout_s": 0.5,
+        "odometry_timeout_s": 0.5,
+        "state_timeout_s": 2.0,
+        "dwell_s": 1.0,
+        "publish_rate_hz": 10.0,
+    }
+    result["/ui_backend"][
+        "telemetry_docking_rear_camera_fallback_enabled"
+    ] = True
     result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
     result["/planning/controller_server"].update({
+        "controller_plugins": ["RPP", "RPPReverse", "RotationShim"],
         "RPP.desired_linear_vel": 0.555556,
         "RPP.min_approach_linear_velocity": 0.138889,
         "RPP.regulated_linear_scaling_min_speed": 0.166667,
         "RotationShim.desired_linear_vel": 0.555556,
         "RotationShim.min_approach_linear_velocity": 0.138889,
         "RotationShim.regulated_linear_scaling_min_speed": 0.166667,
+        "RPPReverse.allow_reversing": True,
+        "RPPReverse.use_rotate_to_heading": False,
+        "RPPReverse.desired_linear_vel": 0.20,
+        "RPPReverse.lookahead_dist": 0.80,
+        "RPPReverse.use_collision_detection": True,
     })
     result["/camrod_twist_to_4ws"]["recovery_breakaway_enable"] = True
     result["/camrod_twist_to_4ws"][
@@ -223,6 +240,9 @@ def _with_site_geometry_runtime_signature(
     result["/control/cmd_vel_safety_gate"][
         "lanelet_safety_footprint_enable"
     ] = False
+    result["/control/cmd_vel_safety_gate"][
+        "lanelet_safety_check_reverse"
+    ] = True
     result["/control/route_safety_recovery_controller"].update({
         "zero_hold_pauses_limits": True,
         "allow_corrective_yaw_beyond_limit": True,
@@ -233,6 +253,12 @@ def _with_site_geometry_runtime_signature(
     result["/planning/goal_snapper"][
         "pose_jump_check_topic"
     ] = "/localization/pose"
+    result["/planning/goal_snapper"][
+        "reverse_auxiliary_input_goal_topic"
+    ] = "/planning/auto_reverse_goal_raw"
+    result["/planning/nav2_selector_latch"][
+        "reverse_controller_id"
+    ] = "RPPReverse"
     result["/parking/apriltag_parking_controller"].update({
         "heading_gain": 1.5,
         "lateral_to_heading_gain": 2.7,
@@ -253,6 +279,7 @@ def _with_site_geometry_runtime_signature(
     })
     result["/control/camping_site_maneuver_controller"].update({
         "max_angular_speed_radps": 0.45,
+        "roadside_reverse_return_enable": True,
         "crab_approach_slowdown_distance_m": 1.0,
         "crab_approach_min_speed_mps": 0.12,
         "rotate_180_timeout_s": 90.0,
@@ -280,10 +307,55 @@ DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE = (
 )
 RUNTIME_PROFILE_SIGNATURES = {
     "develop-parity": DEVELOP_PARITY_RUNTIME_SIGNATURE,
-    "develop-plus-carla-site-geometry-v26": (
+    "develop-plus-carla-site-geometry-v27": (
         DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE
     ),
 }
+
+
+def _load_authoritative_runtime_profile_signatures() -> dict[str, dict[str, Any]]:
+    """Load the exact profile contract used to produce the accepted audit.
+
+    The matrix consumes an audit emitted by ``audit_runtime_profile.py``.  It
+    must therefore validate every selected parameter from that same source,
+    rather than maintaining a weaker hand-copied subset that can drift.
+    """
+    contract_path = Path(__file__).with_name("audit_runtime_profile.py")
+    spec = importlib.util.spec_from_file_location(
+        "_camrod_virtual_carla_runtime_profile_contract", contract_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"cannot load runtime-profile contract: {contract_path}"
+        )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    profiles = getattr(module, "AUDITED_PROFILE_PARAMETERS", None)
+    required = {
+        "develop-parity",
+        "develop-plus-carla-site-geometry-v27",
+    }
+    if not isinstance(profiles, Mapping) or set(profiles) != required:
+        raise RuntimeError(
+            "runtime-profile contract has unexpected profile keys: "
+            f"{sorted(profiles) if isinstance(profiles, Mapping) else profiles!r}"
+        )
+    return {
+        str(profile): {
+            str(node): dict(parameters)
+            for node, parameters in nodes.items()
+        }
+        for profile, nodes in profiles.items()
+    }
+
+
+# These public names are retained for offline contract tests, but all three now
+# reference the producer's complete authoritative parameter dictionaries.
+RUNTIME_PROFILE_SIGNATURES = _load_authoritative_runtime_profile_signatures()
+DEVELOP_PARITY_RUNTIME_SIGNATURE = RUNTIME_PROFILE_SIGNATURES["develop-parity"]
+DEVELOP_SITE_GEOMETRY_RUNTIME_SIGNATURE = RUNTIME_PROFILE_SIGNATURES[
+    "develop-plus-carla-site-geometry-v27"
+]
 
 
 class MatrixError(RuntimeError):
@@ -322,6 +394,8 @@ class SiteResult:
     source_id: str
     service_mode: str
     target_pose: dict[str, float]
+    mission_intent: str = "delivery"
+    configured_service_mode: str = ""
     status: str = "NOT_ATTEMPTED"
     started_at_utc: str = ""
     dispatch_started_at_utc: str = ""
@@ -343,6 +417,14 @@ class SiteResult:
     ui_operation_request_sequence: list[dict[str, Any]] = field(
         default_factory=list
     )
+    controller_operation_request_sequence: list[dict[str, Any]] = field(
+        default_factory=list
+    )
+    destination_request_sequence: list[dict[str, Any]] = field(
+        default_factory=list
+    )
+    recall_request_sequence: list[dict[str, Any]] = field(default_factory=list)
+    dispatch_source_verified: bool = False
     motion_metrics: dict[str, Any] = field(default_factory=dict)
     final_service_state: dict[str, Any] = field(default_factory=dict)
     final_parking_status: dict[str, Any] = field(default_factory=dict)
@@ -466,7 +548,9 @@ def pose_error_m(pose: Mapping[str, Any], drop_zone: DropZone) -> float | None:
     return math.hypot(x - drop_zone.x_m, y - drop_zone.y_m)
 
 
-def contains_ordered_subsequence(values: Sequence[str], expected: Sequence[str]) -> bool:
+def contains_ordered_subsequence(
+    values: Sequence[Any], expected: Sequence[Any]
+) -> bool:
     """Return true when every expected phase appears in order."""
     position = 0
     for value in values:
@@ -476,23 +560,27 @@ def contains_ordered_subsequence(values: Sequence[str], expected: Sequence[str])
 
 
 def arrival_ready_for_return(
-    snapshot: Mapping[str, Any], expected_phases: Sequence[str]
+    snapshot: Mapping[str, Any],
+    expected_phases: Sequence[str],
+    *,
+    expected_service_state: int = WAITING_FOR_RETURN_REQUEST,
 ) -> bool:
     """Require both lifecycle and controller evidence before UI return.
 
     ``/service/state`` and the camping-site controller status are independent
-    ROS topics.  The lifecycle can therefore publish
-    ``WAITING_FOR_RETURN_REQUEST`` one callback before the controller's
-    ``WAIT_RETURN`` status is observed.  Treating the lifecycle sample alone
-    as arrival would race the evidence observer and could issue Return before
-    the controller is observably ready.  Malformed or incomplete snapshots
-    fail closed.
+    ROS topics.  The lifecycle can therefore publish the intent-specific
+    arrival state one callback before the controller's ``WAIT_RETURN`` status
+    is observed.  Treating the lifecycle sample alone as arrival would race
+    the evidence observer and could issue Return before the controller is
+    observably ready.  Normal delivery expects
+    ``WAITING_FOR_RETURN_REQUEST``; roadside recall expects
+    ``GUEST_LOADING_WAIT``.  Malformed or incomplete snapshots fail closed.
     """
     service_state = snapshot.get("service_state")
     sequences = snapshot.get("sequences")
     if not isinstance(service_state, Mapping) or not isinstance(sequences, Mapping):
         return False
-    if service_state.get("state") != WAITING_FOR_RETURN_REQUEST:
+    if service_state.get("state") != expected_service_state:
         return False
     try:
         wait_return_index = expected_phases.index("WAIT_RETURN") + 1
@@ -506,31 +594,97 @@ def arrival_ready_for_return(
     )
 
 
+def effective_service_mode(site: Site, mission_intent: str) -> str:
+    """Return the controller policy that must be observed for this mission."""
+    if mission_intent == "recall":
+        # Latest develop defines every B1-B13 recall as a bounded roadside
+        # pickup, independent of the site's normal delivery service policy.
+        return "roadside_stop"
+    if mission_intent == "delivery":
+        return site.service_mode
+    raise MatrixError(
+        f"mission_intent must be one of {MISSION_INTENTS}, got {mission_intent!r}"
+    )
+
+
+def required_service_state_ids(mission_intent: str) -> tuple[int, ...]:
+    """Return ordered-state membership required before a mission may pass."""
+    if mission_intent == "recall":
+        return (
+            RECALL_TO_SITE_ROAD,
+            GUEST_LOADING_WAIT,
+            RETURN_WITH_CARGO,
+            DROP_ZONE_PARKING,
+            WAITING_FOR_CHARGING,
+            CHARGING,
+        )
+    if mission_intent == "delivery":
+        return (DROP_ZONE_PARKING, WAITING_FOR_CHARGING, CHARGING)
+    raise MatrixError(
+        f"mission_intent must be one of {MISSION_INTENTS}, got {mission_intent!r}"
+    )
+
+
 def return_source_observed(snapshot: Mapping[str, Any], expected_source: str) -> bool:
-    """Require the exact Guest UI RETURN authority when one is selected."""
+    """Require the exact frontend RETURN source at a ROS command boundary."""
     if not expected_source:
         return True
     sequences = snapshot.get("sequences")
     if not isinstance(sequences, Mapping):
         return False
-    requests = sequences.get("ui_operation_requests")
+    for key in ("ui_operation_requests", "controller_operation_requests"):
+        requests = sequences.get(key)
+        if not isinstance(requests, Sequence) or isinstance(
+            requests, (str, bytes)
+        ):
+            continue
+        for request in requests:
+            if not isinstance(request, Mapping):
+                continue
+            try:
+                operation = int(request.get("operation", -1))
+            except (TypeError, ValueError):
+                continue
+            if (
+                operation == RETURN_OPERATION
+                and request.get("source") == expected_source
+            ):
+                return True
+    return False
+
+
+def dispatch_source_observed(
+    snapshot: Mapping[str, Any],
+    *,
+    site: str,
+    mission_intent: str,
+    expected_source: str,
+) -> bool:
+    """Bind a browser dispatch to the matching source-bearing ROS message."""
+    sequences = snapshot.get("sequences")
+    if not isinstance(sequences, Mapping):
+        return False
+    if mission_intent == "delivery":
+        requests = sequences.get("destination_requests")
+        site_key = "site"
+        requires_run = True
+    elif mission_intent == "recall":
+        requests = sequences.get("recall_requests")
+        site_key = "site_name"
+        requires_run = False
+    else:
+        return False
     if not isinstance(requests, Sequence) or isinstance(
         requests, (str, bytes)
     ):
         return False
-    for request in requests:
-        if not isinstance(request, Mapping):
-            continue
-        try:
-            operation = int(request.get("operation", -1))
-        except (TypeError, ValueError):
-            continue
-        if (
-            operation == RETURN_OPERATION
-            and request.get("source") == expected_source
-        ):
-            return True
-    return False
+    return any(
+        isinstance(request, Mapping)
+        and request.get(site_key) == site
+        and request.get("source") == expected_source
+        and (not requires_run or request.get("run") is True)
+        for request in requests
+    )
 
 
 def mission_segment_metrics(
@@ -826,18 +980,22 @@ def load_runtime_profile_audit(
 
 def build_plan(sites: Mapping[str, Site], selected: Iterable[str], drop_zone: DropZone,
                *, output: Path, config_paths: Mapping[str, Path],
-               role_name: str = "ego_vehicle") -> dict[str, Any]:
+               role_name: str = "ego_vehicle",
+               mission_intent: str = "delivery") -> dict[str, Any]:
     """Build a report that contains no runtime claim and no motion side effect."""
     selected_tuple = tuple(selected)
     selected_set = set(selected_tuple)
     results = []
     for key in selected_tuple:
         site = sites[key]
+        service_mode = effective_service_mode(site, mission_intent)
         results.append(asdict(SiteResult(
             site=site.key,
             source_id=site.source_id,
-            service_mode=site.service_mode,
+            service_mode=service_mode,
             target_pose={"x_m": site.x_m, "y_m": site.y_m, "z_m": site.z_m, "yaw_deg": site.yaw_deg},
+            mission_intent=mission_intent,
+            configured_service_mode=site.service_mode,
         )))
     return {
         "schema": "camrod.virtual_carla.camping_site_matrix.v1",
@@ -846,6 +1004,7 @@ def build_plan(sites: Mapping[str, Site], selected: Iterable[str], drop_zone: Dr
         "scope": {
             "selected_sites": list(selected_tuple),
             "unattempted_sites": [key for key in sites if key not in selected_set],
+            "mission_intent": mission_intent,
             "motion_commands_sent": False,
             "pose_teleport_used": False,
             "fake_sensor_data_used": False,
@@ -884,6 +1043,9 @@ def observation_contract(role_name: str = "ego_vehicle") -> dict[str, Any]:
             "/carla/ego_vehicle/physical_four_wheel_status",
             "/control/camping_site_maneuver_controller/status",
             "/ui/camping_site_operation_request",
+            "/control/camping_site_maneuver_controller/operation",
+            "/ui/selected_destination",
+            "/planning/state_machine/camping_site_recall",
         ],
         "status_topics": [
             "/parking/reverse_parking_controller/status",
@@ -1005,8 +1167,20 @@ class UIClient:
             raise MatrixError(f"UI rejected {url}: {decoded}")
         return decoded
 
-    def dispatch(self, site: str) -> dict[str, Any]:
-        return self.post("/ui/destination", {"site": site, "run": "true"})
+    def dispatch(
+        self, site: str, mission_intent: str = "delivery"
+    ) -> dict[str, Any]:
+        if mission_intent == "recall":
+            return self.post(
+                "/ui/camping_site_recall",
+                {"site": site, "intent": "recall"},
+            )
+        if mission_intent == "delivery":
+            return self.post("/ui/destination", {"site": site, "run": "true"})
+        raise MatrixError(
+            f"mission_intent must be one of {MISSION_INTENTS}, "
+            f"got {mission_intent!r}"
+        )
 
     def request_return(self) -> dict[str, Any]:
         return self.post("/ui/manual_return")
@@ -1236,7 +1410,14 @@ class GuestBrowserClient:
             raise MatrixError(f"Guest UI rejected {action}: {value!r}")
         return dict(value)
 
-    def dispatch(self, site: str) -> dict[str, Any]:
+    def dispatch(
+        self, site: str, mission_intent: str = "recall"
+    ) -> dict[str, Any]:
+        if mission_intent != "recall":
+            raise MatrixError(
+                "visible Guest UI dispatch is a roadside recall; "
+                "mission_intent must be 'recall'"
+            )
         literal = json.dumps(site)
         expression = (
             "(() => {"
@@ -1280,7 +1461,7 @@ class GuestBrowserClient:
             "ws.readyState !== WebSocket.OPEN || typeof sendUsageComplete !== 'function') "
             "return {accepted:false, reason:'guest_ui_not_ready'};"
             "if (typeof currentPhase === 'undefined' || currentPhase !== 'arrived' || "
-            "typeof currentState === 'undefined' || currentState !== 11) "
+            "typeof currentState === 'undefined' || currentState !== 8) "
             "return {accepted:false, reason:'guest_ui_not_waiting_for_return', "
             "phase:currentPhase, state:currentState};"
             "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
@@ -1318,6 +1499,453 @@ class GuestBrowserClient:
                 connection.close()
             except Exception:
                 pass
+
+
+class OperatorBrowserClient(GuestBrowserClient):
+    """Drive the visible production Robot UI with real CDP pointer/input events.
+
+    Runtime evaluation is restricted to locating stable ``data-ui`` hooks and
+    passively recording the page's own HTTP/WebSocket traffic.  Every action
+    itself uses ``Input.dispatchMouseEvent`` or ``Input.insertText``; no React
+    callback or backend endpoint is invoked directly by this client.
+    """
+
+    def __init__(
+        self,
+        debugging_url: str,
+        operator_ui_url: str,
+        timeout_s: float = 10.0,
+    ) -> None:
+        self.debugging_url = self._local_http_url(
+            debugging_url, "--operator-cdp-url"
+        ).rstrip("/")
+        self.operator_ui_url = self._local_http_url(
+            operator_ui_url, "--ui-url"
+        ).rstrip("/")
+        self.timeout_s = timeout_s
+        self.stop_client = UIClient(operator_ui_url, timeout_s=timeout_s)
+        self._command_id = 0
+        self._connection: Any = None
+        self._target: dict[str, Any] = {}
+        self._interactions: list[dict[str, Any]] = []
+        try:
+            self._connect_operator()
+            self._install_transport_probe()
+        except BaseException:
+            self.close()
+            raise
+
+    def _connect_operator(self) -> None:
+        request = Request(
+            f"{self.debugging_url}/json",
+            method="GET",
+            headers={"Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_s) as response:  # nosec B310 - validated localhost CDP
+                targets = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            raise MatrixError(
+                f"Robot UI browser CDP target discovery failed: {error}"
+            ) from None
+        if not isinstance(targets, list):
+            raise MatrixError("Robot UI browser CDP /json response must be a list")
+        matches = [
+            item
+            for item in targets
+            if isinstance(item, dict)
+            and item.get("type") == "page"
+            and str(item.get("url", "")).rstrip("/") == self.operator_ui_url
+            and str(item.get("webSocketDebuggerUrl", "")).strip()
+        ]
+        if len(matches) != 1:
+            raise MatrixError(
+                "expected exactly one visible Robot UI CDP page at "
+                f"{self.operator_ui_url}, found {len(matches)}"
+            )
+        self._target = dict(matches[0])
+        websocket_url = str(self._target["webSocketDebuggerUrl"])
+        parsed = urlparse(websocket_url)
+        if (
+            parsed.scheme != "ws"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise MatrixError(
+                "Robot UI browser returned a non-local debugger URL: "
+                f"{websocket_url}"
+            )
+        try:
+            import websocket
+
+            self._connection = websocket.create_connection(
+                websocket_url,
+                timeout=self.timeout_s,
+                origin=self.operator_ui_url,
+            )
+        except Exception as error:
+            raise MatrixError(
+                f"Robot UI browser CDP WebSocket connection failed: {error}"
+            ) from None
+        ready = self._evaluate(
+            "(() => ({"
+            "title: document.title, href: document.location.href, "
+            "ready: document.readyState, visibility: document.visibilityState, "
+            "rootReady: Boolean(document.getElementById('root')), "
+            "screenReady: Boolean(document.querySelector("
+            "'[data-ui=\"operator-waiting-screen\"], "
+            "[data-ui=\"operator-control-screen\"]'))"
+            "}))()"
+        )
+        if (
+            not isinstance(ready, dict)
+            or ready.get("ready") != "complete"
+            or str(ready.get("href", "")).rstrip("/")
+            != self.operator_ui_url
+            or str(ready.get("title", "")).strip() != OPERATOR_UI_TITLE
+            or ready.get("visibility") != "visible"
+            or ready.get("rootReady") is not True
+            or ready.get("screenReady") is not True
+        ):
+            raise MatrixError(f"visible Robot UI page is not ready: {ready!r}")
+
+    def _install_transport_probe(self) -> None:
+        value = self._evaluate(
+            "(() => {"
+            "if (!window.__camrodOperatorEvidenceInstalled) {"
+            "const originalSend = WebSocket.prototype.send;"
+            "WebSocket.prototype.send = function(payload) {"
+            "const store = window.__camrodOperatorEvidence;"
+            "if (store && Array.isArray(store.websocket)) {"
+            "let frame = null; try { frame = JSON.parse(String(payload)); } catch (_) {}"
+            "store.websocket.push({payload:String(payload), frame:frame});"
+            "}"
+            "return originalSend.call(this, payload);"
+            "};"
+            "const originalFetch = window.fetch.bind(window);"
+            "window.fetch = async function(input, init) {"
+            "const url = String((input && input.url) || input);"
+            "const method = String((init && init.method) || "
+            "(input && input.method) || 'GET').toUpperCase();"
+            "try {"
+            "const response = await originalFetch(input, init);"
+            "let body = null; try { body = await response.clone().json(); } catch (_) {}"
+            "const store = window.__camrodOperatorEvidence;"
+            "if (store && Array.isArray(store.http)) "
+            "store.http.push({url:url, method:method, status:response.status, "
+            "ok:response.ok, body:body});"
+            "return response;"
+            "} catch (error) {"
+            "const store = window.__camrodOperatorEvidence;"
+            "if (store && Array.isArray(store.http)) "
+            "store.http.push({url:url, method:method, error:String(error)});"
+            "throw error;"
+            "}"
+            "};"
+            "window.__camrodOperatorEvidenceInstalled = true;"
+            "}"
+            "window.__camrodOperatorEvidence = {websocket:[], http:[]};"
+            "return {accepted:true, installed:true};"
+            "})()"
+        )
+        self._accepted(value, "transport probe installation")
+
+    def _element(self, selector: str) -> dict[str, Any]:
+        literal = json.dumps(selector)
+        value = self._evaluate(
+            "(() => {"
+            f"const selector = {literal};"
+            "const matches = Array.from(document.querySelectorAll(selector));"
+            "const visible = matches.filter(element => {"
+            "const rect = element.getBoundingClientRect();"
+            "const style = window.getComputedStyle(element);"
+            "return rect.width > 0 && rect.height > 0 && "
+            "style.display !== 'none' && style.visibility !== 'hidden' && "
+            "Number(style.opacity) !== 0;"
+            "});"
+            "if (visible.length !== 1) return {count:matches.length, "
+            "visibleCount:visible.length};"
+            "const element = visible[0]; const rect = element.getBoundingClientRect();"
+            "return {count:matches.length, visibleCount:1, disabled:Boolean(element.disabled), "
+            "x:rect.left + rect.width / 2, y:rect.top + rect.height / 2, "
+            "pressed:element.getAttribute('aria-pressed'), "
+            "value:typeof element.value === 'string' ? element.value : null};"
+            "})()"
+        )
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    def _wait_element(
+        self, selector: str, description: str, timeout_s: float | None = None
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + (
+            self.timeout_s if timeout_s is None else timeout_s
+        )
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            last = self._element(selector)
+            if (
+                last.get("visibleCount") == 1
+                and last.get("disabled") is not True
+            ):
+                return last
+            time.sleep(0.05)
+        raise MatrixError(
+            f"Robot UI did not expose one enabled {description} element "
+            f"({selector}): {last!r}"
+        )
+
+    def _wait_pressed(self, selector: str, description: str) -> None:
+        deadline = time.monotonic() + self.timeout_s
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            last = self._element(selector)
+            if last.get("visibleCount") == 1 and last.get("pressed") == "true":
+                return
+            time.sleep(0.05)
+        raise MatrixError(
+            f"Robot UI did not latch {description}: {last!r}"
+        )
+
+    def _click(self, selector: str, description: str) -> dict[str, Any]:
+        element = self._wait_element(selector, description)
+        x = float(element["x"])
+        y = float(element["y"])
+        self._call("Input.dispatchMouseEvent", {
+            "type": "mouseMoved", "x": x, "y": y,
+        })
+        self._call("Input.dispatchMouseEvent", {
+            "type": "mousePressed", "x": x, "y": y,
+            "button": "left", "buttons": 1, "clickCount": 1,
+        })
+        self._call("Input.dispatchMouseEvent", {
+            "type": "mouseReleased", "x": x, "y": y,
+            "button": "left", "buttons": 0, "clickCount": 1,
+        })
+        record = {
+            "stage": description,
+            "selector": selector,
+            "x": round(x, 3),
+            "y": round(y, 3),
+            "transport": "CDP.Input.dispatchMouseEvent",
+        }
+        self._interactions.append(record)
+        return record
+
+    def _insert_text(self, selector: str, text: str) -> dict[str, Any]:
+        element = self._wait_element(selector, "site verification input")
+        if element.get("value") not in (None, ""):
+            raise MatrixError(
+                "Robot UI site verification input was not empty before input: "
+                f"{element.get('value')!r}"
+            )
+        self._click(selector, "site verification input focus")
+        self._call("Input.insertText", {"text": text})
+        deadline = time.monotonic() + self.timeout_s
+        last = None
+        while time.monotonic() < deadline:
+            last = self._element(selector).get("value")
+            if last == text:
+                break
+            time.sleep(0.05)
+        if last != text:
+            raise MatrixError(
+                f"Robot UI site verification input did not receive {text!r}: "
+                f"{last!r}"
+            )
+        record = {
+            "stage": "site verification text",
+            "selector": selector,
+            "text": text,
+            "transport": "CDP.Input.insertText",
+        }
+        self._interactions.append(record)
+        return record
+
+    def _probe(self) -> dict[str, Any]:
+        value = self._evaluate(
+            "(() => { const value = window.__camrodOperatorEvidence; "
+            "return value ? JSON.parse(JSON.stringify(value)) : null; })()"
+        )
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    def _wait_probe(
+        self,
+        predicate: Callable[[Mapping[str, Any]], dict[str, Any] | None],
+        description: str,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + self.timeout_s
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            last = self._probe()
+            accepted = predicate(last)
+            if accepted is not None:
+                return accepted
+            time.sleep(0.05)
+        raise MatrixError(
+            f"Robot UI did not emit the expected {description}: {last!r}"
+        )
+
+    @staticmethod
+    def _matching_ws_frame(
+        probe: Mapping[str, Any], predicate: Callable[[Mapping[str, Any]], bool]
+    ) -> dict[str, Any] | None:
+        records = probe.get("websocket")
+        if not isinstance(records, list):
+            return None
+        for record in reversed(records):
+            if not isinstance(record, Mapping):
+                continue
+            frame = record.get("frame")
+            if isinstance(frame, Mapping) and predicate(frame):
+                return dict(frame)
+        return None
+
+    def dispatch(
+        self, site: str, mission_intent: str = "delivery"
+    ) -> dict[str, Any]:
+        if mission_intent not in MISSION_INTENTS:
+            raise MatrixError(
+                f"mission_intent must be one of {MISSION_INTENTS}, "
+                f"got {mission_intent!r}"
+            )
+        self._interactions = []
+        self._install_transport_probe()
+        waiting = self._element('[data-ui="operator-open-destination"]')
+        if waiting.get("visibleCount") == 1:
+            self._click(
+                '[data-ui="operator-open-destination"]',
+                "open destination selection",
+            )
+        self._wait_element(
+            '[data-ui="operator-control-screen"]', "operator control screen"
+        )
+        self._click(
+            f'[data-ui="operator-intent-{mission_intent}"]',
+            f"select {mission_intent} intent",
+        )
+        self._wait_pressed(
+            f'[data-ui="operator-intent-{mission_intent}"]',
+            f"{mission_intent} intent",
+        )
+        page = (int(site[1:]) - 1) // 6
+        self._click(
+            f'[data-ui="operator-site-page-{page}"]',
+            f"select site page {page + 1}",
+        )
+        self._click(f'[data-ui="operator-site-{site}"]', f"select site {site}")
+        self._click(
+            '[data-ui="operator-site-preview-confirm"]',
+            "confirm site preview",
+        )
+        self._click(
+            '[data-ui="operator-move-confirm-yes"]',
+            "confirm mission intent",
+        )
+        self._insert_text('[data-ui="operator-site-code-input"]', site)
+        self._click(
+            '[data-ui="operator-site-code-confirm"]',
+            "confirm typed site code",
+        )
+
+        if mission_intent == "delivery":
+            frame = self._wait_probe(
+                lambda probe: (
+                    {"frame": matched}
+                    if (matched := self._matching_ws_frame(
+                        probe,
+                        lambda item: item.get("site") == site
+                        and item.get("state") is True,
+                    )) is not None
+                    else None
+                ),
+                f"delivery WebSocket frame for {site}",
+            )["frame"]
+            return {
+                "accepted": True,
+                "action": "delivery",
+                "site": site,
+                "frame": frame,
+                "source": "ws",
+                "transport": "visible_operator_page_websocket_via_cdp_input",
+                "interactions": list(self._interactions),
+            }
+
+        def recall_request(
+            probe: Mapping[str, Any]
+        ) -> dict[str, Any] | None:
+            records = probe.get("http")
+            if not isinstance(records, list):
+                return None
+            expected_query = f"site={site}&intent=recall"
+            for record in reversed(records):
+                if not isinstance(record, Mapping):
+                    continue
+                body = record.get("body")
+                if (
+                    "/ui/camping_site_recall?" in str(record.get("url", ""))
+                    and expected_query in str(record.get("url", ""))
+                    and record.get("method") == "POST"
+                    and record.get("status") == 200
+                    and record.get("ok") is True
+                    and isinstance(body, Mapping)
+                    and body.get("success") is True
+                    and body.get("intent") == "recall"
+                ):
+                    return dict(record)
+            return None
+
+        request_record = self._wait_probe(
+            recall_request, f"typed recall HTTP response for {site}"
+        )
+        return {
+            "accepted": True,
+            "action": "recall",
+            "site": site,
+            "intent": "recall",
+            "request": request_record,
+            "source": "robot_ui:recall",
+            "transport": "visible_operator_page_http_via_cdp_input",
+            "interactions": list(self._interactions),
+        }
+
+    def request_return(self) -> dict[str, Any]:
+        self._interactions = []
+        # The modal is the explicit arrival acknowledgement shown by the
+        # production Robot UI; never substitute the diagnostics REST button.
+        self._click(
+            '[data-ui="operator-arrival-return-confirm"]',
+            "arrival complete and Return",
+        )
+        frame = self._wait_probe(
+            lambda probe: (
+                {"frame": matched}
+                if (matched := self._matching_ws_frame(
+                    probe,
+                    lambda item: item.get("usage_complete") is True,
+                )) is not None
+                else None
+            ),
+            "arrival usage_complete WebSocket frame",
+        )["frame"]
+        return {
+            "accepted": True,
+            "action": "usage_complete",
+            "frame": frame,
+            "source": "ws:usage_complete",
+            "expected_ros_source": "ws:usage_complete:site_exit_first",
+            "transport": "visible_operator_page_websocket_via_cdp_input",
+            "interactions": list(self._interactions),
+        }
+
+    def expected_dispatch_source(self, mission_intent: str) -> str:
+        return "robot_ui:recall" if mission_intent == "recall" else "ws"
+
+    @property
+    def expected_return_source(self) -> str:
+        return "ws:usage_complete:site_exit_first"
 
 
 def _attr(message: Any, name: str, default: Any = None) -> Any:
@@ -1444,6 +2072,8 @@ class RosObservation:
                 AvgTwist,
                 ModuleState,
                 MotionOperation,
+                PlanningRecallRequest,
+                UiDestinationCommand,
             )
             from nav_msgs.msg import Odometry
             from carla_extended_ackermann_msgs.msg import PhysicalFourWheelStatus
@@ -1469,6 +2099,9 @@ class RosObservation:
             "drop_zone": None,
             "gate": None,
             "ui_operation_request": None,
+            "controller_operation_request": None,
+            "destination_request": None,
+            "recall_request": None,
         }
         self.expected_actor_id = expected_actor_id
         self._physical_received_monotonic: float | None = None
@@ -1481,6 +2114,9 @@ class RosObservation:
         self._drop_zone_phases: list[str] = []
         self._gate_states: list[str] = []
         self._ui_operation_requests: list[dict[str, Any]] = []
+        self._controller_operation_requests: list[dict[str, Any]] = []
+        self._destination_requests: list[dict[str, Any]] = []
+        self._recall_requests: list[dict[str, Any]] = []
         self._cmd_vel_samples = 0
         self._cmd_vel_max_abs = 0.0
         self._motion_command_observed = False
@@ -1515,6 +2151,9 @@ class RosObservation:
         self.node.create_subscription(ModuleState, "/control/drop_zone_maneuver_controller/status", lambda msg: self._drop_zone(msg), qos)
         self.node.create_subscription(ModuleState, "/control/cmd_vel_safety_gate/status", lambda msg: self._gate(msg), qos)
         self.node.create_subscription(MotionOperation, "/ui/camping_site_operation_request", lambda msg: self._ui_operation(msg), command_qos)
+        self.node.create_subscription(MotionOperation, "/control/camping_site_maneuver_controller/operation", lambda msg: self._controller_operation(msg), command_qos)
+        self.node.create_subscription(UiDestinationCommand, "/ui/selected_destination", lambda msg: self._destination_request(msg), command_qos)
+        self.node.create_subscription(PlanningRecallRequest, "/planning/state_machine/camping_site_recall", lambda msg: self._recall_request(msg), command_qos)
         try:
             from carla_msgs.msg import CarlaCollisionEvent
         except (ImportError, ModuleNotFoundError):
@@ -1702,6 +2341,37 @@ class RosObservation:
         if not self._ui_operation_requests or self._ui_operation_requests[-1] != operation:
             self._ui_operation_requests.append(operation)
 
+    def _controller_operation(self, msg: Any) -> None:
+        operation = {
+            "operation": int(_attr(msg, "operation", -1)),
+            "source": str(_attr(msg, "source", "")).strip(),
+        }
+        self.latest["controller_operation_request"] = operation
+        if (
+            not self._controller_operation_requests
+            or self._controller_operation_requests[-1] != operation
+        ):
+            self._controller_operation_requests.append(operation)
+
+    def _destination_request(self, msg: Any) -> None:
+        request = {
+            "site": str(_attr(msg, "site", "")).strip(),
+            "run": bool(_attr(msg, "run", False)),
+            "source": str(_attr(msg, "source", "")).strip(),
+        }
+        self.latest["destination_request"] = request
+        if not self._destination_requests or self._destination_requests[-1] != request:
+            self._destination_requests.append(request)
+
+    def _recall_request(self, msg: Any) -> None:
+        request = {
+            "site_name": str(_attr(msg, "site_name", "")).strip(),
+            "source": str(_attr(msg, "source", "")).strip(),
+        }
+        self.latest["recall_request"] = request
+        if not self._recall_requests or self._recall_requests[-1] != request:
+            self._recall_requests.append(request)
+
     def _collision(self, msg: Any) -> None:
         """Passively retain an event; this callback has no control side effect."""
         stamp_ns = ros_header_stamp_ns(msg)
@@ -1746,6 +2416,9 @@ class RosObservation:
         self._drop_zone_phases = []
         self._gate_states = []
         self._ui_operation_requests = []
+        self._controller_operation_requests = []
+        self._destination_requests = []
+        self._recall_requests = []
         self._cmd_vel_samples = 0
         self._cmd_vel_max_abs = 0.0
         self._motion_command_observed = False
@@ -1758,6 +2431,9 @@ class RosObservation:
         self.latest["parking"] = {}
         self.latest["drop_zone"] = None
         self.latest["ui_operation_request"] = None
+        self.latest["controller_operation_request"] = None
+        self.latest["destination_request"] = None
+        self.latest["recall_request"] = None
 
     def begin_motion_measurement(self) -> None:
         """Start per-site command/odometry metrics at frontend dispatch."""
@@ -1826,6 +2502,11 @@ class RosObservation:
             "drop_zone_phases": list(self._drop_zone_phases),
             "gate_states": list(self._gate_states),
             "ui_operation_requests": list(self._ui_operation_requests),
+            "controller_operation_requests": list(
+                self._controller_operation_requests
+            ),
+            "destination_requests": list(self._destination_requests),
+            "recall_requests": list(self._recall_requests),
         }
         document["motion_metrics"] = {
             "cmd_vel_samples": self._cmd_vel_samples,
@@ -1916,9 +2597,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--ui-url", default=os.environ.get("CAMROD_UI_URL", "http://127.0.0.1:8010"))
     parser.add_argument(
         "--return-authority",
-        choices=("operator_rest", "guest_browser"),
+        choices=("operator_rest", "operator_browser", "guest_browser"),
         default="operator_rest",
         help="frontend authority used for dispatch and the Return request",
+    )
+    parser.add_argument(
+        "--mission-intent",
+        choices=MISSION_INTENTS,
+        default="delivery",
+        help=(
+            "delivery enters the authored campsite; recall uses the latest-"
+            "develop roadside pickup contract"
+        ),
     )
     parser.add_argument(
         "--guest-cdp-url",
@@ -1929,6 +2619,13 @@ def _parser() -> argparse.ArgumentParser:
         "--guest-ui-url",
         default=os.environ.get("CAMROD_GUEST_UI_URL", "http://127.0.0.1:8012"),
         help="Guest UI page URL that must own the browser WebSocket",
+    )
+    parser.add_argument(
+        "--operator-cdp-url",
+        default=os.environ.get(
+            "CAMROD_OPERATOR_CDP_URL", "http://127.0.0.1:9224"
+        ),
+        help="local Chrome DevTools endpoint for the visible Robot UI browser",
     )
     parser.add_argument("--role-name", default=os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"))
     parser.add_argument(
@@ -1970,13 +2667,30 @@ def _validate_args(args: argparse.Namespace) -> None:
         type(args.expected_actor_id) is not int or args.expected_actor_id <= 0
     ):
         raise MatrixError("--run requires a positive --expected-actor-id")
+    if (
+        args.return_authority == "guest_browser"
+        and args.mission_intent != "recall"
+    ):
+        raise MatrixError(
+            "--return-authority guest_browser requires --mission-intent recall"
+        )
 
 
 def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
     """Return the exact frontend authority and motion path for the report."""
     if args.return_authority == "guest_browser":
+        if args.mission_intent != "recall":
+            raise MatrixError(
+                "--return-authority guest_browser requires "
+                "--mission-intent recall"
+            )
         return {
+            "mission_intent": "recall",
             "return_authority": "guest_browser",
+            "expected_arrival_state": GUEST_LOADING_WAIT,
+            "required_service_state_ids": list(
+                required_service_state_ids("recall")
+            ),
             "expected_return_operation": RETURN_OPERATION,
             "expected_return_source": "guest:usage_complete",
             "ui_endpoints": {
@@ -1993,12 +2707,79 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
             "motion_path": (
                 "visible Guest browser page -> page-owned Guest WebSocket "
                 "navigate/usage_complete -> camrod_ui_guest ROS commands "
+                "-> typed PlanningRecallRequest / roadside wait "
                 "(RETURN source guest:usage_complete) -> CAMROD planning -> "
                 "CAMROD control -> CARLA physical 4WS bridge"
             ),
         }
+    if args.return_authority == "operator_browser":
+        recall = args.mission_intent == "recall"
+        return {
+            "mission_intent": args.mission_intent,
+            "return_authority": "operator_browser",
+            "expected_arrival_state": (
+                GUEST_LOADING_WAIT if recall else WAITING_FOR_RETURN_REQUEST
+            ),
+            "required_service_state_ids": list(
+                required_service_state_ids(args.mission_intent)
+            ),
+            "expected_dispatch_source": (
+                "robot_ui:recall" if recall else "ws"
+            ),
+            "expected_return_operation": RETURN_OPERATION,
+            "expected_return_source": "ws:usage_complete:site_exit_first",
+            "ui_endpoints": {
+                "dispatch": (
+                    "visible Robot UI data-ui controls -> CDP pointer/text "
+                    "input -> page-owned "
+                    + (
+                        "POST /ui/camping_site_recall"
+                        if recall
+                        else "WebSocket {site,state:true}"
+                    )
+                ),
+                "return": (
+                    "visible arrival acknowledgement -> CDP pointer input -> "
+                    "page-owned WebSocket {usage_complete:true}"
+                ),
+                "stop": "POST /ui/stop (operator safety endpoint only)",
+            },
+            "motion_path": (
+                "visible Robot UI browser pointer/text events -> production "
+                "Robot UI transport -> CAMROD planning -> CAMROD control -> "
+                "CARLA physical 4WS bridge"
+            ),
+        }
+    if args.mission_intent == "recall":
+        return {
+            "mission_intent": "recall",
+            "return_authority": "operator_rest",
+            "expected_arrival_state": GUEST_LOADING_WAIT,
+            "required_service_state_ids": list(
+                required_service_state_ids("recall")
+            ),
+            "expected_return_operation": None,
+            "expected_return_source": "",
+            "ui_endpoints": {
+                "dispatch": (
+                    "POST /ui/camping_site_recall?site=Bx&intent=recall"
+                ),
+                "return": "POST /ui/manual_return",
+                "stop": "POST /ui/stop",
+            },
+            "motion_path": (
+                "Robot UI recall REST -> typed PlanningRecallRequest -> "
+                "roadside GUEST_LOADING_WAIT -> operator Return REST -> "
+                "CAMROD planning -> CAMROD control -> CARLA physical 4WS bridge"
+            ),
+        }
     return {
+        "mission_intent": "delivery",
         "return_authority": "operator_rest",
+        "expected_arrival_state": WAITING_FOR_RETURN_REQUEST,
+        "required_service_state_ids": list(
+            required_service_state_ids("delivery")
+        ),
         "expected_return_operation": None,
         "expected_return_source": "",
         "ui_endpoints": {
@@ -2021,6 +2802,11 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             args.guest_ui_url,
             args.ui_url,
         )
+    elif args.return_authority == "operator_browser":
+        client = OperatorBrowserClient(
+            args.operator_cdp_url,
+            args.ui_url,
+        )
     else:
         client = UIClient(args.ui_url)
     observer: RosObservation | None = None
@@ -2030,9 +2816,17 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             args.role_name, expected_actor_id=args.expected_actor_id
         )
         report["scope"].update({
+            "mission_intent": authority["mission_intent"],
             "return_authority": authority["return_authority"],
+            "expected_arrival_state": authority["expected_arrival_state"],
+            "required_service_state_ids": authority[
+                "required_service_state_ids"
+            ],
             "expected_return_operation": authority["expected_return_operation"],
             "expected_return_source": authority["expected_return_source"],
+            "expected_dispatch_source": authority.get(
+                "expected_dispatch_source", ""
+            ),
             "ui_endpoints": authority["ui_endpoints"],
         })
         report["status"] = "RUNNING"
@@ -2048,9 +2842,17 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             "start_drop_zone_tolerance_m": args.start_drop_zone_tolerance_m,
             "drop_zone_tolerance_m": args.drop_zone_tolerance_m,
             "motion_path": authority["motion_path"],
+            "mission_intent": authority["mission_intent"],
             "return_authority": authority["return_authority"],
+            "expected_arrival_state": authority["expected_arrival_state"],
+            "required_service_state_ids": authority[
+                "required_service_state_ids"
+            ],
             "expected_return_operation": authority["expected_return_operation"],
             "expected_return_source": authority["expected_return_source"],
+            "expected_dispatch_source": authority.get(
+                "expected_dispatch_source", ""
+            ),
             "guest_ui_url": (
                 args.guest_ui_url
                 if args.return_authority == "guest_browser"
@@ -2059,6 +2861,11 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             "guest_cdp_url": (
                 args.guest_cdp_url
                 if args.return_authority == "guest_browser"
+                else ""
+            ),
+            "operator_cdp_url": (
+                args.operator_cdp_url
+                if args.return_authority == "operator_browser"
                 else ""
             ),
             "per_site_metric_contract": {
@@ -2145,6 +2952,15 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
         )
         result["ui_operation_request_sequence"] = list(
             sequences.get("ui_operation_requests") or []
+        )
+        result["controller_operation_request_sequence"] = list(
+            sequences.get("controller_operation_requests") or []
+        )
+        result["destination_request_sequence"] = list(
+            sequences.get("destination_requests") or []
+        )
+        result["recall_request_sequence"] = list(
+            sequences.get("recall_requests") or []
         )
         result["motion_metrics"] = dict(snapshot.get("motion_metrics") or {})
         result["collision_evidence"] = dict(
@@ -2273,7 +3089,8 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             result["actor_id"] = actor_id
             progress(
                 f"{key} ({index + 1}/{len(selected)}): dispatching via "
-                f"{authority['return_authority']}"
+                f"{authority['return_authority']} "
+                f"intent={authority['mission_intent']}"
             )
             observer.begin_motion_measurement()
             dispatch_snapshot = observer.snapshot()
@@ -2284,14 +3101,44 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             )
             dispatch_monotonic[key] = time.monotonic()
             result["dispatch_started_at_utc"] = utc_now()
-            response = client.dispatch(key)
+            response = client.dispatch(key, args.mission_intent)
             result["dispatch_response"] = response
             checkpoint(result, "dispatch accepted")
-            expected_phases = SITE_PHASES[site.service_mode]
+            expected_dispatch_source = str(
+                authority.get("expected_dispatch_source", "")
+            )
+            if expected_dispatch_source:
+                wait_until(
+                    lambda snap: dispatch_source_observed(
+                        snap,
+                        site=key,
+                        mission_intent=args.mission_intent,
+                        expected_source=expected_dispatch_source,
+                    ),
+                    10.0,
+                    (
+                        f"dispatch source {expected_dispatch_source} "
+                        "observed at ROS boundary"
+                    ),
+                    result,
+                )
+                result["dispatch_source_verified"] = True
+            service_mode = effective_service_mode(site, args.mission_intent)
+            expected_phases = SITE_PHASES[service_mode]
+            expected_arrival_state = int(authority["expected_arrival_state"])
+            expected_arrival_name = (
+                "GUEST_LOADING_WAIT"
+                if expected_arrival_state == GUEST_LOADING_WAIT
+                else "WAITING_FOR_RETURN_REQUEST"
+            )
             wait_until(
-                lambda snap: arrival_ready_for_return(snap, expected_phases),
+                lambda snap: arrival_ready_for_return(
+                    snap,
+                    expected_phases,
+                    expected_service_state=expected_arrival_state,
+                ),
                 args.phase_timeout_s,
-                "WAITING_FOR_RETURN_REQUEST with ordered WAIT_RETURN phase",
+                f"{expected_arrival_name} with ordered WAIT_RETURN phase",
                 result,
             )
             arrival = observer.snapshot()
@@ -2311,7 +3158,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             ):
                 raise MatrixError(
                     f"{key}: arrival phase sequence is incomplete for "
-                    f"{site.service_mode}: {arrival_phases}"
+                    f"{service_mode}: {arrival_phases}"
                 )
             return_request_monotonic[key] = time.monotonic()
             return_request_distance_m[key] = arrival_distance_m[key]
@@ -2395,19 +3242,19 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             if not contains_ordered_subsequence(site_phases, expected_phases):
                 raise MatrixError(
                     f"{key}: complete site phase sequence is invalid for "
-                    f"{site.service_mode}: {site_phases}"
+                    f"{service_mode}: {site_phases}"
                 )
             if "ALIGN_PARKING_YAW" not in drop_phases:
                 raise MatrixError(
                     f"{key}: Drop Zone ALIGN_PARKING_YAW was not observed: "
                     f"{drop_phases}"
                 )
-            if not all(
-                state in service_ids
-                for state in (DROP_ZONE_PARKING, WAITING_FOR_CHARGING, CHARGING)
-            ):
+            required_states = authority["required_service_state_ids"]
+            if not contains_ordered_subsequence(service_ids, required_states):
                 raise MatrixError(
-                    f"{key}: charging service sequence is incomplete: {service_ids}"
+                    f"{key}: {authority['mission_intent']} service sequence "
+                    f"is incomplete; required={required_states}, "
+                    f"observed={service_ids}"
                 )
             parked = any(phase.endswith(":PARKED") for phase in parking_phases)
             result["parking_confirmed"] = parked
@@ -2529,7 +3376,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "drop_zones": drop_path,
             },
             role_name=args.role_name,
+            mission_intent=args.mission_intent,
         )
+        authority = ui_authority_contract(args)
+        report["scope"].update({
+            "mission_intent": authority["mission_intent"],
+            "return_authority": authority["return_authority"],
+            "expected_arrival_state": authority["expected_arrival_state"],
+            "required_service_state_ids": authority[
+                "required_service_state_ids"
+            ],
+            "expected_return_operation": authority[
+                "expected_return_operation"
+            ],
+            "expected_return_source": authority["expected_return_source"],
+            "expected_dispatch_source": authority.get(
+                "expected_dispatch_source", ""
+            ),
+            "ui_endpoints": authority["ui_endpoints"],
+        })
         if args.run:
             assert args.sensor_audit_report is not None
             assert args.runtime_profile_report is not None

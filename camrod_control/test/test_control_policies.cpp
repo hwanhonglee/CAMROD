@@ -3023,6 +3023,26 @@ TEST(CommandSourceArbiter, ManeuverOwnsCommandUntilStationaryReleaseCompletes) {
   EXPECT_EQ(arbiter.evaluate(true, 4.50), CommandSourceDecision::kAllow);
 }
 
+TEST(CommandSourceArbiter, OutboundLaneAlignmentRetainsCampsiteOwnership) {
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases("", "CRAB_OUT", "", 1.0);
+  EXPECT_TRUE(started.campsite_started);
+
+  const auto aligning = arbiter.setManeuverPhases(
+      "", "ALIGN_OUTBOUND_LANE_YAW", "", 2.0);
+  EXPECT_FALSE(aligning.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kRaw, 2.0),
+            CommandSourceDecision::kAllow);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 2.0),
+            CommandSourceDecision::kIgnore);
+
+  const auto finished = arbiter.setManeuverPhases("", "DONE", "", 3.0);
+  EXPECT_TRUE(finished.maneuver_finished);
+  EXPECT_EQ(arbiter.evaluate(CommandInputSource::kNavigation, 3.49),
+            CommandSourceDecision::kHoldZero);
+}
+
 TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff) {
   CommandSourceArbiter arbiter;
   // HH_260806 - RotationShim may alternate pure rotation and translation on a
@@ -3204,8 +3224,18 @@ TEST(CommandSourceArbiter, ExactDropZonePointOwnsCommandBeforeYawAlignment) {
             CommandSourceDecision::kIgnore);
 }
 
-TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
+TEST(MotionCostStop, ExplicitCampsiteOverlayBypassesLaneletButKeepsDynamicStop) {
   auto config = baseCostConfig();
+  EXPECT_EQ(config.campsite_static_bypass_phases.count(
+                "align_outbound_lane_yaw"),
+            0U);
+  EXPECT_EQ(config.campsite_lanelet_bypass_phases.count(
+                "align_outbound_lane_yaw"),
+            0U);
+  // Develop keeps this roadside alignment out of its map-bypass defaults.
+  // The CARLA site-geometry launch supplies both values explicitly.
+  config.campsite_static_bypass_phases.insert("align_outbound_lane_yaw");
+  config.campsite_lanelet_bypass_phases.insert("align_outbound_lane_yaw");
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
@@ -3223,10 +3253,10 @@ TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
     EXPECT_FALSE(decision.blocked) << decision.reason;
   }
 
-  // HH_260806 - The exception is map-only. Live LiDAR/radar evidence still
-  // blocks the same crab motion inside an explicit campsite phase.
+  // The explicit exception is map-only. Live LiDAR/radar evidence still
+  // blocks motion inside the outbound-yaw alignment phase.
   auto dynamic_stop = makeMotionCostStop(config);
-  dynamic_stop.setManeuverPhases("", "crab_in");
+  dynamic_stop.setManeuverPhases("", "align_outbound_lane_yaw");
   dynamic_stop.setLaneletGrid(boundary_cost, 0.0);
   dynamic_stop.setMergedGrid(makeGrid({{0.0, 0.5, 90}}), 0.0);
   dynamic_stop.setSourceGrid("lidar", makeGrid({{0.0, 0.5, 90}}), 0.0);

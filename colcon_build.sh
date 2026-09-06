@@ -143,24 +143,41 @@ _build_scope_includes_pkg() {
   # Keep scanning selector arguments until the next option so camrod_ui is
   # recognized even when it is not the first package in --packages-select.
   local in_selector=0
+  local in_up_to_selector=0
   local in_skip_selector=0
   local saw_selector=0
+  local saw_direct_selector=0
+  local saw_up_to_selector=0
   local matched_selector=0
+  local up_to_match=0
+  local up_to_targets=()
   for token in "$@"; do
     case "${token}" in
-      --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
+      --packages-up-to)
         saw_selector=1
+        saw_up_to_selector=1
+        in_selector=0
+        in_up_to_selector=1
+        in_skip_selector=0
+        continue
+        ;;
+      --packages-select|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
+        saw_selector=1
+        saw_direct_selector=1
         in_selector=1
+        in_up_to_selector=0
         in_skip_selector=0
         continue
         ;;
       --packages-skip)
         in_selector=0
+        in_up_to_selector=0
         in_skip_selector=1
         continue
         ;;
       --*)
         in_selector=0
+        in_up_to_selector=0
         in_skip_selector=0
         ;;
     esac
@@ -170,8 +187,36 @@ _build_scope_includes_pkg() {
     if [[ "${in_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
       matched_selector=1
     fi
+    if [[ "${in_up_to_selector}" -eq 1 ]]; then
+      up_to_targets+=("${token}")
+    fi
   done
-  [[ "${saw_selector}" -eq 0 || "${matched_selector}" -eq 1 ]]
+
+  [[ "${saw_selector}" -eq 0 ]] && return 0
+  if [[ "${saw_direct_selector}" -eq 1 && "${matched_selector}" -ne 1 ]]; then
+    return 1
+  fi
+  if [[ "${saw_up_to_selector}" -eq 1 ]]; then
+    [[ ${#up_to_targets[@]} -gt 0 ]] || return 1
+    # `--packages-up-to` selects its targets *and their recursive dependency
+    # closure*. A string-only target comparison skipped camrod_ui when building
+    # up to camrod_bringup even though bringup has a runtime dependency on it,
+    # leaving the installed React bundle stale. Ask colcon's own package graph
+    # so the frontend preparation/verification scope matches the actual build.
+    while IFS= read -r token; do
+      if [[ "${token}" == "${pkg}" ]]; then
+        up_to_match=1
+        break
+      fi
+    done < <(
+      colcon list \
+        --base-paths "${SRC_ROOT}" \
+        --packages-up-to "${up_to_targets[@]}" \
+        --names-only
+    )
+    [[ "${up_to_match}" -eq 1 ]] || return 1
+  fi
+  return 0
 }
 
 # HH_260611: Remove stale per-package CMake build directories whose cached source
@@ -230,11 +275,70 @@ _clean_stale_install_artifacts "$@"
 # HH_260629: Build the camrod_ui robot React frontend before colcon so setup.py can
 # package the generated build/ tree into install (see camrod_ui/setup.py). The guest
 # frontend is static (no build step). Only runs when camrod_ui is in the build scope.
+_prepare_camrod_ui_build_environment() {
+  local frontend_dir="$1" name dotenv_file
+  dotenv_file="$(
+    find "${frontend_dir}" -maxdepth 1 -name '.env*' -print -quit
+  )"
+  if [[ -n "${dotenv_file}" ]]; then
+    log "ERROR: CRA .env files are not allowed in the canonical UI build: ${dotenv_file}" >&2
+    return 1
+  fi
+
+  # CRA embeds every exported REACT_APP_* value and PUBLIC_URL at compile time.
+  # Remove ambient values first, then set the complete canonical environment so
+  # two operators cannot produce different bundles for the same source tree.
+  while IFS='=' read -r name _; do
+    [[ "${name}" == REACT_APP_* ]] || continue
+    unset "${name}"
+  done < <(env)
+  unset PUBLIC_URL BUILD_PATH CI DISABLE_ESLINT_PLUGIN GENERATE_SOURCEMAP \
+    IMAGE_INLINE_SIZE_LIMIT INLINE_RUNTIME_CHUNK NODE_ENV NODE_PATH \
+    SKIP_PREFLIGHT_CHECK TSC_COMPILE_ON_ERROR
+  export BUILD_PATH=build
+  export CI=false
+  export DISABLE_ESLINT_PLUGIN=false
+  export GENERATE_SOURCEMAP=false
+  export IMAGE_INLINE_SIZE_LIMIT=10000
+  export INLINE_RUNTIME_CHUNK=true
+  export NODE_ENV=production
+  export NODE_PATH=
+  export PUBLIC_URL=
+  export REACT_APP_OPERATING_HOURS_END=23
+  export REACT_APP_OPERATING_HOURS_GATE_ENABLED=false
+  export REACT_APP_OPERATING_HOURS_START=3
+  export SKIP_PREFLIGHT_CHECK=false
+  export TSC_COMPILE_ON_ERROR=false
+}
+
+_camrod_ui_frontend_input_fingerprint() {
+  local frontend_dir="$1"
+  (
+    cd "${frontend_dir}"
+    {
+      printf '%s\0' package.json package-lock.json camrod-build-env.json
+      find src public -type f -print0
+    } \
+      | sort -z \
+      | while IFS= read -r -d '' input; do
+          printf '%s\0' "${input}"
+          sha256sum "${input}" | awk '{printf "%s\\0", $1}'
+        done \
+      | sha256sum \
+      | awk '{print $1}'
+  )
+}
+
 _build_camrod_ui_frontend() {
   _build_scope_includes_pkg camrod_ui "$@" || return 0
 
   local frontend_dir="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend"
   [[ -f "${frontend_dir}/package.json" ]] || { log "camrod_ui frontend not found, skip npm build"; return 0; }
+  [[ -f "${frontend_dir}/camrod-build-env.json" ]] || {
+    log "ERROR: canonical camrod_ui build environment manifest is missing" >&2
+    return 1
+  }
+  _prepare_camrod_ui_build_environment "${frontend_dir}"
 
   if ! command -v npm >/dev/null 2>&1; then
     log "ERROR: npm not found but camrod_ui requires a frontend build (install Node.js/npm)" >&2
@@ -284,21 +388,69 @@ _build_camrod_ui_frontend() {
 
   log "camrod_ui frontend: npm run build"
   ( cd "${frontend_dir}" && npm run build )
+  cp -- "${frontend_dir}/camrod-build-env.json" \
+    "${frontend_dir}/build/.camrod-build-env.json"
+  _camrod_ui_frontend_input_fingerprint "${frontend_dir}" \
+    > "${frontend_dir}/build/.camrod-inputs.sha256"
 }
 _build_camrod_ui_frontend "$@"
 
 _verify_camrod_ui_frontend_install() {
   _build_scope_includes_pkg camrod_ui "$@" || return 0
 
-  local source_index="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend/build/index.html"
+  local frontend_dir="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend"
+  local frontend_source="${frontend_dir}/src/App.js"
+  local canonical_build_env="${frontend_dir}/camrod-build-env.json"
+  local source_index="${frontend_dir}/build/index.html"
   local installed_index="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/index.html"
-  local source_bundle installed_bundle
+  local source_fingerprint="${frontend_dir}/build/.camrod-inputs.sha256"
+  local installed_fingerprint="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/.camrod-inputs.sha256"
+  local source_build_env="${frontend_dir}/build/.camrod-build-env.json"
+  local installed_build_env="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/.camrod-build-env.json"
+  local source_bundle installed_bundle source_bundle_path installed_bundle_path current_fingerprint
+  [[ -f "${frontend_source}" ]] || { log "ERROR: frontend App.js is missing" >&2; return 1; }
   [[ -f "${source_index}" ]] || { log "ERROR: frontend source build index is missing" >&2; return 1; }
   [[ -f "${installed_index}" ]] || { log "ERROR: installed frontend index is missing" >&2; return 1; }
+  if ! cmp -s "${canonical_build_env}" "${source_build_env}" || \
+      ! cmp -s "${source_build_env}" "${installed_build_env}"; then
+    log "ERROR: frontend canonical build environment differs from source/install evidence" >&2
+    return 1
+  fi
   source_bundle="$(grep -o 'main\.[a-z0-9]*\.js' "${source_index}" | head -1)"
   installed_bundle="$(grep -o 'main\.[a-z0-9]*\.js' "${installed_index}" | head -1)"
   if [[ -z "${source_bundle}" || "${source_bundle}" != "${installed_bundle}" ]]; then
     log "ERROR: frontend install mismatch (source=${source_bundle:-missing}, install=${installed_bundle:-missing})" >&2
+    return 1
+  fi
+  source_bundle_path="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js/${source_bundle}"
+  installed_bundle_path="${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build/static/js/${installed_bundle}"
+  [[ -f "${source_bundle_path}" && -f "${installed_bundle_path}" ]] || {
+    log "ERROR: frontend JavaScript bundle is missing" >&2
+    return 1
+  }
+  if [[ "${frontend_source}" -nt "${source_bundle_path}" ]]; then
+    log "ERROR: frontend bundle is older than App.js; rebuild camrod_ui" >&2
+    return 1
+  fi
+  [[ -f "${source_fingerprint}" && -f "${installed_fingerprint}" ]] || {
+    log "ERROR: frontend source-input fingerprint is missing; rebuild camrod_ui" >&2
+    return 1
+  }
+  current_fingerprint="$(_camrod_ui_frontend_input_fingerprint "${frontend_dir}")"
+  if [[ "$(<"${source_fingerprint}")" != "${current_fingerprint}" ]]; then
+    log "ERROR: frontend bundle does not match current src/public/manifests; rebuild camrod_ui" >&2
+    return 1
+  fi
+  if ! cmp -s "${source_fingerprint}" "${installed_fingerprint}"; then
+    log "ERROR: installed frontend input fingerprint differs from source build" >&2
+    return 1
+  fi
+  if ! cmp -s "${source_bundle_path}" "${installed_bundle_path}"; then
+    log "ERROR: installed frontend bundle content differs from source build" >&2
+    return 1
+  fi
+  if ! grep -Fq 'operator-open-destination' "${source_bundle_path}"; then
+    log "ERROR: frontend bundle lacks the visible Operator UI contract hook" >&2
     return 1
   fi
   log "camrod_ui frontend verified: ${installed_bundle}"

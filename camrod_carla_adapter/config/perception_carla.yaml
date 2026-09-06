@@ -8,20 +8,12 @@
 # rotates points into the Vanjee effective frame:
 #   eff_X = -raw_Y, eff_Y = raw_X, eff_Z = raw_Z
 # Therefore its translation parameter is (0.00000, +0.00001, -0.09970).
-# Production parameters are intentionally unchanged; camrod_carla_full opts in.
+# Production detector parameters are intentionally unchanged;
+# camrod_carla_full opts in only to this measured geometry correction.  The
+# site-validation wrapper selects perception_carla_site_geometry.yaml when it
+# also needs the separately measured CARLA scene-confidence adaptation.
 /perception/obstacle_fusion:
   ros__parameters:
     extrinsic_x: 0.0
     extrinsic_y: 0.00001
     extrinsic_z: -0.09970
-
-# HH_260903 - CARLA's bright Woraksan foliage repeatedly produced unrelated
-# COCO boxes (for example dog, surfboard, broccoli and toaster).  A live
-# 56-frame sample reached 0.9233 confidence and associated ordinary terrain
-# LiDAR points with the semantic safety cloud, latching an otherwise-clear B11
-# return.  Keep the shared/develop detector at 0.50; rendered CARLA alone uses
-# 0.95 to reject this measured simulator-domain false-positive cohort.  Radar
-# remains an independent dynamic-obstacle safety source.
-/perception/yolov9mit:
-  ros__parameters:
-    min_confidence: 0.95
