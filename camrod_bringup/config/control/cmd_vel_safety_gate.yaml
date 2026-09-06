@@ -28,6 +28,10 @@
     platform_status_timeout_s: 0.5
     block_on_platform_status_stale: true
     block_on_charging: true
+    # External-simulator profiles may opt in; production remains fail-closed.
+    allow_manual_departure_while_charging: false
+    # Must be refreshed by the accepted dedicated-manual heartbeat.
+    manual_charging_departure_command_timeout_s: 0.35
     # HH_260724 - Charger departure is a mission release, not a full-charge target.
     allow_mission_departure_while_charging: true
     charging_departure_grace_s: 15.0

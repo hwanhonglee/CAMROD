@@ -485,6 +485,16 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "route_safety_path_relative_recovery_enable"
     ] is True
     assert parity["/control/cmd_vel_safety_gate"][
+        "allow_manual_departure_while_charging"
+    ] is False
+    assert site["/control/cmd_vel_safety_gate"][
+        "allow_manual_departure_while_charging"
+    ] is True
+    for profile in (parity, site):
+        assert profile["/control/cmd_vel_safety_gate"][
+            "manual_charging_departure_command_timeout_s"
+        ] == 0.35
+    assert parity["/control/cmd_vel_safety_gate"][
         "route_safety_path_center_reentry_m"
     ] == 0.08
     assert site["/control/cmd_vel_safety_gate"][

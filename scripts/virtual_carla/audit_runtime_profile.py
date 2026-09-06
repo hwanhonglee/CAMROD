@@ -114,6 +114,8 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
     },
     "/control/cmd_vel_safety_gate": {
         "speed_scale": 0.5,
+        "allow_manual_departure_while_charging": False,
+        "manual_charging_departure_command_timeout_s": 0.35,
         "navigation_minimum_ackermann_turn_radius_m": 0.0,
         "cost_stop_threshold": 85,
         "lanelet_safety_enable": True,
@@ -275,6 +277,9 @@ def _with_site_geometry(
     )
     result["/perception/yolov9mit"]["min_confidence"] = 0.95
     result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
+    result["/control/cmd_vel_safety_gate"][
+        "allow_manual_departure_while_charging"
+    ] = True
     result["/planning/controller_server"].update({
         "controller_plugins": ["RPP", "RPPReverse", "RotationShim"],
         "RPP.desired_linear_vel": 0.555556,

@@ -271,6 +271,64 @@ def test_manual_4ws_collection_rolls_back_partial_publish_and_can_emit_fail(
     assert "manual_4ws_report.md" in hashes
 
 
+def test_manual_4ws_already_disarmed_cleanup_requires_durable_zero_proof() -> None:
+    module = _load_manual_4ws_evidence_module()
+
+    def sample(topic: str, message: dict) -> dict:
+        return {"record_type": "sample", "topic": topic, "message": message}
+
+    zero_twist = {
+        "linear": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "angular": {"x": 0.0, "y": 0.0, "z": 0.0},
+    }
+    physical_zero = {
+        "independent_wheel_torque_active": False,
+        "torques_nm": [0.0, 0.0, 0.0, 0.0],
+    }
+    closed_status = {
+        "message": (
+            "engage=false(manual=false,mission=false) "
+            "platform_drive_enable=false"
+        )
+    }
+    records = [
+        sample("/control/cmd_vel_ros", zero_twist),
+        sample("/carla/ego_vehicle/physical_four_wheel_cmd", physical_zero),
+        sample("/control/cmd_vel_safety_gate/status", closed_status),
+    ]
+    checks = module.validate_already_disarmed_trace(records)
+    assert checks["/control/cmd_vel_ros"] == "zero"
+    assert checks["physical_four_wheel_torque"] == "zero"
+    assert checks["authorization"] == "closed_from_durable_gate_status"
+
+    for incomplete in (records[1:], records[:1] + records[2:], records[:2]):
+        with pytest.raises(module.MatrixError):
+            module.validate_already_disarmed_trace(incomplete)
+
+    active_torque = dict(physical_zero)
+    active_torque["torques_nm"] = [1.0, 0.0, 0.0, 0.0]
+    with pytest.raises(module.MatrixError, match="retained physical wheel torque"):
+        module.validate_already_disarmed_trace(
+            [records[0], sample(records[1]["topic"], active_torque), records[2]]
+        )
+
+    open_status = {"message": "engage=true(manual=true,mission=false)"}
+    with pytest.raises(module.MatrixError, match="authorization gates closed"):
+        module.validate_already_disarmed_trace(
+            [records[0], records[1], sample(records[2]["topic"], open_status)]
+        )
+
+    source = MANUAL_4WS_EVIDENCE.read_text(encoding="utf-8")
+    teardown = source.split("def command_teardown", 1)[1].split(
+        "\ndef command_summarize", 1
+    )[0]
+    assert teardown.index("observer.wait_ready(") < teardown.index(
+        "result = browser.disarm()"
+    )
+    assert "if was_armed:" in teardown
+    assert "validate_already_disarmed_trace(observer.records)" in teardown
+
+
 def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     tmp_path: Path,
 ) -> None:

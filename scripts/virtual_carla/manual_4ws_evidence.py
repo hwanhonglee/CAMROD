@@ -1299,6 +1299,45 @@ def validate_teardown_trace(records: Sequence[Mapping[str, Any]]) -> dict[str, A
     return result
 
 
+def validate_already_disarmed_trace(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Prove durable zero state when cleanup follows an earlier fail-safe."""
+    final_commands = trace_samples(records, "/control/cmd_vel_ros")
+    if not final_commands or not is_zero_twist(final_commands[-1]):
+        raise MatrixError("already-disarmed cleanup did not observe final cmd_vel zero")
+    physical = trace_samples(
+        records, "/carla/ego_vehicle/physical_four_wheel_cmd"
+    )
+    if not physical:
+        raise MatrixError("already-disarmed cleanup did not observe physical 4WS zero")
+    final_physical = physical[-1]["message"]
+    if (
+        final_physical.get("independent_wheel_torque_active") is not False
+        or any(
+            abs(float(value)) > 1.0e-6
+            for value in final_physical.get("torques_nm", [])
+        )
+    ):
+        raise MatrixError("already-disarmed cleanup retained physical wheel torque")
+    gate = trace_samples(records, "/control/cmd_vel_safety_gate/status")
+    if not gate:
+        raise MatrixError("already-disarmed cleanup did not observe gate status")
+    gate_message = str(gate[-1]["message"].get("message", ""))
+    if (
+        "engage=false(manual=false,mission=false)" not in gate_message
+        or "platform_drive_enable=false" not in gate_message
+    ):
+        raise MatrixError(
+            "already-disarmed cleanup did not prove both authorization gates closed"
+        )
+    return {
+        "/control/cmd_vel_ros": "zero",
+        "physical_four_wheel_torque": "zero",
+        "authorization": "closed_from_durable_gate_status",
+    }
+
+
 def validate_ros_trace(
     records: Sequence[Mapping[str, Any]],
     run_document: Mapping[str, Any],
@@ -2089,13 +2128,50 @@ def command_teardown(args: argparse.Namespace) -> int:
         x11_binding = _bind_browser_to_capture(browser, args)
         browser._interactions = []
         browser.clear_probe()
+        snapshot_before = browser.snapshot()
+        was_armed = bool(snapshot_before.get("armed"))
         observer = RosTraceObserver(trace_path, role_name=args.role_name)
-        observer.spin_for(0.25)
-        result = browser.disarm()
-        observer.spin_for(0.75)
-        teardown_checks = validate_teardown_trace(observer.records)
+        observer.wait_ready(args.ros_ready_timeout_s, require_odometry=False)
+        # When still armed, wait for the page-owned 10 Hz exact-zero heartbeat
+        # before sending the visible DISARM boundary. This closes the DDS
+        # discovery race without publishing any command from the recorder.
+        if was_armed:
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                manual = trace_samples(
+                    observer.records, "/control/manual_cmd_vel_ros"
+                )
+                if manual and is_zero_twist(manual[-1]):
+                    break
+                observer.spin_for(0.10)
+            else:
+                raise MatrixError(
+                    "teardown did not observe the armed page's exact-zero heartbeat"
+                )
+            result = browser.disarm()
+            deadline = time.monotonic() + 2.0
+            last_error: Exception | None = None
+            while time.monotonic() < deadline:
+                observer.spin_for(0.10)
+                try:
+                    teardown_checks = validate_teardown_trace(observer.records)
+                    break
+                except MatrixError as error:
+                    last_error = error
+            else:
+                raise MatrixError(
+                    f"teardown ROS boundaries did not settle: {last_error}"
+                )
+        else:
+            # A scenario exception already performs visible ZERO/DISARM before
+            # the shell invokes its second cleanup layer. Volatile UI boundary
+            # messages are correctly absent here; prove the durable downstream
+            # zero and closed gate state instead of manufacturing another frame.
+            observer.spin_for(1.0)
+            teardown_checks = validate_already_disarmed_trace(observer.records)
+            result = {"interactions": [], "frames": []}
         frames = browser.probe().get("websocket", [])
-        disarm_frame = _control_frame(frames, "disarm")
+        disarm_frame = _control_frame(frames, "disarm") if was_armed else None
         snapshot = browser.snapshot()
         if snapshot.get("armed") or snapshot.get("stateText") not in {"STANDBY", "OFFLINE"}:
             raise MatrixError(f"manual-drive teardown did not disarm: {snapshot!r}")
@@ -2106,7 +2182,13 @@ def command_teardown(args: argparse.Namespace) -> int:
             "record_type": "session_teardown",
             "status": "PASS",
             "created_at_utc": utc_now(),
-            "fail_safe": {"zero_before_disarm": True, "frame": disarm_frame},
+            "fail_safe": {
+                "zero_before_disarm": was_armed,
+                "durable_zero_confirmed": True,
+                "frame": disarm_frame,
+                "already_disarmed": not was_armed,
+            },
+            "snapshot_before": snapshot_before,
             "cdp_x11_binding": x11_binding,
             "snapshot": snapshot,
             "ros_observation": {
