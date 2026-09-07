@@ -1,0 +1,268 @@
+{
+  "schema": "camrod.virtual_carla.manual_4ws_scenario.v1",
+  "scenario": "straight",
+  "label": "straight / reverse",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T20:22:50.623557+00:00",
+  "authority": {
+    "command_source": "visible Robot UI CDP pointer/keyboard input",
+    "page_owned_manual_websocket": true,
+    "direct_websocket_send": false,
+    "ros_subscriber_only": true,
+    "carla_observer_only": true
+  },
+  "acceptance": {
+    "ui_protocol": {
+      "strict_sequence": true,
+      "positive_matching_frames": 40,
+      "inverse_matching_frames": 40,
+      "positive_rate_hz": 10.0,
+      "inverse_rate_hz": 10.0,
+      "zero_latency_seconds": [
+        5.2814e-05,
+        0.001901584
+      ]
+    },
+    "ros_pipeline": {
+      "motion_topics": {
+        "positive": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          }
+        },
+        "inverse": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          }
+        }
+      },
+      "zero_latency_seconds": {
+        "/control/manual_cmd_vel_ros": [
+          0.037043784,
+          0.037889025
+        ],
+        "/control/cmd_vel_ros": [
+          0.03722992,
+          0.038041143
+        ],
+        "/carla/ego_vehicle/physical_four_wheel_cmd": [
+          0.037486881,
+          0.038310331
+        ]
+      },
+      "extended_modes": {
+        "positive": {
+          "samples": 41,
+          "matching": 41,
+          "fraction": 1.0
+        },
+        "inverse": {
+          "samples": 41,
+          "matching": 41,
+          "fraction": 1.0
+        }
+      },
+      "physical_commands": {
+        "positive": {
+          "samples": 76,
+          "active_samples": 76,
+          "simultaneous_four_wheel_torque_samples": 76
+        },
+        "inverse": {
+          "samples": 76,
+          "active_samples": 76,
+          "simultaneous_four_wheel_torque_samples": 76
+        }
+      },
+      "physical_sequence_strict": true,
+      "physical_status_samples": 396,
+      "actor_id": 50,
+      "collision_events": 0,
+      "critical_publishers_present": true
+    },
+    "physical_kinematics": {
+      "positive": {
+        "samples": 40,
+        "path_distance_m": 0.5644530148552626,
+        "body_forward_m": 0.5644523032898201,
+        "body_right_m": -0.0006824733292649238,
+        "translation_m": 0.5644527158753231,
+        "yaw_delta_degrees": -0.09518241882324219,
+        "maximum_step_m": 0.01612612634965913,
+        "grounded_fraction": {
+          "FL": 1.0,
+          "FR": 1.0,
+          "RL": 1.0,
+          "RR": 1.0
+        },
+        "loaded_fraction": {
+          "FL": 1.0,
+          "FR": 1.0,
+          "RL": 1.0,
+          "RR": 1.0
+        }
+      },
+      "inverse": {
+        "samples": 40,
+        "path_distance_m": 0.4880946539905378,
+        "body_forward_m": -0.48809425089739317,
+        "body_right_m": 0.0005829821831729032,
+        "translation_m": 0.48809459905566804,
+        "yaw_delta_degrees": -0.0805368423461914,
+        "maximum_step_m": 0.013946670932214912,
+        "grounded_fraction": {
+          "FL": 1.0,
+          "FR": 1.0,
+          "RL": 1.0,
+          "RR": 1.0
+        },
+        "loaded_fraction": {
+          "FL": 1.0,
+          "FR": 1.0,
+          "RL": 1.0,
+          "RR": 1.0
+        }
+      }
+    },
+    "physical_wheel_readback": {
+      "phases": {
+        "positive": {
+          "command_samples": 66,
+          "readback_comparisons": 35,
+          "steering_match_fraction_2deg": 1.0,
+          "telemetry_torque_active_fraction": {
+            "FL": 1.0,
+            "FR": 1.0,
+            "RL": 1.0,
+            "RR": 1.0
+          }
+        },
+        "inverse": {
+          "command_samples": 66,
+          "readback_comparisons": 35,
+          "steering_match_fraction_2deg": 1.0,
+          "telemetry_torque_active_fraction": {
+            "FL": 1.0,
+            "FR": 1.0,
+            "RL": 1.0,
+            "RR": 1.0
+          }
+        }
+      },
+      "physical_command_sequences": 264
+    },
+    "inverse_retrace_error": {
+      "translation_m": 0.07167752833084094,
+      "yaw_degrees": 0.1699199676513672
+    },
+    "actual_x11_capture": {
+      "actual_x11": true,
+      "artifacts": {
+        "manifest": {
+          "path": "visual/capture_manifest.json",
+          "bytes": 55677,
+          "sha256": "c497162b70f52bd14046db3f0e45567764579a7aad94f791db268ea9d2917734"
+        },
+        "png": {
+          "path": "visual/representative_contact_sheet.png",
+          "bytes": 9651233,
+          "sha256": "0a52440ca96f10d0ba62093664fc42857c2a71597e21faef524662aa42c8ce48"
+        },
+        "gif": {
+          "path": "visual/representative_motion.gif",
+          "bytes": 14324772,
+          "sha256": "f7a5ea4c22770a4c0d1a115452ca567ba53fdf565cd0360c630f97507cf56ae2"
+        }
+      }
+    }
+  },
+  "actor": {
+    "id": 50,
+    "type_id": "vehicle.ranger.default",
+    "role_name": "ego_vehicle"
+  },
+  "footer_status": {
+    "ros": "COMPLETED",
+    "physical_wheels": "STOPPED"
+  },
+  "artifacts": {
+    "scenario_run": {
+      "path": "scenario_run.json",
+      "bytes": 73130,
+      "sha256": "446d3196a49edbf4e7253b5aeeef11682568688e774806cd27dc7b2b640ae5f8"
+    },
+    "ui_interactions": {
+      "path": "ui_interactions.json",
+      "bytes": 69677,
+      "sha256": "24dd09553d3f72c6bfad81325f6edb6188b08f79dd4d15c442c4a61291309366"
+    },
+    "ros_trace": {
+      "path": "ros_trace.jsonl",
+      "bytes": 1145878,
+      "sha256": "f7eb5608a3d256f82bf7325c97d5d7911324930308fc95566de301d76587ad91"
+    },
+    "physical_wheels": {
+      "path": "physical_wheels.jsonl",
+      "bytes": 1409448,
+      "sha256": "379510a43452269f53dc7394e1a993055b872ef913c3b836a5de5b5b2b2b0cdb"
+    },
+    "physical_wheels_manifest": {
+      "path": "physical_wheels.manifest.json",
+      "bytes": 756,
+      "sha256": "b81cbc9d4d4deaab4a61355c04c45fffe6b239cd392cae6ca8773952b82eeb8c"
+    },
+    "wheel_summary": {
+      "wheel_summary.json": {
+        "path": "wheel_summary/wheel_summary.json",
+        "bytes": 6033,
+        "sha256": "2d6d2a22cd9e3fd4feb076199921adc9081f3c57e6ab402331c3e0abc6c673eb"
+      },
+      "wheel_measurements.csv": {
+        "path": "wheel_summary/wheel_measurements.csv",
+        "bytes": 1741,
+        "sha256": "7149d9a2ce0e7d39eb9c913c4f3d9cc5ede4ae47747e57c967884677103fe7db"
+      },
+      "wheel_summary.png": {
+        "path": "wheel_summary/wheel_summary.png",
+        "bytes": 114054,
+        "sha256": "453109ff6cb22007ad2a77cb9dfa7e1aaa51530b809026fc8df067bfc413d5d3"
+      },
+      "SHA256SUMS": {
+        "path": "wheel_summary/SHA256SUMS",
+        "bytes": 258,
+        "sha256": "f9c15d55c41b93d9b2b6f65fdddbd09134345a607c33343a849b0907314ee9d2"
+      }
+    },
+    "visual": {
+      "manifest": {
+        "path": "visual/capture_manifest.json",
+        "bytes": 55677,
+        "sha256": "c497162b70f52bd14046db3f0e45567764579a7aad94f791db268ea9d2917734"
+      },
+      "png": {
+        "path": "visual/representative_contact_sheet.png",
+        "bytes": 9651233,
+        "sha256": "0a52440ca96f10d0ba62093664fc42857c2a71597e21faef524662aa42c8ce48"
+      },
+      "gif": {
+        "path": "visual/representative_motion.gif",
+        "bytes": 14324772,
+        "sha256": "f7a5ea4c22770a4c0d1a115452ca567ba53fdf565cd0360c630f97507cf56ae2"
+      }
+    }
+  }
+}

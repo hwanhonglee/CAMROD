@@ -1,5 +1,22 @@
 # Documentation Changelog
 
+<!-- HH_260907 - Publish exact-v27 full-site, Guest, manual and sensor evidence. -->
+## [virtual-carla-v27-final-validation] - 2026-09-07 (HH_260907)
+
+### Changed
+
+| Area | Current behavior and verification |
+|---|---|
+| Full-site missions | Operator delivery, Operator recall and visible Guest recall each complete B1-B13 with 13/13 PASS, collision 0, every wheel grounded and final PARKED+CHARGING |
+| Guest authority | Preserves the selected site across UI state refresh and verifies `guest:usage_complete:site=B#:g=N` against the active site and positive generation; post-final strict validation is bound to the final runner manifest |
+| Manual 4WS | Records visible Robot UI straight/turn/crab/zero-turn 4/4 PASS and documents the default-off, site-geometry-only 0.35 s manual charging-departure lease without weakening other safety reasons |
+| Sensor truth | Records actual stream 36/36 and CARLA actor 13/13 with fake/dummy owner 0; semantic `/perception/obstacles` remains owned by production camera-LiDAR fusion |
+| Evidence curation | Replaces the stale v26 `current/` index with exact-v27 bundles containing 86 PNG, 43 GIF and 528 verified SHA-256 entries; raw JSONL/MP4/logs stay out of Git while their hashes remain in manifests |
+| Provenance | Separates Operator delivery `2d03069...`, Operator recall `504126f...`, Guest `7ce1c7b...` and unbound manual snapshots instead of claiming a single byte-identical E2E HEAD |
+| Documentation | Adds `VIRTUAL_CARLA_FINAL_VALIDATION.md` and refreshes the run guide, parity audit, evidence index and campsite matrix with exact commands, time/distance and acceptance limits |
+
+---
+
 <!-- HH_260904 - Record radar display semantics, deterministic return parking,
 and per-site field-operation metrics. -->
 ## [develop-radar-parking-metrics] - 2026-09-04 (HH_260904)

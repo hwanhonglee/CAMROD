@@ -1,0 +1,100 @@
+{
+  "aggregate": {
+    "fail_count": 0,
+    "missing_sites": [],
+    "outbound_distance_m": 858.350562,
+    "outbound_duration_s": 2573.926,
+    "pass_count": 13,
+    "return_distance_m": 864.706762,
+    "return_duration_s": 5095.902,
+    "site_count": 13,
+    "split_distance_complete": true,
+    "split_duration_complete": true,
+    "total_elapsed_s": 7669.826,
+    "total_odom_distance_m": 1723.057324
+  },
+  "authority": "operator-browser",
+  "bundle": "operator_recall",
+  "excluded_classes": [
+    "raw *.jsonl telemetry/ROS traces",
+    "source *.mp4 recordings",
+    "runtime *.log files",
+    "ffprobe and exact-command intermediates"
+  ],
+  "kind": "site_bundle",
+  "mission_intent": "recall",
+  "schema": "camrod.virtual_carla.curated_evidence.v1",
+  "sites": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B9",
+    "B10",
+    "B11",
+    "B12",
+    "B13"
+  ],
+  "source_parts": [
+    {
+      "path": "provenance/run_manifest_part_01.json",
+      "runner_status": "PASS",
+      "sha256": "2d1b61e3765dbdb2aa6dc301fe9f3908ed3ae763da14c12b2ecc07060f906560",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5"
+      ]
+    },
+    {
+      "path": "provenance/run_manifest_part_02.json",
+      "runner_status": "PASS",
+      "sha256": "393022bee9d38bde6863b7e0f756c1264bcae60a20094f70b60175f3f5c395a4",
+      "sites": [
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ]
+    }
+  ],
+  "status": "PASS",
+  "strict_validation_parts": [
+    {
+      "path": "provenance/strict_validation/part_01",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5"
+      ],
+      "validation_sha256": "8bac1fb053a090d6f80d9118cabbee420fcbff87d95ab7b300e943ffc82e32cf"
+    },
+    {
+      "path": "provenance/strict_validation/part_02",
+      "sites": [
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "validation_sha256": "f0c381d9808471ff25e483374f25eaba8621a046eb88508e330a4a8a5cfbe5e2"
+    }
+  ],
+  "title": "Operator recall + Return"
+}

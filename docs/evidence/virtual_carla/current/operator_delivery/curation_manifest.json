@@ -1,0 +1,87 @@
+{
+  "aggregate": {
+    "fail_count": 0,
+    "missing_sites": [],
+    "outbound_distance_m": 889.573874,
+    "outbound_duration_s": 2789.613,
+    "pass_count": 13,
+    "return_distance_m": 896.878369,
+    "return_duration_s": 5051.089,
+    "site_count": 13,
+    "split_distance_complete": true,
+    "split_duration_complete": true,
+    "total_elapsed_s": 7840.705,
+    "total_odom_distance_m": 1786.452243
+  },
+  "authority": "operator-browser",
+  "bundle": "operator_delivery",
+  "excluded_classes": [
+    "raw *.jsonl telemetry/ROS traces",
+    "source *.mp4 recordings",
+    "runtime *.log files",
+    "ffprobe and exact-command intermediates"
+  ],
+  "kind": "site_bundle",
+  "mission_intent": "delivery",
+  "schema": "camrod.virtual_carla.curated_evidence.v1",
+  "sites": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B9",
+    "B10",
+    "B11",
+    "B12",
+    "B13"
+  ],
+  "source_parts": [
+    {
+      "path": "provenance/run_manifest.json",
+      "runner_status": "PASS",
+      "sha256": "044462b9cb1c3789fc7ba4a229f0cf38565ac6b4ddc46c0f14c2e503f486555a",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ]
+    }
+  ],
+  "status": "PASS",
+  "strict_validation_parts": [
+    {
+      "path": "provenance/strict_validation",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "validation_sha256": "06ed5e0e80ef415f026b801c186f3057620432494767f4278d6a9632299f25fe"
+    }
+  ],
+  "title": "Operator delivery + Return"
+}

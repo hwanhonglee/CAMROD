@@ -1,0 +1,129 @@
+{
+  "schema": "camrod.virtual_carla.site_evidence.v1",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T19:28:44.095404+00:00",
+  "script_version": 9,
+  "site": "B5",
+  "stop_on_failure": true,
+  "authority": {
+    "frontend": "operator-browser",
+    "mission_intent": "recall",
+    "matrix_return_authority": "operator_browser",
+    "expected_return_source": "ws:usage_complete:site_exit_first",
+    "captured_ui_kind": "operator"
+  },
+  "retain_source_video": false,
+  "matrix_command": {
+    "argv": [
+      "site_access.sh",
+      "camping-sites-browser-recall"
+    ],
+    "environment": {
+      "CAMROD_CARLA_CAMPING_SITES": "B5",
+      "CAMROD_CARLA_MATRIX_PHASE_TIMEOUT_S": 900.0,
+      "CAMROD_CARLA_MATRIX_MISSION_INTENT": "recall"
+    },
+    "exit_code": 0,
+    "tee_exit_code": 0,
+    "only_motion_authority": true
+  },
+  "matrix_report": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/camrod_camping_site_matrix_operator_browser_recall/20260906T191656Z/camping_site_matrix.json",
+    "bytes": 102263,
+    "sha256": "171ba41eaab351b287c6ad7467be184986fcfd22f2fd6ba3dfc9b6262e312275",
+    "status": "PASS",
+    "site_status": "PASS",
+    "evidence_link": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/camping_site_matrix.json"
+  },
+  "motion_metrics": {
+    "elapsed_s": 625.679,
+    "outbound_duration_s": 211.205,
+    "return_duration_s": 414.474,
+    "outbound_distance_m": 71.399338,
+    "return_distance_m": 71.847176,
+    "total_odom_distance_m": 143.246514
+  },
+  "physical_wheels": {
+    "jsonl": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/physical_wheels.jsonl",
+      "bytes": 61940822,
+      "sha256": "38dd17474344d1a8dc2c78dd52d5f4606249b7256156a9c0c782487632b15ee3"
+    },
+    "manifest": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/physical_wheels.manifest.json",
+      "bytes": 771,
+      "sha256": "d9030ab93d794fe9bb725f6afa604ea38a017e827d0b859dd6f88173d50f3b10"
+    },
+    "status": "STOPPED",
+    "sample_count": 6746,
+    "summary": {
+      "exit_code": 0,
+      "tee_exit_code": 0,
+      "status": "PASS",
+      "artifacts": {
+        "wheel_summary.json": {
+          "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/wheel_summary/wheel_summary.json",
+          "bytes": 6133,
+          "sha256": "d2e9ceb794708c917053959aa562d14b06385491848265663a4bc968e4e59971"
+        },
+        "wheel_measurements.csv": {
+          "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/wheel_summary/wheel_measurements.csv",
+          "bytes": 1828,
+          "sha256": "2a16df1fc172ea3f91bf3cb22ecb1b85ec18240ac54eab4f9f7e018b71d8aa78"
+        },
+        "wheel_summary.png": {
+          "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/wheel_summary/wheel_summary.png",
+          "bytes": 112261,
+          "sha256": "0645ce7464c922ec94fe4f255deba76bc57179e950e5f6f90ca077aea2b15727"
+        },
+        "SHA256SUMS": {
+          "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/wheel_summary/SHA256SUMS",
+          "bytes": 258,
+          "sha256": "f612907e7487c8de2c243ae6f40ddd2f32666453466c0166d406feeca909c59f"
+        }
+      }
+    }
+  },
+  "visual": {
+    "manifest": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/visual/capture_manifest.json",
+      "bytes": 55860,
+      "sha256": "274e87956c2147f58383f5cd960709fe8033fd82481b22ab95ded0d085417856"
+    },
+    "source_mp4_retained": false,
+    "capture_finalized_with_q": true,
+    "png": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/visual/representative_contact_sheet.png",
+      "bytes": 6162566,
+      "sha256": "b07b884d2415c6727206a7449e17b0f0b73056d4d15f30a0d56511c4c461e7f7"
+    },
+    "gif": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/visual/representative_motion.gif",
+      "bytes": 2620268,
+      "sha256": "58350dd760da736c252e0b3efc1b93ec2ebcb74cb95fa3395bc23929fa3c127a"
+    }
+  },
+  "logs": {
+    "matrix.log": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/matrix.log",
+      "bytes": 3280,
+      "sha256": "fec10d7c1fd1f6a26fc94378d8ab93a463b2e461c8ad40ecacc4b508cfbd83fb"
+    },
+    "physical_wheels.log": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/physical_wheels.log",
+      "bytes": 540,
+      "sha256": "db62972b11380106932d1e180dbee1585262a834e83621b2a672a77688d7dd0e"
+    },
+    "wheel_summary.log": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/wheel_summary.log",
+      "bytes": 267,
+      "sha256": "ab99c532fbd2b2bf0699c228b80a2fef683e8c3b13cf49bc5587bf807d506f3a"
+    },
+    "capture.log": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/operator_recall_b1_b5_current/B5/capture.log",
+      "bytes": 3098,
+      "sha256": "68fadb5a8589f1b4b2936d3fde27fb0fe1e75f117f66736e6b7e12d81301de28"
+    }
+  },
+  "failure_reasons": []
+}

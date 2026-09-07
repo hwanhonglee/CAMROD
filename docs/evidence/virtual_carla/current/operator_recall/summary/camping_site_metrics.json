@@ -1,0 +1,418 @@
+{
+  "aggregate": {
+    "fail_count": 0,
+    "missing_sites": [],
+    "outbound_distance_m": 858.350562,
+    "outbound_duration_s": 2573.926,
+    "pass_count": 13,
+    "return_distance_m": 864.706762,
+    "return_duration_s": 5095.902,
+    "site_count": 13,
+    "split_distance_complete": true,
+    "split_duration_complete": true,
+    "total_elapsed_s": 7669.826,
+    "total_odom_distance_m": 1723.057324
+  },
+  "configuration": {
+    "camping_sites_sha256": "2380ce4f336b9b3257551c79380298caa4159df607a6cc1c4285fc0a6e04fc48",
+    "drop_zones_sha256": "c7a28639ed01a8e9591f2e4ce2c9dbba2c3c9f091317a0a101bcbbcf029edf33"
+  },
+  "coverage": "B1_B13_COMPLETE",
+  "schema": "camrod.virtual_carla.camping_site_metrics_summary.v1",
+  "shared_gate_manifest_sha256": null,
+  "shared_physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+  "sites": [
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.107914,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 83.570299,
+      "outbound_duration_s": 242.503,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 84.300332,
+      "return_duration_s": 488.931,
+      "service_mode": "roadside_stop",
+      "site": "B1",
+      "source_report": "sites/B1/camping_site_matrix.json",
+      "source_report_sha256": "57a7acd4e5d16734bfe37dee4b9dcefb193058a6b2db94e57c79903692904157",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 731.434,
+      "total_odom_distance_m": 167.870631
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.109925,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 83.848681,
+      "outbound_duration_s": 244.201,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 84.35064,
+      "return_duration_s": 480.42,
+      "service_mode": "roadside_stop",
+      "site": "B2",
+      "source_report": "sites/B2/camping_site_matrix.json",
+      "source_report_sha256": "65e3ece00d027eb5695559155ff6f7cdb6b81b8ee44a03e8598225dba8dc78d4",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 724.621,
+      "total_odom_distance_m": 168.199321
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.09867,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 77.336339,
+      "outbound_duration_s": 226.199,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 77.898018,
+      "return_duration_s": 457.807,
+      "service_mode": "roadside_stop",
+      "site": "B3",
+      "source_report": "sites/B3/camping_site_matrix.json",
+      "source_report_sha256": "32291aeb9a1d910d23bbf538e5835fb815d2be1a5da8dcf6576e8131beee0f12",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 684.006,
+      "total_odom_distance_m": 155.234357
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.097921,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 76.130538,
+      "outbound_duration_s": 222.114,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 76.548218,
+      "return_duration_s": 456.485,
+      "service_mode": "roadside_stop",
+      "site": "B4",
+      "source_report": "sites/B4/camping_site_matrix.json",
+      "source_report_sha256": "bcd829b7bd1a5b4938187537bc8ae6737790f3ffe5adcd17e710eda69c10cf3a",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 678.599,
+      "total_odom_distance_m": 152.678756
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.102013,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 71.399338,
+      "outbound_duration_s": 211.205,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 71.847176,
+      "return_duration_s": 414.474,
+      "service_mode": "roadside_stop",
+      "site": "B5",
+      "source_report": "sites/B5/camping_site_matrix.json",
+      "source_report_sha256": "171ba41eaab351b287c6ad7467be184986fcfd22f2fd6ba3dfc9b6262e312275",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 625.679,
+      "total_odom_distance_m": 143.246514
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.102426,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 69.753114,
+      "outbound_duration_s": 206.844,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 70.390728,
+      "return_duration_s": 404.113,
+      "service_mode": "roadside_stop",
+      "site": "B6",
+      "source_report": "sites/B6/camping_site_matrix.json",
+      "source_report_sha256": "c01e9bbec5b97c4f62149ba1fac81069782294cb30d2038ac27dd43938301625",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 610.957,
+      "total_odom_distance_m": 140.143842
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.098215,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 65.421644,
+      "outbound_duration_s": 196.841,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 65.994939,
+      "return_duration_s": 372.693,
+      "service_mode": "roadside_stop",
+      "site": "B7",
+      "source_report": "sites/B7/camping_site_matrix.json",
+      "source_report_sha256": "5b7cc2de46e6e60c72b5c4834bca90cdb982cf427d489c02f1316255f263acc3",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 569.534,
+      "total_odom_distance_m": 131.416583
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.099073,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 63.102479,
+      "outbound_duration_s": 190.549,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 63.798693,
+      "return_duration_s": 361.991,
+      "service_mode": "roadside_stop",
+      "site": "B8",
+      "source_report": "sites/B8/camping_site_matrix.json",
+      "source_report_sha256": "e37832c4a41c7d90ff85990066a0c04d4523201b03f11d72dab0b17c329e2e03",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 552.539,
+      "total_odom_distance_m": 126.901172
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.109029,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 58.992607,
+      "outbound_duration_s": 180.04,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 59.557672,
+      "return_duration_s": 357.578,
+      "service_mode": "roadside_stop",
+      "site": "B9",
+      "source_report": "sites/B9/camping_site_matrix.json",
+      "source_report_sha256": "0e14079c5cd09d995d6c43eee5bc950099bba97e86ed32adc428f2f06083521c",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 537.618,
+      "total_odom_distance_m": 118.550279
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.110697,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 56.782849,
+      "outbound_duration_s": 174.143,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 57.198221,
+      "return_duration_s": 330.775,
+      "service_mode": "roadside_stop",
+      "site": "B10",
+      "source_report": "sites/B10/camping_site_matrix.json",
+      "source_report_sha256": "6e2e5754e08776b9db68d165261a4e131b9071af7041d3ad6a713cc2dc1b591f",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 504.918,
+      "total_odom_distance_m": 113.98107
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.102033,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 53.916534,
+      "outbound_duration_s": 167.507,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 54.227597,
+      "return_duration_s": 328.355,
+      "service_mode": "roadside_stop",
+      "site": "B11",
+      "source_report": "sites/B11/camping_site_matrix.json",
+      "source_report_sha256": "54ab452a06332fbbc51ec295904eeee5d2453d9206a92831def026cf844c94c8",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 495.861,
+      "total_odom_distance_m": 108.144131
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.100616,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 51.271147,
+      "outbound_duration_s": 161.24,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 51.481025,
+      "return_duration_s": 328.749,
+      "service_mode": "roadside_stop",
+      "site": "B12",
+      "source_report": "sites/B12/camping_site_matrix.json",
+      "source_report_sha256": "95689b72a1012c93dae644047b5ec3a725aee5eba5202626c62fdc2f3fa84193",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 489.989,
+      "total_odom_distance_m": 102.752172
+    },
+    {
+      "actor_id": 50,
+      "charging_confirmed": true,
+      "drop_zone_error_m": 0.104494,
+      "final_service_state": "CHARGING",
+      "gate_manifest_sha256": null,
+      "outbound_distance_m": 46.824993,
+      "outbound_duration_s": 150.54,
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "return_distance_m": 47.113503,
+      "return_duration_s": 313.531,
+      "service_mode": "roadside_stop",
+      "site": "B13",
+      "source_report": "sites/B13/camping_site_matrix.json",
+      "source_report_sha256": "5d74a3c01e7d3a2466ba5168bcc6cd6fdbaa9ee5316d3e4a6e613f0f05b9984f",
+      "split_distance_source": "explicit",
+      "split_duration_source": "explicit",
+      "status": "PASS",
+      "total_elapsed_s": 464.071,
+      "total_odom_distance_m": 93.938496
+    }
+  ],
+  "source_reports": [
+    {
+      "finalized_sites": [
+        "B1"
+      ],
+      "path": "sites/B1/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "57a7acd4e5d16734bfe37dee4b9dcefb193058a6b2db94e57c79903692904157"
+    },
+    {
+      "finalized_sites": [
+        "B2"
+      ],
+      "path": "sites/B2/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "65e3ece00d027eb5695559155ff6f7cdb6b81b8ee44a03e8598225dba8dc78d4"
+    },
+    {
+      "finalized_sites": [
+        "B3"
+      ],
+      "path": "sites/B3/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "32291aeb9a1d910d23bbf538e5835fb815d2be1a5da8dcf6576e8131beee0f12"
+    },
+    {
+      "finalized_sites": [
+        "B4"
+      ],
+      "path": "sites/B4/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "bcd829b7bd1a5b4938187537bc8ae6737790f3ffe5adcd17e710eda69c10cf3a"
+    },
+    {
+      "finalized_sites": [
+        "B5"
+      ],
+      "path": "sites/B5/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "171ba41eaab351b287c6ad7467be184986fcfd22f2fd6ba3dfc9b6262e312275"
+    },
+    {
+      "finalized_sites": [
+        "B6"
+      ],
+      "path": "sites/B6/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "c01e9bbec5b97c4f62149ba1fac81069782294cb30d2038ac27dd43938301625"
+    },
+    {
+      "finalized_sites": [
+        "B7"
+      ],
+      "path": "sites/B7/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "5b7cc2de46e6e60c72b5c4834bca90cdb982cf427d489c02f1316255f263acc3"
+    },
+    {
+      "finalized_sites": [
+        "B8"
+      ],
+      "path": "sites/B8/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "e37832c4a41c7d90ff85990066a0c04d4523201b03f11d72dab0b17c329e2e03"
+    },
+    {
+      "finalized_sites": [
+        "B9"
+      ],
+      "path": "sites/B9/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "0e14079c5cd09d995d6c43eee5bc950099bba97e86ed32adc428f2f06083521c"
+    },
+    {
+      "finalized_sites": [
+        "B10"
+      ],
+      "path": "sites/B10/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "6e2e5754e08776b9db68d165261a4e131b9071af7041d3ad6a713cc2dc1b591f"
+    },
+    {
+      "finalized_sites": [
+        "B11"
+      ],
+      "path": "sites/B11/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "54ab452a06332fbbc51ec295904eeee5d2453d9206a92831def026cf844c94c8"
+    },
+    {
+      "finalized_sites": [
+        "B12"
+      ],
+      "path": "sites/B12/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "95689b72a1012c93dae644047b5ec3a725aee5eba5202626c62fdc2f3fa84193"
+    },
+    {
+      "finalized_sites": [
+        "B13"
+      ],
+      "path": "sites/B13/camping_site_matrix.json",
+      "report_status": "PASS",
+      "sha256": "5d74a3c01e7d3a2466ba5168bcc6cd6fdbaa9ee5316d3e4a6e613f0f05b9984f"
+    }
+  ]
+}

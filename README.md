@@ -229,10 +229,14 @@ The default `./scripts/virtual_carla/run.sh camrod` composition preserves the
 `origin/develop` algorithm and common defaults while opting into CARLA sensor,
 odometry, UI-manual, and physical-4WS I/O. The separate `camrod-tuned` command
 contains the historical Woraksan map, reverse-return, recovery, speed/radius,
-boundary, and UI tuning. Retained 2026-08-31 B1/B12 captures prove only that
-historical tuned composition; develop-parity B1-B13 and tuned B2-B11/B13 remain
-pending. See the [develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md)
-for the package and parameter inventory.
+boundary, and UI tuning. Current B1-B13 acceptance uses the distinct
+`camrod-site-geometry` v27 wrapper: Operator delivery, Operator recall, and
+visible Guest recall are each 13/13 PASS with collision 0, all wheels grounded,
+and final PARKED+CHARGING; visible Robot UI manual 4WS is 4/4 PASS. See the
+[final validation report](docs/VIRTUAL_CARLA_FINAL_VALIDATION.md) for exact
+execution SHAs, time/distance, PNG/GIF and commands, and the
+[develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md) for the
+package/default-versus-opt-in boundary.
 
 ### Package Technology Proof
 
@@ -347,7 +351,8 @@ from a workstation-only simulation result.
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Virtual CARLA integration](docs/virtual_carla.md) | External Ranger/CARLA ownership, build/run gates, adapter topics, and bounded functional evidence |
-| [Virtual CARLA develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md) | Baseline SHAs, package-by-package core/additive/tuned split, real sensor path, two-profile parameters, and honest pending E2E boundary |
+| [Virtual CARLA final validation](docs/VIRTUAL_CARLA_FINAL_VALIDATION.md) | Exact run SHAs, B1-B13 delivery/recall/Guest results, manual 4WS, sensors, PNG/GIF, integrity checks, and commands |
+| [Virtual CARLA develop-parity audit](docs/VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md) | Baseline SHAs, package-by-package core/additive/tuned split, real sensor path, profile parameters, and verified E2E boundary |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
 | [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |

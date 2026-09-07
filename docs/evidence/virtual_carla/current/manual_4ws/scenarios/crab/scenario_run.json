@@ -1,0 +1,2418 @@
+{
+  "schema": "camrod.virtual_carla.manual_4ws_evidence.v1",
+  "record_type": "scenario_run",
+  "scenario": "crab",
+  "label": "left / right crab",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T20:23:37.160879+00:00",
+  "scenario_contract": {
+    "name": "crab",
+    "label": "left / right crab",
+    "mode": "crab",
+    "mode_id": 1,
+    "positive_keys": [
+      "KeyZ"
+    ],
+    "inverse_keys": [
+      "KeyC"
+    ],
+    "positive_axes": [
+      0,
+      0,
+      1
+    ],
+    "inverse_axes": [
+      0,
+      0,
+      -1
+    ]
+  },
+  "timing": {
+    "initial_zero_s": 1.0,
+    "hold_s": 4.0,
+    "zero_hold_s": 2.0,
+    "settle_s": 2.0
+  },
+  "phases": {
+    "positive": {
+      "start_ns": 1788726204819284293,
+      "end_ns": 1788726208824447447,
+      "release_ns": 1788726208824453302
+    },
+    "inverse": {
+      "start_ns": 1788726210865677947,
+      "end_ns": 1788726214869695265,
+      "release_ns": 1788726214869700669
+    }
+  },
+  "ui": {
+    "snapshot_before": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": true,
+      "mode": "ackermann",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "ARMED",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "snapshot_after": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": true,
+      "mode": "crab",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "ARMED",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "checks": {
+      "strict_sequence": true,
+      "positive_matching_frames": 40,
+      "inverse_matching_frames": 40,
+      "positive_rate_hz": 10.0,
+      "inverse_rate_hz": 10.0,
+      "zero_latency_seconds": [
+        0.000546634,
+        0.000299459
+      ]
+    },
+    "cdp_x11_binding": {
+      "verified": true,
+      "method": "temporary unique document.title observed on explicit X11 window",
+      "target_id": "995C504DADFE0BD566A18FA687BD3F22",
+      "window_id": "0x4800004",
+      "display": ":0",
+      "title_restored": "Robot UI"
+    }
+  },
+  "websocket_records": [
+    {
+      "sent_at_unix_ms": 1788726202747,
+      "sent_at_performance_ms": 29319941.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":643,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 643,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726202848,
+      "sent_at_performance_ms": 29320042.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":644,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 644,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726202947,
+      "sent_at_performance_ms": 29320141.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":645,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 645,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203047,
+      "sent_at_performance_ms": 29320241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":646,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 646,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203147,
+      "sent_at_performance_ms": 29320341.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":647,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 647,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203247,
+      "sent_at_performance_ms": 29320441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":648,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 648,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203347,
+      "sent_at_performance_ms": 29320541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":649,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 649,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203447,
+      "sent_at_performance_ms": 29320641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":650,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 650,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203547,
+      "sent_at_performance_ms": 29320741.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":651,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 651,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203647,
+      "sent_at_performance_ms": 29320841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":652,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 652,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203747,
+      "sent_at_performance_ms": 29320941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":653,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 653,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203847,
+      "sent_at_performance_ms": 29321041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":654,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 654,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726203947,
+      "sent_at_performance_ms": 29321141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":655,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 655,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204047,
+      "sent_at_performance_ms": 29321241.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":656,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 656,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204147,
+      "sent_at_performance_ms": 29321341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":657,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 657,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204247,
+      "sent_at_performance_ms": 29321441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":658,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 658,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204347,
+      "sent_at_performance_ms": 29321541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":659,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 659,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204447,
+      "sent_at_performance_ms": 29321641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":660,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 660,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204547,
+      "sent_at_performance_ms": 29321741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":661,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 661,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204647,
+      "sent_at_performance_ms": 29321841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":662,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 662,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204747,
+      "sent_at_performance_ms": 29321941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":663,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 663,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204818,
+      "sent_at_performance_ms": 29322012.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":664,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 664,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204847,
+      "sent_at_performance_ms": 29322041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":665,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 665,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726204947,
+      "sent_at_performance_ms": 29322141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":666,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 666,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205047,
+      "sent_at_performance_ms": 29322241.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":667,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 667,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205147,
+      "sent_at_performance_ms": 29322341.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":668,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 668,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205247,
+      "sent_at_performance_ms": 29322441.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":669,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 669,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205347,
+      "sent_at_performance_ms": 29322541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":670,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 670,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205447,
+      "sent_at_performance_ms": 29322641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":671,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 671,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205547,
+      "sent_at_performance_ms": 29322741.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":672,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 672,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205647,
+      "sent_at_performance_ms": 29322841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":673,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 673,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205747,
+      "sent_at_performance_ms": 29322941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":674,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 674,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205848,
+      "sent_at_performance_ms": 29323042,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":675,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 675,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726205947,
+      "sent_at_performance_ms": 29323141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":676,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 676,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206047,
+      "sent_at_performance_ms": 29323241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":677,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 677,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206147,
+      "sent_at_performance_ms": 29323341.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":678,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 678,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206247,
+      "sent_at_performance_ms": 29323441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":679,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 679,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206347,
+      "sent_at_performance_ms": 29323541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":680,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 680,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206447,
+      "sent_at_performance_ms": 29323641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":681,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 681,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206547,
+      "sent_at_performance_ms": 29323741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":682,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 682,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206648,
+      "sent_at_performance_ms": 29323842.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":683,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 683,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206747,
+      "sent_at_performance_ms": 29323941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":684,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 684,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206847,
+      "sent_at_performance_ms": 29324041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":685,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 685,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726206947,
+      "sent_at_performance_ms": 29324141.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":686,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 686,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207047,
+      "sent_at_performance_ms": 29324241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":687,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 687,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207147,
+      "sent_at_performance_ms": 29324341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":688,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 688,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207247,
+      "sent_at_performance_ms": 29324441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":689,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 689,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207347,
+      "sent_at_performance_ms": 29324541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":690,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 690,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207447,
+      "sent_at_performance_ms": 29324641.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":691,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 691,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207547,
+      "sent_at_performance_ms": 29324741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":692,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 692,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207647,
+      "sent_at_performance_ms": 29324841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":693,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 693,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207747,
+      "sent_at_performance_ms": 29324941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":694,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 694,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207847,
+      "sent_at_performance_ms": 29325041.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":695,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 695,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726207947,
+      "sent_at_performance_ms": 29325141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":696,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 696,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208047,
+      "sent_at_performance_ms": 29325241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":697,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 697,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208147,
+      "sent_at_performance_ms": 29325341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":698,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 698,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208247,
+      "sent_at_performance_ms": 29325441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":699,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 699,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208347,
+      "sent_at_performance_ms": 29325541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":700,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 700,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208447,
+      "sent_at_performance_ms": 29325641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":701,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 701,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208547,
+      "sent_at_performance_ms": 29325741.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":702,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 702,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208647,
+      "sent_at_performance_ms": 29325841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":703,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 703,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208747,
+      "sent_at_performance_ms": 29325941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":704,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 704,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208825,
+      "sent_at_performance_ms": 29326019.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":705,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 705,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208826,
+      "sent_at_performance_ms": 29326020.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":706,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 706,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208847,
+      "sent_at_performance_ms": 29326041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":707,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 707,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726208947,
+      "sent_at_performance_ms": 29326141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":708,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 708,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209047,
+      "sent_at_performance_ms": 29326241.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":709,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 709,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209147,
+      "sent_at_performance_ms": 29326341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":710,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 710,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209247,
+      "sent_at_performance_ms": 29326441.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":711,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 711,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209347,
+      "sent_at_performance_ms": 29326541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":712,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 712,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209448,
+      "sent_at_performance_ms": 29326642.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":713,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 713,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209547,
+      "sent_at_performance_ms": 29326741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":714,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 714,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209647,
+      "sent_at_performance_ms": 29326841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":715,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 715,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209747,
+      "sent_at_performance_ms": 29326941.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":716,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 716,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209847,
+      "sent_at_performance_ms": 29327041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":717,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 717,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726209947,
+      "sent_at_performance_ms": 29327141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":718,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 718,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210047,
+      "sent_at_performance_ms": 29327241.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":719,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 719,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210149,
+      "sent_at_performance_ms": 29327343.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":720,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 720,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210247,
+      "sent_at_performance_ms": 29327441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":721,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 721,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210347,
+      "sent_at_performance_ms": 29327541.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":722,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 722,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210447,
+      "sent_at_performance_ms": 29327641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":723,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 723,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210548,
+      "sent_at_performance_ms": 29327742.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":724,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 724,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210647,
+      "sent_at_performance_ms": 29327841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":725,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 725,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210747,
+      "sent_at_performance_ms": 29327941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":726,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 726,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210847,
+      "sent_at_performance_ms": 29328041.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":727,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 727,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210865,
+      "sent_at_performance_ms": 29328059.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":728,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 728,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726210947,
+      "sent_at_performance_ms": 29328141.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":729,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 729,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211047,
+      "sent_at_performance_ms": 29328241.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":730,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 730,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211147,
+      "sent_at_performance_ms": 29328341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":731,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 731,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211247,
+      "sent_at_performance_ms": 29328441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":732,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 732,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211347,
+      "sent_at_performance_ms": 29328541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":733,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 733,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211447,
+      "sent_at_performance_ms": 29328641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":734,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 734,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211547,
+      "sent_at_performance_ms": 29328741.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":735,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 735,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211647,
+      "sent_at_performance_ms": 29328841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":736,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 736,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211747,
+      "sent_at_performance_ms": 29328941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":737,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 737,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211847,
+      "sent_at_performance_ms": 29329041.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":738,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 738,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726211947,
+      "sent_at_performance_ms": 29329141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":739,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 739,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212047,
+      "sent_at_performance_ms": 29329241.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":740,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 740,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212147,
+      "sent_at_performance_ms": 29329341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":741,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 741,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212247,
+      "sent_at_performance_ms": 29329441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":742,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 742,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212347,
+      "sent_at_performance_ms": 29329541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":743,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 743,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212447,
+      "sent_at_performance_ms": 29329641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":744,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 744,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212547,
+      "sent_at_performance_ms": 29329741.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":745,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 745,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212647,
+      "sent_at_performance_ms": 29329841.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":746,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 746,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212747,
+      "sent_at_performance_ms": 29329941.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":747,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 747,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212848,
+      "sent_at_performance_ms": 29330042.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":748,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 748,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726212947,
+      "sent_at_performance_ms": 29330141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":749,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 749,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213047,
+      "sent_at_performance_ms": 29330241.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":750,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 750,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213147,
+      "sent_at_performance_ms": 29330341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":751,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 751,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213247,
+      "sent_at_performance_ms": 29330441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":752,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 752,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213347,
+      "sent_at_performance_ms": 29330541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":753,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 753,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213448,
+      "sent_at_performance_ms": 29330642.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":754,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 754,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213547,
+      "sent_at_performance_ms": 29330741.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":755,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 755,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213647,
+      "sent_at_performance_ms": 29330841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":756,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 756,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213747,
+      "sent_at_performance_ms": 29330941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":757,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 757,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213847,
+      "sent_at_performance_ms": 29331041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":758,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 758,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726213947,
+      "sent_at_performance_ms": 29331141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":759,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 759,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214047,
+      "sent_at_performance_ms": 29331241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":760,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 760,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214147,
+      "sent_at_performance_ms": 29331341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":761,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 761,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214247,
+      "sent_at_performance_ms": 29331441.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":762,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 762,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214347,
+      "sent_at_performance_ms": 29331541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":763,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 763,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214447,
+      "sent_at_performance_ms": 29331641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":764,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 764,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214547,
+      "sent_at_performance_ms": 29331741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":765,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 765,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214647,
+      "sent_at_performance_ms": 29331841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":766,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 766,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214747,
+      "sent_at_performance_ms": 29331941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":767,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 767,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214847,
+      "sent_at_performance_ms": 29332041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":768,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":-1,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 768,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": -1,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214870,
+      "sent_at_performance_ms": 29332064.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":769,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 769,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214871,
+      "sent_at_performance_ms": 29332065.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":770,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 770,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726214947,
+      "sent_at_performance_ms": 29332141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":771,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 771,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215047,
+      "sent_at_performance_ms": 29332241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":772,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 772,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215147,
+      "sent_at_performance_ms": 29332341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":773,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 773,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215247,
+      "sent_at_performance_ms": 29332441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":774,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 774,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215347,
+      "sent_at_performance_ms": 29332541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":775,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 775,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215447,
+      "sent_at_performance_ms": 29332641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":776,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 776,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215547,
+      "sent_at_performance_ms": 29332741.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":777,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 777,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215647,
+      "sent_at_performance_ms": 29332841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":778,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 778,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215747,
+      "sent_at_performance_ms": 29332941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":779,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 779,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215847,
+      "sent_at_performance_ms": 29333041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":780,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 780,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726215947,
+      "sent_at_performance_ms": 29333141.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":781,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 781,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216047,
+      "sent_at_performance_ms": 29333241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":782,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 782,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216147,
+      "sent_at_performance_ms": 29333341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":783,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 783,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216247,
+      "sent_at_performance_ms": 29333441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":784,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 784,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216347,
+      "sent_at_performance_ms": 29333541.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":785,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 785,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216447,
+      "sent_at_performance_ms": 29333641.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":786,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 786,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216547,
+      "sent_at_performance_ms": 29333741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":787,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 787,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216647,
+      "sent_at_performance_ms": 29333841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":788,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 788,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216747,
+      "sent_at_performance_ms": 29333941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":789,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 789,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726216847,
+      "sent_at_performance_ms": 29334041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":790,\"mode\":\"crab\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 790,
+        "mode": "crab",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    }
+  ],
+  "ros_observation": {
+    "subscriber_only": true,
+    "create_publisher_called": false,
+    "publisher_counts": {
+      "/control/manual_cmd_vel_ros": 1,
+      "/control/cmd_vel_ros": 1,
+      "/carla/ego_vehicle/extended_ackermann_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_status": 1,
+      "/carla/ego_vehicle/odometry": 1,
+      "/control/cmd_vel_safety_gate/status": 1,
+      "/planning/engage": 1,
+      "/platform/drive_enable": 1,
+      "/carla/ego_vehicle/collision": 1
+    },
+    "checks": {
+      "motion_topics": {
+        "positive": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 0.975609756097561
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 0.975609756097561
+          }
+        },
+        "inverse": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          }
+        }
+      },
+      "zero_latency_seconds": {
+        "/control/manual_cmd_vel_ros": [
+          0.037333665,
+          0.037354534
+        ],
+        "/control/cmd_vel_ros": [
+          0.037439546,
+          0.037496756
+        ],
+        "/carla/ego_vehicle/physical_four_wheel_cmd": [
+          0.037634855,
+          0.038568923
+        ]
+      },
+      "extended_modes": {
+        "positive": {
+          "samples": 41,
+          "matching": 40,
+          "fraction": 0.975609756097561
+        },
+        "inverse": {
+          "samples": 41,
+          "matching": 41,
+          "fraction": 1.0
+        }
+      },
+      "physical_commands": {
+        "positive": {
+          "samples": 76,
+          "active_samples": 64,
+          "simultaneous_four_wheel_torque_samples": 64
+        },
+        "inverse": {
+          "samples": 76,
+          "active_samples": 65,
+          "simultaneous_four_wheel_torque_samples": 65
+        }
+      },
+      "physical_sequence_strict": true,
+      "physical_status_samples": 396,
+      "actor_id": 50,
+      "collision_events": 0,
+      "critical_publishers_present": true
+    }
+  },
+  "artifacts": {
+    "ui_interactions": {
+      "path": "ui_interactions.json",
+      "bytes": 68079,
+      "sha256": "8f34183c3cac0e5176a9ffac866a5a0e9704494e84b4c6d5425b6101abe53c08"
+    },
+    "ros_trace": {
+      "path": "ros_trace.jsonl",
+      "bytes": 1153897,
+      "sha256": "94883e425b695d215b6a77efa6f2cd32680e1be465720de74d737091433b417c"
+    }
+  }
+}

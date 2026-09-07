@@ -1,0 +1,29 @@
+{
+  "excluded_classes": [
+    "raw *.jsonl telemetry/ROS traces",
+    "source *.mp4 recordings",
+    "runtime *.log files",
+    "ffprobe and exact-command intermediates"
+  ],
+  "kind": "manual_4ws",
+  "scenarios": [
+    {
+      "manifest_sha256": "245ab21ab4ffc6ed182f12156f2b1d87ec68a80fedaf31452712c567d41cad2d",
+      "scenario": "straight"
+    },
+    {
+      "manifest_sha256": "165bd8e1608060eb30725b4732976991d5488164f3dbf56e65dfe8a451b67c2f",
+      "scenario": "turn"
+    },
+    {
+      "manifest_sha256": "227bf51d71e61a6bb096f00d6c69ea52928e27c5010134924438d0cb2918a056",
+      "scenario": "crab"
+    },
+    {
+      "manifest_sha256": "e07c159cc3eec96a11c0fe56ce1398ef2bf91f790c8ca33ef6f4d69c10a9610c",
+      "scenario": "zero_turn"
+    }
+  ],
+  "schema": "camrod.virtual_carla.curated_evidence.v1",
+  "status": "PASS"
+}

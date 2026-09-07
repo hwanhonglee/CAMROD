@@ -1,0 +1,24 @@
+{
+  "actor": {
+    "id": 50,
+    "role_name": "ego_vehicle",
+    "type_id": "vehicle.ranger.default"
+  },
+  "ended_timestamp_unix_ns": 1788726158657137194,
+  "endpoint": "127.0.0.1:2000",
+  "error": null,
+  "first_world_frame": 638192,
+  "last_world_frame": 638489,
+  "output": {
+    "bytes": 1409448,
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/manual_4ws/straight/physical_wheels.jsonl",
+    "sha256": "379510a43452269f53dc7394e1a993055b872ef913c3b836a5de5b5b2b2b0cdb"
+  },
+  "rate_hz": 10.0,
+  "read_only": true,
+  "sample_count": 158,
+  "schema": "camrod.virtual_carla.physical_wheel_telemetry_manifest.v1",
+  "started_timestamp_unix_ns": 1788726142857072534,
+  "status": "STOPPED",
+  "stop_reason": "signal"
+}

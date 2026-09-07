@@ -9,10 +9,14 @@ CAMROD 저장소는 STEP/FBX/Unreal 자산을 다시 만들지 않는다. 반대
 `RANGER_CARLA_ROOT`와 각각의 ROS install prefix만으로 연결하며 Git submodule을
 사용하지 않는다.
 
-2026-09-01에 실시한 package/파라미터/증거 전수 비교는
+2026-09-07 기준 `origin/develop=b194614...` 전체를 포함한 package/파라미터/증거
+전수 비교는
 [`VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md`](VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md)에
-별도로 정리했다. 이 가이드의 B1/B12 과거 결과를 현재
-develop-parity PASS로 해석하지 않는다.
+별도로 정리했다. 최종 v27 Operator delivery, Operator recall, visible Guest recall,
+Robot UI manual 4WS 결과와 bundle별 정확한 실행 commit은
+[`VIRTUAL_CARLA_FINAL_VALIDATION.md`](VIRTUAL_CARLA_FINAL_VALIDATION.md)에 있다.
+2026-09-01 `9756edf...` 감사와 B1/B12 tuned 결과는 역사 기록이며 현재
+`docs/evidence/virtual_carla/current/` 승인 자료와 섞지 않는다.
 
 ## 1. 저장소별 책임
 
@@ -53,8 +57,8 @@ STEP→FBX와 FBX→Blueprint는 CARLA 런타임 때 반복하지 않지만, 실
 
 ## 2. 호환성 범위와 백엔드 프로파일
 
-이 절은 2026-09-01의 `origin/develop`과 `virtual/carla`를 비교한 호환성
-감사 결과다. 여기서 `ACKERMANN_ONLY`, `PLANAR_TWIST`, `PHYSICAL_4WS`는
+이 절은 2026-09-07 `origin/develop=b194614...`과 `virtual/carla`를 대조한
+호환성 감사 결과다. 여기서 `ACKERMANN_ONLY`, `PLANAR_TWIST`, `PHYSICAL_4WS`는
 **호환성 분류 이름**이지 현재 `run.sh`의 subcommand나 launch enum이 아니다.
 현재 checked-in 실행 스크립트가 구현하는 것은 `PHYSICAL_4WS`뿐이며, 실제
 controller launch 값은 `extended_mode_backend:=PHYSX_FOUR_WHEEL_STEERING`이다.
@@ -64,8 +68,9 @@ controller launch 값은 `extended_mode_backend:=PHYSX_FOUR_WHEEL_STEERING`이�
 
 | 대상 | 감사 기준 | 확인된 범위 |
 |---|---|---|
-| CAMROD core | `origin/develop` `9756edf2d7aebf59cf8b635b5d8f5982bf6211aa` | 아래 표준 ROS 경계는 존재하지만 `camrod_carla_adapter`와 `scripts/virtual_carla`는 없음 |
-| CARLA overlay | 감사 시작 시점 `origin/virtual/carla` `c3646a89824fb075da58727d216a56ae0124b890` | 위 `origin/develop`을 병합하고 별도 adapter package, opt-in external-simulator bringup, physical 4WS runner를 추가; 2026-09-01 parity 수정의 최종 commit SHA는 commit/push 후 고정 |
+| CAMROD core | `origin/develop` `b194614b45d24f9a1a42b5c393417a97a28d9d7e` | Guest 최종 실행 commit `7ce1c7b...`의 merge-base가 동일하고 `origin/develop...7ce1c7b=0 43`이므로 latest develop보다 behind 0 |
+| CARLA overlay | Guest 최종 실행 commit `7ce1c7b902c0e0d53299849cbcd728536d197c7d`; 실행 전 `origin/virtual/carla=805e4df...` | `b194614...` 전체를 포함하고 adapter package, opt-in external-simulator bringup, physical 4WS runner를 추가. 문서·자료 commit과 최종 push SHA는 실행 commit 뒤에 별도로 기록 |
+| 역사 2026-09-01 기준 | `develop=9756edf...`, CARLA ref `c3646a...` | 아래 역사 smoke/tuned 절을 재현하는 식별자이며 현재 baseline이 아님 |
 | ROS bridge pin | upstream `c596934b430173a5713bc1ac191ff23ae8df9686` + Ranger patch set | stock topic/message 경계와 Ranger actor/PhysX lifecycle patch를 함께 사용 |
 | 현재 검증 조합 | ROS 2 Humble, CARLA 0.9.15 source, UE 4.26.x, Python 3.10 | 다른 ROS/CARLA/UE 조합은 이 문서가 승인하지 않음 |
 
@@ -77,7 +82,7 @@ ordinary bringup 기본값은 각각 `false`, 내부 `cmd_vel` motion source와 
 status owner를 유지한다. 즉 **기본 동작은 유지하고 CARLA full launch가 opt-in 인자를
 명시적으로 켠다**는 계약이다.
 
-2026-09-01 재감사에서는 기존 develop YAML의 공통 key/value를 변경하지 않는다.
+현재 재감사에서는 기존 develop YAML의 공통 key/value를 변경하지 않는다.
 외부 simulator, manual 4WS, sparse runtime overlay와 UI 변환 hook은 새 key로만 추가하고
 기본값을 `false`, 빈 topic, 빈 overlay 또는 develop과 동일한 수치로 둔다. 과거 B1/B12에서
 사용한 speed/radius/reverse-return/recovery/map 보정은 `camrod-tuned` include 인자로만
@@ -85,8 +90,9 @@ status owner를 유지한다. 즉 **기본 동작은 유지하고 CARLA full lau
 
 | 실행 | 목적 | lanelet/알고리즘 계약 |
 |---|---|---|
-| `run.sh camrod` | 최신 develop 기능을 CARLA sensor/actuator adapter에 연결해 검증 | 원본 `lanelet2_maps.osm`, develop BT·localization·parking·safety 기본값. **현재 rendered parity E2E는 PENDING** |
-| `run.sh camrod-tuned` | 2026-08-31 Woraksan B1/B12 역사 결과 재현 | 보정 OSM, reverse return, recovery, threshold/속도/UI tuning을 명시 opt-in. 보존된 PASS는 B1/B12만이며 B2-B11/B13은 PENDING |
+| `run.sh camrod` | 최신 develop 기능을 CARLA sensor/actuator adapter에 연결해 core parity를 검증 | 원본 `lanelet2_maps.osm`, develop BT·localization·parking·safety 기본값; 전 구역 site-geometry 승인 프로필은 아님 |
+| `run.sh camrod-site-geometry` | latest develop + 명시적 CARLA campsite 적응값으로 B1~B13 증거를 새로 생성 | exact profile `develop-plus-carla-site-geometry-v27`; 현재 validator는 v27만 받고 보존 v26을 거부 |
+| `run.sh camrod-tuned` | 2026-08-31 Woraksan B1/B12 역사 결과 재현 | 보정 OSM, reverse return, recovery, threshold/속도/UI tuning을 명시 opt-in; B1/B12는 역사 PASS, 나머지 사이트는 당시 `PENDING` |
 
 `origin/develop`에서 확인한 stable ROS 경계는 다음과 같다.
 
@@ -183,6 +189,14 @@ perception diagnostic checker는 production fusion publisher와 맞는 `reliable
 cloud가 0 points인 것은 정상일 수 있지만 CARLA raw cloud와 camera source까지 비어 있으면
 실패다. 대응 fake/dummy publisher는 비활성화하고, relay의 raw/JPEG/LiDAR stale 또는 JPEG
 변환 오류는 전용 status와 표준 `/diagnostics`에 동시에 발행한다.
+
+두 perception overlay의 역할은 의도적으로 분리되어 있다. 일반 `run.sh camrod`는
+`perception_carla.yaml`의 extrinsic만 적용하므로 최신 develop의 YOLO
+`min_confidence=0.50`을 그대로 사용한다. 전 구역 증빙용
+`run.sh camrod-site-geometry`만
+`perception_carla_site_geometry.yaml`을 명시적으로 선택해 같은 extrinsic과
+Woraksan foliage 오검출 표본에서 검증한 `min_confidence=0.95`를 함께 적용한다. 따라서
+사이트 전용 오검출 억제값이 develop-parity 실행으로 역류하지 않는다.
 
 CARLA full launch는 `gnss`, `gnss_right`, `imu` actor를 실제 source로 사용한다.
 `feedback_bridge_node.py`가 두 `NavSatFix`, CARLA odometry와 IMU를 CAMROD의 표준 fix/IMU와
@@ -517,10 +531,12 @@ mode `160000` 항목이 CAMROD에 다시 들어오면 실패한다.
 
 ## 8. 런타임 사전 점검
 
-800x600 raw camera frame은 DDS UDP fragment가 크므로 최초 한 번 host socket buffer를
-20 MiB 이상으로 설정한다. 이 값보다 작으면 작은 `CameraInfo`는 보이면서 실제 image만
-멈출 수 있고, `doctor`, `bridge`, `spawn`, `camrod`, `manual`, `audit-sensors`가 모두
-fail closed한다.
+전방 800x600 및 후방 주차용 960x720 raw camera frame은 DDS UDP fragment가 크므로
+최초 한 번 host socket buffer를 20 MiB 이상으로 설정한다. 후방 해상도는 4.35 m
+Drop Zone handoff에서 0.16 m AprilTag가 800x600 한 프레임에 약 18 pixel로
+aliasing되어 검출되지 않은 실제 실패를 막기 위한 CARLA 전용 값이다. 이 값보다 작은
+socket buffer에서는 작은 `CameraInfo`는 보이면서 실제 image만 멈출 수 있고,
+`doctor`, `bridge`, `spawn`, `camrod`, `manual`, `audit-sensors`가 모두 fail closed한다.
 
 ```bash
 sudo tee /etc/sysctl.d/99-camrod-carla-dds.conf >/dev/null <<'EOF'
@@ -593,8 +609,8 @@ export CARLA_RENDER_MODE=onscreen
 ```
 
 이 wrapper가 선택하는 map은
-`Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v13`이며 map-profile ID는
-`woraksan-camrod-site-geometry-v13`다.
+`Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15`이며 map-profile ID는
+`woraksan-camrod-site-geometry-v15`다.
 원본 Woraksan map, 일반 `run.sh camrod` 기본 map, develop launch 기본값은 바꾸지 않는다.
 다른 `CARLA_UE_MAP`, `CARLA_TOWN` 또는 map-profile 값이 이미 export돼 있으면 서로
 섞어 실행하지 않고 즉시 실패한다. `doctor`는 선택한 `.umap` 존재 여부뿐 아니라
@@ -603,10 +619,23 @@ caller가 명시하며 wrapper가 하드코딩하지 않는다. 출력된 `comma
 source-checkout 경로가 그대로 유지된다. packaged runtime 또는 선택한 custom map이
 없는 source root는 `doctor`/`server`에서 fail closed한다.
 
-직전 v12 또는 그 이전 v11 증빙을 재현해야 할 때만 모든 terminal에서 해당 legacy
+사이트별 PNG/GIF·wheel telemetry를 묶는
+`run_site_evidence_matrix.sh`도 current-v27 증거에서 이 canonical `site_access.sh`만
+선택한다. 따라서 증거 수집만 일반 `run.sh`의 기존 map으로
+갈라지는 일이 없다. 이때 `env.sh`/pipeline 환경 파일이 채우는 direct-runner 구맵
+기본값은 무시하고 선택 profile의 UE map/town을 self-pin한다. 반면 caller가 map 또는
+profile을 직접 지정했다면 supported legacy 조합만 허용하고 충돌은 실행 전에 거부한다.
+noncanonical `CAMROD_VIRTUAL_CARLA_ENTRYPOINT` override는 출력 생성과 motion 전에
+fail-closed로 거부한다. 별도 profile 검증은 이 current-v27 증거 runner가 아닌 해당
+profile 전용 절차를 사용한다.
+
+직전 v13, v12 또는 그 이전 v11 증빙을 재현해야 할 때만 모든 terminal에서 해당 legacy
 profile을 명시한다. 각 선택은 정확히 같은 version의 UE map/town 쌍만 허용한다.
 
 ```bash
+export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v13
+./scripts/virtual_carla/site_access.sh commands
+
 export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v12
 ./scripts/virtual_carla/site_access.sh commands
 
@@ -629,13 +658,53 @@ export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v11
 ./scripts/virtual_carla/site_access.sh camping-sites
 ```
 
+Robot UI 자체의 실제 터치 경계까지 증명할 때는 CAMROD 시작 전에 내장 WebKit을
+끄고, 별도 visible Chrome을 8010/로컬 CDP 9224에 연결한다. 두 번째 터미널의
+`operator-ui`는 화면만 소유하며 직접 API나 ROS 명령을 보내지 않는다. matrix가
+`data-ui`로 표시된 production DOM 요소의 화면 좌표를 찾아
+`Input.dispatchMouseEvent`와 `Input.insertText`로만
+대기 화면 → 목적 선택 → 사이트 선택/확인 → 사이트명 입력/확인 → 도착 후 복귀를
+누른다. 페이지가 실제로 보낸 HTTP/WebSocket과 ROS source가 일치하지 않으면
+fail closed한다.
+
+```bash
+# CAMROD terminal (server/bridge/pacer/spawn 이후)
+export CAMROD_ENABLE_OPERATOR_WINDOW=false
+./scripts/virtual_carla/site_access.sh camrod-site-geometry
+
+# 별도 표시 terminal; 전체 시험 동안 창을 열어 둔다
+./scripts/virtual_carla/site_access.sh operator-ui
+
+# 실제 Robot UI delivery 또는 roadside recall 클릭 시험
+CAMROD_CARLA_CAMPING_SITES=B1 \
+  ./scripts/virtual_carla/site_access.sh camping-sites-browser
+CAMROD_CARLA_CAMPING_SITES=B1 \
+  ./scripts/virtual_carla/site_access.sh camping-sites-browser-recall
+
+# CARLA + Robot UI PNG/GIF/wheel/manifest 수집
+./scripts/virtual_carla/run_site_evidence_matrix.sh plan \
+  --authority operator-browser --mission-intent recall --sites B1
+./scripts/virtual_carla/run_site_evidence_matrix.sh run \
+  --authority operator-browser --mission-intent recall --sites B1 \
+  --output-root /absolute/new/operator-browser-recall-evidence
+```
+
+기존 `camping-sites`/`camping-sites-recall`의 operator REST와
+`camping-sites-guest`의 Guest WebSocket 경로는 그대로 유지된다. `server`, `bridge`,
+`pacer`, `spawn`, `camrod-site-geometry`, `operator-ui`, `guest-ui`, `spectator`는
+런타임/표시 단계이며 스스로 주행 명령을 보내지 않는다. 반면 `camping-sites`,
+`camping-sites-recall`, `camping-sites-guest`, `camping-sites-browser`,
+`camping-sites-browser-recall`과 이들을 호출하는 evidence runner는 실제 목적지·Return
+명령을 보내므로 읽기 전용 `camping-sites-plan`과 구분한다.
+
 `site_access.sh camrod`도 실행할 수 있지만 B1-B13 지형 검증에는 현재 develop과
 검증된 CARLA-only site-geometry subset을 조합하는 `camrod-site-geometry`가 필수다.
-wrapper는 motion/goal을 자동 전송하지 않으며 `camping-sites`를 명시 실행한 때만
-production UI dispatcher가 왕복 mission을 보낸다.
+wrapper는 motion/goal을 자동 전송하지 않는다. 위 mission subcommand 중 하나를
+명시 실행한 때만 해당 authority(REST, visible Robot UI, visible Guest UI)가 왕복
+mission을 보낸다.
 
 runtime auditor가 이 조합을 구분하는 profile ID는
-`develop-plus-carla-site-geometry-v26`다. v24의 전역 `speed_scale=1.0`은
+`develop-plus-carla-site-geometry-v27`다. v24의 전역 `speed_scale=1.0`은
 B10 경사면 CRAB을 통과시켰지만 B11의 일반 Nav2 명령도
 `0.555 -> 1.111 m/s`로 두 배 올렸다. 반대로 v25의 전역 `0.5`는 일반 속도는
 복원했지만 B10의 사이트 선회·CRAB까지 절반으로 줄여 회전 중심 오차가 커졌다.
@@ -643,10 +712,48 @@ v26은 CARLA Nav2 overlay에서 RPP/RotationShim의 선속도만 `0.555556 m/s`�
 pre-limit하고 final gate는 `1.0`으로 둔다. 따라서 일반 경로는 B1--B9 속도를
 유지하면서 campsite maneuver는 B10 v22 성공 당시 출력과 accepted
 extreme-crab Kp=8을 그대로 사용한다. 일반 develop 설정과 실제 Ranger 제어
-코드는 변경하지 않는다.
+코드는 변경하지 않는다. v27은 주행 수치를 추가로 바꾸지 않는다. CARLA의 실제
+후방 RGB는 계속 수신되지만 이벤트 기반 AprilTag debug JPEG가 아직 없거나 stale인
+동안 도킹 탭이 빈 화면이 되지 않도록, site-geometry wrapper에서만
+`operator_telemetry_docking_rear_camera_fallback_enabled=true`를 명시한다.
+production UI, 일반 develop, 공유 `camrod_carla_full`의 기본값은 모두 `false`다.
 또한 도착 시 닫힌 command gate를 CARLA에서 Return operation보다 먼저 다시
 열어 B11-B13의 짧은 roadside CRAB_OUT이 `STANDBY`에서 timeout되지 않게 한다.
 공유 full/develop launch의 `return_site_exit_rearm_enabled=false`는 그대로다.
+
+현재 v27의 전체 opt-in 범위는 다음과 같다. 아래 항목 중 하나라도
+빠진 v26/v27 혼합 report는 exact-v27 validator가 거부한다.
+
+- v15 map/profile self-pin, site-only YOLO `min_confidence=0.95`, CARLA
+  AprilTag/parking overlay와 bounded lateral retry 2회
+- Return command-gate re-arm, verified stopped-contact charger emulator,
+  docking rear-camera fallback
+- low-speed recovery breakaway와 `1.25 s` fresh-status를 요구하는 rotation
+  recovery lease
+- path-relative recovery, `/localization/pose` jump check, center re-entry
+  `0.15 m`, zero-hold limit pause, 한계 밖 corrective yaw, active-goal reissue
+- roadside reverse return `0.03 m` handoff, `/planning/auto_reverse_goal_raw`,
+  `RPPReverse`, reverse lanelet check
+- static/lanelet phase lease의
+  `ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,`
+  `ALIGN_OUTBOUND_LANE_YAW,REVERSE_OUT,CRAB_OUT`; 특히
+  `ALIGN_OUTBOUND_LANE_YAW`는 production/develop 기본 목록에 없다.
+- return goal handoff `0.35 m`, simulator/map planning-envelope footprint check
+  off(실차 body hard stop은 on), trigger-source merged-clear latch, merged dynamic
+  source `radar`
+- Nav2 RPP/RotationShim `0.555556 m/s` pre-limit + final gate scale `1.0`,
+  campsite crab slowdown `1.0 m`/최속 `0.12 m/s`, rotate `90 s`/
+  `0.45 rad/s`, entry/rotate `0.05 m`, centering initial bound `0.65 m`
+- CRAB_IN body-yaw compensation `2.0°`, tolerance `1.5°`/`15 s`, obsolete
+  entry-anchor centering off, CRAB_OUT yaw recovery `8°`/8회/`90 s`
+
+각 파라미터와 해제되지 않는 안전 경계는
+[`VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md`](VIRTUAL_CARLA_DEVELOP_PARITY_AUDIT.md)의
+v27 표에 정리했다. ordinary production/develop과 공유 full launch는 이
+스위치를 `false`, 빈 topic/overlay, 또는 develop 원본 수치로 유지한다.
+
+아래 v14~v22 설명은 위 exact v27 값이 만들어진 과정의 **역사 실험
+기록**이다. 중간 version의 수치를 현재 v27 최종값으로 사용하지 않는다.
 이 profile의 정지 crab 진입 사전 정렬
 허용 오차는 CARLA plant 전용 `1.5 deg`다. B1 실주행에서 목표 `-61.25 deg`,
 최종 `-62.52 deg`로 측정된
@@ -688,11 +795,14 @@ CARLA site wrapper만 최대 `8`회, 첫 trigger부터 reset되지 않는 steady
 `max_angular_speed_radps`만 `0.35`에서 `0.45`로 올려 기존 제어기가 그
 `2.0 N*m/wheel` 상한에 도달하게 한다. bridge hard cap `20 N*m`, 물리 controller
 설정, `60 s` timeout, `4 deg` yaw tolerance, `0.05 m` 회전 중심 허용오차와 settle
-조건은 그대로다. 일반 develop과 일반 `camrod`는 launch override 기본값이 빈
+조건은 당시 v17 중간 실험에서 그대로였다. 현재 v27의 rotate timeout은
+위에 고정한 `90 s`다. 일반 develop과 일반 `camrod`는 launch override 기본값이 빈
 문자열이므로 production YAML의 `0.35 rad/s`를 계속 사용한다.
 회전 토크 보정과 B2 접근면 확장은 서로 독립이다. 전자는 180° 회전 시간을
 줄이고, 후자는 `CRAB_OUT` 후진 보정 중 한쪽 바퀴/차체가 cut 경계에 닿는 것을
-막는다. route/cost safety 및 production/develop 제어 허용오차는 변경하지 않는다.
+막는다. production/develop 안전 기본값은 변경하지 않지만, v27
+site wrapper 내에서는 위에 명시한 footprint/cost-latch/phase lease가
+선택된다.
 
 복사 가능한 현재 환경 명령을 먼저 볼 수 있다. 이 명령은 아무 프로세스도 시작하지
 않는다.
@@ -781,28 +891,38 @@ pose로 단순 교체하고 기존 alignment로 navigation 성공을 주장해�
 Terminal 5 — CAMROD algorithms와 production UI:
 
 ```bash
-./scripts/virtual_carla/run.sh camrod
+./scripts/virtual_carla/site_access.sh camrod
 ```
 
 위 `camrod`가 현재 기본이다. `origin/develop`의 알고리즘·기본값·원본
 lanelet map을 유지하고 CARLA sensor/actuator I/O만 연결한 parity 프로필이다.
-2026-08-31 B1/B12 자료의 보정 값을 재현할 때만 대신 다음을 사용한다.
+현재 B1~B13 exact-v27 증거를 생성할 때는 대신 version-pinned
+site wrapper를 사용한다.
 
 ```bash
-./scripts/virtual_carla/run.sh camrod-tuned
+./scripts/virtual_carla/site_access.sh camrod-site-geometry
 ```
 
-두 명령을 동시에 실행하지 않는다. `camrod-tuned`는 범용 CARLA bridge mode가
+2026-08-31 B1/B12 자료의 보정 값을 재현할 때만 다음을 사용한다.
+
+```bash
+./scripts/virtual_carla/site_access.sh camrod-tuned
+```
+
+세 명령을 동시에 실행하지 않는다. `camrod-site-geometry`는 현재
+v27 시험 프로필이며, 보존된 v26 전 구역 결과는 역사 증빙이므로
+새 v27 acceptance로 재라벨하지 않는다. `camrod-tuned`는 범용 CARLA bridge mode가
 아니라 보정 OSM, reverse return, recovery, 경계·속도·UI 수치를 포함한
 역사 실험 프로필이다. B1/B12 과거 PASS를 `camrod` parity PASS로 옮겨
 적지 않는다.
 
 특히 parity는 plant recovery breakaway, sim planning/localization/parking profile,
 docking rear-camera fallback, campsite Return re-arm을 모두 끄고 production 정책을
-유지한다. tuned wrapper만 이 조정들을 켠다. CARLA sensor overlay를
-UI fixed frame에 표시하는 TF transform은 표시 경계이므로 두 프로필에서
+유지한다. tuned과 site-geometry는 서로 다른 명시적 opt-in 세트를
+쓰며, v27 site-geometry의 전체 목록은 위 절에 고정했다. CARLA sensor overlay를
+UI fixed frame에 표시하는 TF transform은 표시 경계이므로 세 프로필에서
 공통으로 켜지만, timestamp 불일치를 최신 TF로 우회하는 tolerance는
-parity `0.0 s`, tuned `0.075 s`다.
+parity/site-geometry v27 `0.0 s`, tuned `0.075 s`다.
 
 종료는 단순 역순이 아니다. `camrod → spawn → bridge → pacer → server` 순서로
 종료한다. bridge 종료 전에 pacer의 release service를 호출하면 PAUSED bridge가
@@ -820,7 +940,8 @@ pacer가 active인 상태에서 release를 생략하더라도 patched bridge의 
 PLAY를 발행하므로, bridge를 중단할 때까지 simulation이 다시 무제한 속도로 진행할 수
 있다.
 
-egg cache를 지정하지 않으면 Terminal 5의 `camrod`가 실행 전용의 새 빈 절대 경로를 만든다. 이미
+egg cache를 지정하지 않으면 Terminal 5에서 선택한 CAMROD profile이
+실행 전용의 새 빈 절대 경로를 만든다. 이미
 내용이 있는 cache는 거부한다. 이 단계는 controller와 전체 알고리즘/UI를 시작하지만
 motion을 자동 전송하지 않는다. rendered mode에서는 시작 전에 CARLA front/rear image,
 두 CameraInfo와 LiDAR가 각각 1초 이상 관찰 구간에서 최소 `2 Hz` payload를 유지하고
@@ -858,6 +979,18 @@ CAMROD UI 수동주행(권장):
    control/adapter의 독립 `0.35 s` stale-command watchdog이 실제 non-zero 출력을 먼저
    정지시킨다.
 
+site-geometry profile에서 충전 직후 수동 점검을 시작할 때는
+`camrod_control/include/camrod_control/manual_charging_departure_authorization.hpp`의
+짧은 수동 이탈 lease가 charging block 하나만 제한적으로 해제한다. 기본/develop/shared
+full launch에서는 `allow_manual_departure_while_charging=false`이고, v27
+site-geometry에서만 `true`, timeout `0.35 s`다. dedicated manual 입력이 실제로
+수락되고 manual owner/engage, drive-enable, charging, battery-ready 조건이 모두 맞으며
+site maneuver가 없을 때만 lease를 열고, 수락된 heartbeat만 갱신한다. E-stop,
+명령 freshness, mode 오류, critical SOC, cost/lanelet/collision watchdog은 그대로 남는다.
+runtime 파라미터 변경은 두 값을 원자적으로 검증하며 invalid update는 거부하고,
+유효한 변경도 기존 lease를 지운 뒤 exact zero에서 다시 시작한다. 이 `0.35 s`는 UI
+WebSocket lease(`0.25 s`, 역사 tuned `0.75 s`)나 adapter stale watchdog과 역할이 다르다.
+
 | 자동 분류 모드 | UI 키/버튼 | 동작 |
 |---|---|---|
 | **직진·조향** | `W` / `S`, `↑` / `↓` | 전진 / 후진 |
@@ -868,9 +1001,11 @@ CAMROD UI 수동주행(권장):
 | 모든 모드 | `Esc` 또는 **수동주행 종료** | zero 후 수동 권한 해제 |
 
 도킹 탭은 production AprilTag detector의 debug 영상을 우선 표시한다. parity profile은
-해당 detector 출력을 그대로 요구하며 silent rear-camera fallback을 켜지 않는다. 과거
-CARLA 맵처럼 태그가 없는 화면을 육안 점검할 때만 `camrod-tuned`가
-`/sensing/camera/econ_rear/` 실제 후방 카메라 fallback을 명시 활성화한다.
+해당 detector 출력을 그대로 요구하며 silent rear-camera fallback을 켜지 않는다.
+`camrod-site-geometry` v27과 역사 `camrod-tuned`처럼 fallback을 명시한 simulator
+wrapper에서만, debug 영상이 stale일 때 `/sensing/camera/econ_rear/`의 실제 CARLA
+후방 영상을 **대체 영상**이라고 표시한다. 태그 감지·자세 값은 계속 detector 출력이며
+후방 영상을 AprilTag 검출 결과처럼 표시하지 않는다.
 
 브라우저 focus 상실은 held key를 비우고 exact zero를 보내되 ARM은 유지하므로 로그나
 CARLA 창을 잠깐 확인한 뒤 새 key-down으로 바로 재개할 수 있다. 브라우저 page hide,
@@ -1016,13 +1151,16 @@ payload 또는 actor 누락이 하나라도 있으면 FAIL이며, 이 경우 UI 
 | 실제 7채널 radar 변환 | `radar_mapping.py`, `radar_relay_node.py`, `config/radar_relay.yaml` |
 | 전체 sensor spawn/preflight/source proof | `config/ranger_spawn_camrod_full_sensors.json`, `scripts/virtual_carla/check_carla_sensor_streams.py`, `sensor_source_audit_node.py`; semantic audit key `ui.perception.obstacles` → publisher `obstacle_fusion` |
 | simulated Ranger BMS/platform heartbeat | `carla_platform_heartbeat_node.py`; sensor truth 대체가 아니며 normalized `/platform/status`는 CAMROD bridge가 소유 |
-| tuned-only Drop Zone 접점 복원 | `charging_contact_emulator_node.py`; parity에서는 비활성 |
+| tuned/site-geometry Drop Zone 접점 복원 | `charging_contact_emulator_node.py`; ordinary develop/shared full에서는 비활성 |
+| site-geometry 수동 충전 이탈 lease | `camrod_control/include/camrod_control/manual_charging_departure_authorization.hpp`; 기본-off, 0.35 s accepted-command lease, 나머지 safety reason 유지 |
 | develop-parity CAMROD/UI 조합 | `launch/camrod_carla_full.launch.py` |
+| current-v27 B1~B13 조합 | `launch/camrod_carla_develop_site_geometry.launch.py`; latest develop 위 simulator-only geometry/traction/contact/Return opt-in |
 | 과거 Woraksan 튜닝 조합 | `launch/camrod_carla_woraksan_tuned.launch.py` |
 | 부분 map/localization/planning 조합 | `launch/camrod_carla.launch.py` |
 | wheel별 PhysX 제어 | Ranger ROS의 `carla_extended_ackermann_control` 및 custom CARLA API |
 | CAMROD 알고리즘 | `camrod_sensing`, `camrod_localization`, `camrod_map`, `camrod_planning`, `camrod_control` |
-| production UI | `camrod_ui`; frontend는 `colcon_build.sh`가 npm build |
+| production Robot/Guest UI | `camrod_ui`; `ui_guest_node.py`와 Guest frontend가 navigate/usage-complete를 소유하고 frontend는 `colcon_build.sh`가 npm build |
+| 실제 자료 runner/strict/curator | `scripts/virtual_carla/run_site_evidence_matrix.sh`, `validate_site_evidence_collection.py`, `curate_final_evidence.py` |
 
 ## 12. 자주 발생하는 실패
 
@@ -1112,19 +1250,34 @@ payload 또는 actor 누락이 하나라도 있으면 FAIL이며, 이 경우 UI 
 [virtual CARLA 증거 인덱스](evidence/virtual_carla/README.md)에 PNG/GIF, UI
 screenshot과 live report가 정리되어 있다.
 
-현재 증거 경계는 단순하다. 2026-08-31 onscreen B1/B12 자료는 현재
-`camrod-tuned`로 분류한 과거 Woraksan 튜닝 구성의 PASS다. `run.sh camrod`
-develop-parity rendered E2E는 B1과 B12를 포함해 B1~B13 전체가 PENDING이다.
-B2-B11/B13은 tuned 프로필에서도 실제 CARLA 왕복을 완주한 자료가 없다.
-source/build/unit/contract 시험 결과와 live mission E2E를 서로 대체하지 않는다.
+현재 승인 인덱스는 2026-09-06~07에 수집한 다음 네 경로를 분리한다.
 
-- 시나리오 PNG/GIF는 제어·자세 데이터를 이용해 생성한 **기술 시각화**다. 실제
-  CARLA camera 영상으로 간주하지 않는다.
-- `camrod_carla_ui_latest_develop_20260825.png`는 당시 실행한 production UI의 실제
-  screenshot이다.
-- live/full-test JSON은 당시 프로세스와 topic을 관찰한 실제 보고서다.
-- 이 과거 증거는 새 checkout의 gate 또는 새 rendered full-sensor 시험을 자동으로
-  승인하지 않는다. 현재 실행 결과는 새 gate와 새 runtime report로 별도 기록한다.
+| 경로 | 결과 | 시간 / 거리 | 증거 |
+|---|---:|---:|---|
+| Operator delivery + Return | 13/13 PASS | `7,840.705 s` / `1,786.452243 m` | 실제 X11 PNG/GIF, physical wheel, strict validation |
+| Operator recall + Return | 13/13 PASS | `7,669.826 s` / `1,723.057324 m` | 실제 X11 PNG/GIF, physical wheel, strict validation |
+| visible Guest recall + 이용완료 | 13/13 PASS | `7,803.845 s` / `1,722.789852 m` | Guest browser 입력, nonce/site-qualified Return source, post-final strict validation |
+| visible Robot UI manual 4WS | 4/4 PASS | straight/turn/crab/zero-turn | 실제 UI 입력, actual wheel angle/torque readback |
+
+세 mission 경로 모두 collision 0, 전 구간 네 wheel 접지, B1~B13 최종
+`PARKED + CHARGING`을 확인했다. Guest post-final strict report는 최종 runner
+manifest SHA까지 다시 대조했으며 `runner_status_pass=true`다. sensor source audit은
+actual stream `36/36`, CARLA sensor actor `13/13`, fake owner 0을 확인했다.
+
+각 bundle은 실행 시점의 정확한 source HEAD를 자체 runtime audit에 보존한다. Operator
+delivery, Operator recall, Guest는 각각 `2d03069...`, `504126f...`, `7ce1c7b...`에서
+실행됐다. 이후 변경은 recall, manual lease, Guest frontend/evidence matcher처럼 경로별로
+분리되므로 모든 E2E가 하나의 byte-identical HEAD에서 실행됐다고 주장하지 않는다.
+정확한 provenance와 후속 변경 영향은
+[`VIRTUAL_CARLA_FINAL_VALIDATION.md`](VIRTUAL_CARLA_FINAL_VALIDATION.md)를 따른다.
+
+- `current/*/sites/B1..B13/visual/`의 PNG/GIF는 제어값으로 합성한 그림이 아니라
+  표시 중인 CarlaUE4와 CAMROD Robot/Guest UI를 실제 X11 캡처한 자료다.
+- 각 사이트에는 별도의 physical-wheel 요약 PNG와 raw source hash가 있다.
+- source/build/unit/contract 시험, 역사 mission E2E, 현재 v27 mission E2E를 서로
+  대체하지 않는다.
+- 2026-08-31 onscreen B1/B12 `camrod-tuned` 결과와 2026-09-01 smoke는 역사 자료로만
+  유지하며 현재 승인 인덱스에는 넣지 않는다.
 
 ### 13.1 2026-08-31 역사 Woraksan-tuned rendered B12 왕복 결과
 
@@ -1161,14 +1314,11 @@ front/rear camera, 전방 고정 120° solid-state LiDAR 근사, dual GNSS, IMU�
 `07_b12_round_trip_e2e.gif`, 정확한 gate/source/test 범위와 제한은 같은 폴더의 dated
 E2E JSON에 기록한다. 원본 857초 MP4와 ROS log는 크기와 host-local 경로 때문에 Git에
 넣지 않으며, 압축 PNG/GIF는 해당 원본에서 직접 추출했다.
-## 14. 2026-09-01 develop-parity rendered smoke
 
-현재 `virtual/carla` 통합 전 test branch에서 새 install로 rendered CARLA를 올린 결과는
-[`docs/evidence/virtual_carla/current/README.md`](evidence/virtual_carla/current/README.md)에
-고정했다. 핵심 결과는 actual sensor `36/36`, actor `13/13`, production YOLO/fusion,
-front/rear UI camera, bounded 직진 약 `0.309 m`, ZERO_TURN/CRAB physical wheel command와
-exact zero cut PASS다. 현재 PNG 3개와 GIF 2개의 SHA-256도 그 문서에 있다.
+## 14. 2026-09-01 역사 develop-parity rendered smoke
 
-이 실행에서는 B1~B13 목적지 dispatch, Return, Drop Zone parking/charging을 실행하지
-않았다. 따라서 아래 과거 tuned B1/B12 자료와 달리 develop-parity mission 상태는 계속
-`PENDING`이다.
+2026-09-01 smoke는 actual sensor와 짧은 manual motion만 확인했고 B1~B13 mission은
+실행하지 않은 역사 자료다. 현재 승인 인덱스는 더 완전한 v27 sensor `36/36`, actor
+`13/13`, manual `4/4`, 세 mission 경로 `39/39` 자료로 교체했으므로 과거 smoke
+PNG/GIF를 `current/`에 중복 보존하지 않는다. 필요한 경우 Git history의 당시 commit과
+실행 JSON을 함께 사용하며 현재 결과로 소급 재라벨하지 않는다.

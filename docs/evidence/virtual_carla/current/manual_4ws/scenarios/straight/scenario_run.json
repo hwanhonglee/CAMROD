@@ -1,0 +1,2433 @@
+{
+  "schema": "camrod.virtual_carla.manual_4ws_evidence.v1",
+  "record_type": "scenario_run",
+  "scenario": "straight",
+  "label": "straight / reverse",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T20:22:38.516692+00:00",
+  "scenario_contract": {
+    "name": "straight",
+    "label": "straight / reverse",
+    "mode": "ackermann",
+    "mode_id": 0,
+    "positive_keys": [
+      "KeyW"
+    ],
+    "inverse_keys": [
+      "KeyS"
+    ],
+    "positive_axes": [
+      1,
+      0,
+      0
+    ],
+    "inverse_axes": [
+      -1,
+      0,
+      0
+    ]
+  },
+  "timing": {
+    "initial_zero_s": 1.0,
+    "hold_s": 4.0,
+    "zero_hold_s": 2.0,
+    "settle_s": 2.0
+  },
+  "phases": {
+    "positive": {
+      "start_ns": 1788726146172072790,
+      "end_ns": 1788726150175941942,
+      "release_ns": 1788726150175947186
+    },
+    "inverse": {
+      "start_ns": 1788726152219970278,
+      "end_ns": 1788726156221093561,
+      "release_ns": 1788726156221098480
+    }
+  },
+  "ui": {
+    "snapshot_before": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": true,
+      "mode": "ackermann",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "ARMED",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "snapshot_after": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": true,
+      "mode": "ackermann",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "ARMED",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "checks": {
+      "strict_sequence": true,
+      "positive_matching_frames": 40,
+      "inverse_matching_frames": 40,
+      "positive_rate_hz": 10.0,
+      "inverse_rate_hz": 10.0,
+      "zero_latency_seconds": [
+        5.2814e-05,
+        0.001901584
+      ]
+    },
+    "cdp_x11_binding": {
+      "verified": true,
+      "method": "temporary unique document.title observed on explicit X11 window",
+      "target_id": "995C504DADFE0BD566A18FA687BD3F22",
+      "window_id": "0x4800004",
+      "display": ":0",
+      "title_restored": "Robot UI"
+    }
+  },
+  "websocket_records": [
+    {
+      "sent_at_unix_ms": 1788726144047,
+      "sent_at_performance_ms": 29261241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":40,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 40,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144149,
+      "sent_at_performance_ms": 29261343,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":41,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 41,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144247,
+      "sent_at_performance_ms": 29261441.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":42,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 42,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144347,
+      "sent_at_performance_ms": 29261541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":43,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 43,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144447,
+      "sent_at_performance_ms": 29261641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":44,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 44,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144547,
+      "sent_at_performance_ms": 29261741.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":45,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 45,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144647,
+      "sent_at_performance_ms": 29261841.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":46,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 46,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144747,
+      "sent_at_performance_ms": 29261941.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":47,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 47,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144847,
+      "sent_at_performance_ms": 29262041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":48,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 48,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726144947,
+      "sent_at_performance_ms": 29262141.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":49,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 49,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145047,
+      "sent_at_performance_ms": 29262241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":50,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 50,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145147,
+      "sent_at_performance_ms": 29262341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":51,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 51,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145247,
+      "sent_at_performance_ms": 29262441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":52,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 52,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145347,
+      "sent_at_performance_ms": 29262541.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":53,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 53,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145447,
+      "sent_at_performance_ms": 29262641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":54,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 54,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145548,
+      "sent_at_performance_ms": 29262742.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":55,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 55,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145647,
+      "sent_at_performance_ms": 29262841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":56,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 56,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145747,
+      "sent_at_performance_ms": 29262941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":57,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 57,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145847,
+      "sent_at_performance_ms": 29263041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":58,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 58,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726145947,
+      "sent_at_performance_ms": 29263141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":59,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 59,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146047,
+      "sent_at_performance_ms": 29263241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":60,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 60,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146148,
+      "sent_at_performance_ms": 29263342.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":61,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 61,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146171,
+      "sent_at_performance_ms": 29263365.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":62,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 62,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146247,
+      "sent_at_performance_ms": 29263441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":63,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 63,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146347,
+      "sent_at_performance_ms": 29263541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":64,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 64,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146447,
+      "sent_at_performance_ms": 29263641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":65,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 65,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146547,
+      "sent_at_performance_ms": 29263741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":66,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 66,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146647,
+      "sent_at_performance_ms": 29263841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":67,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 67,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146747,
+      "sent_at_performance_ms": 29263941.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":68,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 68,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146847,
+      "sent_at_performance_ms": 29264041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":69,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 69,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726146949,
+      "sent_at_performance_ms": 29264143.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":70,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 70,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147047,
+      "sent_at_performance_ms": 29264241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":71,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 71,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147148,
+      "sent_at_performance_ms": 29264341.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":72,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 72,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147247,
+      "sent_at_performance_ms": 29264441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":73,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 73,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147347,
+      "sent_at_performance_ms": 29264541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":74,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 74,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147447,
+      "sent_at_performance_ms": 29264641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":75,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 75,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147547,
+      "sent_at_performance_ms": 29264741.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":76,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 76,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147647,
+      "sent_at_performance_ms": 29264841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":77,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 77,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147747,
+      "sent_at_performance_ms": 29264941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":78,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 78,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147847,
+      "sent_at_performance_ms": 29265041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":79,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 79,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726147947,
+      "sent_at_performance_ms": 29265141.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":80,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 80,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148048,
+      "sent_at_performance_ms": 29265242.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":81,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 81,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148148,
+      "sent_at_performance_ms": 29265342.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":82,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 82,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148247,
+      "sent_at_performance_ms": 29265441.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":83,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 83,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148347,
+      "sent_at_performance_ms": 29265541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":84,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 84,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148447,
+      "sent_at_performance_ms": 29265641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":85,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 85,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148547,
+      "sent_at_performance_ms": 29265741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":86,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 86,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148647,
+      "sent_at_performance_ms": 29265841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":87,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 87,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148747,
+      "sent_at_performance_ms": 29265941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":88,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 88,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148847,
+      "sent_at_performance_ms": 29266041.700000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":89,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 89,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726148948,
+      "sent_at_performance_ms": 29266142,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":90,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 90,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149047,
+      "sent_at_performance_ms": 29266241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":91,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 91,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149148,
+      "sent_at_performance_ms": 29266342,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":92,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 92,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149247,
+      "sent_at_performance_ms": 29266441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":93,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 93,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149347,
+      "sent_at_performance_ms": 29266541.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":94,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 94,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149447,
+      "sent_at_performance_ms": 29266641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":95,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 95,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149547,
+      "sent_at_performance_ms": 29266741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":96,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 96,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149647,
+      "sent_at_performance_ms": 29266841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":97,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 97,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149747,
+      "sent_at_performance_ms": 29266941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":98,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 98,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149847,
+      "sent_at_performance_ms": 29267041.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":99,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 99,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726149947,
+      "sent_at_performance_ms": 29267141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":100,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 100,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150047,
+      "sent_at_performance_ms": 29267241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":101,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 101,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150148,
+      "sent_at_performance_ms": 29267342.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":102,\"mode\":\"ackermann\",\"forward\":1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 102,
+        "mode": "ackermann",
+        "forward": 1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150176,
+      "sent_at_performance_ms": 29267370.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":103,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 103,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150177,
+      "sent_at_performance_ms": 29267371.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":104,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 104,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150247,
+      "sent_at_performance_ms": 29267441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":105,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 105,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150347,
+      "sent_at_performance_ms": 29267541.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":106,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 106,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150447,
+      "sent_at_performance_ms": 29267641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":107,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 107,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150547,
+      "sent_at_performance_ms": 29267741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":108,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 108,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150647,
+      "sent_at_performance_ms": 29267841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":109,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 109,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150747,
+      "sent_at_performance_ms": 29267941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":110,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 110,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150847,
+      "sent_at_performance_ms": 29268041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":111,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 111,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726150947,
+      "sent_at_performance_ms": 29268141.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":112,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 112,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151047,
+      "sent_at_performance_ms": 29268241.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":113,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 113,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151147,
+      "sent_at_performance_ms": 29268341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":114,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 114,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151247,
+      "sent_at_performance_ms": 29268441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":115,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 115,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151347,
+      "sent_at_performance_ms": 29268541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":116,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 116,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151447,
+      "sent_at_performance_ms": 29268641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":117,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 117,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151547,
+      "sent_at_performance_ms": 29268741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":118,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 118,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151647,
+      "sent_at_performance_ms": 29268841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":119,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 119,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151747,
+      "sent_at_performance_ms": 29268941.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":120,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 120,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151847,
+      "sent_at_performance_ms": 29269041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":121,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 121,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726151947,
+      "sent_at_performance_ms": 29269141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":122,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 122,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152047,
+      "sent_at_performance_ms": 29269241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":123,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 123,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152147,
+      "sent_at_performance_ms": 29269341.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":124,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 124,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152219,
+      "sent_at_performance_ms": 29269413.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":125,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 125,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152247,
+      "sent_at_performance_ms": 29269441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":126,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 126,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152347,
+      "sent_at_performance_ms": 29269541.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":127,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 127,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152447,
+      "sent_at_performance_ms": 29269641.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":128,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 128,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152547,
+      "sent_at_performance_ms": 29269741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":129,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 129,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152647,
+      "sent_at_performance_ms": 29269841.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":130,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 130,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152747,
+      "sent_at_performance_ms": 29269941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":131,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 131,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152847,
+      "sent_at_performance_ms": 29270041.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":132,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 132,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726152947,
+      "sent_at_performance_ms": 29270141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":133,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 133,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153047,
+      "sent_at_performance_ms": 29270241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":134,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 134,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153147,
+      "sent_at_performance_ms": 29270341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":135,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 135,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153247,
+      "sent_at_performance_ms": 29270441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":136,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 136,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153347,
+      "sent_at_performance_ms": 29270541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":137,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 137,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153447,
+      "sent_at_performance_ms": 29270641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":138,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 138,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153547,
+      "sent_at_performance_ms": 29270741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":139,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 139,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153647,
+      "sent_at_performance_ms": 29270841.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":140,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 140,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153747,
+      "sent_at_performance_ms": 29270941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":141,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 141,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153847,
+      "sent_at_performance_ms": 29271041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":142,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 142,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726153947,
+      "sent_at_performance_ms": 29271141.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":143,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 143,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154047,
+      "sent_at_performance_ms": 29271241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":144,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 144,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154147,
+      "sent_at_performance_ms": 29271341.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":145,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 145,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154247,
+      "sent_at_performance_ms": 29271441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":146,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 146,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154348,
+      "sent_at_performance_ms": 29271542.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":147,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 147,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154447,
+      "sent_at_performance_ms": 29271641.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":148,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 148,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154547,
+      "sent_at_performance_ms": 29271741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":149,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 149,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154647,
+      "sent_at_performance_ms": 29271841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":150,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 150,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154747,
+      "sent_at_performance_ms": 29271941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":151,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 151,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154847,
+      "sent_at_performance_ms": 29272041.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":152,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 152,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726154947,
+      "sent_at_performance_ms": 29272141.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":153,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 153,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155047,
+      "sent_at_performance_ms": 29272241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":154,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 154,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155147,
+      "sent_at_performance_ms": 29272341.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":155,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 155,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155247,
+      "sent_at_performance_ms": 29272441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":156,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 156,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155347,
+      "sent_at_performance_ms": 29272541.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":157,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 157,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155447,
+      "sent_at_performance_ms": 29272641.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":158,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 158,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155547,
+      "sent_at_performance_ms": 29272741.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":159,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 159,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155647,
+      "sent_at_performance_ms": 29272841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":160,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 160,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155747,
+      "sent_at_performance_ms": 29272941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":161,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 161,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155847,
+      "sent_at_performance_ms": 29273041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":162,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 162,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726155948,
+      "sent_at_performance_ms": 29273142.900000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":163,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 163,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156048,
+      "sent_at_performance_ms": 29273242.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":164,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 164,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156147,
+      "sent_at_performance_ms": 29273341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":165,\"mode\":\"ackermann\",\"forward\":-1,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 165,
+        "mode": "ackermann",
+        "forward": -1,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156221,
+      "sent_at_performance_ms": 29273415.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":166,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 166,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156223,
+      "sent_at_performance_ms": 29273417.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":167,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 167,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156247,
+      "sent_at_performance_ms": 29273441.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":168,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 168,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156347,
+      "sent_at_performance_ms": 29273541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":169,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 169,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156447,
+      "sent_at_performance_ms": 29273641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":170,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 170,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156547,
+      "sent_at_performance_ms": 29273741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":171,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 171,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156647,
+      "sent_at_performance_ms": 29273841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":172,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 172,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156747,
+      "sent_at_performance_ms": 29273941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":173,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 173,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156847,
+      "sent_at_performance_ms": 29274041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":174,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 174,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726156947,
+      "sent_at_performance_ms": 29274141.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":175,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 175,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157048,
+      "sent_at_performance_ms": 29274242.100000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":176,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 176,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157147,
+      "sent_at_performance_ms": 29274341.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":177,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 177,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157247,
+      "sent_at_performance_ms": 29274441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":178,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 178,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157347,
+      "sent_at_performance_ms": 29274541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":179,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 179,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157447,
+      "sent_at_performance_ms": 29274641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":180,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 180,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157547,
+      "sent_at_performance_ms": 29274741.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":181,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 181,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157647,
+      "sent_at_performance_ms": 29274841.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":182,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 182,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157747,
+      "sent_at_performance_ms": 29274941.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":183,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 183,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157847,
+      "sent_at_performance_ms": 29275041.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":184,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 184,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726157947,
+      "sent_at_performance_ms": 29275141.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":185,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 185,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726158047,
+      "sent_at_performance_ms": 29275241.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":186,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 186,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726158147,
+      "sent_at_performance_ms": 29275341.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":187,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 187,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726158247,
+      "sent_at_performance_ms": 29275441.30000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":188,\"mode\":\"ackermann\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 188,
+        "mode": "ackermann",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    }
+  ],
+  "ros_observation": {
+    "subscriber_only": true,
+    "create_publisher_called": false,
+    "publisher_counts": {
+      "/control/manual_cmd_vel_ros": 1,
+      "/control/cmd_vel_ros": 1,
+      "/carla/ego_vehicle/extended_ackermann_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_status": 1,
+      "/carla/ego_vehicle/odometry": 1,
+      "/control/cmd_vel_safety_gate/status": 1,
+      "/planning/engage": 1,
+      "/platform/drive_enable": 1,
+      "/carla/ego_vehicle/collision": 1
+    },
+    "checks": {
+      "motion_topics": {
+        "positive": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          }
+        },
+        "inverse": {
+          "manual": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          },
+          "safety_output": {
+            "samples": 41,
+            "rate_hz": 10.25,
+            "semantic_match_fraction": 1.0
+          }
+        }
+      },
+      "zero_latency_seconds": {
+        "/control/manual_cmd_vel_ros": [
+          0.037043784,
+          0.037889025
+        ],
+        "/control/cmd_vel_ros": [
+          0.03722992,
+          0.038041143
+        ],
+        "/carla/ego_vehicle/physical_four_wheel_cmd": [
+          0.037486881,
+          0.038310331
+        ]
+      },
+      "extended_modes": {
+        "positive": {
+          "samples": 41,
+          "matching": 41,
+          "fraction": 1.0
+        },
+        "inverse": {
+          "samples": 41,
+          "matching": 41,
+          "fraction": 1.0
+        }
+      },
+      "physical_commands": {
+        "positive": {
+          "samples": 76,
+          "active_samples": 76,
+          "simultaneous_four_wheel_torque_samples": 76
+        },
+        "inverse": {
+          "samples": 76,
+          "active_samples": 76,
+          "simultaneous_four_wheel_torque_samples": 76
+        }
+      },
+      "physical_sequence_strict": true,
+      "physical_status_samples": 396,
+      "actor_id": 50,
+      "collision_events": 0,
+      "critical_publishers_present": true
+    }
+  },
+  "artifacts": {
+    "ui_interactions": {
+      "path": "ui_interactions.json",
+      "bytes": 69677,
+      "sha256": "24dd09553d3f72c6bfad81325f6edb6188b08f79dd4d15c442c4a61291309366"
+    },
+    "ros_trace": {
+      "path": "ros_trace.jsonl",
+      "bytes": 1145878,
+      "sha256": "f7eb5608a3d256f82bf7325c97d5d7911324930308fc95566de301d76587ad91"
+    }
+  }
+}
