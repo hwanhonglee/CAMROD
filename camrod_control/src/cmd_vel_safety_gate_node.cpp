@@ -342,7 +342,7 @@ private:
     gate_config_.require_can_control_mode =
         declare_parameter<bool>("require_can_control_mode", true);
     gate_config_.critical_battery_stop_enabled =
-        declare_parameter<bool>("critical_battery_stop_enabled", true);
+        declare_parameter<bool>("critical_battery_stop_enabled", false);
     gate_config_.critical_battery_percentage =
         declare_parameter<double>("critical_battery_percentage", 0.20);
     gate_policy_.setConfig(gate_config_);
@@ -767,6 +767,8 @@ private:
     apriltag_parking_status_topic_ = declare_parameter<std::string>(
         "apriltag_parking_controller_status_topic",
         "/parking/apriltag_parking_controller/status");
+    parking_dispatcher_status_topic_ = declare_parameter<std::string>(
+        "parking_dispatcher_status_topic", "");
     motion_cost_stop_config_.parking_static_bypass_phases = parseLabelSet(
         declare_parameter<std::string>(
             "parking_controller_static_bypass_phases",
@@ -1071,20 +1073,27 @@ private:
               campsite_phase_ = phaseFromStatus(message->message);
               updateManeuverPhases();
             });
-    reverse_parking_status_subscription_ =
-        create_subscription<avg_msgs::msg::ModuleState>(
-            reverse_parking_status_topic_, 10,
-            [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
-              parking_phase_ = phaseFromStatus(message->message);
-              updateManeuverPhases();
-            });
-    apriltag_parking_status_subscription_ =
-        create_subscription<avg_msgs::msg::ModuleState>(
-            apriltag_parking_status_topic_, 10,
-            [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
-              parking_phase_ = phaseFromStatus(message->message);
-              updateManeuverPhases();
-            });
+    const auto on_parking_status =
+        [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
+          parking_phase_ = message->operating_state.empty()
+              ? phaseFromStatus(message->message) : message->operating_state;
+          updateManeuverPhases();
+        };
+    if (!parking_dispatcher_status_topic_.empty()) {
+      // Auto parking has exactly one state authority. Never subscribe to both
+      // implementations: the inactive controller's IDLE heartbeat would release
+      // the active controller's command ownership and obstacle exceptions.
+      parking_dispatcher_status_subscription_ =
+          create_subscription<avg_msgs::msg::ModuleState>(
+              parking_dispatcher_status_topic_, 10, on_parking_status);
+    } else {
+      reverse_parking_status_subscription_ =
+          create_subscription<avg_msgs::msg::ModuleState>(
+              reverse_parking_status_topic_, 10, on_parking_status);
+      apriltag_parking_status_subscription_ =
+          create_subscription<avg_msgs::msg::ModuleState>(
+              apriltag_parking_status_topic_, 10, on_parking_status);
+    }
 
     for (const auto &topic : additional_estop_topics_) {
       gate_policy_.setEstopSource(topic, false);
@@ -1248,6 +1257,17 @@ private:
     if (source_decision == CommandSourceDecision::kHoldZero) {
       publishZero();
       logCommandSourceHold("stationary command-source handoff", now_sec);
+      return;
+    }
+    if (command_source_arbiter_.campsiteStationary() ||
+        command_source_arbiter_.parkingStationary()) {
+      // The clearance announcement owns a strict stop. In particular, a
+      // previously latched route-heading correction must not turn its zero
+      // input into angular velocity. Parking owner transfers require the same
+      // strict stop until both controller CANCEL acknowledgements arrive.
+      // Retain all obstacle/authorization latches.
+      route_heading_active_ = false;
+      publishZero();
       return;
     }
     bool opposite_route_recovery = false;
@@ -3156,6 +3176,7 @@ private:
   std::string campsite_status_topic_;
   std::string reverse_parking_status_topic_;
   std::string apriltag_parking_status_topic_;
+  std::string parking_dispatcher_status_topic_;
   std::string cost_grid_topic_;
   std::string lanelet_grid_topic_;
   std::string pose_topic_;
@@ -3301,6 +3322,8 @@ private:
       reverse_parking_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
       apriltag_parking_status_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr
+      parking_dispatcher_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr
       dr_timeout_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr

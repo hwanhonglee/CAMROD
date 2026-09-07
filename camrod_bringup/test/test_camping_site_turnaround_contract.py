@@ -225,10 +225,18 @@ def test_roadside_reverse_override_is_forwarded_without_changing_site_mode() -> 
     assert controller_source.count(
         "else if (roadsideReverseReturnActive())"
     ) >= 2
-    assert (
+    # Battery-urgent B1-B10 return intentionally owns the one reversed-route
+    # alignment.  The normal roadside return path must not reuse it: B11-B13
+    # leave through their authored forward loop and the explicit simulator
+    # reverse profile preserves its outbound heading without a turnaround.
+    return_route_yaw_setter = (
         "setPhase(CampingSiteManeuverPhase::kAlignReturnRouteYaw"
-        not in controller_source
     )
+    assert controller_source.count(return_route_yaw_setter) == 1
+    battery_alignment = controller_source.split(
+        "bool alignBatteryUrgentReturnAtCurrentRoadPose", 1
+    )[1].split("std::pair<bool, std::string> prepareRecallTurnaroundEntry", 1)[0]
+    assert return_route_yaw_setter in battery_alignment
     assert controller_source.count(
         "CampingSiteManeuverPhase::kAlignOutboundLaneYaw"
     ) >= 5

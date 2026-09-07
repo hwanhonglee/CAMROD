@@ -51,8 +51,9 @@
     minimum_mission_departure_battery_percentage: 0.35
     block_on_platform_error_code: true
     require_can_control_mode: true
-    # HH_260724 - Keep an unconditional hard stop at 20% SOC.
-    critical_battery_stop_enabled: true
+    # HH_260907 - Low SOC alone must not stop the <25% automatic charger return.
+    # BMS/CAN faults, EStop, stale status, and obstacle holds stay authoritative.
+    critical_battery_stop_enabled: false
     critical_battery_percentage: 0.20
     additional_estop_topics: "/planning/state_machine/estop"
     dr_timeout_source_mode: "localization_monitor"

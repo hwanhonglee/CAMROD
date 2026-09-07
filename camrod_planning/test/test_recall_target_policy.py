@@ -9,7 +9,7 @@ import sys
 from types import SimpleNamespace
 import unittest
 
-from avg_msgs.msg import PlanningRecallRequest
+from avg_msgs.msg import AvgServiceState, PlanningRecallRequest
 from builtin_interfaces.msg import Time as RosTime
 from rclpy.time import Time
 
@@ -58,6 +58,30 @@ def _policy_fixture() -> SimpleNamespace:
 
 
 class RecallTargetPolicyTest(unittest.TestCase):
+    def test_dispatcher_handoff_and_selected_parking_share_central_planning_state(self) -> None:
+        node = SimpleNamespace(
+            SCENARIO_DROP_ZONE_PARKING=PlanningStateMachineNode.SCENARIO_DROP_ZONE_PARKING,
+            SCENARIO_WAIT_DROP_ZONE=PlanningStateMachineNode.SCENARIO_WAIT_DROP_ZONE,
+        )
+        node.get_clock = lambda: SimpleNamespace(now=lambda: Time(seconds=123))
+        node.get_logger = lambda: SimpleNamespace(info=lambda *_: None)
+        for source in (
+            "parking_dispatcher",
+            "reverse_parking_controller",
+            "apriltag_parking_controller",
+        ):
+            for state, expected in (
+                (AvgServiceState.DROP_ZONE_PARKING, "RUNNING"),
+                (AvgServiceState.WAITING_FOR_CHARGING, "RUNNING"),
+                (AvgServiceState.DROP_ZONE_WAIT, "WAIT_DZ"),
+                (AvgServiceState.CHARGING, "WAIT_DZ"),
+            ):
+                message = AvgServiceState()
+                message.state = state
+                message.description = source + ":phase"
+                PlanningStateMachineNode._on_maneuver_phase_state(node, message)
+                self.assertEqual(node._maneuver_phase_override_state, expected)
+
     def test_return_handoff_margin_still_requires_fresh_nav2_success(self) -> None:
         now = Time(seconds=100)
         node = SimpleNamespace(

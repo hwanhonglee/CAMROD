@@ -94,17 +94,32 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         assert deployed == package
 
 
-def test_route_handoff_defers_five_centimeter_positioning_to_drop_zone_control() -> None:
-    """Nav2 must not re-chase GNSS XY while the local owner aligns parking yaw."""
+def test_route_handoff_uses_field_tuned_goal_checker_before_local_parking() -> None:
+    """Nav2 hands off at 0.10 m; local parking then owns final alignment."""
     package = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
     deployed = _parameters(BRINGUP_CONFIG / "nav2_base.yaml")
 
     for profile in (package, deployed):
-        assert profile["goal_checker"]["xy_goal_tolerance"] == 0.3
+        assert profile["goal_checker"]["xy_goal_tolerance"] == 0.1
         assert profile["DWB"]["xy_goal_tolerance"] == 0.3
         # Manual RViz goals retain their yaw-aware operator tolerance and do
         # not participate in the automatic drop-zone return handoff.
         assert profile["manual_goal_checker"]["xy_goal_tolerance"] == 0.25
+
+
+def test_drop_zone_local_approach_allows_center_reference_turn_displacement() -> None:
+    """The package and deployed mirrors retain the field-tuned 0.20 m handoff."""
+    package = _node_parameters(
+        CONTROL_CONFIG / "control.yaml",
+        "/control/drop_zone_maneuver_controller",
+    )
+    deployed = _node_parameters(
+        BRINGUP_CONTROL_CONFIG / "control.yaml",
+        "/control/drop_zone_maneuver_controller",
+    )
+
+    assert package["parking_approach_position_tolerance_m"] == 0.20
+    assert deployed["parking_approach_position_tolerance_m"] == 0.20
 
 
 def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:

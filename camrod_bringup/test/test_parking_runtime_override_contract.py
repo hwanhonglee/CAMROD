@@ -40,13 +40,23 @@ def test_production_parking_runtime_overlay_is_empty_and_forwarded_last():
     assert all(
         entry["ros__parameters"] == {} for entry in disabled.values()
     )
-    parameter_chain = parking_launch.split("parameters=[", 1)[1].split(
-        "condition=", 1
-    )[0]
-    assert parameter_chain.index('LaunchConfiguration("parameter_file")') < (
-        parameter_chain.index(
-            'LaunchConfiguration("runtime_override_parameter_file")'
+    # Auto mode adds a dispatcher which intentionally consumes only the base
+    # profile.  Both concrete parking controllers must still receive the final
+    # sparse runtime overlay after that base profile.
+    for executable in (
+        "reverse_parking_controller_node",
+        "apriltag_parking_controller_node",
+    ):
+        controller_block = parking_launch.split(
+            f'executable="{executable}"', 1
+        )[1].split("Node(", 1)[0]
+        parameter_chain = controller_block.split("parameters=[", 1)[1].split(
+            "remappings=", 1
+        )[0]
+        assert parameter_chain.index('LaunchConfiguration("parameter_file")') < (
+            parameter_chain.index(
+                'LaunchConfiguration("runtime_override_parameter_file")'
+            )
         )
-    )
     assert "'parking_runtime_override_param_file'," in bringup_launch
     assert "'runtime_override_parameter_file': lc[" in bringup_launch

@@ -407,6 +407,7 @@ def test_external_front_camera_keeps_production_yolo_in_sim(
     ("overrides", "expected_active"),
     (
         ({}, "true"),
+        ({"parking_method": "auto"}, "true"),
         ({"sim": "true"}, "false"),
         ({"sim": "true", "use_sim_parking_method": "false"}, "false"),
         ({"parking_method": "reverse"}, "false"),
@@ -508,6 +509,20 @@ def test_rear_apriltag_container_keeps_the_complete_intra_process_chain():
     ] is True
 
 
+def test_parking_detector_field_profile_preserves_validated_decimation():
+    # HH_260907 - The recorded visible ID 3 failed at runtime 1.75. Preserve
+    # the final field profile 2.0, independently replayed through the installed
+    # detector with valid ID 3/pose; 1.5 was an earlier diagnostic comparison.
+    package_config = SRC_ROOT / "camrod_perception/config/apriltag_parking_detector.yaml"
+    bringup_config = BRINGUP_ROOT / "config/perception/apriltag_parking_detector.yaml"
+    assert package_config.read_bytes() == bringup_config.read_bytes()
+    params = yaml.safe_load(package_config.read_text())["/perception/apriltag_parking_detector"]["ros__parameters"]
+    assert params["quad_decimate"] == 2.0
+    assert params["tag_family"] == "tag36h11"
+    assert params["target_tag_id"] == 3
+    assert params["max_reproj_error_px"] == 2.0
+
+
 def test_master_dummy_policy_default_is_enabled_only_for_non_sim_runs():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
 
@@ -517,3 +532,58 @@ def test_master_dummy_policy_default_is_enabled_only_for_non_sim_runs():
         ]
         is True
     )
+
+
+def test_default_battery_policy_keeps_urgent_return_drivable():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))["bringup"]
+    assert defaults["parking"]["method"] == "auto"
+    assert defaults["control"]["cmd_vel_gate_critical_battery_stop_enabled"] is False
+    assert defaults["system"]["api_ui_minimum_mission_dispatch_battery_percent"] == 35.0
+    assert defaults["system"]["api_ui_low_battery_return_threshold_percent"] == 35.0
+    assert defaults["system"]["api_ui_urgent_battery_return_threshold_percent"] == 25.0
+
+
+@pytest.mark.parametrize("sim,expected", (("false", "auto"), ("true", "reverse")))
+def test_parking_owner_selection_reaches_gate_parking_and_ui_together(sim, expected):
+    context = LaunchContext()
+    context.launch_configurations.update({
+        "sim": sim,
+        "parking_method": "auto",
+        "use_sim_parking_method": "true",
+    })
+    for filename in ("cmd_vel_safety_gate.launch.py", "parking.launch.py", "ui.launch.py"):
+        arguments = dict(_module_include(filename).launch_arguments)
+        assert context.perform_substitution(arguments["parking_method"]) == expected
+
+
+def test_battery_threshold_overrides_reach_ui_and_parking_dispatcher_together():
+    context = LaunchContext()
+    context.launch_configurations.update({
+        "api_ui_minimum_mission_dispatch_battery_percent": "36.5",
+        "api_ui_low_battery_return_threshold_percent": "36.5",
+        "api_ui_urgent_battery_return_threshold_percent": "24.5",
+        "control_cmd_vel_gate_critical_battery_stop_enabled": "false",
+    })
+    ui_arguments = dict(_module_include("ui.launch.py").launch_arguments)
+    parking_arguments = dict(_module_include("parking.launch.py").launch_arguments)
+    gate_arguments = dict(_module_include("cmd_vel_safety_gate.launch.py").launch_arguments)
+    assert context.perform_substitution(ui_arguments["minimum_mission_dispatch_battery_percent"]) == "36.5"
+    assert context.perform_substitution(ui_arguments["low_battery_return_threshold_percent"]) == "36.5"
+    assert context.perform_substitution(parking_arguments["charging_threshold_percent"]) == "36.5"
+    assert context.perform_substitution(ui_arguments["urgent_battery_return_threshold_percent"]) == "24.5"
+    assert context.perform_substitution(gate_arguments["cmd_vel_gate_critical_battery_stop_enabled"]) == "false"
+
+
+def test_ui_station_presence_uses_control_and_parking_drop_zone_geometry():
+    # HH_260907 - Never reconstruct departure from an unrelated camrod_map
+    # default when bringup supplies its active config/map/drop_zones.yaml.
+    station_file = str(BRINGUP_ROOT / "config/map/drop_zones.yaml")
+    context = LaunchContext()
+    context.launch_configurations["planning_state_machine_keypoints_yaml"] = station_file
+    for variable in ("api_args", "maneuver_args", "parking_args"):
+        assert ast.dump(_dictionary_value(variable, "drop_zones_yaml")) == ast.dump(
+            _dictionary_value("parking_args", "drop_zones_yaml")
+        )
+    for filename in ("ui.launch.py", "maneuvers.launch.py", "parking.launch.py"):
+        arguments = dict(_module_include(filename).launch_arguments)
+        assert context.perform_substitution(arguments["drop_zones_yaml"]) == station_file

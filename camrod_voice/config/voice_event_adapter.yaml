@@ -36,9 +36,13 @@
     localization_mode_topic: "/localization/mode"
     control_gate_status_topic: "/control/cmd_vel_safety_gate/status"
     planning_engaged_topic: "/control/planning_engaged"
+    # Phase edges announce clearance even while RETURN_WITH_CARGO is unchanged.
+    camping_site_status_topic: "/control/camping_site_maneuver_controller/status"
     navigate_to_pose_action: "/planning/navigate_to_pose"
     # Only the parking controller selected by the control launch publishes here.
     parking_status_topics:
+      # Auto dispatcher is the sole public status owner in auto mode.
+      - "/parking/status"
       - "/parking/reverse_parking_controller/status"
       - "/parking/apriltag_parking_controller/status"
 

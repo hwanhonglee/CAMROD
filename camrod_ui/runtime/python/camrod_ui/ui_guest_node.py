@@ -42,11 +42,49 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from std_msgs.msg import String
 
 
+def guest_battery_parking_policy_payload(
+    payload: dict, previous: Optional[dict] = None
+) -> dict:
+    """Keep backend policy decisions stable across partial updates/reconnects."""
+    defaults = {
+        "battery_return_pending": False,
+        "battery_return_started": False,
+        "battery_return_waiting_for_user": False,
+        "battery_return_urgent": False,
+        "charging_required": False,
+        "parking_policy_mode": "",
+        "parking_selected_method": "",
+        "mission_execution_error": "",
+        "recall_final_return_ready": False,
+        "urgent_return_battery_percentage": 25.0,
+    }
+    result = dict(defaults)
+    for candidate in (previous or {}, payload):
+        for key, default in defaults.items():
+            if key not in candidate:
+                continue
+            value = candidate[key]
+            if isinstance(default, bool) and isinstance(value, bool):
+                result[key] = value
+            elif isinstance(default, str) and isinstance(value, str):
+                result[key] = value
+            elif (
+                isinstance(default, float)
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and 0.0 <= value <= 100.0
+            ):
+                result[key] = float(value)
+    return result
+
+
 def normalize_platform_battery_percent(value: float) -> int:
     """Convert canonical AvgPlatformStatus SOC ratio to a display percent."""
     if not math.isfinite(float(value)):
         return -1
-    return max(0, min(100, int(round(float(value) * 100.0))))
+    # Match backend admission exactly: 34.9% must not look dispatch-ready.
+    return max(0, min(100, int(math.floor(float(value) * 100.0))))
 
 
 def destination_request_owner(source: str) -> str:
@@ -196,6 +234,7 @@ class UiGuestNode(Node):
 
         self._lock = threading.Lock()
         self._service_state: int = AvgServiceState.DROP_ZONE_WAIT
+        self._service_state_description: str = ""
         self._active_site: str = ""
         # Persist the accepted UiDestinationCommand source classification so
         # a refreshed/reconnected browser does not guess recall from a shared
@@ -222,6 +261,9 @@ class UiGuestNode(Node):
         self._control_gate_state: str = "UNKNOWN"
         # HH_260721 - Preserve the physical charging state when a destination is cleared.
         self._is_charging: bool = False
+        # Only the backend-authoritative dispatch stream may set these flags.
+        # Raw battery telemetry updates the gauge, not urgent-return admission.
+        self._battery_parking_policy = guest_battery_parking_policy_payload({})
 
         # Single-client WebSocket exclusive lock.
         self._guest_ws: Optional[WebSocket] = None
@@ -352,6 +394,7 @@ class UiGuestNode(Node):
         with self._lock:
             previous_state = self._service_state
             self._service_state = state
+            self._service_state_description = str(msg.description)
             # Service state is lifecycle telemetry, not mission-identity
             # authority. Clearing site/owner here can race a newly admitted
             # mission from the backend's separate DataWriter. The backend's
@@ -372,6 +415,7 @@ class UiGuestNode(Node):
         self._schedule_broadcast({
             "service_state": state,
             "service_state_name": phase,
+            "service_state_description": str(msg.description),
             "phase": self._phase_of(state),
             "site": active_site,
             "request_intent": request_intent,
@@ -442,6 +486,9 @@ class UiGuestNode(Node):
             )
             return
         authoritative_service_name = ""
+        authoritative_service_description = str(
+            payload.get("service_state_description", "")
+        ).strip()
         if has_service_state:
             authoritative_service_name = str(
                 payload.get("service_state_name", "")
@@ -501,6 +548,19 @@ class UiGuestNode(Node):
                     f"{request_nonce or 'none'} pending={pending_nonce}"
                 )
                 return
+            previous_final_ready = getattr(
+                self, "_battery_parking_policy", {}
+            ).get("recall_final_return_ready", False)
+            self._battery_parking_policy = guest_battery_parking_policy_payload(
+                payload, getattr(self, "_battery_parking_policy", None)
+            )
+            if (
+                previous_final_ready
+                != self._battery_parking_policy["recall_final_return_ready"]
+                or self._battery_parking_policy["mission_execution_error"]
+            ):
+                self._guest_return_request_pending = False
+            battery_parking_policy = dict(self._battery_parking_policy)
             previous_identity = (
                 self._active_site,
                 self._active_request_intent,
@@ -512,6 +572,7 @@ class UiGuestNode(Node):
             )
             if has_service_state:
                 self._service_state = authoritative_service_state
+                self._service_state_description = authoritative_service_description
                 if (
                     previous_service_state
                     == int(AvgServiceState.GUEST_LOADING_WAIT)
@@ -556,6 +617,7 @@ class UiGuestNode(Node):
             identity_revision = self._dispatch_identity_revision
 
         broadcast = {
+            **battery_parking_policy,
             "site": active_site,
             "request_intent": request_intent,
             "request_owner": request_owner,
@@ -570,6 +632,7 @@ class UiGuestNode(Node):
             broadcast.update({
                 "service_state": authoritative_service_state,
                 "service_state_name": authoritative_service_name,
+                "service_state_description": authoritative_service_description,
                 "phase": UiGuestNode._phase_of(
                     self, authoritative_service_state
                 ),
@@ -779,7 +842,7 @@ class UiGuestNode(Node):
             f"[guest] roadside recall -> {self.ui_destination_topic}: site={site}"
         )
 
-    def _publish_usage_complete(self) -> None:
+    def _publish_usage_complete(self, recall_final_return: bool = False) -> None:
         """Request the same backend-owned return sequence as the Robot UI."""
         with self._lock:
             site = str(self._active_site).strip()
@@ -788,6 +851,8 @@ class UiGuestNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.operation = MotionOperation.RETURN
         msg.source = f"guest:usage_complete:site={site}:g={generation}"
+        if recall_final_return:
+            msg.source += ":recall_final_return"
         self.pub_operation_request.publish(msg)
         self.get_logger().info(
             "[guest] usage_complete -> RETURN request -> "
@@ -880,12 +945,21 @@ class UiGuestNode(Node):
         })
         return True, "", current, battery
 
-    def _reserve_guest_return_request(self) -> tuple[bool, str, int]:
+    def _reserve_guest_return_request(
+        self, recall_final_return: bool = False
+    ) -> tuple[bool, str, int]:
         """Authorize exactly one return click for this Guest recall arrival."""
         with self._lock:
             current = int(self._service_state)
             if int(getattr(self, "_active_mission_generation", 0)) <= 0:
                 return False, "awaiting_admission_ack", current
+            policy = getattr(self, "_battery_parking_policy", {})
+            if policy.get("mission_execution_error"):
+                return False, "campsite_maneuver_failed", current
+            if type(recall_final_return) is not bool or recall_final_return != (
+                policy.get("recall_final_return_ready") is True
+            ):
+                return False, "recall_completion_stage_mismatch", current
             if self._guest_return_request_pending:
                 return False, "request_in_progress", current
             if not guest_usage_complete_available(
@@ -964,6 +1038,7 @@ class UiGuestNode(Node):
                 # an aborted first frame cannot leave the guest slot occupied.
                 with node._lock:
                     state = node._service_state
+                    service_description = node._service_state_description
                     active_site = node._active_site
                     request_intent = node._active_request_intent
                     request_owner = node._active_request_owner
@@ -973,9 +1048,14 @@ class UiGuestNode(Node):
                     battery = node._battery
                     safety_hold = node._safety_hold
                     control_gate_state = node._control_gate_state
+                    battery_parking_policy = guest_battery_parking_policy_payload(
+                        {}, getattr(node, "_battery_parking_policy", None)
+                    )
                 await node._send_guest_payload(ws, {
+                    **battery_parking_policy,
                     "service_state": state,
                     "service_state_name": node._state_name_of(state),
+                    "service_state_description": service_description,
                     "phase": node._phase_of(state),
                     "site": active_site,
                     "request_intent": request_intent,
@@ -1090,12 +1170,19 @@ class UiGuestNode(Node):
 
                     # (확장) 이용 완료 → 드롭존 복귀
                     elif action == "usage_complete":
+                        recall_final_return = payload.get(
+                            "recall_final_return", False
+                        )
                         admitted, error, current = await asyncio.to_thread(
-                            node._reserve_guest_return_request
+                            node._reserve_guest_return_request,
+                            recall_final_return,
                         )
                         if admitted:
                             try:
-                                await asyncio.to_thread(node._publish_usage_complete)
+                                await asyncio.to_thread(
+                                    node._publish_usage_complete,
+                                    recall_final_return,
+                                )
                             except Exception:
                                 with node._lock:
                                     node._guest_return_request_pending = False

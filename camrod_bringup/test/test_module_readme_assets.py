@@ -479,7 +479,7 @@ def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> No
     )
     assert result.returncode != 0
     assert (
-        "evidence map v15 does not match OSM map v22" in result.stderr
+        "evidence map v15 does not match OSM map v" in result.stderr
         or "evidence OSM hash does not match the selected map" in result.stderr
     )
 

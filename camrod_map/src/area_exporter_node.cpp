@@ -39,6 +39,9 @@ struct DropZone
   double z{0.0};
   double yaw_deg{0.0};
   std::vector<lanelet::BasicPoint3d> corners;
+  // HH_260907 - Preserve map-authored parking policy metadata on regeneration;
+  // the shared parking/docking area uses "auto" for battery/operator selection.
+  std::string parking_method;
   // HH_260721 - Keep an operational stop pose separate from the surveyed semantic area.
   std::string service_mode;
   std::optional<double> service_x;
@@ -107,6 +110,7 @@ std::optional<double> getOptionalDoubleAttribute(
 template<typename PrimitiveT>
 void populateServicePose(const PrimitiveT & primitive, DropZone & zone)
 {
+  zone.parking_method = toLowerCopy(getAttributeCaseInsensitive(primitive, "parking_method"));
   // HH_260721 - Export map-authored roadside/alternate service targets without
   // replacing the physical area centroid and polygon used for visualization.
   zone.service_mode = toLowerCopy(getAttributeCaseInsensitive(primitive, "service_mode"));
@@ -568,6 +572,12 @@ public:
       }
     }
 
+    // HH_260907 - Area-layer iteration is unordered. Stable IDs keep repeated
+    // exports deterministic, independent of the map loader's iteration order.
+    std::sort(drop_zones.begin(), drop_zones.end(), [](const DropZone & a, const DropZone & b) {
+      return a.id < b.id;
+    });
+
     // 2026-03-19: Deduplicate camping sites by semantic name to keep one center
     // per logical site (e.g. camping_site_1).
     std::unordered_set<std::string> seen_camping;
@@ -627,6 +637,9 @@ public:
         out << "    y: " << dz.y << "\n";
         out << "    z: " << dz.z << "\n";
         out << "    yaw_deg: " << dz.yaw_deg << "\n";
+        if (!dz.parking_method.empty()) {
+          out << "    parking_method: \"" << dz.parking_method << "\"\n";
+        }
         if (!dz.corners.empty()) {
           out << "    corners:\n";
           for (const auto & c : dz.corners) {
@@ -731,6 +744,7 @@ private:
     bool area{false};
     bool has_yaw_deg{false};
     double yaw_deg{0.0};
+    std::string parking_method;
   };
 
   // Fallback parser for extracting drop-zone hints directly from raw OSM XML.
@@ -811,6 +825,8 @@ private:
           } else if (key == "area") {
             const auto v = toLowerCopy(val);
             cur_way.area = (v == "yes" || v == "true" || v == "1");
+          } else if (key == "parking_method") {
+            cur_way.parking_method = toLowerCopy(val);
           } else if (key == "yaw_deg") {
             try {
               cur_way.yaw_deg = std::stod(val);
@@ -876,6 +892,7 @@ private:
       dz.type = classifySemanticType(way.type);
       dz.semantic_type = way.type;
       dz.source = way.area ? "osm_area" : "osm_way";
+      dz.parking_method = way.parking_method;
       dz.x = center.x();
       dz.y = center.y();
       dz.z = SEMANTIC_EXPORT_Z_M;

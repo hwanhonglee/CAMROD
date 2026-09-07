@@ -53,6 +53,9 @@
     # This is measured from the current map-derived lanelet snap toward the
     # signed site side, never from a separately guessed coordinate.
     recall_wait_lateral_offset_m: 0.30
+    # Explicit loading completion starts B1-B10 site clearance, followed by
+    # full site entry and turnaround. B11-B13 skip this stationary wait.
+    recall_clearance_wait_s: 8.0
     # Production keeps B11-B13 on the legal forward loop. Simulator-specific
     # launch files may explicitly leave the site first and follow the inverted
     # shortest route in reverse without turning in the constrained corridor.
@@ -220,12 +223,14 @@
     # HH_260810 - Keep the platform stationary before reverse-parking handoff.
     yaw_settle_hold_s: 1.0
     yaw_settle_max_rate_degps: 3.0
-    # HH_260904 - Automatic return must first settle within 5 cm of the exact
-    # snapped lanelet point. The final gate applies its 0.5 speed scale, so the
+    # HH_260904 - Automatic return must first settle within 20 cm of the exact
+    # snapped lanelet point. Nav2 already hands off within 10 cm; this wider
+    # local tolerance avoids redundant correction before the 90-degree turn.
+    # The final gate applies its 0.5 speed scale, so the
     # 0.20 m/s raw cap reaches the platform as at most 0.10 m/s (0.36 km/h).
     require_exact_parking_approach_for_auto: true
     parking_approach_goal_max_station_distance_m: 8.0
-    parking_approach_position_tolerance_m: 0.05
+    parking_approach_position_tolerance_m: 0.20
     parking_approach_proportional_gain: 0.8
     parking_approach_minimum_speed_mps: 0.06
     parking_approach_maximum_speed_mps: 0.20

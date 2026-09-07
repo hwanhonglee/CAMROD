@@ -87,7 +87,10 @@ public:
   {
     const bool next_drop_zone_active = dropZoneOwnsCommand(drop_zone_phase);
     const bool next_campsite_active = campsiteOwnsCommand(campsite_phase);
+    campsite_stationary_ = normalize(campsite_phase) == "recall_clearance_wait" ||
+        normalize(campsite_phase) == "recall_return_wait";
     const bool next_parking_active = parkingOwnsCommand(parking_phase);
+    parking_stationary_ = normalize(parking_phase) == "waiting_for_parking_owner";
     const bool next_active = next_campsite_active || next_parking_active ||
       next_drop_zone_active;
     ManeuverOwnershipTransition transition;
@@ -168,6 +171,16 @@ public:
     return campsite_active_;
   }
 
+  bool campsiteStationary() const
+  {
+    return campsite_stationary_;
+  }
+
+  bool parkingStationary() const
+  {
+    return parking_stationary_;
+  }
+
   bool manualSourceActive() const
   {
     return manual_source_active_;
@@ -193,6 +206,9 @@ private:
     const std::string value = normalize(phase);
     return value == "align_entry_yaw" || value == "reverse_in" || value == "crab_in" ||
            value == "rotate_180" || value == "unload_wait" || value == "wait_return" ||
+           // A clearance announcement is a zero-command owner. Retain the
+           // campsite lock so queued Nav2 commands cannot start during speech.
+           value == "recall_clearance_wait" || value == "recall_return_wait" ||
            value == "align_retrace_yaw" || value == "align_return_route_yaw" ||
            value == "align_outbound_lane_yaw" || value == "reverse_out" ||
            value == "crab_out";
@@ -210,7 +226,8 @@ private:
   static bool parkingOwnsCommand(const std::string & phase)
   {
     const std::string value = normalize(phase);
-    return value == "reverse_approach" || value == "wait_for_charging" ||
+    return value == "waiting_for_parking_owner" ||
+           value == "reverse_approach" || value == "wait_for_charging" ||
            value == "waiting_for_charging" || value == "final_yaw_alignment" ||
            value == "waiting_for_tag" || value == "tag_guided_reverse" ||
            value == "final_reverse_insertion" || value == "retry_forward_exit" ||
@@ -221,7 +238,9 @@ private:
   bool maneuver_active_{false};
   bool drop_zone_active_{false};
   bool campsite_active_{false};
+  bool campsite_stationary_{false};
   bool parking_active_{false};
+  bool parking_stationary_{false};
   bool manual_engaged_{false};
   bool mission_engaged_{false};
   bool manual_source_active_{false};

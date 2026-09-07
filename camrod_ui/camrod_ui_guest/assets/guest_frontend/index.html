@@ -483,6 +483,12 @@
 <!-- Main content -->
 <div class="main-content">
 
+  <!-- Public status only: explicit charger docking remains a Robot UI action. -->
+  <div class="card">
+    <div class="card-title">배터리·주차 안내</div>
+    <div class="site-grid-label" id="batteryPolicyHelp" role="status">배터리 상태 확인 중 · 35% 이상에서 호출 가능</div>
+  </div>
+
   <!-- Status card -->
   <div class="card">
     <div class="card-title">로봇 상태</div>
@@ -543,6 +549,7 @@
   let currentState = -1;
   // HH_260721 - Preserve the exact shared service state instead of reducing it to a generic phase.
   let currentServiceStateName = 'PREPARING';
+  let currentServiceStateDescription = '';
   let selectedSite = null;
   let sites = [];
   let lastDestSite = null;  // remember destination while moving/arrived
@@ -559,6 +566,14 @@
   // from service state alone while SOC is missing or below the 35% margin.
   let missionBatteryReady = false;
   let minimumBatteryPercentage = 35;
+  let batteryPercentage = null;
+  let batteryReturnUrgent = false;
+  let chargingRequired = false;
+  let parkingSelectedMethod = '';
+  let missionExecutionError = '';
+  let recallFinalReturnReady = false;
+  let usageCompletePending = false;
+  let usageCompleteError = '';
   let cancelRequestPending = false;
   // HH_260803 - Control safety is an overlay; the service state remains the
   // scenario source underneath it and resumes when the gate clears.
@@ -643,6 +658,25 @@
       if (d.minimum_battery_percentage !== undefined) {
         minimumBatteryPercentage = Number(d.minimum_battery_percentage);
       }
+      if (acceptLifecycle && d.battery_return_urgent !== undefined) batteryReturnUrgent = Boolean(d.battery_return_urgent);
+      if (acceptLifecycle && d.charging_required !== undefined) chargingRequired = Boolean(d.charging_required);
+      if (acceptLifecycle && d.parking_selected_method !== undefined) parkingSelectedMethod = String(d.parking_selected_method || '');
+      if (acceptLifecycle && d.mission_execution_error !== undefined) missionExecutionError = String(d.mission_execution_error || '');
+      if (acceptLifecycle && d.recall_final_return_ready !== undefined) {
+        const finalReady = d.recall_final_return_ready === true;
+        if (finalReady !== recallFinalReturnReady) {
+          usageCompletePending = false;
+          usageCompleteError = '';
+        }
+        recallFinalReturnReady = finalReady;
+      }
+      if (acceptLifecycle && d.error === 'campsite_maneuver_failed' && !missionExecutionError) {
+        missionExecutionError = String(d.message || '사이트 제어 오류');
+      }
+      if (d.error !== undefined || d.dispatch_error !== undefined) usageCompletePending = false;
+      if (['recall_completion_stage_mismatch', 'recall_final_confirmation_required', 'recall_final_return_not_ready'].includes(d.error || d.dispatch_error)) {
+        usageCompleteError = '완료 단계가 변경되었습니다. 현재 안내를 확인한 후 해당 단계의 버튼을 다시 눌러주세요.';
+      }
       if (d.mission_battery_ready !== undefined) {
         missionBatteryReady = Boolean(d.mission_battery_ready);
         updateUI();
@@ -666,6 +700,10 @@
       }
       if (acceptLifecycle && d.service_state_name !== undefined) {
         currentServiceStateName = String(d.service_state_name || 'PREPARING');
+        if (currentServiceStateName !== 'GUEST_LOADING_WAIT') usageCompletePending = false;
+      }
+      if (acceptLifecycle && (d.service_state_description !== undefined || d.service_state !== undefined)) {
+        currentServiceStateDescription = String(d.service_state_description || '');
       }
       if (acceptLifecycle && d.phase !== undefined) {
         currentPhase = d.phase;
@@ -686,6 +724,7 @@
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
       cancelRequestPending = false;
+      usageCompletePending = false;
       setConn(false);
       if (!isLocked && !isGrace) setTimeout(connect, 3000);
     };
@@ -729,10 +768,25 @@
   function updateBattery(pct) {
     const fill  = document.getElementById('batteryFill');
     const text  = document.getElementById('batteryText');
-    const color = pct < 20 ? 'rgba(239,68,68,0.9)' : pct < 40 ? 'rgba(245,158,11,0.9)' : 'rgba(255,255,255,0.85)';
-    fill.style.width      = pct + '%';
+    batteryPercentage = pct == null || !Number.isFinite(Number(pct)) || Number(pct) < 0
+      ? null : Math.max(0, Math.min(100, Math.floor(Number(pct))));
+    const color = batteryPercentage < 25 ? 'rgba(239,68,68,0.9)' : batteryPercentage < 35 ? 'rgba(245,158,11,0.9)' : 'rgba(255,255,255,0.85)';
+    fill.style.width      = (batteryPercentage ?? 0) + '%';
     fill.style.background = color;
-    text.textContent      = pct + '%';
+    text.textContent      = batteryPercentage === null ? '--%' : batteryPercentage + '%';
+  }
+
+  function guestBatteryPolicyMessage(battery, urgent, charging, method) {
+    if (urgent) return '배터리 25% 미만 · 현재 작업을 중단하고 충전 도킹을 위해 즉시 복귀합니다. 로봇 주변을 비워주세요.';
+    if (battery == null) return '배터리 상태 확인 중 · 35% 이상에서 호출 가능';
+    let message = battery < 25
+      ? '배터리 25% 미만 · 새 호출 불가, 충전을 위한 긴급 복귀가 필요합니다.'
+      : battery < 35
+        ? '배터리 25% 이상 35% 미만 · 새 호출 불가, 현재 작업 완료 후 복귀하여 충전합니다.'
+        : '배터리 35% 이상 · 새 호출 가능, 일반 복귀 시 충전하지 않고 후진 주차합니다.';
+    if (method === 'apriltag' || charging) message += ' 충전 도킹이 선택되었습니다.';
+    else if (method === 'reverse') message += ' 일반 후진 주차가 선택되었습니다.';
+    return message;
   }
 
   /* ── UI state machine ── */
@@ -807,7 +861,53 @@
       && Boolean(lastDestSite);
   }
 
+  function recallReturnInstructions(site, finalReady = false) {
+    if (/^B(?:[1-9]|10)$/.test(String(site || ''))) {
+      if (finalReady) return '사이트 안에서 180도 회전을 마치고 정차했습니다. 짐 싣기를 모두 마친 뒤 [짐 싣기 완료 · 복귀]를 눌러주세요. 확인 전에는 출차하지 않습니다.';
+      return '정리를 마친 뒤 버튼을 눌러주세요. 음성 안내 후 사이트 안으로 다시 들어가 180도 회전하므로 주변을 비워주세요. 회전 후 다시 정차하며, 짐 싣기를 마치고 두 번째 완료 버튼을 눌러야 복귀합니다.';
+    }
+    return '짐 적재와 정리를 마친 뒤 버튼을 눌러주세요. 사이트로 다시 들어가지 않고 기존 반대쪽 경로로 복귀합니다. 로봇 주변을 비워주세요.';
+  }
+
+  function recallCompletionLabel(site, finalReady = false) {
+    return /^B(?:[1-9]|10)$/.test(String(site || ''))
+      ? (finalReady ? '짐 싣기 완료 · 복귀' : '정리 완료 · 사이트 재진입')
+      : '적재 완료 · 복귀';
+  }
+
+  function missionExecutionFailureMessage(reason) {
+    return reason
+      ? `사이트 동작이 중단되었습니다. 완료·복귀 버튼을 반복해서 누르지 말고 관리자에게 확인을 요청해주세요. 원인: ${reason}`
+      : '';
+  }
+
+  function recallReturnProgress(site, description) {
+    const parts = String(description || '').split(':');
+    const phase = parts[0] === 'camping_site_maneuver_controller' ? parts[1] : '';
+    const stages = {
+      RECALL_CLEARANCE_WAIT: ['사이트 비움 안내 중', '음성 안내 후 사이트로 다시 진입합니다. 사이트와 로봇 주변을 비워주세요.'],
+      ALIGN_ENTRY_YAW: ['사이트 재진입 준비', '사이트 안으로 들어가기 위해 방향을 맞추고 있습니다.'],
+      CRAB_IN: ['사이트 재진입 중', '전진 복귀를 위해 사이트 안으로 이동하고 있습니다.'],
+      ROTATE_180: ['사이트 안에서 180도 회전 중', '로봇이 회전하고 있습니다. 사이트와 로봇 주변에서 떨어져 주세요.'],
+      RECALL_RETURN_WAIT: ['짐 싣기 완료 확인 대기', '회전을 마치고 정차했습니다. 짐 싣기 완료 버튼을 누르기 전에는 출차하지 않습니다.'],
+      ALIGN_RETRACE_YAW: ['도로 출차 준비', '회전을 마치고 도로로 나갈 방향을 맞추고 있습니다.'],
+      CRAB_OUT: ['사이트에서 도로로 출차 중', '도로로 나온 뒤 대기·충전 장소까지 전진으로 복귀합니다.'],
+    };
+    if (/^B(?:[1-9]|10)$/.test(String(site || '')) && stages[phase]) {
+      return { label: stages[phase][0], message: stages[phase][1] };
+    }
+    return {
+      label: '짐을 싣고 복귀 중',
+      message: /^B(?:11|12|13)$/.test(String(site || ''))
+        ? '사이트로 재진입하지 않고 기존 반대쪽 경로로 대기·충전 장소에 복귀 중입니다.'
+        : '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다.',
+    };
+  }
+
   function updateUI() {
+    document.getElementById('batteryPolicyHelp').textContent = guestBatteryPolicyMessage(
+      batteryPercentage, batteryReturnUrgent, chargingRequired, parkingSelectedMethod
+    );
     const dot      = document.getElementById('statusDot');
     const phaseLbl = document.getElementById('statusPhase');
     const stateLbl = document.getElementById('statusLabel');
@@ -828,6 +928,19 @@
     cancelCard.style.display = 'none';
 
     if (!isMissionCancellablePhase()) cancelRequestPending = false;
+    completeAction.disabled = usageCompletePending || Boolean(missionExecutionError);
+
+    if (missionExecutionError) {
+      phaseLbl.textContent = '사이트 동작 중단';
+      stateLbl.textContent = '관리자 확인이 필요합니다';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-returning');
+      banner.setAttribute('role', 'alert');
+      banner.textContent = missionExecutionFailureMessage(missionExecutionError);
+      return;
+    }
+    banner.removeAttribute('role');
 
     if (safetyHold) {
       dot.classList.add('si-busy');
@@ -919,16 +1032,22 @@
       const isGuestOwnedRecallArrival = isRecallArrival
         && activeRequestOwner === 'guest';
       dot.classList.add('si-arrived');
-      phaseLbl.textContent = isRecallArrival ? '이용객 호출 도착' : '배송 도착';
+      phaseLbl.textContent = isRecallArrival
+        ? (recallFinalReturnReady ? '짐 싣기 완료 확인 대기' : '이용객 호출 도착')
+        : '배송 도착';
       stateLbl.textContent = isRecallArrival
-        ? '로봇이 사이트 도로 측 대기점에서 짐 적재를 기다리고 있습니다'
+        ? (recallFinalReturnReady
+          ? '사이트 안에서 180도 회전을 마치고 정차했습니다'
+          : '로봇이 사이트 도로 측 대기점에서 정리를 기다리고 있습니다')
         : '로봇이 배송지에서 물품 수령을 기다리고 있습니다';
       siteCard.style.display = 'none';
       completeCard.style.display = isGuestOwnedRecallArrival ? 'block' : 'none';
       if (isGuestOwnedRecallArrival) {
-        completeTitle.textContent = '짐 적재 완료';
-        completeHelp.textContent = '로봇에 짐을 모두 실은 뒤 복귀 버튼을 눌러주세요.';
-        completeAction.textContent = '적재 완료 · 로봇 복귀';
+        completeTitle.textContent = recallFinalReturnReady ? '짐 싣기 완료 확인' : '짐 정리 완료 확인';
+        completeHelp.textContent = recallReturnInstructions(lastDestSite, recallFinalReturnReady);
+        completeAction.textContent = usageCompletePending
+          ? '완료 요청 중…'
+          : recallCompletionLabel(lastDestSite, recallFinalReturnReady);
       } else {
         completeTitle.textContent = '배송 물품 수령 완료';
         completeHelp.textContent = '배송 물품을 모두 내린 뒤 복귀 버튼을 눌러주세요.';
@@ -936,8 +1055,12 @@
       }
       banner.classList.add('show', 'info-arrived');
       banner.textContent = isGuestOwnedRecallArrival
-        ? '로봇이 도착했습니다. 짐을 모두 실은 뒤 복귀 버튼을 눌러주세요.'
+        ? recallReturnInstructions(lastDestSite, recallFinalReturnReady)
         : '이 임무의 완료·복귀는 로봇 관리자 화면에서 진행합니다.';
+      if (isRecallArrival && recallFinalReturnReady && batteryReturnUrgent) {
+        banner.textContent += ' 배터리가 25% 미만이어도 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.';
+      }
+      if (usageCompleteError) banner.textContent += ` ${usageCompleteError}`;
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
@@ -982,10 +1105,11 @@
     ) {
       const isRecallReturn = activeRequestIntent === 'recall'
         && RECALL_RETURN_SERVICE_STATES.has(currentServiceStateName);
+      const progress = recallReturnProgress(lastDestSite, currentServiceStateDescription);
       dot.classList.add('si-returning');
-      phaseLbl.textContent = isRecallReturn ? '짐을 싣고 복귀 중' : '배송 후 복귀 중';
+      phaseLbl.textContent = isRecallReturn ? progress.label : '배송 후 복귀 중';
       stateLbl.textContent = isRecallReturn
-        ? '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다'
+        ? progress.message
         : '배송을 마치고 대기·충전 장소로 복귀 중입니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
@@ -1123,8 +1247,19 @@
     const guestRecallArrived = activeRequestIntent === 'recall'
       && activeRequestOwner === 'guest'
       && currentServiceStateName === 'GUEST_LOADING_WAIT';
+    if (missionExecutionError || usageCompletePending) return;
     if (guestRecallArrived && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'usage_complete' }));
+      const finalReturn = recallFinalReturnReady;
+      if (!window.confirm(recallReturnInstructions(lastDestSite, finalReturn)
+          + '\n[' + recallCompletionLabel(lastDestSite, finalReturn)
+          + ']를 요청하시겠습니까?')) return;
+      usageCompletePending = true;
+      usageCompleteError = '';
+      updateUI();
+      ws.send(JSON.stringify({
+        action: 'usage_complete',
+        recall_final_return: finalReturn,
+      }));
     }
   }
 

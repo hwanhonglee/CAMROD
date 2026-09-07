@@ -1173,6 +1173,9 @@ class PlanningStateMachineNode(Node):
             "drop_zone_maneuver_controller",
             "reverse_parking_controller",
             "apriltag_parking_controller",
+            # SOC-aware auto parking owns the stationary controller handoff;
+            # subsequent selected-controller service states retain their source.
+            "parking_dispatcher",
         }:
             return
 

@@ -413,33 +413,33 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
     double operational_offset_m;
     bool roadside;
   };
-  // HH_260824 - Locked against active lanelet2_maps.osm map-v22 and
+  // HH_260908 - Locked against active lanelet2_maps.osm map-v23 and
   // camrod_planning/config/camping_sites.yaml. Signed values catch both a yaw
   // reversal and the reported B6 live-yaw axial skew.
   constexpr std::array<Fixture, 13> fixtures{{
-      {22.357515191, -6.908337803, 25.8687, -5.13869, -63.251744, 3.931930,
-       3.931930, false},
-      {22.454856615, -7.101474235, 19.566, -8.55747, -63.251706, -3.235030,
-       3.235030, false},
-      {19.772336735, -1.222936079, 23.3585, 0.427582, -65.285918, 3.947756,
-       3.947756, false},
-      {19.307410106, -0.152900333, 16.4276, -1.34999, -67.428154, -3.118706,
-       3.118706, false},
-      {17.382903354, 4.336168303, 20.9591, 5.86183, -66.896141, 3.888036,
-       3.888036, false},
-      {16.786389776, 5.715787406, 13.9518, 4.47866, -66.421645, -3.092795,
-       3.092795, false},
-      {15.085466253, 9.670478273, 18.6442, 11.1853, -66.942319, 3.867722,
-       3.867722, false},
-      {14.147071672, 11.827906846, 11.3705, 10.645, -66.924479, -3.018049,
-       3.018049, false},
-      {12.679983302, 15.667433959, 16.3636, 17.1396, -68.215752, 3.966901,
-       3.966901, false},
-      {11.891069361, 17.727651240, 9.02731, 16.6389, -69.184081, -3.063739,
-       3.063739, false},
-      {10.821530478, 20.516472190, 14.8445, 22.0782, -68.783648, 4.315470,
+      {22.309332184, -6.812737230, 25.0481, -5.43239, -63.251744, 3.066954,
+       3.066954, false},
+      {22.519198502, -7.229135658, 19.5211, -8.74019, -63.251706, -3.357362,
+       3.357362, false},
+      {19.741039799, -1.154935688, 22.5355, 0.131204, -65.285918, 3.076225,
+       3.076225, false},
+      {19.360276086, -0.280078799, 16.4183, -1.50301, -67.428154, -3.186030,
+       3.186030, false},
+      {17.361876481, 4.385455919, 20.1356, 5.56877, -66.896141, 3.015589,
+       3.015589, false},
+      {16.841101760, 5.590427557, 13.9438, 4.32593, -66.421645, -3.161220,
+       3.161220, false},
+      {15.063966869, 9.720986212, 17.8197, 10.8940, -66.942319, 2.995000,
+       2.995000, false},
+      {14.201172274, 11.700919449, 11.3619, 10.4913, -66.924479, -3.086203,
+       3.086203, false},
+      {12.617514199, 15.823742471, 15.4271, 16.9466, -68.215752, 3.025654,
+       3.025654, false},
+      {11.941036642, 17.596221461, 9.0187, 16.4852, -69.184081, -3.126407,
+       3.126407, false},
+      {10.655948601, 20.986400232, 13.7869, 21.9990, -72.077900, 3.290625,
        0.300000, true},
-      {10.103421888, 23.093735129, 6.85414, 22.4291, -78.439719, -3.316560,
+      {10.132763548, 22.950288933, 6.84362, 22.2775, -78.439719, -3.357247,
        0.300000, true},
       {9.626348588, 27.418616995, 0.610449, 27.604, -91.177942, -9.017805,
        0.300000, true},
@@ -1064,9 +1064,61 @@ TEST(CmdVelGatePolicy, RequiresEngageOperatorArmAndHealthyCan) {
   EXPECT_TRUE(policy.enabled(10.0, false, false));
 }
 
-TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc) {
+TEST(CmdVelGatePolicy, LowSocDefaultAllowsReturnButKeepsIndependentSafetyStops) {
+  CmdVelGatePolicy policy;
+  policy.setMissionEngage(true);
+  policy.setPlatformDriveEnable(true);
+  PlatformSafetyState platform;
+  platform.received = true;
+  platform.received_sec = 10.0;
+  platform.control_mode = 1;
+
+  // The <25% return must not be stranded at the former inclusive 20% stop.
+  for (const double percentage : {0.249, 0.20, 0.19, 0.05}) {
+    platform.battery_percentage = percentage;
+    policy.setPlatformState(platform);
+    EXPECT_TRUE(policy.enabled(10.0, false, false));
+  }
+
+  policy.setEstopSource("planning", true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setEstopSource("planning", false);
+  policy.setCostState(true, 0.0);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setCostState(false, 0.0);
+  policy.setDrTimeout(true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setDrTimeout(false);
+  EXPECT_FALSE(policy.enabled(10.6, false, false));
+  EXPECT_FALSE(policy.enabled(10.0, true, false));
+
+  // Battery fault/warning CAN bits are hardware evidence, not the removed
+  // SOC-only threshold. They and unrelated CAN faults still prohibit motion.
+  for (const uint16_t error_code : {0x0001, 0x0002, 0x0100}) {
+    platform.error_code = error_code;
+    policy.setPlatformState(platform);
+    EXPECT_FALSE(policy.enabled(10.0, false, false));
+    EXPECT_FALSE(policy.enabled(10.0, true, true));
+  }
+  platform.error_code = 0;
+  platform.control_mode = 0;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.control_mode = 1;
+  platform.vehicle_state = 1;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.vehicle_state = 0;
+  policy.setPlatformState(platform);
+  EXPECT_TRUE(policy.enabled(10.0, false, false));
+}
+
+TEST(CmdVelGatePolicy, ExplicitCriticalSocOptInKeepsItsInclusiveThreshold) {
   CmdVelGatePolicyConfig config;
   config.require_platform_drive_enable = false;
+  // This optional policy remains available, but it is no longer the default
+  // that governs automatic low-battery returns in the deployment profile.
+  config.critical_battery_stop_enabled = true;
   CmdVelGatePolicy policy(config);
   policy.setManualEngage(true);
   PlatformSafetyState platform;
@@ -3945,6 +3997,144 @@ TEST(MotionCostStop, LargeSubthresholdClusterIsUnavoidable) {
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(cluster_grid, 0.0);
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+}
+
+TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc) {
+  CmdVelGatePolicyConfig config;
+  config.require_platform_drive_enable = false;
+  // Current develop deliberately permits low-SOC return motion by default.
+  // Retain the virtual regression under the explicit critical-SOC opt-in.
+  config.critical_battery_stop_enabled = true;
+  CmdVelGatePolicy policy(config);
+  policy.setManualEngage(true);
+  PlatformSafetyState platform;
+  platform.received = true;
+  platform.received_sec = 20.0;
+  platform.control_mode = 1;
+  policy.setPlatformState(platform);
+  EXPECT_TRUE(policy.enabled(20.0, false, false));
+  EXPECT_FALSE(policy.enabled(20.6, false, false));
+
+  platform.received_sec = 21.0;
+  platform.error_code = 0x0100;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, false, false));
+  EXPECT_NE(
+      CmdVelGatePolicy::formatPlatformErrorCode(0x0100).find("motor_driver"),
+      std::string::npos);
+
+  platform.error_code = 0;
+  platform.battery_percentage = 0.19;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, false, false));
+  platform.battery_percentage = 0.20;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, false, false));
+  platform.battery_percentage = 0.21;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, true, false));
+  EXPECT_TRUE(policy.enabled(21.0, true, true));
+
+  policy.setEstopSource("test", true);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  policy.setEstopSource("test", false);
+  platform.error_code = 0x0100;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  platform.error_code = 0;
+  platform.battery_percentage = 0.19;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, true, true));
+  platform.battery_percentage = 0.21;
+  platform.received_sec = 21.0;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.6, true, true));
+  platform.received_sec = 22.0;
+  policy.setPlatformState(platform);
+  policy.setCostState(true, 23.0);
+  EXPECT_FALSE(policy.enabled(22.0, true, true));
+}
+
+TEST(CommandSourceArbiter, RecallClearanceRetainsOwnershipThroughSiteReentry) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("", "WAIT_RETURN", "", 1.0);
+  const auto clearance =
+      arbiter.setManeuverPhases("", "RECALL_CLEARANCE_WAIT", "", 2.0);
+  EXPECT_FALSE(clearance.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 10.0), CommandSourceDecision::kAllow);
+  const auto entry =
+      arbiter.setManeuverPhases("", "ALIGN_ENTRY_YAW", "", 10.1);
+  EXPECT_FALSE(entry.maneuver_started);
+  EXPECT_FALSE(entry.maneuver_finished);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.1), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("", "IDLE", "", 11.0);
+  EXPECT_EQ(arbiter.evaluate(true, 11.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, ParkingOwnerTransferRequiresStationaryExclusiveHandoff) {
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_PARKING_OWNER", 1.0);
+  EXPECT_TRUE(started.parking_started);
+  EXPECT_TRUE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+  const auto selected = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_TAG", 2.0);
+  EXPECT_FALSE(selected.maneuver_finished);
+  EXPECT_FALSE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("IDLE", "IDLE", "IDLE", 3.0);
+  EXPECT_EQ(arbiter.evaluate(true, 3.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, RecallAfterTurnCannotMoveUntilFinalReturnConfirmation) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("IDLE", "ROTATE_180", "IDLE", 1.0);
+  const auto waiting = arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "IDLE", 2.0);
+  EXPECT_FALSE(waiting.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 30.0), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "WAITING_FOR_PARKING_OWNER", 31.0);
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  arbiter.setManeuverPhases("IDLE", "CRAB_OUT", "IDLE", 32.0);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_TRUE(arbiter.campsiteActive());
+}
+
+TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_current_allow_route_reentry = false;
+  const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
+
+  for (const auto &phase : config.campsite_lanelet_bypass_phases) {
+    SCOPED_TRACE(phase);
+    auto cost_stop = makeMotionCostStop(config);
+    cost_stop.setManeuverPhases("", phase);
+    cost_stop.setMergedGrid(boundary_cost, 0.0);
+    cost_stop.setLaneletGrid(boundary_cost, 0.0);
+    const auto decision = cost_stop.evaluate(command(0.0, 0.2), 0.0);
+    EXPECT_FALSE(decision.blocked) << decision.reason;
+  }
+
+  auto dynamic_stop = makeMotionCostStop(config);
+  dynamic_stop.setManeuverPhases("", "crab_in");
+  dynamic_stop.setLaneletGrid(boundary_cost, 0.0);
+  dynamic_stop.setMergedGrid(makeGrid({{0.0, 0.5, 90}}), 0.0);
+  dynamic_stop.setSourceGrid("lidar", makeGrid({{0.0, 0.5, 90}}), 0.0);
+  const auto dynamic_decision =
+      dynamic_stop.evaluate(command(0.0, 0.2), 0.0);
+  EXPECT_TRUE(dynamic_decision.blocked);
+  EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
 }
 
 } // namespace camrod_control

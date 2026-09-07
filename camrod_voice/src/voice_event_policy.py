@@ -18,6 +18,44 @@ class VoiceEvent:
 ModuleSnapshot = Tuple[int, str]
 
 
+def parking_status_identity(
+    message: str, module_name: str = "", topic: str = ""
+) -> tuple[str, Optional[int], str]:
+    """Preserve the selected implementation and generation of parking status.
+
+    Auto dispatcher phases are shared by both methods, so PARKED alone cannot
+    identify docking. Legacy reverse status calls its module merely 'parking';
+    only its explicit controller topic identifies that implementation safely.
+    """
+    fields: dict[str, str] = {}
+    repeated: set[str] = set()
+    for token in str(message).replace(";", " ").split():
+        key, separator, value = token.partition("=")
+        if separator:
+            if key in fields:
+                repeated.add(key)
+            fields[key] = value
+    if topic == "/parking/status" or "parking_method" in fields:
+        method = fields.get("parking_method", "").lower()
+        attempt_text = fields.get("attempt", "")
+        if (
+            method not in {"apriltag", "reverse", "none"}
+            or not attempt_text.isascii()
+            or not attempt_text.isdecimal()
+            or repeated.intersection({"parking_method", "attempt"})
+        ):
+            return "", None, "dispatcher"
+        return method, int(attempt_text), "dispatcher"
+    if topic.endswith("/reverse_parking_controller/status"):
+        return "reverse", None, "legacy:reverse"
+    if (
+        topic.endswith("/apriltag_parking_controller/status")
+        or module_name == "apriltag_parking_controller"
+    ):
+        return "apriltag", None, "legacy:apriltag"
+    return "", None, "unknown"
+
+
 class VoiceEventPolicy:
     """Combine asynchronous inputs into ordered, de-duplicated events."""
 
@@ -47,6 +85,7 @@ class VoiceEventPolicy:
     # Parking-controller phases, shared by the reverse and AprilTag controllers.
     _DOCKING_ACTIVE_PHASES = frozenset(
         {
+            "WAITING_FOR_PARKING_OWNER",
             "REVERSE_APPROACH",
             "WAIT_FOR_CHARGING",
             # AprilTag parking uses the service-state spelling below and may
@@ -134,6 +173,9 @@ class VoiceEventPolicy:
         self.engaged = False
 
         self.docking_phase = ""
+        self.campsite_maneuver_phase = ""
+        self._recall_turnaround_active = False
+        self._recall_clearance_announced = False
 
         self.startup_announced = False
         self.ready_announced = False
@@ -146,6 +188,11 @@ class VoiceEventPolicy:
         self._announced_arrival_signatures: set[tuple[object, ...]] = set()
         self._obstacle_announced = False
         self._docking_active = False
+        self._parking_identity: Optional[tuple[str, str, Optional[int]]] = None
+        self._parking_dispatcher_seen = False
+        self._docking_started = False
+        self._docking_success_announced = False
+        self._docking_failure_announced = False
 
     def announce_startup(self) -> list[VoiceEvent]:
         if self.startup_announced:
@@ -183,34 +230,114 @@ class VoiceEventPolicy:
         self._sync_trip()
         return self._events_after_update()
 
-    def update_docking(self, phase: str) -> list[VoiceEvent]:
-        """Map parking-controller phases onto the docking cues."""
-
+    def update_docking(
+        self,
+        phase: str,
+        *,
+        parking_method: str = "",
+        attempt: Optional[int] = None,
+        source: str = "",
+    ) -> list[VoiceEvent]:
+        """Announce actual AprilTag docking, never ordinary reverse parking."""
         phase = str(phase).strip().upper()
-        if phase == self.docking_phase:
+        method = str(parking_method).strip().lower()
+        if method not in {"apriltag", "reverse", "none"}:
             return []
-        self.docking_phase = phase
+        if source == "dispatcher":
+            if type(attempt) is not int or attempt < 0:
+                return []
+            previous_attempt = (
+                self._parking_identity[2]
+                if self._parking_dispatcher_seen and self._parking_identity
+                else None
+            )
+            if previous_attempt is not None and attempt < previous_attempt:
+                return []
+            if (
+                previous_attempt == attempt and self._parking_identity is not None
+                and method != self._parking_identity[1]
+            ):
+                # Selection is immutable within one dispatcher generation.
+                return []
+            self._parking_dispatcher_seen = True
+        elif self._parking_dispatcher_seen:
+            # Private/legacy controller messages cannot replace the selected
+            # public dispatcher owner or complete a different parking attempt.
+            return []
 
-        was_active = self._docking_active
-        self._docking_active = phase in self._DOCKING_ACTIVE_PHASES
-        # A strict idle-readiness rendezvous is only the contract for the
-        # system.ready cue.  Parking can legitimately begin before that one
-        # snapshot ever exists (for example while the gate leaves charging).
+        identity = (source, method, attempt)
+        previous_phase = self.docking_phase
+        # Dispatcher abort invalidates in-flight callbacks by incrementing its
+        # generation before ERROR. Preserve that current run's failure cue.
+        abort_of_current_run = (
+            source == "dispatcher" and phase == "ERROR" and self._docking_started
+            and self._parking_identity is not None
+            and self._parking_identity[:2] == identity[:2]
+        )
+        new_run = identity != self._parking_identity and not abort_of_current_run
+        # Legacy controllers have no generation field; retain their previous
+        # terminal-to-active retry behavior within their own known method.
+        legacy_retry = (
+            source != "dispatcher" and previous_phase in {"PARKED", "ERROR"}
+            and phase in self._DOCKING_ACTIVE_PHASES
+        )
+        if new_run or legacy_retry or phase == "IDLE":
+            self._docking_started = False
+            self._docking_success_announced = False
+            self._docking_failure_announced = False
+        self._parking_identity = identity
+        self.docking_phase = phase
+        self._docking_active = (
+            method == "apriltag" and phase in self._DOCKING_ACTIVE_PHASES
+        )
+        # No verified ordinary-parking WAV exists. Silence is preferable to a
+        # false docking claim or publishing an unmapped parking.* audio key.
+        if method != "apriltag":
+            return []
         if not self.startup_announced:
             return []
         if self._docking_active:
-            if was_active:
+            if self._docking_started:
                 return []
+            self._docking_started = True
             return [VoiceEvent("docking.started", priority=1)]
-        if not was_active:
-            # A controller that reports PARKED or ERROR without ever starting a
-            # docking run is reporting stale state, not this robot's outcome.
+        if not self._docking_started:
             return []
-        if phase in self._DOCKING_SUCCESS_PHASES:
+        if phase in self._DOCKING_SUCCESS_PHASES and not self._docking_success_announced:
+            self._docking_success_announced = True
             return [VoiceEvent("docking.succeeded", priority=1)]
-        if phase in self._DOCKING_FAILURE_PHASES:
+        if (
+            phase in self._DOCKING_FAILURE_PHASES
+            and not self._docking_failure_announced
+            and not self._docking_success_announced
+        ):
+            self._docking_failure_announced = True
             return [VoiceEvent("docking.failed", priority=2)]
+        if phase not in self._DOCKING_SUCCESS_PHASES | self._DOCKING_FAILURE_PHASES:
+            self._docking_started = False
         return []
+
+    def update_campsite_maneuver(self, phase: str) -> list[VoiceEvent]:
+        """Announce site clearance once before a recalled robot re-enters.
+
+        The controller's phase is authoritative here: several motion phases
+        share RETURN_WITH_CARGO, while the post-turn RECALL_RETURN_WAIT reuses
+        GUEST_LOADING_WAIT. Keep travel cues suppressed through that second
+        loading stop until explicit final confirmation and the actual exit.
+        Shared service messages alone cannot distinguish these phases and may
+        also include delayed UI/planning updates.
+        B11–B13 never enter RECALL_CLEARANCE_WAIT and retain their old audio.
+        """
+
+        self.campsite_maneuver_phase = str(phase).strip().upper()
+        if self.campsite_maneuver_phase == "RECALL_CLEARANCE_WAIT":
+            self._recall_turnaround_active = True
+        elif self.campsite_maneuver_phase in {"IDLE", "DONE", "ERROR"}:
+            # Cancellation/error also reset the cue so a deliberate retry can
+            # ask occupants to clear the site again, including the same site.
+            self._recall_turnaround_active = False
+            self._recall_clearance_announced = False
+        return self._events_after_update()
 
     def update_action_server(self, ready: bool) -> list[VoiceEvent]:
         self.action_server_ready = bool(ready)
@@ -356,6 +483,18 @@ class VoiceEventPolicy:
             self.ready_announced = True
             events.append(VoiceEvent("system.ready", priority=1))
 
+        if (
+            self.startup_announced
+            and self.campsite_maneuver_phase == "RECALL_CLEARANCE_WAIT"
+            and not self._recall_clearance_announced
+        ):
+            self._recall_clearance_announced = True
+            # Clearance is spoken while stationary, so it must not depend on
+            # an enabled motion gate or the idle-readiness rendezvous. Cut in
+            # ahead of ordinary travel/arrival cues during the timed pause.
+            events.append(VoiceEvent(
+                "navigation.recall_clear_site", priority=2, interrupt=True))
+
         motion_event = self._motion_event()
         if motion_event is not None:
             events.append(motion_event)
@@ -425,6 +564,7 @@ class VoiceEventPolicy:
         return (
             self.startup_announced
             and self.engaged
+            and not self._recall_turnaround_active
             and self._trip_identity is not None
             and self._trip_identity in self._departed_trips
         )
@@ -451,7 +591,7 @@ class VoiceEventPolicy:
     def obstacle_repeat_events(self) -> list[VoiceEvent]:
         """Standing explanation while the robot waits out a blocked route."""
 
-        if not self.obstacle_hold_announced:
+        if not self.obstacle_hold_announced or self._recall_turnaround_active:
             return []
         return [VoiceEvent("navigation.please_step_aside", priority=1)]
 
@@ -460,6 +600,7 @@ class VoiceEventPolicy:
             not self.startup_announced
             or not self.operational
             or not self.engaged
+            or self._recall_turnaround_active
         ):
             return None
 
@@ -480,7 +621,11 @@ class VoiceEventPolicy:
         return VoiceEvent(key, priority=1)
 
     def _arrival_event(self) -> Optional[VoiceEvent]:
-        if not self.startup_announced or not self._valid_goal():
+        if (
+            not self.startup_announced
+            or not self._valid_goal()
+            or self._recall_turnaround_active
+        ):
             return None
         if self.planning_state != "GOAL_REACHED":
             return None

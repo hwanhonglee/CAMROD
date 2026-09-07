@@ -324,7 +324,7 @@ mirror.
 | `require_exact_parking_approach_for_auto` | `true` | Automatic Return cannot skip the exact lanelet-point correction |
 | `parking_approach_goal_topic` | `/planning/goal_pose_snapped` | Nearest lanelet centerline projection of the semantic drop-zone center |
 | `parking_approach_goal_max_station_distance_m` | `8.0 m` | Rejects a snapped point unrelated to the selected drop zone |
-| `parking_approach_position_tolerance_m` | `0.05 m` | Required XY error before settling |
+| `parking_approach_position_tolerance_m` | `0.20 m` | Required XY error before settling after Nav2's `0.10 m` route handoff |
 | `parking_approach_proportional_gain` | `0.8` | Converts remaining XY error into bounded body-frame velocity |
 | `parking_approach_minimum_speed_mps` | `0.06 m/s` raw | Prevents correction stalling immediately outside tolerance |
 | `parking_approach_maximum_speed_mps` | `0.20 m/s` raw | Final gate limits the platform to `0.10 m/s` |

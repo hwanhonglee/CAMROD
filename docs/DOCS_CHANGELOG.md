@@ -27,7 +27,7 @@ and per-site field-operation metrics. -->
 |---|---|
 | Radar display | Finite side/rear ranges are `ECHO`; only fresh `/sensing/radar/obstacle_evidence` marks `COST`. Side thresholds remain `0.10 m`, so a `0.43 m` return cannot itself stop motion |
 | Site 7 handoff | `ALIGN_RETRACE_YAW` reports stationary settle versus corrective turn and retains the required `0.8 s` yaw-rate proof |
-| Drop-zone parking | Corrects to the mission-correlated snapped lanelet point within `0.05 m` before 90-degree alignment and reverse/tag parking; bounded by `0.75 m` and `12 s` |
+| Drop-zone parking | Settles at the mission-correlated snapped lanelet point within `0.20 m` after Nav2's `0.10 m` handoff, before 90-degree alignment and reverse/tag parking; bounded by `0.75 m` and `12 s` |
 | Config synchronization | Restores the package-owned parking profile as the runtime source of truth and makes the bringup deployment mirror byte-identical |
 | Field evidence UI | Adds independently scaled B1-B13 distance/time trend lines beside exact-value bars, plus attempts, completion rate, latest run, and current run values from existing records |
 | Visual evidence | Stores checksummed desktop/mobile PNG, responsive GIF, and radar ECHO/COST capture under the UI module test-results tree; values are explicitly fixture data |

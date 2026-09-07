@@ -55,22 +55,33 @@ def _resolve_default_camping_sites_yaml() -> str:
 
 
 def _resolve_default_drop_zones_yaml() -> str:
-    """Resolve the authored station polygon used for terminal validation."""
-    try:
-        map_share = get_package_share_directory('camrod_map')
-        candidate = os.path.join(map_share, 'config', 'drop_zones.yaml')
+    """Resolve the deployed station authority, with the map mirror as fallback."""
+    for package_name, relative_parts in (
+        ('camrod_bringup', ('config', 'map', 'drop_zones.yaml')),
+        ('camrod_map', ('config', 'drop_zones.yaml')),
+    ):
+        try:
+            candidate = os.path.join(
+                get_package_share_directory(package_name), *relative_parts
+            )
+            if os.path.isfile(candidate):
+                return candidate
+        except PackageNotFoundError:
+            pass
+
+    for source_relative_parts in (
+        ('camrod_bringup', 'config', 'map', 'drop_zones.yaml'),
+        ('camrod_map', 'config', 'drop_zones.yaml'),
+    ):
+        candidate = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), '..', '..', '..',
+                *source_relative_parts,
+            )
+        )
         if os.path.isfile(candidate):
             return candidate
-    except PackageNotFoundError:
-        pass
-
-    source_ws_candidate = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), '..', '..', '..',
-            'camrod_map', 'config', 'drop_zones.yaml',
-        )
-    )
-    return source_ws_candidate if os.path.isfile(source_ws_candidate) else ''
+    return ''
 
 
 def generate_launch_description():
@@ -309,8 +320,8 @@ def generate_launch_description():
     )
     parking_method_arg = DeclareLaunchArgument(
         'parking_method',
-        default_value='reverse',
-        description='Selected final parking controller: reverse or apriltag',
+        default_value='auto',
+        description='Final parking selection: auto, reverse or apriltag',
     )
     charging_departure_delay_s_arg = DeclareLaunchArgument(
         'charging_departure_delay_s',
@@ -371,6 +382,11 @@ def generate_launch_description():
         'low_battery_return_threshold_percent',
         default_value='35.0',
         description='SOC percent that starts the finish-current-mission return latch',
+    )
+    urgent_battery_return_threshold_percent_arg = DeclareLaunchArgument(
+        'urgent_battery_return_threshold_percent',
+        default_value='25.0',
+        description='Below this SOC percent, interrupt the current task and return for charging',
     )
     ui_backend = Node(
         package='camrod_ui',
@@ -517,6 +533,10 @@ def generate_launch_description():
                 LaunchConfiguration('low_battery_return_threshold_percent'),
                 value_type=float,
             ),
+            'urgent_battery_return_threshold_percent': ParameterValue(
+                LaunchConfiguration('urgent_battery_return_threshold_percent'),
+                value_type=float,
+            ),
             'publish_platform_drive_enable_with_engage': True,
             'default_goal_frame_id': 'map',
             # HH_260617: Fallback destination uses the same mission-key contract.
@@ -641,6 +661,7 @@ def generate_launch_description():
         minimum_mission_dispatch_battery_percent_arg,
         low_battery_return_after_current_mission_arg,
         low_battery_return_threshold_percent_arg,
+        urgent_battery_return_threshold_percent_arg,
         ui_backend,
         guest_ui,
         operator_ui_window,

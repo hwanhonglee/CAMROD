@@ -65,7 +65,7 @@ dwell, front radar near-field range, and external-simulator ownership. -->
 | Recovery release budget | `50` per contact region; reset after `0.75 m` signed forward progress; `5 s` is fallback-only when contact pose is unavailable |
 | Normal/crab selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann; explicit campsite/recovery lateral commands select crab |
 | Campsite return | `CRAB_OUT` finishes within `0.15 m` of the fresh live lanelet projection, holds zero `1.20 s`, and plans from current XY; the exact entry anchor is stale-data fallback; B11-B13 retain their forward loop |
-| Final parking | route arrival corrects to the exact snapped lanelet point within `0.05 m`, then aligns 90 degrees; reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; charging feedback immediately commands zero |
+| Final parking | route arrival settles at the snapped lanelet point within `0.20 m` after Nav2's `0.10 m` handoff, then aligns 90 degrees; reverse slowdown last `0.30 m`; AprilTag camera-range ramp `0.80 -> 0.40 m`; charging feedback immediately commands zero |
 | Radar stop/display | FRONT1/2 stop candidates end at an absolute `0.30 m` sensor-face range; side/rear use an absolute `0.10 m` cutoff, with REAR disabled because its chassis echo fills that window; the UI distinguishes finite raw `ECHO` from authoritative cost-grid `COST` evidence |
 | Charging departure | destination is queued for a `7.0 s` stopped dwell, then exactly one parking cancel and station `EXIT` are released before the site goal |
 | External simulation | `external_simulator:=true` follows fresh map-aligned `/odom` instead of integrating `cmd_vel`; platform-status ownership stays explicit |

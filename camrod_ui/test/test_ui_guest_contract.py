@@ -20,6 +20,7 @@ from camrod_ui.ui_backend_node import UiBackendNode
 from camrod_ui.ui_guest_node import (
     UiGuestNode,
     destination_request_owner,
+    guest_battery_parking_policy_payload,
     guest_gate_safety_hold,
     guest_mission_cancel_available,
     guest_mission_dispatch_ready,
@@ -95,7 +96,10 @@ class GuestUiContractTest(unittest.TestCase):
 
     def test_platform_battery_fraction_matches_robot_ui_percent(self) -> None:
         self.assertEqual(normalize_platform_battery_percent(0.80), 80)
-        self.assertEqual(normalize_platform_battery_percent(0.349), 35)
+        self.assertEqual(normalize_platform_battery_percent(0.349), 34)
+        self.assertEqual(normalize_platform_battery_percent(0.35), 35)
+        self.assertEqual(normalize_platform_battery_percent(0.249), 24)
+        self.assertEqual(normalize_platform_battery_percent(0.25), 25)
         self.assertEqual(normalize_platform_battery_percent(1.20), 100)
 
     def test_guest_dispatch_requires_stationary_state_and_soc_margin(self) -> None:
@@ -538,19 +542,15 @@ class GuestUiContractTest(unittest.TestCase):
         self.assertEqual(node._active_site, "B8")
         self.assertEqual(node._active_request_intent, "recall")
         self.assertEqual(node._active_request_owner, "guest")
-        self.assertEqual(
-            broadcasts[0], {
-                "site": "B8",
-                "request_intent": "recall",
-                "request_owner": "guest",
-                "mission_generation": 9,
-                "dispatch_accepted": True,
-                "dispatch_error": "",
-                "dispatch_request_site": "B8",
-                "mission_retryable": False,
-                "identity_revision": 1,
-            }
-        )
+        self.assertEqual(broadcasts[0]["site"], "B8")
+        self.assertEqual(broadcasts[0]["request_intent"], "recall")
+        self.assertEqual(broadcasts[0]["request_owner"], "guest")
+        self.assertEqual(broadcasts[0]["mission_generation"], 9)
+        self.assertTrue(broadcasts[0]["dispatch_accepted"])
+        self.assertEqual(broadcasts[0]["dispatch_error"], "")
+        self.assertEqual(broadcasts[0]["dispatch_request_site"], "B8")
+        self.assertFalse(broadcasts[0]["mission_retryable"])
+        self.assertEqual(broadcasts[0]["identity_revision"], 1)
         self.assertEqual(broadcasts[1]["site"], "B8")
         self.assertEqual(broadcasts[1]["request_intent"], "recall")
         self.assertEqual(broadcasts[1]["phase"], "arrived")
@@ -854,6 +854,18 @@ class GuestUiContractTest(unittest.TestCase):
             destroy_timer=lambda timer: events.append(("destroy_timer", timer)),
             get_logger=lambda: Logger(),
         )
+        backend._drop_zone_polygons = [
+            [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
+        ]
+        backend._latest_arrival_pose = SimpleNamespace(
+            header=SimpleNamespace(
+                frame_id="map", stamp=SimpleNamespace(sec=100, nanosec=0)
+            ),
+            pose=SimpleNamespace(position=SimpleNamespace(x=1.0, y=1.0)),
+        )
+        backend._latest_arrival_pose_time_s = 100.0
+        backend.site_arrival_pose_timeout_s = 2.0
+        backend._now_s = lambda: 100.1
         backend._mission_dispatch_battery_block = lambda site: (
             UiBackendNode._mission_dispatch_battery_block(backend, site)
         )
@@ -986,7 +998,8 @@ class GuestUiContractTest(unittest.TestCase):
         for text in (
             "로봇 호출 위치 선택",
             "사이트 내부로 들어가지 않고 도로 측 대기점으로 이동합니다.",
-            "적재 완료 · 로봇 복귀",
+            "정리 완료 · 사이트 재진입",
+            "짐 싣기 완료 · 복귀",
             "수령 완료 · 로봇 복귀",
             "도로 측 대기점으로 이동 중",
             "짐 싣기 대기",
@@ -1093,6 +1106,184 @@ class GuestUiContractTest(unittest.TestCase):
             )
         )
         self.assertFalse(guest_gate_safety_hold("ENABLED", "system warning"))
+
+    def test_backend_battery_parking_policy_is_forwarded_and_reconnectable(
+        self,
+    ) -> None:
+        broadcasts = []
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _service_state=int(AvgServiceState.RETURN_WITH_CARGO),
+            _active_site="B4",
+            _active_request_intent="recall",
+            _active_request_owner="guest",
+            _active_mission_generation=7,
+            _active_request_retryable=False,
+            _pending_dispatch_nonce="",
+            site_names=[f"B{index}" for index in range(1, 14)],
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: SimpleNamespace(
+                info=lambda _: None,
+                warn=lambda _: None,
+            ),
+        )
+        policy = {
+            "battery_return_pending": True,
+            "battery_return_started": True,
+            "battery_return_waiting_for_user": False,
+            "battery_return_urgent": True,
+            "charging_required": True,
+            "parking_policy_mode": "automatic",
+            "parking_selected_method": "apriltag",
+            "mission_execution_error": "site entry unavailable",
+            "recall_final_return_ready": True,
+            "urgent_return_battery_percentage": 25.0,
+        }
+        identity = {
+            "accepted": True,
+            "request_source": "service_lifecycle",
+            "active_site": "B4",
+            "active_source": "guest:dispatch:r=current",
+            "active_intent": "recall",
+            "active_generation": 7,
+        }
+        message = String(data=json.dumps({**identity, **policy}))
+        UiGuestNode._on_destination_dispatch_status(node, message)
+        for key, value in policy.items():
+            self.assertEqual(broadcasts[-1][key], value)
+
+        # A partial lifecycle update does not turn off a latched urgent return.
+        UiGuestNode._on_destination_dispatch_status(
+            node,
+            String(data=json.dumps(identity)),
+        )
+        self.assertTrue(broadcasts[-1]["battery_return_urgent"])
+        # This same persisted snapshot is merged into a new WebSocket's first
+        # frame; no live battery threshold is recomputed by the Guest gateway.
+        self.assertEqual(
+            guest_battery_parking_policy_payload(
+                {}, node._battery_parking_policy
+            ),
+            policy,
+        )
+        UiGuestNode._on_destination_dispatch_status(
+            node,
+            String(
+                data=json.dumps(
+                    {
+                        **identity,
+                        "battery_return_urgent": False,
+                        "charging_required": False,
+                    }
+                )
+            ),
+        )
+        self.assertFalse(broadcasts[-1]["battery_return_urgent"])
+        self.assertFalse(broadcasts[-1]["charging_required"])
+        self.assertEqual(
+            broadcasts[-1]["mission_execution_error"],
+            "site entry unavailable",
+        )
+        self.assertTrue(broadcasts[-1]["recall_final_return_ready"])
+
+    def test_guest_return_requires_matching_boolean_stage_and_no_execution_error(
+        self,
+    ) -> None:
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _active_site="B4",
+            _active_request_intent="recall",
+            _active_request_owner="guest",
+            _active_mission_generation=42,
+            _guest_return_request_pending=False,
+            _battery_parking_policy={
+                "recall_final_return_ready": True,
+                "mission_execution_error": "",
+            },
+        )
+        for old_stage in (False, "true", "false", 1, None):
+            self.assertEqual(
+                UiGuestNode._reserve_guest_return_request(node, old_stage)[0:2],
+                (False, "recall_completion_stage_mismatch"),
+            )
+        self.assertTrue(
+            UiGuestNode._reserve_guest_return_request(node, True)[0]
+        )
+        self.assertEqual(
+            UiGuestNode._reserve_guest_return_request(node, True)[1],
+            "request_in_progress",
+        )
+        node._guest_return_request_pending = False
+        node._battery_parking_policy["mission_execution_error"] = (
+            "site entry failed"
+        )
+        self.assertEqual(
+            UiGuestNode._reserve_guest_return_request(node, True)[1],
+            "campsite_maneuver_failed",
+        )
+        node._battery_parking_policy = {"recall_final_return_ready": False}
+        self.assertEqual(
+            UiGuestNode._reserve_guest_return_request(node, True)[1],
+            "recall_completion_stage_mismatch",
+        )
+        self.assertTrue(
+            UiGuestNode._reserve_guest_return_request(node, False)[0]
+        )
+
+    def test_stale_dispatch_cannot_overwrite_battery_parking_policy(self) -> None:
+        broadcasts = []
+        original = guest_battery_parking_policy_payload(
+            {"battery_return_urgent": True}
+        )
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _active_mission_generation=0,
+            _pending_dispatch_nonce="new_request",
+            _battery_parking_policy=dict(original),
+            site_names=["B1", "B2"],
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: SimpleNamespace(warn=lambda _: None),
+        )
+        UiGuestNode._on_destination_dispatch_status(
+            node,
+            String(
+                data=json.dumps(
+                    {
+                        "accepted": True,
+                        "request_source": "guest:dispatch:r=old_request",
+                        "active_site": "B1",
+                        "active_source": "guest",
+                        "active_intent": "recall",
+                        "active_generation": 1,
+                        "battery_return_urgent": False,
+                    }
+                )
+            ),
+        )
+        self.assertEqual(node._battery_parking_policy, original)
+        self.assertEqual(broadcasts, [])
+
+    def test_guest_policy_rejects_malformed_types_without_erasing_valid_state(
+        self,
+    ) -> None:
+        previous = guest_battery_parking_policy_payload(
+            {
+                "battery_return_urgent": True,
+                "parking_selected_method": "reverse",
+                "urgent_return_battery_percentage": 25.0,
+            }
+        )
+        result = guest_battery_parking_policy_payload(
+            {
+                "battery_return_urgent": "false",
+                "parking_selected_method": None,
+                "urgent_return_battery_percentage": float("nan"),
+            },
+            previous,
+        )
+        self.assertEqual(result, previous)
 
 
 if __name__ == "__main__":
