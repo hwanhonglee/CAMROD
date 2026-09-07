@@ -354,6 +354,10 @@ class PlanningStateMachineNode(Node):
         self.recall_requested = False
         self.recall_target_key: str = ""
         self.recall_site_name: str = ""
+        # Preserve the typed UI request stamp only while its auto-goal is
+        # waiting to be published.  This completes the exact correlation chain
+        # request -> auto goal -> GoalSnapper output after a backend restart.
+        self.recall_correlation_stamp: Optional[RosTime] = None
         self.last_recalled_mission_key: str = ""
 
         self.prev_state_level: Optional[int] = None
@@ -1277,12 +1281,21 @@ class PlanningStateMachineNode(Node):
         self.recall_site_name = site_name
         self.last_recalled_mission_key = site_name or self.last_recalled_mission_key
         self.recall_requested = True
+        request_stamp = RosTime()
+        request_stamp.sec = int(msg.header.stamp.sec)
+        request_stamp.nanosec = int(msg.header.stamp.nanosec)
+        self.recall_correlation_stamp = request_stamp
         # Latch recall before publishing into GoalSnapper. A multi-threaded
         # executor may deliver the snapped-goal echo immediately; setting this
         # afterwards creates a race where _on_goal classifies it as DELIVERY.
         self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_topic")
 
-        if self._publish_auto_goal(target_key, f"recall:{site_name or 'unspecified'}", force=True):
+        if self._publish_auto_goal(
+            target_key,
+            f"recall:{site_name or 'unspecified'}",
+            force=True,
+            correlation_stamp=self.recall_correlation_stamp,
+        ):
             self.recall_requested = False
             self.warn_goal_sent = False
 
@@ -1311,6 +1324,9 @@ class PlanningStateMachineNode(Node):
             target_key = self._resolve_recall_target_key(site_name)
             self.recall_target_key = target_key
             self.recall_requested = True
+            # Scenario commands have no typed UI request whose stamp could
+            # authorize a UI-side campsite route anchor.
+            self.recall_correlation_stamp = None
             self._set_scenario(
                 self.SCENARIO_RECALL_TO_SITE, "scenario_command"
             )
@@ -1350,7 +1366,13 @@ class PlanningStateMachineNode(Node):
             return self._ok_level
         return max(self.module_levels.values())
 
-    def _publish_auto_goal(self, key_name: str, source: str, force: bool = False) -> bool:
+    def _publish_auto_goal(
+        self,
+        key_name: str,
+        source: str,
+        force: bool = False,
+        correlation_stamp: Optional[RosTime] = None,
+    ) -> bool:
         if key_name == self.return_mission_key:
             # HH_260721 - A campsite maneuver moves outside the lanelet planner.
             # Wait for centerline snapping to reflect the completed crab exit
@@ -1369,7 +1391,23 @@ class PlanningStateMachineNode(Node):
             return False
 
         msg = AvgPoseStamped()
-        msg.header.stamp = now.to_msg()
+        # HH_260907 - Typed campsite recall carries a UI-generated correlation
+        # stamp. Preserve a well-formed, non-zero value through the internal
+        # auto-goal boundary so GoalSnapper's output can be tied to the exact UI
+        # mission. External/legacy requests with a missing or invalid stamp keep
+        # the historical local-now behavior.
+        stamp_sec = int(getattr(correlation_stamp, "sec", 0))
+        stamp_nanosec = int(getattr(correlation_stamp, "nanosec", 0))
+        if (
+            correlation_stamp is not None
+            and stamp_sec >= 0
+            and 0 <= stamp_nanosec < 1_000_000_000
+            and (stamp_sec > 0 or stamp_nanosec > 0)
+        ):
+            msg.header.stamp.sec = stamp_sec
+            msg.header.stamp.nanosec = stamp_nanosec
+        else:
+            msg.header.stamp = now.to_msg()
         msg.header.frame_id = kp.frame_id
         msg.pose.position.x = kp.x
         msg.pose.position.y = kp.y
@@ -1686,7 +1724,11 @@ class PlanningStateMachineNode(Node):
         elif self.recall_requested:
             self.state = "RECALLED"
             self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_retry")
-            if self._publish_auto_goal(self.recall_target_key, self.active_goal_source):
+            if self._publish_auto_goal(
+                self.recall_target_key,
+                self.active_goal_source,
+                correlation_stamp=self.recall_correlation_stamp,
+            ):
                 self.recall_requested = False
                 self.warn_goal_sent = False
         elif self.return_requested:

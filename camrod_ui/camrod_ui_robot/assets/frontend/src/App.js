@@ -1037,6 +1037,11 @@ function App() {
   });
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
   const wsRef = useRef(null);
+  // Treat every reconnect as a new authority channel. Callbacks from a closed
+  // socket must never roll the current mission back to an older snapshot.
+  const wsMountedRef = useRef(false);
+  const wsGenerationRef = useRef(0);
+  const wsReconnectTimerRef = useRef(null);
   const idleTimerRef = useRef(null);                    // 전체 OFF 시 10초 타이머
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
@@ -1045,6 +1050,21 @@ function App() {
   // roadside wait pose. Keep the intent explicit through both confirmations.
   const [destinationIntent, setDestinationIntent] = useState('delivery');
   const destinationIntentRef = useRef('delivery');
+  // The backend owns mission admission. Keep its exact identity so OFF and
+  // Return commands cannot affect a mission accepted after this UI snapshot.
+  const missionDispatchActiveRef = useRef(false);
+  const missionDispatchGenerationRef = useRef(0);
+  const missionDispatchSiteRef = useRef('');
+  const missionDispatchOwnerRef = useRef('');
+  const missionAuthorityRevisionRef = useRef(0);
+  const [missionDispatch, setMissionDispatch] = useState({
+    active: false,
+    generation: 0,
+    site: '',
+    owner: '',
+    intent: '',
+  });
+  const recallRequestEpochRef = useRef(0);
   const [recallRequestPending, setRecallRequestPending] = useState(false);
   const [activeRecallSite, setActiveRecallSite] = useState(null);
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
@@ -1178,6 +1198,29 @@ function App() {
     && ACTIVE_MANUAL_PHASES.has(missionPhase);
   const displayedReturning =
     isReturning && missionPhase !== 'INITIALIZING';
+  // RETURN_WITH_CARGO is shared by Delivery and Recall. The accepted mission
+  // identity, rather than a generic service-state number, selects UI wording
+  // and determines which client is allowed to send Return.
+  const hasExplicitRecallIntent = Boolean(activeRecallSite);
+  const recallArrivalPresentation =
+    hasExplicitRecallIntent
+    && (
+      serviceStateName === 'GUEST_LOADING_WAIT'
+      || activeRecallSite === arrivedSite
+    );
+  const recallReturnPresentation =
+    hasExplicitRecallIntent
+    && serviceStateName === 'RETURN_WITH_CARGO';
+  const robotOwnsReturn =
+    missionDispatch.active
+    && missionDispatch.site === arrivedSite
+    && missionDispatch.generation > 0
+    && ['operator', 'robot'].includes(missionDispatch.owner);
+  const guestOwnsReturn =
+    missionDispatch.active
+    && missionDispatch.site === arrivedSite
+    && missionDispatch.generation > 0
+    && missionDispatch.owner === 'guest';
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1270,17 +1313,40 @@ function App() {
 
   // ── WebSocket 연결 함수 ─────────────────────────────────────────────────
   const connect = useCallback(() => {
+    if (!wsMountedRef.current) return;
+    if (wsReconnectTimerRef.current !== null) {
+      clearTimeout(wsReconnectTimerRef.current);
+      wsReconnectTimerRef.current = null;
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host = window.location.host || 'localhost:8010';
+    const connectionGeneration = wsGenerationRef.current + 1;
+    wsGenerationRef.current = connectionGeneration;
 
     // FastAPI 백엔드의 WebSocket 엔드포인트에 연결 (same host:port as HTTP)
     const ws = new WebSocket(`${protocol}://${host}/ws`);
+    wsRef.current = ws;
 
     // 연결 성공 시 → 연결 상태 녹색 표시
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) {
+        ws.close();
+        return;
+      }
+      setConnected(true);
+    };
 
     // 서버에서 메시지 수신 시 → 상태 업데이트
     ws.onmessage = (event) => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
       const data = JSON.parse(event.data);
 
       if (data.error === 'battery_below_mission_minimum') {
@@ -1299,6 +1365,41 @@ function App() {
         setEngageState(false);
         setMissionBlockMessage(formatMissionBlockMessage(data));
         return;
+      }
+      if (data.error === 'mission_already_active') {
+        setSelectedSite(null);
+        setShowMoveConfirm(false);
+        setShowMoveVerify(false);
+        setMoveVerifyInput('');
+        setMoveVerifyError(false);
+        setMissionBlockMessage(
+          data.message || '다른 목적지 운행이 이미 진행 중입니다.'
+        );
+      }
+      if (
+        data.error === 'stale_or_unowned_return'
+        || data.error === 'stale_or_unowned_destination_stop'
+        || data.error === 'return_not_at_service_wait'
+      ) {
+        // Restore the authoritative wait state after rejecting an optimistic
+        // command from an older browser snapshot.
+        setIsReturning(false);
+        setMissionBlockMessage(
+          data.message || '현재 운행과 일치하지 않는 이전 요청이 취소되었습니다.'
+        );
+        const waitSite = String(data.return_wait_site || '').trim();
+        const waitOwner = String(data.return_wait_owner || '').trim();
+        if (
+          data.return_wait_active === true
+          && SITE_NAMES.includes(waitSite)
+          && ['operator', 'robot'].includes(waitOwner)
+        ) {
+          setArrivedSite(waitSite);
+          setShowArrivalComplete(true);
+        } else {
+          setArrivedSite(null);
+          setShowArrivalComplete(false);
+        }
       }
 
       if ('battery_return_pending' in data) {
@@ -1365,6 +1466,58 @@ function App() {
         });
       }
 
+      // The backend snapshot is the sole mission-admission authority shared
+      // with Guest UI. Apply it before presentation-only site state.
+      if ('mission_dispatch_active' in data) {
+        const dispatchActive = Boolean(data.mission_dispatch_active);
+        const dispatchIntent = String(data.mission_dispatch_intent || '');
+        const dispatchSite = String(data.mission_dispatch_site || '');
+        const dispatchGeneration = dispatchActive
+          ? Number(data.mission_dispatch_generation || 0)
+          : 0;
+        const dispatchOwner = dispatchActive
+          ? String(data.mission_dispatch_owner || '')
+          : '';
+        if (
+          missionDispatchActiveRef.current !== dispatchActive
+          || missionDispatchGenerationRef.current !== dispatchGeneration
+          || missionDispatchSiteRef.current !== (dispatchActive ? dispatchSite : '')
+          || missionDispatchOwnerRef.current !== dispatchOwner
+        ) {
+          missionAuthorityRevisionRef.current += 1;
+        }
+        missionDispatchActiveRef.current = dispatchActive;
+        missionDispatchGenerationRef.current = dispatchGeneration;
+        missionDispatchSiteRef.current = dispatchActive ? dispatchSite : '';
+        missionDispatchOwnerRef.current = dispatchOwner;
+        setMissionDispatch({
+          active: dispatchActive,
+          generation: dispatchGeneration,
+          site: dispatchActive ? dispatchSite : '',
+          owner: dispatchOwner,
+          intent: dispatchActive ? dispatchIntent : '',
+        });
+        if (!dispatchActive || dispatchOwner === 'guest') {
+          setShowArrivalComplete(false);
+        }
+        if (dispatchActive) {
+          setShowWaiting(false);
+          if (dispatchIntent === 'recall' && SITE_NAMES.includes(dispatchSite)) {
+            destinationIntentRef.current = 'recall';
+            setDestinationIntent('recall');
+            setActiveRecallSite(dispatchSite);
+          } else if (dispatchIntent === 'delivery') {
+            destinationIntentRef.current = 'delivery';
+            setDestinationIntent('delivery');
+            setActiveRecallSite(null);
+          }
+        } else if (!dispatchIntent) {
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
+        }
+      }
+
       // 초기 연결 시: {"states": {"B1": false, ...}} 전체 상태 수신
       if ('states' in data) {
         setStates(prev => ({ ...prev, ...data.states }));
@@ -1373,14 +1526,19 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      if (
-        'robot_recall_site' in data
-        && SITE_NAMES.includes(data.robot_recall_site)
-      ) {
-        destinationIntentRef.current = 'recall';
-        setDestinationIntent('recall');
-        setActiveRecallSite(data.robot_recall_site);
-        setSelectedSite(null);
+      if ('robot_recall_site' in data) {
+        const replayedRecallSite = String(data.robot_recall_site || '');
+        if (SITE_NAMES.includes(replayedRecallSite)) {
+          destinationIntentRef.current = 'recall';
+          setDestinationIntent('recall');
+          setActiveRecallSite(replayedRecallSite);
+          setSelectedSite(null);
+          setShowWaiting(false);
+        } else {
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
+        }
       }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
@@ -1398,7 +1556,7 @@ function App() {
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
-        setShowArrivalComplete(true);
+        setShowArrivalComplete(missionDispatchOwnerRef.current !== 'guest');
       }
       // Service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
       if ('service_state' in data) {
@@ -1407,16 +1565,24 @@ function App() {
         if (nextStateName) setServiceStateName(nextStateName);
         if (
           serviceState === SERVICE_STATE.DROP_ZONE_WAIT
+          || serviceState === SERVICE_STATE.WAITING_FOR_CHARGING
           || serviceState === SERVICE_STATE.CHARGING
         ) {
           // HH_260721 - Charging remains a stopped standby state with destination selection enabled.
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
-          setShowWaiting(true);
+          // These stationary states are also emitted while an accepted Recall
+          // waits for departure. Do not reopen standby until the backend has
+          // explicitly cleared the mission identity.
+          if (
+            destinationIntentRef.current !== 'recall'
+            && !missionDispatchActiveRef.current
+          ) {
+            setShowWaiting(true);
+          }
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
-          setActiveRecallSite(null);
         } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
           // HH_260724 - Operator stop/cancel clears mission selection but remains visible as service state.
           const cleared = {};
@@ -1433,6 +1599,25 @@ function App() {
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
           setActiveRecallSite(null);
+          if (
+            missionDispatchActiveRef.current
+            || missionDispatchGenerationRef.current !== 0
+            || missionDispatchSiteRef.current
+            || missionDispatchOwnerRef.current
+          ) {
+            missionAuthorityRevisionRef.current += 1;
+          }
+          missionDispatchActiveRef.current = false;
+          missionDispatchGenerationRef.current = 0;
+          missionDispatchSiteRef.current = '';
+          missionDispatchOwnerRef.current = '';
+          setMissionDispatch({
+            active: false,
+            generation: 0,
+            site: '',
+            owner: '',
+            intent: '',
+          });
         } else if (MOVING_SERVICE_STATES.has(serviceState)) {
           // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
           setSelectedSite(null);
@@ -1442,7 +1627,9 @@ function App() {
           setMoveVerifyError(false);
         } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
           setArrivedSite(data.site);
-          setShowArrivalComplete(true);
+          setShowArrivalComplete(
+            missionDispatchOwnerRef.current !== 'guest'
+          );
           setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
           setShowArrivalComplete(false);
@@ -1490,18 +1677,38 @@ function App() {
 
     // HH_260708 - Reconnect the operator WebSocket after transient disconnects.
     ws.onclose = () => {
+      if (
+        wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
+      wsRef.current = null;
       setConnected(false);
-      setTimeout(connect, 2000);
+      if (wsMountedRef.current) {
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      }
     };
 
     ws.onerror = () => ws.close();
-    wsRef.current = ws;
   }, []);
 
   // ── 컴포넌트 마운트/언마운트 시 WebSocket 관리 ──────────────────────────
   useEffect(() => {
+    wsMountedRef.current = true;
     connect();
-    return () => { if (wsRef.current) wsRef.current.close(); };
+    return () => {
+      wsMountedRef.current = false;
+      wsGenerationRef.current += 1;
+      if (wsReconnectTimerRef.current !== null) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
+      }
+      const socket = wsRef.current;
+      wsRef.current = null;
+      if (socket) socket.close();
+    };
   }, [connect]);
 
   useEffect(() => {
@@ -1555,6 +1762,9 @@ function App() {
   };
 
   const requestCampingSiteRecall = async (site) => {
+    const requestEpoch = recallRequestEpochRef.current + 1;
+    recallRequestEpochRef.current = requestEpoch;
+    const authorityRevisionAtRequest = missionAuthorityRevisionRef.current;
     setRecallRequestPending(true);
     setMissionBlockMessage('');
     try {
@@ -1567,28 +1777,78 @@ function App() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.success) {
         const unavailable = response.status === 404
-          ? 'Recall API가 아직 백엔드에 연결되지 않았습니다.'
-          : 'Recall 요청이 거부되었습니다.';
+          ? '이용객 호출 기능이 아직 백엔드에 연결되지 않았습니다.'
+          : '이용객 호출 요청이 거부되었습니다.';
         throw new Error(body.message || unavailable);
       }
       // Require an intent echo so a miswired ordinary destination endpoint
       // cannot be presented to the operator as a safe roadside recall.
       if (body.intent !== 'recall') {
-        throw new Error('백엔드가 typed Recall 응답을 확인하지 않았습니다.');
+        throw new Error('백엔드가 호출 전용 응답을 확인하지 않았습니다.');
+      }
+      const admittedGeneration = Number(
+        body.mission_dispatch_generation || 0
+      );
+      const admittedSite = String(
+        body.mission_dispatch_site || ''
+      ).trim();
+      const admittedOwner = String(
+        body.mission_dispatch_owner || ''
+      ).trim();
+      if (
+        body.mission_dispatch_active !== true
+        || admittedSite !== site
+        || admittedOwner !== 'robot'
+        || !Number.isSafeInteger(admittedGeneration)
+        || admittedGeneration <= 0
+      ) {
+        throw new Error('백엔드가 호출 운행 세대를 확정하지 않았습니다.');
+      }
+      const currentAuthorityMatches = Boolean(
+        missionDispatchActiveRef.current
+        && missionDispatchSiteRef.current === admittedSite
+        && missionDispatchOwnerRef.current === admittedOwner
+        && missionDispatchGenerationRef.current === admittedGeneration
+      );
+      if (
+        recallRequestEpochRef.current !== requestEpoch
+        || (
+          missionAuthorityRevisionRef.current !== authorityRevisionAtRequest
+          && !currentAuthorityMatches
+        )
+      ) {
+        throw new Error(
+          '요청 처리 중 운행 권한이 변경되어 이전 호출 응답을 무시했습니다.'
+        );
       }
       setActiveRecallSite(site);
+      missionDispatchActiveRef.current = true;
+      missionDispatchSiteRef.current = admittedSite;
+      missionDispatchOwnerRef.current = admittedOwner;
+      missionDispatchGenerationRef.current = admittedGeneration;
+      setMissionDispatch({
+        active: true,
+        generation: admittedGeneration,
+        site: admittedSite,
+        owner: admittedOwner,
+        intent: 'recall',
+      });
       setArrivedSite(null);
       setShowArrivalComplete(false);
       setIsReturning(false);
       setSelectedSite(null);
       return true;
     } catch (error) {
-      setMissionBlockMessage(
-        error.message || 'Recall 요청을 전송하지 못했습니다.'
-      );
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setMissionBlockMessage(
+          error.message || '이용객 호출 요청을 전송하지 못했습니다.'
+        );
+      }
       return false;
     } finally {
-      setRecallRequestPending(false);
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setRecallRequestPending(false);
+      }
     }
   };
 
@@ -1639,8 +1899,16 @@ function App() {
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
   const handleArrivalComplete = () => {
+    if (!robotOwnsReturn) {
+      setMissionBlockMessage('현재 운행의 복귀 권한이 이 화면에 없습니다.');
+      return;
+    }
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ usage_complete: true }));
+      wsRef.current.send(JSON.stringify({
+        usage_complete: true,
+        site: missionDispatchSiteRef.current,
+        mission_generation: missionDispatchGenerationRef.current,
+      }));
     }
     setShowArrivalComplete(false);
     setArrivedSite(null);
@@ -1660,7 +1928,11 @@ function App() {
       SITE_NAMES.forEach(s => {
         const st = updated[s];
         if (st !== states[s]) {
-          wsRef.current.send(JSON.stringify({ site: s, state: st }));
+          wsRef.current.send(JSON.stringify({
+            site: s,
+            state: st,
+            mission_generation: st ? 0 : missionDispatchGenerationRef.current,
+          }));
         }
       });
     }
@@ -2036,18 +2308,32 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">
-                {activeRecallSite === arrivedSite
-                  ? 'Recall 도로 대기 지점에 도착했습니다.'
-                  : '배송 로봇이 목적지에 도착했습니다.'}
+                {recallArrivalPresentation
+                  ? '도로 측 대기점에 도착했습니다.'
+                  : '배송 로봇이 사이트 내부 목적지에 도착했습니다.'}
               </p>
-              <button className="preview-return-btn" onClick={handleArrivalComplete}>
-                {activeRecallSite === arrivedSite ? '적재 완료 · 복귀' : '복귀'}
-              </button>
+              {robotOwnsReturn ? (
+                <button className="preview-return-btn" onClick={handleArrivalComplete}>
+                  {recallArrivalPresentation
+                    ? '적재 완료 · 복귀'
+                    : '수령 완료 · 복귀'}
+                </button>
+              ) : (
+                <p className="preview-question">
+                  {guestOwnsReturn
+                    ? '이 임무의 완료·복귀는 이용객 화면에서 진행합니다.'
+                    : '현재 임무의 복귀 권한을 확인하고 있습니다.'}
+                </p>
+              )}
             </>
           ) : displayedReturning ? (
             <>
-              <span className="preview-placeholder-title">Drop Zone</span>
-              <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
+              <span className="preview-placeholder-title">대기·충전 장소</span>
+              <p className="preview-returning">
+                {recallReturnPresentation
+                  ? '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다.'
+                  : '배송을 마치고 대기·충전 장소로 복귀 중입니다.'}
+              </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
@@ -2231,17 +2517,23 @@ function App() {
       {serviceEvidenceModal}
 
       {/* ── 출발 최종 확인 팝업 ── */}
-      {showArrivalComplete && arrivedSite && (
+          {showArrivalComplete && arrivedSite && (
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
-              짐을 내려놓은 후,<br /><strong>[이용 완료]</strong> 버튼을 눌러주세요
+              {recallArrivalPresentation ? (
+                <>짐을 모두 실은 후,<br /><strong>[적재 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+              ) : (
+                <>배송 물품을 모두 내린 후,<br /><strong>[수령 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+              )}
             </p>
             <p className="arrival-complete-sub">
-              이용 완료 버튼을 누르면 로봇이 이동합니다.
+              버튼을 누르면 로봇이 대기·충전 장소로 복귀합니다.
             </p>
             <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              복귀
+              {recallArrivalPresentation
+                ? '적재 완료 · 복귀'
+                : '수령 완료 · 복귀'}
             </button>
           </div>
         </div>
