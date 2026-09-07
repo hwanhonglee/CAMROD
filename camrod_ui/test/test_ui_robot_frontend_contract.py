@@ -216,6 +216,71 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertNotIn("fetch(`/ui/destination", recall_source)
         self.assertNotIn("applyToggle", recall_source)
 
+    def test_robot_commands_are_bound_to_backend_mission_generation(self) -> None:
+        for token in (
+            "const missionDispatchGenerationRef = useRef(0)",
+            "const missionDispatchSiteRef = useRef('')",
+            "const missionDispatchOwnerRef = useRef('')",
+            "body.mission_dispatch_generation || 0",
+            "missionDispatchGenerationRef.current = admittedGeneration",
+            "mission_generation: st ? 0 : missionDispatchGenerationRef.current",
+            "mission_generation: missionDispatchGenerationRef.current",
+        ):
+            self.assertIn(token, self.source)
+        self.assertIn('"error": "stale_or_unowned_destination_stop"', self.backend_source)
+        self.assertIn('"error": "stale_or_unowned_return"', self.backend_source)
+
+    def test_robot_recall_rejects_late_http_and_orphan_socket_authority(self) -> None:
+        recall_start = self.source.index("const requestCampingSiteRecall")
+        recall_end = self.source.index("const handleToggle", recall_start)
+        recall_source = self.source[recall_start:recall_end]
+        for token in (
+            "const authorityRevisionAtRequest = missionAuthorityRevisionRef.current",
+            "recallRequestEpochRef.current !== requestEpoch",
+            "missionAuthorityRevisionRef.current !== authorityRevisionAtRequest",
+            "currentAuthorityMatches",
+            "이전 호출 응답을 무시했습니다.",
+        ):
+            self.assertIn(token, recall_source)
+
+        connect_start = self.source.index("const connect = useCallback")
+        connect_end = self.source.index(
+            "// ── 컴포넌트 마운트/언마운트 시 WebSocket 관리", connect_start
+        )
+        connect_source = self.source[connect_start:connect_end]
+        for token in (
+            "wsMountedRef.current",
+            "wsGenerationRef.current !== connectionGeneration",
+            "wsRef.current !== ws",
+            "wsReconnectTimerRef.current = setTimeout",
+        ):
+            self.assertIn(token, connect_source)
+
+    def test_guest_owned_recall_does_not_expose_robot_return(self) -> None:
+        self.assertIn("const [missionDispatch, setMissionDispatch] = useState", self.source)
+        self.assertIn("const robotOwnsReturn =", self.source)
+        self.assertIn("const guestOwnsReturn =", self.source)
+        self.assertIn(
+            "['operator', 'robot'].includes(missionDispatch.owner)",
+            self.source,
+        )
+        self.assertIn("{robotOwnsReturn ? (", self.source)
+        self.assertIn(
+            "이 임무의 완료·복귀는 이용객 화면에서 진행합니다.",
+            self.source,
+        )
+        self.assertIn("현재 임무의 복귀 권한을 확인하고 있습니다.", self.source)
+        self.assertIn("if (!dispatchActive || dispatchOwner === 'guest')", self.source)
+        self.assertNotIn(
+            "missionDispatchActiveRef.current = Boolean(newState)",
+            self.source,
+        )
+        handler_start = self.source.index("const handleArrivalComplete = () => {")
+        handler_end = self.source.index("// ── 실제 토글 적용", handler_start)
+        handler = self.source[handler_start:handler_end]
+        self.assertIn("if (!robotOwnsReturn)", handler)
+        self.assertIn("현재 운행의 복귀 권한이 이 화면에 없습니다.", handler)
+
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)
         self.assertIn("/api/service-metrics?days=30", self.service_evidence_source)

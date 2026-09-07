@@ -1,6 +1,7 @@
 """Regression coverage for the Robot UI operator-stop command path."""
 
 from pathlib import Path
+import json
 import sys
 import threading
 from types import SimpleNamespace
@@ -77,6 +78,41 @@ class _FakeCancelClient:
         return object()
 
 
+class _ControlledFuture:
+
+    def __init__(self) -> None:
+        self.completed = False
+
+    def done(self) -> bool:
+        return self.completed
+
+    def result(self):
+        return object()
+
+
+class _BarrierCancelClient:
+
+    def __init__(self) -> None:
+        self.futures = []
+
+    def service_is_ready(self) -> bool:
+        return True
+
+    def call_async(self, _request):
+        future = _ControlledFuture()
+        self.futures.append(future)
+        return future
+
+
+class _CapturedPublisher:
+
+    def __init__(self) -> None:
+        self.messages = []
+
+    def publish(self, message) -> None:
+        self.messages.append(message)
+
+
 class _FakeLoop:
 
     def __init__(self) -> None:
@@ -147,39 +183,280 @@ class _FakeBackend:
 
 class UiBackendStopTest(unittest.TestCase):
 
+    @staticmethod
+    def _mission_authority_backend(**overrides):
+        backend = SimpleNamespace(
+            _destination_dispatch_lock=threading.RLock(),
+            _lock=threading.Lock(),
+            _active_mission_site="B1",
+            _active_mission_source="http_ui_destination",
+            _active_mission_generation=41,
+            _active_mission_owner="operator",
+            _active_mission_intent="delivery",
+            _return_requested_generation=0,
+            _return_progress_generation=0,
+            _active_mission_retryable=False,
+            _startup_recovery_pending=False,
+            _latest_service_state=int(AvgServiceState.MOVING_TO_SITE),
+            _state=SimpleNamespace(
+                service_state=int(AvgServiceState.MOVING_TO_SITE),
+                service_state_name="MOVING_TO_SITE",
+                service_state_description="Moving from drop zone to site",
+                ws_site_states={"B1": True, "B2": False},
+                destination={"site": "B1", "run": True},
+            ),
+            pub_destination_dispatch_status=_CapturedPublisher(),
+            get_logger=lambda: _FakeLogger(),
+        )
+        backend._resolve_mission_key_for_site = (
+            lambda site: f"camping_site_{site[1:]}"
+        )
+        for name, value in overrides.items():
+            setattr(backend, name, value)
+        return backend
+
+    def test_service_state_qos_preserves_return_transition_burst(
+        self,
+    ) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+        block_start = source.index("service_heartbeat_qos = QoSProfile(")
+        block_end = source.index(")", block_start)
+        qos_block = source[block_start:block_end]
+
+        self.assertIn("history=HistoryPolicy.KEEP_LAST", qos_block)
+        self.assertIn("depth=10", qos_block)
+        self.assertIn("reliability=ReliabilityPolicy.RELIABLE", qos_block)
+        self.assertIn("durability=DurabilityPolicy.VOLATILE", qos_block)
+        self.assertGreaterEqual(
+            int(qos_block.split("depth=", 1)[1].split(",", 1)[0]),
+            3,
+            "a bounded service-state burst must survive dispatch-lock delay",
+        )
+
+    def test_dispatch_status_uses_transient_local_state_qos(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "runtime"
+            / "python"
+            / "camrod_ui"
+            / "ui_backend_node.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            '"/ui/destination_dispatch_status"',
+            source,
+        )
+        self.assertIn(
+            "String, self.ui_destination_dispatch_status_topic, state_qos",
+            source,
+        )
+        state_qos_start = source.index("state_qos = QoSProfile(")
+        state_qos_end = source.index(")", state_qos_start)
+        self.assertIn(
+            "durability=DurabilityPolicy.TRANSIENT_LOCAL",
+            source[state_qos_start:state_qos_end],
+        )
+
+    def test_competing_destination_preserves_authoritative_mission(self) -> None:
+        backend = self._mission_authority_backend()
+
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="robot_ui:recall"
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["error"], "mission_already_active")
+        self.assertEqual(backend._active_mission_site, "B1")
+        self.assertEqual(backend._active_mission_generation, 41)
+        status = json.loads(
+            backend.pub_destination_dispatch_status.messages[-1].data
+        )
+        self.assertFalse(status["accepted"])
+        self.assertEqual(status["active_site"], "B1")
+        self.assertEqual(status["active_generation"], 41)
+
+    def test_stale_destination_off_cannot_stop_newer_mission(self) -> None:
+        backend = self._mission_authority_backend()
+
+        result = UiBackendNode._apply_destination_command(
+            backend,
+            site="B1",
+            run=False,
+            source="http_ui_destination",
+            mission_generation=40,
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(
+            result["error"], "stale_or_unowned_destination_stop"
+        )
+        self.assertEqual(backend._active_mission_site, "B1")
+        self.assertEqual(backend._state.destination, {"site": "B1", "run": True})
+
+    def test_stale_owned_return_cannot_change_current_mission(self) -> None:
+        backend = self._mission_authority_backend(
+            _latest_service_state=int(AvgServiceState.UNLOAD_WAIT)
+        )
+
+        result = UiBackendNode.request_owned_return_to_drop_zone(
+            backend,
+            "B1",
+            40,
+            source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "stale_or_unowned_return")
+        self.assertEqual(backend._return_requested_generation, 0)
+
+    def test_dispatch_snapshot_and_status_expose_one_identity(self) -> None:
+        backend = self._mission_authority_backend()
+
+        snapshot = UiBackendNode._mission_dispatch_snapshot(backend)
+        UiBackendNode._publish_destination_dispatch_status(
+            backend,
+            "B1",
+            True,
+            "http_ui_destination",
+            {"message": "accepted"},
+        )
+        status = json.loads(
+            backend.pub_destination_dispatch_status.messages[-1].data
+        )
+
+        self.assertTrue(snapshot["mission_dispatch_active"])
+        self.assertEqual(snapshot["mission_dispatch_owner"], "operator")
+        self.assertEqual(snapshot["mission_dispatch_intent"], "delivery")
+        self.assertEqual(snapshot["mission_dispatch_generation"], 41)
+        self.assertTrue(status["accepted"])
+        self.assertEqual(status["active_site"], "B1")
+        self.assertEqual(status["active_generation"], 41)
+
+    def test_return_admission_rejects_stale_arrival_state(self) -> None:
+        backend = self._mission_authority_backend(
+            _latest_service_state=int(AvgServiceState.RETURN_WITH_CARGO),
+            _return_requested_generation=41,
+            _return_progress_generation=41,
+        )
+        message = AvgServiceState()
+        message.state = AvgServiceState.UNLOAD_WAIT
+        message.state_name = "UNLOAD_WAIT"
+        message.description = "Waiting for unload at site"
+
+        UiBackendNode._on_service_state(backend, message)
+
+        self.assertEqual(
+            backend._latest_service_state,
+            int(AvgServiceState.RETURN_WITH_CARGO),
+        )
+
+    def test_restart_gate_blocks_admission_until_cancel_futures_complete(
+        self,
+    ) -> None:
+        clients = [_BarrierCancelClient(), _BarrierCancelClient()]
+        timer = _FakeTimer(0.5, lambda: None)
+        events = []
+        backend = self._mission_authority_backend(
+            _active_mission_site="",
+            _active_mission_source="",
+            _active_mission_generation=0,
+            _active_mission_owner="",
+            _active_mission_intent="",
+            _startup_recovery_pending=True,
+            _startup_fail_closed_attempts=0,
+            _startup_nav2_cancel_futures={},
+            _startup_nav2_cancel_completed=set(),
+            _startup_fail_closed_timer=timer,
+            nav2_cancel_action_topics=["/first/cancel", "/second/cancel"],
+            nav2_cancel_clients=clients,
+            publish_mission_engage_from_destination=False,
+        )
+        backend._cancel_service_motion_writers = (
+            lambda source: events.append(("cancel_writers", source))
+        )
+        backend._publish_engage = lambda value, source: events.append(
+            ("engage", value, source)
+        )
+        backend._publish_service_state = lambda state, source: events.append(
+            ("state", state, source)
+        )
+        backend._schedule_broadcast = lambda payload: events.append(
+            ("broadcast", payload)
+        )
+        backend.destroy_timer = lambda value: events.append(
+            ("destroy_timer", value)
+        )
+
+        blocked = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="http_ui_destination"
+        )
+        self.assertEqual(blocked["error"], "backend_startup_recovery")
+
+        UiBackendNode._reassert_startup_fail_closed(backend)
+        self.assertTrue(backend._startup_recovery_pending)
+        self.assertEqual(sum(len(client.futures) for client in clients), 2)
+        for client in clients:
+            client.futures[0].completed = True
+        UiBackendNode._reassert_startup_fail_closed(backend)
+
+        self.assertFalse(backend._startup_recovery_pending)
+        self.assertTrue(timer.cancelled)
+        self.assertIsNone(backend._startup_fail_closed_timer)
+
     def test_ui_camping_operation_cancel_uses_full_operator_stop_path(self) -> None:
         events = []
         backend = SimpleNamespace(
-            _stop_active_service=lambda source: events.append(("stop", source)),
-            _request_return_to_drop_zone=(
-                lambda source: events.append(("return", source))
-            ),
+            _destination_dispatch_lock=threading.RLock(),
+            _active_mission_site="B8",
+            _active_mission_source="guest:kiosk",
+            _active_mission_generation=7,
+            _return_requested_generation=0,
             get_logger=lambda: _FakeLogger(),
+        )
+        backend._stop_active_service_serialized = (
+            lambda source: events.append(("stop", source))
         )
         message = MotionOperation()
         message.operation = MotionOperation.CANCEL
-        message.source = "guest:return_cancel"
+        message.source = "guest:site=B8:g=7:return_cancel"
 
         UiBackendNode._on_ui_camping_site_operation_request(backend, message)
 
-        self.assertEqual(events, [("stop", "guest:return_cancel")])
+        self.assertEqual(
+            events, [("stop", "guest:site=B8:g=7:return_cancel")]
+        )
 
     def test_ui_camping_operation_return_behavior_is_preserved(self) -> None:
         events = []
         backend = SimpleNamespace(
-            _stop_active_service=lambda source: events.append(("stop", source)),
-            _request_return_to_drop_zone=(
-                lambda source: events.append(("return", source))
-            ),
+            _destination_dispatch_lock=threading.RLock(),
+            _active_mission_site="B8",
+            _active_mission_source="guest:kiosk",
+            _active_mission_generation=7,
+            _return_requested_generation=0,
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _startup_recovery_pending=False,
             get_logger=lambda: _FakeLogger(),
+        )
+        backend.request_owned_return_to_drop_zone = lambda *args, **kwargs: (
+            events.append(("return", args, kwargs)) or {"success": True}
         )
         message = MotionOperation()
         message.operation = MotionOperation.RETURN
-        message.source = "guest:return"
+        message.source = "guest:site=B8:g=7:return"
 
         UiBackendNode._on_ui_camping_site_operation_request(backend, message)
 
-        self.assertEqual(events, [("return", "guest:return")])
+        self.assertEqual(events[0][0], "return")
+        self.assertEqual(events[0][1], ("B8", 7))
+        self.assertEqual(events[0][2]["source"], "guest:site=B8:g=7:return")
 
     def test_manual_return_defers_planning_until_site_exit_reaches_anchor(self) -> None:
         events = []
@@ -1075,6 +1352,8 @@ class UiBackendStopTest(unittest.TestCase):
             _active_mission_site="",
             _service_metrics=None,
             _lock=threading.Lock(),
+            _pending_site_route_goal_stamps={},
+            _site_route_anchors={},
             _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
             publish_engage_from_destination=True,
             publish_mission_engage_from_destination=True,
@@ -1084,8 +1363,13 @@ class UiBackendStopTest(unittest.TestCase):
             pub_planning_camping_site_recall=RecallPublisher(),
             charging_departure_delay_s=7.0,
         )
+        recall_stamp_nanoseconds = iter(range(7, 20))
         backend.get_clock = lambda: SimpleNamespace(
-            now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=9, nanosec=7))
+            now=lambda: SimpleNamespace(
+                to_msg=lambda: RosTime(
+                    sec=9, nanosec=next(recall_stamp_nanoseconds)
+                )
+            )
         )
         backend.get_logger = lambda: _FakeLogger()
         backend._resolve_mission_key_for_site = (
@@ -1126,16 +1410,25 @@ class UiBackendStopTest(unittest.TestCase):
             "_cancel_pending_parking_rearm_transition",
             return_value=None,
         ):
-            results = [
-                UiBackendNode._apply_destination_command(
-                    backend, site=f"B{index}", run=True, source="guest"
+            results = []
+            for index in range(1, 14):
+                UiBackendNode._clear_active_mission_identity(backend)
+                results.append(
+                    UiBackendNode._apply_destination_command(
+                        backend, site=f"B{index}", run=True, source="guest"
+                    )
                 )
-                for index in range(1, 14)
-            ]
 
         self.assertEqual(
             [message.site_name for message in recalls],
             [f"camping_site_{index}" for index in range(1, 14)],
+        )
+        self.assertEqual(
+            backend._pending_site_route_goal_stamps,
+            {
+                (9, index + 6): f"camping_site_{index}"
+                for index in range(1, 14)
+            },
         )
         self.assertEqual([message.source for message in recalls], ["guest"] * 13)
         self.assertTrue(all(result["recall_request_published"] for result in results))
@@ -1313,6 +1606,8 @@ class UiBackendStopTest(unittest.TestCase):
             _active_mission_site="",
             _service_metrics=None,
             _lock=threading.Lock(),
+            _pending_site_route_goal_stamps={},
+            _site_route_anchors={},
             _runtime_policy=SimpleNamespace(update_goal_received=lambda _mode: None),
             publish_engage_from_destination=True,
             publish_mission_engage_from_destination=True,
@@ -1817,9 +2112,11 @@ class UiBackendStopTest(unittest.TestCase):
             backend, site="B3", run=True, source="changed"
         )
         self.assertFalse(changed["goal_pose_published"])
+        self.assertTrue(changed["blocked"])
+        self.assertEqual(changed["error"], "mission_already_active")
         self.assertEqual(
             backend._pending_site_after_drop_zone_exit,
-            ("B3", "camping_site_3", "changed"),
+            ("B2", "camping_site_2", "restart"),
         )
         self.assertNotIn("mission_key", [event[0] for event in events])
         self.assertNotIn("goal", [event[0] for event in events])
@@ -1830,8 +2127,8 @@ class UiBackendStopTest(unittest.TestCase):
         release_events = [
             event for event in events if event[0] in {"mission_key", "goal"}
         ]
-        self.assertEqual(release_events[0][0:2], ("mission_key", "camping_site_3"))
-        self.assertEqual(release_events[1][0:3], ("goal", "B3", "camping_site_3"))
+        self.assertEqual(release_events[0][0:2], ("mission_key", "camping_site_2"))
+        self.assertEqual(release_events[1][0:3], ("goal", "B2", "camping_site_2"))
 
     def test_orphan_exit_complete_clears_recovered_departing_state(self) -> None:
         events = []

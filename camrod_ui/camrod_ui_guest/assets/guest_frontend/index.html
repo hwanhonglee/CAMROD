@@ -437,9 +437,10 @@
 <div class="confirm-overlay" id="confirmOverlay">
   <div class="confirm-dialog">
     <div class="confirm-site-tag" id="confirmSiteTag">--</div>
-    <div class="confirm-title">호출하시겠습니까?</div>
+    <div class="confirm-title">로봇을 호출하시겠습니까?</div>
     <div class="confirm-desc">
-      목적지를 선택한 뒤에도<br><strong>이동 중 운행을 취소할 수 있습니다.</strong>
+      로봇은 사이트 내부로 들어가지 않고 도로 측 대기점으로 이동합니다.<br>
+      <strong>이동 중에도 호출을 취소할 수 있습니다.</strong>
     </div>
     <div class="confirm-btns">
       <button class="btn-cancel" onclick="closeConfirm()">취소</button>
@@ -484,12 +485,12 @@
 
   <!-- Status card -->
   <div class="card">
-    <div class="card-title">Robot status</div>
+    <div class="card-title">로봇 상태</div>
     <div class="status-row">
       <div class="status-indicator" id="statusDot"></div>
       <div class="status-info">
-        <div class="status-phase" id="statusPhase">Preparing</div>
-        <div class="status-label" id="statusLabel">Connecting...</div>
+        <div class="status-phase" id="statusPhase">준비 중</div>
+        <div class="status-label" id="statusLabel">연결 중...</div>
       </div>
     </div>
     <div class="dest-tag" id="destTag" style="display:none">
@@ -501,20 +502,20 @@
 
   <!-- Site selection card (visible when idle) -->
   <div class="card" id="siteCard" style="display:none">
-    <div class="card-title">사이트 선택</div>
-    <div class="site-grid-label">이용할 캠핑 사이트를 선택하세요</div>
+    <div class="card-title">로봇 호출 위치 선택</div>
+    <div class="site-grid-label">현재 이용 중인 캠핑 사이트를 선택하세요</div>
     <div class="site-grid" id="siteGrid"></div>
     <button class="action-btn btn-navigate" id="navigateBtn" disabled onclick="sendNavigate()">
-      선택한 사이트로 이동
+      선택한 사이트 도로 대기점으로 호출
     </button>
   </div>
 
   <!-- Usage complete card (visible when arrived) -->
   <div class="card" id="completeCard" style="display:none">
-    <div class="card-title">이용 완료</div>
-    <div class="site-grid-label">로봇 사용을 마치셨으면 버튼을 눌러주세요.<br>로봇이 거점으로 돌아갑니다.</div>
-    <button class="action-btn btn-complete" onclick="sendUsageComplete()">
-      이용 완료 · 로봇 복귀
+    <div class="card-title" id="completeTitle">이용 완료</div>
+    <div class="site-grid-label" id="completeHelp">짐 처리를 마친 뒤 복귀 버튼을 눌러주세요.</div>
+    <button class="action-btn btn-complete" id="completeAction" onclick="sendUsageComplete()">
+      완료 · 로봇 복귀
     </button>
   </div>
 
@@ -545,6 +546,15 @@
   let selectedSite = null;
   let sites = [];
   let lastDestSite = null;  // remember destination while moving/arrived
+  // RETURN_WITH_CARGO is used by both delivery and recall.  This latch is set
+  // only when this Guest UI actually sends a site-specific recall request, so
+  // a Robot UI delivery observed on the shared lifecycle cannot inherit guest
+  // loading/cargo wording.
+  let activeRequestIntent = null;
+  let activeRequestOwner = null;
+  let activeRequestRetryable = false;
+  let activeMissionGeneration = 0;
+  let lastIdentityRevision = -1;
   // HH_260803 - Match Robot UI mission admission instead of enabling a site
   // from service state alone while SOC is missing or below the 35% margin.
   let missionBatteryReady = false;
@@ -592,6 +602,43 @@
         sites = d.sites;
         buildSiteGrid();
       }
+      let acceptIdentity = true;
+      if (d.identity_revision !== undefined) {
+        const incomingRevision = Number(d.identity_revision);
+        acceptIdentity = Number.isSafeInteger(incomingRevision)
+          && incomingRevision >= lastIdentityRevision;
+        if (acceptIdentity) lastIdentityRevision = incomingRevision;
+      }
+      // Backend identity and lifecycle are one atomic frame. If scheduling
+      // across websocket/broadcast threads delivers an older revision late,
+      // reject its service phase as well as its B-site; mixing a new mission
+      // identity with an old Return/terminal phase exposes the wrong action.
+      const acceptLifecycle = d.identity_revision === undefined || acceptIdentity;
+      if (acceptIdentity && d.site !== undefined) {
+        const activeSite = String(d.site || '').trim();
+        lastDestSite = sites.includes(activeSite) ? activeSite : null;
+      }
+      if (acceptIdentity && d.request_intent !== undefined) {
+        const replayedIntent = String(d.request_intent || '').trim();
+        activeRequestIntent = ['delivery', 'recall'].includes(replayedIntent)
+          ? replayedIntent
+          : null;
+      }
+      if (acceptIdentity && d.request_owner !== undefined) {
+        const replayedOwner = String(d.request_owner || '').trim();
+        activeRequestOwner = ['guest', 'robot', 'operator'].includes(replayedOwner)
+          ? replayedOwner
+          : null;
+      }
+      if (acceptIdentity && d.mission_retryable !== undefined) {
+        activeRequestRetryable = Boolean(d.mission_retryable);
+      }
+      if (acceptIdentity && d.mission_generation !== undefined) {
+        const incomingGeneration = Number(d.mission_generation);
+        if (Number.isSafeInteger(incomingGeneration) && incomingGeneration >= 0) {
+          activeMissionGeneration = incomingGeneration;
+        }
+      }
       if (d.battery !== undefined) updateBattery(d.battery);
       if (d.minimum_battery_percentage !== undefined) {
         minimumBatteryPercentage = Number(d.minimum_battery_percentage);
@@ -613,17 +660,25 @@
         cancelRequestPending = false;
         updateUI();
       }
-      if (d.service_state_name !== undefined) {
+      if (d.dispatch_error !== undefined && cancelRequestPending) {
+        cancelRequestPending = false;
+        updateUI();
+      }
+      if (acceptLifecycle && d.service_state_name !== undefined) {
         currentServiceStateName = String(d.service_state_name || 'PREPARING');
       }
-      if (d.phase !== undefined) {
+      if (acceptLifecycle && d.phase !== undefined) {
         currentPhase = d.phase;
         if (d.service_state !== undefined) currentState = d.service_state;
         updateUI();
-      } else if (d.service_state !== undefined) {
+      } else if (acceptLifecycle && d.service_state !== undefined) {
         currentState = d.service_state;
         updateUI();
       }
+      // An admission ACK may contain identity/retry fields without a service
+      // state. Re-render after the complete frame so callback order cannot
+      // leave the picker hidden or labels stale.
+      updateUI();
     };
 
     socket.onclose = () => {
@@ -681,33 +736,60 @@
   }
 
   /* ── UI state machine ── */
-  // HH_260721 - Keep every visible runtime state English and aligned with AvgServiceState.
+  // Keep every visible label aligned one-to-one with AvgServiceState while
+  // presenting the public Guest UI consistently in Korean.
   const SERVICE_STATE_LABELS = Object.freeze({
-    PREPARING: 'Preparing',
-    DROP_ZONE_WAIT: 'Waiting at drop zone',
-    MOVING_TO_SITE: 'Moving to site',
-    SITE_ARRIVED: 'Arrived at site',
-    RETURNING_TO_DROP_ZONE: 'Returning to drop zone',
-    GUEST_RECALL_SERVICE: 'Guest recall requested',
-    SITE_ENTRY: 'Entering site',
-    UNLOAD_WAIT: 'Waiting for unloading',
-    RECALL_TO_SITE_ROAD: 'Moving to recall point',
-    GUEST_LOADING_WAIT: 'Waiting for loading',
-    RETURN_WITH_CARGO: 'Leaving site with cargo',
-    DROP_ZONE_PARKING: 'Reverse parking',
-    WAITING_FOR_RETURN_REQUEST: 'Waiting for return request',
-    WAITING_FOR_CHARGING: 'Waiting for charger connection',
-    CHARGING: 'Charging',
-    DEPARTING_CHARGER: 'Departing charger',
-    DEPARTING_DROP_ZONE: 'Departing drop zone',
-    OPERATOR_STOPPED: 'Stopped by operator',
+    PREPARING: '준비 중',
+    DROP_ZONE_WAIT: '대기·충전 장소에서 대기 중',
+    MOVING_TO_SITE: '사이트로 이동 중',
+    SITE_ARRIVED: '사이트 도착',
+    RETURNING_TO_DROP_ZONE: '대기·충전 장소로 복귀 중',
+    GUEST_RECALL_SERVICE: '호출 요청 접수',
+    SITE_ENTRY: '사이트 내부 진입 중',
+    UNLOAD_WAIT: '짐 내리기 대기',
+    RECALL_TO_SITE_ROAD: '도로 측 대기점으로 이동 중',
+    GUEST_LOADING_WAIT: '짐 싣기 대기',
+    RETURN_WITH_CARGO: '대기·충전 장소로 복귀 중',
+    DROP_ZONE_PARKING: '대기·충전 장소에서 주차 중',
+    WAITING_FOR_RETURN_REQUEST: '복귀 요청 대기',
+    WAITING_FOR_CHARGING: '충전기 연결 대기',
+    CHARGING: '충전 중',
+    DEPARTING_CHARGER: '충전 위치에서 출발 중',
+    DEPARTING_DROP_ZONE: '대기 장소에서 출발 중',
+    OPERATOR_STOPPED: '관리자에 의해 중지됨',
   });
 
+  // User-facing intent must come from the authoritative service lifecycle.
+  // The backend phase intentionally coalesces delivery and recall and cannot
+  // safely choose loading/unloading, return, or cancellation wording.
+  const DELIVERY_TRAVEL_SERVICE_STATES = new Set([
+    'MOVING_TO_SITE', 'SITE_ENTRY',
+  ]);
+  const RECALL_TRAVEL_SERVICE_STATES = new Set([
+    'GUEST_RECALL_SERVICE', 'RECALL_TO_SITE_ROAD',
+  ]);
+  const DEPARTURE_SERVICE_STATES = new Set([
+    'DEPARTING_CHARGER', 'DEPARTING_DROP_ZONE',
+  ]);
+  const DELIVERY_ARRIVAL_SERVICE_STATES = new Set([
+    'SITE_ARRIVED', 'UNLOAD_WAIT', 'WAITING_FOR_RETURN_REQUEST',
+  ]);
+  const RECALL_ARRIVAL_SERVICE_STATES = new Set(['GUEST_LOADING_WAIT']);
+  const DELIVERY_RETURN_SERVICE_STATES = new Set(['RETURNING_TO_DROP_ZONE']);
+  const RECALL_RETURN_SERVICE_STATES = new Set(['RETURN_WITH_CARGO']);
+  const CANCELLABLE_SERVICE_STATES = new Set([
+    ...DELIVERY_TRAVEL_SERVICE_STATES,
+    ...RECALL_TRAVEL_SERVICE_STATES,
+    ...DEPARTURE_SERVICE_STATES,
+    ...DELIVERY_RETURN_SERVICE_STATES,
+    ...RECALL_RETURN_SERVICE_STATES,
+    'DROP_ZONE_PARKING',
+  ]);
+
   function isMissionCancellablePhase() {
-    return currentPhase === 'moving'
-      || currentPhase === 'returning'
-      || currentPhase === 'recall'
-      || currentPhase === 'parking';
+    return activeRequestIntent === 'recall'
+      && activeRequestOwner === 'guest'
+      && CANCELLABLE_SERVICE_STATES.has(currentServiceStateName);
   }
 
   function showMissionCancel(label) {
@@ -718,6 +800,13 @@
     cancelBtn.textContent = cancelRequestPending ? '취소 요청 중...' : label;
   }
 
+  function isGuestRecallRetryVisible() {
+    return activeRequestRetryable
+      && activeRequestIntent === 'recall'
+      && activeRequestOwner === 'guest'
+      && Boolean(lastDestSite);
+  }
+
   function updateUI() {
     const dot      = document.getElementById('statusDot');
     const phaseLbl = document.getElementById('statusPhase');
@@ -726,6 +815,9 @@
     const destTag  = document.getElementById('destTag');
     const siteCard    = document.getElementById('siteCard');
     const completeCard = document.getElementById('completeCard');
+    const completeTitle = document.getElementById('completeTitle');
+    const completeHelp = document.getElementById('completeHelp');
+    const completeAction = document.getElementById('completeAction');
     const cancelCard = document.getElementById('cancelCard');
 
     // reset
@@ -735,129 +827,195 @@
     destTag.style.display = 'none';
     cancelCard.style.display = 'none';
 
-    const phase = currentPhase;
     if (!isMissionCancellablePhase()) cancelRequestPending = false;
 
     if (safetyHold) {
       dot.classList.add('si-busy');
-      phaseLbl.textContent = 'Safety stop';
-      stateLbl.textContent = 'The robot is stopped at a route boundary';
+      phaseLbl.textContent = '안전 정지';
+      stateLbl.textContent = '경로 안전 경계에서 정지 중입니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
-      banner.textContent = 'Automatic bounded recovery is in progress. Please keep clear.';
+      banner.textContent = '안전 범위 안에서 자동 복구 중입니다. 로봇 주변에서 떨어져 주세요.';
       if (isMissionCancellablePhase()) showMissionCancel('안전 정지 · 운행 취소');
       return;
     }
 
-    if (phase === 'idle') {
+    if (currentServiceStateName === 'DROP_ZONE_WAIT') {
       dot.classList.add('si-idle');
-      phaseLbl.textContent = 'Waiting';
-      stateLbl.textContent = 'Waiting at drop zone';
-      siteCard.style.display = sites.length ? 'block' : 'none';
+      phaseLbl.textContent = '대기';
+      stateLbl.textContent = '대기·충전 장소에서 대기 중입니다';
+      siteCard.style.display = sites.length
+        && (!activeRequestIntent || isGuestRecallRetryVisible()) ? 'block' : 'none';
       completeCard.style.display = 'none';
-      setSiteGridEnabled(missionBatteryReady);
-      if (!missionBatteryReady) {
+      setSiteGridEnabled(missionBatteryReady && !activeRequestIntent);
+      if (isGuestRecallRetryVisible()) {
         banner.classList.add('show', 'info-returning');
-        banner.textContent = 'Charge the robot to ' + minimumBatteryPercentage + '% before dispatch.';
+        banner.textContent = `${lastDestSite} 출차가 중단되었습니다. 같은 호출을 다시 시도해 주세요.`;
+      } else if (activeRequestIntent === 'recall') {
+        banner.classList.add('show', 'info-moving');
+        banner.textContent = '호출이 접수되어 출발을 준비하고 있습니다.';
+      } else if (!missionBatteryReady) {
+        banner.classList.add('show', 'info-returning');
+        banner.textContent = '배터리가 ' + minimumBatteryPercentage + '% 이상 충전되면 호출할 수 있습니다.';
       }
-      lastDestSite = null;
+      if (!activeRequestIntent) lastDestSite = null;
 
-    } else if (phase === 'charging') {
+    } else if (currentServiceStateName === 'CHARGING') {
       dot.classList.add('si-idle');
-      phaseLbl.textContent = 'Charging';
-      stateLbl.textContent = 'Charging at drop zone';
-      siteCard.style.display = sites.length ? 'block' : 'none';
+      phaseLbl.textContent = '충전 중';
+      stateLbl.textContent = '대기·충전 장소에서 충전 중입니다';
+      siteCard.style.display = sites.length
+        && (!activeRequestIntent || isGuestRecallRetryVisible()) ? 'block' : 'none';
       completeCard.style.display = 'none';
-      setSiteGridEnabled(missionBatteryReady);
-      if (!missionBatteryReady) {
+      setSiteGridEnabled(missionBatteryReady && !activeRequestIntent);
+      if (isGuestRecallRetryVisible()) {
         banner.classList.add('show', 'info-returning');
-        banner.textContent = 'Charging. Missions resume at ' + minimumBatteryPercentage + '%.';
+        banner.textContent = `${lastDestSite} 출차가 중단되었습니다. 같은 호출을 다시 시도해 주세요.`;
+      } else if (activeRequestIntent === 'recall') {
+        banner.classList.add('show', 'info-moving');
+        banner.textContent = '호출이 접수되어 충전 위치에서 출발을 준비하고 있습니다.';
+      } else if (!missionBatteryReady) {
+        banner.classList.add('show', 'info-returning');
+        banner.textContent = '충전 중입니다. ' + minimumBatteryPercentage + '% 이상에서 호출할 수 있습니다.';
       }
-      lastDestSite = null;
+      if (!activeRequestIntent) lastDestSite = null;
 
-    } else if (phase === 'moving') {
+    } else if (
+      DELIVERY_TRAVEL_SERVICE_STATES.has(currentServiceStateName)
+      || RECALL_TRAVEL_SERVICE_STATES.has(currentServiceStateName)
+      || DEPARTURE_SERVICE_STATES.has(currentServiceStateName)
+    ) {
+      const isRecallTravel = activeRequestIntent === 'recall'
+        && RECALL_TRAVEL_SERVICE_STATES.has(currentServiceStateName);
+      const isDeliveryTravel = DELIVERY_TRAVEL_SERVICE_STATES.has(currentServiceStateName);
       dot.classList.add('si-moving');
-      phaseLbl.textContent = 'Moving';
-      stateLbl.textContent = 'Robot is moving';
+      phaseLbl.textContent = isRecallTravel
+        ? '이용객 호출 이동 중'
+        : (isDeliveryTravel ? '배송 이동 중' : '임무 출발 중');
+      stateLbl.textContent = isRecallTravel
+        ? '로봇이 사이트 도로 측 대기점으로 이동 중입니다'
+        : (isDeliveryTravel
+          ? '로봇이 배송을 위해 사이트로 이동 중입니다'
+          : '로봇이 새 임무를 위해 대기·충전 위치에서 출발 중입니다');
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-moving');
-      banner.textContent = 'The robot is moving. Please wait.';
-      showMissionCancel('사이트 이동 취소');
+      banner.textContent = stateLbl.textContent + '. 안전을 위해 경로에서 떨어져 기다려 주세요.';
+      if (activeRequestIntent === 'recall' && activeRequestOwner === 'guest') {
+        showMissionCancel(isRecallTravel ? '이용객 호출 취소' : '임무 출발 취소');
+      }
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
       }
 
-    } else if (phase === 'arrived') {
+    } else if (
+      DELIVERY_ARRIVAL_SERVICE_STATES.has(currentServiceStateName)
+      || RECALL_ARRIVAL_SERVICE_STATES.has(currentServiceStateName)
+    ) {
+      const isRecallArrival = activeRequestIntent === 'recall'
+        && RECALL_ARRIVAL_SERVICE_STATES.has(currentServiceStateName);
+      const isGuestOwnedRecallArrival = isRecallArrival
+        && activeRequestOwner === 'guest';
       dot.classList.add('si-arrived');
-      phaseLbl.textContent = 'Arrived';
-      stateLbl.textContent = 'Robot is waiting at the site';
+      phaseLbl.textContent = isRecallArrival ? '이용객 호출 도착' : '배송 도착';
+      stateLbl.textContent = isRecallArrival
+        ? '로봇이 사이트 도로 측 대기점에서 짐 적재를 기다리고 있습니다'
+        : '로봇이 배송지에서 물품 수령을 기다리고 있습니다';
       siteCard.style.display = 'none';
-      completeCard.style.display = 'block';
+      completeCard.style.display = isGuestOwnedRecallArrival ? 'block' : 'none';
+      if (isGuestOwnedRecallArrival) {
+        completeTitle.textContent = '짐 적재 완료';
+        completeHelp.textContent = '로봇에 짐을 모두 실은 뒤 복귀 버튼을 눌러주세요.';
+        completeAction.textContent = '적재 완료 · 로봇 복귀';
+      } else {
+        completeTitle.textContent = '배송 물품 수령 완료';
+        completeHelp.textContent = '배송 물품을 모두 내린 뒤 복귀 버튼을 눌러주세요.';
+        completeAction.textContent = '수령 완료 · 로봇 복귀';
+      }
       banner.classList.add('show', 'info-arrived');
-      banner.textContent = 'The robot has arrived. Send the return request when ready.';
+      banner.textContent = isGuestOwnedRecallArrival
+        ? '로봇이 도착했습니다. 짐을 모두 실은 뒤 복귀 버튼을 눌러주세요.'
+        : '이 임무의 완료·복귀는 로봇 관리자 화면에서 진행합니다.';
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
       }
 
-    } else if (phase === 'waiting_for_charging') {
+    } else if (currentServiceStateName === 'WAITING_FOR_CHARGING') {
       // Parking is complete at this point.  Charger contact is optional for a
       // new mission, so retain the explicit status while exposing the same
       // battery-gated site picker as DROP_ZONE_WAIT and CHARGING.
       dot.classList.add('si-idle');
-      phaseLbl.textContent = 'Waiting for charging';
-      stateLbl.textContent = 'Parked at drop zone; charger connection pending';
-      siteCard.style.display = sites.length ? 'block' : 'none';
+      phaseLbl.textContent = '충전 연결 대기';
+      stateLbl.textContent = '주차를 마치고 충전기 연결을 기다리고 있습니다';
+      siteCard.style.display = sites.length
+        && (!activeRequestIntent || isGuestRecallRetryVisible()) ? 'block' : 'none';
       completeCard.style.display = 'none';
-      setSiteGridEnabled(missionBatteryReady);
+      setSiteGridEnabled(missionBatteryReady && !activeRequestIntent);
       banner.classList.add('show', 'info-returning');
-      banner.textContent = missionBatteryReady
-        ? 'The robot is parked and ready for a new mission.'
-        : 'Charge the robot to ' + minimumBatteryPercentage + '% before dispatch.';
-      lastDestSite = null;
+      banner.textContent = isGuestRecallRetryVisible()
+        ? `${lastDestSite} 출차가 중단되었습니다. 같은 호출을 다시 시도해 주세요.`
+        : activeRequestIntent === 'recall'
+        ? '호출이 접수되어 출발을 준비하고 있습니다.'
+        : (missionBatteryReady
+          ? '로봇이 주차를 마쳐 새 호출을 받을 수 있습니다.'
+          : '배터리가 ' + minimumBatteryPercentage + '% 이상 충전되면 호출할 수 있습니다.');
+      if (!activeRequestIntent) lastDestSite = null;
 
-    } else if (phase === 'parking') {
+    } else if (currentServiceStateName === 'DROP_ZONE_PARKING') {
       dot.classList.add('si-returning');
-      phaseLbl.textContent = 'Parking';
-      stateLbl.textContent = 'Reverse parking at drop zone';
+      phaseLbl.textContent = '주차 중';
+      stateLbl.textContent = '대기·충전 장소에서 주차 중입니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
       banner.textContent = stateLbl.textContent;
-      showMissionCancel('도킹 취소');
+      if (activeRequestIntent === 'recall' && activeRequestOwner === 'guest') {
+        showMissionCancel('주차·도킹 취소');
+      }
 
-    } else if (phase === 'returning' || phase === 'recall') {
+    } else if (
+      DELIVERY_RETURN_SERVICE_STATES.has(currentServiceStateName)
+      || RECALL_RETURN_SERVICE_STATES.has(currentServiceStateName)
+    ) {
+      const isRecallReturn = activeRequestIntent === 'recall'
+        && RECALL_RETURN_SERVICE_STATES.has(currentServiceStateName);
       dot.classList.add('si-returning');
-      phaseLbl.textContent = phase === 'recall' ? 'Recall requested' : 'Returning';
-      stateLbl.textContent = phase === 'recall'
-        ? 'The robot was recalled'
-        : 'Returning to drop zone';
+      phaseLbl.textContent = isRecallReturn ? '짐을 싣고 복귀 중' : '배송 후 복귀 중';
+      stateLbl.textContent = isRecallReturn
+        ? '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다'
+        : '배송을 마치고 대기·충전 장소로 복귀 중입니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
-      banner.textContent = 'The robot is returning to the drop zone.';
-      showMissionCancel(phase === 'recall' ? '호출 취소' : '복귀 취소');
+      banner.textContent = stateLbl.textContent;
+      if (isRecallReturn && activeRequestOwner === 'guest') {
+        showMissionCancel('적재 복귀 취소');
+      }
 
-    } else if (phase === 'stopped') {
+    } else if (currentServiceStateName === 'OPERATOR_STOPPED') {
       dot.classList.add('si-busy');
-      phaseLbl.textContent = 'Stopped by operator';
-      stateLbl.textContent = 'The current mission was cancelled';
+      phaseLbl.textContent = '운행 중지';
+      stateLbl.textContent = '현재 운행이 취소되었습니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
-      banner.textContent = 'Select a new mission from the Robot UI.';
+      banner.textContent = '새 운행은 로봇 화면에서 선택해 주세요.';
 
     } else {
       dot.classList.add('si-busy');
-      phaseLbl.textContent = 'Processing';
-      stateLbl.textContent = 'Waiting for a valid service state';
+      phaseLbl.textContent = '처리 중';
+      stateLbl.textContent = '로봇 상태를 확인하고 있습니다';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
     }
-    phaseLbl.textContent = SERVICE_STATE_LABELS[currentServiceStateName] || phaseLbl.textContent;
+    // Preserve the intent-qualified label selected above for the ambiguous
+    // shared return state; all unambiguous states retain their direct label.
+    if (currentServiceStateName !== 'RETURN_WITH_CARGO') {
+      phaseLbl.textContent = SERVICE_STATE_LABELS[currentServiceStateName] || phaseLbl.textContent;
+    }
   }
 
   /* ── Site grid ── */
@@ -881,28 +1039,51 @@
       b.classList.toggle('selected', b.dataset.site === site);
     });
     document.getElementById('navigateBtn').disabled = false;
-    document.getElementById('navigateBtn').textContent = site + ' 사이트로 이동';
+    document.getElementById('navigateBtn').textContent = site + ' 도로 대기점으로 호출';
   }
 
   function setSiteGridEnabled(enabled) {
+    const retryEnabled = activeRequestRetryable
+      && activeRequestIntent === 'recall'
+      && activeRequestOwner === 'guest'
+      && Boolean(lastDestSite)
+      && missionBatteryReady
+      && (
+        currentPhase === 'idle'
+        || currentPhase === 'waiting_for_charging'
+        || currentPhase === 'charging'
+      );
     document.querySelectorAll('.site-btn').forEach(b => {
-      b.disabled = !enabled;
+      b.disabled = !(enabled || (retryEnabled && b.dataset.site === lastDestSite));
+      b.classList.toggle(
+        'selected', retryEnabled && b.dataset.site === lastDestSite
+      );
     });
-    if (!enabled) {
+    if (retryEnabled) {
+      selectedSite = lastDestSite;
+      document.getElementById('navigateBtn').disabled = false;
+      document.getElementById('navigateBtn').textContent = `${lastDestSite} 출차 다시 시도`;
+    } else if (!enabled) {
       selectedSite = null;
       document.getElementById('navigateBtn').disabled = true;
-      document.getElementById('navigateBtn').textContent = '선택한 사이트로 이동';
+      document.getElementById('navigateBtn').textContent = '선택한 사이트 도로 대기점으로 호출';
     }
   }
 
   // Parking completion is sufficient; control owns the station departure even
   // when charger contact is still pending or absent.
   function isDispatchReady() {
-    return missionBatteryReady && (
+    const stationaryReady = missionBatteryReady && (
       currentPhase === 'idle'
       || currentPhase === 'waiting_for_charging'
       || currentPhase === 'charging'
     );
+    const retryReady = activeRequestRetryable
+      && activeRequestIntent === 'recall'
+      && activeRequestOwner === 'guest'
+      && Boolean(lastDestSite)
+      && selectedSite === lastDestSite;
+    return stationaryReady && (!activeRequestIntent || retryReady);
   }
 
   /* ── Confirm dialog ── */
@@ -920,8 +1101,16 @@
     closeConfirm();
     if (!selectedSite || !isDispatchReady()) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      lastDestSite = selectedSite;
-      ws.send(JSON.stringify({ action: 'navigate', site: selectedSite }));
+      // updateUI() disables the grid once this request owns the Guest UI and
+      // intentionally clears selectedSite.  Snapshot the accepted identity
+      // first so the WebSocket frame cannot be degraded to {site:null}.
+      const dispatchSite = selectedSite;
+      lastDestSite = dispatchSite;
+      activeRequestIntent = 'recall';
+      activeRequestOwner = 'guest';
+      activeRequestRetryable = false;
+      updateUI();
+      ws.send(JSON.stringify({ action: 'navigate', site: dispatchSite }));
     }
   }
 
@@ -931,7 +1120,10 @@
   }
 
   function sendUsageComplete() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    const guestRecallArrived = activeRequestIntent === 'recall'
+      && activeRequestOwner === 'guest'
+      && currentServiceStateName === 'GUEST_LOADING_WAIT';
+    if (guestRecallArrived && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ action: 'usage_complete' }));
     }
   }
