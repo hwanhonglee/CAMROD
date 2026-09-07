@@ -1,0 +1,87 @@
+{
+  "aggregate": {
+    "fail_count": 0,
+    "missing_sites": [],
+    "outbound_distance_m": 858.190109,
+    "outbound_duration_s": 2591.052,
+    "pass_count": 13,
+    "return_distance_m": 864.599743,
+    "return_duration_s": 5212.793,
+    "site_count": 13,
+    "split_distance_complete": true,
+    "split_duration_complete": true,
+    "total_elapsed_s": 7803.845,
+    "total_odom_distance_m": 1722.789852
+  },
+  "authority": "guest",
+  "bundle": "guest_recall",
+  "excluded_classes": [
+    "raw *.jsonl telemetry/ROS traces",
+    "source *.mp4 recordings",
+    "runtime *.log files",
+    "ffprobe and exact-command intermediates"
+  ],
+  "kind": "site_bundle",
+  "mission_intent": "recall",
+  "schema": "camrod.virtual_carla.curated_evidence.v1",
+  "sites": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B9",
+    "B10",
+    "B11",
+    "B12",
+    "B13"
+  ],
+  "source_parts": [
+    {
+      "path": "provenance/run_manifest.json",
+      "runner_status": "PASS",
+      "sha256": "4e0c7c2b693418b61ca4c604d664b7bfe3ac9170154faeb5583c63e9cb5eee55",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ]
+    }
+  ],
+  "status": "PASS",
+  "strict_validation_parts": [
+    {
+      "path": "provenance/strict_validation",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "validation_sha256": "9a3f7dc5c24101abff3b9a30465423b6497476815ec0103b1dc93ae8fa2bfaac"
+    }
+  ],
+  "title": "Guest UI recall + usage complete"
+}

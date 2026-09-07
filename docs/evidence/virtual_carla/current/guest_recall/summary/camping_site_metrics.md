@@ -1,0 +1,42 @@
+# CAMROD CARLA camping-site time and distance summary
+
+- Coverage: `B1_B13_COMPLETE`
+- Sites: 13 (PASS 13, FAIL 0)
+- Total elapsed: 7803.845 s
+- Total odometry distance: 1722.789852 m
+
+`UNAVAILABLE` means the source evidence did not contain a measured split; no value was estimated.
+
+| Site | Result | Mode | Total s | Outbound s | Return s | Total m | Outbound m | Return m | Drop-zone error m | Final state | Parked | Charging | Actor | Gate manifest | Physical manifest | Source report SHA256 |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---:|---|---|---|
+| B1 | PASS | roadside_stop | 753.34 | 256.474 | 496.866 | 167.556243 | 83.566454 | 83.989789 | 0.103478 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 126149473a246a6b143cdb6d4bef2c715f10fa669801573b19902caabcdb17e3 |
+| B2 | PASS | roadside_stop | 728.37 | 243.707 | 484.663 | 168.201701 | 83.834474 | 84.367227 | 0.098705 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 4a8e9f87f5573306803e8747d7c8e45a5c98166aaf6972c5175fc127505562bc |
+| B3 | PASS | roadside_stop | 701.556 | 230.306 | 471.25 | 155.066164 | 77.388388 | 77.677776 | 0.099766 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 87f0f704d1ea6cae469eb577dbf20a8939bd4911d75b55f314096c56e8e404e3 |
+| B4 | PASS | roadside_stop | 681.406 | 225.47 | 455.936 | 152.919572 | 76.123871 | 76.795701 | 0.100456 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 5be584157a12d6077b83c21adc84ed5fe7902dffc48068a5725e73c2a5693953 |
+| B5 | PASS | roadside_stop | 634.3 | 210.982 | 423.318 | 143.354755 | 71.426044 | 71.928711 | 0.104768 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 2093d1f402bdf924a0643b69d064b7bb24bcf2919ee64df67fb9919cd5f85e5d |
+| B6 | PASS | roadside_stop | 640.017 | 206.105 | 433.912 | 140.20418 | 69.766702 | 70.437478 | 0.107524 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 6a4005aaf8b210d0c8479b0ee204ebd2d163bc69d2e977dd354fda3b6ec43d0d |
+| B7 | PASS | roadside_stop | 579.192 | 196.802 | 382.39 | 131.381479 | 65.43452 | 65.946959 | 0.103293 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 5731e8210d0cb3e51d4b5403a4346cef84a7108c9b4e5fbb9d20f041b5664004 |
+| B8 | PASS | roadside_stop | 568.099 | 190.614 | 377.485 | 126.7145 | 63.130369 | 63.584131 | 0.097859 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 0bc566b039f3be6287935d3444df35c431f235ccf6c8ed596ec3dc335f5bdefb |
+| B9 | PASS | roadside_stop | 533.085 | 178.998 | 354.087 | 118.417239 | 58.937843 | 59.479396 | 0.106701 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | 84397deaf1db31de75048d5d0c255c2524677e365ed4d27352140fb472ed3697 |
+| B10 | PASS | roadside_stop | 517.525 | 174.369 | 343.156 | 114.257212 | 56.840778 | 57.416434 | 0.112791 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | e098ec1fe5dcd978b5831f556bc419ff021ceaeb29adaf50b4beeaeff9e3215a |
+| B11 | PASS | roadside_stop | 507.26 | 166.808 | 340.452 | 108.103327 | 53.843864 | 54.259463 | 0.104551 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | b93b2b6a96e163b64c35de30499e6a2e8e8ee2e6a01c6340e44e35cd89a4906a |
+| B12 | PASS | roadside_stop | 477.254 | 160.111 | 317.143 | 102.552748 | 51.084927 | 51.467821 | 0.101666 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | d8b9df33b2aaddfd713eb66279e1df273847befe5762963074feae253ffe1cbe |
+| B13 | PASS | roadside_stop | 482.441 | 150.306 | 332.135 | 94.060732 | 46.811875 | 47.248857 | 0.10223 | CHARGING | true | true | 66 | UNAVAILABLE | bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276 | c44b7463d7018c511f1485ae69e4c9f9a82c97fc20ede79ef263d0903b85fecf |
+
+## Split provenance
+
+| Site | Duration split | Distance split | Source report |
+|---|---|---|---|
+| B1 | explicit | explicit | sites/B1/camping_site_matrix.json |
+| B2 | explicit | explicit | sites/B2/camping_site_matrix.json |
+| B3 | explicit | explicit | sites/B3/camping_site_matrix.json |
+| B4 | explicit | explicit | sites/B4/camping_site_matrix.json |
+| B5 | explicit | explicit | sites/B5/camping_site_matrix.json |
+| B6 | explicit | explicit | sites/B6/camping_site_matrix.json |
+| B7 | explicit | explicit | sites/B7/camping_site_matrix.json |
+| B8 | explicit | explicit | sites/B8/camping_site_matrix.json |
+| B9 | explicit | explicit | sites/B9/camping_site_matrix.json |
+| B10 | explicit | explicit | sites/B10/camping_site_matrix.json |
+| B11 | explicit | explicit | sites/B11/camping_site_matrix.json |
+| B12 | explicit | explicit | sites/B12/camping_site_matrix.json |
+| B13 | explicit | explicit | sites/B13/camping_site_matrix.json |

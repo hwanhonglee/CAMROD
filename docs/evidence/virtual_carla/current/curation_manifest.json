@@ -1,0 +1,267 @@
+{
+  "excluded_classes": [
+    "raw *.jsonl telemetry/ROS traces",
+    "source *.mp4 recordings",
+    "runtime *.log files",
+    "ffprobe and exact-command intermediates"
+  ],
+  "manual_4ws": {
+    "path": "manual_4ws",
+    "scenarios": [
+      "straight",
+      "turn",
+      "crab",
+      "zero_turn"
+    ],
+    "sha256sums_sha256": "e5daa98d0d7faee37600e86414c972464bb6fa16a367879110080339adf336d8",
+    "status": "PASS"
+  },
+  "schema": "camrod.virtual_carla.curated_evidence.v1",
+  "site_bundles": {
+    "guest_recall": {
+      "aggregate": {
+        "fail_count": 0,
+        "missing_sites": [],
+        "outbound_distance_m": 858.190109,
+        "outbound_duration_s": 2591.052,
+        "pass_count": 13,
+        "return_distance_m": 864.599743,
+        "return_duration_s": 5212.793,
+        "site_count": 13,
+        "split_distance_complete": true,
+        "split_duration_complete": true,
+        "total_elapsed_s": 7803.845,
+        "total_odom_distance_m": 1722.789852
+      },
+      "path": "guest_recall",
+      "sha256sums_sha256": "90374b3ac70c5f88157fdee63994f953970e40efbbe6bc8753d9fc969ff73cd9",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "source_parts": [
+        {
+          "path": "provenance/run_manifest.json",
+          "runner_status": "PASS",
+          "sha256": "4e0c7c2b693418b61ca4c604d664b7bfe3ac9170154faeb5583c63e9cb5eee55",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ]
+        }
+      ],
+      "status": "PASS",
+      "strict_validation_parts": [
+        {
+          "path": "provenance/strict_validation",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ],
+          "validation_sha256": "9a3f7dc5c24101abff3b9a30465423b6497476815ec0103b1dc93ae8fa2bfaac"
+        }
+      ]
+    },
+    "operator_delivery": {
+      "aggregate": {
+        "fail_count": 0,
+        "missing_sites": [],
+        "outbound_distance_m": 889.573874,
+        "outbound_duration_s": 2789.613,
+        "pass_count": 13,
+        "return_distance_m": 896.878369,
+        "return_duration_s": 5051.089,
+        "site_count": 13,
+        "split_distance_complete": true,
+        "split_duration_complete": true,
+        "total_elapsed_s": 7840.705,
+        "total_odom_distance_m": 1786.452243
+      },
+      "path": "operator_delivery",
+      "sha256sums_sha256": "17908207fcb61c6fca50b41b9c54445241b5913df8ecfcf4f53d324c29d65b7a",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "source_parts": [
+        {
+          "path": "provenance/run_manifest.json",
+          "runner_status": "PASS",
+          "sha256": "044462b9cb1c3789fc7ba4a229f0cf38565ac6b4ddc46c0f14c2e503f486555a",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ]
+        }
+      ],
+      "status": "PASS",
+      "strict_validation_parts": [
+        {
+          "path": "provenance/strict_validation",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ],
+          "validation_sha256": "06ed5e0e80ef415f026b801c186f3057620432494767f4278d6a9632299f25fe"
+        }
+      ]
+    },
+    "operator_recall": {
+      "aggregate": {
+        "fail_count": 0,
+        "missing_sites": [],
+        "outbound_distance_m": 858.350562,
+        "outbound_duration_s": 2573.926,
+        "pass_count": 13,
+        "return_distance_m": 864.706762,
+        "return_duration_s": 5095.902,
+        "site_count": 13,
+        "split_distance_complete": true,
+        "split_duration_complete": true,
+        "total_elapsed_s": 7669.826,
+        "total_odom_distance_m": 1723.057324
+      },
+      "path": "operator_recall",
+      "sha256sums_sha256": "38be4c690ed944f9bd6de69ddfde060ef7db7ea734c4bb0157ca3d09eb1af108",
+      "sites": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B12",
+        "B13"
+      ],
+      "source_parts": [
+        {
+          "path": "provenance/run_manifest_part_01.json",
+          "runner_status": "PASS",
+          "sha256": "2d1b61e3765dbdb2aa6dc301fe9f3908ed3ae763da14c12b2ecc07060f906560",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5"
+          ]
+        },
+        {
+          "path": "provenance/run_manifest_part_02.json",
+          "runner_status": "PASS",
+          "sha256": "393022bee9d38bde6863b7e0f756c1264bcae60a20094f70b60175f3f5c395a4",
+          "sites": [
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ]
+        }
+      ],
+      "status": "PASS",
+      "strict_validation_parts": [
+        {
+          "path": "provenance/strict_validation/part_01",
+          "sites": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5"
+          ],
+          "validation_sha256": "8bac1fb053a090d6f80d9118cabbee420fcbff87d95ab7b300e943ffc82e32cf"
+        },
+        {
+          "path": "provenance/strict_validation/part_02",
+          "sites": [
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11",
+            "B12",
+            "B13"
+          ],
+          "validation_sha256": "f0c381d9808471ff25e483374f25eaba8621a046eb88508e330a4a8a5cfbe5e2"
+        }
+      ]
+    }
+  },
+  "status": "PASS"
+}

@@ -1365,7 +1365,7 @@ case "${subcommand}" in
     printf '\n# Expanded develop-parity CAMROD command; run.sh creates the fresh egg cache\n'
     print_command "${CAMROD_PARITY_COMMAND[@]}"
     printf '\n# Expanded develop-parity + CARLA campsite validation command\n'
-    printf '# Differences are the 7a095ee campsite geometry subset and a bounded-recovery-only CARLA torque lease.\n'
+    printf '# Differences are the current v27 campsite geometry subset and bounded CARLA-only traction/manual-departure leases.\n'
     print_command "${CAMROD_SITE_GEOMETRY_COMMAND[@]}"
     printf '\n# Expanded historical Woraksan-tuned CAMROD command (optional)\n'
     printf '# The wrapper explicitly resolves manual limits=1.40/1.00/0.7853, lease=0.75s, speed scale=1.0, radius=0.82m.\n'

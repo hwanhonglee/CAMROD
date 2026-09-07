@@ -1,0 +1,241 @@
+{
+  "schema": "camrod.virtual_carla.manual_4ws_evidence.v1",
+  "record_type": "session_teardown",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T20:24:18.847941+00:00",
+  "fail_safe": {
+    "zero_before_disarm": true,
+    "durable_zero_confirmed": true,
+    "frame": {
+      "type": "disarm",
+      "seq": 1215
+    },
+    "already_disarmed": false
+  },
+  "snapshot_before": {
+    "panelVisible": true,
+    "connected": true,
+    "armed": true,
+    "mode": "zero_turn",
+    "linearLimitMps": 0.2,
+    "lateralLimitMps": 0.2,
+    "angularLimitRadps": 0.2,
+    "stateText": "ARMED",
+    "expanded": true,
+    "scale": 1,
+    "loginVisible": false,
+    "adminVisible": true
+  },
+  "cdp_x11_binding": {
+    "verified": true,
+    "method": "temporary unique document.title observed on explicit X11 window",
+    "target_id": "995C504DADFE0BD566A18FA687BD3F22",
+    "window_id": "0x4800004",
+    "display": ":0",
+    "title_restored": "Robot UI"
+  },
+  "snapshot": {
+    "panelVisible": true,
+    "connected": true,
+    "armed": false,
+    "mode": "zero_turn",
+    "linearLimitMps": 0.2,
+    "lateralLimitMps": 0.2,
+    "angularLimitRadps": 0.2,
+    "stateText": "STANDBY",
+    "expanded": true,
+    "scale": 1,
+    "loginVisible": false,
+    "adminVisible": true
+  },
+  "ros_observation": {
+    "subscriber_only": true,
+    "checks": {
+      "/control/manual_cmd_vel_ros": "zero",
+      "/control/cmd_vel_ros": "zero",
+      "physical_four_wheel_torque": "zero",
+      "planning_engage": false,
+      "platform_drive_enable": false
+    }
+  },
+  "interactions": [
+    {
+      "stage": "key_down",
+      "code": "Space",
+      "at_unix_ns": 1788726258452693411,
+      "transport": "CDP.Input.dispatchKeyEvent"
+    },
+    {
+      "stage": "key_up",
+      "code": "Space",
+      "at_unix_ns": 1788726258483240578,
+      "transport": "CDP.Input.dispatchKeyEvent"
+    },
+    {
+      "stage": "key_down",
+      "code": "Escape",
+      "at_unix_ns": 1788726258483847053,
+      "transport": "CDP.Input.dispatchKeyEvent"
+    },
+    {
+      "stage": "key_up",
+      "code": "Escape",
+      "at_unix_ns": 1788726258514410872,
+      "transport": "CDP.Input.dispatchKeyEvent"
+    }
+  ],
+  "websocket_records": [
+    {
+      "sent_at_unix_ms": 1788726257847,
+      "sent_at_performance_ms": 29375041.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1206,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1206,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726257947,
+      "sent_at_performance_ms": 29375141.80000007,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1207,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1207,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258047,
+      "sent_at_performance_ms": 29375241.600000024,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1208,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1208,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258147,
+      "sent_at_performance_ms": 29375341.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1209,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1209,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258247,
+      "sent_at_performance_ms": 29375441.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1210,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1210,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258347,
+      "sent_at_performance_ms": 29375541.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1211,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1211,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258447,
+      "sent_at_performance_ms": 29375641.400000095,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1212,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1212,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258452,
+      "sent_at_performance_ms": 29375646.200000048,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1213,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1213,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258483,
+      "sent_at_performance_ms": 29375677.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"drive\",\"seq\":1214,\"mode\":\"zero_turn\",\"forward\":0,\"turn\":0,\"crab\":0,\"scale\":1}",
+      "frame": {
+        "type": "drive",
+        "seq": 1214,
+        "mode": "zero_turn",
+        "forward": 0,
+        "turn": 0,
+        "crab": 0,
+        "scale": 1
+      }
+    },
+    {
+      "sent_at_unix_ms": 1788726258483,
+      "sent_at_performance_ms": 29375677.5,
+      "url": "ws://127.0.0.1:8010/ws/manual-drive",
+      "payload": "{\"type\":\"disarm\",\"seq\":1215}",
+      "frame": {
+        "type": "disarm",
+        "seq": 1215
+      }
+    }
+  ],
+  "artifacts": {
+    "ros_trace": {
+      "path": "ros_trace.jsonl",
+      "bytes": 53459,
+      "sha256": "dbc8ae8f82aee2b88af37a7ee6c52c4e93626cf2eb23a2cdd9c667249e17239e"
+    }
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "actor": {
+    "id": 50,
+    "role_name": "ego_vehicle",
+    "type_id": "vehicle.ranger.default"
+  },
+  "metric_definitions": {
+    "distance": "sum of consecutive actor-transform location deltas",
+    "omega": "corrected_angle_integration_speed_rad_per_second; raw solver omega is also reported",
+    "slip": "absolute longitudinal_slip and lateral_slip_radians maxima",
+    "tire_load": "current_tire_load_n minimum and maximum",
+    "torque": "combined_wheel_torque_nm; external drive torque is also reported",
+    "z_delta": "absolute actor Z difference from the first sample"
+  },
+  "motion": {
+    "final_location_m": {
+      "x": -19.325775146484375,
+      "y": -34.12782669067383,
+      "z": -0.9378159046173096
+    },
+    "initial_location_m": {
+      "x": -19.333332061767578,
+      "y": -34.13196563720703,
+      "z": -0.9378159046173096
+    },
+    "max_abs_pitch_degrees": 0.011201509274542332,
+    "max_abs_roll_degrees": 0.3418934941291809,
+    "max_abs_z_delta_from_initial_m": 3.5762786865234375e-06,
+    "planar_distance_m": 0.08327111725635578,
+    "spatial_distance_m": 0.08327198908654411,
+    "z_max_m": -0.9378126263618469,
+    "z_min_m": -0.9378194808959961
+  },
+  "samples": {
+    "count": 159,
+    "first_elapsed_wall_seconds": 6.380106788128614e-05,
+    "first_timestamp_unix_ns": 1788726229962941766,
+    "first_world_frame": 639836,
+    "header_requested_rate_hz": 10.0,
+    "last_elapsed_wall_seconds": 15.80011434503831,
+    "last_timestamp_unix_ns": 1788726245763053389,
+    "last_world_frame": 640136,
+    "observed_rate_hz": 9.99992935303075,
+    "recording_duration_seconds": 15.801379775,
+    "sample_span_seconds": 15.800111623
+  },
+  "schema": "camrod.virtual_carla.physical_wheel_summary.v1",
+  "source": {
+    "bytes": 1417292,
+    "line_count": 161,
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v27_final/manual_4ws/zero_turn/physical_wheels.jsonl",
+    "schema": "camrod.virtual_carla.physical_wheel_telemetry.v1",
+    "sha256": "16f7b958ff7f847b2a3cfb276f4cd0cf7fae782e5e6def67f3076d5257dd5aba"
+  },
+  "status": "PASS",
+  "validation": {
+    "actor_identity_consistent": true,
+    "canonical_wheels_exact": [
+      "FL",
+      "FR",
+      "RL",
+      "RR"
+    ],
+    "footer_sample_count_matches": true,
+    "footer_status": "STOPPED",
+    "footer_stop_reason": "signal",
+    "footer_valid": true,
+    "header_valid": true,
+    "streaming_reader": true
+  },
+  "wheels": {
+    "FL": {
+      "contact_materials": [
+        {
+          "class": "/Script/PhysicsCore.PhysicalMaterial",
+          "path": "/Engine/EngineMaterials/DefaultPhysicalMaterial.DefaultPhysicalMaterial",
+          "sample_count": 159,
+          "sample_ratio": 1.0,
+          "surface_type": 0
+        }
+      ],
+      "current_tire_load_n": {
+        "max": 241.8494110107422,
+        "min": 230.60015869140625
+      },
+      "in_air_count": 0,
+      "in_air_ratio": 0.0,
+      "max_abs_combined_wheel_torque_nm": 90.84352111816406,
+      "max_abs_external_drive_torque_nm": 1.0,
+      "max_abs_lateral_slip_radians": 0.010938325896859169,
+      "max_abs_longitudinal_slip": 1.0023638010025024,
+      "max_abs_omega_rad_per_second": 0.7205619812011719,
+      "max_abs_raw_solver_omega_rad_per_second": 3.1598803997039795,
+      "max_abs_steer_angle_degrees": 58.19178771972656,
+      "sample_count": 159
+    },
+    "FR": {
+      "contact_materials": [
+        {
+          "class": "/Script/PhysicsCore.PhysicalMaterial",
+          "path": "/Engine/EngineMaterials/DefaultPhysicalMaterial.DefaultPhysicalMaterial",
+          "sample_count": 159,
+          "sample_ratio": 1.0,
+          "surface_type": 0
+        }
+      ],
+      "current_tire_load_n": {
+        "max": 242.7190704345703,
+        "min": 232.1983184814453
+      },
+      "in_air_count": 0,
+      "in_air_ratio": 0.0,
+      "max_abs_combined_wheel_torque_nm": 91.14460754394531,
+      "max_abs_external_drive_torque_nm": 1.0,
+      "max_abs_lateral_slip_radians": 0.009625785052776337,
+      "max_abs_longitudinal_slip": 1.0015274286270142,
+      "max_abs_omega_rad_per_second": 0.7228948473930359,
+      "max_abs_raw_solver_omega_rad_per_second": 3.0823137760162354,
+      "max_abs_steer_angle_degrees": 58.19178771972656,
+      "sample_count": 159
+    },
+    "RL": {
+      "contact_materials": [
+        {
+          "class": "/Script/PhysicsCore.PhysicalMaterial",
+          "path": "/Engine/EngineMaterials/DefaultPhysicalMaterial.DefaultPhysicalMaterial",
+          "sample_count": 159,
+          "sample_ratio": 1.0,
+          "surface_type": 0
+        }
+      ],
+      "current_tire_load_n": {
+        "max": 263.5555725097656,
+        "min": 251.96926879882812
+      },
+      "in_air_count": 0,
+      "in_air_ratio": 0.0,
+      "max_abs_combined_wheel_torque_nm": 98.99030303955078,
+      "max_abs_external_drive_torque_nm": 1.0,
+      "max_abs_lateral_slip_radians": 0.008143443614244461,
+      "max_abs_longitudinal_slip": 0.8823250532150269,
+      "max_abs_omega_rad_per_second": 0.6480531692504883,
+      "max_abs_raw_solver_omega_rad_per_second": 3.4415550231933594,
+      "max_abs_steer_angle_degrees": 58.19178771972656,
+      "sample_count": 159
+    },
+    "RR": {
+      "contact_materials": [
+        {
+          "class": "/Script/PhysicsCore.PhysicalMaterial",
+          "path": "/Engine/EngineMaterials/DefaultPhysicalMaterial.DefaultPhysicalMaterial",
+          "sample_count": 159,
+          "sample_ratio": 1.0,
+          "surface_type": 0
+        }
+      ],
+      "current_tire_load_n": {
+        "max": 265.369140625,
+        "min": 252.9669647216797
+      },
+      "in_air_count": 0,
+      "in_air_ratio": 0.0,
+      "max_abs_combined_wheel_torque_nm": 99.41181182861328,
+      "max_abs_external_drive_torque_nm": 1.0,
+      "max_abs_lateral_slip_radians": 0.01071454118937254,
+      "max_abs_longitudinal_slip": 0.713406503200531,
+      "max_abs_omega_rad_per_second": 0.6535889506340027,
+      "max_abs_raw_solver_omega_rad_per_second": 3.4504170417785645,
+      "max_abs_steer_angle_degrees": 58.19178771972656,
+      "sample_count": 159
+    }
+  }
+}

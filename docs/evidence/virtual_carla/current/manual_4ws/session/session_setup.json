@@ -1,0 +1,245 @@
+{
+  "schema": "camrod.virtual_carla.manual_4ws_evidence.v1",
+  "record_type": "session_setup",
+  "status": "PASS",
+  "created_at_utc": "2026-09-06T20:22:21.504990+00:00",
+  "authority": {
+    "kind": "visible Robot UI administrator form via CDP",
+    "server_authenticated": false,
+    "frontend_administrator_gate_exercised": true,
+    "direct_websocket_or_ros_command": false,
+    "cdp_x11_binding": {
+      "verified": true,
+      "method": "temporary unique document.title observed on explicit X11 window",
+      "target_id": "995C504DADFE0BD566A18FA687BD3F22",
+      "window_id": "0x4800004",
+      "display": ":0",
+      "title_restored": "Robot UI"
+    }
+  },
+  "authentication": {
+    "authenticated_via_visible_form": true,
+    "credentials": {
+      "id": "admin",
+      "password": "REDACTED"
+    },
+    "snapshot": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": false,
+      "mode": "ackermann",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "STANDBY",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "interactions": [
+      {
+        "stage": "exit stale administrator session",
+        "selector": "[data-ui=\"operator-admin-exit\"]",
+        "x": 855.801,
+        "y": 55.711,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator long press",
+        "selector": "[data-ui=\"operator-admin-entry\"]",
+        "duration_s": 1.65,
+        "x": 916.0,
+        "y": 508.0,
+        "transport": "CDP.Input.dispatchMouseEvent",
+        "at_unix_ns": 1788726140063040660
+      },
+      {
+        "stage": "focus administrator id",
+        "selector": "[data-ui=\"operator-admin-id\"]",
+        "x": 264.465,
+        "y": 184.554,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator id",
+        "selector": "[data-ui=\"operator-admin-id\"]",
+        "text_length": 5,
+        "secret_redacted": false,
+        "transport": "CDP.Input.insertText",
+        "at_unix_ns": 1788726140082622955
+      },
+      {
+        "stage": "focus administrator password",
+        "selector": "[data-ui=\"operator-admin-password\"]",
+        "x": 675.535,
+        "y": 182.017,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator password",
+        "selector": "[data-ui=\"operator-admin-password\"]",
+        "text_length": 4,
+        "secret_redacted": true,
+        "transport": "CDP.Input.insertText",
+        "at_unix_ns": 1788726140099149949
+      },
+      {
+        "stage": "submit administrator login",
+        "selector": "[data-ui=\"operator-admin-login\"]",
+        "x": 470.0,
+        "y": 230.62,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "open administrator camera tab",
+        "selector": "[data-ui=\"operator-diagnostic-tab-camera\"]",
+        "x": 311.461,
+        "y": 109.052,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "expand manual-drive controls",
+        "selector": "[data-ui=\"manual-drive-toggle\"]",
+        "x": 870.039,
+        "y": 961.575,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      }
+    ]
+  },
+  "arm": {
+    "frame": {
+      "type": "arm",
+      "seq": 1
+    },
+    "snapshot": {
+      "panelVisible": true,
+      "connected": true,
+      "armed": true,
+      "mode": "ackermann",
+      "linearLimitMps": 0.2,
+      "lateralLimitMps": 0.2,
+      "angularLimitRadps": 0.2,
+      "stateText": "ARMED",
+      "expanded": true,
+      "scale": 1,
+      "loginVisible": false,
+      "adminVisible": true
+    },
+    "interactions": [
+      {
+        "stage": "exit stale administrator session",
+        "selector": "[data-ui=\"operator-admin-exit\"]",
+        "x": 855.801,
+        "y": 55.711,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator long press",
+        "selector": "[data-ui=\"operator-admin-entry\"]",
+        "duration_s": 1.65,
+        "x": 916.0,
+        "y": 508.0,
+        "transport": "CDP.Input.dispatchMouseEvent",
+        "at_unix_ns": 1788726140063040660
+      },
+      {
+        "stage": "focus administrator id",
+        "selector": "[data-ui=\"operator-admin-id\"]",
+        "x": 264.465,
+        "y": 184.554,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator id",
+        "selector": "[data-ui=\"operator-admin-id\"]",
+        "text_length": 5,
+        "secret_redacted": false,
+        "transport": "CDP.Input.insertText",
+        "at_unix_ns": 1788726140082622955
+      },
+      {
+        "stage": "focus administrator password",
+        "selector": "[data-ui=\"operator-admin-password\"]",
+        "x": 675.535,
+        "y": 182.017,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "administrator password",
+        "selector": "[data-ui=\"operator-admin-password\"]",
+        "text_length": 4,
+        "secret_redacted": true,
+        "transport": "CDP.Input.insertText",
+        "at_unix_ns": 1788726140099149949
+      },
+      {
+        "stage": "submit administrator login",
+        "selector": "[data-ui=\"operator-admin-login\"]",
+        "x": 470.0,
+        "y": 230.62,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "open administrator camera tab",
+        "selector": "[data-ui=\"operator-diagnostic-tab-camera\"]",
+        "x": 311.461,
+        "y": 109.052,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "expand manual-drive controls",
+        "selector": "[data-ui=\"manual-drive-toggle\"]",
+        "x": 870.039,
+        "y": 961.575,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      },
+      {
+        "stage": "scroll ARM manual drive into visible viewport",
+        "selector": "[data-ui=\"manual-drive-arm\"]",
+        "x": 462.5,
+        "y": 812.706,
+        "viewport_width": 940,
+        "viewport_height": 1016,
+        "hit_tag": "BUTTON",
+        "hit_ui": "manual-drive-arm",
+        "transport": "CDP.Runtime.evaluate scrollIntoView/read-only hit test",
+        "at_unix_ns": 1788726140199800961
+      },
+      {
+        "stage": "ARM manual drive",
+        "selector": "[data-ui=\"manual-drive-arm\"]",
+        "x": 462.5,
+        "y": 812.706,
+        "transport": "CDP.Input.dispatchMouseEvent"
+      }
+    ]
+  },
+  "ros_observation": {
+    "subscriber_only": true,
+    "publisher_counts": {
+      "/control/manual_cmd_vel_ros": 1,
+      "/control/cmd_vel_ros": 1,
+      "/carla/ego_vehicle/extended_ackermann_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_cmd": 1,
+      "/carla/ego_vehicle/physical_four_wheel_status": 1,
+      "/carla/ego_vehicle/odometry": 1,
+      "/control/cmd_vel_safety_gate/status": 1,
+      "/planning/engage": 1,
+      "/platform/drive_enable": 1,
+      "/carla/ego_vehicle/collision": 1
+    },
+    "checks": {
+      "planning_engage": true,
+      "platform_drive_enable": true,
+      "manual_zero_while_armed": true
+    }
+  },
+  "artifacts": {
+    "ros_trace": {
+      "path": "ros_trace.jsonl",
+      "bytes": 296119,
+      "sha256": "6d7406215d24b5bcc11c0128bd624457d361a52431f3de08c9a8880431b52298"
+    }
+  }
+}
