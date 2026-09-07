@@ -42,7 +42,10 @@ ranger_platform_checker:
       voltage_warn:  43.0          # V 이하 → WARN
       voltage_error: 41.0          # V 이하 → ERROR
       soc_warn:      20.0          # % 이하 → WARN
-      soc_error:     10.0          # % 이하 → ERROR
+      soc_error:     10.0          # Optional SOC-only ERROR threshold
+      # SOC alone must not estop the <25% automatic return, even below 10%.
+      # Voltage/temperature thresholds and CAN/BMS error-code checks stay active.
+      soc_error_enabled: false
       temp_warn:     45.0          # °C 이상 → WARN
       temp_error:    55.0          # °C 이상 → ERROR
 

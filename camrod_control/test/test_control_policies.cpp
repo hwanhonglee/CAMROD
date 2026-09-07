@@ -752,9 +752,61 @@ TEST(CmdVelGatePolicy, RequiresEngageOperatorArmAndHealthyCan) {
   EXPECT_TRUE(policy.enabled(10.0, false, false));
 }
 
-TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc) {
+TEST(CmdVelGatePolicy, LowSocDefaultAllowsReturnButKeepsIndependentSafetyStops) {
+  CmdVelGatePolicy policy;
+  policy.setMissionEngage(true);
+  policy.setPlatformDriveEnable(true);
+  PlatformSafetyState platform;
+  platform.received = true;
+  platform.received_sec = 10.0;
+  platform.control_mode = 1;
+
+  // The <25% return must not be stranded at the former inclusive 20% stop.
+  for (const double percentage : {0.249, 0.20, 0.19, 0.05}) {
+    platform.battery_percentage = percentage;
+    policy.setPlatformState(platform);
+    EXPECT_TRUE(policy.enabled(10.0, false, false));
+  }
+
+  policy.setEstopSource("planning", true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setEstopSource("planning", false);
+  policy.setCostState(true, 0.0);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setCostState(false, 0.0);
+  policy.setDrTimeout(true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setDrTimeout(false);
+  EXPECT_FALSE(policy.enabled(10.6, false, false));
+  EXPECT_FALSE(policy.enabled(10.0, true, false));
+
+  // Battery fault/warning CAN bits are hardware evidence, not the removed
+  // SOC-only threshold. They and unrelated CAN faults still prohibit motion.
+  for (const uint16_t error_code : {0x0001, 0x0002, 0x0100}) {
+    platform.error_code = error_code;
+    policy.setPlatformState(platform);
+    EXPECT_FALSE(policy.enabled(10.0, false, false));
+    EXPECT_FALSE(policy.enabled(10.0, true, true));
+  }
+  platform.error_code = 0;
+  platform.control_mode = 0;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.control_mode = 1;
+  platform.vehicle_state = 1;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.vehicle_state = 0;
+  policy.setPlatformState(platform);
+  EXPECT_TRUE(policy.enabled(10.0, false, false));
+}
+
+TEST(CmdVelGatePolicy, ExplicitCriticalSocOptInKeepsItsInclusiveThreshold) {
   CmdVelGatePolicyConfig config;
   config.require_platform_drive_enable = false;
+  // This optional policy remains available, but it is no longer the default
+  // that governs automatic low-battery returns in the deployment profile.
+  config.critical_battery_stop_enabled = true;
   CmdVelGatePolicy policy(config);
   policy.setManualEngage(true);
   PlatformSafetyState platform;
@@ -1880,6 +1932,62 @@ TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff) {
   EXPECT_EQ(arbiter.evaluate(true, 10.0), CommandSourceDecision::kAllow);
   EXPECT_EQ(arbiter.evaluate(true, 10.01), CommandSourceDecision::kAllow);
   EXPECT_EQ(arbiter.evaluate(true, 10.02), CommandSourceDecision::kAllow);
+}
+
+TEST(CommandSourceArbiter, RecallClearanceRetainsOwnershipThroughSiteReentry) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("", "WAIT_RETURN", "", 1.0);
+  const auto clearance =
+      arbiter.setManeuverPhases("", "RECALL_CLEARANCE_WAIT", "", 2.0);
+  EXPECT_FALSE(clearance.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 10.0), CommandSourceDecision::kAllow);
+  const auto entry =
+      arbiter.setManeuverPhases("", "ALIGN_ENTRY_YAW", "", 10.1);
+  EXPECT_FALSE(entry.maneuver_started);
+  EXPECT_FALSE(entry.maneuver_finished);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.1), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("", "IDLE", "", 11.0);
+  EXPECT_EQ(arbiter.evaluate(true, 11.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, ParkingOwnerTransferRequiresStationaryExclusiveHandoff) {
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_PARKING_OWNER", 1.0);
+  EXPECT_TRUE(started.parking_started);
+  EXPECT_TRUE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+  const auto selected = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_TAG", 2.0);
+  EXPECT_FALSE(selected.maneuver_finished);
+  EXPECT_FALSE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("IDLE", "IDLE", "IDLE", 3.0);
+  EXPECT_EQ(arbiter.evaluate(true, 3.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, RecallAfterTurnCannotMoveUntilFinalReturnConfirmation) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("IDLE", "ROTATE_180", "IDLE", 1.0);
+  const auto waiting = arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "IDLE", 2.0);
+  EXPECT_FALSE(waiting.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 30.0), CommandSourceDecision::kIgnore);
+  // Even a simultaneous low-battery parking-owner request cannot remove the
+  // campsite stationary latch consumed before all gate yaw/motion overrides.
+  arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "WAITING_FOR_PARKING_OWNER", 31.0);
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  arbiter.setManeuverPhases("IDLE", "CRAB_OUT", "IDLE", 32.0);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_TRUE(arbiter.campsiteActive());
 }
 
 TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle) {

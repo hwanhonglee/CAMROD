@@ -54,9 +54,27 @@ def _resolve_default_camping_sites_yaml() -> str:
     return ''
 
 
+def _resolve_default_drop_zones_yaml() -> str:
+    """Use the same authored bringup station bounds for standalone admission."""
+    try:
+        candidate = os.path.join(
+            get_package_share_directory('camrod_bringup'), 'config', 'map', 'drop_zones.yaml'
+        )
+        if os.path.isfile(candidate):
+            return candidate
+    except PackageNotFoundError:
+        pass
+    candidate = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', '..', '..',
+        'camrod_bringup', 'config', 'map', 'drop_zones.yaml',
+    ))
+    return candidate if os.path.isfile(candidate) else ''
+
+
 def generate_launch_description():
     default_frontend_dir = _resolve_default_frontend_dir()
     default_camping_sites_yaml = _resolve_default_camping_sites_yaml()
+    default_drop_zones_yaml = _resolve_default_drop_zones_yaml()
 
     enable_ui_backend_arg = DeclareLaunchArgument(
         'enable_ui_backend',
@@ -145,6 +163,11 @@ def generate_launch_description():
         default_value=default_camping_sites_yaml,
         description='Camping site coordinates YAML used for destination->goal_pose dispatch',
     )
+    drop_zones_yaml_arg = DeclareLaunchArgument(
+        'drop_zones_yaml',
+        default_value=default_drop_zones_yaml,
+        description='Authored map-frame station polygons for safe Robot/Guest departure admission',
+    )
     enable_campsite_occupancy_guard_arg = DeclareLaunchArgument(
         'enable_campsite_occupancy_guard',
         default_value='false',
@@ -196,8 +219,8 @@ def generate_launch_description():
     )
     parking_method_arg = DeclareLaunchArgument(
         'parking_method',
-        default_value='reverse',
-        description='Selected final parking controller: reverse or apriltag',
+        default_value='auto',
+        description='Final parking selection: auto, reverse or apriltag',
     )
     charging_departure_delay_s_arg = DeclareLaunchArgument(
         'charging_departure_delay_s',
@@ -258,6 +281,11 @@ def generate_launch_description():
         'low_battery_return_threshold_percent',
         default_value='35.0',
         description='SOC percent that starts the finish-current-mission return latch',
+    )
+    urgent_battery_return_threshold_percent_arg = DeclareLaunchArgument(
+        'urgent_battery_return_threshold_percent',
+        default_value='25.0',
+        description='Below this SOC percent, interrupt the current task and return for charging',
     )
     ui_backend = Node(
         package='camrod_ui',
@@ -353,12 +381,17 @@ def generate_launch_description():
                 LaunchConfiguration('low_battery_return_threshold_percent'),
                 value_type=float,
             ),
+            'urgent_battery_return_threshold_percent': ParameterValue(
+                LaunchConfiguration('urgent_battery_return_threshold_percent'),
+                value_type=float,
+            ),
             'publish_platform_drive_enable_with_engage': True,
             'default_goal_frame_id': 'map',
             # HH_260617: Fallback destination uses the same mission-key contract.
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
+            'drop_zones_yaml': LaunchConfiguration('drop_zones_yaml'),
             # HH_260818 - One bringup flag controls both UI admission and the
             # control-side occupied-site start gate.
             'enable_campsite_occupancy_guard': ParameterValue(
@@ -443,6 +476,7 @@ def generate_launch_description():
         operator_ui_window_fullscreen_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
+        drop_zones_yaml_arg,
         enable_campsite_occupancy_guard_arg,
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
@@ -464,6 +498,7 @@ def generate_launch_description():
         minimum_mission_dispatch_battery_percent_arg,
         low_battery_return_after_current_mission_arg,
         low_battery_return_threshold_percent_arg,
+        urgent_battery_return_threshold_percent_arg,
         ui_backend,
         guest_ui,
         operator_ui_window,

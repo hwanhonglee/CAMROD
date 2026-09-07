@@ -51,6 +51,59 @@ const RADAR_MOUNTS = {
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 
+// HH_260907 - Return follows automatic SOC parking policy; this separate
+// operator action explicitly requests charger docking at any battery level.
+export async function postDockingRequest(request = fetch) {
+  const response = await request('/ui/dock', { method: 'POST' });
+  const body = await response.json();
+  if (!response.ok || !body.success) throw new Error(body.message || '도킹 요청 실패');
+  return body;
+}
+
+export function parkingPolicyMessage(policy = {}) {
+  if (policy.parking_selected_method === 'apriltag') return '충전 도킹 선택됨';
+  if (policy.parking_selected_method === 'reverse') return '일반 후진 주차 선택됨 · 충전하지 않음';
+  if (policy.charging_required === true) return '충전 필요 · 복귀 후 충전 도킹';
+  return '자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전 도킹';
+}
+
+// This is a station action, not a campsite Return shortcut. Backend rechecks
+// the authoritative station state before granting any docking motion.
+export function dockingAllowedAtServiceState(serviceStateName) {
+  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
+    .includes(serviceStateName);
+}
+
+export function DockingCommandButton({ className = 'manual-return-btn', disabled = false, serviceStateName = '' }) {
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState('');
+  const pendingRef = useRef(false);
+  const stationAllowed = dockingAllowedAtServiceState(serviceStateName);
+  const requestDocking = async () => {
+    if (pendingRef.current || disabled || !stationAllowed) return;
+    if (!window.confirm('배터리 잔량과 관계없이 충전 도킹을 요청합니다. 진행하시겠습니까?')) return;
+    pendingRef.current = true;
+    setPending(true);
+    setStatus('');
+    try {
+      const body = await postDockingRequest();
+      setStatus(body.message || '충전 도킹 요청이 접수되었습니다.');
+    } catch (error) {
+      setStatus(error.message || '도킹 요청 실패');
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  };
+  return <>
+    <button type="button" className={className} onClick={requestDocking} disabled={disabled || pending || !stationAllowed}
+      title={stationAllowed ? '자동 주차 정책과 별도로 충전 도킹 요청' : '도킹은 drop_zone 정차·주차 상태에서만 가능합니다'}>
+      {pending ? '도킹 요청 중' : '도킹'}
+    </button>
+    {status && <span className="manual-motion-status" role="status">{status}</span>}
+  </>;
+}
+
 function numberText(value, digits = 2, fallback = '-') {
   return finite(value) ? value.toFixed(digits) : fallback;
 }
@@ -1057,7 +1110,7 @@ function DockingPathPlot({ telemetry }) {
   );
 }
 
-function DockingView({ telemetry, redockStatus = null }) {
+function DockingView({ telemetry, redockStatus = null, parkingPolicy = {}, serviceStateName = '' }) {
   const docking = telemetry.docking || {};
   const tag = docking.tag || {};
   const controllers = telemetry.safety?.controllers || {};
@@ -1084,10 +1137,10 @@ function DockingView({ telemetry, redockStatus = null }) {
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || '명령 실패');
       const statusByAction = {
-        parking_alignment: '재도킹 정렬을 시작합니다',
+        parking_alignment: '선택된 주차 방식으로 정렬을 시작합니다',
         parking_alignment_waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
         waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
-        parking_in_progress: '도킹이 이미 진행 중입니다',
+        parking_in_progress: '주차가 이미 진행 중입니다',
         return_in_progress: '복귀가 이미 진행 중입니다',
       };
       setCommandStatus({
@@ -1120,10 +1173,12 @@ function DockingView({ telemetry, redockStatus = null }) {
           disabled={Boolean(pending)}
           onClick={() => postCommand('return', '/ui/manual_return', '즉시 복귀 명령 전송됨')}
         >
-          {pending === 'return' ? '복귀 요청 중' : '즉시 복귀'}
+          {pending === 'return' ? '복귀 요청 중' : '복귀 · 자동 주차'}
         </button>
+        <DockingCommandButton className="docking-return-command" disabled={Boolean(pending)} serviceStateName={serviceStateName} />
         <div className={`docking-command-status ${commandStatus.tone}`}>{commandStatus.message || '명령 대기'}</div>
       </div>
+      <p className="manual-motion-status" role="status">{parkingPolicyMessage(parkingPolicy)}</p>
       <div className="docking-layout">
         <CameraFeed telemetry={telemetry} camera="docking" label="AprilTag docking debug" />
         <section className="telemetry-section docking-status-section">
@@ -1165,7 +1220,7 @@ function DockingView({ telemetry, redockStatus = null }) {
   );
 }
 
-export default function TelemetryWorkspace({ activeTab, redockStatus = null }) {
+export default function TelemetryWorkspace({ activeTab, redockStatus = null, parkingPolicy = {}, serviceStateName = '' }) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
   const [connectionError, setConnectionError] = useState('');
@@ -1303,10 +1358,10 @@ export default function TelemetryWorkspace({ activeTab, redockStatus = null }) {
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
     if (activeTab === 'docking') {
-      return <DockingView telemetry={telemetry} redockStatus={redockStatus} />;
+      return <DockingView telemetry={telemetry} redockStatus={redockStatus} parkingPolicy={parkingPolicy} serviceStateName={serviceStateName} />;
     }
     return null;
-  }, [activeTab, telemetry, mapData, redockStatus]);
+  }, [activeTab, telemetry, mapData, redockStatus, parkingPolicy, serviceStateName]);
 
   return (
     <div className="telemetry-workspace">

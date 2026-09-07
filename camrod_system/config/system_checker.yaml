@@ -27,6 +27,7 @@
 
     final_parking:
       alternatives:
+        - parking_dispatcher
         - reverse_parking_controller
         - apriltag_parking_controller
 
@@ -183,6 +184,21 @@
         - "/control/drop_zone_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
 
     # HH_260720 - camrod_control reverse-parking method.
+    # Auto mode exposes one authority while both implementations remain private.
+    # Legacy alternatives below cannot also match: their public status topics
+    # are remapped away by parking.launch.py whenever the dispatcher is active.
+    parking_dispatcher:
+      required_nodes:
+        - /parking/parking_dispatcher
+        - /parking/reverse_parking_controller
+        - /parking/apriltag_parking_controller
+        - /perception/apriltag_parking_detector
+      required_topics:
+        - "/parking/status|avg_msgs/msg/ModuleState|1"
+        - "/parking/private/reverse/status|avg_msgs/msg/ModuleState|1"
+        - "/parking/private/apriltag/status|avg_msgs/msg/ModuleState|1"
+        - "/perception/apriltag_parking_detector/tag_pose|avg_msgs/msg/AvgAprilTagPose|1"
+
     reverse_parking_controller:
       required_nodes:
         - /parking/reverse_parking_controller

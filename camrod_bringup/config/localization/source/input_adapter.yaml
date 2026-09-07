@@ -56,7 +56,9 @@
     # HH_260625: Live C-track measurement showed GNSS/localization yaw aligned
     # with each other but ~85 deg clockwise from the lanelet heading. Correct
     # only the dual-antenna heading here; keep map XY/yaw offsets unchanged.
-    gnss_heading_yaw_offset_deg: -90.0
+    # HH_260907 - Preserve the operator's deployment yaw trim, -90 -> -92 deg.
+    # This rotates heading; it does not replace the antenna lever-arm offset.
+    gnss_heading_yaw_offset_deg: -92.0 # -90.0
     gnss_heading_covariance_floor_deg: 1.0
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0

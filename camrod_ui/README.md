@@ -37,8 +37,11 @@ bridge, diagnostics display, and managed local kiosk.
 | Campsites | `B1..B13` |
 | New mission battery | `>= 35%` |
 | Battery feedback required | `true` |
-| Low-battery current-mission latch | `< 35%` |
-| Hard stop authority | control gate at `<= 20%`, not the UI |
+| Finish-current battery band | `25% <= SOC < 35%`, then user-completed return |
+| Urgent battery return | `SOC < 25%`; interrupt site task and safely exit first |
+| SOC-only hard stop | Disabled; EStop, obstacles, CAN/BMS faults remain enforced |
+| Default parking policy | `auto`: SOC `>=35%` reverse park, otherwise AprilTag charge |
+| Explicit docking | `POST /ui/dock`, at drop zone only; independent of SOC |
 | Guest disconnect lock grace | `60 s` |
 | Guest heartbeat / stale close | `10 s` / `45 s` |
 | Local operator window | fullscreen WebKit by default; Chromium and `auto` explicit alternatives |
@@ -66,10 +69,37 @@ site B<N>
   -> /service/state = MOVING_TO_SITE
 ```
 
-Unknown battery or SOC below 35% blocks a new destination. If SOC falls below
-35% during an active campsite mission, the current site phase finishes and the
-UI waits for the normal return request; it does not command immediate motion
-while users may be unloading.
+Unknown battery or SOC below 35% blocks a new destination. At 25–<35%, the
+current site phase finishes and normal unloading/loading completion authorizes
+return. Below 25%, the backend interrupts the current task and requests safe
+controller-owned site exit before planning the return. B1–B10 skip the normal
+Recall site re-entry/turnaround for this urgent case; B11–B13 keep their forward
+loop. RC mode, stale status, obstacles and chassis faults never become motion
+permission. Stop cancels the pending urgent return, including deferred station
+exit handoff, so battery heartbeats cannot restart a cancelled mission.
+
+In default `auto` parking, SOC >=35% selects bounded noncharging reverse park;
+lower or unavailable SOC selects AprilTag docking. A parked robot dropping
+below 35% requests docking automatically. The separate operator Dock button
+requests AprilTag docking at any SOC from the drop zone; it does not interrupt
+an active parking attempt. New missions remain blocked until SOC reaches 35%,
+not necessarily a full charge. Real hardware validation of these new battery
+transitions is still required; isolated software tests do not establish field
+clearance or charger-contact reliability.
+
+Both parking methods use the same configured drop zone; selecting a method
+does not transfer the robot between separate stations. `/ui/dock` returning
+`success: true` acknowledges a request, not physical docking success.
+`charging_required` expresses the SOC policy, while actual charging comes from
+platform feedback; ordinary reverse parking does not establish charger contact.
+
+Recall B1–B10 uses two distinct confirmations. The first roadside button
+authorizes the site-clear announcement, site entry, and 180-degree turn. The
+robot then holds `RECALL_RETURN_WAIT` (`GUEST_LOADING_WAIT` service state).
+Only **짐 싣기 완료 · 복귀** with `recall_final_return: true` for the same
+site/generation authorizes exit. Replayed first-stage packets, generic Return,
+and SOC below 25% cannot skip this human loading confirmation. B11–B13 keep
+their original roadside return without site entry or this on-site second wait.
 
 When a valid campsite is selected in `CHARGING` or
 `WAITING_FOR_CHARGING`, the backend stores the destination but publishes no

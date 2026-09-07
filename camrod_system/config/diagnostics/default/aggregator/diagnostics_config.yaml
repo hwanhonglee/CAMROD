@@ -434,6 +434,13 @@ topics:
     group: control/runtime
     timeout_s: 3.0
 
+  # Auto mode publishes only the selected owner's aggregate diagnostic here.
+  # Legacy controller items remain for standalone modes; unobserved registry
+  # entries do not create missing/stale diagnostics in this aggregator.
+  - name: "parking/parking_dispatcher"
+    group: parking/runtime
+    timeout_s: 3.0
+
   - name: "parking/reverse_parking_controller"
     group: parking/runtime
     timeout_s: 3.0

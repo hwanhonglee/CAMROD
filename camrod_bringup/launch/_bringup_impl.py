@@ -599,10 +599,10 @@ def generate_launch_description():
         )
     # HH_260720 - Use one canonical parking method key; removed backend/mode aliases.
     parking_method_default = str(
-        cfg_get(launch_cfg, 'parking/method', 'reverse')
+        cfg_get(launch_cfg, 'parking/method', 'auto')
     ).strip().lower()
-    if parking_method_default not in ('reverse', 'apriltag'):
-        parking_method_default = 'reverse'
+    if parking_method_default not in ('auto', 'reverse', 'apriltag'):
+        parking_method_default = 'auto'
     parking_cfg_entry = cfg_get(launch_cfg, 'parking/param_file', '__module_default__')
     if str(parking_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default'):
         parking_param_default = optional_pkg_path(
@@ -1706,6 +1706,11 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'system/api_ui_low_battery_return_threshold_percent', 35.0),
             'SOC percent that starts the finish-current-mission return latch',
         ),
+        (
+            'api_ui_urgent_battery_return_threshold_percent',
+            cfg_get(launch_cfg, 'system/api_ui_urgent_battery_return_threshold_percent', 25.0),
+            'Below this SOC percent, interrupt the current task and return for charging',
+        ),
         # HH_260727 - Pass the lightweight local UI surface through bringup.
         (
             'enable_operator_ui_window',
@@ -1851,7 +1856,7 @@ def generate_launch_description():
         ('platform_lights_mcu_bridge_enable', cfg_get(launch_cfg, 'platform/lights_mcu_bridge_enable', True), 'Enable light MCU serial bridge (real hardware only; sim forces false)'),
 
         # HH_260720 - Select reverse or AprilTag parking inside camrod_control.
-        ('parking_method', parking_method_default, 'Parking implementation: reverse|apriltag'),
+        ('parking_method', parking_method_default, 'Parking implementation: auto|reverse|apriltag'),
         ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable final parking control'),
         ('enable_camping_site_maneuver_controller', cfg_get(launch_cfg, 'control/enable_camping_site_maneuver_controller', True), 'Enable campsite crab/rotate control node'),
         # HH_260818 - Keep UI admission and control start checks on one policy.
@@ -1877,7 +1882,7 @@ def generate_launch_description():
         ('control_cmd_vel_gate_minimum_mission_departure_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_minimum_mission_departure_battery_percentage', 0.35), 'Minimum SOC ratio for charger departure'),
         ('control_cmd_vel_gate_block_on_platform_error_code', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_platform_error_code', True), 'Block on non-zero platform CAN error mask'),
         ('control_cmd_vel_gate_require_can_control_mode', cfg_get(launch_cfg, 'control/cmd_vel_gate_require_can_control_mode', True), 'Require Ranger CAN command mode'),
-        ('control_cmd_vel_gate_critical_battery_stop_enabled', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_stop_enabled', True), 'Block at critical BMS SOC'),
+        ('control_cmd_vel_gate_critical_battery_stop_enabled', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_stop_enabled', False), 'Optional legacy critical SOC stop; disabled to allow urgent return'),
         ('control_cmd_vel_gate_critical_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_percentage', 0.20), 'Critical BMS SOC ratio'),
         ('parking_param_file', parking_param_default, 'Parking parameter YAML path'),
 
@@ -2146,7 +2151,7 @@ def generate_launch_description():
         lc['enable_parking'],
         "').lower() in ['1', 'true', 'yes', 'on'] and str('",
         parking_method_resolved,
-        "').strip().lower() == 'apriltag' else 'false'",
+        "').strip().lower() in ['apriltag', 'auto'] else 'false'",
     ])
     resolve_rear_camera_apriltag_container_active = SetLaunchConfiguration(
         'rear_camera_apriltag_container_active_resolved',
@@ -2378,6 +2383,8 @@ def generate_launch_description():
     # HH_260720 - Build the camrod_control safety-gate argument contract.
     safety_gate_args = {
         'module_namespace': lc['control_namespace'],
+        # Auto has a single public parking authority; private owners stay isolated.
+        'parking_method': parking_method_resolved,
         'cmd_vel_gate_enable': lc['control_cmd_vel_gate_enable'],
         'cmd_vel_raw_topic': lc['control_cmd_vel_raw_topic'],
         'navigation_cmd_vel_ros_topic': lc['control_navigation_cmd_vel_ros_topic'],
@@ -2465,10 +2472,11 @@ def generate_launch_description():
         'parameter_file': lc['control_param_file'],
     }
 
-    # HH_260720 - Parking launch selects reverse or AprilTag implementation internally.
+    # Auto selects reverse parking or charging docking from the same SOC policy as UI.
     parking_args = {
         'parking_namespace': lc['parking_namespace'],
         'parking_method': parking_method_resolved,
+        'charging_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
         'command_topic': lc['control_cmd_vel_raw_topic'],
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
@@ -2513,6 +2521,7 @@ def generate_launch_description():
         'minimum_mission_dispatch_battery_percent': lc['api_ui_minimum_mission_dispatch_battery_percent'],
         'low_battery_return_after_current_mission': lc['api_ui_low_battery_return_after_current_mission'],
         'low_battery_return_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
+        'urgent_battery_return_threshold_percent': lc['api_ui_urgent_battery_return_threshold_percent'],
         # HH_260818 - UI and control consume the same confirmed-tent policy.
         'enable_campsite_occupancy_guard': lc['enable_campsite_occupancy_guard'],
         # HH_260727 - Keep headless opt-out and window geometry explicit at top level.
@@ -2525,6 +2534,9 @@ def generate_launch_description():
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
+        # HH_260907 - After UI restart, recover station presence from the same
+        # mapped area as control/planning before allowing a site departure.
+        'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
         # HH_260623 - UI campsite missions publish a separate mission engage latch
         # so the manual ENGAGE button cannot stop an accepted scenario.
         'planning_engage_topic': lc['planning_engage_topic'],

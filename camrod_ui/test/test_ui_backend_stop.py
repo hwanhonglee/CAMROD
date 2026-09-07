@@ -27,6 +27,21 @@ from avg_msgs.msg import (  # noqa: E402
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
+def _set_fresh_departure_origin(backend, *, inside: bool) -> None:
+    """Give dispatch tests explicit station geometry instead of stale UI state."""
+    backend._drop_zone_polygons = [[(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]]
+    backend._latest_arrival_pose = SimpleNamespace(
+        header=SimpleNamespace(frame_id="map", stamp=RosTime(sec=100)),
+        pose=SimpleNamespace(position=SimpleNamespace(x=1.0 if inside else 5.0, y=1.0)),
+    )
+    backend._latest_arrival_pose_time_s = 100.0
+    backend.site_arrival_pose_timeout_s = 2.0
+    backend._now_s = lambda: 100.0
+    for name in ("_publish_drop_zone_operation", "_publish_parking_operation"):
+        if not hasattr(backend, name):
+            setattr(backend, name, lambda _operation, source: None)
+
+
 class _FakeLogger:
 
     def __init__(self) -> None:
@@ -316,6 +331,103 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(result["error"], "stale_or_unowned_return")
         self.assertEqual(backend._return_requested_generation, 0)
 
+    def test_robot_completes_guest_recall_once_without_early_planning(self) -> None:
+        events = []
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _latest_platform_is_charging=False,
+            site_names=["B1", "B2"],
+            publish_mission_engage_from_destination=True,
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("engage", enabled)
+            ),
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
+            ),
+            _publish_service_state=lambda *args, **kwargs: self.fail(
+                "controller must publish the actual recall return phase"
+            ),
+            _schedule_broadcast=lambda payload: None,
+        )
+        first = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        second = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        self.assertTrue(first["success"])
+        self.assertEqual(first["transition"], "recall_loading_complete")
+        self.assertEqual(second["transition"], "return_already_accepted")
+        self.assertEqual([event[0] for event in events], ["engage", "controller_return"])
+        self.assertEqual(events[0], ("engage", True))
+        self.assertEqual(backend._active_mission_source, "guest:dispatch:r=current")
+
+        # Profiles with mission-engage publication disabled still need the
+        # same platform drive-enable handoff before the controller can exit.
+        events.clear()
+        backend._return_requested_generation = 0
+        backend.publish_mission_engage_from_destination = False
+        backend._publish_platform_drive_enable = lambda enabled, source: events.append(
+            ("drive_enable", enabled)
+        )
+        result = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual([event[0] for event in events], ["drive_enable", "controller_return"])
+        self.assertEqual(events[0], ("drive_enable", True))
+
+    def test_robot_guest_completion_rejects_wrong_site_generation_and_early_return(self) -> None:
+        for site, generation, state, source in (
+            ("B2", 41, AvgServiceState.GUEST_LOADING_WAIT, "robot_ui:usage_complete"),
+            ("B1", 40, AvgServiceState.GUEST_LOADING_WAIT, "robot_ui:usage_complete"),
+            ("B1", 41, AvgServiceState.RECALL_TO_SITE_ROAD, "robot_ui:usage_complete"),
+            ("B1", 41, AvgServiceState.GUEST_LOADING_WAIT, "http_ui_destination"),
+        ):
+            with self.subTest(site=site, generation=generation, state=state, source=source):
+                backend = self._mission_authority_backend(
+                    _active_mission_source="guest:dispatch:r=current",
+                    _active_mission_owner="guest",
+                    _active_mission_intent="recall",
+                    _latest_service_state=int(state),
+                )
+                result = UiBackendNode.request_owned_return_to_drop_zone(
+                    backend, site, generation, source=source,
+                    allowed_owners={"operator", "robot"},
+                )
+                self.assertFalse(result["success"])
+                self.assertEqual(backend._return_requested_generation, 0)
+
+    def test_same_return_state_phase_changes_reach_guest_authority_stream(self) -> None:
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _return_requested_generation=41,
+            _latest_service_state=int(AvgServiceState.RETURN_WITH_CARGO),
+            _schedule_broadcast=lambda payload: None,
+        )
+        backend._state.service_state = int(AvgServiceState.RETURN_WITH_CARGO)
+        backend._state.service_state_name = "RETURN_WITH_CARGO"
+        for phase in ("RECALL_CLEARANCE_WAIT", "CRAB_IN", "ROTATE_180", "CRAB_OUT"):
+            event = AvgServiceState()
+            event.state = AvgServiceState.RETURN_WITH_CARGO
+            event.state_name = "RETURN_WITH_CARGO"
+            event.description = f"camping_site_maneuver_controller:{phase}:recall"
+            UiBackendNode._on_service_state(backend, event)
+            status = json.loads(backend.pub_destination_dispatch_status.messages[-1].data)
+            self.assertEqual(status["service_state_description"], event.description)
+            self.assertEqual(status["active_generation"], 41)
+        count = len(backend.pub_destination_dispatch_status.messages)
+        UiBackendNode._on_service_state(backend, event)
+        self.assertEqual(len(backend.pub_destination_dispatch_status.messages), count)
+
     def test_dispatch_snapshot_and_status_expose_one_identity(self) -> None:
         backend = self._mission_authority_backend()
 
@@ -338,6 +450,67 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertTrue(status["accepted"])
         self.assertEqual(status["active_site"], "B1")
         self.assertEqual(status["active_generation"], 41)
+
+    def test_live_robot_clients_receive_ws_guest_http_admission_and_clear(self) -> None:
+        for source, owner, intent in (
+            ("ws", "operator", "delivery"),
+            ("http_ui_destination", "operator", "delivery"),
+            ("robot_ui:recall", "robot", "recall"),
+            ("guest:dispatch:r=current", "guest", "recall"),
+        ):
+            with self.subTest(source=source):
+                frames = []
+                backend = self._mission_authority_backend(
+                    _schedule_broadcast=frames.append,
+                    _active_mission_site="", _active_mission_generation=0,
+                )
+                generation = UiBackendNode._claim_active_mission(backend, "B8", source)
+                UiBackendNode._publish_destination_dispatch_status(
+                    backend, "B8", True, source, {"success": True},
+                )
+                self.assertEqual(len(frames), 1)
+                admitted = frames[-1]
+                self.assertTrue(admitted["mission_dispatch_active"])
+                self.assertEqual(admitted["mission_dispatch_site"], "B8")
+                self.assertEqual(admitted["mission_dispatch_generation"], generation)
+                self.assertEqual(admitted["mission_dispatch_owner"], owner)
+                self.assertEqual(admitted["mission_dispatch_intent"], intent)
+
+                UiBackendNode._clear_active_mission_identity(backend)
+                UiBackendNode._publish_destination_dispatch_status(
+                    backend, "B8", False, "service_terminal", {"success": True},
+                )
+                self.assertEqual(len(frames), 2)
+                self.assertFalse(frames[-1]["mission_dispatch_active"])
+                self.assertEqual(frames[-1]["mission_dispatch_site"], "")
+                self.assertEqual(frames[-1]["mission_dispatch_generation"], 0)
+
+    def test_competing_request_replays_current_identity_without_foreign_ui_error(self) -> None:
+        frames = []
+        backend = self._mission_authority_backend(_schedule_broadcast=frames.append)
+        result = UiBackendNode._apply_destination_command(
+            backend, site="B2", run=True, source="robot_ui:recall",
+        )
+        self.assertTrue(result["blocked"])
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0]["mission_dispatch_site"], "B1")
+        self.assertEqual(frames[0]["mission_dispatch_generation"], 41)
+        self.assertNotIn("error", frames[0])
+        self.assertNotIn("success", frames[0])
+        self.assertNotIn("destination", frames[0])
+
+    def test_robot_identity_broadcast_is_independent_of_guest_ros_publisher(self) -> None:
+        frames = []
+        backend = self._mission_authority_backend(
+            _schedule_broadcast=frames.append, pub_destination_dispatch_status=None,
+        )
+        UiBackendNode._publish_destination_dispatch_status(
+            backend, "B1", True, "ws", {"success": True},
+        )
+        self.assertEqual(frames, [{
+            **UiBackendNode._mission_dispatch_snapshot(backend),
+            **UiBackendNode._battery_parking_policy_snapshot(backend),
+        }])
 
     def test_return_admission_rejects_stale_arrival_state(self) -> None:
         backend = self._mission_authority_backend(
@@ -785,6 +958,10 @@ class UiBackendStopTest(unittest.TestCase):
         released.is_charging = False
         released.control_mode = 1
         released.battery_state_available = False
+        backend._now_s = lambda: 99.0
+        backend._lock = threading.Lock()
+        backend._state = SimpleNamespace(battery_percentage=-1)
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
         UiBackendNode._on_platform_status(backend, released)
 
         self.assertFalse(backend._redock_after_disconnect_pending)
@@ -1260,6 +1437,9 @@ class UiBackendStopTest(unittest.TestCase):
             lambda state, source: published_states.append((state, source))
         )
         backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        backend._now_s = lambda: 99.0
+        backend._lock = threading.Lock()
+        backend._state = SimpleNamespace(battery_percentage=-1)
         message = AvgPlatformStatus()
         message.is_charging = True
         message.battery_state_available = False
@@ -1283,6 +1463,9 @@ class UiBackendStopTest(unittest.TestCase):
         backend._publish_service_state = lambda *_args, **_kwargs: None
         backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
         backend._now_s = lambda: 99.0
+
+        backend._lock = threading.Lock()
+        backend._state = SimpleNamespace(battery_percentage=-1)
 
         message = AvgPlatformStatus()
         message.velocity.header.stamp.sec = 12
@@ -1364,6 +1547,7 @@ class UiBackendStopTest(unittest.TestCase):
             charging_departure_delay_s=7.0,
         )
         recall_stamp_nanoseconds = iter(range(7, 20))
+        _set_fresh_departure_origin(backend, inside=False)
         backend.get_clock = lambda: SimpleNamespace(
             now=lambda: SimpleNamespace(
                 to_msg=lambda: RosTime(
@@ -1570,6 +1754,7 @@ class UiBackendStopTest(unittest.TestCase):
             "_cancel_pending_parking_rearm_transition",
             return_value=None,
         ):
+            _set_fresh_departure_origin(backend, inside=False)
             result = UiBackendNode._apply_destination_command(
                 backend, site="B4", run=True, source="http_ui_destination"
             )
@@ -1621,6 +1806,7 @@ class UiBackendStopTest(unittest.TestCase):
         backend.get_clock = lambda: SimpleNamespace(
             now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=11, nanosec=3))
         )
+        _set_fresh_departure_origin(backend, inside=True)
         backend.get_logger = lambda: _FakeLogger()
         backend._resolve_mission_key_for_site = lambda _site: "camping_site_11"
         backend._is_site_occupied = lambda site: self.fail(
@@ -1778,6 +1964,7 @@ class UiBackendStopTest(unittest.TestCase):
             ("state", state, source)
         )
 
+        _set_fresh_departure_origin(backend, inside=True)
         result = UiBackendNode._apply_destination_command(
             backend, site="B2", run=True, source="charging_test"
         )
@@ -1903,6 +2090,7 @@ class UiBackendStopTest(unittest.TestCase):
                     lambda state, source: events.append(("state", state, source))
                 )
 
+                _set_fresh_departure_origin(backend, inside=True)
                 result = UiBackendNode._apply_destination_command(
                     backend,
                     site="B2",
@@ -1930,7 +2118,11 @@ class UiBackendStopTest(unittest.TestCase):
                         ("drop_zone_operation", MotionOperation.EXIT),
                     ],
                 )
-                self.assertEqual(events[-1][0], "state")
+                # The admitted identity is now sent to live Robot UIs after
+                # departure intent; it does not release the campsite goal.
+                self.assertEqual(events[-2][0], "state")
+                self.assertEqual(events[-1][0], "broadcast")
+                self.assertEqual(events[-1][1]["mission_dispatch_site"], "B2")
 
     def test_service_heartbeat_restores_restart_departure_without_duplicate_edges(self) -> None:
         events = []
@@ -2015,6 +2207,7 @@ class UiBackendStopTest(unittest.TestCase):
             ("state", state, source)
         )
 
+        _set_fresh_departure_origin(backend, inside=True)
         result = UiBackendNode._apply_destination_command(
             backend, site="B2", run=True, source="restart_test"
         )
@@ -2094,6 +2287,7 @@ class UiBackendStopTest(unittest.TestCase):
         UiBackendNode._on_service_state(backend, heartbeat)
         events.clear()
 
+        _set_fresh_departure_origin(backend, inside=True)
         first = UiBackendNode._apply_destination_command(
             backend, site="B2", run=True, source="restart"
         )
@@ -2221,11 +2415,15 @@ class UiBackendStopTest(unittest.TestCase):
             ("drop_zone_operation", operation, source)
         )
 
+        _set_fresh_departure_origin(backend, inside=False)
         result = UiBackendNode._apply_destination_command(
             backend, site="B2", run=True, source="after_orphan_complete"
         )
         self.assertTrue(result["goal_pose_published"])
-        self.assertNotIn("drop_zone_operation", [event[0] for event in events])
+        self.assertEqual(
+            [event[1] for event in events if event[0] == "drop_zone_operation"],
+            [MotionOperation.CANCEL],
+        )
         release = [event[0] for event in events if event[0] in {"mission_key", "goal"}]
         self.assertEqual(release, ["mission_key", "goal"])
 
@@ -2771,6 +2969,7 @@ class UiBackendStopTest(unittest.TestCase):
         }
         backend._schedule_broadcast = backend.broadcasts.append
 
+        _set_fresh_departure_origin(backend, inside=False)
         result = UiBackendNode._apply_destination_command(
             backend,
             site="B6",
@@ -2806,6 +3005,7 @@ class UiBackendStopTest(unittest.TestCase):
         backend._notify_site_arrival = lambda *_args, **_kwargs: None
         backend._publish_engage = lambda *_args, **_kwargs: None
 
+        _set_fresh_departure_origin(backend, inside=False)
         result = UiBackendNode._apply_destination_command(
             backend,
             site="B6",

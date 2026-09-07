@@ -386,6 +386,7 @@ private:
       return startExit(source);
     }
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
+      parking_start_source_.clear();
       road_handoff_ready_ = false;
       publishZero();
       setPhase(DropZoneManeuverPhase::kIdle, "cancel=" + source);
@@ -500,6 +501,9 @@ private:
     if (isActive()) {
       return {false, "drop-zone maneuver already active: " + phaseName(phase_)};
     }
+    // Preserve explicit force_docking authority across the separate approach
+    // and yaw phases; the parking dispatcher selects the final method once.
+    parking_start_source_ = source;
     road_handoff_ready_ = false;
     if (!vehiclePoseIsFresh()) {
       setError("fresh pose unavailable for parking alignment");
@@ -680,7 +684,7 @@ private:
     avg_msgs::msg::MotionOperation message;
     message.header.stamp = now();
     message.operation = avg_msgs::msg::MotionOperation::START;
-    message.source = "drop_zone_maneuver_controller";
+    message.source = "drop_zone_maneuver_controller:" + parking_start_source_;
     parking_operation_publisher_->publish(message);
   }
 
@@ -918,7 +922,7 @@ private:
       if (publishAlignmentCommand()) {
         requestParkingStart();
         setPhase(DropZoneManeuverPhase::kIdle,
-                 "parking yaw aligned; reverse parking requested");
+                 "parking yaw aligned; selected parking method requested");
       }
     }
     publishStatus(false);
@@ -1028,6 +1032,7 @@ private:
   std::string exit_path_topic_;
   std::string parking_approach_path_topic_;
   std::string parking_operation_topic_;
+  std::string parking_start_source_;
   std::string diagnostics_topic_;
   std::string service_state_topic_;
   std::string drop_zones_yaml_;

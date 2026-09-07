@@ -31,9 +31,11 @@ DN05Y9E7, and 460800 baud; require physical RTCM and heading evidence. -->
 stopped charger-departure dwell, and a wider route-clipped front radar gate. -->
 <!-- HH_260904 - Publish v2.2.3 with authoritative radar-cost telemetry,
 exact drop-zone parking-point correction, and B1-B13 service metrics. -->
+<!-- HH_260907 - Record v2.2.4 battery-aware parking, two-confirmation Recall,
+shared station geometry and UI departure recovery; field acceptance is separate. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.2.3`**.
+zero-turn Ranger platform. Current release baseline: **`v2.2.4`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
@@ -184,6 +186,7 @@ no second hold. This is not physical-road evidence.
 
 | Check | Result | Scope |
 |---|---|---|
+| v2.2.4 shared-station/Recall/battery changes | **SELECTED BUILD/TEST EVIDENCE; FIELD PENDING** | See release notes for per-change results, incomplete full-perception build, and physical parking/departure limits |
 | v2.2.3 radar/docking/metrics hardening | **AMD64 BUILD/TEST PASS** | Side `0.10 m` cost authority separated from raw `0.43 m` echo; exact drop-zone point correction added; B1-B13 metrics rendered; native 144 results and Python 166 tests passed |
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
 | v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
@@ -330,13 +333,14 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.4 release notes](docs/V2_2_4_RELEASE_NOTES.md) | Battery-aware shared parking, two-confirmation Recall, UI departure recovery, preserved field tuning, and build/field limitations |
 | [v2.2.3 release notes](docs/V2_2_3_RELEASE_NOTES.md) | Radar echo/cost semantics, Site 7 settle diagnosis, deterministic drop-zone parking approach, B1-B13 metrics, tests, and field limits |
 | [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
-| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
+| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v23 configs and explicitly historical map-v22 render evidence |
 | [Runtime parameter reference](docs/RUNTIME_PARAMETER_REFERENCE.md) | Speed, distance, timeout, feature toggle, sensor, localization, parking, boundary, file precedence, and synchronization index |
 | [Current B8 return/docking evidence](docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/README.md) | Same-anchor B8 JSON, PNG/GIF, active parameter summary, and evidence limits |
 | [v2.1.8 release notes](docs/V2_1_8_RELEASE_NOTES.md) | Worak integration, exact crab, bounded recovery, semantic obstacle safety, occupancy toggle, build, and verification |

@@ -1,6 +1,7 @@
 """Cross-package contract for occupied-site guest recall and return."""
 
 from pathlib import Path
+import wave
 
 import yaml
 
@@ -30,6 +31,12 @@ def test_recall_wait_offset_is_explicit_and_deployed_mirror_matches() -> None:
     assert package["recall_wait_lateral_offset_m"] == 0.30
     assert bringup["recall_wait_lateral_offset_m"] == 0.30
     assert package == bringup
+    # The deployed stationary hold must cover the actual prerecorded cue,
+    # including a minimum delivery margin before any site-entry command.
+    with wave.open(str(ROOT / "camrod_voice" / "resource" / "audio" /
+                       "ko-KR" / "navigation" / "recall_clear_site.wav")) as cue:
+        duration_s = cue.getnframes() / cue.getframerate()
+    assert package["recall_clearance_wait_s"] >= duration_s + 1.0
 
 
 def test_all_sites_use_authored_geometry_instead_of_guessed_recall_points() -> None:
@@ -55,9 +62,9 @@ def test_recall_uses_roadside_motion_but_normal_delivery_still_blocks_occupancy(
         "message.scenario_id == "
         "avg_msgs::msg::PlanningScenario::RECALL_TO_SITE"
     ) in normalized_source
-    assert (
-        "return !active_recall_wait_mission_ && isSiteOccupied(mission_key);"
-    ) in source
+    # Runtime controller tests exercise the occupied-site exception only for
+    # initial roadside pickup, and restore the guard on post-loading re-entry.
+    assert "recall_turnaround_return_active_" in source
     assert (
         "active_recall_wait_mission_ ? CampsiteServiceMode::kRoadsideStop"
     ) in normalized_source

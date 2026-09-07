@@ -72,6 +72,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
+from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
@@ -820,10 +821,10 @@ class UiBackendNode(Node):
             ).value
         )
         self.parking_method = str(
-            self.declare_parameter("parking_method", "reverse").value
+            self.declare_parameter("parking_method", "auto").value
         ).strip().lower()
-        if self.parking_method not in {"reverse", "apriltag"}:
-            self.parking_method = "reverse"
+        if self.parking_method not in {"auto", "reverse", "apriltag"}:
+            self.parking_method = "auto"
         self.nav2_cancel_action_topics = [
             str(topic)
             for topic in self.declare_parameter(
@@ -918,6 +919,12 @@ class UiBackendNode(Node):
                 ),
             ),
         )
+        self.urgent_battery_return_threshold_percent = float(
+            self.declare_parameter("urgent_battery_return_threshold_percent", 25.0).value
+        )
+        if not (0.0 < self.urgent_battery_return_threshold_percent
+                < self.minimum_mission_dispatch_battery_percent):
+            raise ValueError("urgent battery threshold must be below mission minimum")
         self.publish_platform_drive_enable_with_engage = bool(
             self.declare_parameter("publish_platform_drive_enable_with_engage", True).value
         )
@@ -928,6 +935,7 @@ class UiBackendNode(Node):
         )
 
         self.camping_sites_yaml = str(self.declare_parameter("camping_sites_yaml", "").value)
+        self.drop_zones_yaml = str(self.declare_parameter("drop_zones_yaml", "").value)
         # HH_260818 - Keep the previous field behavior by default. Operators
         # can enable semantic tent occupancy from the top-level bringup config.
         self.enable_campsite_occupancy_guard = bool(
@@ -1112,6 +1120,7 @@ class UiBackendNode(Node):
             self.declare_parameter("max_ready_localization_mode", 0).value
         )
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
+        self._drop_zone_polygons = self._load_drop_zone_polygons(self.drop_zones_yaml)
         self._lock = threading.Lock()
         self._runtime_policy = UiStatePolicy(
             self.readiness_required_modules,
@@ -1251,6 +1260,18 @@ class UiBackendNode(Node):
         self._low_battery_return_pending = False
         self._low_battery_return_started = False
         self._low_battery_return_wait_notified = False
+        # HH_260907 - An urgent return is owned by one mission generation;
+        # repeated SOC heartbeats must not restart it or resurrect a Stop.
+        self._battery_return_urgent = False
+        self._urgent_return_after_departure = False
+        self._urgent_return_generation = 0
+        self._parking_selected_method = ""
+        self._latest_campsite_phase = ""
+        self._latest_campsite_site = ""
+        self._latest_campsite_status_time_s = 0.0
+        self._latest_platform_motion_ready = False
+        self._mission_execution_error = ""
+        self._recall_final_return_generation = 0
         # HH_260706 - HTTP site selection dispatches immediately; ignore the
         # local topic echo so the same camping-site command is not applied twice.
         self._last_direct_destination_echo: Optional[tuple[str, bool, str, float]] = None
@@ -1401,6 +1422,16 @@ class UiBackendNode(Node):
                 "apriltag_parking", message
             ),
             service_heartbeat_qos,
+        )
+        self.sub_auto_parking_status = self.create_subscription(
+            ModuleState, "/parking/status",
+            lambda message: self._on_parking_controller_status("auto", message),
+            service_heartbeat_qos,
+        ) if self.parking_method == "auto" else None
+        # Mission safety must not depend on opening the telemetry tab.
+        self.sub_campsite_policy_status = self.create_subscription(
+            ModuleState, "/control/camping_site_maneuver_controller/status",
+            self._on_campsite_policy_status, service_heartbeat_qos,
         )
         self.sub_campsite_occupancy = None
         if self.enable_campsite_occupancy_guard:
@@ -1601,6 +1632,130 @@ class UiBackendNode(Node):
             f"loaded {len(keypoints)} camping-site keypoints from {str(path)}"
         )
         return keypoints
+
+    def _load_drop_zone_polygons(self, yaml_path: str) -> List[List[tuple[float, float]]]:
+        """Load authored station bounds; never guess a station from a goal radius.
+
+        A partial/malformed map must not classify an omitted station as road.
+        Keep the entire catalog unavailable until every polygon is usable.
+        """
+        try:
+            if not yaml_path:
+                raise ValueError("drop_zones_yaml is empty")
+            with Path(yaml_path).expanduser().open("r", encoding="utf-8") as stream:
+                data = yaml.safe_load(stream)
+            zones = data.get("drop_zones") if isinstance(data, dict) else None
+            if not isinstance(zones, list) or not zones:
+                raise ValueError("drop_zones must be a nonempty list")
+            polygons = []
+            for zone in zones:
+                if not isinstance(zone, dict):
+                    raise ValueError("drop_zone is not an object")
+                if str(zone.get("frame_id", "map")).strip() != "map":
+                    raise ValueError("drop_zone frame must be map")
+                corners = zone.get("corners")
+                if not isinstance(corners, list):
+                    raise ValueError("drop_zone corners are missing")
+                polygon = []
+                for corner in corners:
+                    if not isinstance(corner, dict):
+                        raise ValueError("drop_zone corner is not an object")
+                    if isinstance(corner.get("x"), bool) or isinstance(corner.get("y"), bool):
+                        raise ValueError("drop_zone coordinates cannot be booleans")
+                    point = (float(corner["x"]), float(corner["y"]))
+                    if not all(math.isfinite(value) for value in point):
+                        raise ValueError("drop_zone corner is not finite")
+                    polygon.append(point)
+                if len(polygon) > 1 and polygon[0] == polygon[-1]:
+                    polygon.pop()
+                if len(polygon) < 3 or len(set(polygon)) != len(polygon):
+                    raise ValueError("drop_zone requires at least three distinct corners")
+                area_twice = sum(
+                    a[0] * b[1] - b[0] * a[1]
+                    for a, b in zip(polygon, polygon[1:] + polygon[:1])
+                )
+                if not math.isfinite(area_twice) or abs(area_twice) <= 1.0e-8:
+                    raise ValueError("drop_zone polygon has no usable area")
+                # Nonadjacent edges must not cross or touch: ray casting on a
+                # self-intersecting polygon cannot authorize a physical EXIT.
+                edges = list(zip(polygon, polygon[1:] + polygon[:1]))
+                for index, (a, b) in enumerate(edges):
+                    for other in range(index + 1, len(edges)):
+                        if other == index + 1 or (index == 0 and other == len(edges) - 1):
+                            continue
+                        c, d = edges[other]
+                        if UiBackendNode._station_edges_intersect(a, b, c, d):
+                            raise ValueError("drop_zone polygon intersects itself")
+                polygons.append(polygon)
+        except (OSError, ValueError, TypeError, KeyError, OverflowError, yaml.YAMLError) as exc:
+            self.get_logger().error(f"station departure map unavailable: {exc}")
+            return []
+        self.get_logger().info(f"loaded {len(polygons)} station departure polygons from {yaml_path}")
+        return polygons
+
+    @staticmethod
+    def _station_edges_intersect(a, b, c, d) -> bool:
+        def cross(p, q, r):
+            return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+        def on_segment(p, q, r):
+            return (
+                abs(cross(p, q, r)) <= 1.0e-9
+                and min(p[0], q[0]) - 1.0e-9 <= r[0] <= max(p[0], q[0]) + 1.0e-9
+                and min(p[1], q[1]) - 1.0e-9 <= r[1] <= max(p[1], q[1]) + 1.0e-9
+            )
+
+        ab_c, ab_d, cd_a, cd_b = cross(a, b, c), cross(a, b, d), cross(c, d, a), cross(c, d, b)
+        return (
+            (ab_c * ab_d < 0.0 and cd_a * cd_b < 0.0)
+            or on_segment(a, b, c) or on_segment(a, b, d)
+            or on_segment(c, d, a) or on_segment(c, d, b)
+        )
+
+    def _station_departure_origin(self) -> tuple[Optional[bool], str]:
+        """Return inside/outside/unknown using fresh map-frame localization.
+
+        Service state and charger contact are not station geometry. In
+        particular startup OPERATOR_STOPPED/None must not bypass EXIT for a
+        parked Robot UI request, nor trigger an EXIT from an arbitrary road.
+        """
+        polygons = getattr(self, "_drop_zone_polygons", None)
+        if not polygons:
+            return None, "drop_zone_map_unavailable"
+        message = getattr(self, "_latest_arrival_pose", None)
+        if message is None:
+            return None, "drop_zone_pose_unavailable"
+        try:
+            now_s = float(self._now_s())
+            received_s = float(self._latest_arrival_pose_time_s)
+            timeout_s = float(self.site_arrival_pose_timeout_s)
+            stamp = message.header.stamp
+            stamp_s = float(stamp.sec) + float(stamp.nanosec) * 1.0e-9
+            times = (now_s, received_s, timeout_s, stamp_s)
+            if not all(math.isfinite(value) and value > 0.0 for value in times):
+                return None, "drop_zone_pose_timestamp_invalid"
+            if not 0 <= stamp.nanosec < 1_000_000_000:
+                return None, "drop_zone_pose_timestamp_invalid"
+            ages = (now_s - received_s, now_s - stamp_s)
+            if min(ages) < 0.0:
+                return None, "drop_zone_pose_timestamp_future"
+            if max(ages) > timeout_s:
+                return None, "drop_zone_pose_stale"
+            if str(message.header.frame_id).strip() != "map":
+                return None, "drop_zone_pose_frame_mismatch"
+            x, y = float(message.pose.position.x), float(message.pose.position.y)
+            if not math.isfinite(x) or not math.isfinite(y):
+                return None, "drop_zone_pose_nonfinite"
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return None, "drop_zone_pose_invalid"
+        for polygon in polygons:
+            # Treat a numerically ambiguous boundary as unknown, not road.
+            for a, b in zip(polygon, polygon[1:] + polygon[:1]):
+                if UiBackendNode._station_edges_intersect(a, b, (x, y), (x, y)):
+                    return None, "drop_zone_pose_on_boundary"
+            if UiBackendNode._point_in_polygon(x, y, polygon):
+                return True, "inside_drop_zone"
+        return False, "outside_drop_zone"
 
     def destroy_node(self) -> bool:
         # HH_260805 - Stop the HTTP event loop before ROS destroys callbacks and
@@ -2057,6 +2212,17 @@ class UiBackendNode(Node):
             "reverse_parking": "/parking/reverse_parking_controller/status",
             "apriltag_parking": "/parking/apriltag_parking_controller/status",
         }
+        if getattr(self, "parking_method", "reverse") == "auto":
+            controller_topics.pop("reverse_parking")
+            controller_topics.pop("apriltag_parking")
+            if wants("safety", "docking"):
+                subscriptions.append(self.create_subscription(
+                    ModuleState, "/parking/status",
+                    lambda message: self._on_telemetry_controller(
+                        "reverse_parking" if "parking_method=reverse" in message.message
+                        else "apriltag_parking", message,
+                    ), 10,
+                ))
         if wants("safety", "docking"):
             for name, topic in controller_topics.items():
                 if active_view == "docking" and name not in {
@@ -3038,9 +3204,8 @@ class UiBackendNode(Node):
     def _mission_dispatch_battery_block(self, site: str) -> Optional[Dict[str, Any]]:
         if not self.require_battery_for_mission_dispatch:
             return None
-        already_arrived, _, _, _ = self._site_arrival_match(site)
-        if already_arrived:
-            return None
+        # A fresh mission still needs SOC margin even when selected from
+        # within its site. Existing mission Return is a separate admission.
         with self._lock:
             battery_percentage = int(self._state.battery_percentage)
         if battery_percentage < 0:
@@ -3144,6 +3309,7 @@ class UiBackendNode(Node):
         elif waiting_for_user:
             message = "battery low; waiting for user return request before drop-zone return"
         return {
+            **UiBackendNode._battery_parking_policy_snapshot(self),
             "battery_return_pending": bool(pending),
             "battery_return_started": bool(started),
             "battery_return_waiting_for_user": bool(waiting_for_user),
@@ -3155,6 +3321,7 @@ class UiBackendNode(Node):
     def _clear_low_battery_return_if_stationary(self, state: Optional[int]) -> None:
         if not self._low_battery_station_state(state):
             return
+        self._battery_return_urgent = False
         if (
             not self._low_battery_return_pending
             and not self._low_battery_return_started
@@ -3169,6 +3336,7 @@ class UiBackendNode(Node):
                 "battery_return_pending": False,
                 "battery_return_started": False,
                 "battery_return_waiting_for_user": False,
+                "battery_return_urgent": False,
             }
         )
 
@@ -3207,6 +3375,13 @@ class UiBackendNode(Node):
         )
 
     def _update_low_battery_return_policy(self, battery_percentage: int, source: str) -> None:
+        # The urgent band is independent of the optional finish-current hint.
+        # Exactly 25% remains finish-current; exactly 35% admits a new mission.
+        if getattr(self, "_battery_return_urgent", False) or urgent_return_required(
+            battery_percentage,
+            urgent_threshold=getattr(self, "urgent_battery_return_threshold_percent", 25.0),
+        ):
+            UiBackendNode._maybe_start_urgent_battery_return(self, source)
         if not self.low_battery_return_after_current_mission:
             return
         self._clear_low_battery_return_if_stationary(self._latest_service_state)
@@ -3233,6 +3408,142 @@ class UiBackendNode(Node):
                 )
             )
         self._maybe_notify_low_battery_waiting_for_user()
+
+    def _battery_parking_policy_snapshot(self) -> Dict[str, Any]:
+        state = getattr(self, "_state", None)
+        payload = battery_policy_snapshot(
+            getattr(state, "battery_percentage", -1),
+            mission_minimum=getattr(self, "minimum_mission_dispatch_battery_percent", 35.0),
+            urgent_threshold=getattr(self, "urgent_battery_return_threshold_percent", 25.0),
+            urgent_latched=getattr(self, "_battery_return_urgent", False),
+            parking_method=getattr(self, "parking_method", "auto"),
+            selected_method=getattr(self, "_parking_selected_method", ""),
+        )
+        payload["mission_execution_error"] = str(getattr(self, "_mission_execution_error", ""))
+        payload["recall_final_return_ready"] = UiBackendNode._recall_final_return_ready(self)
+        payload.update({
+            "battery_return_pending": bool(getattr(self, "_low_battery_return_pending", False)),
+            "battery_return_started": bool(getattr(self, "_low_battery_return_started", False)),
+            "battery_return_waiting_for_user": bool(getattr(self, "_low_battery_return_wait_notified", False)),
+        })
+        return payload
+
+    def _recall_final_return_ready(self) -> bool:
+        site, source, generation, _ = UiBackendNode._active_mission_identity(self)
+        return bool(
+            site and generation > 0 and UiBackendNode._is_guest_recall_source(source)
+            and getattr(self, "_latest_campsite_phase", "") == "RECALL_RETURN_WAIT"
+            and getattr(self, "_latest_campsite_site", "") in {
+                site, self._resolve_mission_key_for_site(site),
+            }
+            and getattr(self, "_latest_service_state", None) == int(AvgServiceState.GUEST_LOADING_WAIT)
+            and getattr(self, "_recall_final_return_generation", 0) != generation
+            and not getattr(self, "_mission_execution_error", "")
+            and 0.0 <= self._now_s() - getattr(self, "_latest_campsite_status_time_s", 0.0) <= 2.0
+        )
+
+    def _maybe_start_urgent_battery_return(self, source: str) -> None:
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is None:
+            return  # no mission admission context, never synthesize motion
+        with lock:
+            site, _, generation, return_generation = UiBackendNode._active_mission_identity(self)
+            if (not site or generation <= 0
+                    or getattr(self, "_active_mission_retryable", False)
+                    or getattr(self, "_startup_recovery_pending", False)
+                    or getattr(self, "_mission_execution_error", "")):
+                return
+            state = getattr(self, "_latest_service_state", None)
+            if not UiBackendNode._low_battery_mission_state(self, state):
+                return
+            first_urgent = not getattr(self, "_battery_return_urgent", False)
+            self._battery_return_urgent = True
+            self._low_battery_return_pending = True
+            if first_urgent:
+                self._schedule_broadcast(UiBackendNode._battery_parking_policy_snapshot(self))
+            if return_generation == generation:
+                return
+            if getattr(self, "_latest_campsite_phase", "") == "RECALL_RETURN_WAIT":
+                # HH_260907 - People may still be loading after the 180-degree
+                # turn. Low SOC warns here but never replaces human consent.
+                return
+            urgent_source = f"{source}:battery_urgent_return:site={site}:g={generation}"
+            if getattr(self, "_drop_zone_exit_active", False):
+                # Finish the bounded station exit, but never release its old
+                # outbound site goal. Plan only after the road handoff event.
+                self._pending_site_after_drop_zone_exit = None
+                self._urgent_return_after_departure = True
+                self._urgent_return_generation = generation
+                return
+            if (not getattr(self, "_latest_platform_motion_ready", False)
+                    or self._now_s() - getattr(self, "_latest_platform_status_time_s", 0.0) > 2.0):
+                return  # RC/EStop/BMS fault: latch intent, do not start timers
+            phase = str(getattr(self, "_latest_campsite_phase", ""))
+            phase_age = self._now_s() - getattr(self, "_latest_campsite_status_time_s", 0.0)
+            phase_fresh = 0.0 <= phase_age <= 2.0
+            road_states = {int(AvgServiceState.MOVING_TO_SITE), int(AvgServiceState.RECALL_TO_SITE_ROAD)}
+            inactive = {"IDLE", "DONE", "CANCELLED"}
+            if not phase_fresh or not phase:
+                # An unknown controller owner is not permission to plan from
+                # within a tent site. Hold motion until its fresh heartbeat.
+                self._publish_platform_drive_enable(False, source=f"{urgent_source}:await_site_status")
+                return
+            if phase == "ERROR":
+                self._mission_execution_error = "site controller ERROR; urgent return requires operator recovery"
+                self._schedule_broadcast({"error": "urgent_return_site_error", **UiBackendNode._battery_parking_policy_snapshot(self)})
+                return
+            if phase not in inactive:
+                controller_site = str(getattr(self, "_latest_campsite_site", ""))
+                mission_key = self._resolve_mission_key_for_site(site)
+                if controller_site not in {site, mission_key} or not controller_site:
+                    self._publish_platform_drive_enable(False, source=f"{urgent_source}:await_site_identity")
+                    return
+                # Latch before progress is emitted: the service-state bridge
+                # deliberately rejects return progress without this identity.
+                self._return_requested_generation = generation
+                self._urgent_return_generation = generation
+                if getattr(self, "publish_mission_engage_from_destination", False):
+                    self._publish_mission_engage(True, source=urgent_source)
+                else:
+                    self._publish_platform_drive_enable(True, source=urgent_source)
+                self._publish_camping_site_maneuver_controller_return(source=urgent_source)
+            elif state in road_states:
+                self._return_requested_generation = generation
+                self._urgent_return_generation = generation
+                UiBackendNode._request_return_to_drop_zone_serialized(self, urgent_source)
+            else:
+                self._publish_platform_drive_enable(False, source=f"{urgent_source}:site_owner_unavailable")
+                return
+            self._low_battery_return_started = True
+            self._low_battery_return_wait_notified = False
+            self._schedule_broadcast({
+                **UiBackendNode._battery_parking_policy_snapshot(self),
+                "battery_return_pending": True, "battery_return_started": True,
+                "battery_return_waiting_for_user": False,
+                "message": "battery below 25%; safely exiting current task and returning for charging",
+            })
+
+    def _on_campsite_policy_status(self, msg: ModuleState) -> None:
+        phase = str(msg.operating_state).strip().upper()
+        phase_changed = phase != getattr(self, "_latest_campsite_phase", "")
+        fields = dict(token.split("=", 1) for token in str(msg.message).split() if "=" in token)
+        self._latest_campsite_phase = phase
+        self._latest_campsite_site = fields.get("site", "")
+        self._latest_campsite_status_time_s = self._now_s()
+        active_site = str(getattr(self, "_active_mission_site", ""))
+        matching_site = bool(active_site and fields.get("site") in {
+            active_site, self._resolve_mission_key_for_site(active_site),
+        })
+        if phase == "ERROR" and matching_site:
+            self._mission_execution_error = str(msg.message) or "campsite controller ERROR"
+            self._schedule_broadcast({"error": "campsite_maneuver_failed", **UiBackendNode._battery_parking_policy_snapshot(self)})
+        if phase_changed:
+            UiBackendNode._publish_destination_dispatch_status(
+                self, active_site, bool(active_site), "campsite_policy", {},
+            )
+        pct = getattr(getattr(self, "_state", None), "battery_percentage", -1)
+        if getattr(self, "_battery_return_urgent", False) or urgent_return_required(pct, urgent_threshold=getattr(self, "urgent_battery_return_threshold_percent", 25.0)):
+            UiBackendNode._maybe_start_urgent_battery_return(self, "campsite_status")
 
     def _notify_site_arrival(
         self,
@@ -3534,6 +3845,11 @@ class UiBackendNode(Node):
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
         control_mode = int(msg.control_mode)
         charging = bool(msg.is_charging)
+        self._latest_platform_status_time_s = self._now_s()
+        self._latest_platform_motion_ready = (
+            control_mode == 1 and not bool(msg.estop)
+            and int(msg.error_code) == 0 and int(msg.vehicle_state) == 0 and not charging
+        )
         redock_lock = getattr(self, "_redock_after_disconnect_lock", None)
         if redock_lock is None:
             redock_lock = threading.RLock()
@@ -3623,18 +3939,25 @@ class UiBackendNode(Node):
                     source=f"{redock_source}:can_restored",
                     generation=redock_generation,
                 )
-        if not msg.battery_state_available:
-            return
         battery_fraction = float(msg.battery_percentage)
-        if not math.isfinite(battery_fraction):
-            return
-        pct = max(0, min(100, int(math.floor(battery_fraction * 100.0))))
+        # An unavailable sample must revoke admission, not retain a previous
+        # 80% indefinitely. Unknown SOC never initiates a speculative return.
+        pct = (
+            max(0, min(100, int(math.floor(battery_fraction * 100.0))))
+            if msg.battery_state_available and math.isfinite(battery_fraction)
+            and 0.0 <= battery_fraction <= 1.0 else -1
+        )
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
         if battery_changed:
-            self._schedule_broadcast({"battery": pct})
+            self._schedule_broadcast({"battery": pct, **UiBackendNode._battery_parking_policy_snapshot(self)})
         self._update_low_battery_return_policy(pct, source="platform_status")
+        if battery_changed:
+            UiBackendNode._publish_destination_dispatch_status(
+                self, str(getattr(self, "_active_mission_site", "")),
+                bool(getattr(self, "_active_mission_site", "")), "battery_policy", {},
+            )
 
     def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_arrival_pose = msg
@@ -3929,6 +4252,16 @@ class UiBackendNode(Node):
                 states = {}
                 self._parking_controller_operating_states = states
             states[str(controller)] = str(msg.operating_state).strip().upper()
+        if controller == "auto" and getattr(self, "parking_method", "") == "auto":
+            fields = dict(token.split("=", 1) for token in str(msg.message).split() if "=" in token)
+            selected = fields.get("parking_method", "")
+            if selected not in {"reverse", "apriltag"}:
+                selected = ""
+            changed = selected != getattr(self, "_parking_selected_method", "")
+            self._parking_selected_method = selected
+            if changed:
+                self._schedule_broadcast(UiBackendNode._battery_parking_policy_snapshot(self))
+                UiBackendNode._publish_destination_dispatch_status(self, "", False, "parking_policy", {})
 
     def _on_drop_zone_exit_complete(self, msg: AvgBool) -> None:
         if not bool(msg.data):
@@ -3977,6 +4310,16 @@ class UiBackendNode(Node):
         self._drop_zone_exit_handoff_ready = True
         self._charging_departure_from_charger = False
         if pending is None:
+            if (getattr(self, "_urgent_return_after_departure", False)
+                    and getattr(self, "_urgent_return_generation", 0)
+                    == getattr(self, "_active_mission_generation", -1)):
+                self._urgent_return_after_departure = False
+                # Now physically at the road; do not misclassify the prior
+                # station heartbeat as a request for in-place realignment.
+                self._latest_service_state = int(AvgServiceState.MOVING_TO_SITE)
+                UiBackendNode._maybe_start_urgent_battery_return(
+                    self, source="drop_zone_exit_complete"
+                )
             return
         site, mission_key, source = pending
         if UiBackendNode._is_guest_recall_source(source):
@@ -4054,7 +4397,15 @@ class UiBackendNode(Node):
             and active_generation > 0
             and return_generation == active_generation
         )
-        if return_owned and state in arrival_states:
+        recall_final_loading_wait = bool(
+            state == int(AvgServiceState.GUEST_LOADING_WAIT)
+            and "RECALL_RETURN_WAIT" in description
+            and UiBackendNode._is_guest_recall_source(str(getattr(self, "_active_mission_source", "")))
+        )
+        if return_owned and state in arrival_states and (
+            not recall_final_loading_wait
+            or getattr(self, "_recall_final_return_generation", 0) == active_generation
+        ):
             self.get_logger().warn(
                 "stale arrival service state ignored after Return admission: "
                 f"site={active_site} generation={active_generation}"
@@ -4167,6 +4518,14 @@ class UiBackendNode(Node):
                 self._on_drop_zone_exit_complete(completion)
             return
         if not state_changed:
+            # HH_260907 - Recall clearance, site re-entry, rotation, and exit
+            # share RETURN_WITH_CARGO. Forward phase changes to the Guest
+            # authority stream as well as Robot WS, without replaying engage.
+            if visible_changed:
+                UiBackendNode._publish_destination_dispatch_status(
+                    self, active_site, bool(active_site), "service_lifecycle",
+                    {"message": f"authoritative service phase: {description}"},
+                )
             # HH_260819 - A controller heartbeat restores the latest value
             # after restart, but repeating that same value must not re-run
             # engage transitions or count another service metric edge.
@@ -4523,6 +4882,7 @@ class UiBackendNode(Node):
             requested_generation,
             source=source,
             allowed_owners={request_owner},
+            recall_final_return="recall_final_return" in source.split(":"),
         )
 
     def request_owned_return_to_drop_zone(
@@ -4532,6 +4892,7 @@ class UiBackendNode(Node):
         *,
         source: str,
         allowed_owners: Set[str],
+        recall_final_return: bool = False,
     ) -> Dict[str, Any]:
         """Accept Return only for the exact active site, generation, and owner."""
         normalized_site = str(site).strip()
@@ -4569,12 +4930,20 @@ class UiBackendNode(Node):
                     int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
                 }
             )
+            # HH_260907 - Guests call the robot remotely but finish loading at
+            # its screen. That physical Robot UI may complete a guest recall;
+            # the exact site/generation and loading-wait gate still apply.
+            robot_finishes_guest_recall = (
+                source == "robot_ui:usage_complete"
+                and active_owner == "guest"
+                and recall_mission
+            )
             if not (
                 normalized_site
                 and normalized_site == active_site
                 and requested_generation > 0
                 and requested_generation == active_generation
-                and active_owner in allowed_owners
+                and (active_owner in allowed_owners or robot_finishes_guest_recall)
             ):
                 return {
                     "success": False,
@@ -4586,6 +4955,31 @@ class UiBackendNode(Node):
                     ),
                     **UiBackendNode._mission_dispatch_snapshot(self),
                 }
+            if getattr(self, "_mission_execution_error", ""):
+                return {
+                    "success": False, "error": "campsite_maneuver_failed",
+                    "message": self._mission_execution_error,
+                    **UiBackendNode._mission_dispatch_snapshot(self),
+                }
+            final_wait = getattr(self, "_latest_campsite_phase", "") == "RECALL_RETURN_WAIT"
+            if recall_final_return:
+                if getattr(self, "_recall_final_return_generation", 0) == active_generation:
+                    return {"success": True, "transition": "final_return_already_accepted"}
+                if not UiBackendNode._recall_final_return_ready(self):
+                    return {"success": False, "error": "recall_final_return_not_ready",
+                            "message": "Final loading confirmation is allowed only after the in-site turn"}
+                self._recall_final_return_generation = active_generation
+                final_source = f"{source}:recall_final_return:site={active_site}:g={active_generation}"
+                if getattr(self, "publish_mission_engage_from_destination", False):
+                    self._publish_mission_engage(True, source=final_source)
+                else:
+                    self._publish_platform_drive_enable(True, source=final_source)
+                self._publish_camping_site_maneuver_controller_return(source=final_source)
+                return {"success": True, "site": active_site,
+                        "mission_generation": active_generation, "transition": "recall_final_return"}
+            if final_wait:
+                return {"success": False, "error": "recall_final_confirmation_required",
+                        "message": "Press the second loading-complete/Return button after loading has finished"}
             if return_generation == active_generation:
                 return {
                     "success": True,
@@ -4650,6 +5044,8 @@ class UiBackendNode(Node):
                 "return request rejected during backend startup recovery"
             )
             return "backend_startup_recovery"
+        if getattr(self, "_latest_campsite_phase", "") == "RECALL_RETURN_WAIT":
+            return "recall_final_confirmation_required"
         active_site, _, active_generation, _ = (
             UiBackendNode._active_mission_identity(self)
         )
@@ -4673,12 +5069,9 @@ class UiBackendNode(Node):
             int(AvgServiceState.WAITING_FOR_CHARGING),
         }
         parking_states = getattr(self, "_parking_controller_operating_states", {})
-        selected_parking_controller = (
-            "apriltag_parking"
-            if str(getattr(self, "parking_method", "reverse")).strip().lower()
-            == "apriltag"
-            else "reverse_parking"
-        )
+        selected_parking_controller = {
+            "auto": "auto", "apriltag": "apriltag_parking", "reverse": "reverse_parking",
+        }.get(str(getattr(self, "parking_method", "reverse")).strip().lower(), "reverse_parking")
         parking_failed = (
             str(parking_states.get(selected_parking_controller, ""))
             .strip()
@@ -4742,6 +5135,27 @@ class UiBackendNode(Node):
                 if require_can and control_mode != 1
                 else "parking_alignment"
             )
+
+        if (
+            self._latest_service_state == int(AvgServiceState.GUEST_LOADING_WAIT)
+            and UiBackendNode._is_guest_recall_source(
+                str(getattr(self, "_active_mission_source", ""))
+            )
+        ):
+            # HH_260907 - Loading completion authorizes the controller-owned
+            # clearance/turnaround sequence. Its first phase is stationary and
+            # announced; it alone publishes progress and the eventual route.
+            # Reopen the drive gate explicitly, because arrival closed it.
+            if getattr(self, "publish_mission_engage_from_destination", False):
+                self._publish_mission_engage(True, source=f"{source}:recall_complete")
+            else:
+                self._publish_platform_drive_enable(
+                    True, source=f"{source}:recall_complete"
+                )
+            self._publish_camping_site_maneuver_controller_return(
+                source=f"{source}:recall_loading_complete"
+            )
+            return "recall_loading_complete"
 
         if self._latest_service_state in {
             int(AvgServiceState.SITE_ARRIVED),
@@ -5502,6 +5916,11 @@ class UiBackendNode(Node):
                 self._mission_generation = generation
                 self._return_requested_generation = 0
                 self._return_progress_generation = 0
+                self._battery_return_urgent = False
+                self._urgent_return_after_departure = False
+                self._urgent_return_generation = 0
+                self._mission_execution_error = ""
+                self._recall_final_return_generation = 0
             self._active_mission_site = normalized_site
             self._active_mission_source = normalized_source
             self._active_mission_generation = generation
@@ -5518,6 +5937,10 @@ class UiBackendNode(Node):
 
     def _clear_active_mission_identity(self) -> None:
         def clear() -> None:
+            self._battery_return_urgent = False
+            self._urgent_return_after_departure = False
+            self._urgent_return_generation = 0
+            self._recall_final_return_generation = 0
             self._active_mission_site = ""
             self._active_mission_source = ""
             self._active_mission_generation = 0
@@ -5647,6 +6070,10 @@ class UiBackendNode(Node):
     def request_manual_return(self) -> Dict[str, Any]:
         """Issue the same supervised return contract from any operator state."""
         action = self._request_return_to_drop_zone(source="http:manual_return")
+        if action == "recall_final_confirmation_required":
+            return {"success": False, "error": action,
+                    "message": "Use the loading-complete/Return confirmation at the robot",
+                    "service_state": int(self._latest_service_state)}
         if action == "parking_alignment":
             service_state = AvgServiceState.DROP_ZONE_PARKING
         elif action == "parking_alignment_waiting_for_can":
@@ -5663,6 +6090,42 @@ class UiBackendNode(Node):
             "action": action,
             "service_state": int(service_state),
         }
+
+    def request_manual_dock(self) -> Dict[str, Any]:
+        """Request explicit charging, distinct from SOC-selected Return/park.
+
+        A successful response acknowledges the request, not physical docking
+        completion. Controller progress and actual charger feedback remain
+        separate authoritative observations.
+        """
+        with self._destination_dispatch_lock:
+            startup = UiBackendNode._startup_recovery_block(self)
+            if startup:
+                return {"success": False, **startup}
+            if getattr(self, "parking_method", "reverse") not in {"auto", "apriltag"}:
+                return {"success": False, "error": "docking_unavailable",
+                        "message": "AprilTag docking is not enabled in this launch"}
+            state = getattr(self, "_latest_service_state", None)
+            if state not in {
+                int(AvgServiceState.DROP_ZONE_WAIT), int(AvgServiceState.CHARGING),
+                int(AvgServiceState.WAITING_FOR_CHARGING), int(AvgServiceState.DROP_ZONE_PARKING),
+            } or getattr(self, "_drop_zone_exit_active", False):
+                return {"success": False, "error": "docking_requires_drop_zone",
+                        "message": "Return to the drop zone before requesting docking"}
+            if getattr(self, "_latest_platform_is_charging", False):
+                return {"success": True, "action": "already_charging"}
+            selected = "auto" if self.parking_method == "auto" else "apriltag_parking"
+            phase = getattr(self, "_parking_controller_operating_states", {}).get(selected, "")
+            if state == int(AvgServiceState.DROP_ZONE_PARKING) and phase not in {"ERROR", "IDLE", "PARKED"}:
+                return {"success": False, "error": "parking_in_progress",
+                        "message": "Wait for the current parking attempt or cancel it first"}
+            # The auto dispatcher cancels both old owners, waits for ACK/CAN,
+            # and starts one tag controller. No synthetic route or realignment
+            # is needed from the already aligned drop-zone parking position.
+            source = "http:manual_dock:force_docking"
+            self._publish_parking_operation(MotionOperation.START, source=source)
+            return {"success": True, "action": "docking_requested",
+                    "message": "Explicit charging docking requested", "parking_selected_method": "apriltag"}
 
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
         msg = MotionOperation()
@@ -5766,6 +6229,11 @@ class UiBackendNode(Node):
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        self._battery_return_urgent = False
+        self._urgent_return_after_departure = False
+        self._urgent_return_generation = 0
+        self._mission_execution_error = ""
+        self._recall_final_return_generation = 0
         self._cancel_pending_manual_return_transition(source)
         UiBackendNode._cancel_pending_charging_departure_transition(self, source)
         UiBackendNode._cancel_pending_redock_after_disconnect(self, source)
@@ -6119,16 +6587,28 @@ class UiBackendNode(Node):
         result: Dict[str, Any],
     ) -> None:
         """Publish one authoritative mission admission and lifecycle snapshot."""
+        mission = UiBackendNode._mission_dispatch_snapshot(self)
+        parking_policy = UiBackendNode._battery_parking_policy_snapshot(self)
+        # HH_260907 - Every admission/clear must reach already-connected Robot
+        # UIs as well as the Guest ROS bridge. A successful WS delivery does
+        # not otherwise return its generation, leaving the browser's Return
+        # guard stuck on the inactive identity received at initial connection.
+        # Publish only authoritative identity keys here: another client's
+        # rejected command must not be replayed as this client's UI error.
+        schedule_broadcast = getattr(self, "_schedule_broadcast", None)
+        if callable(schedule_broadcast):
+            schedule_broadcast({**mission, **parking_policy})
         publisher = getattr(self, "pub_destination_dispatch_status", None)
         if publisher is None:
             return
-        mission = UiBackendNode._mission_dispatch_snapshot(self)
-        latest_state = int(getattr(self, "_latest_service_state", -1))
+        latest_state_value = getattr(self, "_latest_service_state", None)
+        latest_state = int(latest_state_value) if latest_state_value is not None else -1
         state_model = getattr(self, "_state", None)
         state_lock = getattr(self, "_lock", None)
 
         def visible_state() -> tuple[int, str, str]:
-            visible = int(getattr(state_model, "service_state", latest_state))
+            visible_value = getattr(state_model, "service_state", latest_state)
+            visible = int(visible_value) if visible_value is not None else latest_state
             name = str(getattr(state_model, "service_state_name", "")).strip()
             description = str(
                 getattr(state_model, "service_state_description", "")
@@ -6153,6 +6633,7 @@ class UiBackendNode(Node):
         )
         message.data = json.dumps(
             {
+                **parking_policy,
                 "accepted": accepted,
                 "request_site": str(site).strip(),
                 "request_run": bool(run),
@@ -6289,15 +6770,6 @@ class UiBackendNode(Node):
                 ),
             }
 
-        # A campsite selection supersedes a queued no-site re-dock before the
-        # charger release edge can start a competing alignment owner.
-        UiBackendNode._cancel_pending_redock_after_disconnect(
-            self, "destination_selected"
-        )
-        UiBackendNode._cancel_pending_parking_rearm_transition(
-            self, "destination_selected"
-        )
-
         guest_recall = UiBackendNode._is_guest_recall_source(source)
         pending_departure = getattr(self, "_pending_site_after_drop_zone_exit", None)
         if (
@@ -6375,14 +6847,39 @@ class UiBackendNode(Node):
                 "message": "campsite occupied by detected tent",
             }
 
+        departure_required, origin_reason = UiBackendNode._station_departure_origin(self)
+        if departure_required is None or (
+            not departure_required and getattr(self, "_latest_platform_is_charging", False)
+        ):
+            if departure_required is not None:
+                origin_reason = "drop_zone_charging_pose_mismatch"
+            self.get_logger().warn(
+                f"destination origin verification blocked: site={site} reason={origin_reason}"
+            )
+            return {
+                "site": site,
+                "run": False,
+                "mission_key": mission_key,
+                "goal_pose_published": False,
+                "recall_request_published": False,
+                "blocked": True,
+                "error": origin_reason,
+                "message": (
+                    "출발 위치를 확인할 수 없습니다. 주차 구역 지도와 최신 map 위치를 확인해 주세요 "
+                    f"({origin_reason})"
+                ),
+            }
+
         already_arrived = False
         distance_m = float("inf")
         match_reason = "guest_recall"
-        if not guest_recall:
+        if not guest_recall and not departure_required:
             already_arrived, mission_key, distance_m, match_reason = (
                 self._site_arrival_match(site)
             )
         if already_arrived:
+            UiBackendNode._cancel_pending_redock_after_disconnect(self, "destination_selected")
+            UiBackendNode._cancel_pending_parking_rearm_transition(self, "destination_selected")
             generation = UiBackendNode._claim_active_mission(
                 self, site, source
             )
@@ -6446,6 +6943,11 @@ class UiBackendNode(Node):
                 "minimum_battery_percentage": battery_block["minimum_battery_percentage"],
             }
 
+        # Only an admitted selection may supersede a queued re-dock; a map,
+        # pose, battery or ownership rejection must not release parking intent.
+        UiBackendNode._cancel_pending_redock_after_disconnect(self, "destination_selected")
+        UiBackendNode._cancel_pending_parking_rearm_transition(self, "destination_selected")
+
         # HJ_260804 - Only accepted/adopted destinations become the fallback
         # arrival identity. A battery-rejected request must not replace it.
         generation = UiBackendNode._claim_active_mission(self, site, source)
@@ -6463,34 +6965,19 @@ class UiBackendNode(Node):
         self._update_runtime_state(
             lambda: self._runtime_policy.update_goal_received("regulated")
         )
-        # HH_260721 - A parked/charging robot must leave the station before Nav2 gets a site goal.
-        departure_required = (
-            getattr(self, "_drop_zone_exit_cancel_suppressed", False)
-            or self._latest_platform_is_charging
-            # A roadside recall normally starts from the parked drop-zone
-            # position.  On a fresh UI-backend process there may be no retained
-            # service-state sample yet; the explicit road-handoff latch is the
-            # only safe proof that Nav2 may start without the bounded station
-            # exit maneuver.  Starting Nav2 directly from the parking pose
-            # makes the lanelet body guard stop it immediately.
-            or (
-                guest_recall
-                and not getattr(self, "_drop_zone_exit_handoff_ready", False)
-                and getattr(self, "_latest_service_state", None) is None
+        # The fresh authored-area check above applies to Robot and Guest
+        # equally, including None/OPERATOR_STOPPED after a backend restart.
+        # Keep the existing CANCEL -> authorization -> bounded EXIT ordering.
+        if not departure_required:
+            # A manually moved robot may be outside while the old parking
+            # dispatcher still owns its PARKED zero output. Release station
+            # writers only after successful admission, without a blind EXIT.
+            self._publish_drop_zone_operation(
+                MotionOperation.CANCEL, source=f"{source}:outside_station_departure"
             )
-            or (
-                not getattr(self, "_drop_zone_exit_handoff_ready", False)
-                and self._latest_service_state
-                in {
-                    int(AvgServiceState.DROP_ZONE_PARKING),
-                    int(AvgServiceState.DROP_ZONE_WAIT),
-                    int(AvgServiceState.CHARGING),
-                    int(AvgServiceState.WAITING_FOR_CHARGING),
-                    int(AvgServiceState.DEPARTING_CHARGER),
-                    int(AvgServiceState.DEPARTING_DROP_ZONE),
-                }
+            self._publish_parking_operation(
+                MotionOperation.CANCEL, source=f"{source}:outside_station_departure"
             )
-        )
         mission_key = self._resolve_mission_key_for_site(site) or ""
         if departure_required and mission_key:
             # HH_260819 - Keep the planning mission identity on drop_zone until
@@ -6646,6 +7133,7 @@ class UiBackendNode(Node):
         # their own generation lock, so never acquire that lock under _lock.
         snapshot.update(UiBackendNode._redock_status_snapshot(self))
         snapshot.update(UiBackendNode._mission_dispatch_snapshot(self))
+        snapshot.update(UiBackendNode._battery_parking_policy_snapshot(self))
         snapshot["backend_startup_recovery"] = bool(
             getattr(self, "_startup_recovery_pending", False)
         )
@@ -7098,9 +7586,14 @@ class UiBackendNode(Node):
                 "service_state": service_state,
                 "service_state_name": service_state_name,
                 "service_state_description": service_state_description,
+                # HH_260907 - Reconnecting at loading wait must restore the
+                # arrival screen before the admitted mission snapshot follows.
+                # The browser still requires its site/generation/owner gate.
+                "site": active_mission_site,
             })
             await ws.send_json(redock_status)
             await ws.send_json(mission_dispatch)
+            await ws.send_json(UiBackendNode._battery_parking_policy_snapshot(node))
 
             try:
                 while True:
@@ -7175,6 +7668,7 @@ class UiBackendNode(Node):
                             payload.get("mission_generation", 0),
                             source="robot_ui:usage_complete",
                             allowed_owners={"operator", "robot"},
+                            recall_final_return=payload.get("recall_final_return") is True,
                         )
                         if not result.get("success", False):
                             await ws.send_json(result)
@@ -7333,6 +7827,11 @@ class UiBackendNode(Node):
             # HH_260818 - Operator docking tests may request return without a
             # preceding campsite WAIT_RETURN state.
             return JSONResponse(node.request_manual_return())
+
+        @app.post("/ui/dock")
+        def post_dock() -> JSONResponse:
+            result = node.request_manual_dock()
+            return JSONResponse(result, status_code=200 if result.get("success") else 409)
 
         @app.post("/ui/camping_site_recall")
         def post_camping_site_recall(

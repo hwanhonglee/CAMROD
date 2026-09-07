@@ -45,15 +45,17 @@ motion condition.
 | Announcer node shuts down | `system.shutdown` | — |
 | Engaged departure to site | `navigation.to_campsite` | 1 |
 | Engaged departure to drop zone | `navigation.to_dropzone` | 1 |
+| Recall return enters `RECALL_CLEARANCE_WAIT` (B1–B10) | `navigation.recall_clear_site` | 2 |
 | Trip to site under way, every period | `system.announce1` + `system.announce2` | 0 |
 | Trip to drop zone under way, every period | `navigation.return_to_dropzone` | 0 |
 | Site/manual goal reached | `navigation.arrived_campsite` | 1 |
 | Engaged cost/route hold | `safety.obstacle` | 2 |
 | Hold still blocking, every period | `navigation.please_step_aside` | 1 |
 | Announced hold clears | `safety.thankyou` | 1 |
-| Parking controller leaves idle | `docking.started` | 1 |
-| Parking controller reports `PARKED` | `docking.succeeded` | 1 |
-| Parking controller reports `ERROR` | `docking.failed` | 2 |
+| Selected AprilTag docking starts | `docking.started` | 1 |
+| Current AprilTag docking attempt reports `PARKED` | `docking.succeeded` | 1 |
+| Current AprilTag docking attempt reports `ERROR` | `docking.failed` | 2 |
+| Ordinary reverse parking starts/completes/fails | No docking cue; no verified ordinary-parking asset is packaged | — |
 | Estop asserted / released | `safety.estop` / `safety.estop_released` | 3 |
 | Battery `<= 20%` | `battery.low` | 1 |
 | Charging starts | `battery.charging` | 1 |
@@ -62,6 +64,43 @@ motion condition.
 `WAIT_DZ` intentionally has no navigation announcement. Generic planning
 recovery does not trigger obstacle speech; the final command gate's actual
 cost/route hold does.
+
+<!-- HH_260907 - PARKED is shared by reverse parking and charging docking; do
+not describe a reverse-distance-limit completion as successful docking. -->
+Parking voice follows the selected `parking_method` and `attempt` in the
+authoritative `/parking/status` message, not the common phase name alone.
+Only `apriltag` emits docking cues. `reverse`, an unknown method, or a terminal
+status without a matching started attempt cannot announce docking success.
+Repeated status messages and older attempts do not replay cues; dispatcher
+cancellation clears the run. A verified `PARKED` after a docking `ERROR` may
+announce recovery once. In legacy modes the controller topic identifies the
+method (AprilTag also has an explicit module name); once dispatcher status is
+received, legacy status cannot overwrite that authoritative selection.
+
+There is currently no verified ordinary-parking completion WAV/transcript.
+Reverse parking therefore stays silent for these three docking announcements;
+no differently worded clip is reused and no missing `parking.*` key is emitted.
+Battery/charging, safety, navigation, and recall announcements remain separate.
+
+The first roadside confirmation at B1–B10 triggers a stationary clearance phase
+before the robot re-enters the site to turn around. The controller's authoritative
+`ModuleState.operating_state` edge, rather than a change of the shared service
+ID, emits `navigation.recall_clear_site` once: “해당 캠핑 사이트를 잠시 비워 주세요.
+로봇이 들어가 방향을 바꾼 뒤 복귀합니다.” The packaged clip is 6.552 seconds,
+within the controller's default 8-second clearance pause. Repeated controller
+status messages do not replay it. Ordinary departure, arrival, travel reminders,
+and BGM stay suppressed through the post-turn `RECALL_RETURN_WAIT`: the robot
+remains stopped for loading and requires the second explicit
+`recall_final_return` confirmation before exiting. The clearance recording
+does not authorize that departure. These travel cues resume only after the
+turnaround/exit reaches `DONE`; cancellation (`IDLE`) or
+`ERROR` resets the clearance cue for a deliberate retry. B11–B13 do not enter
+this phase and keep their existing opposite-direction exit announcements.
+
+This is a fixed pre-motion pause, not an acknowledgement that physical speaker
+playback finished. The controller's pose, obstacle, and site-clearance checks
+remain responsible for authorizing movement. The cue's source text, voice, and
+generation settings are recorded beside the audio asset.
 
 A trip is one latched identity — travel context, mission key, and goal source —
 held from the departure cue until arrival, a mission change, or disengage. It
@@ -133,7 +172,8 @@ the process. Every emitted `AudioRequest` is logged at INFO; the announcer's
 | Subscribe | `/localization/mode` | Localization admission |
 | Subscribe | `/control/cmd_vel_safety_gate/status` | Actual obstacle/safety state |
 | Subscribe | `/control/planning_engaged` | Manual-or-mission engage |
-| Subscribe | `/parking/*_parking_controller/status` | Docking phase |
+| Subscribe | `/control/camping_site_maneuver_controller/status` | Recall clearance and turnaround phase |
+| Subscribe | `/parking/status`, legacy `/parking/*_parking_controller/status` | Selected method, attempt, and phase for actual docking cues |
 | Action check | `/planning/navigate_to_pose` | Nav2 readiness |
 
 ## Build And Run
