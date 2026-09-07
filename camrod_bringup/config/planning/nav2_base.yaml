@@ -218,7 +218,9 @@ controller_server:
       # seen during zero-turn.  The drop-zone controller subsequently corrects
       # the snapped parking point to 0.05 m, latches XY complete, and only then
       # aligns yaw, so Nav2 must not fight that local maneuver at centimeter scale.
-      xy_goal_tolerance: 0.3
+      # HH_260907 - Preserve field-tuned route arrival: 0.10 m (previous 0.30 m).
+      # This is separate from the final reverse-parking station tolerance.
+      xy_goal_tolerance: 0.1
       yaw_goal_tolerance: 3.14
       stateful: False
 

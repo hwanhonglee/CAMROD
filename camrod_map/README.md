@@ -12,6 +12,8 @@ user-authored map file without rewriting independent snapshot copies. -->
 map-v22 edit; semantic operating coordinates remain unchanged. -->
 <!-- HH_260819 - Link the current-map B1-B13 full Return evidence without
 modifying the user-maintained OSM geometry. -->
+<!-- HH_260907 - Export map-v23 geometry and preserve explicit operating yaw,
+site-service policy, and the relocated shared parking/docking area. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -47,9 +49,9 @@ not replace the surveyed-width acceptance required for the user-authored map.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=22` (user-provided geometry revision) |
-| Active SHA-256 | `8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59` |
-| Loaded primitives | 55 lanelets, 14 areas, 1,652 nodes, 236 ways |
+| Active source revision | `map_version=23` (user geometry plus explicit operating metadata) |
+| Active SHA-256 | `2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7` |
+| Source XML primitives | 55 lanelet relations, 14 areas, 1,662 nodes, 237 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -71,14 +73,40 @@ maintenance remains a separate user decision.
 
 ## Current Park Operating Coordinates
 
-![Current Park semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
+![Historical map-v22 semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
 
-The [source-derived coordinate record](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
-loads the active OSM with the shared `LocalCartesianProjector`. It exports one
-drop zone at `(-14.2347, 39.7863)` and B1-B13 into package-owned runtime YAML,
-while preserving B1-B10 `turnaround` and B11-B13 `roadside_stop` as operating
-policy outside the OSM. Three `parking_lot` Areas are reported separately and
-are not substituted for the drop-zone command point.
+The current map-v23 coordinates come from `area_export.launch.py` and its
+existing `area_exporter_node`, using the shared `LocalCartesianProjector`.
+OSM `local_x`/`local_y` are not substituted for this lat/lon/alt projection.
+
+| Runtime area | Relation | Center x/y (m) | Yaw | `parking_method` |
+|---|---|---|---|---|
+| Shared parking and docking | `7019` | `-11.3585, 40.0901` | `-82.2127°` | `auto` |
+
+Former drop-zone relation `2320` is removed: that space is used for vehicle
+entry and must not remain a parking/return target. Its underlying way `2316`
+and nodes are retained. Both reverse parking and AprilTag docking use the
+single new area `7019`; the battery/parking policy selects the method, not a
+different map location.
+
+B1-B13 centers and corners are re-exported on z=0. Existing B1-B10
+`turnaround`, B11-B13 `roadside_stop`, and all 13 operating yaws are preserved
+as explicit relation metadata in the active OSM. Narrower site polygons would
+otherwise switch the longest-edge inferred heading by about 90 degrees at
+B1/B5/B7/B9/B11; no such unrequested operating-heading change is applied.
+Only these metadata tags and the explicitly retired relation `2320` differ
+from the user-authored map; all way/node coordinates and the named v1.0.13
+snapshot remain untouched. The exporter preserves optional `parking_method`
+metadata, with `auto` allowing either method at the shared area. Active drop-zone
+YAML is synchronized across map/localization/bringup, and campsite YAML across
+planning/bringup. Both `drop_zone` and `garage` keypoints use the new `7019`
+center. There is no separate reverse-parking location or alias.
+
+The [archived coordinate record and image](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md)
+remain bound to map v22 (the former drop zone), not the current map-v23 geometry.
+The old single-zone visualization renderer is historical and must not be used
+to overwrite that evidence with current inputs. Neither this offline export
+nor the archived image establishes a physical-road PASS for map v23.
 
 ## Cost Grids
 
@@ -123,7 +151,7 @@ It is retained as v14 evidence and is not presented as a map-v15 rerun.
 The v2.1.4 map-v15 recovery media are likewise bound to release SHA
 `e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
 They demonstrate the staged controller on that release map, not a run on the
-historical map-v17 SHA `8cd05c...5e021`, not the active map-v22 SHA above.
+historical map-v17 SHA `8cd05c...5e021`, nor the active map-v23 SHA above.
 
 On the prior map-v15 SHA `d7b730...213f`, a controlled route traveled `10.0403 m` with no
 route hold. A `+0.19 m` placement touched only the planning margin and admitted
@@ -133,7 +161,7 @@ reduced candidate polygons and control interpretation changed; this evidence
 is historical. Map-v16 B1-B10 site maneuvers (10/10) and B11-B13 arrival-only
 checks remain historical policy evidence. The map-v17 B1/B2/B3 continuous
 service and B2 recovery 3/3 also remain historical after the active map edit;
-the active map-v22 AMD64 rerun now covers B1-B10 turnaround exits and B11-B13
+the historical map-v22 AMD64 rerun covers B1-B10 turnaround exits and B11-B13
 roadside exits 13/13. One B11 service also completed the source-selected
 forward loop, parking, and simulated charging. Physical road-width and
 clearance acceptance still require the field survey.
@@ -165,7 +193,7 @@ ros2 run tf2_ros tf2_echo world map
 | `config/map_info.yaml` | Single map path, origin, frames, and visualization source |
 | `config/lanelet_cost_grid.yaml` | Route mask and planning-grid geometry/costs |
 | `config/map_visualization.yaml` | RViz marker palettes, rates, and sampling |
-| `config/drop_zones.yaml` | Generated semantic drop-zone geometry |
+| `config/drop_zones.yaml` | Generated shared parking/docking geometry and optional parking method |
 
 Grid dimensions and thresholds are source configuration, not measured map-build
 latency. Field route coverage remains pending where service-access geometry is

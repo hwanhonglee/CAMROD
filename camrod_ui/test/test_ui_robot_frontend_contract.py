@@ -1,6 +1,11 @@
 """Source-level regression checks for critical Robot UI operator flows."""
 
 from pathlib import Path
+import ast
+import json
+import re
+import shutil
+import subprocess
 import unittest
 
 
@@ -256,12 +261,12 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(token, connect_source)
 
-    def test_guest_owned_recall_does_not_expose_robot_return(self) -> None:
+    def test_guest_owned_recall_exposes_only_bound_robot_completion(self) -> None:
         self.assertIn("const [missionDispatch, setMissionDispatch] = useState", self.source)
         self.assertIn("const robotOwnsReturn =", self.source)
         self.assertIn("const guestOwnsReturn =", self.source)
         self.assertIn(
-            "['operator', 'robot'].includes(missionDispatch.owner)",
+            "['operator', 'robot'].includes(dispatch.owner)",
             self.source,
         )
         self.assertIn("{robotOwnsReturn ? (", self.source)
@@ -270,7 +275,10 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source,
         )
         self.assertIn("현재 임무의 복귀 권한을 확인하고 있습니다.", self.source)
-        self.assertIn("if (!dispatchActive || dispatchOwner === 'guest')", self.source)
+        self.assertIn(
+            "if (!dispatchActive || (dispatchOwner === 'guest' && dispatchIntent !== 'recall'))",
+            self.source,
+        )
         self.assertNotIn(
             "missionDispatchActiveRef.current = Boolean(newState)",
             self.source,
@@ -280,6 +288,285 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         handler = self.source[handler_start:handler_end]
         self.assertIn("if (!robotOwnsReturn)", handler)
         self.assertIn("현재 운행의 복귀 권한이 이 화면에 없습니다.", handler)
+        self.assertNotIn("setIsReturning(true)", handler)
+        self.assertIn("wsRef.current.readyState !== WebSocket.OPEN", handler)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_recall_return_progress_matches_both_uis_for_every_site(self) -> None:
+        guest_source = (
+            APP_SOURCE.parents[4] / "camrod_ui_guest" / "assets"
+            / "guest_frontend" / "index.html"
+        ).read_text(encoding="utf-8")
+        phases = {
+            "RECALL_CLEARANCE_WAIT": "사이트 비움 안내 중",
+            "ALIGN_ENTRY_YAW": "사이트 재진입 준비",
+            "CRAB_IN": "사이트 재진입 중",
+            "ROTATE_180": "사이트 안에서 180도 회전 중",
+            "RECALL_RETURN_WAIT": "짐 싣기 완료 확인 대기",
+            "ALIGN_RETRACE_YAW": "도로 출차 준비",
+            "CRAB_OUT": "사이트에서 도로로 출차 중",
+        }
+        inputs = [
+            [f"B{site}", f"camping_site_maneuver_controller:{phase}:active"]
+            for site in range(1, 14) for phase in phases
+        ] + [["B3", "other_controller:ROTATE_180:active"], ["B3", ""]]
+        outputs = []
+        for source, end_marker in (
+            (self.source, "// HH_260904 - Re-dock events"),
+            (guest_source, "function updateUI()"),
+        ):
+            start = source.index("function recallReturnInstructions(site,")
+            helpers = source[start:source.index(end_marker, start)]
+            script = helpers + "\nprocess.stdout.write(JSON.stringify(" + json.dumps(inputs) + ".map(([site, description]) => ({instructions: recallReturnInstructions(site), ...recallReturnProgress(site, description)}))));"
+            result = subprocess.run(
+                ["node"], input=script, text=True, capture_output=True, check=True,
+            )
+            outputs.append(json.loads(result.stdout))
+        self.assertEqual(outputs[0], outputs[1])
+        for (site, description), output in zip(inputs, outputs[0]):
+            with self.subTest(site=site, description=description):
+                phase = description.split(":")[1] if ":" in description else ""
+                if int(site[1:]) <= 10 and description.startswith("camping_site_maneuver_controller:"):
+                    self.assertEqual(output["label"], phases[phase])
+                    self.assertIn("180도", output["instructions"])
+                else:
+                    self.assertEqual(output["label"], "짐을 싣고 복귀 중")
+                if int(site[1:]) >= 11:
+                    self.assertIn("기존 반대쪽 경로", output["message"])
+                    self.assertNotIn("180도", output["instructions"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_robot_completion_keeps_guest_mission_identity_and_phase_guards(self) -> None:
+        start = self.source.index("function robotCanCompleteMission(")
+        helper = self.source[start:self.source.index("// HH_260904 - Re-dock events", start)]
+        admitted = {"active": True, "site": "B4", "generation": 12, "owner": "guest", "intent": "recall"}
+        cases = [
+            [admitted, "B4", "GUEST_LOADING_WAIT"],
+            [admitted, "B5", "GUEST_LOADING_WAIT"],
+            [admitted, "B4", "RETURN_WITH_CARGO"],
+            [{**admitted, "active": False}, "B4", "GUEST_LOADING_WAIT"],
+            [{**admitted, "intent": "delivery"}, "B4", "GUEST_LOADING_WAIT"],
+            [{**admitted, "generation": 0}, "B4", "GUEST_LOADING_WAIT"],
+            [{**admitted, "generation": "12"}, "B4", "GUEST_LOADING_WAIT"],
+            [{**admitted, "owner": "robot"}, "B4", "GUEST_LOADING_WAIT"],
+            [{**admitted, "owner": "operator", "intent": "delivery"}, "B4", "UNLOAD_WAIT"],
+        ]
+        result = subprocess.run(
+            ["node"], input=helper + "\nprocess.stdout.write(JSON.stringify(" + json.dumps(cases) + ".map(args => robotCanCompleteMission(...args))));",
+            text=True, capture_output=True, check=True,
+        )
+        self.assertEqual(json.loads(result.stdout), [True, False, False, False, False, False, False, True, True])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_two_stage_completion_sends_explicit_stage_once_and_blocks_execution_failure(self) -> None:
+        guest_source = (APP_SOURCE.parents[4] / "camrod_ui_guest" / "assets"
+                        / "guest_frontend" / "index.html").read_text(encoding="utf-8")
+        helper_start = self.source.index("function recallReturnInstructions(site,")
+        helpers = self.source[helper_start:self.source.index("// HH_260904 - Re-dock events", helper_start)]
+        robot_start = self.source.index("const handleArrivalComplete = () => {")
+        robot_action = self.source[robot_start:self.source.index("// ── 실제 토글", robot_start)]
+        guest_start = guest_source.index("function sendUsageComplete() {")
+        guest_action = guest_source[guest_start:guest_source.index("function sendCancel()", guest_start)]
+        script = helpers + r"""
+const robotCalls = [], guestCalls = [], warnings = [];
+const WebSocket = {OPEN: 1};
+let recallFinalReturnReady = false;
+const missionExecutionErrorRef = {current: ''}, returnRequestPendingRef = {current: false};
+const missionDispatchSiteRef = {current: 'B4'}, missionDispatchGenerationRef = {current: 12};
+const robotOwnsReturn = true;
+const wsRef = {current: {readyState: 1, send: raw => robotCalls.push(JSON.parse(raw))}};
+const setMissionBlockMessage = message => warnings.push(message);
+const setReturnRequestPending = () => {}, setShowArrivalComplete = () => {};
+""" + robot_action + r"""
+handleArrivalComplete(); handleArrivalComplete();
+returnRequestPendingRef.current = false; recallFinalReturnReady = true;
+handleArrivalComplete(); handleArrivalComplete();
+returnRequestPendingRef.current = false; missionExecutionErrorRef.current = 'site entry failed';
+handleArrivalComplete();
+let missionExecutionError = '', usageCompletePending = false, usageCompleteError = '';
+const activeRequestIntent = 'recall', activeRequestOwner = 'guest';
+const currentServiceStateName = 'GUEST_LOADING_WAIT', lastDestSite = 'B4';
+const ws = {readyState: 1, send: raw => guestCalls.push(JSON.parse(raw))};
+const window = {confirm: () => true}, updateUI = () => {};
+""" + guest_action + r"""
+recallFinalReturnReady = false; sendUsageComplete(); sendUsageComplete();
+usageCompletePending = false; recallFinalReturnReady = true;
+sendUsageComplete(); sendUsageComplete();
+usageCompletePending = false; missionExecutionError = 'site entry failed'; sendUsageComplete();
+const labels = [recallCompletionLabel('B4', false), recallCompletionLabel('B4', true), recallCompletionLabel('B11', false)];
+process.stdout.write(JSON.stringify({robotCalls, guestCalls, warnings, labels}));
+"""
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["robotCalls"], [
+            {"usage_complete": True, "site": "B4", "mission_generation": 12, "recall_final_return": stage}
+            for stage in (False, True)
+        ])
+        self.assertEqual(output["guestCalls"], [
+            {"action": "usage_complete", "recall_final_return": stage} for stage in (False, True)
+        ])
+        self.assertIn("관리자", output["warnings"][0])
+        self.assertEqual(output["labels"], ["정리 완료 · 사이트 재진입", "짐 싣기 완료 · 복귀", "적재 완료 · 복귀"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_robot_reconnect_restores_completion_and_preserves_minimal_phase_frames(self) -> None:
+        # Use the actual initial backend frame and actual browser message
+        # handler. A helper-only test cannot catch missing snapshot fields or
+        # the extra minimal state frame erasing the preceding phase detail.
+        endpoint = next(
+            node for node in ast.walk(ast.parse(self.backend_source))
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "websocket_endpoint"
+        )
+        snapshot = next(
+            node.value.args[0] for node in ast.walk(endpoint)
+            if isinstance(node, ast.Await)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "send_json"
+            and node.value.args and isinstance(node.value.args[0], ast.Dict)
+            and any(isinstance(key, ast.Constant) and key.value == "service_state_description"
+                    for key in node.value.args[0].keys)
+        )
+        arrival_frame = eval(compile(ast.Expression(snapshot), "initial_robot_snapshot", "eval"), {}, {
+            "service_state": 8,
+            "service_state_name": "GUEST_LOADING_WAIT",
+            "service_state_description": "camping_site_maneuver_controller:WAIT_RETURN:loading",
+            "active_mission_site": "B4",
+        })
+        prefix = self.source[
+            self.source.index("const SERVICE_STATE ="):
+            self.source.index("// HH_260904 - Re-dock events")
+        ]
+        battery_helpers_start = self.source.index("const emptyBatteryReturnState =")
+        prefix += self.source[battery_helpers_start:self.source.index(
+            "// HH_260721 - Reuse one health", battery_helpers_start
+        )]
+        handler_start = self.source.index("ws.onmessage = (event) => {")
+        handler = self.source[handler_start:self.source.index(
+            "// HH_260708 - Reconnect the operator WebSocket", handler_start
+        )]
+        setters = sorted(set(re.findall(r"\b(set[A-Z]\w*)\(", handler)))
+        refs = sorted(set(re.findall(r"\b(\w+Ref)\.current", handler)) - {"wsRef"})
+        setup = "\n".join(
+            f"const {name} = value => {{uiState.{name} = typeof value === 'function' ? value(uiState.{name}) : value;}};"
+            for name in setters
+        ) + "\n" + "\n".join(f"const {name} = {{current: null}};" for name in refs)
+        script = prefix + "\nconst uiState = {}; const ws = {}; const wsRef = {current: ws};\n" + setup + "\n" + r"""
+const SITE_NAMES = Array.from({length: 13}, (_, i) => `B${i + 1}`);
+const connectionGeneration = 1;
+wsMountedRef.current = true;
+wsGenerationRef.current = 1;
+missionAuthorityRevisionRef.current = 0;
+destinationIntentRef.current = 'delivery';
+batteryReturnStateRef.current = emptyBatteryReturnState();
+""" + handler + "\nconst send = frame => ws.onmessage({data: JSON.stringify(frame)});\n"
+        script += "send(" + json.dumps(arrival_frame) + ");\n" + r"""
+send({mission_dispatch_active: true, mission_dispatch_generation: 12,
+      mission_dispatch_site: 'B4', mission_dispatch_owner: 'guest',
+      mission_dispatch_intent: 'recall'});
+const restored = {
+  arrived: uiState.setArrivedSite,
+  modal: uiState.setShowArrivalComplete,
+  permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
+};
+send({service_state: 9, service_state_name: 'RETURN_WITH_CARGO',
+      service_state_description: 'camping_site_maneuver_controller:RECALL_CLEARANCE_WAIT:active'});
+send({service_state: 9, returning: true});
+const preserved = uiState.setServiceStateDescription;
+send({service_state: 10});
+send({battery_return_pending: true, battery_return_started: true, battery_return_urgent: true});
+send({battery_return_urgent: false});
+send({parking_policy_mode: 'auto', parking_selected_method: 'apriltag', charging_required: true});
+send({mission_execution_error: 'prepareRecallTurnaroundEntry failed', recall_final_return_ready: false});
+send({service_state: 8, site: 'B4'});
+const failed = {reason: uiState.setMissionExecutionError, modal: uiState.setShowArrivalComplete};
+send({mission_execution_error: '', recall_final_return_ready: true});
+send({service_state: 8, site: 'B4'});
+const finalStage = {ready: uiState.setRecallFinalReturnReady, error: uiState.setMissionExecutionError};
+process.stdout.write(JSON.stringify({restored, preserved, cleared: uiState.setServiceStateDescription,
+  batteryReturn: uiState.setBatteryReturnState, parking: uiState.setParkingPolicy, failed, finalStage}));
+"""
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["restored"], {"arrived": "B4", "modal": True, "permitted": True})
+        self.assertEqual(output["preserved"], "camping_site_maneuver_controller:RECALL_CLEARANCE_WAIT:active")
+        self.assertEqual(output["cleared"], "")
+        self.assertTrue(output["batteryReturn"]["pending"])
+        self.assertTrue(output["batteryReturn"]["started"])
+        self.assertFalse(output["batteryReturn"]["urgent"])
+        self.assertEqual(output["parking"]["parking_selected_method"], "apriltag")
+        self.assertTrue(output["parking"]["charging_required"])
+        self.assertEqual(output["failed"], {"reason": "prepareRecallTurnaroundEntry failed", "modal": False})
+        self.assertEqual(output["finalStage"], {"ready": True, "error": ""})
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_battery_messages_distinguish_urgent_return_and_normal_parking_boundaries(self) -> None:
+        start = self.source.index("const emptyBatteryReturnState =")
+        helpers = self.source[start:self.source.index("// HH_260721 - Reuse one health", start)]
+        guest_source = (APP_SOURCE.parents[4] / "camrod_ui_guest" / "assets"
+                        / "guest_frontend" / "index.html").read_text(encoding="utf-8")
+        guest_start = guest_source.index("function guestBatteryPolicyMessage(")
+        guest_helper = guest_source[guest_start:guest_source.index("/* ── UI state machine", guest_start)]
+        script = "const URGENT_BATTERY_RETURN_PERCENT = 25; const MISSION_DISPATCH_MINIMUM_PERCENT = 35;\n" + helpers + guest_helper + r"""
+const values = [null, 20, 24.9, 25, 34.9, 35, 80];
+const robot = values.map(value => batteryPolicyStatus(value, emptyBatteryReturnState()));
+const guest = values.map(value => guestBatteryPolicyMessage(value, false, false, ''));
+const urgent = formatBatteryReturnMessage({battery_percentage: 24, battery_return_urgent: true});
+process.stdout.write(JSON.stringify({robot, guest, urgent}));
+"""
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        output = json.loads(result.stdout)
+        self.assertIn("pending", output["robot"][0]["label"])
+        for index in (1, 2):
+            self.assertIn("긴급 복귀", output["robot"][index]["label"])
+            self.assertIn("25% 미만", output["guest"][index])
+        for index in (3, 4):
+            self.assertEqual(output["robot"][index]["tone"], "warning")
+            self.assertIn("현재 작업 완료 후", output["guest"][index])
+        for index in (5, 6):
+            self.assertEqual(output["robot"][index]["tone"], "ok")
+            self.assertIn("충전하지 않고", output["guest"][index])
+        self.assertIn("현재 작업을 중단", output["urgent"])
+        self.assertNotIn("Critical battery stop", self.source)
+        self.assertNotIn("/ui/dock", guest_source)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_explicit_dock_posts_only_dock_and_reports_backend_rejection(self) -> None:
+        start = self.telemetry_source.index("export async function postDockingRequest(")
+        helper = self.telemetry_source[start:self.telemetry_source.index("export function DockingCommandButton(", start)]
+        helper = helper.replace("export ", "")
+        script = helper + r"""
+(async () => {
+  const calls = [];
+  const accepted = await postDockingRequest(async (url, options) => {
+    calls.push({url, options});
+    return {ok: true, json: async () => ({success: true, action: 'force_docking'})};
+  });
+  let error = '';
+  try { await postDockingRequest(async (url, options) => {
+    calls.push({url, options});
+    return {ok: false, json: async () => ({success: false, message: 'CAN unavailable'})};
+  }); } catch (failure) { error = failure.message; }
+  const reverse = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'reverse'});
+  const april = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'apriltag'});
+  const stationAllowed = ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
+    .map(dockingAllowedAtServiceState);
+  const awayBlocked = ['', 'PREPARING', 'OPERATOR_STOPPED', 'GOING_TO_SITE', 'GUEST_LOADING_WAIT', 'RETURN_WITH_CARGO']
+    .map(dockingAllowedAtServiceState);
+  process.stdout.write(JSON.stringify({calls, accepted, error, reverse, april, stationAllowed, awayBlocked}));
+})();
+"""
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["calls"], [{"url": "/ui/dock", "options": {"method": "POST"}}] * 2)
+        self.assertEqual(output["accepted"]["action"], "force_docking")
+        self.assertEqual(output["error"], "CAN unavailable")
+        self.assertIn("충전하지 않음", output["reverse"])
+        self.assertEqual(output["april"], "충전 도킹 선택됨")
+        self.assertEqual(output["stationAllowed"], [True] * 4)
+        self.assertEqual(output["awayBlocked"], [False] * 6)
+        self.assertGreaterEqual(self.source.count("<DockingCommandButton"), 3)
+        self.assertIn("<DockingCommandButton", self.telemetry_source)
 
     def test_public_service_evidence_uses_summary_and_bounded_history_apis(self) -> None:
         self.assertIn("/api/service-metrics/summary", self.service_evidence_source)

@@ -48,7 +48,9 @@
     heading_proportional_gain: 0.8
     lateral_proportional_gain: -0.25
     maximum_angular_speed_radps: 0.22
-    maximum_reverse_distance_m: 1.5
+    # The new station is approximately 3.75 m from its road approach. Keep an
+    # explicit bounded envelope; an out-of-bound goal is rejected at START.
+    maximum_reverse_distance_m: 5.0
     reverse_timeout_s: 30.0
 
     require_station_on_reverse_axis: true
@@ -58,8 +60,9 @@
     # 4. CHARGING COMPLETION
     # =========================================================================
     stop_when_charging: true
-    # HH_260721 - Complete reverse parking only after normalized CAN confirms charging.
-    complete_without_charging: false
+    # SOC >= 35% selects this bounded non-charging park. Completion still
+    # requires the actual station XY tolerance; the travel limit is not success.
+    complete_without_charging: true
     # HH_260813 - The platform now confirms charger contact over 10 s instead of
     # two BMS samples, so the parked wait must outlast that confirmation.
     charging_wait_timeout_s: 45.0
@@ -100,8 +103,8 @@
 
     # HH_260904 - This package-owned profile is the runtime source of truth;
     # keep the bringup deployment mirror byte-identical after field tuning.
-    heading_gain: 1.5
-    lateral_to_heading_gain: 2.5
+    heading_gain: 1.2 # 1.5
+    lateral_to_heading_gain: 2.0 # 2.5
     maximum_angular_speed_radps: 1.0
     maximum_approach_angle_rad: 0.5
 
@@ -153,3 +156,21 @@
     # =========================================================================
     publish_visualization: true
     odometry_frame_id: "odom"
+
+/parking/parking_dispatcher:
+  ros__parameters:
+    # Selection is latched per attempt; late SOC changes never swap a moving
+    # controller. Explicit force_docking always selects AprilTag. Unknown or
+    # stale battery state also requires charging, never non-charging completion.
+    charging_threshold_percent: 35.0
+    platform_status_timeout_s: 2.0
+    controller_handoff_hold_s: 0.5
+    controller_operation_timeout_s: 8.0
+    controller_command_timeout_s: 0.5
+    # Stationary PARKED/tag/charge waits need fresh status, not periodic motion.
+    controller_status_timeout_s: 2.0
+    platform_status_topic: "/platform/status"
+    operation_topic: "/parking/operation"
+    command_topic: "/control/cmd_vel_raw"
+    status_topic: "/parking/status"
+    service_state_topic: "/service/state"

@@ -53,6 +53,10 @@
     # This is measured from the current map-derived lanelet snap toward the
     # signed site side, never from a separately guessed coordinate.
     recall_wait_lateral_offset_m: 0.30
+    # HH_260907 - Explicit loading completion starts B1-B10 site clearance,
+    # then full site entry/180-degree turn/forward return. Hold zero for the
+    # 6.552 s Korean announcement plus delivery margin; B11-B13 skip this.
+    recall_clearance_wait_s: 8.0
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.
@@ -212,7 +216,7 @@
     # 0.20 m/s raw cap reaches the platform as at most 0.10 m/s (0.36 km/h).
     require_exact_parking_approach_for_auto: true
     parking_approach_goal_max_station_distance_m: 8.0
-    parking_approach_position_tolerance_m: 0.05
+    parking_approach_position_tolerance_m: 0.20 # 0.05
     parking_approach_proportional_gain: 0.8
     parking_approach_minimum_speed_mps: 0.06
     parking_approach_maximum_speed_mps: 0.20

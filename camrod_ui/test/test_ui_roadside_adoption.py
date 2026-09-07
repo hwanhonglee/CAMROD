@@ -365,6 +365,8 @@ class RoadsideArrivalContractTest(unittest.TestCase):
             service_mode="roadside_stop",
         )
         backend = self._backend(key, keypoint, 0.0, 0.30)
+        backend._drop_zone_polygons = [[(10.0, 10.0), (12.0, 10.0), (12.0, 12.0), (10.0, 12.0)]]
+        backend._latest_arrival_pose.header.stamp = RosTime(sec=100)
         events = []
         backend._is_site_occupied = lambda _site: False
         backend._service_metrics = None

@@ -58,7 +58,7 @@ tapered-front rounded geometry published by camrod_platform. -->
 |---|---:|---|
 | New campsite mission | `SOC >= 35%` | Departure admitted |
 | Confirmed-tent occupancy | guard default `false` | Optional UI/control pre-entry block; never interrupts an already committed site maneuver |
-| Critical battery | `SOC <= 20%` | Hard command stop |
+| Urgent battery | `SOC < 25%` | Safe site exit and drop-zone return; no SOC-only hard stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
 | Physical body | front/rear `0.70837/0.68323 m` | Fabrication-inclusive `1.39160 m` hard-stop length; only projected monotonic inward escape on cost 100 |
 | Physical body | left/right `0.53505/0.53495 m` | Fabrication-inclusive `1.07000 m` hard-stop width |
@@ -149,7 +149,8 @@ localization, or battery hold.
 |---|---|
 | Active B1-B10 turnaround | `ALIGN_ENTRY_YAW -> CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
 | Active B11-B13 roadside | `ALIGN_ENTRY_YAW ->` `0.30 m`-capped `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> DONE`; no zero-turn |
-| Guest recall B1-B13 | route to lanelet snap -> site-side `0.30 m` roadside wait -> explicit Return -> lateral road exit -> drop-zone route; occupied-site delivery guard remains active for non-guest missions |
+| Recall B1-B10 | lanelet snap -> site-side `0.30 m` roadside wait -> first completion -> 8 s site-clear announcement -> full site entry -> 180-degree turn -> `RECALL_RETURN_WAIT` (strict zero) -> second loading-complete button -> lateral exit -> forward drop-zone route |
+| Recall B11-B13 | same roadside loading wait -> explicit completion -> existing opposite-direction roadside return, without site re-entry or on-site rotation |
 | B11-B13 return | Preserve arrival heading, reach a fresh lanelet projection laterally, then request a forward one-way loop |
 | Drop-zone departure | optional charging `7.0 s` stopped dwell -> `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> exact snapped lanelet point -> 90-degree body alignment -> selected parking controller |
@@ -240,9 +241,27 @@ separates measured planning-margin recovery from the then-active no-motion
 physical-body policy. The current monotonic-overlap/swept-clearance rule for a
 virtual body-boundary contact remains physical field work.
 
-The low-battery latch does not auto-return while people may be unloading. If
-SOC falls below 35% during a campsite mission, the current site phase finishes
-and the normal user return request remains required.
+At 25–<35% the current site phase finishes and the normal user completion/return
+request remains required. Below 25%, an exact `battery_urgent_return` operation
+interrupts the task, exits to the road using the live lanelet handoff, then
+returns for charging. EStop, obstacles, CAN/BMS errors and stale pose still
+block motion. The legacy <=20% SOC-only hard stop is disabled by default;
+the diagnostic <=10% SOC severity is WARN, while voltage/temperature/fault
+errors retain their original severity.
+
+Default `parking_method=auto` uses one dispatcher and private controller
+outputs. SOC >=35% selects noncharging reverse park within the explicit 5.0 m
+maximum travel; lower/unknown SOC or exact `force_docking` selects AprilTag.
+The new station is approximately 3.75 m from its road approach. A goal outside
+the configured bound is rejected before departure; the bound is never extended
+automatically. Reaching the travel limit alone is not success: completion needs
+fresh finite localization within the existing 0.25 m station XY tolerance (or
+confirmed charging contact). A distance/axis miss stops with ERROR. Lanelet
+exceptions and live obstacle/radar protections are unchanged.
+Both previous controllers must acknowledge cancellation before only the
+selected controller is started, with a stopped handoff and fresh CAN checks.
+Selection stays fixed throughout an attempt. Completed reverse parking may
+switch to docking when SOC later falls below 35%; new missions require >=35%.
 
 ## Parking And Charging State
 

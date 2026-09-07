@@ -24,7 +24,9 @@ struct CmdVelGatePolicyConfig
   bool block_on_charging{true};
   bool block_on_platform_error_code{true};
   bool require_can_control_mode{true};
-  bool critical_battery_stop_enabled{true};
+  // A low SOC must still allow the <25% automatic return to the charger.
+  // Explicit BMS/CAN faults and every independent safety hold remain blocking.
+  bool critical_battery_stop_enabled{false};
   double critical_battery_percentage{0.20};
 };
 
