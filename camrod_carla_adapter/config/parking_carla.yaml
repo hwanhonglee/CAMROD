@@ -1,7 +1,7 @@
-# CARLA-only plant geometry. The Woraksan Drop Zone route releases parking
-# about 3.82 m ahead of the canonical charger point, so the production 1.5 m
-# hard cap would stop early. The normal 0.25 m station-axis stop remains the
-# primary completion condition; 4.2 m is only a bounded fail-safe ceiling.
+# CARLA-only plant geometry mirror. CAMROD v2.2.4 raised the production
+# bounded reverse envelope to 5.0 m for the relocated station, so the tuned
+# simulator profile must not reintroduce its former 4.2 m override. The normal
+# 0.25 m station-axis tolerance remains the only position-success condition.
 /parking/reverse_parking_controller:
   ros__parameters:
-    maximum_reverse_distance_m: 4.2
+    maximum_reverse_distance_m: 5.0

@@ -1266,9 +1266,9 @@ def test_parking_and_charger_emulation_are_opt_in_carla_profiles_only():
         )
     )["/parking/reverse_parking_controller"]["ros__parameters"]
 
-    assert overlay == {"maximum_reverse_distance_m": 4.2}
-    assert production["maximum_reverse_distance_m"] == 1.5
-    assert production["complete_without_charging"] is False
+    assert overlay == {"maximum_reverse_distance_m": 5.0}
+    assert production["maximum_reverse_distance_m"] == 5.0
+    assert production["complete_without_charging"] is True
     assert '"launch_charging_contact_emulator", default_value="false"' in full_launch
     assert 'default_value=parking_runtime_disabled_config' in full_launch
     assert '"launch_charging_contact_emulator": "true"' in tuned_launch

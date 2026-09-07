@@ -62,6 +62,8 @@ authority다.
 ```bash
 cd /home/hong/camrod_ws/src
 export CARLA_RENDER_MODE=onscreen
+export RANGER_CARLA_ROOT=/home/hong/Downloads/ranger-carla-4ws-pipeline
+export RANGER_EVIDENCE_ROOT="${RANGER_CARLA_ROOT}/.work/evidence"
 
 ./scripts/virtual_carla/site_access.sh server
 ./scripts/virtual_carla/site_access.sh bridge
@@ -85,6 +87,13 @@ sites=B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13
 ```
 
 각 runner는 반드시 서로 다른 빈 절대 `--output-root`를 사용한다.
+
+증거 용량 정책상 `run_site_evidence_matrix.sh`의
+`--retain-source-video` runner 기본값은 `false`이다. 반면
+`capture_ui_evidence.sh`를 직접 호출할 때의 `--retain-source-video` 기본값은 `true`이므로,
+직접 캡처할 때 원본 MP4가 필요 없으면 명시적으로 비활성화한다. 재현 가능한 canonical
+실행은 저장소의 `site_access.sh`를 사용하며, noncanonical `CAMROD_VIRTUAL_CARLA_ENTRYPOINT`
+override가 설정된 환경은 최종 증거로 승인하지 않는다.
 
 ```bash
 ./scripts/virtual_carla/run_site_evidence_matrix.sh run \
