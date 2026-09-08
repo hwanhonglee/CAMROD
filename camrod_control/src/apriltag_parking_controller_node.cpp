@@ -17,6 +17,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 #include <rclcpp/rclcpp.hpp>
@@ -152,7 +153,8 @@ public:
       declare_parameter<bool>("enable_initial_clearance", false),
       declare_parameter<double>("initial_clearance_maximum_tag_distance_m", 1.20),
       declare_parameter<double>("initial_clearance_reverse_parking_tolerance_m", 0.25),
-      declare_parameter<double>("initial_clearance_maximum_heading_error_rad", 0.10)};
+      declare_parameter<double>("initial_clearance_maximum_heading_error_rad", 0.10),
+      declare_parameter<double>("initial_clearance_minimum_optical_depth_m", 0.20)};
     const camrod_control::AprilTagParkingRetryRawParameters retry_parameters{
       declare_parameter<double>("retry_forward_distance_m", 1.0),
       declare_parameter<double>("retry_forward_speed_mps", 0.10),
@@ -395,6 +397,8 @@ private:
           measured_axis_odometry_yaw_rad - parking_axis_odometry_yaw_rad_));
     }
     tag_camera_distance_m_ = measured_tag_camera_distance_m;
+    tag_camera_optical_depth_m_ = tag_pose.pose.position.z;
+    tag_observed_base_x_m_ = px;
     tag_camera_distance_valid_ = true;
     last_tag_time_ = observation_time;
   }
@@ -585,7 +589,8 @@ private:
               initial_clearance_config_, initial_clearance_evaluated_, tag_fresh,
               odometry_is_fresh, charging_detected_, tag_camera_distance_m_,
               lateral_error_m_, heading_error_rad_, translation_stop_tag_distance_m_,
-              final_lateral_tolerance_m_, final_heading_tolerance_rad_);
+              final_lateral_tolerance_m_, final_heading_tolerance_rad_,
+              tag_camera_optical_depth_m_, tag_observed_base_x_m_);
             // Evaluate only the first fresh acquisition of this Dock request,
             // not later tag-loss reacquisitions or ordinary lateral retries.
             initial_clearance_evaluated_ = true;
@@ -747,6 +752,18 @@ private:
             fail();
             break;
           }
+          if (initial_clearance_active_ &&
+            (!std::isfinite(tag_camera_optical_depth_m_) ||
+            tag_camera_optical_depth_m_ < initial_clearance_config_.minimum_optical_depth_m ||
+            tag_camera_optical_depth_m_ > tag_camera_distance_m_ ||
+            !std::isfinite(tag_observed_base_x_m_) || tag_observed_base_x_m_ >= 0.0 ||
+            !std::isfinite(lateral_error_m_) || !std::isfinite(heading_error_rad_)))
+          {
+            RCLCPP_ERROR(get_logger(),
+              "initial clearance lost valid rear-tag geometry; stopping");
+            fail();
+            break;
+          }
           const double lateral_bound_m = initial_clearance_active_ ?
             initial_clearance_config_.reverse_parking_tolerance_m : retry_maximum_lateral_error_m_;
           const double heading_bound_rad = initial_clearance_active_ ?
@@ -777,10 +794,12 @@ private:
               break;
             }
             if (!yaw_alignment_settling_.withinTolerance()) {
-              command.angular.z = clamp(
-                heading_gain_ * heading_error_rad_,
-                -final_yaw_angular_speed_radps_,
-                final_yaw_angular_speed_radps_);
+              if (!initial_clearance_active_) {
+                command.angular.z = clamp(
+                  heading_gain_ * heading_error_rad_,
+                  -final_yaw_angular_speed_radps_,
+                  final_yaw_angular_speed_radps_);
+              }
             } else if (settled) {
               if (!retry_progress_.begin(
                   vehicle_odometry_x_m_, vehicle_odometry_y_m_,
@@ -866,6 +885,10 @@ private:
             camrod_control::limitApproachAngularSpeedForTurnRadius(
               angular_speed_radps, retry_forward_speed_mps_,
               minimum_approach_turn_radius_m_);
+          // A fully detected rear tag shrinks toward the optical center when
+          // the already aligned body travels straight away. Initial clearance
+          // must not swing the rear camera or rotate to acquire a missing tag.
+          if (initial_clearance_active_) {command.angular.z = 0.0;}
           break;
         }
 
@@ -1237,6 +1260,8 @@ private:
   double distance_along_parking_axis_m_{0.0};
   double lateral_error_m_{0.0}, heading_error_rad_{0.0};
   double tag_camera_distance_m_{0.0};
+  double tag_camera_optical_depth_m_{std::numeric_limits<double>::quiet_NaN()};
+  double tag_observed_base_x_m_{std::numeric_limits<double>::quiet_NaN()};
   bool tag_camera_distance_valid_{false};
   // HH_260824 - Preserve the exact one-way stop cause and trigger sample for
   // field diagnosis; the live Tag distance may continue changing after zero.

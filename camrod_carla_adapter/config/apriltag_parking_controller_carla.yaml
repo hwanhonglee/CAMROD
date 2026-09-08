@@ -26,6 +26,9 @@
     initial_clearance_maximum_tag_distance_m: 1.20
     initial_clearance_reverse_parking_tolerance_m: 0.25
     initial_clearance_maximum_heading_error_rad: 0.10
+    # Optical depth, not 3D range: 1.25 x calibrated tag side (0.16 m).
+    # Initial clearance uses only straight forward motion; retry min stays .35.
+    initial_clearance_minimum_optical_depth_m: 0.20
     # CARLA Drop-Zone arrivals vary by more than the production lateral
     # tolerance. Preserve the immutable 0.40 m stop, +/-0.03 m acceptance,
     # and 0.85 m turn radius. Fresh B2 v14 evidence measured the first stop at

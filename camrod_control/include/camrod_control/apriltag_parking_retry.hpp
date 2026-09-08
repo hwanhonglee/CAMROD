@@ -153,6 +153,11 @@ struct AprilTagInitialClearanceConfig
   // envelope is capped at the current 0.25 m reverse-parking XY tolerance.
   double reverse_parking_tolerance_m{0.25};
   double maximum_heading_error_rad{0.10};
+  // Initial straight-forward clearance only. 0.20 m is 1.25 times the
+  // calibrated 0.16 m tag side, not a fit to a failed approach's range.
+  // Optical depth and base-frame location must be observed, not inferred
+  // from the 3D norm. Normal retry minimum remains a separate 0.35 m.
+  double minimum_optical_depth_m{0.20};
 };
 
 enum class AprilTagInitialClearanceDecision { NOT_REQUIRED, PERMITTED, REJECTED };
@@ -164,10 +169,13 @@ inline bool aprilTagInitialClearanceParametersValid(
   return std::isfinite(config.maximum_tag_distance_m) &&
          std::isfinite(config.reverse_parking_tolerance_m) &&
          std::isfinite(config.maximum_heading_error_rad) &&
+         std::isfinite(config.minimum_optical_depth_m) &&
          std::isfinite(stop_distance_m) && stop_distance_m > 0.0 &&
          std::isfinite(final_lateral_tolerance_m) && final_lateral_tolerance_m > 0.0 &&
          std::isfinite(final_heading_tolerance_rad) && final_heading_tolerance_rad > 0.0 &&
          config.maximum_tag_distance_m > stop_distance_m &&
+         config.minimum_optical_depth_m >= 0.20 &&
+         config.minimum_optical_depth_m < config.maximum_tag_distance_m &&
          config.reverse_parking_tolerance_m > final_lateral_tolerance_m &&
          config.reverse_parking_tolerance_m <= 0.25 &&
          config.maximum_heading_error_rad > 0.0 &&
@@ -179,7 +187,8 @@ inline AprilTagInitialClearanceDecision aprilTagInitialClearanceDecision(
   const bool tag_fresh, const bool odometry_fresh, const bool charging_detected,
   const double tag_distance_m, const double lateral_error_m,
   const double heading_error_rad, const double stop_distance_m,
-  const double final_lateral_tolerance_m, const double final_heading_tolerance_rad)
+  const double final_lateral_tolerance_m, const double final_heading_tolerance_rad,
+  const double optical_depth_m, const double tag_base_x_m)
 {
   using Decision = AprilTagInitialClearanceDecision;
   if (!config.enabled || already_evaluated) {return Decision::NOT_REQUIRED;}
@@ -196,7 +205,9 @@ inline AprilTagInitialClearanceDecision aprilTagInitialClearanceDecision(
   {
     return Decision::NOT_REQUIRED;
   }
-  if (tag_distance_m <= stop_distance_m ||
+  if (!std::isfinite(optical_depth_m) || !std::isfinite(tag_base_x_m) ||
+    optical_depth_m < config.minimum_optical_depth_m || optical_depth_m > tag_distance_m ||
+    tag_base_x_m >= 0.0 ||
     std::abs(lateral_error_m) > config.reverse_parking_tolerance_m ||
     std::abs(heading_error_rad) > config.maximum_heading_error_rad)
   {

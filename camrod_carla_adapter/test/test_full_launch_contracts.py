@@ -334,6 +334,7 @@ def test_site_apriltag_controller_overlay_changes_response_not_safety_limits():
         "initial_clearance_maximum_tag_distance_m": 1.20,
         "initial_clearance_reverse_parking_tolerance_m": 0.25,
         "initial_clearance_maximum_heading_error_rad": 0.10,
+        "initial_clearance_minimum_optical_depth_m": 0.20,
         "enable_bounded_lateral_retry": True,
         "retry_forward_distance_m": 0.8,
         "retry_forward_speed_mps": 0.20,

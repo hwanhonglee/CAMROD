@@ -618,6 +618,7 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert parity[parking]["enable_initial_clearance"] is False
     assert site[parking]["enable_initial_clearance"] is True
     for profile in (parity, site):
+        assert profile[parking]["initial_clearance_minimum_optical_depth_m"] == 0.20
         assert profile[parking]["initial_clearance_maximum_tag_distance_m"] == 1.20
         assert profile[parking]["initial_clearance_reverse_parking_tolerance_m"] == 0.25
         assert profile[parking]["initial_clearance_maximum_heading_error_rad"] == 0.10

@@ -1,5 +1,7 @@
 // Run the actual controller on an isolated DDS domain and remapped test topics.
 #include <gtest/gtest.h>
+#include <thread>
+#include <optional>
 #define CAMROD_APRILTAG_INITIAL_CLEARANCE_TEST
 #include "../src/apriltag_parking_controller_node.cpp"
 
@@ -39,8 +41,9 @@ protected:
     node_->viz_enabled_ = false;
     fresh();
   }
-  void TearDown() override {node_.reset();}
-  void fresh(double x = 0., double lateral = -.166, double heading = 0., double range = .741)
+  void TearDown() override {command_subscription_.reset(); node_.reset();}
+  void fresh(double x = 0., double lateral = -.166, double heading = 0., double range = .741,
+    std::optional<double> optical_depth = std::nullopt)
   {
     node_->odom_valid_ = true;
     node_->last_odometry_time_ = node_->now();
@@ -53,6 +56,8 @@ protected:
     node_->axis_valid_ = true;
     node_->tag_camera_distance_valid_ = true;
     node_->tag_camera_distance_m_ = range;
+    node_->tag_camera_optical_depth_m_ = optical_depth.value_or(range * .9);
+    node_->tag_observed_base_x_m_ = -.61933 - node_->tag_camera_optical_depth_m_;
     node_->last_tag_time_ = node_->now();
   }
   bool start()
@@ -78,6 +83,26 @@ protected:
   void charge() {node_->charging_detected_ = true;}
   void expire() {node_->retry_forward_start_time_ = node_->now() - rclcpp::Duration::from_seconds(31.);}
   void disabled() {node_->initial_clearance_config_.enabled = false;}
+  void tagBaseX(double x) {node_->tag_observed_base_x_m_ = x;}
+  void captureCommands()
+  {
+    command_subscription_ = node_->create_subscription<avg_msgs::msg::AvgTwist>(
+      node_->cmd_pub_->get_topic_name(), 100,
+      [this](avg_msgs::msg::AvgTwist::ConstSharedPtr message) {commands_.push_back(*message);});
+  }
+  void tickAndCollect()
+  {
+    tick();
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(15);
+    do {
+      rclcpp::spin_some(node_);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    } while (std::chrono::steady_clock::now() < until);
+  }
+  bool stopLatched() {return node_->translation_stop_reason_ == "tag_range";}
+  double stopThreshold() {return node_->translation_stop_tag_distance_m_;}
+  rclcpp::Subscription<avg_msgs::msg::AvgTwist>::SharedPtr command_subscription_;
+  std::vector<avg_msgs::msg::AvgTwist> commands_;
   std::shared_ptr<AprilTagParkingControllerNode> node_;
 };
 
@@ -159,8 +184,68 @@ TEST_F(AprilTagInitialClearanceControllerTest, ExistingOdometryStepAndTimeoutBou
   EXPECT_EQ(state(), State::ERROR);
 }
 
-TEST_F(AprilTagInitialClearanceControllerTest, PointFourStopIsNotAForwardClearanceAuthorization)
+TEST_F(AprilTagInitialClearanceControllerTest, BelowCalibratedOpticalDepthCannotAuthorizeClearance)
 {
-  ASSERT_TRUE(start()); fresh(0., -.166, 0., .4); tick();
+  ASSERT_TRUE(start()); fresh(0., -.144, .033, .31727, .199999); tick();
   EXPECT_EQ(state(), State::ERROR); EXPECT_FALSE(active());
+}
+
+TEST_F(AprilTagInitialClearanceControllerTest, ObservedClosePoseFirstTranslationIsStraightForwardOnly)
+{
+  captureCommands();
+  ASSERT_TRUE(start()); fresh(0., -.142, .027, .31727, .292994); tickAndCollect();
+  ASSERT_EQ(state(), State::RETRY_FORWARD_EXIT);
+  EXPECT_TRUE(active()); EXPECT_EQ(retries(), 0);
+  const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < until) {
+    fresh(0., -.142, .027, .31727, .292994); tickAndCollect();
+    if (std::any_of(commands_.begin(), commands_.end(), [](const auto & cmd) {
+        return cmd.linear.x > 0.;})) {break;}
+  }
+  ASSERT_FALSE(commands_.empty());
+  const auto translation = std::find_if(commands_.begin(), commands_.end(), [](const auto & cmd) {
+    return cmd.linear.x != 0.;});
+  ASSERT_NE(translation, commands_.end());
+  EXPECT_DOUBLE_EQ(translation->linear.x, .2);
+  for (const auto & cmd : commands_) {
+    EXPECT_GE(cmd.linear.x, 0.);
+    EXPECT_DOUBLE_EQ(cmd.angular.z, 0.);
+  }
+  EXPECT_DOUBLE_EQ(stopThreshold(), .40);
+  EXPECT_FALSE(stopLatched());
+}
+
+TEST_F(AprilTagInitialClearanceControllerTest, AlreadyAlignedPoint377StillLatchesReverseStop)
+{
+  captureCommands();
+  ASSERT_TRUE(start()); fresh(0., -.02, 0., .377); tickAndCollect();
+  EXPECT_EQ(state(), State::TAG_GUIDED_REVERSE); EXPECT_FALSE(active());
+  fresh(0., -.02, 0., .377); tickAndCollect();
+  EXPECT_EQ(state(), State::FINAL_YAW_ALIGNMENT); EXPECT_TRUE(stopLatched());
+  EXPECT_DOUBLE_EQ(stopThreshold(), .40);
+  ASSERT_FALSE(commands_.empty());
+  for (const auto & cmd : commands_) {EXPECT_DOUBLE_EQ(cmd.linear.x, 0.);}
+}
+
+TEST_F(AprilTagInitialClearanceControllerTest, InvalidOrNonRearTagCannotStartForwardClearance)
+{
+  for (const double depth : {-.3, 0., std::numeric_limits<double>::quiet_NaN()}) {
+    cancel(); fresh(); ASSERT_TRUE(start());
+    fresh(0., -.142, .027, .31727, depth); tick();
+    EXPECT_EQ(state(), State::ERROR); EXPECT_FALSE(active());
+  }
+  cancel(); fresh(); ASSERT_TRUE(start()); fresh(); tagBaseX(0.1); tick();
+  EXPECT_EQ(state(), State::ERROR); EXPECT_FALSE(active());
+}
+
+TEST_F(AprilTagInitialClearanceControllerTest, GeometryLossDuringInitialForwardStopsImmediately)
+{
+  captureCommands();
+  ASSERT_TRUE(start()); fresh(0., -.142, .027, .31727, .292994); tickAndCollect();
+  beginForward();
+  fresh(0., -.142, .027, .31727, .199999); tickAndCollect();
+  EXPECT_EQ(state(), State::ERROR); EXPECT_FALSE(active());
+  ASSERT_FALSE(commands_.empty());
+  EXPECT_DOUBLE_EQ(commands_.back().linear.x, 0.);
+  EXPECT_DOUBLE_EQ(commands_.back().angular.z, 0.);
 }

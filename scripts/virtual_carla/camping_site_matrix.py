@@ -162,6 +162,7 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "minimum_approach_turn_radius_m": 0.85,
         "tag_wait_timeout_s": 60.0,
         "enable_initial_clearance": False,
+        "initial_clearance_minimum_optical_depth_m": 0.20,
         "initial_clearance_maximum_tag_distance_m": 1.20,
         "initial_clearance_reverse_parking_tolerance_m": 0.25,
         "initial_clearance_maximum_heading_error_rad": 0.10,
