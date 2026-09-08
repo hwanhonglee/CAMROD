@@ -615,6 +615,12 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert site[parking]["translation_stop_tag_distance_m"] == 0.40
     assert site[parking]["final_lateral_tolerance_m"] == 0.03
     assert site[parking]["minimum_approach_turn_radius_m"] == 0.85
+    assert parity[parking]["enable_initial_clearance"] is False
+    assert site[parking]["enable_initial_clearance"] is True
+    for profile in (parity, site):
+        assert profile[parking]["initial_clearance_maximum_tag_distance_m"] == 1.20
+        assert profile[parking]["initial_clearance_reverse_parking_tolerance_m"] == 0.25
+        assert profile[parking]["initial_clearance_maximum_heading_error_rad"] == 0.10
     assert parity[parking]["enable_bounded_lateral_retry"] is False
     assert parity[parking]["retry_forward_speed_mps"] == 0.10
     assert parity[parking]["retry_forward_timeout_s"] == 25.0
@@ -1957,6 +1963,8 @@ def _operator_client_with_fake_visible_dom(probe):
                 if selector == '[data-ui="operator-site-code-input"]'
                 else None
             ),
+            "text": ("배달 서비스" if selector == '.mission-role-banner.role-delivery'
+                     else "호출 서비스" if selector == '.mission-role-banner.role-recall' else ""),
         }
 
     def call(method, params):
@@ -1996,7 +2004,12 @@ def test_operator_browser_uses_real_pointer_and_text_events_for_full_flow():
     assert "Input.dispatchMouseEvent" in methods
     assert methods.count("Input.insertText") == 1
     selectors = [item["selector"] for item in dispatch["interactions"]]
-    assert '[data-ui="operator-intent-delivery"]' in selectors
+    assert selectors[:3] == [
+        '[data-ui="operator-open-destination"]',
+        '[data-ui="operator-service-selection-screen"] [data-ui="operator-intent-delivery"]',
+        '[data-ui="operator-service-selection-screen"] [data-ui="operator-service-delivery-confirm"]',
+    ]
+    assert dispatch["service_selection"]["text"] == "배달 서비스"
     assert '[data-ui="operator-site-page-1"]' in selectors
     assert '[data-ui="operator-site-B7"]' in selectors
     assert '[data-ui="operator-site-code-confirm"]' in selectors
@@ -2078,8 +2091,75 @@ def test_operator_browser_recall_requires_real_successful_frontend_http_record()
     assert response["source"] == "robot_ui:recall"
     assert response["transport"] == "visible_operator_page_http_via_cdp_input"
     selectors = [item["selector"] for item in response["interactions"]]
-    assert '[data-ui="operator-intent-recall"]' in selectors
+    assert selectors[:3] == [
+        '[data-ui="operator-open-destination"]',
+        '[data-ui="operator-service-selection-screen"] [data-ui="operator-intent-recall"]',
+        '[data-ui="operator-service-selection-screen"] [data-ui="operator-service-recall-confirm"]',
+    ]
+    assert response["service_selection"]["text"] == "호출 서비스"
     assert '[data-ui="operator-site-page-1"]' in selectors
+
+
+@pytest.mark.parametrize("initial_screen,expected", [
+    ("waiting", ['[data-ui="operator-open-destination"]']),
+    ("service", []),
+    ("control", ['[data-ui="operator-back-to-services"]']),
+])
+def test_operator_service_menu_uses_visible_navigation_from_each_inactive_screen(initial_screen, expected):
+    client = _operator_client_with_fake_visible_dom({})
+    element = client._element
+    active = {"waiting": '[data-ui="operator-open-destination"]',
+              "service": '[data-ui="operator-service-selection-screen"]',
+              "control": '[data-ui="operator-back-to-services"]'}[initial_screen]
+    clicked = []
+    def read(selector):
+        if selector == active or (clicked and selector == '[data-ui="operator-service-selection-screen"]'):
+            return element(selector)
+        return {"count": 0, "visibleCount": 0}
+    client._element = read
+    click = client._click
+    def press(selector, description):
+        result = click(selector, description)
+        clicked.append(selector)
+        return result
+    client._click = press
+    client.open_service_menu()
+    assert clicked == expected
+    assert not any(method == "Runtime.evaluate" for method, _ in client.cdp_calls)
+
+
+@pytest.mark.parametrize("intent", ["delivery", "recall"])
+@pytest.mark.parametrize("bad", [{"visibleCount": 0}, {"disabled": True}, {"hit": False}, {"settled": False}])
+def test_operator_service_confirmation_cannot_be_bypassed(intent, bad):
+    client = _operator_client_with_fake_visible_dom({})
+    client.timeout_s = 0.4
+    element = client._element
+    selector = f'[data-ui="operator-service-selection-screen"] [data-ui="operator-service-{intent}-confirm"]'
+    client._element = lambda value: {**element(value), **bad} if value == selector else element(value)
+    with pytest.raises(matrix.MatrixError, match="unobscured/settled/stable"):
+        client.dispatch("B1", intent)
+    assert client._interactions[-1]["selector"] == (
+        f'[data-ui="operator-service-selection-screen"] [data-ui="operator-intent-{intent}"]')
+    assert not any("operator-site-" in item["selector"] for item in client._interactions)
+    assert not any(method == "Input.insertText" for method, _ in client.cdp_calls)
+
+
+@pytest.mark.parametrize("intent,wrong", [("delivery", "호출 서비스"), ("recall", "배달 서비스")])
+def test_operator_wrong_confirmed_service_banner_fails_before_site_selection(intent, wrong):
+    client = _operator_client_with_fake_visible_dom({})
+    element = client._element
+    client._element = lambda value: {**element(value), "text": wrong} if value.startswith('.mission-role-banner') else element(value)
+    with pytest.raises(matrix.MatrixError, match="service banner does not match"):
+        client.dispatch("B1", intent)
+    assert not any("operator-site-" in item["selector"] for item in client._interactions)
+
+
+def test_operator_service_hooks_match_actual_current_frontend():
+    app = (CAMROD / 'camrod_ui/camrod_ui_robot/assets/frontend/src/App.js').read_text()
+    for hook in ('operator-service-selection-screen', 'operator-intent-delivery', 'operator-intent-recall',
+                 'operator-service-delivery-confirm', 'operator-service-recall-confirm', 'operator-back-to-services'):
+        assert f'data-ui="{hook}"' in app
+    assert 'mission-role-banner role-${destinationIntent}' in app
 
 
 def test_guest_constructor_closes_cdp_socket_when_readiness_fails(monkeypatch):

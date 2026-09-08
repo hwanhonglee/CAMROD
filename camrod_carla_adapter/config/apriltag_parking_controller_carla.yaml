@@ -16,6 +16,16 @@
     lateral_to_heading_gain: 2.7
     reverse_approach_speed_mps: 0.2
     final_insertion_speed_mps: 0.05
+    # Explicit Dock after reverse PARKED may start at only 0.74 m camera range
+    # with 0.166 m lateral offset. The old far-start approach lost the entire
+    # tag at 0.427 m before reaching the immutable 0.40 m stop. Once per request,
+    # first create clearance using the SAME bounded forward exit below.
+    # Admission is limited to near-aligned heading and the reverse controller's
+    # current station_axis_tolerance_m=0.25; ordinary retry stays at 0.15 m.
+    enable_initial_clearance: true
+    initial_clearance_maximum_tag_distance_m: 1.20
+    initial_clearance_reverse_parking_tolerance_m: 0.25
+    initial_clearance_maximum_heading_error_rad: 0.10
     # CARLA Drop-Zone arrivals vary by more than the production lateral
     # tolerance. Preserve the immutable 0.40 m stop, +/-0.03 m acceptance,
     # and 0.85 m turn radius. Fresh B2 v14 evidence measured the first stop at

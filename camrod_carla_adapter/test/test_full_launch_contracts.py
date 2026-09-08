@@ -330,6 +330,10 @@ def test_site_apriltag_controller_overlay_changes_response_not_safety_limits():
         "lateral_to_heading_gain": 2.7,
         "reverse_approach_speed_mps": 0.2,
         "final_insertion_speed_mps": 0.05,
+        "enable_initial_clearance": True,
+        "initial_clearance_maximum_tag_distance_m": 1.20,
+        "initial_clearance_reverse_parking_tolerance_m": 0.25,
+        "initial_clearance_maximum_heading_error_rad": 0.10,
         "enable_bounded_lateral_retry": True,
         "retry_forward_distance_m": 0.8,
         "retry_forward_speed_mps": 0.20,
@@ -347,6 +351,18 @@ def test_site_apriltag_controller_overlay_changes_response_not_safety_limits():
     assert "translation_stop_tag_distance_m" not in parameters
     assert "final_lateral_tolerance_m" not in parameters
     assert "minimum_approach_turn_radius_m" not in parameters
+    production = yaml.safe_load(
+        (PACKAGE_ROOT.parent / "camrod_control/config/parking.yaml").read_text(encoding="utf-8")
+    )
+    reverse = production["/parking/reverse_parking_controller"]["ros__parameters"]
+    apriltag = production["/parking/apriltag_parking_controller"]["ros__parameters"]
+    assert parameters["initial_clearance_reverse_parking_tolerance_m"] == reverse[
+        "station_axis_tolerance_m"
+    ] == 0.25
+    assert parameters["initial_clearance_maximum_heading_error_rad"] == apriltag[
+        "final_heading_tolerance_rad"
+    ] == 0.10
+    assert "enable_initial_clearance" not in apriltag  # Constructor remains default-off.
     gated_timeout_budget_m = (
         parameters["retry_forward_speed_mps"] * 0.5
         * parameters["retry_forward_timeout_s"]

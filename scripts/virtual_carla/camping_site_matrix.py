@@ -161,6 +161,10 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "final_lateral_tolerance_m": 0.03,
         "minimum_approach_turn_radius_m": 0.85,
         "tag_wait_timeout_s": 60.0,
+        "enable_initial_clearance": False,
+        "initial_clearance_maximum_tag_distance_m": 1.20,
+        "initial_clearance_reverse_parking_tolerance_m": 0.25,
+        "initial_clearance_maximum_heading_error_rad": 0.10,
         "enable_bounded_lateral_retry": False,
         "retry_forward_distance_m": 1.0,
         "retry_forward_speed_mps": 0.10,
@@ -287,6 +291,7 @@ def _with_site_geometry_runtime_signature(
         "lateral_to_heading_gain": 2.7,
         "reverse_approach_speed_mps": 0.2,
         "final_insertion_speed_mps": 0.05,
+        "enable_initial_clearance": True,
         "enable_bounded_lateral_retry": True,
         "retry_forward_distance_m": 0.8,
         "retry_forward_speed_mps": 0.20,
@@ -2129,6 +2134,7 @@ class OperatorBrowserClient(GuestBrowserClient):
             "rootReady: Boolean(document.getElementById('root')), "
             "screenReady: Boolean(document.querySelector("
             "'[data-ui=\"operator-waiting-screen\"], "
+            "[data-ui=\"operator-service-selection-screen\"], "
             "[data-ui=\"operator-control-screen\"]'))"
             "}))()"
         )
@@ -2318,23 +2324,25 @@ class OperatorBrowserClient(GuestBrowserClient):
             )
         self._interactions = []
         self._install_transport_probe()
-        waiting = self._element('[data-ui="operator-open-destination"]')
-        if waiting.get("visibleCount") == 1:
-            self._click(
-                '[data-ui="operator-open-destination"]',
-                "open destination selection",
-            )
+        self.open_service_menu()
+        self._click(
+            f'[data-ui="operator-service-selection-screen"] [data-ui="operator-intent-{mission_intent}"]',
+            f"select {mission_intent} service",
+        )
+        self._click(
+            f'[data-ui="operator-service-selection-screen"] [data-ui="operator-service-{mission_intent}-confirm"]',
+            f"confirm {mission_intent} service admission",
+        )
         self._wait_element(
             '[data-ui="operator-control-screen"]', "operator control screen"
         )
-        self._click(
-            f'[data-ui="operator-intent-{mission_intent}"]',
-            f"select {mission_intent} intent",
-        )
-        self._wait_pressed(
-            f'[data-ui="operator-intent-{mission_intent}"]',
-            f"{mission_intent} intent",
-        )
+        role_selector = f'.mission-role-banner.role-{mission_intent}'
+        role = self._wait_element(role_selector, f"selected {mission_intent} service banner")
+        expected_role = "배달 서비스" if mission_intent == "delivery" else "호출 서비스"
+        if role.get("text") != expected_role:
+            raise MatrixError(f"Robot UI service banner does not match selected intent: {role!r}")
+        service_selection = {"intent": mission_intent, "selector": role_selector,
+                             "text": role["text"], "transport": "visible_production_service_menu"}
         page = (int(site[1:]) - 1) // 6
         self._click(
             f'[data-ui="operator-site-page-{page}"]',
@@ -2375,6 +2383,7 @@ class OperatorBrowserClient(GuestBrowserClient):
                 "frame": frame,
                 "source": "ws",
                 "transport": "visible_operator_page_websocket_via_cdp_input",
+                "service_selection": service_selection,
                 "interactions": list(self._interactions),
             }
 
@@ -2413,8 +2422,26 @@ class OperatorBrowserClient(GuestBrowserClient):
             "request": request_record,
             "source": "robot_ui:recall",
             "transport": "visible_operator_page_http_via_cdp_input",
+            "service_selection": service_selection,
             "interactions": list(self._interactions),
         }
+
+    def open_service_menu(self) -> dict[str, Any]:
+        """Navigate actual buttons only; never assume an old intent latch.
+
+        The current frontend chooses delivery/recall before the site screen.
+        Its return button is disabled during a mission, and the normal pointer
+        acceptance preserves that restriction instead of forcing React state.
+        """
+        waiting = self._element('[data-ui="operator-open-destination"]')
+        if waiting.get("visibleCount") == 1:
+            self._click(
+                '[data-ui="operator-open-destination"]',
+                "open service selection",
+            )
+        elif self._element('[data-ui="operator-service-selection-screen"]').get("visibleCount") != 1:
+            self._click('[data-ui="operator-back-to-services"]', "return to service selection")
+        return self._wait_element('[data-ui="operator-service-selection-screen"]', "service selection screen")
 
     def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
         self._interactions = []
