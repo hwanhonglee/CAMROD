@@ -4,17 +4,24 @@ import importlib.util
 import math
 import os
 from pathlib import Path
+import signal
+import subprocess
 import sys
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
 
 from action_msgs.msg import GoalStatus
+from ament_index_python.packages import get_package_prefix
 from avg_msgs.msg import AvgOccupancyGrid, AvgPath, AvgPoseStamped
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path as RosPath
 import rclpy
 from rclpy.serialization import deserialize_message, serialize_message
 from rclpy.duration import Duration
 from rclpy.time import Time
+import yaml
 
 
 os.environ["ROS_DOMAIN_ID"] = "226"
@@ -445,6 +452,174 @@ class PlanningRuntimeCoalescingTest(unittest.TestCase):
                         )
         finally:
             node.destroy_node()
+
+
+class LocalPathTerminalRetentionTest(unittest.TestCase):
+    """Exercise the native extractor with production YAML on isolated test topics.
+
+    The executable is the workspace-built node, not a reimplementation of its
+    completion condition. Domain 226 is set above and never shares robot topics.
+    No Nav2 server, vehicle command, simulation, or map process is started.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        rclpy.init()
+        cls.package = Path(__file__).resolve().parents[1]
+        cls.config = cls.package / "config/local_path_extractor.yaml"
+        cls.node = rclpy.create_node(f"terminal_path_test_{os.getpid()}")
+        cls.topic = f"/terminal_path_test_{os.getpid()}"
+        cls.samples = []
+        cls.subscription = cls.node.create_subscription(
+            AvgPath, cls.topic + "/local", lambda message: cls.samples.append(message), 10
+        )
+        cls.path_publisher = cls.node.create_publisher(RosPath, cls.topic + "/global", 10)
+        cls.pose_publisher = cls.node.create_publisher(AvgPoseStamped, cls.topic + "/pose", 10)
+        binary = Path(os.environ.get(
+            "CAMROD_LOCAL_PATH_EXTRACTOR_TEST_EXECUTABLE",
+            str(Path(get_package_prefix("camrod_planning")) / "lib/camrod_planning/local_path_extractor_node"),
+        ))
+        arguments = [str(binary), "--ros-args", "--params-file", str(cls.config),
+                     "-r", "__ns:=/planning"]
+        for name, suffix in (("global_path_topic", "global"), ("global_path_avg_topic", "global_avg"),
+                             ("pose_topic", "pose"), ("output_topic", "local"),
+                             ("output_topic_ros", "local_ros")):
+            arguments += ["-p", f"{name}:={cls.topic}/{suffix}"]
+        # Match this test's volatile publisher; all geometric/completion/stale
+        # parameters continue to come from the deployed YAML under test.
+        arguments += ["-p", "global_path_qos_transient_local:=false"]
+        cls.process = subprocess.Popen(
+            arguments, env=dict(os.environ, ROS_DOMAIN_ID="226"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        )
+        deadline = time.monotonic() + 5.0
+        while cls.path_publisher.get_subscription_count() == 0 and time.monotonic() < deadline:
+            if cls.process.poll() is not None:
+                raise RuntimeError("Native local_path_extractor exited before discovery")
+            rclpy.spin_once(cls.node, timeout_sec=0.05)
+        if cls.path_publisher.get_subscription_count() == 0:
+            cls.tearDownClass()
+            raise RuntimeError("Native local_path_extractor did not discover isolated test inputs")
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.process.poll() is None:
+            cls.process.send_signal(signal.SIGINT)
+            try:
+                cls.process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                cls.process.terminate()
+                cls.process.wait(timeout=5.0)
+        cls.node.destroy_node()
+        rclpy.shutdown()
+
+    def publish_route(self, *, endpoint=10.0, empty=False, spacing=0.05, point_count=41):
+        message = RosPath()
+        message.header.frame_id = "map"
+        message.header.stamp = self.node.get_clock().now().to_msg()
+        if not empty:
+            for index in range(point_count):
+                pose = PoseStamped()
+                pose.header = message.header
+                pose.pose.position.x = endpoint - (point_count - 1) * spacing + index * spacing
+                pose.pose.orientation.w = 1.0
+                message.poses.append(pose)
+        self.path_publisher.publish(message)
+
+    def observe_pose(self, x, *, y=0.0, duration=0.70, frame="map"):
+        # Discard transition traffic. Require repeated fresh outputs over the
+        # second half of the interval, not one cached nonempty path.
+        started = time.monotonic()
+        self.samples.clear()
+        cleared = False
+        while time.monotonic() - started < duration:
+            elapsed = time.monotonic() - started
+            if elapsed >= duration / 2.0 and not cleared:
+                self.samples.clear()
+                cleared = True
+            pose = AvgPoseStamped()
+            pose.header.frame_id = frame
+            pose.header.stamp = self.node.get_clock().now().to_msg()
+            pose.pose.position.x = float(x)
+            pose.pose.position.y = float(y)
+            pose.pose.orientation.w = 1.0
+            self.pose_publisher.publish(pose)
+            rclpy.spin_once(self.node, timeout_sec=0.02)
+            time.sleep(0.01)
+        self.assertIsNone(self.process.poll())
+        self.assertTrue(self.samples, "native extractor must keep publishing fresh path status")
+        return [len(message.poses) for message in self.samples]
+
+    def test_terminal_local_path_remains_available_at_observed_014m(self):
+        self.publish_route()
+        counts = self.observe_pose(9.86)
+        self.assertTrue(all(count >= 2 for count in counts), counts)
+        self.assertGreaterEqual(len(counts), 2, "recovery needs a fresh repeated path, not cached geometry")
+        # An excursion outside 0.14 m also proves completion was not latched.
+        self.assertTrue(all(count >= 2 for count in self.observe_pose(9.70)))
+
+    def test_terminal_retention_matches_nav2_and_bringup_without_weaker_safety(self):
+        canonical = yaml.safe_load(self.config.read_text())
+        mirror = yaml.safe_load(
+            (self.package.parent / "camrod_bringup/config/planning/local_path_extractor.yaml").read_text()
+        )
+        self.assertEqual(canonical, mirror)
+        parameters = canonical["/planning/local_path_extractor"]["ros__parameters"]
+        goal = yaml.safe_load((self.package / "config/nav2_base.yaml").read_text())
+        nav2_tolerance = goal["controller_server"]["ros__parameters"]["goal_checker"]["xy_goal_tolerance"]
+        self.assertEqual(nav2_tolerance, 0.10)
+        self.assertEqual(parameters["goal_reached_distance_m"], 0.05)
+        self.assertLess(parameters["goal_reached_distance_m"], nav2_tolerance)
+        for flag in ("stop_after_goal_reached", "publish_empty_on_invalid", "clear_local_path_on_route_change"):
+            self.assertTrue(parameters[flag])
+        self.assertEqual(parameters["pose_timeout_s"], 2.5)
+        self.assertEqual(parameters["max_segment_jump_m"], 3.0)
+
+    def test_terminal_slice_keeps_two_points_when_closest_is_last(self):
+        for spacing in (0.20, 0.2000000001, 0.25):
+            with self.subTest(spacing=spacing):
+                self.publish_route(spacing=spacing)
+                # The closest route point is the last one, but the robot is
+                # still 0.14 m laterally outside the 0.10 m Nav2 goal radius.
+                counts = self.observe_pose(10.0, y=0.14)
+                self.assertTrue(all(count >= 12 for count in counts), f"spacing={spacing}: {counts}")
+
+    def test_terminal_retention_does_not_bridge_discontinuous_route(self):
+        self.publish_route(spacing=3.01)
+        self.assertTrue(all(count == 0 for count in self.observe_pose(10.0, y=0.14)))
+
+    def test_short_terminal_route_retains_only_existing_three_points(self):
+        self.publish_route(spacing=0.25, point_count=3)
+        self.assertTrue(all(count == 3 for count in self.observe_pose(10.0, y=0.14)))
+
+    def test_stale_pose_still_clears_retained_terminal_path(self):
+        self.publish_route()
+        self.assertTrue(all(count >= 2 for count in self.observe_pose(9.86)))
+        deadline = time.monotonic() + 2.8
+        while time.monotonic() < deadline:
+            rclpy.spin_once(self.node, timeout_sec=0.05)
+        self.samples.clear()
+        deadline = time.monotonic() + 0.4
+        while time.monotonic() < deadline:
+            rclpy.spin_once(self.node, timeout_sec=0.05)
+        self.assertTrue(self.samples)
+        self.assertTrue(all(not message.poses for message in self.samples))
+
+    def test_completion_latch_and_new_route_reset_are_preserved(self):
+        self.publish_route()
+        self.assertTrue(all(count == 0 for count in self.observe_pose(9.97)))
+        self.assertTrue(all(count == 0 for count in self.observe_pose(9.70)))
+        self.publish_route(endpoint=20.0)
+        self.assertTrue(all(count >= 2 for count in self.observe_pose(19.86)))
+
+    def test_empty_global_path_and_invalid_pose_still_clear_local_path(self):
+        self.publish_route()
+        self.assertTrue(all(count >= 2 for count in self.observe_pose(9.70)))
+        self.publish_route(empty=True)
+        self.assertTrue(all(count == 0 for count in self.observe_pose(9.70)))
+        self.publish_route()
+        self.assertTrue(all(count == 0 for count in self.observe_pose(9.70, frame="other")))
+        self.assertTrue(all(count >= 2 for count in self.observe_pose(9.70)))
 
 
 if __name__ == "__main__":

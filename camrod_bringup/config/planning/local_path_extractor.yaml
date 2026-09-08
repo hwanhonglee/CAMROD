@@ -70,8 +70,14 @@
     # =========================================================================
     # Stop local path after route completion (until next global path update).
     stop_after_goal_reached: true
-    # HH_260623 - Match local path completion with center-based arrival.
-    goal_reached_distance_m: 0.25
+    # HH_260908 - Retain terminal route geometry inside the regulated Nav2
+    # 0.10 m arrival radius. The former 0.25 m latch could clear the local path
+    # while Nav2 was still approaching (observed at 0.14 m), starving path
+    # consumers. This distance-only latch is not a Nav2-success handshake:
+    # a valid terminal slice may remain after success until a new/empty route,
+    # invalid/stale pose, or the tighter 0.05 m completion condition clears it.
+    # Launch must load this YAML; the bare-node fallback is not the profile.
+    goal_reached_distance_m: 0.05
     goal_reached_index_margin: 3
 
     # =========================================================================

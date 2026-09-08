@@ -75,8 +75,8 @@ public:
     max_segment_jump_m_ = declare_parameter<double>("max_segment_jump_m", 3.0);
     // HH_260306-00:00 Latch local-path stop when goal is reached.
     stop_after_goal_reached_ = declare_parameter<bool>("stop_after_goal_reached", true);
-    // HH_260623 - Default local-path completion uses the same center-based
-    // arrival band as bringup configs when a config file is not loaded.
+    // Keep the legacy bare-node fallback. Deployed launches load the tighter
+    // completion distance from local_path_extractor.yaml beside Nav2 policy.
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
@@ -497,7 +497,7 @@ private:
       }
     }
 
-    const size_t begin = growBackward(closest);
+    size_t begin = growBackward(closest);
     size_t end = growForward(closest);
     if (end < begin) {
       end = begin;
@@ -508,6 +508,20 @@ private:
     const size_t cur_pts = end - begin + 1;
     if (static_cast<int>(cur_pts) < min_pts) {
       end = std::min(global_path_.poses.size() - 1, begin + static_cast<size_t>(min_pts - 1));
+    }
+    // At the terminal point forward growth cannot satisfy min_points. A
+    // segment just over the short lookbehind distance (including rounding at
+    // 0.20 m) otherwise leaves one point and clears a still-active route.
+    // Retain only existing contiguous predecessors, bounded by min_points
+    // and the same segment-jump guard. Never invent or bridge geometry.
+    if (end == global_path_.poses.size() - 1) {
+      while (begin > 0 && end - begin + 1 < static_cast<size_t>(min_pts)) {
+        const double ds = segmentLen2D(global_path_.poses[begin - 1], global_path_.poses[begin]);
+        if (!std::isfinite(ds) || (max_segment_jump_m_ > 0.0 && ds > max_segment_jump_m_)) {
+          break;
+        }
+        --begin;
+      }
     }
     const size_t capped_end = std::min(
       end, begin + static_cast<size_t>(max_pts - 1));
