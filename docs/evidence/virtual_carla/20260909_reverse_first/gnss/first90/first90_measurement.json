@@ -1,0 +1,246 @@
+{
+  "schema": "camrod.first90_recorded_turn_measurement.v1",
+  "created_utc": "2026-09-08T16:53:48.844205+00:00",
+  "status": "RECORDED_LARGER_TURN_FIRST_90_DEG_SUBINTERVAL_ONLY",
+  "acceptance": "NOT_A_90_DEG_COMMAND_AND_STOP_TEST; no GNSS PASS threshold asserted",
+  "selection_rule": {
+    "input": "CARLA truth pose only; GNSS errors NOT used",
+    "active_yaw_rate_threshold_degps": 1.0,
+    "join_active_gap_s": 1.0,
+    "maximum_truth_gap_s": 0.5,
+    "minimum_whole_episode_net_angle_deg": 90.0,
+    "maximum_whole_episode_center_path_m": 0.15,
+    "episode_choice": "earliest qualifying whole episode",
+    "endpoint": "first ORIGINAL truth sample with abs accumulated yaw >=90deg; no interpolation"
+  },
+  "original_trace": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/gnss_rotation_observation_02/observations.jsonl",
+    "sha256": "0525e2a9d7354869fa501c618c5352c754076bd221ac4bee04d9b06d30901813"
+  },
+  "recording_plan": {
+    "schema": "camrod.gnss_rotation_observation.v1",
+    "mode": "SUBSCRIBER_ONLY",
+    "topics": {
+      "raw_gnss": "/carla/ego_vehicle/gnss",
+      "corrected": "/sensing/gnss/pose_ros",
+      "localization": "/localization/pose",
+      "truth": "/camrod_carla/metric_pose",
+      "heading": "/sensing/gnss/navheading",
+      "phase": "/control/drop_zone_maneuver_controller/status"
+    },
+    "ros_domain_id": 5,
+    "ros_localhost_only": "0",
+    "current_mount_ros_body_m": {
+      "x": 0.0,
+      "y": 0.45,
+      "norm": 0.45
+    },
+    "mount_scope": "CARLA actor98 measured frame853848; NOT physical front-antenna calibration",
+    "heading_contract": "CARLA IMU +90deg bridge, production -92deg trim; no parameter changes",
+    "target_angle_deg": 90.0,
+    "angle_tolerance_deg": 5.0,
+    "maximum_pose_match_s": 0.2,
+    "maximum_truth_gap_s": 0.5,
+    "phase": "ALIGN_PARKING_YAW",
+    "runtime_source_label": "f02c2fb512a25565c676b5103d780635ae0892f9",
+    "acceptance": "MEASUREMENT_ONLY: no center drift threshold supplied; never generic PASS",
+    "raw_projection": "WGS84 ECEF->ENU relative to first valid raw fix; not map-aligned",
+    "writes": "Only requested JSONL/JSON/PNG under this evidence directory",
+    "forbidden_actions": [
+      "publish",
+      "service calls",
+      "parameter changes",
+      "CARLA API",
+      "UI input"
+    ],
+    "helper_path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/observe_gnss_rotation.py",
+    "helper_sha256": "d5f1e24369e42248c1bcdd0bfe747faf5a01df3fb1d732187db22c2a63655367",
+    "started_utc": "2026-09-08T16:31:01.480776+00:00",
+    "duration_limit_s": 3600.0
+  },
+  "analyzer": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/gnss_rotation_observation_02/first90_of_recorded_turn/derive_first90.py",
+    "sha256": "682c17a589a511fe536796d5e7b986c1cf056e2f437847af24301137068137a2"
+  },
+  "reused_observer_math": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/observe_gnss_rotation.py",
+    "sha256": "d5f1e24369e42248c1bcdd0bfe747faf5a01df3fb1d732187db22c2a63655367"
+  },
+  "full_recorded_turn": {
+    "start": {
+      "received_utc": "2026-09-08T16:32:28.934659+00:00",
+      "received_monotonic_s": 1079362.833402551,
+      "stamp_s": 1788885148.9334946,
+      "source_line_1based": 5984,
+      "truth_index_0based": 1660
+    },
+    "end": {
+      "received_utc": "2026-09-08T16:32:37.932376+00:00",
+      "received_monotonic_s": 1079371.831119764,
+      "stamp_s": 1788885157.9311981,
+      "source_line_1based": 6602,
+      "truth_index_0based": 1831
+    },
+    "samples": 172,
+    "duration_s": 8.997717212885618,
+    "net_yaw_deg": -178.1763763427734,
+    "angular_travel_deg": 178.1763763427734,
+    "center_path_m": 0.09730055529800286,
+    "center_end_displacement_m": 0.0617841272697499,
+    "maximum_gap_s": 0.06479773204773664
+  },
+  "selected_first90_interval": {
+    "start": {
+      "received_utc": "2026-09-08T16:32:28.934659+00:00",
+      "received_monotonic_s": 1079362.833402551,
+      "stamp_s": 1788885148.9334946,
+      "source_line_1based": 5984,
+      "truth_index_0based": 1660
+    },
+    "end": {
+      "received_utc": "2026-09-08T16:32:33.444187+00:00",
+      "received_monotonic_s": 1079367.342930966,
+      "stamp_s": 1788885153.4427192,
+      "source_line_1based": 6293,
+      "truth_index_0based": 1746
+    },
+    "samples": 87,
+    "duration_s": 4.50952841504477,
+    "net_yaw_deg": -90.41690826416016,
+    "angular_travel_deg": 90.41690826416016,
+    "center_path_m": 0.046970556081535934,
+    "center_end_displacement_m": 0.041790703065202765,
+    "maximum_gap_s": 0.06479773204773664
+  },
+  "metrics": {
+    "corrected_minus_truth": {
+      "matched_count": 43,
+      "metrics": {
+        "first_received_s": 1079362.886257867,
+        "last_received_s": 1079367.291182226,
+        "first_error_xy_m": [
+          0.015045032179813234,
+          0.058929112133959016
+        ],
+        "last_error_xy_m": [
+          0.020643843681238394,
+          0.04662726548132312
+        ],
+        "error_vector_change_m": 0.013515995016774002,
+        "maximum_error_change_from_first_m": 0.01623719951236082,
+        "maximum_absolute_error_m": 0.06626328952756448,
+        "maximum_time_mismatch_s": 0.005928516387939453
+      }
+    },
+    "localization_minus_truth": {
+      "matched_count": 90,
+      "metrics": {
+        "first_received_s": 1079362.853460399,
+        "last_received_s": 1079367.301139497,
+        "first_error_xy_m": [
+          0.01494210742372104,
+          0.05812975041244428
+        ],
+        "last_error_xy_m": [
+          0.02625813023892576,
+          0.04278515991317988
+        ],
+        "error_vector_change_m": 0.019065907530048207,
+        "maximum_error_change_from_first_m": 0.019753932541352076,
+        "maximum_absolute_error_m": 0.06070356010565001,
+        "maximum_time_mismatch_s": 0.031082630157470703
+      }
+    },
+    "truth": {
+      "samples": 87,
+      "end_displacement_m": 0.041790703065202765,
+      "path_m": 0.046970556081535934
+    },
+    "corrected": {
+      "samples": 43,
+      "end_displacement_m": 0.031909140549050294,
+      "path_m": 0.10917767852157241
+    },
+    "localization": {
+      "samples": 90,
+      "end_displacement_m": 0.026012117607727578,
+      "path_m": 0.04584903380336589
+    },
+    "raw_gnss": {
+      "samples": 43,
+      "coordinate_frame": "independent local ENU; not map aligned",
+      "end_displacement_m": 0.6243762789367058,
+      "end_enu_m": [
+        -0.20280888062220356,
+        -0.5905203600551092
+      ],
+      "fix_status_values": [
+        0
+      ]
+    }
+  },
+  "quality": {
+    "raw_gnss": {
+      "samples": 43,
+      "frames": [
+        "ego_vehicle/gnss"
+      ],
+      "maximum_receive_gap_s": 0.11292768199928105,
+      "maximum_boundary_gap_s": 0.054113821126520634
+    },
+    "corrected": {
+      "samples": 43,
+      "frames": [
+        "map"
+      ],
+      "maximum_receive_gap_s": 0.11316463793627918,
+      "maximum_boundary_gap_s": 0.05285531608387828
+    },
+    "localization": {
+      "samples": 90,
+      "frames": [
+        "map"
+      ],
+      "maximum_receive_gap_s": 0.0527600790373981,
+      "maximum_boundary_gap_s": 0.041791469091549516
+    },
+    "truth": {
+      "samples": 87,
+      "frames": [
+        "map"
+      ],
+      "maximum_receive_gap_s": 0.06479773204773664,
+      "maximum_boundary_gap_s": 0.0
+    },
+    "heading": {
+      "samples": 43,
+      "frames": [
+        "gnss_link"
+      ],
+      "maximum_receive_gap_s": 0.11478201812133193,
+      "maximum_boundary_gap_s": 0.053811199963092804
+    },
+    "phase": {
+      "samples": 4,
+      "frames": [
+        "None"
+      ],
+      "maximum_receive_gap_s": 1.0997740030288696,
+      "maximum_boundary_gap_s": 0.7615328039973974
+    }
+  },
+  "png": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/gnss_rotation_observation_02/first90_of_recorded_turn/first90_of_178deg_actual.png",
+    "sha256": "95a337ad3e312991a3f88df627255f2c686413e81733429aad2934eabb529b41",
+    "size_pixels": [
+      2400,
+      1500
+    ]
+  },
+  "source_subset": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/gnss_rotation_observation_02/first90_of_recorded_turn/selected_original_lines.jsonl",
+    "sha256": "d42089898c0c0034ec6d68829c5f405d7c7d673a18ef74f8d8eb46ffe8fc464c",
+    "format": "byte-identical original JSONL lines in received-time interval"
+  },
+  "scope": "Measured CARLA antenna body X=0,Y=+.45m; NOT hardware front-antenna calibration; original77deg NOT90 report unchanged"
+}

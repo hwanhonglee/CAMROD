@@ -1,0 +1,437 @@
+{
+  "status": "PASS",
+  "scope": "Independent recorded functional/control/clock/media validation; no rerun",
+  "checked_utc": "2026-09-08T17:27:03.427000+00:00",
+  "validator": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/validate_low_soc_run.py",
+    "bytes": 21597,
+    "sha256": "5926078559371c0b775cb07d8aaa12295884792fe76e558d80fb4caaed82e7e7"
+  },
+  "originals_unchanged": true,
+  "original_artifacts": [
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/result.json",
+      "bytes": 1756117,
+      "sha256": "30055c14f7dc2f8c9bc5c080493ae8d1345f231fe08119113ea1b6bdfb967d2a"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/status.json",
+      "bytes": 136,
+      "sha256": "909869836c7d56e068b6747046e02851ea80faeece2b8676811cbee5ea8b0cb7"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/desktop/capture_manifest.json",
+      "bytes": 9186,
+      "sha256": "d473af29db2933e72febe3ad23a2c508f4234592577b9029e7daea5e4d8ac8da"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/observations.jsonl",
+      "bytes": 3181602,
+      "sha256": "7dddaa0c79ae123097bee25ccba60683ba1fa7972b4882f769ff6b287ff7708c"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/desktop/sha256sums.txt",
+      "bytes": 443,
+      "sha256": "4474a0567a97b336cd810da5933cbbe640a00b333748112bd533ad1ec2483682"
+    }
+  ],
+  "runtime_provenance": {
+    "runtime_head_operator_assertion": "f02c2fb512a25565c676b5103d780635ae0892f9",
+    "checkout_head": "f02c2fb512a25565c676b5103d780635ae0892f9",
+    "files": [
+      {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/run_low_soc_auto_return.py",
+        "bytes": 25987,
+        "sha256": "f320eaa626469ef1b0a3b8ab2c8bbd9539e09008cf63d46810de51d22647a5af"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/camping_site_matrix.py",
+        "bytes": 194141,
+        "sha256": "8760149a2b0561998a49453d0a395984f839ba8a347039d27fe2ac7dd6635e68"
+      },
+      {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/run_optional_docking_ui.py",
+        "bytes": 21293,
+        "sha256": "67f1f06237d2dcf554a9a51e32e400cf10976c752194c18667e6def08d5b951f"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/camrod_bringup/config/map/drop_zones.yaml",
+        "bytes": 631,
+        "sha256": "99db01b49c557fe3095e15cda5d2458057e0f979545c881a91d1c42bf056a32d"
+      }
+    ]
+  },
+  "mission_identity": {
+    "site": "B1",
+    "owner": "operator",
+    "intent": "delivery",
+    "generation": 1788884800256003
+  },
+  "causality": {
+    "clock": "same-process monotonic receipt time",
+    "soc_24_published_monotonic": 1081859.592049248,
+    "urgent_request_received_monotonic": 1081860.493693799,
+    "latency_s": 0.9016445509623736,
+    "source": "platform_status:battery_urgent_return:site=B1:g=1788884800256003:ui_return_token=g1788884800256003-s4-3d7f227ddf42c"
+  },
+  "control_sequence": {
+    "clock": "PlanningReturn/ModuleState raw wall-clock stamps only",
+    "events": [
+      {
+        "seq": 6,
+        "kind": "planning_return",
+        "stamp_ns": 1788887646590279071,
+        "received_utc": "2026-09-08T17:14:06.594935+00:00",
+        "received_monotonic": 1081860.493693799,
+        "raw": {
+          "header": {
+            "stamp": {
+              "sec": 1788887646,
+              "nanosec": 590279071
+            },
+            "frame_id": ""
+          },
+          "site_name": "B1",
+          "source": "platform_status:battery_urgent_return:site=B1:g=1788884800256003:ui_return_token=g1788884800256003-s4-3d7f227ddf42c"
+        }
+      },
+      {
+        "seq": 8,
+        "kind": "dispatcher",
+        "stamp_ns": 1788887682339081439,
+        "received_utc": "2026-09-08T17:14:42.340853+00:00",
+        "received_monotonic": 1081896.239608497,
+        "raw": {
+          "stamp": {
+            "sec": 1788887682,
+            "nanosec": 339081439
+          },
+          "module_name": "parking",
+          "level": 0,
+          "operating_state": "WAITING_FOR_PARKING_OWNER",
+          "message": "parking_method=reverse battery_percent=24.000000 charging_required=true forced=false attempt=13 phase=WAITING_FOR_PARKING_OWNER",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 10,
+        "kind": "reverse",
+        "stamp_ns": 1788887683019794942,
+        "received_utc": "2026-09-08T17:14:43.021765+00:00",
+        "received_monotonic": 1081896.920514261,
+        "raw": {
+          "stamp": {
+            "sec": 1788887683,
+            "nanosec": 19794942
+          },
+          "module_name": "parking",
+          "level": 0,
+          "operating_state": "REVERSE_APPROACH",
+          "message": "phase=REVERSE_APPROACH charging=False detail=start=parking_dispatcher:attempt=13:drop_zone_maneuver_controller:planning_state:return_to_drop_zone initial_station_distance_m=3.665 maximum_reverse_distance_m=5.000",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 12,
+        "kind": "reverse",
+        "stamp_ns": 1788887695397443917,
+        "received_utc": "2026-09-08T17:14:55.401894+00:00",
+        "received_monotonic": 1081909.300646752,
+        "raw": {
+          "stamp": {
+            "sec": 1788887695,
+            "nanosec": 397443917
+          },
+          "module_name": "parking",
+          "level": 0,
+          "operating_state": "PARKED",
+          "message": "phase=PARKED charging=False detail=station XY goal reached",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 13,
+        "kind": "dispatcher",
+        "stamp_ns": 1788887695419770498,
+        "received_utc": "2026-09-08T17:14:55.421937+00:00",
+        "received_monotonic": 1081909.320695452,
+        "raw": {
+          "stamp": {
+            "sec": 1788887695,
+            "nanosec": 419770498
+          },
+          "module_name": "parking",
+          "level": 0,
+          "operating_state": "WAITING_FOR_PARKING_OWNER",
+          "message": "parking_method=apriltag battery_percent=24.000000 charging_required=true forced=false attempt=14 phase=WAITING_FOR_PARKING_OWNER",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 15,
+        "kind": "apriltag",
+        "stamp_ns": 1788887696219968405,
+        "received_utc": "2026-09-08T17:14:56.221296+00:00",
+        "received_monotonic": 1081910.120054724,
+        "raw": {
+          "stamp": {
+            "sec": 1788887696,
+            "nanosec": 219968405
+          },
+          "module_name": "apriltag_parking_controller",
+          "level": 0,
+          "operating_state": "WAITING_FOR_TAG",
+          "message": "phase=WAITING_FOR_TAG tag_distance_m=-1.000 axis_distance_m=1.316 lateral_m=-0.180 heading_rad=0.008 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=false initial_clearance_active=false",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 22,
+        "kind": "apriltag",
+        "stamp_ns": 1788887702963769921,
+        "received_utc": "2026-09-08T17:15:02.968710+00:00",
+        "received_monotonic": 1081916.867461511,
+        "raw": {
+          "stamp": {
+            "sec": 1788887702,
+            "nanosec": 963769921
+          },
+          "module_name": "apriltag_parking_controller",
+          "level": 0,
+          "operating_state": "TAG_GUIDED_REVERSE",
+          "message": "phase=TAG_GUIDED_REVERSE tag_distance_m=1.498 axis_distance_m=2.108 lateral_m=-0.181 heading_rad=0.007 remaining_tag_m=1.098 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=true initial_clearance_active=false",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 27,
+        "kind": "apriltag",
+        "stamp_ns": 1788887725497509846,
+        "received_utc": "2026-09-08T17:15:25.499304+00:00",
+        "received_monotonic": 1081939.398059387,
+        "raw": {
+          "stamp": {
+            "sec": 1788887725,
+            "nanosec": 497509846
+          },
+          "module_name": "apriltag_parking_controller",
+          "level": 0,
+          "operating_state": "PARKED",
+          "message": "phase=PARKED tag_distance_m=0.389 axis_distance_m=1.008 lateral_m=0.010 heading_rad=-0.020 remaining_tag_m=0.000 configured_stop_tag_m=0.400 stop_reason=charging stop_trigger_tag_m=0.389 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=true initial_clearance_evaluated=true initial_clearance_active=false",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      },
+      {
+        "seq": 28,
+        "kind": "dispatcher",
+        "stamp_ns": 1788887725498487324,
+        "received_utc": "2026-09-08T17:15:25.500832+00:00",
+        "received_monotonic": 1081939.399589922,
+        "raw": {
+          "stamp": {
+            "sec": 1788887725,
+            "nanosec": 498487324
+          },
+          "module_name": "parking",
+          "level": 0,
+          "operating_state": "PARKED",
+          "message": "parking_method=apriltag battery_percent=24.000000 charging_required=true forced=false attempt=14 phase=PARKED",
+          "missing_nodes": [],
+          "missing_topics": [],
+          "missing_lifecycle_nodes": []
+        }
+      }
+    ],
+    "reverse_attempt": 13,
+    "apriltag_attempt": 14
+  },
+  "clock_domains": {
+    "raw_carla_odometry_at_soc_ns": 46516597887316,
+    "helper_wall_at_soc_ns": 1788887645693312078,
+    "control_urgent_raw_ns": 1788887646590279071,
+    "sensor_rgb_tag": "Observed bridge-restamped 1788887... source clock; same-sensor comparison only"
+  },
+  "sensor_pairs": [
+    {
+      "checkpoint": "05_apriltag_approach",
+      "tag_source_stamp_ns": 1788887703121522675,
+      "rgb_source_stamp_ns": 1788887703121522675,
+      "delta_ns": 0,
+      "dummy_flag": null,
+      "scope": "Compare tag and RGB source stamps only; no comparison to raw CARLA odometry clock"
+    },
+    {
+      "checkpoint": "06_actual_charging_complete",
+      "tag_source_stamp_ns": 1788887725628403211,
+      "rgb_source_stamp_ns": 1788887725628403211,
+      "delta_ns": 0,
+      "dummy_flag": null,
+      "scope": "Compare tag and RGB source stamps only; no comparison to raw CARLA odometry clock"
+    }
+  ],
+  "soc_inputs": [
+    {
+      "topic": "/camrod_carla/platform_heartbeat/soc",
+      "type": "std_msgs/Float32",
+      "value": 0.24,
+      "reason": "user-approved CARLA-only urgent battery test stimulus",
+      "utc": "2026-09-08T17:14:05.693291+00:00",
+      "published_monotonic": 1081859.592049248,
+      "stamp_ns": 46516597887316,
+      "stamp_scope": "latest actual CARLA odometry stamp before publication; ordering lower bound, not a sensor input header",
+      "helper_clock_ns": 1788887645693312078
+    },
+    {
+      "topic": "/camrod_carla/platform_heartbeat/soc",
+      "type": "std_msgs/Float32",
+      "value": 0.8,
+      "reason": "restore test SOC only after actual stopped+inactive+disengaged",
+      "utc": "2026-09-08T17:15:26.058746+00:00",
+      "published_monotonic": 1081939.957505035,
+      "stamp_ns": 46593597888464,
+      "stamp_scope": "latest actual CARLA odometry stamp before publication; ordering lower bound, not a sensor input header",
+      "helper_clock_ns": 1788887726058769403
+    }
+  ],
+  "restoration": {
+    "status": "RESTORED_OBSERVED",
+    "pre_restore_speed_mps": 3.1016146505843124e-08,
+    "pre_restore_active": false,
+    "pre_restore_engaged": false,
+    "latest_logged_odom_age_s": 0.977582,
+    "actual_80_feedback": {
+      "is_charging": true,
+      "control_mode": 1,
+      "estop": false,
+      "error_code": 0,
+      "battery_state_available": true,
+      "battery_percentage": 0.800000011920929,
+      "received_monotonic": 1081940.377717008
+    }
+  },
+  "metrics": {
+    "elapsed_s": 110.28399498900399,
+    "carla_odometry_distance_m": 16.339463,
+    "outbound_distance_from_drop_zone_m": 5.008802215993435
+  },
+  "media_verified": [
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/01_initial_reverse_parked_robot.png",
+      "bytes": 553730,
+      "sha256": "8ce63a36b4587ece933207b0ae50a91de32c7a14e4b1593353fbc16d9ee419b0",
+      "relative_path": "functional/01_initial_reverse_parked_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/01_initial_reverse_parked_rear_rgb.png",
+      "bytes": 1556725,
+      "sha256": "6380fb1f56fbc7a55e2949f62e7079aff5b7c0943e3c53e6007e011688b64dab",
+      "relative_path": "functional/01_initial_reverse_parked_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/02_outbound_before_soc_stimulus_robot.png",
+      "bytes": 2087070,
+      "sha256": "0c03b876d491b9f2216f20a7153da8a0f385c4b8454ba79854a7971d762beb6f",
+      "relative_path": "functional/02_outbound_before_soc_stimulus_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/02_outbound_before_soc_stimulus_rear_rgb.png",
+      "bytes": 1620947,
+      "sha256": "3103148a773ee6c5bba980974efcfa11723d29b4150ceed073c020e49a84f3ab",
+      "relative_path": "functional/02_outbound_before_soc_stimulus_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/03_automatic_urgent_return_robot.png",
+      "bytes": 315905,
+      "sha256": "307fe16d197f217a86e07102b37d1577e98d7aa82f4f3b78b6b182f343fbf802",
+      "relative_path": "functional/03_automatic_urgent_return_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/03_automatic_urgent_return_rear_rgb.png",
+      "bytes": 1619198,
+      "sha256": "495cac4fe8b178531f55c7b8f3e97b45dda960010631b03f1b35438f6d06189f",
+      "relative_path": "functional/03_automatic_urgent_return_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/04_actual_reverse_parked_robot.png",
+      "bytes": 315905,
+      "sha256": "307fe16d197f217a86e07102b37d1577e98d7aa82f4f3b78b6b182f343fbf802",
+      "relative_path": "functional/04_actual_reverse_parked_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/04_actual_reverse_parked_rear_rgb.png",
+      "bytes": 1618704,
+      "sha256": "d1bd52aaa14164c8d46909b79fcd9b65cd4cfc2dd761e31e0c143e0498533c13",
+      "relative_path": "functional/04_actual_reverse_parked_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/05_actual_tag_rgb_robot.png",
+      "bytes": 295730,
+      "sha256": "0dcfa1d70b63527862dad73dd0ccae7308ada68b3ff33f77b9d25a27e16025e3",
+      "relative_path": "functional/05_actual_tag_rgb_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/05_actual_tag_rgb_rear_rgb.png",
+      "bytes": 1557053,
+      "sha256": "cf286a3fd0fc70e9afe730f887247b8a4a003e462c786f4ce28cd80d505435e5",
+      "relative_path": "functional/05_actual_tag_rgb_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/05_apriltag_approach_robot.png",
+      "bytes": 296633,
+      "sha256": "a69c5eaee60dcc2ff22280cc65f9b70f953429025cb8e6ac05fc8596880ee785",
+      "relative_path": "functional/05_apriltag_approach_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/05_apriltag_approach_rear_rgb.png",
+      "bytes": 1631784,
+      "sha256": "b3b3326eba3268e478196e26d79f9878a71c2a0c2aa55517b3c168eb2f4274bb",
+      "relative_path": "functional/05_apriltag_approach_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/06_actual_charging_complete_robot.png",
+      "bytes": 552917,
+      "sha256": "ae421e679f9c2acb7482441fa66c84299819de7cf41e4c2f35e40f752f2d8294",
+      "relative_path": "functional/06_actual_charging_complete_robot.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/functional/06_actual_charging_complete_rear_rgb.png",
+      "bytes": 1451468,
+      "sha256": "0fafa7d34f1618a149dc578f6696caec0d9b2b2d288054de757491c78463ac50",
+      "relative_path": "functional/06_actual_charging_complete_rear_rgb.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/desktop/representative_contact_sheet.png",
+      "bytes": 11763758,
+      "sha256": "b97fbc94ed0948b7710866327abd341f331eaf84ccf4624ad3260671d3f0d685",
+      "relative_path": "desktop/representative_contact_sheet.png"
+    },
+    {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/low_soc_auto_return_01/desktop/representative_motion.gif",
+      "bytes": 19803185,
+      "sha256": "106226a5d103810362c7c2207a1ef9ea96c7134b176bdefd57cdad6911086039",
+      "relative_path": "desktop/representative_motion.gif"
+    }
+  ],
+  "media_count": 16,
+  "limitations": [
+    "Original helper compared simulation odometry nanoseconds with control wall-clock nanoseconds. That cutoff is not accepted here.",
+    "04_actual_reverse_parked checkpoint precedes the NEW reverse PARKED event. Its PNG name is misleading and is excluded as reverse-completion evidence; original bytes/name preserved.",
+    "Dummy flag was unobserved (null), not proven false; actual camera/tag topics and captured RGB are preserved.",
+    "Restore odometry receipt monotonic value was not serialized separately; nearby fresh logged odometry/counter growth and stopped snapshot are cross-checked.",
+    "Charging feedback is CARLA contact emulation, not physical charger hardware; no 25-35% human-confirm band or all-zone claim."
+  ]
+}

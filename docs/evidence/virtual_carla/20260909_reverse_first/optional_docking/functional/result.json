@@ -1,0 +1,1009 @@
+{
+  "status": "PASS",
+  "scenario": "reverse_park_then_explicit_ui_dock",
+  "started_utc": "2026-09-08T16:50:05.465018+00:00",
+  "audio_directory": "../mission_audio",
+  "injected_sensor_or_state": false,
+  "charging_feedback_source": "CARLA pose/speed/dwell contact emulator, not physical charger hardware",
+  "test_source_provenance": {
+    "scope": "test helpers only; not a claim about the running robot binary",
+    "dock_helper": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/run_optional_docking_ui.py",
+      "sha256": "67f1f06237d2dcf554a9a51e32e400cf10976c752194c18667e6def08d5b951f"
+    },
+    "imported_matrix": {
+      "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/camping_site_matrix.py",
+      "sha256": "8760149a2b0561998a49453d0a395984f839ba8a347039d27fe2ac7dd6635e68"
+    }
+  },
+  "initial": {
+    "service_state": null,
+    "pose": {
+      "x_m": -11.236616524315581,
+      "y_m": 40.29883851933376,
+      "z_m": 0.0
+    },
+    "cmd_vel": {
+      "linear_x_mps": 0.0,
+      "linear_y_mps": 0.0,
+      "angular_z_radps": 0.0
+    },
+    "carla_odometry": {
+      "x_m": -18.168119430541992,
+      "y_m": 30.91990852355957,
+      "z_m": -0.9378156065940857,
+      "speed_mps": 3.154061330338385e-08
+    },
+    "physical": {
+      "actor_id": 98,
+      "ready": true,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_gate_accepted": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "physx_substep_control_verified": true,
+      "physx_substep_threshold_mps": 5.0,
+      "physx_substep_low_count": 9,
+      "physx_substep_high_count": 1,
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "last_applied_sequence": 26666,
+      "independent_wheel_drive_available": true,
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+      "reason": "physical steering/torque command applied"
+    },
+    "site": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE site=camping_site_1 service_mode=turnaround roadside_return=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=442.5 current_yaw_deg=95.27 target_yaw_deg=116.75 yaw_error_deg=21.48 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=cancel=http_stop:operator_stop return_published=False return_ack=True"
+    },
+    "parking": {
+      "dispatcher": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=8 phase=PARKED"
+      },
+      "apriltag": {
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE tag_distance_m=0.719 axis_distance_m=1.315 lateral_m=-0.188 heading_rad=0.011 remaining_tag_m=0.319 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=false initial_clearance_active=false"
+      },
+      "reverse": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "phase=PARKED charging=False detail=station XY goal reached"
+      }
+    },
+    "drop_zone": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.560 parking_point_error_m=0.116 parking_point_body_forward_m=0.115 parking_point_body_lateral_m=-0.007 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+    },
+    "gate": {
+      "level": 0,
+      "operating_state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 manual_departure_remaining_s=0.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    "ui_operation_request": null,
+    "controller_operation_request": null,
+    "destination_request": null,
+    "recall_request": null,
+    "sequences": {
+      "service_state_ids": [],
+      "service_state_names": [],
+      "site_phases": [
+        "IDLE"
+      ],
+      "parking_phases": [
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED"
+      ],
+      "drop_zone_phases": [
+        "IDLE"
+      ],
+      "gate_states": [
+        "STANDBY"
+      ],
+      "ui_operation_requests": [],
+      "controller_operation_requests": [],
+      "destination_requests": [],
+      "recall_requests": []
+    },
+    "motion_metrics": {
+      "cmd_vel_samples": 88,
+      "cmd_vel_max_component_sum": 0.0,
+      "motion_command_observed": false,
+      "carla_odometry_samples": 76,
+      "carla_odometry_distance_m": 0.0,
+      "physical_status_samples": 114
+    },
+    "physical_identity": {
+      "actor_id": 98,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+    },
+    "collision_evidence": {
+      "topic": "/carla/ego_vehicle/collision",
+      "subscriber_created": true,
+      "publisher_count": 1,
+      "publisher_discovered": true,
+      "subscriber_and_publisher_discovered": true,
+      "event_count": 0,
+      "sampled_event_count": 0,
+      "omitted_event_count": 0,
+      "stale_queued_event_count": 0,
+      "maximum_normal_impulse_norm": 0.0,
+      "sample_policy": {
+        "maximum_samples": 256,
+        "preserved_first_samples": 64,
+        "preserved_recent_samples": 192
+      },
+      "events": []
+    }
+  },
+  "initial_extra": {
+    "platform": {
+      "is_charging": false,
+      "control_mode": 1,
+      "estop": false,
+      "error_code": 0,
+      "battery_percentage": 0.800000011920929,
+      "received_monotonic": 1080423.179433352
+    },
+    "tag": {
+      "header": {
+        "stamp": {
+          "sec": 1788886209,
+          "nanosec": 255914188
+        },
+        "frame_id": "camera_rear"
+      },
+      "family": "tag36h11",
+      "id": 3,
+      "tag_frame": "parking_tag_3",
+      "pose": {
+        "header": {
+          "stamp": {
+            "sec": 1788886209,
+            "nanosec": 255914188
+          },
+          "frame_id": "camera_rear"
+        },
+        "pose": {
+          "position": {
+            "x": 0.17383560326911351,
+            "y": -0.00039282326474892194,
+            "z": 0.6979754873436713
+          },
+          "orientation": {
+            "x": -0.06538570477459657,
+            "y": 0.05852131737515161,
+            "z": 0.7065638456432991,
+            "w": 0.7021876508836925
+          }
+        }
+      }
+    },
+    "tag_count_after_click": 0,
+    "dummy_camera_active": null,
+    "rear_camera_received_monotonic": 1080423.373448959,
+    "operation_requests": []
+  },
+  "rear_camera_dummy_flag_scope": "not observed; unknown is preserved, not evidence of false",
+  "initial_service_observation_source": "ROS event absent after 4 s late join; independent HTTP state cross-check required",
+  "initial_ui_state": {
+    "source": "production HTTP GET /ui/state, not a ROS service message",
+    "requested_utc": "2026-09-08T16:50:09.475172+00:00",
+    "state": {
+      "service_state": 0,
+      "service_state_name": "DROP_ZONE_WAIT",
+      "mission_phase": "READY",
+      "ready": true,
+      "engaged": false,
+      "mission_dispatch_active": false,
+      "mission_dispatch_generation": 0,
+      "mission_dispatch_owner": ""
+    },
+    "received_utc": "2026-09-08T16:50:09.481694+00:00"
+  },
+  "service_menu_view": {
+    "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking\"]",
+    "dom": {
+      "count": 1,
+      "visibleCount": 1,
+      "disabled": false,
+      "hit": true,
+      "hitTag": "STRONG",
+      "hitId": "",
+      "ancestorOpacity": 1,
+      "activeFiniteAnimations": 0,
+      "settled": true,
+      "pageReady": true,
+      "x": 460,
+      "y": 821.55859375,
+      "width": 873.296875,
+      "height": 249.1953125,
+      "pressed": null,
+      "value": "",
+      "text": "🔒도킹대기·충전 장소에서 충전 도킹을 시작합니다.",
+      "stable_for_s": 0.30664353095926344
+    },
+    "captured_utc": "2026-09-08T16:50:11.390178+00:00",
+    "png": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/focused_dock_departure_02/02_optional_dock/functional/01a_service_menu_before_dock.png",
+      "bytes": 569584,
+      "sha256": "1f6dcea703409f7c8bb498112b74027e1f36bb4d9c285192d476bee05c6a85f4"
+    }
+  },
+  "service_selection_click": {
+    "stage": "select production Dock service",
+    "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking\"]",
+    "x": 460.0,
+    "y": 818.559,
+    "transport": "CDP.Input.dispatchMouseEvent",
+    "hit_test": true,
+    "render_settled": true,
+    "stable_for_s": 0.30124293197877705
+  },
+  "in_page_confirm": {
+    "kind": "production_in_page_confirmation",
+    "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking-confirm\"]",
+    "message": "배터리 잔량과 관계없이 충전 도킹을 요청합니다.도킹을 진행하시겠습니까?",
+    "button": {
+      "count": 1,
+      "visibleCount": 1,
+      "disabled": false,
+      "hit": true,
+      "hitTag": "BUTTON",
+      "hitId": "",
+      "ancestorOpacity": 1,
+      "activeFiniteAnimations": 0,
+      "settled": true,
+      "pageReady": true,
+      "x": 373.55859375,
+      "y": 543.9453125,
+      "width": 154.8671875,
+      "height": 42.015625,
+      "pressed": null,
+      "value": "",
+      "text": "예",
+      "stable_for_s": 0.3038108858745545
+    },
+    "captured_utc": "2026-09-08T16:50:13.517243+00:00",
+    "png": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v225_completion_20260908/focused_dock_departure_02/02_optional_dock/functional/01b_service_docking_confirmation.png",
+      "bytes": 426904,
+      "sha256": "bb21b1b5c7e778e73ec3351ef49f29b653f5b545c1ac136f328cdace0b4dce44"
+    },
+    "accepted": true,
+    "clicked_utc": "2026-09-08T16:50:14.485729+00:00"
+  },
+  "pre_click_ui_state": {
+    "source": "production HTTP GET /ui/state, not a ROS service message",
+    "requested_utc": "2026-09-08T16:50:13.780888+00:00",
+    "state": {
+      "service_state": 0,
+      "service_state_name": "DROP_ZONE_WAIT",
+      "mission_phase": "READY",
+      "ready": true,
+      "engaged": false,
+      "mission_dispatch_active": false,
+      "mission_dispatch_generation": 0,
+      "mission_dispatch_owner": ""
+    },
+    "received_utc": "2026-09-08T16:50:13.783125+00:00"
+  },
+  "pre_click_ros_observation": {
+    "service_state": null,
+    "pose": {
+      "x_m": -11.23661651640749,
+      "y_m": 40.298838527834164,
+      "z_m": 0.0
+    },
+    "cmd_vel": {
+      "linear_x_mps": 0.0,
+      "linear_y_mps": 0.0,
+      "angular_z_radps": 0.0
+    },
+    "carla_odometry": {
+      "x_m": -18.168119430541992,
+      "y_m": 30.91990852355957,
+      "z_m": -0.9378156065940857,
+      "speed_mps": 1.798225023137126e-07
+    },
+    "physical": {
+      "actor_id": 98,
+      "ready": true,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_gate_accepted": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "physx_substep_control_verified": true,
+      "physx_substep_threshold_mps": 5.0,
+      "physx_substep_low_count": 9,
+      "physx_substep_high_count": 1,
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "last_applied_sequence": 26748,
+      "independent_wheel_drive_available": true,
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+      "reason": "physical steering/torque command applied"
+    },
+    "site": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE site=camping_site_1 service_mode=turnaround roadside_return=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=446.7 current_yaw_deg=95.27 target_yaw_deg=116.75 yaw_error_deg=21.48 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=cancel=http_stop:operator_stop return_published=False return_ack=True"
+    },
+    "parking": {
+      "dispatcher": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=8 phase=PARKED"
+      },
+      "apriltag": {
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE tag_distance_m=0.719 axis_distance_m=1.315 lateral_m=-0.188 heading_rad=0.011 remaining_tag_m=0.319 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=false initial_clearance_active=false"
+      },
+      "reverse": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "phase=PARKED charging=False detail=station XY goal reached"
+      }
+    },
+    "drop_zone": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.560 parking_point_error_m=0.116 parking_point_body_forward_m=0.115 parking_point_body_lateral_m=-0.007 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+    },
+    "gate": {
+      "level": 0,
+      "operating_state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 manual_departure_remaining_s=0.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    "ui_operation_request": null,
+    "controller_operation_request": null,
+    "destination_request": null,
+    "recall_request": null,
+    "sequences": {
+      "service_state_ids": [],
+      "service_state_names": [],
+      "site_phases": [
+        "IDLE"
+      ],
+      "parking_phases": [
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED"
+      ],
+      "drop_zone_phases": [
+        "IDLE"
+      ],
+      "gate_states": [
+        "STANDBY"
+      ],
+      "ui_operation_requests": [],
+      "controller_operation_requests": [],
+      "destination_requests": [],
+      "recall_requests": []
+    },
+    "motion_metrics": {
+      "cmd_vel_samples": 183,
+      "cmd_vel_max_component_sum": 0.0,
+      "motion_command_observed": false,
+      "carla_odometry_samples": 158,
+      "carla_odometry_distance_m": 0.0,
+      "physical_status_samples": 237
+    },
+    "physical_identity": {
+      "actor_id": 98,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+    },
+    "collision_evidence": {
+      "topic": "/carla/ego_vehicle/collision",
+      "subscriber_created": true,
+      "publisher_count": 1,
+      "publisher_discovered": true,
+      "subscriber_and_publisher_discovered": true,
+      "event_count": 0,
+      "sampled_event_count": 0,
+      "omitted_event_count": 0,
+      "stale_queued_event_count": 0,
+      "maximum_normal_impulse_norm": 0.0,
+      "sample_policy": {
+        "maximum_samples": 256,
+        "preserved_first_samples": 64,
+        "preserved_recent_samples": 192
+      },
+      "events": []
+    }
+  },
+  "pointer_click": {
+    "stage": "confirm production Dock service",
+    "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking-confirm\"]",
+    "x": 373.559,
+    "y": 543.945,
+    "transport": "CDP.Input.dispatchMouseEvent",
+    "hit_test": true,
+    "render_settled": true,
+    "stable_for_s": 0.30321360006928444
+  },
+  "service_menu_interactions": [
+    {
+      "stage": "open service selection",
+      "selector": "[data-ui=\"operator-open-destination\"]",
+      "x": 237.297,
+      "y": 551.137,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.3085649870336056
+    },
+    {
+      "stage": "select production Dock service",
+      "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking\"]",
+      "x": 460.0,
+      "y": 818.559,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.30124293197877705
+    },
+    {
+      "stage": "confirm production Dock service",
+      "selector": "[data-ui=\"operator-service-selection-screen\"] [data-ui=\"operator-service-docking-confirm\"]",
+      "x": 373.559,
+      "y": 543.945,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.30321360006928444
+    }
+  ],
+  "production_ui_request": {
+    "url": "/ui/dock",
+    "method": "POST",
+    "status": 200,
+    "ok": true,
+    "body": {
+      "success": true,
+      "action": "docking_requested",
+      "parking_requested_final_method": "apriltag"
+    }
+  },
+  "native_confirm": [],
+  "duration_s": 29.95363415987231,
+  "final": {
+    "service_state": {
+      "state": 13,
+      "state_name": "CHARGING",
+      "description": "apriltag_parking_controller:PARKED; parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=9"
+    },
+    "pose": {
+      "x_m": -11.38935873034945,
+      "y_m": 39.97435728937819,
+      "z_m": 0.0
+    },
+    "cmd_vel": {
+      "linear_x_mps": 0.0,
+      "linear_y_mps": 0.0,
+      "angular_z_radps": 0.0
+    },
+    "carla_odometry": {
+      "x_m": -18.321115493774414,
+      "y_m": 30.59432601928711,
+      "z_m": -0.9378155469894409,
+      "speed_mps": 3.4512667236481245e-08
+    },
+    "physical": {
+      "actor_id": 98,
+      "ready": true,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_gate_accepted": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "physx_substep_control_verified": true,
+      "physx_substep_threshold_mps": 5.0,
+      "physx_substep_low_count": 9,
+      "physx_substep_high_count": 1,
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "last_applied_sequence": 27322,
+      "independent_wheel_drive_available": true,
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9",
+      "reason": "physical steering/torque command applied"
+    },
+    "site": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE site=camping_site_1 service_mode=turnaround roadside_return=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=477.6 current_yaw_deg=96.87 target_yaw_deg=116.75 yaw_error_deg=19.88 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=cancel=http_stop:operator_stop return_published=False return_ack=True"
+    },
+    "parking": {
+      "dispatcher": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=9 phase=PARKED"
+      },
+      "apriltag": {
+        "level": 0,
+        "operating_state": "PARKED",
+        "message": "phase=PARKED tag_distance_m=0.395 axis_distance_m=1.014 lateral_m=0.019 heading_rad=-0.028 remaining_tag_m=0.000 configured_stop_tag_m=0.400 stop_reason=charging stop_trigger_tag_m=0.395 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=true initial_clearance_evaluated=true initial_clearance_active=false"
+      },
+      "reverse": {
+        "level": 0,
+        "operating_state": "IDLE",
+        "message": "phase=IDLE charging=False detail=cancel=parking_dispatcher:handoff:9"
+      }
+    },
+    "drop_zone": {
+      "level": 0,
+      "operating_state": "IDLE",
+      "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.863 parking_point_error_m=0.116 parking_point_body_forward_m=0.115 parking_point_body_lateral_m=-0.007 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+    },
+    "gate": {
+      "level": 0,
+      "operating_state": "CHARGING",
+      "message": "state=CHARGING reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,charging charging=true charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 manual_departure_remaining_s=0.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    "ui_operation_request": null,
+    "controller_operation_request": null,
+    "destination_request": null,
+    "recall_request": null,
+    "sequences": {
+      "service_state_ids": [
+        10,
+        12,
+        13
+      ],
+      "service_state_names": [
+        "DROP_ZONE_PARKING",
+        "WAITING_FOR_CHARGING",
+        "CHARGING"
+      ],
+      "site_phases": [
+        "IDLE"
+      ],
+      "parking_phases": [
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "apriltag:IDLE",
+        "dispatcher:PARKED",
+        "reverse:PARKED",
+        "dispatcher:PARKED",
+        "dispatcher:WAITING_FOR_PARKING_OWNER",
+        "reverse:IDLE",
+        "apriltag:IDLE",
+        "dispatcher:WAITING_FOR_PARKING_OWNER",
+        "apriltag:IDLE",
+        "apriltag:WAITING_FOR_TAG",
+        "dispatcher:WAITING_FOR_TAG",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:RETRY_FORWARD_EXIT",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "reverse:IDLE",
+        "dispatcher:RETRY_FORWARD_EXIT",
+        "apriltag:WAITING_FOR_TAG",
+        "dispatcher:WAITING_FOR_TAG",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:TAG_GUIDED_REVERSE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "reverse:IDLE",
+        "dispatcher:TAG_GUIDED_REVERSE",
+        "apriltag:FINAL_YAW_ALIGNMENT",
+        "dispatcher:FINAL_YAW_ALIGNMENT",
+        "apriltag:FINAL_YAW_ALIGNMENT",
+        "dispatcher:FINAL_YAW_ALIGNMENT",
+        "apriltag:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:WAITING_FOR_CHARGING",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "reverse:IDLE",
+        "dispatcher:WAITING_FOR_CHARGING",
+        "apriltag:PARKED",
+        "dispatcher:PARKED"
+      ],
+      "drop_zone_phases": [
+        "IDLE"
+      ],
+      "gate_states": [
+        "STANDBY",
+        "ENABLED",
+        "STANDBY",
+        "CHARGING"
+      ],
+      "ui_operation_requests": [],
+      "controller_operation_requests": [],
+      "destination_requests": [],
+      "recall_requests": []
+    },
+    "motion_metrics": {
+      "cmd_vel_samples": 1216,
+      "cmd_vel_max_component_sum": 0.435294,
+      "motion_command_observed": true,
+      "carla_odometry_samples": 732,
+      "carla_odometry_distance_m": 1.954408,
+      "physical_status_samples": 1098
+    },
+    "physical_identity": {
+      "actor_id": 98,
+      "api_version": "carla.physx_four_wheel_steer_torque.v2",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "production_authorization_sha256": "7bd980d9f4484a701cee7fe70d498bfac724906116d25c2f76091aa0e102c0b6",
+      "ros_integration_sha256": "e5d418903772860eb163fb3fb53dfb39e2d5df99cff234a7052238e525f4c0cf",
+      "wheel_torque_safety_cap_nm": 20.0,
+      "carla_python_origin": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg/carla/__init__.py",
+      "imported_libcarla_path": "/tmp/camrod-carla-egg.o0gucD/carla-0.9.15-py3.10-linux-x86_64.egg-tmp/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "imported_libcarla_sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+    },
+    "collision_evidence": {
+      "topic": "/carla/ego_vehicle/collision",
+      "subscriber_created": true,
+      "publisher_count": 1,
+      "publisher_discovered": true,
+      "subscriber_and_publisher_discovered": true,
+      "event_count": 0,
+      "sampled_event_count": 0,
+      "omitted_event_count": 0,
+      "stale_queued_event_count": 0,
+      "maximum_normal_impulse_norm": 0.0,
+      "sample_policy": {
+        "maximum_samples": 256,
+        "preserved_first_samples": 64,
+        "preserved_recent_samples": 192
+      },
+      "events": []
+    }
+  },
+  "final_extra": {
+    "platform": {
+      "is_charging": true,
+      "control_mode": 1,
+      "estop": false,
+      "error_code": 0,
+      "battery_percentage": 0.800000011920929,
+      "received_monotonic": 1080458.177888172
+    },
+    "tag": {
+      "header": {
+        "stamp": {
+          "sec": 1788886244,
+          "nanosec": 306036760
+        },
+        "frame_id": "camera_rear"
+      },
+      "family": "tag36h11",
+      "id": 3,
+      "tag_frame": "parking_tag_3",
+      "pose": {
+        "header": {
+          "stamp": {
+            "sec": 1788886244,
+            "nanosec": 306036760
+          },
+          "frame_id": "camera_rear"
+        },
+        "pose": {
+          "position": {
+            "x": 0.009209095146760157,
+            "y": -0.001262813953037511,
+            "z": 0.39503136279989987
+          },
+          "orientation": {
+            "x": -0.051200941288109626,
+            "y": 0.07124404884494828,
+            "z": 0.7065164095505256,
+            "w": 0.7022373616884993
+          }
+        }
+      }
+    },
+    "tag_count_after_click": 161,
+    "dummy_camera_active": null,
+    "rear_camera_received_monotonic": 1080458.325229786,
+    "operation_requests": [
+      {
+        "header": {
+          "stamp": {
+            "sec": 1788886214,
+            "nanosec": 478537060
+          },
+          "frame_id": ""
+        },
+        "operation": 1,
+        "source": "http:manual_dock:force_docking"
+      }
+    ]
+  },
+  "charging_confirmed": true,
+  "completed_utc": "2026-09-08T16:50:44.455330+00:00"
+}

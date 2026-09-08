@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "started_utc": "2026-09-08T16:50:03.758468+00:00",
+  "completed": [
+    {
+      "stage": "02_optional_dock",
+      "status": "PASS",
+      "elapsed_wall_s": 52.82746069598943
+    },
+    {
+      "stage": "03_B1_depart_from_charging",
+      "status": "PASS",
+      "elapsed_wall_s": 904.1010103679728
+    }
+  ],
+  "active_stage": null,
+  "scope": "reverse park / optional Dock / charging departure to B1, not battery or GNSS acceptance",
+  "finished_utc": "2026-09-08T17:06:00.694982+00:00"
+}
