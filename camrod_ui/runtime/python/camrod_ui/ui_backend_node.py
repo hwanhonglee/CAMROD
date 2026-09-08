@@ -5136,13 +5136,18 @@ class UiBackendNode(Node):
         if not msg.battery_state_available:
             return
         battery_fraction = float(msg.battery_percentage)
-        # An unavailable sample must revoke admission, not retain a previous
-        # 80% indefinitely. Unknown SOC never initiates a speculative return.
-        pct = (
-            max(0, min(100, int(math.floor(battery_fraction * 100.0))))
-            if msg.battery_state_available and math.isfinite(battery_fraction)
-            and 0.0 <= battery_fraction <= 1.0 else -1
-        )
+        # Normalize available fractions only; invalid fractions remain unknown
+        # and never initiate a speculative return.
+        pct = -1
+        if (msg.battery_state_available and math.isfinite(battery_fraction)
+                and 0.0 <= battery_fraction <= 1.0):
+            # Match usableParkingBatteryPercent's float32 multiplication:
+            # 0.35F becomes 35%, while the adjacent lower float stays below 35.
+            # Do not add epsilon or round the integer percentage upward.
+            battery_percent = struct.unpack(
+                "<f", struct.pack("<f", battery_fraction * 100.0)
+            )[0]
+            pct = max(0, min(100, int(math.floor(battery_percent))))
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
@@ -7901,13 +7906,13 @@ class UiBackendNode(Node):
             if state == int(AvgServiceState.DROP_ZONE_PARKING) and phase not in {"ERROR", "IDLE", "PARKED"}:
                 return {"success": False, "error": "parking_in_progress",
                         "message": "Wait for the current parking attempt or cancel it first"}
-            # The auto dispatcher cancels both old owners, waits for ACK/CAN,
-            # and starts one tag controller. No synthetic route or realignment
-            # is needed from the already aligned drop-zone parking position.
+            # The dispatcher owns cancellation/ACKs and any reverse alignment
+            # before charging docking. This ACK describes the requested final
+            # method, not the controller selected by a later parking status.
             source = "http:manual_dock:force_docking"
             self._publish_parking_operation(MotionOperation.START, source=source)
             return {"success": True, "action": "docking_requested",
-                    "parking_selected_method": "apriltag"}
+                    "parking_requested_final_method": "apriltag"}
 
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
         msg = MotionOperation()
