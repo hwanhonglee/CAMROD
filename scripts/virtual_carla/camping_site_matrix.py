@@ -1721,12 +1721,21 @@ class GuestBrowserClient:
         ):
             raise MatrixError(f"visible Guest UI page is not ready: {ready!r}")
 
+    def _pump_observation(self) -> None:
+        hook = getattr(self, "_observation_hook", None)
+        if hook is not None:
+            hook()
+
     def _call(self, method: str, params: Mapping[str, Any]) -> dict[str, Any]:
         if self._connection is None:
             raise MatrixError("Guest browser CDP connection is closed")
         self._command_id += 1
         command_id = self._command_id
         try:
+            # Actual pointer, dialog and screenshot waits must not starve ROS.
+            # The optional hook is bound only after live observer construction;
+            # standalone/offline browser clients retain their existing behavior.
+            self._pump_observation()
             self._connection.send(json.dumps({
                 "id": command_id,
                 "method": method,
@@ -1736,9 +1745,20 @@ class GuestBrowserClient:
             dialog_ids = getattr(self, "_pending_dialog_ids", set())
             self._pending_dialog_ids = dialog_ids
             while time.monotonic() < deadline:
+                self._pump_observation()
                 remaining = max(0.01, deadline - time.monotonic())
-                self._connection.settimeout(remaining)
-                payload = json.loads(self._connection.recv())
+                observing = getattr(self, "_observation_hook", None) is not None
+                self._connection.settimeout(min(remaining, 0.05) if observing else remaining)
+                try:
+                    payload = json.loads(self._connection.recv())
+                except Exception as error:
+                    from websocket import WebSocketTimeoutException
+                    if observing and isinstance(error, (WebSocketTimeoutException, TimeoutError)):
+                        # Retain the original RPC deadline. Only transport wait
+                        # slices are retried, never a pointer/mission command.
+                        continue
+                    raise
+                self._pump_observation()
                 if not isinstance(payload, dict):
                     raise MatrixError(
                         "Guest browser CDP frame must be a JSON object"
@@ -1755,6 +1775,7 @@ class GuestBrowserClient:
                             "message": params.get("message"), "observed_at_utc": utc_now()}
                         self._command_id += 1
                         dialog_ids.add(self._command_id)
+                        self._pump_observation()
                         self._connection.send(json.dumps({"id": self._command_id,
                             "method": "Page.handleJavaScriptDialog", "params": {"accept": True}}))
                     # Runtime events are valid between a command and response.
@@ -1985,6 +2006,9 @@ class GuestBrowserClient:
             "transport": "CDP.Input.dispatchMouseEvent"})
 
     def stop(self) -> dict[str, Any]:
+        # Fail-closed cleanup must still reach the real STOP endpoint when the
+        # observation hook itself reported a fatal/stale physical condition.
+        self._observation_hook = None
         return self.stop_client.stop()
 
     @property
@@ -1992,6 +2016,7 @@ class GuestBrowserClient:
         return "guest:usage_complete"
 
     def close(self) -> None:
+        self._observation_hook = None
         connection = self._connection
         self._connection = None
         if connection is not None:
@@ -2015,6 +2040,8 @@ class OperatorBrowserClient(GuestBrowserClient):
         debugging_url: str,
         operator_ui_url: str,
         timeout_s: float = 10.0,
+        *,
+        observation_hook: Callable[[], None] | None = None,
     ) -> None:
         self.debugging_url = self._local_http_url(
             debugging_url, "--operator-cdp-url"
@@ -2028,6 +2055,7 @@ class OperatorBrowserClient(GuestBrowserClient):
         self._connection: Any = None
         self._target: dict[str, Any] = {}
         self._interactions: list[dict[str, Any]] = []
+        self._observation_hook = observation_hook
         try:
             self._connect_operator()
             self._install_transport_probe()
@@ -3100,6 +3128,19 @@ class RosObservation:
                     time.monotonic() - self._physical_received_monotonic > 1.5):
                 raise MatrixError("physical CARLA readiness heartbeat is stale")
 
+    def pump_ui_callbacks(self) -> None:
+        """Service queued real ROS callbacks during blocking UI evidence work.
+
+        Same thread/executor as normal observation, bounded to 16 nonblocking
+        callbacks or 5 ms. Every callback retains the normal fatal/identity/
+        readiness/1.5 s freshness checks; this is not a stale-data exemption.
+        """
+        deadline = time.monotonic() + 0.005
+        for _ in range(16):
+            self.spin_once(0.0)
+            if time.monotonic() >= deadline:
+                break
+
     def drain_final_callbacks(self) -> None:
         """Drain callbacks queued with the terminal state before snapshotting."""
         deadline = time.monotonic() + FINAL_OBSERVATION_DRAIN_SECONDS
@@ -3445,6 +3486,8 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
         observer = RosObservation(
             args.role_name, expected_actor_id=args.expected_actor_id
         )
+        if isinstance(client, GuestBrowserClient):
+            client._observation_hook = observer.pump_ui_callbacks
         report["scope"].update({
             "guest_final_return_authority": args.guest_final_return_authority,
             "expected_parking_completion": args.parking_completion,
@@ -3888,7 +3931,8 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                             "from_guest": capture_ui_handoff_view(client, handoff_dir, "guest_before", screenshot=False)}
                     final_client = None
                     try:
-                        final_client = OperatorBrowserClient(args.operator_cdp_url, args.ui_url)
+                        final_client = OperatorBrowserClient(args.operator_cdp_url, args.ui_url,
+                            observation_hook=observer.pump_ui_callbacks)
                         if handoff is not None:
                             handoff["robot_before"] = capture_ui_handoff_view(final_client, handoff_dir, "robot_before")
                         result["final_return_response"] = request_visible_confirmation(
