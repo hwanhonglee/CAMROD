@@ -145,6 +145,23 @@ function recallReturnProgress(site, description) {
   };
 }
 
+// Presentation only: a service identity can remain active during a safety
+// hold. Do not describe that retained mission as currently moving. Keep its
+// site/arrival/confirmation context and all command permissions unchanged.
+function serviceMotionNotice(missionPhase, systemHealth) {
+  if (missionPhase === 'SAFETY_STOP') {
+    return { label: '안전 정지', message: '안전 조건으로 주행이 일시 정지되었습니다. 상태를 확인해주세요.' };
+  }
+  if (missionPhase === 'STOPPED') {
+    return { label: '운행 정지', message: '운행이 정지되었습니다.' };
+  }
+  if (missionPhase === 'ERROR' || systemHealth === 'ERROR') {
+    // A diagnostic ERROR alone does not prove zero physical speed.
+    return { label: '시스템 오류', message: '시스템 오류가 있습니다. 현재 주행 상태와 진단 내용을 확인해주세요.' };
+  }
+  return null;
+}
+
 function robotCanCompleteMission(dispatch, site, serviceStateName) {
   if (!dispatch.active || !site || dispatch.site !== site
       || !Number.isSafeInteger(dispatch.generation) || dispatch.generation <= 0) return false;
@@ -1294,6 +1311,7 @@ function App() {
     missionDispatch, arrivedSite, serviceStateName
   );
   const recallProgress = recallReturnProgress(activeRecallSite, serviceStateDescription);
+  const motionNotice = serviceMotionNotice(missionPhase, systemHealth);
   const guestOwnsReturn =
     missionDispatch.active
     && missionDispatch.site === arrivedSite
@@ -2413,7 +2431,7 @@ function App() {
         {showGuestRecall && (
           <div className="guest-recall-overlay">
             <div className="guest-recall-box">
-              <p className="guest-recall-msg">이용객 호출 요청을 받았습니다</p>
+              <p className="guest-recall-msg">{motionNotice?.message || '이용객 호출 요청을 받았습니다'}</p>
             </div>
           </div>
         )}
@@ -2567,15 +2585,15 @@ function App() {
           ) : displayedReturning ? (
             <>
               <span className="preview-placeholder-title">대기·충전 장소</span>
-              {recallReturnPresentation && <p className="preview-site-name">{recallProgress.label}</p>}
+              {recallReturnPresentation && <p className="preview-site-name">{motionNotice?.label || recallProgress.label}</p>}
               <p className="preview-returning" aria-live="polite">
-                {recallReturnPresentation
+                {motionNotice?.message || (recallReturnPresentation
                   ? recallProgress.message
                   : serviceStateName === 'WAITING_FOR_CHARGING'
                   ? '주차를 마치고 충전기 연결을 기다리고 있습니다.'
                   : serviceStateName === 'DROP_ZONE_PARKING'
                     ? '대기·충전 장소에서 주차 중입니다.'
-                    : '배송을 마치고 대기·충전 장소로 복귀 중입니다.'}
+                    : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
               </p>
               {serviceStateName !== 'WAITING_FOR_CHARGING' && (
                 <>
@@ -2594,7 +2612,7 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">배송을 위해 사이트 내부로 이동 중입니다.</p>
+              <p className="preview-moving">{motionNotice?.message || '배송을 위해 사이트 내부로 이동 중입니다.'}</p>
               <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
@@ -2608,7 +2626,7 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeRecallSite} 이용객 호출</p>
-              <p className="preview-moving">사이트 도로 측 대기점으로 이동 중입니다.</p>
+              <p className="preview-moving">{motionNotice?.message || '사이트 도로 측 대기점으로 이동 중입니다.'}</p>
               <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
@@ -2618,7 +2636,7 @@ function App() {
             <>
               <span className="preview-placeholder-title">수동 RViz 목표</span>
               <p className="preview-moving">
-                {MISSION_PHASE_LABELS[missionPhase] || missionPhase}
+                {motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase}
               </p>
               <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
@@ -2963,7 +2981,7 @@ function App() {
       {showGuestRecall && (
         <div className="guest-recall-overlay">
           <div className="guest-recall-box">
-            <p className="guest-recall-msg">이용객 호출 요청을 받았습니다</p>
+            <p className="guest-recall-msg">{motionNotice?.message || '이용객 호출 요청을 받았습니다'}</p>
           </div>
         </div>
       )}
