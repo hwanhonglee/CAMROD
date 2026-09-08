@@ -141,6 +141,70 @@ inline bool aprilTagParkingRetryEligible(
            config.minimum_tag_distance_m, config.maximum_tag_distance_m);
 }
 
+// A reverse-parked robot can begin a new, explicit Dock request too close to
+// the tag for lateral correction without losing its rear-camera view. This
+// separate, default-off admission policy may create clearance ONCE before the
+// first reverse command. It never widens normal retry or final acceptance.
+struct AprilTagInitialClearanceConfig
+{
+  bool enabled{false};
+  double maximum_tag_distance_m{1.20};
+  // Must match the selected reverse-parking profile; the supported admission
+  // envelope is capped at the current 0.25 m reverse-parking XY tolerance.
+  double reverse_parking_tolerance_m{0.25};
+  double maximum_heading_error_rad{0.10};
+};
+
+enum class AprilTagInitialClearanceDecision { NOT_REQUIRED, PERMITTED, REJECTED };
+
+inline bool aprilTagInitialClearanceParametersValid(
+  const AprilTagInitialClearanceConfig & config, const double stop_distance_m,
+  const double final_lateral_tolerance_m, const double final_heading_tolerance_rad)
+{
+  return std::isfinite(config.maximum_tag_distance_m) &&
+         std::isfinite(config.reverse_parking_tolerance_m) &&
+         std::isfinite(config.maximum_heading_error_rad) &&
+         std::isfinite(stop_distance_m) && stop_distance_m > 0.0 &&
+         std::isfinite(final_lateral_tolerance_m) && final_lateral_tolerance_m > 0.0 &&
+         std::isfinite(final_heading_tolerance_rad) && final_heading_tolerance_rad > 0.0 &&
+         config.maximum_tag_distance_m > stop_distance_m &&
+         config.reverse_parking_tolerance_m > final_lateral_tolerance_m &&
+         config.reverse_parking_tolerance_m <= 0.25 &&
+         config.maximum_heading_error_rad > 0.0 &&
+         config.maximum_heading_error_rad <= final_heading_tolerance_rad;
+}
+
+inline AprilTagInitialClearanceDecision aprilTagInitialClearanceDecision(
+  const AprilTagInitialClearanceConfig & config, const bool already_evaluated,
+  const bool tag_fresh, const bool odometry_fresh, const bool charging_detected,
+  const double tag_distance_m, const double lateral_error_m,
+  const double heading_error_rad, const double stop_distance_m,
+  const double final_lateral_tolerance_m, const double final_heading_tolerance_rad)
+{
+  using Decision = AprilTagInitialClearanceDecision;
+  if (!config.enabled || already_evaluated) {return Decision::NOT_REQUIRED;}
+  if (!aprilTagInitialClearanceParametersValid(
+      config, stop_distance_m, final_lateral_tolerance_m, final_heading_tolerance_rad) ||
+    !tag_fresh || !odometry_fresh || charging_detected ||
+    !std::isfinite(tag_distance_m) || tag_distance_m <= 0.0 ||
+    !std::isfinite(lateral_error_m) || !std::isfinite(heading_error_rad))
+  {
+    return Decision::REJECTED;
+  }
+  if (tag_distance_m > config.maximum_tag_distance_m ||
+    std::abs(lateral_error_m) <= final_lateral_tolerance_m)
+  {
+    return Decision::NOT_REQUIRED;
+  }
+  if (tag_distance_m <= stop_distance_m ||
+    std::abs(lateral_error_m) > config.reverse_parking_tolerance_m ||
+    std::abs(heading_error_rad) > config.maximum_heading_error_rad)
+  {
+    return Decision::REJECTED;
+  }
+  return Decision::PERMITTED;
+}
+
 // Accumulate actual odometry path length instead of start-to-end displacement,
 // so a curved forward exit cannot travel farther than the configured bound
 // while still appearing close to its start.

@@ -66,8 +66,9 @@ public:
     RETRY_FORWARD_EXIT, FINAL_YAW_ALIGNMENT, WAITING_FOR_CHARGING,
     PARKED, ERROR };
 
-  AprilTagParkingControllerNode()
-  : Node("apriltag_parking_controller"),
+  explicit AprilTagParkingControllerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("apriltag_parking_controller", options),
     tf_buffer_(get_clock()),
     tf_listener_(tf_buffer_)
   {
@@ -147,6 +148,11 @@ public:
     tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 60.0);
     enable_bounded_lateral_retry_ = declare_parameter<bool>(
       "enable_bounded_lateral_retry", false);
+    initial_clearance_config_ = {
+      declare_parameter<bool>("enable_initial_clearance", false),
+      declare_parameter<double>("initial_clearance_maximum_tag_distance_m", 1.20),
+      declare_parameter<double>("initial_clearance_reverse_parking_tolerance_m", 0.25),
+      declare_parameter<double>("initial_clearance_maximum_heading_error_rad", 0.10)};
     const camrod_control::AprilTagParkingRetryRawParameters retry_parameters{
       declare_parameter<double>("retry_forward_distance_m", 1.0),
       declare_parameter<double>("retry_forward_speed_mps", 0.10),
@@ -165,10 +171,18 @@ public:
       retry_parameters, final_lateral_tolerance_m_,
       final_heading_tolerance_rad_, translation_stop_tag_distance_m_);
     if (!camrod_control::aprilTagParkingRetryStartupPermitted(
-        enable_bounded_lateral_retry_, retry_parameters_valid))
+        enable_bounded_lateral_retry_ || initial_clearance_config_.enabled,
+        retry_parameters_valid))
     {
       throw std::invalid_argument(
               "bounded lateral retry raw parameters are invalid or unsafe");
+    }
+    if (initial_clearance_config_.enabled &&
+      !camrod_control::aprilTagInitialClearanceParametersValid(
+        initial_clearance_config_, translation_stop_tag_distance_m_,
+        final_lateral_tolerance_m_, final_heading_tolerance_rad_))
+    {
+      throw std::invalid_argument("initial clearance parameters are invalid or unsafe");
     }
     if (retry_parameters_valid) {
       // Narrow and store only after the raw integer and floating-point values
@@ -290,6 +304,7 @@ public:
   }
 
 private:
+  friend class AprilTagInitialClearanceControllerTest;
   // HH_260720 - Transform tag observations and estimate a fixed odometry-frame parking axis.
   void tagCallback(const avg_msgs::msg::AvgAprilTagPose::SharedPtr msg)
   {
@@ -457,6 +472,8 @@ private:
       return false;
     }
     retries_ = 0;
+    initial_clearance_evaluated_ = false;
+    initial_clearance_active_ = false;
     retry_forward_started_ = false;
     retry_progress_.reset();
     axis_valid_ = false;
@@ -474,6 +491,10 @@ private:
   void cancelParking(const std::string & source)
   {
     publishStop();
+    initial_clearance_evaluated_ = false;
+    initial_clearance_active_ = false;
+    retry_forward_started_ = false;
+    retry_progress_.reset();
     transitionTo(State::IDLE);
     RCLCPP_INFO(get_logger(), "AprilTag parking cancelled from %s", source.c_str());
   }
@@ -531,6 +552,7 @@ private:
         translation_stop_trigger_tag_distance_m_, translation_stop_tag_distance_m_,
         stateName(state_));
       publishStop();
+      initial_clearance_active_ = false;
       transitionTo(State::PARKED);
       if (recovered_from_error) {
         RCLCPP_INFO(
@@ -559,6 +581,37 @@ private:
             return;
           }
           if (tag_fresh) {
+            const auto clearance = camrod_control::aprilTagInitialClearanceDecision(
+              initial_clearance_config_, initial_clearance_evaluated_, tag_fresh,
+              odometry_is_fresh, charging_detected_, tag_camera_distance_m_,
+              lateral_error_m_, heading_error_rad_, translation_stop_tag_distance_m_,
+              final_lateral_tolerance_m_, final_heading_tolerance_rad_);
+            // Evaluate only the first fresh acquisition of this Dock request,
+            // not later tag-loss reacquisitions or ordinary lateral retries.
+            initial_clearance_evaluated_ = true;
+            if (clearance == camrod_control::AprilTagInitialClearanceDecision::REJECTED) {
+              RCLCPP_ERROR(get_logger(),
+                "initial short-range docking pose exceeds clearance admission: "
+                "tag=%.3fm lateral=%.3fm heading=%.3frad",
+                tag_camera_distance_m_, lateral_error_m_, heading_error_rad_);
+              fail();
+              break;
+            }
+            if (clearance == camrod_control::AprilTagInitialClearanceDecision::PERMITTED) {
+              initial_clearance_active_ = true;
+              retry_forward_started_ = false;
+              retry_progress_.reset();
+              yaw_alignment_settling_.reset();
+              yaw_alignment_settled_logged_ = false;
+              publishStop();
+              RCLCPP_WARN(get_logger(),
+                "initial docking clearance: tag=%.3fm lateral=%.3fm "
+                "heading=%.3frad; bounded forward %.2fm before first reverse",
+                tag_camera_distance_m_, lateral_error_m_, heading_error_rad_,
+                retry_forward_distance_m_);
+              transitionTo(State::RETRY_FORWARD_EXIT);
+              break;
+            }
             transitionTo(State::TAG_GUIDED_REVERSE);
             break;
           }
@@ -625,6 +678,7 @@ private:
                   heading_error_rad_))
               {
                 ++retries_;
+                initial_clearance_active_ = false;
                 retry_forward_started_ = false;
                 retry_progress_.reset();
                 yaw_alignment_settling_.reset();
@@ -693,15 +747,19 @@ private:
             fail();
             break;
           }
-          if (std::fabs(lateral_error_m_) > retry_maximum_lateral_error_m_ ||
-            std::fabs(heading_error_rad_) > retry_maximum_heading_error_rad_)
+          const double lateral_bound_m = initial_clearance_active_ ?
+            initial_clearance_config_.reverse_parking_tolerance_m : retry_maximum_lateral_error_m_;
+          const double heading_bound_rad = initial_clearance_active_ ?
+            initial_clearance_config_.maximum_heading_error_rad : retry_maximum_heading_error_rad_;
+          if (std::fabs(lateral_error_m_) > lateral_bound_m ||
+            std::fabs(heading_error_rad_) > heading_bound_rad)
           {
             RCLCPP_ERROR(
               get_logger(),
               "bounded lateral retry exceeded geometry envelope: "
               "lateral=%.3fm max=%.3fm heading=%.3frad max=%.3frad",
-              lateral_error_m_, retry_maximum_lateral_error_m_,
-              heading_error_rad_, retry_maximum_heading_error_rad_);
+              lateral_error_m_, lateral_bound_m,
+              heading_error_rad_, heading_bound_rad);
             fail();
             break;
           }
@@ -788,6 +846,7 @@ private:
               retries_, max_retries_, retry_progress_.forwardProgress(),
               retry_progress_.lateralDrift(), retry_progress_.distance());
             publishStop();
+            initial_clearance_active_ = false;
             retry_forward_started_ = false;
             retry_progress_.reset();
             axis_valid_ = false;
@@ -878,6 +937,7 @@ private:
   void fail()
   {
     publishStop();
+    initial_clearance_active_ = false;
     transitionTo(State::ERROR);
   }
 
@@ -1057,13 +1117,14 @@ private:
     const double retry_elapsed_s = retry_forward_started_ &&
       retry_forward_start_time_.nanoseconds() > 0 ?
       std::max(0.0, (current_time - retry_forward_start_time_).seconds()) : 0.0;
-    char buf[440];
+    char buf[560];
     snprintf(
       buf, sizeof(buf), "phase=%s tag_distance_m=%.3f axis_distance_m=%.3f "
       "lateral_m=%.3f heading_rad=%.3f remaining_tag_m=%.3f "
       "configured_stop_tag_m=%.3f stop_reason=%s stop_trigger_tag_m=%.3f "
       "retry=%d retry_forward_started=%s retry_forward_progress_m=%.3f "
-      "retry_path_m=%.3f retry_elapsed_s=%.2f charging=%s",
+      "retry_path_m=%.3f retry_elapsed_s=%.2f charging=%s "
+      "initial_clearance_evaluated=%s initial_clearance_active=%s",
       stateName(state_), tag_camera_distance_valid_ ? tag_camera_distance_m_ : -1.0,
       distance_along_parking_axis_m_, lateral_error_m_, heading_error_rad_,
       tag_camera_distance_valid_ ? camrod_control::tagApproachRemainingDistance(
@@ -1073,7 +1134,9 @@ private:
       retry_forward_started_ ? "true" : "false",
       retry_progress_.forwardProgress(), retry_progress_.distance(),
       retry_elapsed_s,
-      charging_detected_ ? "true" : "false");
+      charging_detected_ ? "true" : "false",
+      initial_clearance_evaluated_ ? "true" : "false",
+      initial_clearance_active_ ? "true" : "false");
 
     uint8_t level = avg_msgs::msg::ModuleState::OK;
     if (state_ == State::ERROR) {
@@ -1139,6 +1202,9 @@ private:
   double final_insertion_start_distance_m_, parked_distance_from_tag_m_;
   double tag_timeout_s_, odometry_timeout_s_, tag_wait_timeout_s_;
   bool enable_bounded_lateral_retry_{false};
+  camrod_control::AprilTagInitialClearanceConfig initial_clearance_config_;
+  bool initial_clearance_evaluated_{false};
+  bool initial_clearance_active_{false};
   double retry_forward_distance_m_{1.0}, retry_forward_speed_mps_{0.10};
   double retry_forward_timeout_s_{25.0}, retry_yaw_alignment_timeout_s_{8.0};
   double retry_maximum_lateral_error_m_{0.15};
@@ -1212,6 +1278,7 @@ private:
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
+#ifndef CAMROD_APRILTAG_INITIAL_CLEARANCE_TEST
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -1219,3 +1286,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

@@ -11,6 +11,85 @@
 namespace camrod_control
 {
 
+TEST(AprilTagInitialClearance, DefaultOffAndOnceOnlyPreserveOrdinaryApproach)
+{
+  AprilTagInitialClearanceConfig config;
+  using D = AprilTagInitialClearanceDecision;
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, .741, -.166, -.003, .40, .03, .10), D::NOT_REQUIRED);
+  config.enabled = true;
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, true, true, true, false, .741, -.166, -.003, .40, .03, .10), D::NOT_REQUIRED);
+}
+
+TEST(AprilTagInitialClearance, ObservedShortStartAndBothLateralSignsAreBounded)
+{
+  const AprilTagInitialClearanceConfig config{true, 1.20, .25, .10};
+  using D = AprilTagInitialClearanceDecision;
+  for (const double lateral : {-.166, .166, -.25, .25}) {
+    EXPECT_EQ(aprilTagInitialClearanceDecision(
+      config, false, true, true, false, .741, lateral, -.003, .40, .03, .10), D::PERMITTED);
+  }
+  for (const double lateral : {-.250001, .250001}) {
+    EXPECT_EQ(aprilTagInitialClearanceDecision(
+      config, false, true, true, false, .741, lateral, -.003, .40, .03, .10), D::REJECTED);
+  }
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, .741, -.166, .100001, .40, .03, .10), D::REJECTED);
+}
+
+TEST(AprilTagInitialClearance, NeverExtendsThePointFourStopOrFinalLateralTolerance)
+{
+  const AprilTagInitialClearanceConfig config{true, 1.20, .25, .10};
+  using D = AprilTagInitialClearanceDecision;
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, .40, -.166, 0., .40, .03, .10), D::REJECTED);
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, .399, -.166, 0., .40, .03, .10), D::REJECTED);
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, .741, -.03, 0., .40, .03, .10), D::NOT_REQUIRED);
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, false, 1.200001, -.166, 0., .40, .03, .10), D::NOT_REQUIRED);
+}
+
+TEST(AprilTagInitialClearance, StaleChargeAndNonfiniteInputsNeverAuthorizeMotion)
+{
+  const AprilTagInitialClearanceConfig config{true, 1.20, .25, .10};
+  using D = AprilTagInitialClearanceDecision;
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, false, true, false, .741, -.166, 0., .40, .03, .10), D::REJECTED);
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, false, false, .741, -.166, 0., .40, .03, .10), D::REJECTED);
+  EXPECT_EQ(aprilTagInitialClearanceDecision(
+    config, false, true, true, true, .741, -.166, 0., .40, .03, .10), D::REJECTED);
+  for (const double bad : {std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::infinity()}) {
+    EXPECT_EQ(aprilTagInitialClearanceDecision(
+      config, false, true, true, false, bad, -.166, 0., .40, .03, .10), D::REJECTED);
+    EXPECT_EQ(aprilTagInitialClearanceDecision(
+      config, false, true, true, false, .741, bad, 0., .40, .03, .10), D::REJECTED);
+    EXPECT_EQ(aprilTagInitialClearanceDecision(
+      config, false, true, true, false, .741, -.166, bad, .40, .03, .10), D::REJECTED);
+  }
+}
+
+TEST(AprilTagInitialClearance, InvalidRawConfigurationIsNotNormalized)
+{
+  const AprilTagInitialClearanceConfig good{true, 1.20, .25, .10};
+  EXPECT_TRUE(aprilTagInitialClearanceParametersValid(good, .40, .03, .10));
+  for (const double bad : {-.25, .03, .250001, std::numeric_limits<double>::infinity()}) {
+    auto config = good;
+    config.reverse_parking_tolerance_m = bad;
+    EXPECT_FALSE(aprilTagInitialClearanceParametersValid(config, .40, .03, .10));
+  }
+  auto config = good;
+  config.maximum_tag_distance_m = .40;
+  EXPECT_FALSE(aprilTagInitialClearanceParametersValid(config, .40, .03, .10));
+  config = good;
+  config.maximum_heading_error_rad = -.10;
+  EXPECT_FALSE(aprilTagInitialClearanceParametersValid(config, .40, .03, .10));
+}
+
 TEST(ParkingSpeedProfile, SlowsInsideConfiguredRemainingDistance)
 {
   // HH_260818 - The generic profile is shared by reverse and tag approaches.

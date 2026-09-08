@@ -211,6 +211,20 @@ if(BUILD_TESTING)
     ENVIRONMENT "ROS_DOMAIN_ID=188;ROS_LOCALHOST_ONLY=1"
   )
 
+  ament_add_gtest(test_apriltag_initial_clearance
+    test/test_apriltag_initial_clearance.cpp
+  )
+  ament_target_dependencies(test_apriltag_initial_clearance
+    rclcpp avg_msgs diagnostic_msgs geometry_msgs nav_msgs std_msgs std_srvs
+    tf2 tf2_ros tf2_geometry_msgs visualization_msgs
+  )
+  target_compile_options(test_apriltag_initial_clearance PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>
+  )
+  set_tests_properties(test_apriltag_initial_clearance PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=189;ROS_LOCALHOST_ONLY=1"
+  )
+
   # Verify campsite crab terminal deceleration and steady timeout boundaries
   # without ROS time or a running simulator.
   ament_add_gtest(test_campsite_crab_approach
