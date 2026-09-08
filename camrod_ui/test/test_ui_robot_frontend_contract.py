@@ -1208,6 +1208,12 @@ const restored = {
   modal: uiState.setShowArrivalComplete,
   permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
 };
+send({battery_return_pending: false});
+const afterBatteryHeartbeat = {
+  arrived: uiState.setArrivedSite,
+  modal: uiState.setShowArrivalComplete,
+  permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
+};
 send({service_state: 9, service_state_name: 'RETURN_WITH_CARGO',
       service_state_description: 'camping_site_maneuver_controller:RECALL_CLEARANCE_WAIT:active'});
 send({service_state: 9, returning: true});
@@ -1222,8 +1228,19 @@ const failed = {reason: uiState.setMissionExecutionError, modal: uiState.setShow
 send({mission_execution_error: '', recall_final_return_ready: true});
 send({service_state: 8, site: 'B4'});
 const finalStage = {ready: uiState.setRecallFinalReturnReady, error: uiState.setMissionExecutionError};
-process.stdout.write(JSON.stringify({restored, preserved, cleared: uiState.setServiceStateDescription,
-  batteryReturn: uiState.setBatteryReturnState, parking: uiState.setParkingPolicy, failed, finalStage}));
+const batteryReturn = uiState.setBatteryReturnState;
+send({mission_dispatch_active: true, mission_dispatch_generation: 13,
+      mission_dispatch_site: 'B1', mission_dispatch_owner: 'operator',
+      mission_dispatch_intent: 'delivery', service_state: 11,
+      service_state_name: 'WAITING_FOR_RETURN_REQUEST', site: 'B1'});
+send({battery_return_pending: false});
+const operatorAfterHeartbeat = {
+  arrived: uiState.setArrivedSite,
+  modal: uiState.setShowArrivalComplete,
+  permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
+};
+process.stdout.write(JSON.stringify({restored, afterBatteryHeartbeat, operatorAfterHeartbeat, preserved, cleared: uiState.setServiceStateDescription,
+  batteryReturn, parking: uiState.setParkingPolicy, failed, finalStage}));
 """
         result = subprocess.run(
             ["node"],
@@ -1236,6 +1253,11 @@ process.stdout.write(JSON.stringify({restored, preserved, cleared: uiState.setSe
         self.assertEqual(
             output["restored"],
             {"arrived": "B4", "modal": True, "permitted": True},
+        )
+        self.assertEqual(output["afterBatteryHeartbeat"], output["restored"])
+        self.assertEqual(
+            output["operatorAfterHeartbeat"],
+            {"arrived": "B1", "modal": True, "permitted": True},
         )
         self.assertEqual(
             output["preserved"],

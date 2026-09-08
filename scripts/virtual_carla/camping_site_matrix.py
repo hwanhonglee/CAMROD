@@ -2062,12 +2062,36 @@ class OperatorBrowserClient(GuestBrowserClient):
 
     def request_return(self) -> dict[str, Any]:
         self._interactions = []
-        # The modal is the explicit arrival acknowledgement shown by the
-        # production Robot UI; never substitute the diagnostics REST button.
-        self._click(
+        # Both production buttons call the same ownership-checked handler.
+        # Prefer the modal when shown; the panel remains usable if the user
+        # dismissed it. Neither may exist when arrivedSite/return authority
+        # is missing, and that still fails instead of using a REST fallback.
+        selectors = (
             '[data-ui="operator-arrival-return-confirm"]',
-            "arrival complete and Return",
+            '[data-ui="operator-arrival-return"]',
         )
+        deadline = time.monotonic() + self.timeout_s
+        selected = ""
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            for selector in selectors:
+                element = self._element(selector)
+                last[selector] = element
+                if element.get("visibleCount") == 1 and element.get("disabled") is not True:
+                    selected = selector
+                    break
+            if selected:
+                break
+            time.sleep(0.05)
+        if not selected:
+            raise MatrixError(
+                f"Robot UI has no enabled arrival Return control; "
+                f"arrival/mission ownership must remain authoritative: {last!r}"
+            )
+        # Keep only this acknowledgement's page-owned traffic. A previous
+        # mission's usage_complete frame must not satisfy the next Return.
+        self._install_transport_probe()
+        self._click(selected, "arrival complete and Return")
         frame = self._wait_probe(
             lambda probe: (
                 {"frame": matched}

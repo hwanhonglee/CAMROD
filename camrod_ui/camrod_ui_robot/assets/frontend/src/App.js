@@ -1534,20 +1534,6 @@ function App() {
         }
       }
 
-      if ('battery_return_pending' in data) {
-        if (data.battery_return_pending) {
-          setBatteryReturnState({
-            pending: true,
-            started: Boolean(data.battery_return_started),
-            waitingForUser: Boolean(data.battery_return_waiting_for_user),
-          });
-          setBatteryReturnMessage(formatBatteryReturnMessage(data));
-        } else {
-          setArrivedSite(null);
-          setShowArrivalComplete(false);
-        }
-      }
-
       if ('charging_required' in data || 'parking_policy_mode' in data || 'parking_selected_method' in data) {
         setParkingPolicy(previous => ({
           charging_required: 'charging_required' in data ? Boolean(data.charging_required) : previous.charging_required,

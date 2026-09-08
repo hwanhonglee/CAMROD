@@ -42,6 +42,33 @@ assertion; the execution note records this separately from runtime acceptance.
 
 ## Evidence in progress
 
+The first real Robot UI B1 delivery departed the simulated charger, reached
+the site, crabbed in and completed the 180-degree rotation. Outbound time was
+269.106 seconds and odometry distance 84.236863 m; no collision event occurred.
+It then failed before Return: a duplicate battery handler present only in
+virtual/carla cleared the arrival state on `battery_return_pending=false`.
+Removing that duplicate restores develop's existing incremental handler.
+Actual WebSocket-handler replay reproduces the failure before the fix and
+passes afterward. The failed attempt's PNG/GIF are labelled as outbound-only.
+
+The browser runner now accepts the actual authorized arrival modal or panel
+button (both use the production handler), and clears its observation probe
+before Return so a previous mission's frame cannot count as a fresh request.
+Desktop capture also includes a sample from the last second of each recording;
+the former fixed 90-percent sample could miss the final parking state entirely.
+
+### GNSS/yaw verification boundary
+
+Pure localization implements `center = antenna - R(yaw) * offset`, with the
+current left-antenna offset `(0, +0.45 m)` and heading trim `-92 degrees`.
+Five native tests pass, including invariant center over cardinal rotations
+and the error from a lagged heading. This mount must match the actual robot.
+The CARLA profile uses measured simulator center pose and disables that GNSS
+correction path, so a successful driving test does not prove physical GNSS
+timestamp synchronization. There is currently no post-yaw XY correction after
+parking-point alignment. A passive observer records fresh localization pose
+against the latched approach target; cached status error is not final XY proof.
+
 Current logs and new artifacts are under
 `$RANGER_EVIDENCE_ROOT/v224_validation/`. Build logs cover eight main packages,
 the canonical Robot UI bundle and camrod_voice. A separate PulseAudio monitor

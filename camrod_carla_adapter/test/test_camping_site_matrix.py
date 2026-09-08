@@ -1436,6 +1436,58 @@ def test_operator_browser_uses_real_pointer_and_text_events_for_full_flow():
     )
 
 
+def test_operator_return_uses_owned_panel_when_modal_is_absent_and_clears_probe():
+    probe = {"websocket": [{"frame": {"usage_complete": True, "site": "B9"}}], "http": []}
+    client = _operator_client_with_fake_visible_dom(probe)
+    element = client._element
+    client._element = lambda selector: (
+        {"count": 0, "visibleCount": 0}
+        if selector == '[data-ui="operator-arrival-return-confirm"]'
+        else element(selector)
+    )
+    reset = []
+    def reset_probe():
+        reset.append(True)
+        probe["websocket"].clear()
+    client._install_transport_probe = reset_probe
+    call = client._call
+    def page_input(method, params):
+        assert reset, "reset must precede the acknowledgement click"
+        result = call(method, params)
+        if method == "Input.dispatchMouseEvent" and params.get("type") == "mouseReleased":
+            probe["websocket"].append({"frame": {"usage_complete": True, "site": "B1", "mission_generation": 13}})
+        return result
+    client._call = page_input
+    returned = client.request_return()
+    assert returned["interactions"][0]["selector"] == '[data-ui="operator-arrival-return"]'
+    assert returned["frame"]["site"] == "B1"
+    assert reset == [True]
+
+
+def test_operator_return_rejects_previous_mission_frame_without_a_new_send():
+    probe = {"websocket": [{"frame": {"usage_complete": True}}], "http": []}
+    client = _operator_client_with_fake_visible_dom(probe)
+    client.timeout_s = 0.01
+    client._install_transport_probe = lambda: probe["websocket"].clear()
+    client._probe = lambda: probe
+    client._wait_probe = matrix.OperatorBrowserClient._wait_probe.__get__(client)
+    with pytest.raises(matrix.MatrixError, match="expected arrival usage_complete"):
+        client.request_return()
+
+
+@pytest.mark.parametrize("element", [
+    {"count": 0, "visibleCount": 0},
+    {"count": 1, "visibleCount": 1, "disabled": True},
+])
+def test_operator_return_never_bypasses_missing_or_disabled_ui_authority(element):
+    client = _operator_client_with_fake_visible_dom({})
+    client.timeout_s = 0.01
+    client._element = lambda selector: element
+    with pytest.raises(matrix.MatrixError, match="arrival/mission ownership"):
+        client.request_return()
+    assert client.cdp_calls == []
+
+
 def test_operator_browser_recall_requires_real_successful_frontend_http_record():
     probe = {
         "websocket": [],

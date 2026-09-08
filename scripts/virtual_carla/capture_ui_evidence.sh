@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SCRIPT_VERSION="4"
+SCRIPT_VERSION="5"
 DEFAULT_CARLA_TITLE="CarlaUE4"
 DEFAULT_UI_TITLE="CAMROD Operator UI"
 DEFAULT_DURATION_SECONDS="60"
@@ -478,6 +478,10 @@ import sys
 duration, fps, clip = map(float, sys.argv[1:])
 fractions = (0.05, 0.22, 0.39, 0.56, 0.73, 0.90)
 times = [min(max(duration * fraction, 0.0), max(0.0, duration - 0.001)) for fraction in fractions]
+# Keep the final observed state in the evidence. A fixed 90% sample can precede
+# the entire parking/arrival phase of a long mission. This is still a direct
+# frame from the recording, not an inferred success or a synthesized image.
+times[-1] = max(0.0, duration - max(1.0 / fps, clip / 2.0))
 frames = [max(0, int(math.floor(value * fps))) for value in times]
 intervals = []
 for value in times:
