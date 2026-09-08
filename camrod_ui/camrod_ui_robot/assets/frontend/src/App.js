@@ -357,10 +357,68 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
   // explicitly requests charging through the same backend motion authority.
   const [motionCommandPending, setMotionCommandPending] = useState('');
   const [motionCommandStatus, setMotionCommandStatus] = useState('');
-  const [steeringRate, setSteeringRate] = useState(0.5);
+  // Display only a value acknowledged by the parameter service. Slider drafts
+  // are not applied values; failed requests must not imply hardware support.
+  const [steeringRate, setSteeringRate] = useState(null);
+  const [steeringDraftRate, setSteeringDraftRate] = useState(null);
   const [steeringTuningAvailable, setSteeringTuningAvailable] = useState(false);
-  const [steeringTuningStatus, setSteeringTuningStatus] = useState('드라이버 연결 확인 중');
+  const [steeringTuningPending, setSteeringTuningPending] = useState(false);
+  const [steeringTuningStatus, setSteeringTuningStatus] = useState('설정 서비스 응답 대기');
   const steeringTuningTimerRef = useRef(null);
+  const steeringTuningRef = useRef({
+    active: false, available: false, pending: false, request: 0, rate: null,
+  });
+
+  const requestSteeringTuning = async (nextRate) => {
+    const current = steeringTuningRef.current;
+    const updating = nextRate !== undefined;
+    const validRate = value => typeof value === 'number'
+      && Number.isFinite(value) && value >= 0.05 && value <= 2.0;
+    // Recheck at dispatch time, not only in the disabled DOM control: a queued
+    // debounce or duplicate event must not POST after availability is lost.
+    if (!current.active || current.pending
+        || (updating && (!current.available || !validRate(nextRate)))) return false;
+    const request = ++current.request;
+    current.pending = true;
+    setSteeringTuningPending(true);
+    setSteeringTuningStatus(updating ? '적용 확인 중…' : '설정 서비스 응답 대기');
+    const isCurrent = () => current.active && current.request === request;
+    try {
+      const response = await fetch(
+        updating
+          ? `/ui/platform_tuning?steering_transition_rate_radps=${encodeURIComponent(nextRate.toFixed(2))}`
+          : '/ui/platform_tuning',
+        updating ? { method: 'POST' } : undefined
+      );
+      const body = await response.json();
+      if (!isCurrent()) return false;
+      const rate = body.steering_transition_rate_radps;
+      if (!response.ok || body.success !== true || body.available !== true || !validRate(rate)) {
+        throw new Error('설정 서비스 응답을 확인할 수 없습니다');
+      }
+      current.rate = rate;
+      current.available = true;
+      setSteeringRate(rate);
+      setSteeringDraftRate(rate);
+      setSteeringTuningAvailable(true);
+      setSteeringTuningStatus(updating ? '적용 확인됨' : '런타임 조절 가능');
+      return true;
+    } catch (error) {
+      if (!isCurrent()) return false;
+      current.available = false;
+      setSteeringTuningAvailable(false);
+      // Retain the last acknowledged rate internally, but hide it while the
+      // service is unavailable; never promote the rejected draft to reality.
+      setSteeringDraftRate(current.rate);
+      setSteeringTuningStatus('설정 서비스 미가용 · 진단 화면을 다시 열어 확인하세요');
+      return false;
+    } finally {
+      if (isCurrent()) {
+        current.pending = false;
+        setSteeringTuningPending(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!redockStatus?.received) return;
@@ -382,52 +440,37 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
   }, [activeTab]);
 
   useEffect(() => {
-    fetch('/ui/platform_tuning')
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok || !body.success) throw new Error(body.message || '설정 조회 실패');
-        setSteeringRate(Number(body.steering_transition_rate_radps));
-        setSteeringTuningAvailable(true);
-        setSteeringTuningStatus('런타임 조절 가능');
-      })
-      .catch(error => {
-        setSteeringTuningAvailable(false);
-        setSteeringTuningStatus(error.message || 'Ranger 드라이버 연결 안 됨');
-      });
+    const current = steeringTuningRef.current;
+    current.active = true;
+    current.available = false;
+    current.pending = false;
+    setSteeringTuningAvailable(false);
+    requestSteeringTuning();
     return () => {
+      current.active = false;
+      ++current.request;
       if (steeringTuningTimerRef.current) {
         clearTimeout(steeringTuningTimerRef.current);
+        steeringTuningTimerRef.current = null;
       }
     };
   }, []);
 
-  const applySteeringRate = (nextRate) => {
-    const clamped = Math.max(0.05, Math.min(2.0, Number(nextRate)));
-    setSteeringTuningStatus('적용 중…');
-    fetch(
-      `/ui/platform_tuning?steering_transition_rate_radps=${encodeURIComponent(clamped.toFixed(2))}`,
-      { method: 'POST' }
-    )
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok || !body.success) throw new Error(body.message || '적용 실패');
-        setSteeringTuningAvailable(true);
-        setSteeringRate(Number(body.steering_transition_rate_radps));
-        setSteeringTuningStatus('즉시 적용됨');
-      })
-      .catch(error => {
-        setSteeringTuningStatus(error.message || '적용 실패');
-      });
-  };
-
   const handleSteeringRateChange = (event) => {
+    const current = steeringTuningRef.current;
+    if (!current.active || !current.available || current.pending) return;
     const nextRate = Number(event.target.value);
-    setSteeringRate(nextRate);
+    if (!Number.isFinite(nextRate) || nextRate < 0.05 || nextRate > 2.0) return;
+    setSteeringDraftRate(nextRate);
+    setSteeringTuningStatus(`변경값 ${nextRate.toFixed(2)} rad/s · 적용 대기`);
     if (steeringTuningTimerRef.current) {
       clearTimeout(steeringTuningTimerRef.current);
     }
     steeringTuningTimerRef.current = setTimeout(
-      () => applySteeringRate(nextRate),
+      () => {
+        steeringTuningTimerRef.current = null;
+        requestSteeringTuning(nextRate);
+      },
       300
     );
   };
@@ -504,7 +547,7 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
           <div className="steering-tuning-title">횡↔종 조향 전환 속도</div>
           <div className="steering-tuning-help">
             바퀴 방향이 종방향과 횡방향 사이에서 회전하는 최대 속도입니다.
-            변경값은 재시작 없이 즉시 적용됩니다.
+            설정 서비스 연결 시 재시작 없이 조절할 수 있으며, 아래에는 확인된 적용값을 표시합니다.
           </div>
           <div className={`steering-tuning-status ${steeringTuningAvailable ? 'available' : ''}`}>
             {steeringTuningStatus}
@@ -512,8 +555,8 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
         </div>
         <div className="steering-tuning-control">
           <div className="steering-tuning-value">
-            <strong>{steeringRate.toFixed(2)}</strong> rad/s
-            <span>{Math.round(steeringRate * 100)}%</span>
+            <strong>{steeringTuningAvailable && steeringRate !== null ? steeringRate.toFixed(2) : '—'}</strong> rad/s
+            <span>{steeringTuningAvailable && steeringRate !== null ? `${Math.round(steeringRate * 100)}%` : '—'}</span>
           </div>
           <input
             className="steering-tuning-slider"
@@ -521,7 +564,8 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
             min="0.05"
             max="2.0"
             step="0.05"
-            value={steeringRate}
+            value={steeringDraftRate ?? 0.05}
+            disabled={!steeringTuningAvailable || steeringTuningPending}
             onChange={handleSteeringRateChange}
             aria-label="횡 종 조향 전환 속도"
           />
