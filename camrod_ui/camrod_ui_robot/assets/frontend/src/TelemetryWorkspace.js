@@ -61,7 +61,7 @@ export async function postDockingRequest(request = fetch) {
 }
 
 export function parkingPolicyMessage(policy = {}) {
-  if (policy.parking_selected_method === 'apriltag') return '충전 도킹 선택됨';
+  if (policy.parking_selected_method === 'apriltag') return '';
   if (policy.parking_selected_method === 'reverse') return '일반 후진 주차 선택됨 · 충전하지 않음';
   if (policy.charging_required === true) return '충전 필요 · 복귀 후 충전 도킹';
   return '자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전 도킹';
@@ -988,7 +988,7 @@ function levelClass(level) {
   return 'ok';
 }
 
-function SafetyView({ telemetry }) {
+function SafetyView({ telemetry, engageState = false, engageDisabled = false, onToggleEngage = null }) {
   const gate = telemetry.safety?.gate || {};
   const controllers = telemetry.safety?.controllers || {};
   const mission = telemetry.mission || {};
@@ -1012,6 +1012,25 @@ function SafetyView({ telemetry }) {
         </div>
         <p>{gate.message || '/control/cmd_vel_safety_gate/status 대기 중'}</p>
       </section>
+      {onToggleEngage && (
+        <section className="safety-engage-row">
+          <div className="safety-engage-copy">
+            <span>Planning engage</span>
+            <strong>{engageState ? 'ENGAGED' : 'DISENGAGED'}</strong>
+          </div>
+          <button
+            type="button"
+            className={`safety-engage-btn ${engageState ? 'engage-on' : ''}`}
+            onClick={onToggleEngage}
+            disabled={engageDisabled}
+            title={engageDisabled
+              ? '복귀 중에는 engage를 변경할 수 없습니다'
+              : 'ENGAGE ON은 planning 주행 허가, OFF는 운영자 정지입니다'}
+          >
+            {engageState ? 'ENGAGE OFF' : 'ENGAGE ON'}
+          </button>
+        </section>
+      )}
       <div className="telemetry-safety-layout">
         <section className="telemetry-section">
           <SectionHeader title="Motion owners" meta={mission.service_state_name || 'service state unavailable'} />
@@ -1220,7 +1239,15 @@ function DockingView({ telemetry, redockStatus = null, parkingPolicy = {}, servi
   );
 }
 
-export default function TelemetryWorkspace({ activeTab, redockStatus = null, parkingPolicy = {}, serviceStateName = '' }) {
+export default function TelemetryWorkspace({
+  activeTab,
+  redockStatus = null,
+  parkingPolicy = {},
+  serviceStateName = '',
+  engageState = false,
+  engageDisabled = false,
+  onToggleEngage = null,
+}) {
   const [telemetry, setTelemetry] = useState(EMPTY_TELEMETRY);
   const [mapData, setMapData] = useState({ frame_id: 'map', polylines: [], point_count: 0 });
   const [connectionError, setConnectionError] = useState('');
@@ -1356,7 +1383,16 @@ export default function TelemetryWorkspace({ activeTab, redockStatus = null, par
     if (activeTab === 'camera') return <CameraView telemetry={telemetry} />;
     if (activeTab === 'trajectory') return <TrajectoryView telemetry={telemetry} mapData={mapData} />;
     if (activeTab === 'perception') return <MapPerceptionView telemetry={telemetry} mapData={mapData} />;
-    if (activeTab === 'safety') return <SafetyView telemetry={telemetry} />;
+    if (activeTab === 'safety') {
+      return (
+        <SafetyView
+          telemetry={telemetry}
+          engageState={engageState}
+          engageDisabled={engageDisabled}
+          onToggleEngage={onToggleEngage}
+        />
+      );
+    }
     if (activeTab === 'docking') {
       return <DockingView telemetry={telemetry} redockStatus={redockStatus} parkingPolicy={parkingPolicy} serviceStateName={serviceStateName} />;
     }

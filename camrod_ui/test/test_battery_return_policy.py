@@ -1,6 +1,7 @@
 """SOC, urgent Return, and explicit Dock regressions without ROS/HTTP I/O."""
 
 from pathlib import Path
+import struct
 import sys
 import threading
 from types import SimpleNamespace
@@ -10,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
 
-from avg_msgs.msg import AvgBool, AvgServiceState, ModuleState, MotionOperation  # noqa: E402
+from avg_msgs.msg import AvgBool, AvgPlatformStatus, AvgServiceState, ModuleState, MotionOperation  # noqa: E402
 from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required  # noqa: E402
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
@@ -92,6 +93,56 @@ def test_soc_boundaries_match_backend_dispatch_and_return(soc, urgent, charging,
     assert node._battery_return_urgent is urgent
     assert node._publish_camping_site_maneuver_controller_return.call_count == int(urgent)
     assert node._low_battery_return_pending is (soc < 35.0)
+
+
+@pytest.mark.parametrize("fraction, expected", [
+    (0.35, 35),
+    (struct.unpack("<f", struct.pack("<I", 0x3EB33332))[0], 34),
+    (0.25, 25),
+    (0.0, 0),
+    (1.0, 100),
+    (-0.01, -1),
+    (1.01, -1),
+    (float("nan"), -1),
+    (float("inf"), -1),
+    (-float("inf"), -1),
+])
+def test_platform_soc_callback_uses_float32_percentage_boundary(fraction, expected):
+    node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
+    node._runtime_policy = mock.Mock()
+    node._update_runtime_state = lambda update: update()
+    node._update_low_battery_return_policy = mock.Mock()
+    # Reproduce the actual float32 ROS wire value, including the immediately
+    # lower representable value: widening before multiplication floors 35 to 34.
+    wire_fraction = struct.unpack("<f", struct.pack("<f", fraction))[0]
+    message = AvgPlatformStatus(
+        control_mode=1, battery_state_available=True,
+        battery_percentage=wire_fraction,
+    )
+    with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+        UiBackendNode._on_platform_status(node, message)
+    assert node._state.battery_percentage == expected
+    node._update_low_battery_return_policy.assert_called_once_with(
+        expected, source="platform_status")
+    payload = node._schedule_broadcast.call_args.args[0]
+    assert payload["battery"] == expected
+    assert payload["charging_required"] is (expected < 35)
+    assert (UiBackendNode._mission_dispatch_battery_block(node, "B4") is None) is (
+        expected >= 35)
+
+
+def test_unavailable_platform_soc_revokes_previous_admission():
+    node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
+    node._runtime_policy = mock.Mock()
+    node._update_runtime_state = lambda update: update()
+    node._update_low_battery_return_policy = mock.Mock()
+    with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+        UiBackendNode._on_platform_status(
+            node, AvgPlatformStatus(control_mode=1, battery_state_available=False))
+    assert node._state.battery_percentage == -1
+    node._update_low_battery_return_policy.assert_called_once_with(-1, source="platform_status")
+    assert node._schedule_broadcast.call_args.args[0]["battery"] == -1
+    assert UiBackendNode._mission_dispatch_battery_block(node, "B4") is not None
 
 
 @pytest.mark.parametrize("soc", [None, -1, 101, float("nan"), float("inf"), "invalid"])
@@ -220,12 +271,18 @@ def test_urgent_battery_does_not_move_post_turn_robot_while_user_is_loading():
 
 
 @pytest.mark.parametrize("mode", ["auto", "apriltag"])
-def test_explicit_dock_from_uncharged_parking_requests_only_tag_docking(mode):
+@pytest.mark.parametrize("observed_method", ["", "reverse", "apriltag"])
+def test_explicit_dock_ack_requests_final_method_without_claiming_controller(mode, observed_method):
     node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
     node.parking_method = mode
+    node._parking_selected_method = observed_method
     result = UiBackendNode.request_manual_dock(node)
     assert result["success"]
-    assert result["parking_selected_method"] == "apriltag"
+    assert result["action"] == "docking_requested"
+    assert result["message"] == "Explicit charging docking requested"
+    assert result["parking_requested_final_method"] == "apriltag"
+    assert "parking_selected_method" not in result
+    assert node._parking_selected_method == observed_method
     node._publish_parking_operation.assert_called_once_with(
         MotionOperation.START, source="http:manual_dock:force_docking")
     node._request_nav2_cancel.assert_not_called()

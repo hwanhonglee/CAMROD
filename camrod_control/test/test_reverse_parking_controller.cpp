@@ -1,6 +1,7 @@
 // Exercise the real completion transitions without launching the robot. Topic
 // remaps and a separate DDS domain prevent accidental field command injection.
 #include <limits>
+#include <thread>
 
 #include "gtest/gtest.h"
 
@@ -62,6 +63,25 @@ protected:
     node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(31.0);
   }
   void cancel() { node_->applyOperation(avg_msgs::msg::MotionOperation::CANCEL, "test"); }
+  double reversed() const { return node_->distanceReversed(); }
+  double tolerance() const { return node_->station_axis_tolerance_m_; }
+  double initialDistance() const { return node_->initial_station_distance_m_; }
+  double axisDistance() const { return node_->stationDistanceAlongReverseAxis(); }
+  bool startObservedPose() {
+    const double station_yaw = -82.2127 * M_PI / 180.0;
+    node_->station_pose_ = {-11.3585, 40.0901, station_yaw};
+    pose(-11.228455380998474, 39.89074377250848);
+    node_->last_vehicle_pose_->pose.orientation.z = std::sin((station_yaw + M_PI) / 2.0);
+    node_->last_vehicle_pose_->pose.orientation.w = std::cos((station_yaw + M_PI) / 2.0);
+    return node_->applyOperation(avg_msgs::msg::MotionOperation::START, "test").first;
+  }
+  auto subscribeCommands(std::vector<avg_msgs::msg::AvgTwist> & commands) {
+    return node_->create_subscription<avg_msgs::msg::AvgTwist>(
+      node_->command_publisher_->get_topic_name(), 100,
+      [&commands](avg_msgs::msg::AvgTwist::ConstSharedPtr message) {
+        commands.push_back(*message);
+      });
+  }
   ReverseParkingPhase phase() const { return node_->phase_; }
   std::string detail() const { return node_->phase_detail_; }
   std::shared_ptr<ReverseParkingControllerNode> node_;
@@ -177,6 +197,72 @@ TEST_F(ReverseParkingControllerTest, ActualGoalInsideToleranceStillCompletes) {
   pose(0.8, 0.0);
   tick();
   EXPECT_EQ(phase(), ReverseParkingPhase::kParked);
+}
+
+TEST_F(ReverseParkingControllerTest, AlreadyInsideGoalCompletesWithoutMinimumReverseTravel) {
+  for (const double station_x : {-0.25, -0.238, 0.0, 0.238, 0.25}) {
+    cancel();
+    ASSERT_TRUE(start(station_x));
+    tick();
+    EXPECT_EQ(phase(), ReverseParkingPhase::kParked) << station_x;
+    EXPECT_NE(detail().find("station XY goal reached"), std::string::npos);
+    EXPECT_DOUBLE_EQ(reversed(), 0.0);
+    EXPECT_DOUBLE_EQ(tolerance(), 0.25);
+  }
+}
+
+TEST_F(ReverseParkingControllerTest, ObservedReparkedPosePublishesOnlyZeroWithoutReversing) {
+  // Measured preparation-02 pose, unchanged mapped station and tolerance.
+  std::vector<avg_msgs::msg::AvgTwist> commands;
+  const auto subscription = subscribeCommands(commands);
+  ASSERT_TRUE(startObservedPose());
+  EXPECT_NEAR(initialDistance(), .23802207538567263, .00000001);
+  EXPECT_LT(axisDistance(), 0.0);
+  tick();
+  const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(25);
+  do {
+    rclcpp::spin_some(node_);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  } while (std::chrono::steady_clock::now() < until);
+  ASSERT_FALSE(commands.empty());
+  for (const auto & command : commands) {
+    EXPECT_DOUBLE_EQ(command.linear.x, 0.0);
+    EXPECT_DOUBLE_EQ(command.linear.y, 0.0);
+    EXPECT_DOUBLE_EQ(command.angular.z, 0.0);
+  }
+  EXPECT_EQ(phase(), ReverseParkingPhase::kParked);
+  EXPECT_DOUBLE_EQ(reversed(), 0.0);
+}
+
+TEST_F(ReverseParkingControllerTest, AlreadyCloseDoesNotWidenGoalOrBypassWrongAxis) {
+  ASSERT_TRUE(start(.250001));
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kReverseApproach);
+  cancel();
+  ASSERT_TRUE(start(-.250001));
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  EXPECT_NE(detail().find("station is behind"), std::string::npos);
+}
+
+TEST_F(ReverseParkingControllerTest, AlreadyAtGoalKeepsFreshnessAndTimeoutGuards) {
+  ASSERT_TRUE(start(.238));
+  stale();
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  cancel();
+  ASSERT_TRUE(start(.238));
+  expireReverseTimeout();
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  EXPECT_EQ(detail(), "reverse parking timeout");
+}
+
+TEST_F(ReverseParkingControllerTest, AlreadyAtGoalStillRequiresConfiguredCharging) {
+  requireCharging();
+  ASSERT_TRUE(start(-.238));
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kWaitForCharging);
 }
 
 TEST_F(ReverseParkingControllerTest, ActualGoalAtTravelLimitCanComplete) {

@@ -489,6 +489,13 @@ private:
       setError("reverse parking timeout");
       return;
     }
+    // A new request may begin inside the unchanged station XY disk. Do not
+    // require 5 cm of reverse travel before accepting an already reached goal:
+    // that unnecessary motion can drive a parked robot out of the disk.
+    if (goal.reached) {
+      finishTravel("station XY goal reached");
+      return;
+    }
     const double station_axis_distance = stationDistanceAlongReverseAxis();
     if (require_station_on_reverse_axis_ && reversed <= 0.05 &&
       station_axis_distance < -station_axis_tolerance_m_)
@@ -497,10 +504,6 @@ private:
       return;
     }
     if (reversed > 0.05 && station_axis_distance <= station_axis_tolerance_m_) {
-      if (goal.reached) {
-        finishTravel("station XY goal reached");
-        return;
-      }
       if (station_axis_distance <= 0.0) {
         finishTravel("station plane passed without reaching XY goal");
         return;

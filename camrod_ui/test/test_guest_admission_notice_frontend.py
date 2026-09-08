@@ -79,7 +79,7 @@ def test_notice_requires_current_guest_identity(identity):
 def test_real_websocket_flags_survive_but_cannot_hide_active_controls_or_final_confirmation():
     prefix = SOURCE[SOURCE.index('const SERVICE_STATE ='):SOURCE.index('// HH_260904 - Re-dock events')]
     start = SOURCE.index('const emptyBatteryReturnState =')
-    prefix += SOURCE[start:SOURCE.index('// HH_260721 - Reuse one health', start)]
+    prefix += SOURCE[start:SOURCE.index('function WaitingRuntimeStatusPanel(', start)]
     start = SOURCE.index('ws.onmessage = (event) => {')
     handler = SOURCE[start:SOURCE.index('// HH_260708 - Reconnect the operator WebSocket', start)]
     setters = sorted(set(re.findall(r'\b(set[A-Z]\w*)\(', handler)))

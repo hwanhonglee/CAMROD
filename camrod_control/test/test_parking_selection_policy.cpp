@@ -5,6 +5,13 @@
 
 namespace camrod_control {
 
+TEST(ParkingSelection, InitialReturnAlwaysReversesAndOnlyVerifiedExplicitDockReusesPark) {
+  EXPECT_EQ(initialParkingMethod(false, false), ParkingMethod::kReverse);
+  EXPECT_EQ(initialParkingMethod(false, true), ParkingMethod::kReverse);
+  EXPECT_EQ(initialParkingMethod(true, false), ParkingMethod::kReverse);
+  EXPECT_EQ(initialParkingMethod(true, true), ParkingMethod::kAprilTag);
+}
+
 TEST(ParkingSelection, BoundaryThirtyFiveUsesNonChargingReverse) {
   EXPECT_EQ(selectParkingMethod(35.0, 35.0, false), ParkingMethod::kReverse);
   EXPECT_EQ(selectParkingMethod(80.0, 35.0, false), ParkingMethod::kReverse);
