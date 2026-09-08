@@ -77,6 +77,23 @@ def test_guest_return_source_accepts_only_site_bound_generation_shape():
         assert not validator._return_source_matches(rejected, expected, "B1", generation)
 
 
+def test_observed_first_recall_source_is_bound_to_its_intent_and_generation():
+    # Actual B1 Robot recall publication; this is a parser regression, not a
+    # claim that the interrupted live recall completed.
+    generation = 1788844217304002
+    observed = ("robot_ui:usage_complete:ui_return_token="
+                "g1788844217304002-s2-3b1c6961f7f2e:recall_loading_complete")
+    expected = "robot_ui:usage_complete:recall_loading_complete"
+    assert validator._return_source_matches(observed, expected, "B1", generation)
+    assert not validator._return_source_matches(observed, expected, "B1", generation - 1)
+    assert not validator._return_source_matches(
+        observed, "robot_ui:usage_complete:site_exit_first", "B1", generation)
+    assert not validator._return_source_matches(
+        observed.replace(":recall_loading_complete", ":site_exit_first"), expected, "B1", generation)
+    assert not validator._return_source_matches(
+        f"robot_ui:usage_complete:recall_final_return:site=B1:g={generation}", expected, "B1", generation)
+
+
 def _write_json(path: Path, value: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -108,6 +125,7 @@ def _write_sums(root: Path, names: list[str]) -> Path:
 
 
 def _authority(authority: str, mission: str) -> dict[str, str]:
+    completion_suffix = "recall_loading_complete" if mission == "recall" else "site_exit_first"
     if authority == "guest":
         return {
             "matrix_return_authority": "guest_browser",
@@ -118,7 +136,7 @@ def _authority(authority: str, mission: str) -> dict[str, str]:
     if authority == "operator-browser":
         return {
             "matrix_return_authority": "operator_browser",
-            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
+            "expected_return_source": f"robot_ui:usage_complete:{completion_suffix}",
             "captured_ui_kind": "operator",
             "matrix_subcommand": (
                 "camping-sites-browser-recall"
@@ -128,7 +146,7 @@ def _authority(authority: str, mission: str) -> dict[str, str]:
         }
     return {
         "matrix_return_authority": "operator_rest",
-        "expected_return_source": "http:manual_return:site_exit_first",
+        "expected_return_source": f"http:manual_return:{completion_suffix}",
         "captured_ui_kind": "operator",
         "matrix_subcommand": (
             "camping-sites-recall" if mission == "recall" else "camping-sites"
@@ -154,7 +172,7 @@ def _add_current_return_evidence(item: dict[str, Any], authority: str,
     generation = 1788839900000001
     identity = {"site": site, "intent": intent, "generation": generation,
                 "owner": ("guest" if authority == "guest" else
-                          "robot" if authority == "operator-browser" and intent == "recall" else "operator")}
+                          "robot" if intent == "recall" else "operator")}
     item["mission_identity"] = identity
     if authority == "guest":
         item["guest_final_return_authority"] = guest_final_authority
@@ -178,8 +196,9 @@ def _add_current_return_evidence(item: dict[str, Any], authority: str,
             ui_source += ":recall_final_return"
         base = ui_source or source
         token = "" if final else f"g{generation}-s1-deadbeef"
+        completion_suffix = "recall_loading_complete" if intent == "recall" else "site_exit_first"
         controller_source = (f"{base}:recall_final_return:site={site}:g={generation}" if final
-                             else f"{base}:ui_return_token={token}:site_exit_first")
+                             else f"{base}:ui_return_token={token}:{completion_suffix}")
         frame = ({"action": "usage_complete", "recall_final_return": final} if guest else
                  {"usage_complete": True, "site": site, "mission_generation": generation,
                   "recall_final_return": final})
@@ -222,6 +241,45 @@ def test_current_recall_confirmation_shape_is_site_and_authority_bound(tmp_path,
     validator._validate_return_evidence(item, site=site, authority=authority,
                                        mission_intent="recall", label="test")
     assert ("final_return_response" in item) == (int(site[1:]) <= 10)
+
+
+@pytest.mark.parametrize("intent", ["delivery", "recall"])
+def test_first_return_rejects_a_fresh_same_generation_other_intent_suffix(intent):
+    item = {"site": "B1", "mission_intent": intent}
+    _add_current_return_evidence(item, "operator-browser")
+    old = "recall_loading_complete" if intent == "recall" else "site_exit_first"
+    wrong = "site_exit_first" if intent == "recall" else "recall_loading_complete"
+    source = item["return_response"]["ros_ack"]["controller_source"].removesuffix(old) + wrong
+    item["return_response"]["ros_ack"]["controller_source"] = source
+    item["controller_operation_request_sequence"][0]["source"] = source
+    with pytest.raises(validator.CollectionValidationError, match="mission-bound RETURN token"):
+        validator._validate_return_evidence(item, site="B1", authority="operator-browser",
+                                           mission_intent=intent, label="test")
+
+
+def test_rest_recall_uses_shared_robot_owner_not_transport_derived_operator():
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "operator")
+    assert item["mission_identity"]["owner"] == "robot"
+    validator._validate_return_evidence(item, site="B1", authority="operator",
+                                       mission_intent="recall", label="test")
+    item["mission_identity"]["owner"] = "operator"
+    for field in ("return_response", "final_return_response"):
+        item[field]["context"]["mission_identity"]["owner"] = "operator"
+    with pytest.raises(validator.CollectionValidationError, match="mission_identity.owner"):
+        validator._validate_return_evidence(item, site="B1", authority="operator",
+                                           mission_intent="recall", label="test")
+
+
+def test_final_recall_rejects_replayed_first_loading_acknowledgement():
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "operator-browser")
+    first_source = item["return_response"]["ros_ack"]["controller_source"]
+    item["final_return_response"]["ros_ack"]["controller_source"] = first_source
+    item["controller_operation_request_sequence"][1]["source"] = first_source
+    with pytest.raises(validator.CollectionValidationError, match="controller_source"):
+        validator._validate_return_evidence(item, site="B1", authority="operator-browser",
+                                           mission_intent="recall", label="test")
 
 
 @pytest.mark.parametrize("mutate,pattern", [

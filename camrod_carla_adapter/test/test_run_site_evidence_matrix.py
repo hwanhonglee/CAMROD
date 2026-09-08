@@ -351,6 +351,7 @@ def test_operator_recall_plan_selects_typed_recall_matrix(tmp_path: Path) -> Non
     assert "Mission intent: recall" in result.stdout
     assert "camrod_camping_site_matrix_operator_recall" in result.stdout
     assert "site_access.sh camping-sites-recall" in result.stdout
+    assert "http:manual_return:recall_loading_complete" in result.stdout
 
 
 def test_operator_browser_plan_selects_visible_robot_ui_and_cdp_input_matrix(
@@ -374,7 +375,7 @@ def test_operator_browser_plan_selects_visible_robot_ui_and_cdp_input_matrix(
     assert "Robot UI" in result.stdout
     assert "local-only CDP 9224" in result.stdout
     assert "site_access.sh camping-sites-browser-recall" in result.stdout
-    assert "robot_ui:usage_complete:site_exit_first" in result.stdout
+    assert "robot_ui:usage_complete:recall_loading_complete" in result.stdout
 
 
 def test_plan_renders_explicit_timeout_capture_and_mp4_policy(

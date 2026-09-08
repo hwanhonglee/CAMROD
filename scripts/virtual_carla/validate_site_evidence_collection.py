@@ -1211,16 +1211,19 @@ def _return_source_matches(
             match.group(1) == expected_site
             and int(match.group(2)) == expected_generation
         )
-    site_exit_suffix = ":site_exit_first"
-    if not expected.endswith(site_exit_suffix):
+    # The caller selects exactly one lifecycle suffix. Supporting both known
+    # contracts must not allow delivery evidence to satisfy recall (or vice versa).
+    completion_suffix = next((suffix for suffix in (
+        ":site_exit_first", ":recall_loading_complete") if expected.endswith(suffix)), "")
+    if not completion_suffix:
         return False
-    authority = expected[: -len(site_exit_suffix)]
+    authority = expected[: -len(completion_suffix)]
     token_prefix = f"{authority}:ui_return_token="
     if not observed.startswith(token_prefix) or not observed.endswith(
-        site_exit_suffix
+        completion_suffix
     ):
         return False
-    token = observed[len(token_prefix) : -len(site_exit_suffix)]
+    token = observed[len(token_prefix) : -len(completion_suffix)]
     return (UI_RETURN_TOKEN_RE.fullmatch(token) is not None
             and token.startswith(f"g{expected_generation}-"))
 
@@ -1283,8 +1286,10 @@ def _validate_return_evidence(
     _assert_equal(identity.get("site"), site, f"{label}.mission_identity.site")
     _assert_equal(identity.get("intent"), mission_intent, f"{label}.mission_identity.intent")
     generation = _exact_integer(identity.get("generation"), f"{label}.mission_identity.generation", 1)
+    # The shared /ui/camping_site_recall endpoint admits robot_ui:recall for
+    # both REST and Robot-browser clients. Transport is not mission ownership.
     expected_owner = ("guest" if authority == "guest" else
-                      "robot" if authority == "operator-browser" and mission_intent == "recall" else "operator")
+                      "robot" if mission_intent == "recall" else "operator")
     _assert_equal(identity.get("owner"), expected_owner, f"{label}.mission_identity.owner")
     controller_requests = _list(item.get("controller_operation_request_sequence"), f"{label}.controller_operation_request_sequence")
     ui_requests = _list(item.get("ui_operation_request_sequence"), f"{label}.ui_operation_request_sequence")
@@ -1345,9 +1350,10 @@ def _validate_return_evidence(
             _assert_equal(ack.get("token"), "", f"{response_label}.ros_ack.token")
             _assert_equal(observed, f"{base}:recall_final_return:site={site}:g={generation}", f"{response_label}.ros_ack.controller_source")
         else:
-            if not _return_source_matches(observed, f"{base}:site_exit_first", site, generation):
+            completion_suffix = ":recall_loading_complete" if mission_intent == "recall" else ":site_exit_first"
+            if not _return_source_matches(observed, f"{base}{completion_suffix}", site, generation):
                 raise CollectionValidationError(f"{response_label} lacks the exact mission-bound RETURN token")
-            token = observed.split(":ui_return_token=", 1)[1].removesuffix(":site_exit_first")
+            token = observed.split(":ui_return_token=", 1)[1].removesuffix(completion_suffix)
             _assert_equal(ack.get("token"), token, f"{response_label}.ros_ack.token")
         matched = [index for index, request in enumerate(controller_requests)
                    if index >= controller_start and isinstance(request, dict)
@@ -1389,7 +1395,7 @@ def _authority_contract(authority: str, mission_intent: str) -> dict[str, Any]:
         },
         ("operator", "recall"): {
             "matrix_return_authority": "operator_rest",
-            "expected_return_source": "http:manual_return:site_exit_first",
+            "expected_return_source": "http:manual_return:recall_loading_complete",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites-recall",
         },
@@ -1401,7 +1407,7 @@ def _authority_contract(authority: str, mission_intent: str) -> dict[str, Any]:
         },
         ("operator-browser", "recall"): {
             "matrix_return_authority": "operator_browser",
-            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete:recall_loading_complete",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites-browser-recall",
         },

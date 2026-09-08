@@ -328,7 +328,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites-recall"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_recall"
     MATRIX_RETURN_AUTHORITY="operator_rest"
-    EXPECTED_RETURN_SOURCE="http:manual_return:site_exit_first"
+    EXPECTED_RETURN_SOURCE="http:manual_return:recall_loading_complete"
     CAPTURE_UI_TITLE="CAMROD Operator UI"
     CAPTURE_UI_KIND="operator"
     ;;
@@ -344,7 +344,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites-browser-recall"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_browser_recall"
     MATRIX_RETURN_AUTHORITY="operator_browser"
-    EXPECTED_RETURN_SOURCE="robot_ui:usage_complete:site_exit_first"
+    EXPECTED_RETURN_SOURCE="robot_ui:usage_complete:recall_loading_complete"
     CAPTURE_UI_TITLE="Robot UI"
     CAPTURE_UI_KIND="operator"
     ;;

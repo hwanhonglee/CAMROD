@@ -1378,7 +1378,7 @@ def _return_test_context(site="B1", generation=13, owner="operator", intent="del
 @pytest.mark.parametrize("authority,owner,intent,final", [
     ("robot_ui:usage_complete", "operator", "delivery", False),
     ("http:manual_return", "operator", "delivery", False),
-    ("http:manual_return", "operator", "recall", False),
+    ("http:manual_return", "robot", "recall", False),
     ("robot_ui:usage_complete", "robot", "recall", False),
     ("robot_ui:usage_complete", "guest", "recall", True),
     ("guest:usage_complete", "guest", "recall", False),
@@ -1392,8 +1392,9 @@ def test_current_return_ack_binds_exact_new_nonce_owner_generation_and_stage(aut
         ui_source += ":recall_final_return"
     base = ui_source if guest else authority
     token = "" if final else "g13-s1-deadbeef"
+    suffix = ":recall_loading_complete" if intent == "recall" else ":site_exit_first"
     source = (f"{base}:recall_final_return:site=B1:g=13" if final else
-              f"{base}:ui_return_token={token}:site_exit_first")
+              f"{base}:ui_return_token={token}{suffix}")
     snapshot = {"sequences": {"controller_operation_requests": [{"operation": 3, "source": source}],
                               "ui_operation_requests": [{"operation": 3, "source": ui_source}] if guest else []}}
     response = {"context": context, "source": authority}
@@ -1426,6 +1427,64 @@ def test_return_token_validation_rejects_old_authority_generation_and_substitute
         (actual, 0, ""),
     ]:
         assert not matrix.return_source_matches(source, expected, "B1", generation, nonce)
+
+
+def test_actual_b1_operator_recall_ack_uses_exact_first_loading_stage():
+    # Recorded 20260908T053005Z: the real controller accepted this command and
+    # entered RECALL_CLEARANCE_WAIT. Preserve its exact authority/generation/
+    # nonce in the regression instead of deriving a fixture from our matcher.
+    generation = 1788844217304002
+    token = "g1788844217304002-s2-3b1c6961f7f2e"
+    observed = "robot_ui:usage_complete:ui_return_token=g1788844217304002-s2-3b1c6961f7f2e:recall_loading_complete"
+    response = {"source": "robot_ui:usage_complete", "frame": {
+        "usage_complete": True, "site": "B1", "mission_generation": generation, "recall_final_return": False},
+        "context": _return_test_context(generation=generation, owner="robot", intent="recall")}
+    request = {"operation": 3, "source": observed}
+    snapshot = {"sequences": {"controller_operation_requests": [request], "ui_operation_requests": []}}
+    assert matrix.return_acknowledgement(snapshot, response) == {
+        "controller_source": observed, "ui_source": "", "token": token}
+    for rejected in (observed.replace(":recall_loading_complete", ":site_exit_first"),
+                     observed.replace("g1788844217304002-", "g1788844217304001-"),
+                     observed.replace("robot_ui:", "http:")):
+        request["source"] = rejected
+        assert matrix.return_acknowledgement(snapshot, response) is None
+    request["source"] = observed
+    response["context"].update(final_return=True, site_phase="RECALL_RETURN_WAIT")
+    assert matrix.return_acknowledgement(snapshot, response) is None
+    response["context"].update(final_return=False, site_phase="WAIT_RETURN", controller_request_count_before=1)
+    assert matrix.return_acknowledgement(snapshot, response) is None
+
+
+@pytest.mark.parametrize("authority,base", [("operator_rest", "http:manual_return"),
+                                          ("operator_browser", "robot_ui:usage_complete")])
+def test_authority_contract_distinguishes_recall_loading_from_delivery_exit(authority, base):
+    for intent, suffix in (("delivery", ":site_exit_first"), ("recall", ":recall_loading_complete")):
+        args = matrix._parser().parse_args(["--return-authority", authority, "--mission-intent", intent])
+        assert matrix.ui_authority_contract(args)["expected_return_source"] == base + suffix
+
+
+@pytest.mark.parametrize("authority,intent,owner", [
+    ("operator_rest", "delivery", "operator"),
+    ("operator_browser", "delivery", "operator"),
+    ("operator_rest", "recall", "robot"),
+    ("operator_browser", "recall", "robot"),
+    ("guest_browser", "recall", "guest"),
+])
+def test_dispatch_identity_owner_follows_production_endpoint(authority, intent, owner):
+    assert matrix.expected_mission_owner(authority, intent) == owner
+
+
+@pytest.mark.parametrize("site", ["B1", "B10", "B11", "B13"])
+def test_guest_recall_first_confirmation_always_uses_loading_suffix(site):
+    context = _return_test_context(site=site, owner="guest", intent="recall")
+    ui_source = f"guest:usage_complete:site={site}:g=13"
+    actual = f"{ui_source}:ui_return_token=g13-s2-cafe:recall_loading_complete"
+    snapshot = {"sequences": {"ui_operation_requests": [{"operation": 3, "source": ui_source}],
+                              "controller_operation_requests": [{"operation": 3, "source": actual}]}}
+    response = {"context": context, "source": "guest:usage_complete"}
+    assert matrix.return_acknowledgement(snapshot, response)["token"] == "g13-s2-cafe"
+    snapshot["sequences"]["controller_operation_requests"][0]["source"] = actual.replace(":recall_loading_complete", ":site_exit_first")
+    assert matrix.return_acknowledgement(snapshot, response) is None
 
 
 def test_return_context_rejects_changed_mission_and_premature_second_confirmation():

@@ -723,6 +723,15 @@ def parking_completion(snapshot: Mapping[str, Any], expected: str = "policy") ->
     return ""
 
 
+def first_return_suffix(mission_intent: str) -> str:
+    """Mirror the production service-wait branch, not the transport label."""
+    if mission_intent == "recall":
+        return ":recall_loading_complete"
+    if mission_intent == "delivery":
+        return ":site_exit_first"
+    raise MatrixError(f"invalid Return mission intent: {mission_intent!r}")
+
+
 def return_source_matches(
     observed: Any,
     expected_source: str,
@@ -738,8 +747,9 @@ def return_source_matches(
         match = GUEST_RETURN_SOURCE_RE.fullmatch(observed)
         return bool(match and match.group(1) == expected_site
                     and int(match.group(2)) == expected_generation)
-    site_exit_suffix = ":site_exit_first"
-    if not expected_source.endswith(site_exit_suffix):
+    site_exit_suffix = next((suffix for suffix in
+        (":site_exit_first", ":recall_loading_complete") if expected_source.endswith(suffix)), "")
+    if not site_exit_suffix:
         return False
     authority = expected_source[: -len(site_exit_suffix)]
     token_prefix = f"{authority}:ui_return_token="
@@ -802,6 +812,18 @@ def mission_identity(state: Mapping[str, Any]) -> dict[str, Any]:
             "generation": generation}
 
 
+def expected_mission_owner(return_authority: str, mission_intent: str) -> str:
+    """Mirror the production dispatch source, not the test transport name.
+
+    Both Robot browser and diagnostic REST recall use /ui/camping_site_recall,
+    which claims source robot_ui:recall and therefore owner robot. Delivery
+    remains operator-owned; the Guest transport always claims guest ownership.
+    """
+    if return_authority == "guest_browser":
+        return "guest"
+    return "robot" if mission_intent == "recall" else "operator"
+
+
 def return_context(state: Mapping[str, Any], snapshot: Mapping[str, Any],
                    identity: Mapping[str, Any], *, final_return: bool = False) -> dict[str, Any]:
     if mission_identity(state) != identity:
@@ -854,6 +876,7 @@ def return_acknowledgement(snapshot: Mapping[str, Any], response: Mapping[str, A
                          for item in (sequences.get("ui_operation_requests") or [])[context.get("ui_request_count_before", 0):]):
         return None
     base = ui_source if guest else source
+    initial_suffix = first_return_suffix(str(identity.get("intent", "")))
     final_source = f"{base}:recall_final_return:site={site}:g={generation}"
     for item in (sequences.get("controller_operation_requests") or [])[context.get("controller_request_count_before", 0):]:
         observed = item.get("source", "")
@@ -861,8 +884,8 @@ def return_acknowledgement(snapshot: Mapping[str, Any], response: Mapping[str, A
             continue
         if final and observed == final_source:
             return {"controller_source": observed, "ui_source": ui_source, "token": ""}
-        if not final and return_source_matches(observed, f"{base}:site_exit_first", site, generation):
-            token = observed.split(":ui_return_token=", 1)[1].removesuffix(":site_exit_first")
+        if not final and return_source_matches(observed, f"{base}{initial_suffix}", site, generation):
+            token = observed.split(":ui_return_token=", 1)[1].removesuffix(initial_suffix)
             return {"controller_source": observed, "ui_source": ui_source, "token": token}
     return None
 
@@ -1441,6 +1464,7 @@ class UIClient:
     def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
         if context.get("final_return"):
             raise MatrixError("REST cannot authorize final recall loading confirmation; use the visible Robot UI")
+        self._last_return_mission_intent = context["mission_identity"]["intent"]
         return {**self.post("/ui/manual_return"), "context": dict(context),
                 "source": "http:manual_return", "transport": "operator_rest"}
 
@@ -1449,7 +1473,7 @@ class UIClient:
 
     @property
     def expected_return_source(self) -> str:
-        return "http:manual_return:site_exit_first"
+        return "http:manual_return" + first_return_suffix(getattr(self, "_last_return_mission_intent", "delivery"))
 
     def close(self) -> None:
         return None
@@ -2202,6 +2226,7 @@ class OperatorBrowserClient(GuestBrowserClient):
         self._interactions = []
         identity = context["mission_identity"]
         final_return = context.get("final_return") is True
+        self._last_return_mission_intent = identity["intent"]
         # Both production buttons call the same ownership-checked handler.
         # Prefer the modal when shown; the panel remains usable if the user
         # dismissed it. Neither may exist when arrivedSite/return authority
@@ -2251,7 +2276,10 @@ class OperatorBrowserClient(GuestBrowserClient):
             "action": "usage_complete",
             "frame": frame,
             "source": "robot_ui:usage_complete",
-            "expected_ros_source": "robot_ui:usage_complete:site_exit_first",
+            "expected_ros_source": (
+                f"robot_ui:usage_complete:recall_final_return:site={identity['site']}:g={identity['generation']}"
+                if final_return else "robot_ui:usage_complete" + first_return_suffix(identity["intent"])
+            ),
             "context": dict(context),
             "transport": "visible_operator_page_websocket_via_cdp_input",
             "interactions": list(self._interactions),
@@ -2262,7 +2290,7 @@ class OperatorBrowserClient(GuestBrowserClient):
 
     @property
     def expected_return_source(self) -> str:
-        return "robot_ui:usage_complete:site_exit_first"
+        return "robot_ui:usage_complete" + first_return_suffix(getattr(self, "_last_return_mission_intent", "delivery"))
 
 
 def capture_ui_handoff_view(client: Any, directory: Path, label: str,
@@ -3089,7 +3117,7 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
                 "robot_ui:recall" if recall else "ws"
             ),
             "expected_return_operation": RETURN_OPERATION,
-            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete" + first_return_suffix(args.mission_intent),
             "ui_endpoints": {
                 "dispatch": (
                     "visible Robot UI data-ui controls -> CDP pointer/text "
@@ -3121,7 +3149,7 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
                 required_service_state_ids("recall")
             ),
             "expected_return_operation": RETURN_OPERATION,
-            "expected_return_source": "http:manual_return:site_exit_first",
+            "expected_return_source": "http:manual_return:recall_loading_complete",
             "ui_endpoints": {
                 "dispatch": (
                     "POST /ui/camping_site_recall?site=Bx&intent=recall"
@@ -3496,9 +3524,8 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     candidate = mission_identity(state)
                     if (candidate["site"] == key and candidate["intent"] == args.mission_intent
                             and candidate["generation"] != prior_generation
-                            and candidate["owner"] == ("guest" if args.return_authority == "guest_browser"
-                                else "robot" if args.return_authority == "operator_browser" and args.mission_intent == "recall"
-                                else "operator")):
+                            and candidate["owner"] == expected_mission_owner(
+                                args.return_authority, args.mission_intent)):
                         identity = candidate
                         break
                 observer.spin_once(0.05)
