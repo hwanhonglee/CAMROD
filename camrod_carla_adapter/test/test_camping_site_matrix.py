@@ -1678,6 +1678,69 @@ def test_guest_final_confirmation_defaults_to_real_robot_handoff_and_allows_gues
     assert matrix._parser().parse_args(["--guest-final-return-authority", "guest"]).guest_final_return_authority == "guest"
 
 
+class _ConfirmationCapturePage:
+    timeout_s = 0.01
+    def __init__(self, identity, final=False, *, visible=True, png=None):
+        self.identity, self.final, self.visible = dict(identity), final, visible
+        self.png = b"\x89PNG\r\n\x1a\nfixture" if png is None else png
+        self.calls, self.expressions = [], []
+    def _evaluate(self, expression):
+        self.expressions.append(expression)
+        return {"title": "actual UI fixture", "url": "http://127.0.0.1:8010/",
+                "visibility": "visible", "focused": True,
+                "controls": [{"text": "완료 확인", "visible": self.visible, "disabled": False}],
+                "guest_identity": self.identity, "guest_final_ready": self.final}
+    def _call(self, method, params):
+        import base64
+        self.calls.append(method)
+        return {"result": {"data": base64.b64encode(self.png).decode()}}
+
+
+@pytest.mark.parametrize("frontend,final", [("robot", False), ("robot", True), ("guest", False), ("guest", True)])
+def test_immediate_confirmation_capture_binds_actual_png_dom_and_mission_context(tmp_path, frontend, final):
+    context = _return_test_context(owner="guest" if frontend == "guest" else "robot", intent="recall", final=final)
+    page = _ConfirmationCapturePage(context["mission_identity"], final)
+    result = {}
+    record = matrix.capture_before_confirmation(page, tmp_path, context, result, frontend=frontend)
+    assert record["status"] == "CAPTURED"
+    assert result["confirmation_views"] == [record]
+    assert record["context"] == context
+    assert record["stage"] == ("final" if final else "first")
+    path = Path(record["png"]["path"])
+    assert path.read_bytes() == page.png
+    assert record["png"]["sha256"] == matrix.sha256_file(path)
+    assert "B1_g13_" in path.name
+    assert page.calls == ["Page.captureScreenshot"]
+    assert "Page.bringToFront" not in page.calls
+    assert all(".click(" not in expression and "Input.dispatch" not in expression for expression in page.expressions)
+    context["mission_identity"]["generation"] = 99
+    assert record["context"]["mission_identity"]["generation"] == 13
+
+
+@pytest.mark.parametrize("failure", ["hidden", "bad_png", "stale_guest"])
+def test_confirmation_capture_failure_is_retained_before_any_click(tmp_path, failure):
+    context = _return_test_context(owner="guest", intent="recall")
+    page = _ConfirmationCapturePage(context["mission_identity"], visible=failure != "hidden",
+                                    png=b"not-png" if failure == "bad_png" else None)
+    if failure == "stale_guest": page.identity["generation"] = 12
+    result = {}
+    with pytest.raises(matrix.MatrixError, match="evidence capture failed"):
+        matrix.capture_before_confirmation(page, tmp_path, context, result, frontend="guest")
+    assert result["confirmation_views"][0]["status"] == "CAPTURE_FAILED"
+    assert result["confirmation_views"][0]["context"] == context
+    assert not list(tmp_path.glob("*.png"))
+    assert set(page.calls) <= {"Page.captureScreenshot"}
+
+
+def test_all_browser_confirmation_paths_checkpoint_capture_before_request():
+    import inspect
+    source = inspect.getsource(matrix.run_matrix)
+    helper = source[source.index("def request_visible_confirmation"):source.index("def copy_final_observation")]
+    assert helper.index("capture_before_confirmation(") < helper.index("checkpoint(result,") < helper.index("frontend_client.request_return(context)")
+    assert source.count("request_visible_confirmation(") == 4  # definition, first, Robot handoff final, same-page final
+    assert 'args.output.parent / "ui_confirmations"' in helper
+
+
 def test_handoff_captures_real_foreground_page_metadata_and_png(tmp_path):
     import base64
     png = b"\x89PNG\r\n\x1a\n" + b"actual-test-fixture"

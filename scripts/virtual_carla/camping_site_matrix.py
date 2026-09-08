@@ -429,6 +429,7 @@ class SiteResult:
     return_distance_m: float = 0.0
     total_odom_distance_m: float = 0.0
     milestones: list[dict[str, Any]] = field(default_factory=list)
+    confirmation_views: list[dict[str, Any]] = field(default_factory=list)
     failure_reason: str = ""
     start_localization_pose: dict[str, Any] = field(default_factory=dict)
     arrival_localization_pose: dict[str, Any] = field(default_factory=dict)
@@ -2422,6 +2423,70 @@ def capture_ui_handoff_view(client: Any, directory: Path, label: str,
     return dict(view)
 
 
+def capture_before_confirmation(client: Any, directory: Path, context: Mapping[str, Any],
+                                result: dict[str, Any], *, frontend: str) -> dict[str, Any]:
+    """Retain the actual pre-click page without focusing it or injecting state.
+
+    Store context before capture so a failed PNG/DOM check remains attributable
+    to the exact mission and confirmation stage in an interrupted/failed case.
+    """
+    stage = "final" if context.get("final_return") is True else "first"
+    record: dict[str, Any] = {"stage": stage, "frontend": frontend, "status": "CAPTURING",
+        "context": json.loads(json.dumps(dict(context))), "started_at_utc": utc_now(),
+        "transport": "CDP.Page.captureScreenshot_before_confirmation_click"}
+    result.setdefault("confirmation_views", []).append(record)
+    try:
+        if frontend not in {"robot", "guest"}:
+            raise MatrixError("confirmation screenshot requires the actual Robot or Guest page")
+        identity = record["context"]["mission_identity"]
+        if identity.get("site") not in DEFAULT_SITES or type(identity.get("generation")) is not int or identity["generation"] <= 0:
+            raise MatrixError("confirmation screenshot has invalid mission identity")
+        expected_phase = "RECALL_RETURN_WAIT" if stage == "final" else "WAIT_RETURN"
+        if context.get("site_phase") != expected_phase:
+            raise MatrixError("confirmation screenshot has wrong confirmation phase")
+        selectors = (['[data-ui="operator-arrival-return-confirm"]', '[data-ui="operator-arrival-return"]']
+                     if frontend == "robot" else ["#completeAction"])
+        expression = "(() => {" + f"const selectors={json.dumps(selectors)};" + (
+            "const controls=selectors.flatMap(selector=>Array.from(document.querySelectorAll(selector)).map(el=>{"
+            "const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {selector:selector,"
+            "text:el.textContent.replace(/\\s+/g,' ').trim(),disabled:Boolean(el.disabled),"
+            "visible:r.width>0&&r.height>0&&r.top>=0&&r.left>=0&&r.bottom<=innerHeight&&r.right<=innerWidth"
+            "&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0,"
+            "x:r.left,y:r.top,width:r.width,height:r.height};}));"
+            "return {title:document.title,url:location.href,visibility:document.visibilityState,focused:document.hasFocus(),"
+            "controls:controls,text:document.body.innerText,"
+            "guest_identity:typeof activeMissionGeneration==='undefined'?null:{site:lastDestSite,"
+            "generation:activeMissionGeneration,owner:activeRequestOwner,intent:activeRequestIntent},"
+            "guest_final_ready:typeof recallFinalReturnReady==='undefined'?null:recallFinalReturnReady};})()")
+        deadline = time.monotonic() + client.timeout_s
+        while True:
+            view = client._evaluate(expression)
+            record["page"] = view
+            if (isinstance(view, dict) and view.get("visibility") == "visible"
+                    and any(control.get("visible") and not control.get("disabled") for control in view.get("controls", []))):
+                if frontend == "guest" and (view.get("guest_identity") != identity or view.get("guest_final_ready") is not context.get("final_return")):
+                    raise MatrixError("Guest confirmation screenshot has stale identity or loading stage")
+                break
+            if time.monotonic() >= deadline:
+                raise MatrixError("confirmation control is not visible/enabled before screenshot")
+            time.sleep(0.05)
+        record["capture_started_at_utc"] = utc_now()
+        payload = client._call("Page.captureScreenshot", {"format": "png", "fromSurface": True})
+        png = base64.b64decode(payload["result"]["data"], validate=True)
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise MatrixError("confirmation capture did not return actual PNG data")
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{identity['site']}_g{identity['generation']}_{stage}_{frontend}.png"
+        with path.open("xb") as stream:
+            stream.write(png)
+        record.update(status="CAPTURED", captured_at_utc=utc_now(),
+            png={"path": str(path.resolve()), "bytes": len(png), "sha256": sha256_file(path)})
+        return record
+    except Exception as error:
+        record.update(status="CAPTURE_FAILED", error=str(error), finished_at_utc=utc_now())
+        raise MatrixError(f"{stage} confirmation evidence capture failed: {error}") from error
+
+
 def _attr(message: Any, name: str, default: Any = None) -> Any:
     if isinstance(message, Mapping):
         return message.get(name, default)
@@ -3438,6 +3503,16 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             observer.spin_once(0.05)
         raise MatrixError(last or "Return context did not become authoritative")
 
+    def request_visible_confirmation(frontend_client: Any, context: Mapping[str, Any],
+                                     result: dict[str, Any], *, frontend: str) -> dict[str, Any]:
+        try:
+            capture_before_confirmation(frontend_client, args.output.parent / "ui_confirmations",
+                                        context, result, frontend=frontend)
+        finally:
+            # Persist CAPTURE_FAILED too, before any click can be attempted.
+            checkpoint(result, "pre-click confirmation evidence checkpoint")
+        return frontend_client.request_return(context)
+
     def copy_final_observation(result: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
         result["final_service_state"] = snapshot.get("service_state") or {}
         result["final_parking_status"] = snapshot.get("parking") or {}
@@ -3688,7 +3763,10 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             return_request_monotonic[key] = time.monotonic()
             return_request_distance_m[key] = arrival_distance_m[key]
             context = await_return_context(identity)
-            result["return_response"] = client.request_return(context)
+            result["return_response"] = (client.request_return(context)
+                if args.return_authority == "operator_rest" else
+                request_visible_confirmation(client, context, result,
+                    frontend="guest" if args.return_authority == "guest_browser" else "robot"))
             checkpoint(result, "return request accepted")
             wait_until(
                 lambda snap: return_acknowledgement(snap, result["return_response"]) is not None,
@@ -3717,7 +3795,8 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                         final_client = OperatorBrowserClient(args.operator_cdp_url, args.ui_url)
                         if handoff is not None:
                             handoff["robot_before"] = capture_ui_handoff_view(final_client, handoff_dir, "robot_before")
-                        result["final_return_response"] = final_client.request_return(final_context)
+                        result["final_return_response"] = request_visible_confirmation(
+                            final_client, final_context, result, frontend="robot")
                     finally:
                         if final_client is not None:
                             final_client.close()
@@ -3726,7 +3805,9 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     if handoff is not None:
                         result["final_return_response"]["ui_handoff"] = handoff
                 else:
-                    result["final_return_response"] = client.request_return(final_context)
+                    result["final_return_response"] = request_visible_confirmation(
+                        client, final_context, result,
+                        frontend="guest" if args.return_authority == "guest_browser" else "robot")
                 checkpoint(result, "final recall loading confirmation sent")
                 wait_until(lambda snap: return_acknowledgement(snap, result["final_return_response"]) is not None,
                            10.0, "fresh final-loading RETURN source observed", result)
