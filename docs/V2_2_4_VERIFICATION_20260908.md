@@ -121,3 +121,95 @@ The contract now checks that current logic, including unknown origins and
 charging/outside-polygon mismatches. No UI or departure runtime code changed.
 The selected station/departure/origin UI tests and departure contracts passed:
 18 passed, 60 unrelated tests deselected.
+
+## Final pure-CAMROD revision and retained evidence
+
+The final runtime-code revision covered by this supplement is
+`ddd599672dd7977295406b24e1ffa3fc2f0225e2`, including the UI regression commit
+`af3d7b6e58876f57b4fb9c3ff8cd4cb7a3b8c3df`. The later documentation commit does
+not change algorithms, configuration, launch behavior or the running workspace.
+
+| Focused suite | Result | Retained original JUnit |
+| --- | --- | --- |
+| Robot UI frontend contracts, including completion after a battery heartbeat | 32 passed, 0 failed/skipped; rerun on the final pure revision | [robot_ui_frontend.junit.xml](evidence/v2_2_4_20260908/robot_ui_frontend.junit.xml) |
+| Native production reverse-parking controller | 16 passed, 0 failed/disabled | [reverse_parking_controller.junit.xml](evidence/v2_2_4_20260908/reverse_parking_controller.junit.xml) |
+| Reverse-parking Euclidean goal-completion helper | 4 passed, 0 failed/disabled | [reverse_parking_completion.junit.xml](evidence/v2_2_4_20260908/reverse_parking_completion.junit.xml) |
+
+[verification_summary.json](evidence/v2_2_4_20260908/verification_summary.json)
+records the source revision, test provenance, limits of the claims, artifact
+sizes and SHA-256 values. The native XML files are byte-identical to the
+successful native build's original results. Its CMake source directory was
+the isolated pure checkout's `camrod_control`, not a simulator controller.
+Only the small result files are retained here; temporary build trees and large
+runtime logs are not required to read or reproduce them. These 52 latest
+focused cases are a supplement to the earlier results, not a rerun of every
+historical suite in this document.
+
+### UI completion survives an unrelated battery heartbeat
+
+Commit `af3d7b6e` extends the actual frontend WebSocket-handler replay in
+`test_robot_reconnect_restores_completion_and_preserves_minimal_phase_frames`.
+After an owned B1 mission reaches `WAITING_FOR_RETURN_REQUEST`, a later
+`battery_return_pending=false` message must preserve the arrived site,
+completion popup and ownership-checked completion permission. It must not
+erase arrival state merely because no battery return is pending.
+
+The pure develop frontend already had the correct incremental battery-state
+handler, so this commit changes the regression test only, not `App.js`.
+The complete frontend contract suite was run again when curating these
+artifacts: 32 passed in 0.35 seconds. The replay runs extracted production
+JavaScript with Node; it does not connect to live WebSockets, command a robot,
+or prove actual browser rendering and physical travel.
+
+### Reverse parking reaches the XY disk, not just its axial envelope
+
+Commit `ddd59967` fixes `reverse_parking_controller_node.cpp` and documents
+the existing Euclidean goal contract in `reverse_parking_completion.hpp`.
+Previously the controller stopped as soon as signed reverse-axis distance
+entered the tolerance, then correctly rejected `PARKED` if XY was still
+outside the goal. For example, axis error 0.25 m and lateral error 0.128 m
+produce approximately 0.281 m XY error, outside the unchanged 0.25 m radius.
+This was an early stopping-boundary error, not proof of inadequate wheel torque.
+
+The controller now continues its existing slow final approach within the
+axial envelope only while the station is still ahead and the reverse-axis
+line can intersect the same XY acceptance disk. It stops with an error if
+the station plane has been passed outside the disk, or the lateral offset
+cannot reach that disk. The maximum reverse distance and timeout remain hard
+bounds. Fresh finite localization, invalid-goal rejection, immediate charging
+contact handling, cancellation and the actual XY acceptance radius are
+preserved. No torque, vehicle model, goal tolerance or sensor pose is changed.
+
+The native regression includes both signs of a reachable lateral offset,
+unreachable and tangential lateral misses, station-plane crossing and the
+retained timeout. The two rebuilt CTest targets passed all 16 controller and
+4 goal-helper cases. To reproduce after the CMake configuration above:
+
+```bash
+cmake --build "$verification_build/control" --parallel 2 --target \
+  test_reverse_parking_controller test_reverse_parking_completion
+ctest --test-dir "$verification_build/control" --output-on-failure \
+  -R '^test_reverse_parking_(controller|completion)$'
+PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+  python3 -m pytest -q -p no:cacheprovider \
+  camrod_ui/test/test_ui_robot_frontend_contract.py \
+  --junitxml="$verification_build/robot_ui_frontend.junit.xml"
+```
+
+### Hardware geometry and validation boundary
+
+The stored GNSS antenna lever arm remains **x=0.0 m, y=+0.45 m**, with the
+existing heading trim **-92 degrees**. A reported front-mounted antenna has
+not been measured and confirmed by these software tests. Do not infer a
+verified forward offset, silently move it to the robot center, or claim that
+changing parking tolerances corrects its geometry. Deployment still requires
+the actual antenna-to-body measurement, frame-axis convention and
+timestamp-aligned heading to be checked on that platform.
+
+This pure supplement introduces no external simulator, bridge, model or map
+dependency. The earlier existing built-in simulator heading-bias correction
+is recorded separately above; it is not an external simulator integration.
+Real rendered simulator trials and their PNG/GIF evidence remain a separate
+validation stream. The native/UI results here do not certify B1-B13 physical
+delivery, recall, Guest-to-Robot handoff, optional docking or the unmeasured
+hardware mount.

@@ -1,0 +1,64 @@
+{
+  "schema": "camrod.pure_v2_2_4.focused_verification.v1",
+  "base_develop_commit": "f3a177038567f8f1b568e2f49d4c127bc298d9a5",
+  "verified_runtime_code_commit": "ddd599672dd7977295406b24e1ffa3fc2f0225e2",
+  "ui_regression_commit": "af3d7b6e58876f57b4fb9c3ff8cd4cb7a3b8c3df",
+  "scope": "Pure CAMROD deterministic native controller and frontend contract tests; no live motion or simulator integration claim",
+  "curated_on_local_date": "2026-09-08",
+  "timestamp_timezone": "Asia/Seoul (UTC+09:00); JUnit timestamps omit an explicit offset",
+  "native_provenance": {
+    "source_worktree": "/home/hong/camrod_ws/pure_camrod_v224_verification",
+    "cmake_home_directory_verified": "/home/hong/camrod_ws/pure_camrod_v224_verification/camrod_control",
+    "build_type": "Release",
+    "junit_capture": "Byte-identical copies of the successful rebuilt native targets; original JUnit timestamp 2026-09-08T13:23:52",
+    "native_targets_rerun_during_curation": false
+  },
+  "frontend_provenance": {
+    "rerun_during_curation": true,
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -p no:cacheprovider camrod_ui/test/test_ui_robot_frontend_contract.py --junitxml=docs/evidence/v2_2_4_20260908/robot_ui_frontend.junit.xml",
+    "reported_result": "32 passed in 0.35s",
+    "live_websocket_or_motion_used": false
+  },
+  "artifacts": [
+    {
+      "path": "reverse_parking_controller.junit.xml",
+      "bytes": 3567,
+      "sha256": "bbd1d2e5abe9235bdb938c07c6681ec3ca878e677e3ddf54d5c857caf5fc8708",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0
+    },
+    {
+      "path": "reverse_parking_completion.junit.xml",
+      "bytes": 1075,
+      "sha256": "93e1dcd6af0d63427143a83fcae742c2e768b1f3ead0ac5142ed7ab14537fb62",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0
+    },
+    {
+      "path": "robot_ui_frontend.junit.xml",
+      "bytes": 5641,
+      "sha256": "7312e3d7969d0f9650ddc2f58d3641b6ef17126a0620d209f3571a2c1d1a2ed4",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0
+    }
+  ],
+  "hardware_boundary": {
+    "configured_gnss_antenna_offset_x_m": 0.0,
+    "configured_gnss_antenna_offset_y_m": 0.45,
+    "configured_gnss_heading_yaw_offset_deg": -92.0,
+    "reported_front_mount_physically_verified": false,
+    "hardware_geometry_changed_by_this_supplement": false
+  },
+  "does_not_prove": [
+    "B1-B13 live physical traversal or duration and distance",
+    "Rendered browser or simulator PNG/GIF results",
+    "Physical Guest-to-Robot UI handoff or optional charging dock",
+    "Measured antenna mounting geometry on the deployment platform"
+  ]
+}
