@@ -93,6 +93,52 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn(".move-verify-keyboard .vkb-key", self.css)
         self.assertIn(".move-verify-keyboard .vkb-space", self.css)
 
+    def test_service_motion_copy_defers_to_stop_or_error_without_claiming_false_motion(self) -> None:
+        start = self.source.index("function serviceMotionNotice(")
+        helper = self.source[start:self.source.index("function robotCanCompleteMission(", start)]
+        cases = [
+            ["SAFETY_STOP", "ERROR"], ["SAFETY_STOP", "OK"],
+            ["STOPPED", "OK"], ["DRIVING", "ERROR"], ["ERROR", "OK"],
+            ["DRIVING", "OK"], ["DRIVING", "WARNING"], ["ARRIVED", "OK"],
+        ]
+        result = subprocess.run(
+            ["node"], input=helper + "\nprocess.stdout.write(JSON.stringify(" + json.dumps(cases)
+            + ".map(([phase,health])=>serviceMotionNotice(phase,health))));",
+            text=True, capture_output=True, check=True,
+        )
+        notices = json.loads(result.stdout)
+        self.assertEqual(notices[0], notices[1])
+        self.assertEqual(notices[0]["label"], "안전 정지")
+        self.assertIn("일시 정지", notices[0]["message"])
+        self.assertEqual(notices[2]["message"], "운행이 정지되었습니다.")
+        self.assertEqual(notices[3], notices[4])
+        self.assertEqual(notices[3]["label"], "시스템 오류")
+        self.assertNotIn("정지", notices[3]["message"])
+        for notice in notices[:5]:
+            self.assertNotIn("이동 중", notice["message"])
+            self.assertNotIn("복귀 중", notice["message"])
+        self.assertEqual(notices[5:], [None, None, None])
+
+    def test_motion_notice_only_replaces_motion_copy_and_preserves_arrival_actions(self) -> None:
+        self.assertIn("const motionNotice = serviceMotionNotice(missionPhase, systemHealth);", self.source)
+        returning = self.source[self.source.index(") : displayedReturning ? ("):
+                                self.source.index(") : activeSite ? (")]
+        self.assertIn("motionNotice?.label || recallProgress.label", returning)
+        self.assertIn("motionNotice?.message || (recallReturnPresentation", returning)
+        self.assertIn("onClick={handleStopMove}", returning)
+        for first, last in ((") : activeSite ? (", ") : activeRecallSite ? ("),
+                            (") : activeRecallSite ? (", ") : manualDriveActive ? ("),
+                            (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
+            block = self.source[self.source.index(first):self.source.index(last)]
+            self.assertIn("motionNotice?.message ||", block)
+        self.assertEqual(self.source.count("motionNotice?.message || '로봇이 이용객의 위치로 이동 중입니다'"), 2)
+        arrival = self.source[self.source.index(") : arrivedSite ? ("):
+                              self.source.index(") : displayedReturning ? (")]
+        self.assertNotIn("motionNotice", arrival)
+        self.assertIn("recallReturnInstructions(arrivedSite, recallFinalReturnReady)", arrival)
+        self.assertIn("recallCompletionLabel(arrivedSite, recallFinalReturnReady)", arrival)
+        self.assertIn("onClick={handleArrivalComplete}", arrival)
+
     def test_imported_png_assets_are_present_and_referenced(self) -> None:
         for filename in ("information_nobg.png", "hiking_trail_nobg.png"):
             asset = PUBLIC_ASSETS / filename
