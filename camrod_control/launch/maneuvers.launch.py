@@ -89,6 +89,10 @@ def _camping_site_parameter_overrides(context):
             LaunchConfiguration("crab_entry_body_yaw_alignment_timeout_s"),
             value_type=float,
         ),
+        "crab_entry_body_yaw_alignment_min_angular_speed_radps": ParameterValue(
+            LaunchConfiguration("crab_entry_body_yaw_alignment_min_angular_speed_radps"),
+            value_type=float,
+        ),
         "crab_out_yaw_recovery_enable": ParameterValue(
             LaunchConfiguration("crab_out_yaw_recovery_enable"),
             value_type=bool,
@@ -242,6 +246,9 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "crab_entry_body_yaw_alignment_tolerance_deg", default_value="0.5"
+        ),
+        DeclareLaunchArgument(
+            "crab_entry_body_yaw_alignment_min_angular_speed_radps", default_value="0.0"
         ),
         DeclareLaunchArgument(
             "crab_entry_body_yaw_alignment_timeout_s", default_value="15"

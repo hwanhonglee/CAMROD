@@ -2453,6 +2453,15 @@ def generate_launch_description():
             'Yaw tolerance for the stationary crab-entry body alignment',
         ),
         (
+            'control_camping_site_crab_entry_body_yaw_alignment_min_angular_speed_radps',
+            cfg_get(
+                launch_cfg,
+                'control/camping_site_crab_entry_body_yaw_alignment_min_angular_speed_radps',
+                0.0,
+            ),
+            'Optional stationary crab-entry yaw speed floor; zero preserves legacy behavior',
+        ),
+        (
             'control_camping_site_crab_entry_body_yaw_alignment_timeout_s',
             cfg_get(
                 launch_cfg,
@@ -3313,6 +3322,9 @@ def generate_launch_description():
         ],
         'crab_entry_body_yaw_alignment_timeout_s': lc[
             'control_camping_site_crab_entry_body_yaw_alignment_timeout_s'
+        ],
+        'crab_entry_body_yaw_alignment_min_angular_speed_radps': lc[
+            'control_camping_site_crab_entry_body_yaw_alignment_min_angular_speed_radps'
         ],
         'crab_out_yaw_recovery_enable': lc[
             'control_camping_site_crab_out_yaw_recovery_enable'

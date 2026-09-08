@@ -673,6 +673,13 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "carla_crab_entry_body_yaw_alignment_min_angular_speed_radps",
+            default_value=os.environ.get(
+                "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_MIN_ANGULAR_SPEED_RADPS", "0.0"
+            ),
+            description="Optional stationary crab-entry yaw speed floor; zero preserves legacy behavior",
+        ),
+        DeclareLaunchArgument(
             "carla_crab_entry_body_yaw_alignment_timeout_s",
             default_value=os.environ.get(
                 "CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_TIMEOUT_S", "15"
@@ -1196,6 +1203,9 @@ def generate_launch_description():
                     LaunchConfiguration(
                         "carla_crab_entry_body_yaw_alignment_timeout_s"
                     )
+                ),
+                "control_camping_site_crab_entry_body_yaw_alignment_min_angular_speed_radps": (
+                    LaunchConfiguration("carla_crab_entry_body_yaw_alignment_min_angular_speed_radps")
                 ),
                 "control_camping_site_crab_out_yaw_recovery_enable": (
                     LaunchConfiguration(

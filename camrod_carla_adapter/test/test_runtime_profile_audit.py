@@ -685,6 +685,7 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "rotate_entry_centering_max_initial_error_m": 0.65,
         "crab_entry_body_yaw_compensation_deg": 2.0,
         "crab_entry_body_yaw_alignment_tolerance_deg": 1.5,
+        "crab_entry_body_yaw_alignment_min_angular_speed_radps": 0.08,
         "crab_out_yaw_recovery_enable": True,
         "crab_out_yaw_recovery_max_attempts": 8,
         "crab_out_yaw_recovery_global_timeout_s": 90.0,
@@ -693,6 +694,8 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "crab_entry_body_yaw_alignment_tolerance_deg"
     ] == 0.5
     assert parity[controller]["max_angular_speed_radps"] == 0.35
+    assert parity[controller]["crab_entry_body_yaw_alignment_min_angular_speed_radps"] == 0.0
+    assert site[controller]["crab_entry_body_yaw_alignment_min_angular_speed_radps"] == 0.08
     assert site[controller]["max_angular_speed_radps"] == 0.45
     assert site[controller][
         "crab_entry_body_yaw_alignment_tolerance_deg"

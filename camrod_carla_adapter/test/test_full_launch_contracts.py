@@ -130,6 +130,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "carla_crab_entry_body_yaw_compensation_deg": "2.0",
         "carla_crab_entry_body_yaw_alignment_tolerance_deg": "1.5",
         "carla_crab_entry_body_yaw_alignment_timeout_s": "15",
+        "carla_crab_entry_body_yaw_alignment_min_angular_speed_radps": "0.08",
         "carla_crab_out_yaw_recovery_enable": "true",
         "carla_crab_out_yaw_recovery_trigger_deg": "8.0",
         "carla_crab_out_yaw_recovery_max_attempts": "8",
@@ -1013,6 +1014,27 @@ def test_campsite_tuning_is_typed_forwarded_and_isolated_from_full_defaults():
         assert f'"{bringup_name}": (' in full_launch
         assert f'"{carla_launch_name}"' in full_launch
         assert f'"{carla_launch_name}":"{tuned_default}"' in compact_tuned_launch
+
+
+def test_body_yaw_minimum_speed_floor_is_wired_but_only_site_geometry_enables_it():
+    parameter = "crab_entry_body_yaw_alignment_min_angular_speed_radps"
+    carla_name = f"carla_{parameter}"
+    bringup_name = f"control_camping_site_{parameter}"
+    full = "".join(FULL_LAUNCH.read_text().split())
+    bringup = "".join((REPO_ROOT / "camrod_bringup/launch/_bringup_impl.py").read_text().split())
+    maneuvers = "".join((REPO_ROOT / "camrod_control/launch/maneuvers.launch.py").read_text().split())
+    assert '"CAMROD_CARLA_CRAB_ENTRY_BODY_YAW_ALIGNMENT_MIN_ANGULAR_SPEED_RADPS","0.0"' in full
+    assert f'"{bringup_name}":(LaunchConfiguration("{carla_name}"))' in full
+    assert f"'control/camping_site_{parameter}',0.0," in bringup
+    assert f"'{parameter}':lc['{bringup_name}']" in bringup
+    assert f'DeclareLaunchArgument("{parameter}",default_value="0.0")' in maneuvers
+    assert f'"{parameter}":ParameterValue(LaunchConfiguration("{parameter}"),value_type=float,)' in maneuvers
+    assert _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH).DEVELOP_SITE_GEOMETRY_ARGUMENTS[carla_name] == "0.08"
+    # No tolerance/timeout/max-rate relaxation accompanies the minimum command.
+    overrides = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH).DEVELOP_SITE_GEOMETRY_ARGUMENTS
+    assert overrides["carla_crab_entry_body_yaw_alignment_tolerance_deg"] == "1.5"
+    assert overrides["carla_crab_entry_body_yaw_alignment_timeout_s"] == "15"
+    assert overrides["carla_camping_site_max_angular_speed_radps"] == "0.45"
 
 
 def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():

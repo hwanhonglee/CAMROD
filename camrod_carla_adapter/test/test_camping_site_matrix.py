@@ -656,6 +656,8 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert site[parking]["tag_wait_timeout_s"] == 60.0
     assert site["/ui_backend"]["charging_departure_delay_s"] == 7.0
     assert site[controller]["crab_entry_body_yaw_compensation_deg"] == 2.0
+    assert site[controller]["crab_entry_body_yaw_alignment_min_angular_speed_radps"] == 0.08
+    assert parity[controller]["crab_entry_body_yaw_alignment_min_angular_speed_radps"] == 0.0
     assert site[controller][
         "crab_entry_body_yaw_alignment_tolerance_deg"
     ] == 1.5

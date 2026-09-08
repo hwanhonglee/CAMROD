@@ -302,6 +302,39 @@ inline bool campsiteBodyYawWithinTolerance(const double current_yaw_rad,
   return std::abs(error) * kRadiansToDegrees <= std::abs(tolerance_deg);
 }
 
+inline bool campsiteBodyYawMinimumAngularSpeedValid(const double minimum_radps) {
+  return std::isfinite(minimum_radps) && minimum_radps >= 0.0;
+}
+
+// Optional command floor for the dedicated body-yaw precompensation/restore
+// states only. Zero retains their proportional controller. Acceptance remains
+// the dedicated yaw/settling contract, never the presence of this command.
+inline double campsiteBodyYawAlignmentAngularCommand(
+    const double error_rad, const double tolerance_deg,
+    const double proportional_gain, const double maximum_radps,
+    const double minimum_radps = 0.0) {
+  if (!std::isfinite(error_rad) || !std::isfinite(tolerance_deg) ||
+      !std::isfinite(proportional_gain) || !std::isfinite(maximum_radps) ||
+      tolerance_deg < 0.0 || proportional_gain < 0.0 || maximum_radps < 0.0 ||
+      !campsiteBodyYawMinimumAngularSpeedValid(minimum_radps)) {
+    return 0.0;
+  }
+  const double error = std::atan2(std::sin(error_rad), std::cos(error_rad));
+  if (campsiteBodyYawWithinTolerance(0.0, error, tolerance_deg)) {
+    return 0.0;
+  }
+  const double requested = proportional_gain * error;
+  if (!std::isfinite(requested)) {
+    return 0.0;
+  }
+  const double command = std::clamp(requested, -maximum_radps, maximum_radps);
+  const double bounded_minimum = std::min(minimum_radps, maximum_radps);
+  if (proportional_gain > 0.0 && std::abs(command) < bounded_minimum) {
+    return std::copysign(bounded_minimum, error);
+  }
+  return command;
+}
+
 inline double campsiteCrabEntryLineCrossTrack(const double current_x,
                                               const double current_y,
                                               const double line_origin_x,

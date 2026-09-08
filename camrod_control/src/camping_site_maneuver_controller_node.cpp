@@ -13,6 +13,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -278,6 +279,17 @@ public:
     crab_entry_body_yaw_alignment_timeout_s_ =
         std::max(0.1, std::abs(declare_parameter<double>(
                           "crab_entry_body_yaw_alignment_timeout_s", 15.0)));
+    // Opt in only in the simulator composition. A tiny proportional command
+    // can fail to converge on the stationary plant; never widen acceptance.
+    crab_entry_body_yaw_alignment_min_angular_speed_radps_ =
+        declare_parameter<double>(
+            "crab_entry_body_yaw_alignment_min_angular_speed_radps", 0.0);
+    if (!camrod_control::campsiteBodyYawMinimumAngularSpeedValid(
+            crab_entry_body_yaw_alignment_min_angular_speed_radps_)) {
+      throw std::invalid_argument(
+          "crab_entry_body_yaw_alignment_min_angular_speed_radps must be "
+          "finite and nonnegative");
+    }
     // HH_260901 - A simulator composition may fail closed before a 180-degree
     // turn if its actual rotation center is outside the collision-certified
     // site envelope. Zero keeps the shared/physical behavior disabled.
@@ -2665,9 +2677,10 @@ private:
       return settled;
     }
     avg_msgs::msg::AvgTwist command;
-    command.angular.z = camrod_control::clamp(rotate_proportional_gain_ * error,
-                                              -maximum_angular_speed_radps_,
-                                              maximum_angular_speed_radps_);
+    command.angular.z = camrod_control::campsiteBodyYawAlignmentAngularCommand(
+        error, crab_entry_body_yaw_alignment_tolerance_deg_,
+        rotate_proportional_gain_, maximum_angular_speed_radps_,
+        crab_entry_body_yaw_alignment_min_angular_speed_radps_);
     last_angular_command_radps_ = command.angular.z;
     last_crab_command_mps_ = 0.0;
     command_publisher_->publish(command);
@@ -3790,6 +3803,8 @@ private:
              fixed(crab_entry_body_yaw_alignment_tolerance_deg_)},
             {"crab_entry_body_yaw_alignment_timeout_s",
              fixed(crab_entry_body_yaw_alignment_timeout_s_)},
+            {"crab_entry_body_yaw_alignment_min_angular_speed_radps",
+             fixed(crab_entry_body_yaw_alignment_min_angular_speed_radps_, 3)},
             {"crab_entry_body_yaw_alignment_wall_elapsed_s",
              fixed(crabEntryBodyYawAlignmentWallElapsedSeconds())},
             {"compensated_directed_rotation_tracking_active",
@@ -3905,6 +3920,7 @@ private:
   double crab_entry_body_yaw_compensation_deg_{0.0};
   double crab_entry_body_yaw_alignment_tolerance_deg_{0.5};
   double crab_entry_body_yaw_alignment_timeout_s_{15.0};
+  double crab_entry_body_yaw_alignment_min_angular_speed_radps_{0.0};
   double rotate_entry_max_position_error_m_{0.0};
   double rotate_entry_centering_max_initial_error_m_{0.30};
   double rotate_entry_centering_max_speed_mps_{0.12};

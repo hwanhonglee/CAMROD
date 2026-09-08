@@ -112,6 +112,111 @@ TEST(CampsiteCrabBodyYawAlignment,
       std::numeric_limits<double>::quiet_NaN(), 0.0, 0.5));
 }
 
+TEST(CampsiteCrabBodyYawAlignment,
+     MinimumCommandAppliesInBothPrecompensationAndNominalRestoreDirections) {
+  constexpr double radians = 0.017453292519943295769236907684886;
+  // The observed 1.68-degree residual is outside the unchanged 1.5-degree
+  // acceptance band. Both states share this command helper: precompensate the
+  // body toward the entry bias, then restore the opposite nominal heading.
+  for (const double error_deg : {1.68, -1.68, 2.0, -2.0}) {
+    EXPECT_DOUBLE_EQ(
+        campsiteBodyYawAlignmentAngularCommand(
+            error_deg * radians, 1.5, 1.2, 0.45, 0.08),
+        std::copysign(0.08, error_deg));
+    EXPECT_FALSE(campsiteBodyYawWithinTolerance(
+        0.0, error_deg * radians, 1.5));
+  }
+}
+
+TEST(CampsiteCrabBodyYawAlignment,
+     MinimumCommandStopsInsideDedicatedToleranceAndActsJustOutside) {
+  constexpr double radians = 0.017453292519943295769236907684886;
+  for (const double error_deg : {0.0, 1.49, -1.49, 1.499999, -1.499999}) {
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         error_deg * radians, 1.5, 1.2, 0.45, 0.08),
+                     0.0);
+  }
+  for (const double error_deg : {1.500001, -1.500001}) {
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         error_deg * radians, 1.5, 1.2, 0.45, 0.08),
+                     std::copysign(0.08, error_deg));
+  }
+}
+
+TEST(CampsiteCrabBodyYawAlignment, ZeroDefaultRetainsProportionalCommand) {
+  constexpr double radians = 0.017453292519943295769236907684886;
+  for (const double error_deg : {1.68, -1.68}) {
+    const double error = error_deg * radians;
+    EXPECT_NEAR(campsiteBodyYawAlignmentAngularCommand(
+                    error, 1.5, 1.2, 0.45),
+                1.2 * error, 1.0e-12);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         error, 1.5, 1.2, 0.45),
+                     campsiteBodyYawAlignmentAngularCommand(
+                         error, 1.5, 1.2, 0.45, 0.0));
+  }
+}
+
+TEST(CampsiteCrabBodyYawAlignment,
+     MinimumNeverExceedsMaximumAndDoesNotOverrideDisabledGain) {
+  constexpr double radians = 0.017453292519943295769236907684886;
+  for (const double sign : {-1.0, 1.0}) {
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         sign * 1.68 * radians, 1.5, 1.2, 0.04, 10.0),
+                     sign * 0.04);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         sign * 80.0 * radians, 1.5, 1.2, 0.45, 0.08),
+                     sign * 0.45);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         sign * 1.68 * radians, 1.5, 1.2, 0.0, 0.08),
+                     0.0);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         sign * 1.68 * radians, 1.5, 0.0, 0.45, 0.08),
+                     0.0);
+  }
+}
+
+TEST(CampsiteCrabBodyYawAlignment, InvalidMinimumIsRejectedWithoutCommand) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  EXPECT_TRUE(campsiteBodyYawMinimumAngularSpeedValid(0.0));
+  EXPECT_TRUE(campsiteBodyYawMinimumAngularSpeedValid(0.08));
+  for (const double invalid : {-0.01, nan, inf, -inf}) {
+    EXPECT_FALSE(campsiteBodyYawMinimumAngularSpeedValid(invalid));
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         0.1, 1.5, 1.2, 0.45, invalid),
+                     0.0);
+  }
+}
+
+TEST(CampsiteCrabBodyYawAlignment, InvalidControllerInputsFailWithoutCommand) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  for (const double invalid : {nan, inf, -inf}) {
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         invalid, 1.5, 1.2, 0.45, 0.08),
+                     0.0);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         0.1, invalid, 1.2, 0.45, 0.08),
+                     0.0);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         0.1, 1.5, invalid, 0.45, 0.08),
+                     0.0);
+    EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                         0.1, 1.5, 1.2, invalid, 0.08),
+                     0.0);
+  }
+  EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                       0.1, -1.5, 1.2, 0.45, 0.08),
+                   0.0);
+  EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                       0.1, 1.5, -1.2, 0.45, 0.08),
+                   0.0);
+  EXPECT_DOUBLE_EQ(campsiteBodyYawAlignmentAngularCommand(
+                       0.1, 1.5, 1.2, -0.45, 0.08),
+                   0.0);
+}
+
 TEST(CampsiteDirectedYawRotation,
      LeftAndRightRestoreResidualsKeepRequestedTurnDirection) {
   constexpr double degrees_to_radians = 0.017453292519943295769236907684886;

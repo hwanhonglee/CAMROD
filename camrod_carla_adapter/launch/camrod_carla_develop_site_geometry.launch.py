@@ -248,6 +248,9 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
     # historical tuned profile deliberately retain their 0.5 deg contract.
     "carla_crab_entry_body_yaw_alignment_tolerance_deg": "1.5",
     "carla_crab_entry_body_yaw_alignment_timeout_s": "15",
+    # Only the CARLA body-yaw prealignment exceeds its measured angular deadband.
+    # Ordinary/legacy launch paths retain the explicit zero identity.
+    "carla_crab_entry_body_yaw_alignment_min_angular_speed_radps": "0.08",
     "carla_crab_out_yaw_recovery_enable": "true",
     "carla_crab_out_yaw_recovery_trigger_deg": "8.0",
     "carla_crab_out_yaw_recovery_max_attempts": "8",
