@@ -216,7 +216,8 @@ controller_server:
       # reached the marker, before the robot center reached the goal pose.
       # HH_260904 - Keep the route handoff wider than the GNSS lever-arm motion
       # seen during zero-turn.  The drop-zone controller subsequently corrects
-      # the snapped parking point to 0.05 m, latches XY complete, and only then
+      # the snapped parking point to the deployed 0.20 m local tolerance,
+      # latches XY complete, and only then
       # aligns yaw, so Nav2 must not fight that local maneuver at centimeter scale.
       # HH_260907 - Preserve field-tuned route arrival: 0.10 m (previous 0.30 m).
       # This is separate from the final reverse-parking station tolerance.
@@ -262,8 +263,8 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
-      # Keep DWB aligned with the regulated route handoff. Precise 0.05 m
-      # positioning belongs to the latched drop-zone parking approach phase.
+      # Keep DWB as the wider fallback. The latched drop-zone controller owns
+      # the final map-point correction and yaw alignment after route handoff.
       xy_goal_tolerance: 0.3
       trans_stopped_velocity: 0.10
       short_circuit_trajectory_evaluation: True

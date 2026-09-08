@@ -65,7 +65,11 @@ class RecallTargetPolicyTest(unittest.TestCase):
         )
         node.get_clock = lambda: SimpleNamespace(now=lambda: Time(seconds=123))
         node.get_logger = lambda: SimpleNamespace(info=lambda *_: None)
-        for source in ("parking_dispatcher", "reverse_parking_controller", "apriltag_parking_controller"):
+        for source in (
+            "parking_dispatcher",
+            "reverse_parking_controller",
+            "apriltag_parking_controller",
+        ):
             for state, expected in (
                 (AvgServiceState.DROP_ZONE_PARKING, "RUNNING"),
                 (AvgServiceState.WAITING_FOR_CHARGING, "RUNNING"),
@@ -77,6 +81,29 @@ class RecallTargetPolicyTest(unittest.TestCase):
                 message.description = source + ":phase"
                 PlanningStateMachineNode._on_maneuver_phase_state(node, message)
                 self.assertEqual(node._maneuver_phase_override_state, expected)
+
+    def test_return_handoff_margin_still_requires_fresh_nav2_success(self) -> None:
+        now = Time(seconds=100)
+        node = SimpleNamespace(
+            require_nav2_success_for_goal_reached=True,
+            _nav2_goal_succeeded=True,
+            _nav2_terminal_time=Time(seconds=99),
+            nav_success_latch_s=15.0,
+        )
+        node.get_clock = lambda: SimpleNamespace(now=lambda: now)
+        node._active_goal_distance = lambda: 0.338
+
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.30))
+        self.assertTrue(PlanningStateMachineNode._goal_reached(node, 0.35))
+
+        node._active_goal_distance = lambda: 0.351
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
+        node._active_goal_distance = lambda: 0.338
+        node._nav2_goal_succeeded = False
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
+        node._nav2_goal_succeeded = True
+        node._nav2_terminal_time = Time(seconds=80)
+        self.assertFalse(PlanningStateMachineNode._goal_reached(node, 0.35))
 
     def test_initial_drop_zone_raw_goal_uses_exact_auto_goal_stamp(self) -> None:
         auto_publisher = _RecordingPublisher()
