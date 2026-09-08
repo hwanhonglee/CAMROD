@@ -1,0 +1,199 @@
+{
+  "schema": "camrod.pure_v2_2_5.native_focused_verification.v1",
+  "source_code_commit": "91158175102a2bbf86624f5c5b726e5e272f8b90",
+  "base_develop_commit": "f3a177038567f8f1b568e2f49d4c127bc298d9a5",
+  "verified_on_local_date": "2026-09-08",
+  "timestamp_timezone": "Asia/Seoul (UTC+09:00); source JUnit timestamps have no explicit offset",
+  "source_worktree": "/home/hong/camrod_ws/pure_camrod_v224_verification",
+  "source_identity_check": "git diff --exit-code against source_code_commit for explicit tested source/header/config/test paths; no changes",
+  "status": "PASS",
+  "total_focused_cases": 52,
+  "count_scope": "35 freshly rebuilt GoogleTest cases plus 17 planning runtime tests; the latter includes 8 actual native extractor cases and 9 Python monitoring/coalescing cases. Do not count these as 52 native C++ cases or add overlapping historical runs.",
+  "build_provenance": {
+    "reverse": {
+      "fresh_build": true,
+      "cmake_build_directory": "/tmp/camrod-v225-native.XMPKzMYe/control",
+      "cmake_home_directory": "/home/hong/camrod_ws/pure_camrod_v224_verification/camrod_control",
+      "cmake_home_directory_verified": true,
+      "build_type": "Release",
+      "targets": [
+        "test_reverse_parking_completion",
+        "test_reverse_parking_controller"
+      ],
+      "parallel_jobs": 2,
+      "compiler": "GCC 11.4.0",
+      "warning": "Existing anonymous-namespace field linkage warning from fixture including production controller cpp; build succeeded."
+    },
+    "gnss": {
+      "fresh_build": true,
+      "compiler": "g++ C++17 with -Wall -Wextra -Wpedantic",
+      "tests": "Existing GNSS lever-arm 5, bounded heading fallback 7, parking approach geometry 3; no ROS node or measured hardware input"
+    },
+    "terminal_path": {
+      "fresh_build": false,
+      "executable_reused": true,
+      "binary_and_source_identity_verified": true,
+      "comparison_source_commit": "5e1e967f017b35ef4301a7c4b2b9ee5bb81371c0",
+      "comparison_evidence": "Previously recorded exact SHA256 of executable, C++ source, canonical/mirrored YAML and test file all matched current tested files.",
+      "cmake_home_directory": null,
+      "cmake_home_directory_note": "This retained executable was manually compiled from the pure source; it is not a CMake build tree. Do not describe this rerun as a fresh compile.",
+      "reported_result": "17 passed in 14.79s"
+    },
+    "dependencies": "ROS 2 Humble and existing /home/hong/camrod_ws/install/local_setup.bash supply ROS libraries/messages. These dependency packages were not rebuilt or retested by this focused run."
+  },
+  "isolation": {
+    "ROS_LOCALHOST_ONLY": "1",
+    "reverse_fixture_domain": 188,
+    "reverse_fixture_topics": "/test/reverse_parking/*; production control and state topic names are remapped by the existing fixture",
+    "planning_fixture_domain": 226,
+    "planning_fixture_topics": "/terminal_path_test_<pid>/* for actual extractor input/output; existing monitoring tests also run only on isolated domain 226",
+    "gnss_math_ros_communication": false,
+    "production_domain_contacted": false,
+    "ui_or_vehicle_commands_sent": false
+  },
+  "executed_commands": [
+    "source /opt/ros/humble/setup.bash; source /home/hong/camrod_ws/install/local_setup.bash; export ROS_LOCALHOST_ONLY=1",
+    "cmake -S /home/hong/camrod_ws/pure_camrod_v224_verification/camrod_control -B /tmp/camrod-v225-native.XMPKzMYe/control -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=/usr/bin/python3",
+    "cmake --build /tmp/camrod-v225-native.XMPKzMYe/control --parallel 2 --target test_reverse_parking_completion test_reverse_parking_controller",
+    "ROS_DOMAIN_ID=188 /tmp/camrod-v225-native.XMPKzMYe/control/test_reverse_parking_completion --gtest_color=no --gtest_output=xml:docs/evidence/v2_2_5_20260908/native_reverse_parking_completion.junit.xml",
+    "ROS_DOMAIN_ID=188 /tmp/camrod-v225-native.XMPKzMYe/control/test_reverse_parking_controller --gtest_color=no --gtest_output=xml:docs/evidence/v2_2_5_20260908/native_reverse_parking_controller.junit.xml",
+    "g++ -std=c++17 -Wall -Wextra -Wpedantic -Icamrod_localization/include -Icamrod_control/include camrod_localization/test/test_gnss_lever_arm.cpp camrod_localization/test/test_gnss_heading_fallback.cpp camrod_control/test/test_drop_zone_parking_approach.cpp -lgtest -lgtest_main -pthread -o /tmp/camrod-v225-native.XMPKzMYe/test_gnss_center_scope",
+    "/tmp/camrod-v225-native.XMPKzMYe/test_gnss_center_scope --gtest_brief=1 --gtest_output=xml:docs/evidence/v2_2_5_20260908/native_gnss_center_scope.junit.xml",
+    "ROS_DOMAIN_ID=226 ROS_LOCALHOST_ONLY=1 PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CAMROD_LOCAL_PATH_EXTRACTOR_TEST_EXECUTABLE=/tmp/camrod-terminal-path-native.PLwghS/local_path_extractor_node python3 -B -m pytest -q -p no:cacheprovider camrod_planning/test/test_planning_runtime_coalescing.py --junitxml=docs/evidence/v2_2_5_20260908/native_terminal_path_runtime.junit.xml"
+  ],
+  "execution_note": "The vendor GoogleTest used by the CMake targets does not support --gtest_brief; an initial completion invocation printed help without running tests. Both CMake targets were then actually executed without that flag and the retained XML is from the passing rerun.",
+  "artifacts": [
+    {
+      "path": "native_reverse_parking_controller.junit.xml",
+      "bytes": 3329,
+      "sha256": "5f0c37abd3c7a2a11fa918a932ba6c2fdaaab306874bdc77187d10d53cbceadb",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0,
+      "timestamp": "2026-09-08T18:50:33",
+      "time_s": 0.122
+    },
+    {
+      "path": "native_reverse_parking_completion.junit.xml",
+      "bytes": 1011,
+      "sha256": "5602ca8671c5322a00781434c00f638bee53d338382800028e7fe69840cf4f33",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0,
+      "timestamp": "2026-09-08T18:50:33",
+      "time_s": 0
+    },
+    {
+      "path": "native_gnss_center_scope.junit.xml",
+      "bytes": 3233,
+      "sha256": "44baa022ab7d0a8efab08be2df2477bae383e053396a921d4340316f3d04b452",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0,
+      "timestamp": "2026-09-08T18:50:12.894",
+      "time_s": 0
+    },
+    {
+      "path": "native_terminal_path_runtime.junit.xml",
+      "bytes": 3398,
+      "sha256": "4da05f9a452912b6456d0722e2c1912437eb293fcbc6101f06efdedc901a05fa",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "disabled_or_skipped": 0,
+      "timestamp": "2026-09-08T18:50:33.227280",
+      "time_s": 14.789
+    }
+  ],
+  "sources": [
+    {
+      "path": "camrod_control/CMakeLists.txt",
+      "sha256": "8381673ba489cec4e5ef4aee0c60cd4aa169c9fde6add3931e4b5784b93675cc"
+    },
+    {
+      "path": "camrod_control/src/reverse_parking_controller_node.cpp",
+      "sha256": "a05067d4f3840a4046b6c3a5c04f22f84347c5c714b15105dc40d51dde9ce529"
+    },
+    {
+      "path": "camrod_control/include/camrod_control/reverse_parking_completion.hpp",
+      "sha256": "34d5501467a155909de50103419eb610f6257ab1d7e10826c044fffc4c31f5e1"
+    },
+    {
+      "path": "camrod_control/include/camrod_control/drop_zone_parking_approach.hpp",
+      "sha256": "825fffe51fdc8e3125562a20af3a997df5352ff121dae43600d7a34ef8126c78"
+    },
+    {
+      "path": "camrod_control/test/test_reverse_parking_controller.cpp",
+      "sha256": "f771d9d1986471a3b084be5c632daca3c3ac2f378ed3cd165882b1ed2c7828b2"
+    },
+    {
+      "path": "camrod_control/test/test_reverse_parking_completion.cpp",
+      "sha256": "13ce0b389a8574cf7e5879520c9b872328eda8fd2e22ab629282c5c87f0fdbd8"
+    },
+    {
+      "path": "camrod_control/test/test_drop_zone_parking_approach.cpp",
+      "sha256": "2719d27efc5c68a6bbfe343c06eb47ccff62dd8778a00f9baaa9d238ce3a8ca4"
+    },
+    {
+      "path": "camrod_localization/include/camrod_localization/gnss_lever_arm.hpp",
+      "sha256": "5c1cb3a0a2bd09275f3ff8b61c1e19f9bf3004314a3809eb25ea28c7fe8588b9"
+    },
+    {
+      "path": "camrod_localization/include/camrod_localization/gnss_heading_fallback.hpp",
+      "sha256": "abdb2e4c9b71689bfead59ca39363fb6de7965210616247accca275195a6d28b"
+    },
+    {
+      "path": "camrod_localization/test/test_gnss_lever_arm.cpp",
+      "sha256": "a109ee3720fd91f1941cb2189538648b5402340bdce3900b48fe2b24518e64e4"
+    },
+    {
+      "path": "camrod_localization/test/test_gnss_heading_fallback.cpp",
+      "sha256": "99e28f26f84596d35c7d3c0861c3294c157e7a91988e36aaad7348f5c08da37f"
+    },
+    {
+      "path": "camrod_planning/src/local_path_extractor_node.cpp",
+      "sha256": "fd96199d827afd3dc7d64f4546d4baa37b833b169ab7b99afe82ac7a49ce5676"
+    },
+    {
+      "path": "camrod_planning/config/local_path_extractor.yaml",
+      "sha256": "95d5c5df5f92571b39e3d739b27da0416c58fbffe8c2e8cbc807147b6846b538"
+    },
+    {
+      "path": "camrod_bringup/config/planning/local_path_extractor.yaml",
+      "sha256": "95d5c5df5f92571b39e3d739b27da0416c58fbffe8c2e8cbc807147b6846b538"
+    },
+    {
+      "path": "camrod_planning/test/test_planning_runtime_coalescing.py",
+      "sha256": "0050d18e59fbc2789af3d260ab32b292cf8a697c7c4fd49116c831458b7037ce"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "/tmp/camrod-v225-native.XMPKzMYe/control/test_reverse_parking_controller",
+      "sha256": "b4b92c72e078b052ff35a133b1e9386529b5c70da17afb3977d05a9c39695c10"
+    },
+    {
+      "path": "/tmp/camrod-v225-native.XMPKzMYe/control/test_reverse_parking_completion",
+      "sha256": "42f8c09f6e64aae855400682dd325e0c89cf1b26570a50347bf890767ad4102b"
+    },
+    {
+      "path": "/tmp/camrod-v225-native.XMPKzMYe/test_gnss_center_scope",
+      "sha256": "947ffa8bdc6a99fa4dbfd332da4e250435c62b88f1ac22fe25631d4ab0efea3d"
+    },
+    {
+      "path": "/tmp/camrod-terminal-path-native.PLwghS/local_path_extractor_node",
+      "sha256": "0b1b61f0cb4d9ae397124cb6902f5163b4008ee44e475d153057bf511292c631"
+    }
+  ],
+  "does_not_prove": [
+    "Physical B1-B13 delivery, return, recall, or all Guest-to-Robot scenarios",
+    "Successful optional charging dock or automatic tag reacquisition",
+    "Real front-antenna mounting dimensions or time-aligned physical GNSS heading",
+    "Post-90-degree parking XY recheck; no such runtime phase was added",
+    "Nav2-success handshake for terminal local-path clearing",
+    "Complete real-world lanelet boundary hold/recovery coverage"
+  ]
+}

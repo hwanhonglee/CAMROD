@@ -1,5 +1,20 @@
 # Documentation Changelog
 
+## [v2.2.5-pure-parking-planning-ui] - 2026-09-08
+
+- Document isolated detector launch arguments, bounded reverse XY completion,
+  terminal-path retention, Guest reconnect, nonblocking mission notices,
+  completed-station UI lifecycle and acknowledged tuning values.
+- Separate inherited v2.2.4 departure/Recall/parking/voice policies from new fixes.
+- Correct stale README map, battery-stop and parking-tolerance descriptions;
+  these documentation corrections do not change runtime values.
+- Retain historical verification as historical; publish focused v2.2.5 results
+  without claiming all-site, docking, antenna-calibration or field acceptance.
+
+See [v2.2.5 release notes](V2_2_5_RELEASE_NOTES.md).
+
+---
+
 <!-- HH_260907 - Publish exact-v27 full-site, Guest, manual and sensor evidence. -->
 ## [virtual-carla-v27-final-validation] - 2026-09-07 (HH_260907)
 
