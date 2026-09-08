@@ -1505,6 +1505,9 @@ class UiBackendNode(Node):
         self._generation_zero_authority_epoch = 0
         self._standalone_return_progress = False
         self._standalone_return_parking_seen = False
+        self._parking_dispatcher_latest_attempt = 0
+        self._standalone_return_parking_attempt_floor = 0
+        self._standalone_return_reverse_attempt = None
         # UI command admission remains closed until the post-discovery Nav2
         # cancel futures complete. This is the restart ownership barrier.
         self._startup_recovery_pending = True
@@ -5511,6 +5514,11 @@ class UiBackendNode(Node):
             states[str(controller)] = str(msg.operating_state).strip().upper()
         if controller == "auto" and getattr(self, "parking_method", "") == "auto":
             fields = dict(token.split("=", 1) for token in str(msg.message).split() if "=" in token)
+            attempt = str(fields.get("attempt", ""))
+            if attempt.isdecimal() and int(attempt) > 0:
+                self._parking_dispatcher_latest_attempt = max(
+                    int(getattr(self, "_parking_dispatcher_latest_attempt", 0)), int(attempt)
+                )
             selected = fields.get("parking_method", "")
             if selected not in {"reverse", "apriltag"}:
                 selected = ""
@@ -5527,6 +5535,52 @@ class UiBackendNode(Node):
         with dispatch_lock:
             return UiBackendNode._on_drop_zone_exit_complete_serialized(self, msg)
 
+    def _correlate_standalone_reverse_parking(
+        self, state: int, description: str, current_epoch: int
+    ) -> bool:
+        """Bind an outside-station reverse approach to this Return attempt.
+
+        Reverse parking starts on the lanelet outside the station polygon.
+        Its first in-polygon lifecycle can therefore be PARKED, without an
+        earlier in-polygon DROP_ZONE_PARKING. Require a newer dispatcher attempt
+        and its actual REVERSE_APPROACH before accepting that terminal; an old
+        heartbeat or a bare DROP_ZONE_WAIT never establishes completion.
+        """
+        token = str(getattr(self, "_return_operation_token", ""))
+        if (not getattr(self, "_standalone_return_progress", False)
+                or getattr(self, "_generation_zero_authority_epoch", -1) != current_epoch
+                or getattr(self, "_active_mission_generation", 0) != 0
+                or not token.startswith("manual-s")):
+            return False
+        fields = {}
+        for part in description.split():
+            if "=" in part:
+                key, value = part.split("=", 1)
+                if key in {"attempt", "parking_method", "charging_required"}:
+                    if key in fields:
+                        return False
+                    fields[key] = value
+        raw_attempt = fields.get("attempt", "")
+        if (fields.get("parking_method") != "reverse"
+                or fields.get("charging_required") != "false"
+                or not raw_attempt.isdecimal() or int(raw_attempt) <= 0):
+            return False
+        attempt = int(raw_attempt)
+        if (attempt <= int(getattr(self, "_standalone_return_parking_attempt_floor", 0))
+                or attempt < int(getattr(self, "_parking_dispatcher_latest_attempt", 0))):
+            return False
+        identity = (current_epoch, token, attempt)
+        if (state == int(AvgServiceState.DROP_ZONE_PARKING)
+                and description.startswith(
+                    f"reverse_parking_controller:REVERSE_APPROACH:start=parking_dispatcher:attempt={attempt}:"
+                )):
+            self._standalone_return_reverse_attempt = identity
+            return True
+        return bool(
+            state == int(AvgServiceState.DROP_ZONE_WAIT)
+            and description.startswith("reverse_parking_controller:PARKED:")
+            and getattr(self, "_standalone_return_reverse_attempt", None) == identity
+        )
     def _on_drop_zone_exit_complete_serialized(self, msg: AvgBool) -> None:
         if not bool(msg.data):
             # This topic is intentionally observation-only for failures:
@@ -5692,6 +5746,9 @@ class UiBackendNode(Node):
                 physical_match, _, _ = UiBackendNode._drop_zone_arrival_match(
                     self
                 )
+            current_reverse_attempt = UiBackendNode._correlate_standalone_reverse_parking(
+                self, state, raw_description, current_epoch
+            )
             if (
                 parking_state
                 and getattr(self, "_standalone_return_progress", False)
@@ -5701,7 +5758,9 @@ class UiBackendNode(Node):
             correlated_terminal = bool(
                 terminal_state
                 and getattr(self, "_standalone_return_progress", False)
-                and getattr(self, "_standalone_return_parking_seen", False)
+                and (current_reverse_attempt
+                     if getattr(self, "_standalone_return_reverse_attempt", None) is not None
+                     else getattr(self, "_standalone_return_parking_seen", False))
                 and physical_match
             )
             if correlated_terminal:
@@ -5711,7 +5770,8 @@ class UiBackendNode(Node):
                 generation_zero_authority = ""
             elif not own_current_echo and not (
                 parking_state
-                and getattr(self, "_standalone_return_parking_seen", False)
+                and (getattr(self, "_standalone_return_parking_seen", False)
+                     or current_reverse_attempt)
             ):
                 self.get_logger().warn(
                     "uncorrelated service-state heartbeat ignored during "
@@ -6600,6 +6660,10 @@ class UiBackendNode(Node):
             )
             self._standalone_return_progress = False
             self._standalone_return_parking_seen = False
+            self._standalone_return_parking_attempt_floor = int(
+                getattr(self, "_parking_dispatcher_latest_attempt", 0)
+            )
+            self._standalone_return_reverse_attempt = None
             sequence = int(getattr(self, "_return_operation_sequence", 0)) + 1
             self._return_operation_sequence = sequence
             current_token = f"manual-s{sequence}-{time.monotonic_ns():x}"
@@ -8894,6 +8958,7 @@ class UiBackendNode(Node):
         if current == "standalone_return":
             self._standalone_return_progress = False
             self._standalone_return_parking_seen = False
+            self._standalone_return_reverse_attempt = None
         self._generation_zero_authority = ""
         self._generation_zero_authority_epoch = 0
         return bool(current)

@@ -2128,6 +2128,94 @@ class UiBackendStopTest(unittest.TestCase):
                     logger.warning_messages[-1],
                 )
 
+    @staticmethod
+    def _standalone_reverse_backend():
+        events = []
+        backend = SimpleNamespace(
+            _destination_dispatch_lock=threading.RLock(), _lock=threading.Lock(),
+            _command_epoch=200, _generation_zero_authority="standalone_return",
+            _generation_zero_authority_epoch=200, _active_mission_generation=0,
+            _active_mission_site="", _active_mission_source="", _return_requested_generation=0,
+            _return_operation_token="manual-s1-abcd", _standalone_return_progress=True,
+            _standalone_return_parking_seen=False, _standalone_return_reverse_attempt=None,
+            _standalone_return_parking_attempt_floor=8, _parking_dispatcher_latest_attempt=8,
+            _latest_service_state=int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+            _drop_zone_exit_handoff_ready=False, _service_metrics=None, parking_method="auto",
+            _parking_selected_method="reverse", site_names=["B1"],
+            _state=SimpleNamespace(service_state=int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+                service_state_name="RETURNING_TO_DROP_ZONE", service_state_description="Returning",
+                battery_percentage=80, destination={"site": "", "run": False}, ws_site_states={"B1": False}),
+            publish_mission_engage_from_destination=True,
+            _publish_engage=lambda enabled, **kwargs: events.append(("engage", enabled)),
+            _publish_mission_engage=lambda enabled, **kwargs: events.append(("mission", enabled)),
+            _schedule_broadcast=lambda payload: events.append(("broadcast", payload)),
+            _mark_low_battery_return_started_if_needed=lambda: None,
+            _update_low_battery_return_policy=lambda *_args, **_kwargs: None,
+            get_logger=lambda: _FakeLogger(),
+            _drop_zone_keypoint=SimpleNamespace(x=0.0, y=0.0, corners=[(-1.,-1.),(1.,-1.),(1.,1.),(-1.,1.)]),
+            _point_in_polygon=UiBackendNode._point_in_polygon,
+            _latest_arrival_pose=SimpleNamespace(header=SimpleNamespace(frame_id="map"),
+                pose=SimpleNamespace(position=SimpleNamespace(x=-3.667, y=0.128))),
+            _latest_arrival_pose_time_s=100.0, site_arrival_pose_timeout_s=2.0,
+            default_goal_frame_id="map", _now_s=lambda: 100.0,
+        )
+        return backend, events
+
+    @staticmethod
+    def _reverse_lifecycle(state, phase, attempt=9):
+        message = AvgServiceState()
+        message.state = state
+        message.state_name = "DROP_ZONE_WAIT" if state == AvgServiceState.DROP_ZONE_WAIT else "DROP_ZONE_PARKING"
+        detail = (f"start=parking_dispatcher:attempt={attempt}:drop_zone_maneuver_controller:planning_state:return_to_drop_zone"
+                  if phase == "REVERSE_APPROACH" else "station XY goal reached")
+        message.description = (f"reverse_parking_controller:{phase}:{detail}; "
+            f"parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt={attempt}")
+        return message
+
+    def test_standalone_reverse_return_parks_from_outside_station_then_closes_engage(self):
+        backend, events = self._standalone_reverse_backend()
+        dispatcher = ModuleState()
+        dispatcher.operating_state = "REVERSE_APPROACH"
+        dispatcher.message = "parking_method=reverse charging_required=false attempt=9"
+        UiBackendNode._on_parking_controller_status(backend, "auto", dispatcher)
+        with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status", return_value=None):
+            UiBackendNode._on_service_state(backend, self._reverse_lifecycle(AvgServiceState.DROP_ZONE_PARKING, "REVERSE_APPROACH"))
+            self.assertEqual(backend._latest_service_state, AvgServiceState.DROP_ZONE_PARKING)
+            self.assertFalse(backend._standalone_return_parking_seen)
+            self.assertEqual(backend._standalone_return_reverse_attempt, (200, "manual-s1-abcd", 9))
+            backend._latest_arrival_pose.pose.position.x = 0.1
+            UiBackendNode._on_service_state(backend, self._reverse_lifecycle(AvgServiceState.DROP_ZONE_WAIT, "PARKED"))
+        self.assertEqual(backend._latest_service_state, AvgServiceState.DROP_ZONE_WAIT)
+        self.assertEqual(backend._state.service_state_name, "DROP_ZONE_WAIT")
+        self.assertEqual(backend._generation_zero_authority, "")
+        self.assertIsNone(backend._standalone_return_reverse_attempt)
+        self.assertIn(("mission", False), events)
+        self.assertIn(("engage", False), events)
+
+    def test_standalone_reverse_return_rejects_stale_unmatched_or_unphysical_terminals(self):
+        for reason in ("missing_approach", "old_attempt", "wrong_attempt", "changed_token", "changed_epoch",
+                       "newer_dispatcher_attempt", "outside", "stale_pose", "bare_heartbeat", "wrong_method", "charging", "duplicate_attempt"):
+            with self.subTest(reason=reason):
+                backend, events = self._standalone_reverse_backend()
+                with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status", return_value=None):
+                    if reason != "missing_approach":
+                        approach = self._reverse_lifecycle(AvgServiceState.DROP_ZONE_PARKING, "REVERSE_APPROACH", 8 if reason == "old_attempt" else 9)
+                        UiBackendNode._on_service_state(backend, approach)
+                    backend._latest_arrival_pose.pose.position.x = 0.1 if reason != "outside" else -3.667
+                    terminal = self._reverse_lifecycle(AvgServiceState.DROP_ZONE_WAIT, "PARKED", 10 if reason == "wrong_attempt" else 9)
+                    if reason == "changed_token": backend._return_operation_token = "manual-s2-def0"
+                    if reason == "changed_epoch": backend._command_epoch = 201
+                    if reason == "newer_dispatcher_attempt": backend._parking_dispatcher_latest_attempt = 10
+                    if reason == "stale_pose": backend._latest_arrival_pose_time_s = 90.0
+                    if reason == "bare_heartbeat": terminal.description = "DROP_ZONE_WAIT"
+                    if reason == "wrong_method": terminal.description = terminal.description.replace("parking_method=reverse", "parking_method=apriltag")
+                    if reason == "charging": terminal.description = terminal.description.replace("charging_required=false", "charging_required=true")
+                    if reason == "duplicate_attempt": terminal.description += " attempt=8"
+                    UiBackendNode._on_service_state(backend, terminal)
+                self.assertNotEqual(backend._latest_service_state, AvgServiceState.DROP_ZONE_WAIT)
+                self.assertEqual(backend._generation_zero_authority, "standalone_return")
+                self.assertNotIn(("mission", False), events)
+
     def test_external_stop_fully_revokes_every_generation_zero_authority(
         self,
     ) -> None:
