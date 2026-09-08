@@ -3,7 +3,9 @@
 The node does not synthesize any perception stream.  It closes only the
 existing simulated platform charging input after the real CARLA vehicle has
 reached the configured Drop Zone station, stopped, and remained there for a
-bounded dwell.  Ordinary CAMROD and physical CAN charging remain unchanged.
+bounded dwell with a fresh dispatcher-confirmed AprilTag terminal state.
+Idle proximity after restart is not charger-contact evidence. Ordinary CAMROD
+and physical CAN charging remain unchanged.
 """
 
 from dataclasses import dataclass
@@ -44,8 +46,8 @@ class ContactSample:
     speed_mps: float
     pose_age_s: float
     odometry_age_s: float
-    # HH_260831 - These fields are used only by the CARLA-only restart
-    # recovery path.  Terminal parking states retain their existing contract.
+    # Planning remains diagnostic context, not permission to invent contact
+    # after restart. The dispatcher terminal heartbeat must itself be fresh.
     planning_state: str = ""
     parking_status_age_s: float = math.inf
     planning_state_age_s: float = math.inf
@@ -112,42 +114,21 @@ def contact_candidate(sample, station, config=ContactConfig()):
     """Return true only for a fresh, stopped vehicle at a charging wait."""
     checked = validate_contact_config(config)
     parking_state = str(sample.parking_state).strip().upper()
-    planning_state = str(sample.planning_state).strip().upper()
-    if str(sample.parking_method).strip().lower() == "reverse":
+    if str(sample.parking_method).strip().lower() != "apriltag":
         return False
-    # The reverse-parking controller reports WAIT_FOR_CHARGING, while the
-    # AprilTag controller uses WAITING_FOR_CHARGING for the same physical
-    # terminal state.  Accept both exact spellings; every pose, odometry,
-    # speed, freshness, station-radius, and dwell check below still has to
-    # pass before contact can be asserted.
-    terminal_parking_evidence = parking_state in {
-        "WAIT_FOR_CHARGING",
+    # Only the selected AprilTag controller's completed alignment/charging
+    # wait is admissible. IDLE + WAIT_DZ can also mean reverse PARKED, failed
+    # Dock, or operator STOP; it cannot restore unknown charging contact.
+    if parking_state not in {
         "WAITING_FOR_CHARGING",
         "PARKED",
-    }
-
-    # HH_260831 - A CAMROD-only restart cannot restore the in-memory PARKED
-    # phase of reverse_parking_controller, even though the CARLA actor remains
-    # physically docked.  Recover only from two fresh, independent idle-state
-    # heartbeats.  Any mission-active planning state, non-IDLE parking phase,
-    # missing heartbeat, stale heartbeat, or malformed age keeps contact
-    # deasserted.
-    restart_idle_evidence = False
-    if parking_state == "IDLE" and planning_state == "WAIT_DZ":
-        try:
-            parking_age_s = float(sample.parking_status_age_s)
-            planning_age_s = float(sample.planning_state_age_s)
-        except (TypeError, ValueError, OverflowError):
-            parking_age_s = math.inf
-            planning_age_s = math.inf
-        restart_idle_evidence = (
-            math.isfinite(parking_age_s)
-            and 0.0 <= parking_age_s <= checked.state_timeout_s
-            and math.isfinite(planning_age_s)
-            and 0.0 <= planning_age_s <= checked.state_timeout_s
-        )
-
-    if not terminal_parking_evidence and not restart_idle_evidence:
+    }:
+        return False
+    try:
+        parking_age_s = float(sample.parking_status_age_s)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(parking_age_s) or not 0.0 <= parking_age_s <= checked.state_timeout_s:
         return False
     numeric = (
         sample.x_m,
@@ -317,7 +298,7 @@ class CarlaChargingContactEmulatorNode(Node):
     def _on_planning_state(self, message):
         label = str(message.label).strip().upper()
         # Both the typed enum and its human-readable label must agree.  A
-        # malformed/mixed publisher therefore cannot arm restart recovery.
+        # malformed/mixed publisher is reported as unknown diagnostic context.
         is_wait_dz = (
             int(message.state) == int(PlanningState.WAIT_DZ)
             and label == "WAIT_DZ"
@@ -393,9 +374,7 @@ class CarlaChargingContactEmulatorNode(Node):
                         sample.speed_mps,
                         sample.parking_state,
                         sample.planning_state or "unobserved",
-                        "restart_idle"
-                        if sample.parking_state == "IDLE"
-                        else "parking_terminal",
+                        "apriltag_terminal",
                     )
                 )
             else:
