@@ -483,8 +483,21 @@ const failed = {reason: uiState.setMissionExecutionError, modal: uiState.setShow
 send({mission_execution_error: '', recall_final_return_ready: true});
 send({service_state: 8, site: 'B4'});
 const finalStage = {ready: uiState.setRecallFinalReturnReady, error: uiState.setMissionExecutionError};
-process.stdout.write(JSON.stringify({restored, preserved, cleared: uiState.setServiceStateDescription,
-  batteryReturn: uiState.setBatteryReturnState, parking: uiState.setParkingPolicy, failed, finalStage}));
+const priorReplay = {restored, preserved, cleared: uiState.setServiceStateDescription,
+  batteryReturn: uiState.setBatteryReturnState, parking: uiState.setParkingPolicy, failed, finalStage};
+send({mission_dispatch_active: true, mission_dispatch_generation: 13,
+      mission_dispatch_site: 'B1', mission_dispatch_owner: 'operator',
+      mission_dispatch_intent: 'delivery'});
+send({service_state: 11, service_state_name: 'WAITING_FOR_RETURN_REQUEST', site: 'B1'});
+const completionState = () => ({
+  arrived: uiState.setArrivedSite,
+  modal: uiState.setShowArrivalComplete,
+  permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
+});
+const beforeBatteryHeartbeat = completionState();
+send({battery_return_pending: false});
+const afterBatteryHeartbeat = completionState();
+process.stdout.write(JSON.stringify({...priorReplay, beforeBatteryHeartbeat, afterBatteryHeartbeat}));
 """
         result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
         output = json.loads(result.stdout)
@@ -498,6 +511,9 @@ process.stdout.write(JSON.stringify({restored, preserved, cleared: uiState.setSe
         self.assertTrue(output["parking"]["charging_required"])
         self.assertEqual(output["failed"], {"reason": "prepareRecallTurnaroundEntry failed", "modal": False})
         self.assertEqual(output["finalStage"], {"ready": True, "error": ""})
+        expected_operator_wait = {"arrived": "B1", "modal": True, "permitted": True}
+        self.assertEqual(output["beforeBatteryHeartbeat"], expected_operator_wait)
+        self.assertEqual(output["afterBatteryHeartbeat"], expected_operator_wait)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_battery_messages_distinguish_urgent_return_and_normal_parking_boundaries(self) -> None:
