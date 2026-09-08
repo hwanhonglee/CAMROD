@@ -1338,7 +1338,7 @@ def test_cdp_evaluate_ignores_events_and_requires_by_value_response():
 def _guest_pointer_fixture(site="B1", final=False):
     client = matrix.GuestBrowserClient.__new__(matrix.GuestBrowserClient)
     client._connection = _FakeCDPConnection([])
-    client.timeout_s = 0.01
+    client.timeout_s = 0.6
     client.expressions, client.calls, client.frames = [], [], []
     copy = matrix.guest_return_ui_copy(site, final)
     client.controls = {
@@ -1351,6 +1351,7 @@ def _guest_pointer_fixture(site="B1", final=False):
     def control(selector, *, scroll=False):
         client.current_selector = selector
         return {"visibleCount": 1, "disabled": False, "hit": True,
+                "settled": True, "pageReady": True, "width": 80, "height": 30,
                 "text": client.controls[selector], "x": 12.5, "y": 24.0}
     def evaluate(expression):
         client.expressions.append(expression)
@@ -1464,7 +1465,7 @@ def test_guest_pointer_metadata_checks_disabled_state_and_actual_hit_target():
     assert "el.matches(':disabled')" in expression
     assert "el.closest('[inert]')" in expression
     assert "hit===el||Boolean(hit&&el.contains(hit))" in expression
-    assert "scrollIntoView" in expression
+    assert "scrollIntoView" in "\n".join(client.expressions)
     assert ".click(" not in expression
 
 
@@ -1681,16 +1682,21 @@ def test_guest_final_confirmation_defaults_to_real_robot_handoff_and_allows_gues
 
 
 class _ConfirmationCapturePage:
-    timeout_s = 0.01
+    timeout_s = 0.6
     def __init__(self, identity, final=False, *, visible=True, png=None):
         self.identity, self.final, self.visible = dict(identity), final, visible
         self.png = b"\x89PNG\r\n\x1a\nfixture" if png is None else png
         self.calls, self.expressions = [], []
     def _evaluate(self, expression):
         self.expressions.append(expression)
+        if "activeFiniteAnimations" in expression:
+            return {"visibleCount": 1 if self.visible else 0, "disabled": False,
+                    "settled": True, "pageReady": True, "hit": True,
+                    "x": 100, "y": 100, "width": 90, "height": 40}
         return {"title": "actual UI fixture", "url": "http://127.0.0.1:8010/",
                 "visibility": "visible", "focused": True,
-                "controls": [{"text": "완료 확인", "visible": self.visible, "disabled": False}],
+                "controls": [{"selector": selector, "text": "완료 확인", "visible": self.visible, "disabled": False}
+                             for selector in ('#completeAction', '[data-ui="operator-arrival-return-confirm"]')],
                 "guest_identity": self.identity, "guest_final_ready": self.final}
     def _call(self, method, params):
         import base64
@@ -1741,6 +1747,74 @@ def test_all_browser_confirmation_paths_checkpoint_capture_before_request():
     assert helper.index("capture_before_confirmation(") < helper.index("checkpoint(result,") < helper.index("frontend_client.request_return(context)")
     assert source.count("request_visible_confirmation(") == 4  # definition, first, Robot handoff final, same-page final
     assert 'args.output.parent / "ui_confirmations"' in helper
+    assert helper.index("await_return_context(") < helper.index("frontend_client.request_return(context)")
+    assert '"ui_probe_failures"' in helper
+
+
+@pytest.mark.parametrize("failure", [{"hit": False}, {"settled": False}, {"pageReady": False}])
+def test_confirmation_png_waits_for_same_unobscured_settled_pointer_contract(tmp_path, failure):
+    context = _return_test_context(intent="recall")
+    page = _ConfirmationCapturePage(context["mission_identity"])
+    page.timeout_s = 0.06
+    original = page._evaluate
+    def evaluate(expression):
+        value = original(expression)
+        return {**value, **failure} if "activeFiniteAnimations" in expression else value
+    page._evaluate = evaluate
+    result = {}
+    with pytest.raises(matrix.MatrixError, match="unobscured/settled/stable"):
+        matrix.capture_before_confirmation(page, tmp_path, context, result, frontend="robot")
+    assert page.calls == []
+    assert result["confirmation_views"][0]["status"] == "CAPTURE_FAILED"
+    assert not list(tmp_path.glob("*.png"))
+
+
+def test_operator_probe_timeout_is_bounded_and_retains_full_probe_separately():
+    client = matrix.OperatorBrowserClient.__new__(matrix.OperatorBrowserClient)
+    client.timeout_s = 0.01
+    probe = {"websocket": [{"frame": {"usage_complete": True, "site": "B1", "mission_generation": 13}},
+                            {"frame": {"telemetry": "UNBOUNDED_WS_PAYLOAD" * 10000}}],
+             "http": [{"url": "/ui/service_metrics", "ok": True, "body": "UNBOUNDED_METRICS" * 10000},
+                      {"url": "/ui/action", "method": "POST", "ok": False, "status": 500,
+                       "body": "UNBOUNDED_ERROR_BODY" * 10000, "error": "bounded diagnostic"}]}
+    client._probe = lambda: probe
+    with pytest.raises(matrix.MatrixError) as error:
+        client._wait_probe(lambda _: None, "fresh mission frame")
+    message = str(error.value)
+    assert len(message) < 1600
+    assert "UNBOUNDED" not in message
+    assert "websocket_count" in message and "http_error_count" in message
+    assert "B1" in message and "500" in message
+    assert client._last_failed_probe is probe
+
+
+def test_operator_new_probe_cannot_attach_previous_mission_failure():
+    client = matrix.OperatorBrowserClient.__new__(matrix.OperatorBrowserClient)
+    client._last_failed_probe = {"http": [{"body": "previous mission"}]}
+    client._evaluate = lambda _: {"accepted": True}
+    client._install_transport_probe()
+    assert client._last_failed_probe is None
+
+
+@pytest.mark.parametrize("failure", [{"hit": False}, {"settled": False}, {"pageReady": False}])
+def test_robot_pointer_never_presses_covered_fading_or_background_control(failure):
+    client = _operator_client_with_fake_visible_dom({})
+    client.timeout_s = 0.06
+    original = client._element
+    client._element = lambda selector: {**original(selector), **failure}
+    with pytest.raises(matrix.MatrixError, match="unobscured/settled/stable"):
+        client._click('[data-ui="operator-arrival-return-confirm"]', "test final confirmation")
+    assert client.cdp_calls == []
+
+
+def test_robot_hover_overlay_is_rechecked_before_mouse_press():
+    client = _operator_client_with_fake_visible_dom({})
+    client.timeout_s = 0.4
+    original = client._element
+    client._element = lambda selector: {**original(selector), "hit": not bool(client.cdp_calls)}
+    with pytest.raises(matrix.MatrixError, match="after pointer hover"):
+        client._click('[data-ui="operator-arrival-return-confirm"]', "test final confirmation")
+    assert [params["type"] for _, params in client.cdp_calls] == ["mouseMoved"]
 
 
 def test_handoff_captures_real_foreground_page_metadata_and_png(tmp_path):
@@ -1772,7 +1846,7 @@ def test_robot_return_click_rejects_wrong_site_generation_or_completion_stage(fr
     frame = {"usage_complete": True, "site": "B1", "mission_generation": 13, "recall_final_return": False}
     frame.update(frame_update)
     client = _operator_client_with_fake_visible_dom({"websocket": [{"frame": frame}]})
-    client.timeout_s = 0.01
+    client.timeout_s = 0.4
     client._probe = lambda: {"websocket": [{"frame": frame}]}
     client._wait_probe = matrix.OperatorBrowserClient._wait_probe.__get__(client)
     with pytest.raises(matrix.MatrixError, match="expected arrival usage_complete"):
@@ -1792,6 +1866,11 @@ def _operator_client_with_fake_visible_dom(probe):
             "count": 1,
             "visibleCount": 1,
             "disabled": False,
+            "hit": True,
+            "settled": True,
+            "pageReady": True,
+            "width": 100.0,
+            "height": 40.0,
             "pressed": "true",
             "x": 100.0,
             "y": 200.0,
@@ -1879,7 +1958,7 @@ def test_operator_return_uses_owned_panel_when_modal_is_absent_and_clears_probe(
 def test_operator_return_rejects_previous_mission_frame_without_a_new_send():
     probe = {"websocket": [{"frame": {"usage_complete": True}}], "http": []}
     client = _operator_client_with_fake_visible_dom(probe)
-    client.timeout_s = 0.01
+    client.timeout_s = 0.4
     client._install_transport_probe = lambda: probe["websocket"].clear()
     client._probe = lambda: probe
     client._wait_probe = matrix.OperatorBrowserClient._wait_probe.__get__(client)

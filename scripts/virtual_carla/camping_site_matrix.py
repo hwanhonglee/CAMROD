@@ -1414,6 +1414,96 @@ def write_json_atomic(
         raise
 
 
+def pointer_target_snapshot_script(selector: str) -> str:
+    """Read real hit testing and ancestor rendering; never click or dismiss UI."""
+    return "(() => {" + f"const selector={json.dumps(selector)};" + r"""
+const matches=Array.from(document.querySelectorAll(selector));
+const visible=matches.filter(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+  return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&Number(s.opacity)>0;});
+if(visible.length!==1) return {count:matches.length,visibleCount:visible.length};
+const el=visible[0],r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+let opacity=1,ancestorsVisible=true,activeFiniteAnimations=0;
+for(let ancestor=el;ancestor;ancestor=ancestor.parentElement){
+  const s=getComputedStyle(ancestor); opacity*=Number(s.opacity);
+  if(s.display==='none'||s.visibility!=='visible') ancestorsVisible=false;
+  for(const a of ancestor.getAnimations()){
+    const timing=a.effect&&a.effect.getComputedTiming();
+    if(timing&&Number.isFinite(timing.endTime)&&
+       (a.pending||(a.playState!=='finished'&&a.playState!=='idle'))) activeFiniteAnimations++;
+  }
+}
+const hit=document.elementFromPoint(x,y);
+return {count:matches.length,visibleCount:1,
+  disabled:Boolean(el.disabled)||el.matches(':disabled')||el.getAttribute('aria-disabled')==='true'||Boolean(el.closest('[inert]')),
+  hit:hit===el||Boolean(hit&&el.contains(hit)),hitTag:hit?hit.tagName:null,
+  hitId:hit?hit.id:null,ancestorOpacity:opacity,activeFiniteAnimations:activeFiniteAnimations,
+  settled:ancestorsVisible&&Number.isFinite(opacity)&&opacity>=0.999&&activeFiniteAnimations===0,
+  pageReady:document.visibilityState==='visible'&&document.hasFocus(),
+  x:x,y:y,width:r.width,height:r.height,
+  pressed:el.getAttribute('aria-pressed'),value:typeof el.value==='string'?el.value:null,
+  text:el.textContent.replace(/\s+/g,' ').trim()};})()"""
+
+
+def _wait_pointer_snapshot(snapshot: Callable[[], Mapping[str, Any]], description: str,
+                           timeout_s: float, *, stability_s: float = 0.3,
+                           expected_text: str | None = None) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_s
+    last: dict[str, Any] = {}
+    stable_since: float | None = None
+    anchor: tuple[float, ...] | None = None
+    while time.monotonic() < deadline:
+        value = snapshot()
+        last = dict(value) if isinstance(value, Mapping) else {}
+        ready = (last.get("visibleCount") == 1 and last.get("disabled") is False
+                 and last.get("hit") is True and last.get("settled") is True
+                 and last.get("pageReady") is True
+                 and (expected_text is None or last.get("text") == expected_text))
+        try:
+            bounds = tuple(float(last[key]) for key in ("x", "y", "width", "height"))
+            ready = ready and all(math.isfinite(number) for number in bounds)
+        except (KeyError, ValueError, TypeError):
+            ready, bounds = False, ()
+        now = time.monotonic()
+        if ready:
+            if anchor is None or any(abs(a - b) > 0.5 for a, b in zip(anchor, bounds)):
+                anchor, stable_since = bounds, now
+            elif stable_since is not None and now - stable_since >= stability_s:
+                return {**last, "stable_for_s": now - stable_since}
+        else:
+            anchor, stable_since = None, None
+        time.sleep(0.05)
+    raise MatrixError(f"UI pointer target not unobscured/settled/stable for {description}: {last!r}")
+
+
+def wait_pointer_target_ready(client: Any, selector: str, description: str, *,
+                              timeout_s: float | None = None,
+                              stability_s: float = 0.3) -> dict[str, Any]:
+    return _wait_pointer_snapshot(
+        lambda: client._evaluate(pointer_target_snapshot_script(selector)),
+        f"{description} ({selector})", client.timeout_s if timeout_s is None else timeout_s,
+        stability_s=stability_s)
+
+
+def summarize_operator_probe(probe: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep timeout diagnostics bounded; full traffic is a separate artifact."""
+    websocket = probe.get("websocket") if isinstance(probe.get("websocket"), list) else []
+    http = probe.get("http") if isinstance(probe.get("http"), list) else []
+    frames = [item.get("frame") for item in websocket if isinstance(item, Mapping)
+              and isinstance(item.get("frame"), Mapping)]
+    fields = ("usage_complete", "site", "mission_generation", "recall_final_return", "action", "destination")
+    relevant_frames = [frame for frame in frames if any(key in frame for key in fields)]
+    last_frame = relevant_frames[-1] if relevant_frames else {}
+    relevant = {key: (value[:160] if isinstance(value, str) else value)
+                for key in fields if isinstance((value := last_frame.get(key)), (str, int, float, bool))}
+    errors = [{"url": str(item.get("url", ""))[:200], "method": str(item.get("method", ""))[:16],
+               "status": item.get("status"), "error": str(item.get("error", ""))[:160]}
+              for item in http if isinstance(item, Mapping)
+              and (item.get("error") or item.get("ok") is False)]
+    return {"websocket_count": len(websocket), "http_count": len(http),
+            "http_error_count": len(errors), "last_relevant_frame": relevant,
+            "last_http_errors": errors[-3:]}
+
+
 class UIClient:
     """Small production UI client with strict success handling."""
 
@@ -1851,23 +1941,19 @@ class GuestBrowserClient:
 
     def _guest_control(self, selector: str, *, scroll: bool = False) -> dict[str, Any]:
         """Measure the real rendered control, including obstruction at its hit point."""
-        value = self._evaluate("(() => {"
-            f"const selector={json.dumps(selector)}; const scroll={json.dumps(scroll)};"
-            "const matches=Array.from(document.querySelectorAll(selector));"
-            "const visible=matches.filter(el=>{const r=el.getBoundingClientRect();"
-            "const s=getComputedStyle(el); return r.width>0 && r.height>0 && "
-            "s.display!=='none' && s.visibility!=='hidden' && Number(s.opacity)!==0;});"
-            "if (visible.length!==1) return {visibleCount:visible.length};"
-            "const el=visible[0]; if(scroll) el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});"
-            "const r=el.getBoundingClientRect(); const x=r.left+r.width/2,y=r.top+r.height/2;"
-            "const hit=document.elementFromPoint(x,y);"
-            "return {visibleCount:1,disabled:Boolean(el.disabled)||el.matches(':disabled')||"
-            "el.getAttribute('aria-disabled')==='true'||Boolean(el.closest('[inert]')),"
-            "text:el.textContent.replace(/\\s+/g,' ').trim(),x:x,y:y,"
-            "hit:hit===el||Boolean(hit&&el.contains(hit))};})()")
+        if scroll:
+            self._evaluate("(() => {const el=document.querySelector(" + json.dumps(selector) +
+                ");if(el)el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});return true;})()")
+        value = self._evaluate(pointer_target_snapshot_script(selector))
         return dict(value) if isinstance(value, Mapping) else {}
 
     def _guest_wait_control(self, selector: str, expected_text: str, *, click: bool) -> dict[str, Any]:
+        if click:
+            try:
+                return _wait_pointer_snapshot(lambda: self._guest_control(selector, scroll=True),
+                    selector, self.timeout_s, expected_text=expected_text)
+            except MatrixError as error:
+                raise MatrixError(f"Guest control is hidden/disabled/obstructed or has wrong text: {error}") from error
         deadline = time.monotonic() + self.timeout_s
         last: dict[str, Any] = {}
         while time.monotonic() < deadline:
@@ -1886,6 +1972,10 @@ class GuestBrowserClient:
         value = self._guest_wait_control(selector, expected_text, click=True)
         x, y = float(value["x"]), float(value["y"])
         for kind, buttons in (("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)):
+            if kind == "mousePressed":
+                # Hover may itself start a CSS transition or expose an overlay.
+                value = self._guest_wait_control(selector, expected_text, click=True)
+                x, y = float(value["x"]), float(value["y"])
             params: dict[str, Any] = {"type": kind, "x": x, "y": y}
             if kind != "mouseMoved":
                 params.update(button="left", buttons=buttons, clickCount=1)
@@ -2024,6 +2114,7 @@ class OperatorBrowserClient(GuestBrowserClient):
             raise MatrixError(f"visible Robot UI page is not ready: {ready!r}")
 
     def _install_transport_probe(self) -> None:
+        self._last_failed_probe = None
         value = self._evaluate(
             "(() => {"
             "if (!window.__camrodOperatorEvidenceInstalled) {"
@@ -2065,48 +2156,14 @@ class OperatorBrowserClient(GuestBrowserClient):
         self._accepted(value, "transport probe installation")
 
     def _element(self, selector: str) -> dict[str, Any]:
-        literal = json.dumps(selector)
-        value = self._evaluate(
-            "(() => {"
-            f"const selector = {literal};"
-            "const matches = Array.from(document.querySelectorAll(selector));"
-            "const visible = matches.filter(element => {"
-            "const rect = element.getBoundingClientRect();"
-            "const style = window.getComputedStyle(element);"
-            "return rect.width > 0 && rect.height > 0 && "
-            "style.display !== 'none' && style.visibility !== 'hidden' && "
-            "Number(style.opacity) !== 0;"
-            "});"
-            "if (visible.length !== 1) return {count:matches.length, "
-            "visibleCount:visible.length};"
-            "const element = visible[0]; const rect = element.getBoundingClientRect();"
-            "return {count:matches.length, visibleCount:1, disabled:Boolean(element.disabled), "
-            "x:rect.left + rect.width / 2, y:rect.top + rect.height / 2, "
-            "pressed:element.getAttribute('aria-pressed'), "
-            "value:typeof element.value === 'string' ? element.value : null};"
-            "})()"
-        )
+        value = self._evaluate(pointer_target_snapshot_script(selector))
         return dict(value) if isinstance(value, Mapping) else {}
 
     def _wait_element(
         self, selector: str, description: str, timeout_s: float | None = None
     ) -> dict[str, Any]:
-        deadline = time.monotonic() + (
-            self.timeout_s if timeout_s is None else timeout_s
-        )
-        last: dict[str, Any] = {}
-        while time.monotonic() < deadline:
-            last = self._element(selector)
-            if (
-                last.get("visibleCount") == 1
-                and last.get("disabled") is not True
-            ):
-                return last
-            time.sleep(0.05)
-        raise MatrixError(
-            f"Robot UI did not expose one enabled {description} element "
-            f"({selector}): {last!r}"
-        )
+        return _wait_pointer_snapshot(lambda: self._element(selector),
+            f"Robot {description} ({selector})", self.timeout_s if timeout_s is None else timeout_s)
 
     def _wait_pressed(self, selector: str, description: str) -> None:
         deadline = time.monotonic() + self.timeout_s
@@ -2127,6 +2184,8 @@ class OperatorBrowserClient(GuestBrowserClient):
         self._call("Input.dispatchMouseEvent", {
             "type": "mouseMoved", "x": x, "y": y,
         })
+        element = self._wait_element(selector, f"{description} after pointer hover")
+        x, y = float(element["x"]), float(element["y"])
         self._call("Input.dispatchMouseEvent", {
             "type": "mousePressed", "x": x, "y": y,
             "button": "left", "buttons": 1, "clickCount": 1,
@@ -2141,6 +2200,9 @@ class OperatorBrowserClient(GuestBrowserClient):
             "x": round(x, 3),
             "y": round(y, 3),
             "transport": "CDP.Input.dispatchMouseEvent",
+            "hit_test": element["hit"],
+            "render_settled": element["settled"],
+            "stable_for_s": element["stable_for_s"],
         }
         self._interactions.append(record)
         return record
@@ -2195,9 +2257,9 @@ class OperatorBrowserClient(GuestBrowserClient):
             if accepted is not None:
                 return accepted
             time.sleep(0.05)
-        raise MatrixError(
-            f"Robot UI did not emit the expected {description}: {last!r}"
-        )
+        self._last_failed_probe = last
+        raise MatrixError(f"Robot UI did not emit the expected {description}: "
+                          f"{summarize_operator_probe(last)!r}")
 
     @staticmethod
     def _matching_ws_frame(
@@ -2472,6 +2534,19 @@ def capture_before_confirmation(client: Any, directory: Path, context: Mapping[s
             if time.monotonic() >= deadline:
                 raise MatrixError("confirmation control is not visible/enabled before screenshot")
             time.sleep(0.05)
+        selected = next((selector for selector in selectors
+            if any(control.get("selector") == selector and control.get("visible")
+                   and not control.get("disabled") for control in view.get("controls", []))), None)
+        if selected is None:
+            raise MatrixError("confirmation page did not identify a rendered control")
+        record["pointer_ready"] = {"selector": selected, **wait_pointer_target_ready(
+            client, selected, f"{frontend} {stage} confirmation screenshot")}
+        # Waiting for a notification/fade must not make another mission eligible.
+        view = client._evaluate(expression)
+        record["page"] = view
+        if frontend == "guest" and (view.get("guest_identity") != identity or
+                view.get("guest_final_ready") is not context.get("final_return")):
+            raise MatrixError("Guest confirmation screenshot has stale identity after render wait")
         record["capture_started_at_utc"] = utc_now()
         payload = client._call("Page.captureScreenshot", {"format": "png", "fromSurface": True})
         png = base64.b64decode(payload["result"]["data"], validate=True)
@@ -3513,7 +3588,26 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
         finally:
             # Persist CAPTURE_FAILED too, before any click can be attempted.
             checkpoint(result, "pre-click confirmation evidence checkpoint")
-        return frontend_client.request_return(context)
+        # The render wait is read-only but can span an overlay animation. Check
+        # fresh ROS/UI authority again before the page is allowed to act.
+        await_return_context(context["mission_identity"], final_return=context.get("final_return") is True)
+        try:
+            return frontend_client.request_return(context)
+        except Exception:
+            probe = getattr(frontend_client, "_last_failed_probe", None)
+            if isinstance(probe, Mapping):
+                directory = args.output.parent / "ui_probe_failures"
+                directory.mkdir(parents=True, exist_ok=True)
+                identity = context["mission_identity"]
+                path = directory / f"{identity['site']}_g{identity['generation']}_{frontend}_{time.monotonic_ns()}.json"
+                with path.open("x", encoding="utf-8") as stream:
+                    json.dump({"context": dict(context), "captured_at_utc": utc_now(),
+                               "probe": dict(probe)}, stream, ensure_ascii=False, indent=2)
+                result["confirmation_probe_failure"] = {
+                    "path": str(path.resolve()), "sha256": sha256_file(path),
+                    "summary": summarize_operator_probe(probe)}
+                checkpoint(result, "full failed UI transport probe retained separately")
+            raise
 
     def copy_final_observation(result: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
         result["final_service_state"] = snapshot.get("service_state") or {}
