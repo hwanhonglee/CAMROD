@@ -86,16 +86,20 @@ def test_fresh_exact_controller_status_is_the_only_status_authorization() -> Non
 def test_ui_never_releases_campsite_before_exit_complete() -> None:
     """Restart heartbeats attach to the active exit without restarting it."""
     ui = UI_NODE.read_text(encoding="utf-8")
-    departure = ui.split("departure_required =", 1)[1].split(
-        "return {", 1
-    )[0]
-    for state in (
-        "DROP_ZONE_PARKING",
-        "WAITING_FOR_CHARGING",
-        "DEPARTING_CHARGER",
-        "DEPARTING_DROP_ZONE",
-    ):
-        assert f"AvgServiceState.{state}" in departure
+    destination = ui.split(
+        "def _apply_destination_command_serialized", 1
+    )[1].split("def _is_recent_direct_destination_echo", 1)[0]
+    # Admission now uses a fresh, map-frame pose inside the authored drop-zone
+    # polygon.  Service-state text alone is deliberately not departure proof.
+    assert (
+        "departure_required, origin_reason = "
+        "UiBackendNode._station_departure_origin(self)"
+        in destination
+    )
+    assert "if departure_required is None" in destination
+    assert 'origin_reason = "drop_zone_charging_pose_mismatch"' in destination
+    assert "if not departure_required:" in destination
+    departure = destination.split("if departure_required and mission_key:", 1)[1]
     # HH_260825 - Destination admission now owns only the optional charging
     # dwell. The shared departure helper owns restart idempotency so delayed and
     # immediate departures cannot diverge or publish EXIT twice.

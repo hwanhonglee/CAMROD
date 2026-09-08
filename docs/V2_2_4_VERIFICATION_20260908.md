@@ -110,3 +110,14 @@ python3 -m pytest -q \
 
 The regression is registered with bringup CTest. Restart the launch after
 installing the change; existing controller processes retain their old parameters.
+
+## Final departure regression audit
+
+The registered parking-scope CTest target passed after fresh bringup CMake
+configuration. A bounded UI/departure run also exposed an outdated source-text
+contract: it still expected service-state-only admission, while v2.2.4 already
+uses `_station_departure_origin()` and fresh map-frame polygon containment.
+The contract now checks that current logic, including unknown origins and
+charging/outside-polygon mismatches. No UI or departure runtime code changed.
+The selected station/departure/origin UI tests and departure contracts passed:
+18 passed, 60 unrelated tests deselected.
