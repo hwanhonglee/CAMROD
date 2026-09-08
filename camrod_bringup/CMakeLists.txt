@@ -338,6 +338,13 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # Execute the real nested launch scopes without starting controller processes.
+  ament_add_pytest_test(
+    test_parking_launch_parameter_scope
+    test/test_parking_launch_parameter_scope.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

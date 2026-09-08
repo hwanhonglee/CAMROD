@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -68,21 +68,27 @@ def generate_launch_description():
         # fallback stays off unless a raw-only source is being replayed.
         DeclareLaunchArgument("apriltag_launch_rectify", default_value="false"),
 
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(package_path(
-                "camrod_perception",
-                os.path.join("launch", "apriltag_parking_detector.launch.py"),
-            )),
-            launch_arguments={
-                "parameter_file": LaunchConfiguration("apriltag_parameter_file"),
-                "launch_rectify": LaunchConfiguration("apriltag_launch_rectify"),
-            }.items(),
-            condition=IfCondition(PythonExpression([
-                "'", LaunchConfiguration("parking_method"),
-                "'.strip().lower() in ['apriltag', 'auto'] and '",
-                LaunchConfiguration("launch_apriltag_detector"),
-                "'.strip().lower() in ['1', 'true', 'yes', 'on']",
-            ])),
+        # The detector also calls its YAML argument `parameter_file`. Keep
+        # that assignment local so later parking controllers load parking.yaml
+        # instead of silently falling back to defaults with detector settings.
+        GroupAction(
+            scoped=True,
+            actions=[IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(package_path(
+                    "camrod_perception",
+                    os.path.join("launch", "apriltag_parking_detector.launch.py"),
+                )),
+                launch_arguments={
+                    "parameter_file": LaunchConfiguration("apriltag_parameter_file"),
+                    "launch_rectify": LaunchConfiguration("apriltag_launch_rectify"),
+                }.items(),
+                condition=IfCondition(PythonExpression([
+                    "'", LaunchConfiguration("parking_method"),
+                    "'.strip().lower() in ['apriltag', 'auto'] and '",
+                    LaunchConfiguration("launch_apriltag_detector"),
+                    "'.strip().lower() in ['1', 'true', 'yes', 'on']",
+                ])),
+            )],
         ),
 
         Node(
