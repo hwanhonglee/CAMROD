@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="16" failures="0" disabled="0" errors="0" time="0.122" timestamp="2026-09-08T18:50:33" name="AllTests">
+  <testsuite name="ReverseParkingControllerTest" tests="16" failures="0" disabled="0" errors="0" time="0.121" timestamp="2026-09-08T18:50:33">
+    <testcase name="NewStationContinuesPastOldLimitAndCompletesOnlyAtGoal" status="run" result="completed" time="0.012" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="TravelLimitMissIsErrorNotParked" status="run" result="completed" time="0.004" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="GoalOutsideFiveMeterBoundIsRejectedBeforeMotion" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ExplicitSmallerOrInvalidBoundCannotBeAutoExtended" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="UnreachableLateralMissStopsInsideAxialEnvelope" status="run" result="completed" time="0.009" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ReachableLateralOffsetContinuesUntilActualXyGoal" status="run" result="completed" time="0.009" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ReachableNegativeLateralOffsetAlsoContinues" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="FinalApproachCannotCrossStationPlaneOutsideGoal" status="run" result="completed" time="0.009" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="TangentialLateralMissDoesNotChaseStationPlane" status="run" result="completed" time="0.005" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="BoundedFinalApproachRetainsTimeout" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="OvershootingAxisDoesNotCountAsArrival" status="run" result="completed" time="0.008" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ActualGoalInsideToleranceStillCompletes" status="run" result="completed" time="0.006" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ActualGoalAtTravelLimitCanComplete" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="ChargingStillStopsImmediatelyWithoutCoordinateRequirement" status="run" result="completed" time="0.011" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="StaleAndNonfiniteLocalizationCannotComplete" status="run" result="completed" time="0.007" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+    <testcase name="MissDoesNotBecomeChargingWaitAndCancelRemainsIdempotent" status="run" result="completed" time="0.005" timestamp="2026-09-08T18:50:33" classname="ReverseParkingControllerTest" />
+  </testsuite>
+</testsuites>
