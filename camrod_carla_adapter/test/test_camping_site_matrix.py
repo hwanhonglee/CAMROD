@@ -714,7 +714,7 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
             ]
         }
     }
-    assert matrix.return_source_observed(snapshot, "guest:usage_complete")
+    assert not matrix.return_source_observed(snapshot, "guest:usage_complete")
     current_snapshot = {
         "sequences": {
             "ui_operation_requests": [{
@@ -724,10 +724,10 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
         }
     }
     assert matrix.return_source_observed(
-        current_snapshot, "guest:usage_complete", "B13"
+        current_snapshot, "guest:usage_complete", "B13", 1788726927385002
     )
     assert not matrix.return_source_observed(
-        current_snapshot, "guest:usage_complete", "B12"
+        current_snapshot, "guest:usage_complete", "B12", 1788726927385002
     )
     for rejected_guest_source in (
         "guest:usage_complete:site=B0:g=1",
@@ -772,7 +772,7 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
             }]
         }
     }
-    assert matrix.return_source_observed(
+    assert not matrix.return_source_observed(
         controller_snapshot, "ws:usage_complete:site_exit_first"
     )
 
@@ -781,7 +781,7 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
             "controller_operation_requests": [{
                 "operation": matrix.RETURN_OPERATION,
                 "source": (
-                    "ws:usage_complete:ui_return_token="
+                    "robot_ui:usage_complete:ui_return_token="
                     "g1788692609018001-s1-326ebcaa9335f:site_exit_first"
                 ),
             }]
@@ -789,7 +789,7 @@ def test_guest_return_authority_requires_authenticated_usage_complete_source():
     }
     assert matrix.return_source_observed(
         tokenized_controller_snapshot,
-        "ws:usage_complete:site_exit_first",
+        "robot_ui:usage_complete:site_exit_first", "B1", 1788692609018001,
     )
 
     for rejected_source in (
@@ -972,7 +972,7 @@ def test_guest_browser_arguments_are_local_and_opt_in():
     assert operator_contract["return_authority"] == "operator_browser"
     assert operator_contract["expected_dispatch_source"] == "ws"
     assert operator_contract["expected_return_source"] == (
-        "ws:usage_complete:site_exit_first"
+        "robot_ui:usage_complete:site_exit_first"
     )
     assert "pointer/text events" in operator_contract["motion_path"]
 
@@ -985,7 +985,7 @@ def test_authority_contract_preserves_operator_and_identifies_guest_path():
         "CARLA physical 4WS bridge"
     )
     assert operator_contract["ui_endpoints"]["return"] == "POST /ui/manual_return"
-    assert operator_contract["expected_return_source"] == ""
+    assert operator_contract["expected_return_source"] == "http:manual_return:site_exit_first"
 
     guest = matrix._parser().parse_args([
         "--return-authority", "guest_browser",
@@ -1342,8 +1342,9 @@ def test_guest_actions_call_page_lexicals_and_verify_exact_ws_frames():
         return {"accepted": True, "action": action}
 
     client._evaluate = evaluate
+    client._call = lambda *args: {}
     assert client.dispatch("B1")["accepted"] is True
-    assert client.request_return()["accepted"] is True
+    assert client.request_return(_return_test_context(owner="guest", intent="recall"))["accepted"] is True
 
     dispatch_expression, return_expression = expressions
     assert "window.ws" not in dispatch_expression
@@ -1365,6 +1366,164 @@ def test_guest_actions_call_page_lexicals_and_verify_exact_ws_frames():
     with pytest.raises(matrix.MatrixError, match="rejected navigate"):
         rejected.dispatch("B2")
     assert rejected_connection.closed is True
+
+
+def _return_test_context(site="B1", generation=13, owner="operator", intent="delivery", final=False):
+    return {"mission_identity": {"site": site, "generation": generation, "owner": owner, "intent": intent},
+            "service_state": 8 if intent == "recall" else 11,
+            "site_phase": "RECALL_RETURN_WAIT" if final else "WAIT_RETURN", "final_return": final,
+            "controller_request_count_before": 0, "ui_request_count_before": 0}
+
+
+@pytest.mark.parametrize("authority,owner,intent,final", [
+    ("robot_ui:usage_complete", "operator", "delivery", False),
+    ("http:manual_return", "operator", "delivery", False),
+    ("http:manual_return", "operator", "recall", False),
+    ("robot_ui:usage_complete", "robot", "recall", False),
+    ("robot_ui:usage_complete", "guest", "recall", True),
+    ("guest:usage_complete", "guest", "recall", False),
+    ("guest:usage_complete", "guest", "recall", True),
+])
+def test_current_return_ack_binds_exact_new_nonce_owner_generation_and_stage(authority, owner, intent, final):
+    context = _return_test_context(owner=owner, intent=intent, final=final)
+    guest = authority.startswith("guest:")
+    ui_source = "guest:usage_complete:site=B1:g=13" if guest else ""
+    if guest and final:
+        ui_source += ":recall_final_return"
+    base = ui_source if guest else authority
+    token = "" if final else "g13-s1-deadbeef"
+    source = (f"{base}:recall_final_return:site=B1:g=13" if final else
+              f"{base}:ui_return_token={token}:site_exit_first")
+    snapshot = {"sequences": {"controller_operation_requests": [{"operation": 3, "source": source}],
+                              "ui_operation_requests": [{"operation": 3, "source": ui_source}] if guest else []}}
+    response = {"context": context, "source": authority}
+    ack = {"controller_source": source, "ui_source": ui_source, "token": token}
+    assert matrix.return_acknowledgement(snapshot, response) == ack
+    # A retained earlier RETURN from the same mission cannot acknowledge a new action.
+    context["controller_request_count_before"] = 1
+    assert matrix.return_acknowledgement(snapshot, response) is None
+    context["controller_request_count_before"] = 0
+    context["mission_identity"]["generation"] = 12
+    assert matrix.return_acknowledgement(snapshot, response) is None
+    context["mission_identity"]["generation"] = 13
+    context["site_phase"] = "CRAB_OUT"
+    assert matrix.return_acknowledgement(snapshot, response) is None
+    context["site_phase"] = "RECALL_RETURN_WAIT" if final else "WAIT_RETURN"
+    if guest:
+        context["mission_identity"]["owner"] = "operator"
+        assert matrix.return_acknowledgement(snapshot, response) is None
+
+
+def test_return_token_validation_rejects_old_authority_generation_and_substituted_nonce():
+    expected = "robot_ui:usage_complete:site_exit_first"
+    actual = "robot_ui:usage_complete:ui_return_token=g13-s2-abc123:site_exit_first"
+    assert matrix.return_source_matches(actual, expected, "B1", 13, "g13-s2-abc123")
+    for source, generation, nonce in [
+        (actual, 12, "g13-s2-abc123"),
+        (actual, 13, "g13-s1-abc123"),
+        (actual.replace("robot_ui:", "ws:"), 13, "g13-s2-abc123"),
+        (expected, 13, "g13-s2-abc123"),
+        (actual, 0, ""),
+    ]:
+        assert not matrix.return_source_matches(source, expected, "B1", generation, nonce)
+
+
+def test_return_context_rejects_changed_mission_and_premature_second_confirmation():
+    identity = _return_test_context(intent="recall")["mission_identity"]
+    state = {f"mission_dispatch_{key}": value for key, value in identity.items()}
+    state.update(mission_dispatch_active=True, service_state=8, recall_final_return_ready=False)
+    snapshot = {"service_state": {"state": 8}, "site": {"operating_state": "WAIT_RETURN"}, "sequences": {}}
+    assert matrix.return_context(state, snapshot, identity)["site_phase"] == "WAIT_RETURN"
+    with pytest.raises(matrix.MatrixError, match="stale/wrong"):
+        matrix.return_context(state, snapshot, identity, final_return=True)
+    snapshot["site"]["operating_state"] = "RECALL_RETURN_WAIT"
+    state["recall_final_return_ready"] = True
+    assert matrix.return_context(state, snapshot, identity, final_return=True)["final_return"]
+    state["mission_dispatch_generation"] = 99
+    with pytest.raises(matrix.MatrixError, match="changed"):
+        matrix.return_context(state, snapshot, identity, final_return=True)
+
+
+def test_recall_turnaround_requires_two_confirmations_only_for_configured_b1_to_b10():
+    for index in range(1, 14):
+        site = matrix.Site(f"B{index}", f"site{index}", 0, 0, 0, 0,
+                           "turnaround" if index <= 10 else "roadside_stop")
+        required = matrix.recall_requires_final_confirmation(site, "recall")
+        assert required is (index <= 10)
+        assert ("RECALL_RETURN_WAIT" in matrix.expected_site_phases(site, "recall")) is required
+        assert not matrix.recall_requires_final_confirmation(site, "delivery")
+
+
+def test_guest_native_confirmation_uses_cdp_dialog_without_replacing_window_confirm():
+    connection = _FakeCDPConnection([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "confirm"}},
+        {"id": 2, "result": {}},
+        {"id": 1, "result": {"result": {"type": "object", "value": {"accepted": True}}}},
+    ])
+    client = _guest_client_with_connection(connection)
+    client._accept_expected_confirmation = True
+    assert client._evaluate("sendUsageComplete()") == {"accepted": True}
+    assert connection.sent[1] == {"id": 2, "method": "Page.handleJavaScriptDialog", "params": {"accept": True}}
+    blocked = _guest_client_with_connection(_FakeCDPConnection([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "confirm"}},
+    ]))
+    with pytest.raises(matrix.MatrixError, match="unexpected browser dialog"):
+        blocked._evaluate("unknownAction()")
+
+
+def test_guest_dialog_ack_can_arrive_after_evaluation_without_corrupting_next_cdp_call():
+    client = _guest_client_with_connection(_FakeCDPConnection([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "confirm"}},
+        {"id": 1, "result": {"result": {"type": "object", "value": {"accepted": True}}}},
+        {"id": 2, "result": {}},
+        {"id": 3, "result": {"result": {"type": "object", "value": {"ready": True}}}},
+    ]))
+    client._accept_expected_confirmation = True
+    assert client._evaluate("sendUsageComplete()") == {"accepted": True}
+    client._accept_expected_confirmation = False
+    assert client._evaluate("({ready:true})") == {"ready": True}
+    assert client._pending_dialog_ids == set()
+
+
+def test_guest_final_confirmation_defaults_to_real_robot_handoff_and_allows_guest_only():
+    assert matrix._parser().parse_args([]).guest_final_return_authority == "robot"
+    assert matrix._parser().parse_args(["--guest-final-return-authority", "guest"]).guest_final_return_authority == "guest"
+
+
+def test_handoff_captures_real_foreground_page_metadata_and_png(tmp_path):
+    import base64
+    png = b"\x89PNG\r\n\x1a\n" + b"actual-test-fixture"
+    class Page:
+        timeout_s = 0.1
+        calls = []
+        def _call(self, method, params):
+            self.calls.append((method, params))
+            return {"result": {"data": base64.b64encode(png).decode()}}
+        def _evaluate(self, expression):
+            assert "document.title" in expression and "document.hasFocus()" in expression
+            return {"title": "Robot UI", "url": "http://127.0.0.1:8010/",
+                    "visibility": "visible", "focused": True, "width": 1280, "height": 960}
+    page = Page()
+    evidence = matrix.capture_ui_handoff_view(page, tmp_path, "robot_before")
+    assert evidence["title"] == "Robot UI"
+    assert evidence["captured_at_utc"].endswith("Z")
+    assert (tmp_path / "robot_before.png").read_bytes() == png
+    assert evidence["png"]["sha256"] == matrix.sha256_file(tmp_path / "robot_before.png")
+    assert [method for method, _ in page.calls] == ["Page.bringToFront", "Page.captureScreenshot"]
+    with pytest.raises(FileExistsError):
+        matrix.capture_ui_handoff_view(page, tmp_path, "robot_before")
+
+
+@pytest.mark.parametrize("frame_update", [{"site": "B2"}, {"mission_generation": 12}, {"recall_final_return": True}])
+def test_robot_return_click_rejects_wrong_site_generation_or_completion_stage(frame_update):
+    frame = {"usage_complete": True, "site": "B1", "mission_generation": 13, "recall_final_return": False}
+    frame.update(frame_update)
+    client = _operator_client_with_fake_visible_dom({"websocket": [{"frame": frame}]})
+    client.timeout_s = 0.01
+    client._probe = lambda: {"websocket": [{"frame": frame}]}
+    client._wait_probe = matrix.OperatorBrowserClient._wait_probe.__get__(client)
+    with pytest.raises(matrix.MatrixError, match="expected arrival usage_complete"):
+        client.request_return(_return_test_context())
 
 
 def _operator_client_with_fake_visible_dom(probe):
@@ -1406,22 +1565,22 @@ def test_operator_browser_uses_real_pointer_and_text_events_for_full_flow():
     probe = {
         "websocket": [
             {"frame": {"site": "B7", "state": True}},
-            {"frame": {"usage_complete": True}},
+            {"frame": {"usage_complete": True, "site": "B7", "mission_generation": 13, "recall_final_return": False}},
         ],
         "http": [],
     }
     client = _operator_client_with_fake_visible_dom(probe)
 
     dispatch = client.dispatch("B7", "delivery")
-    returned = client.request_return()
+    returned = client.request_return(_return_test_context(site="B7"))
 
     assert dispatch["source"] == "ws"
     assert dispatch["transport"] == (
         "visible_operator_page_websocket_via_cdp_input"
     )
-    assert returned["source"] == "ws:usage_complete"
+    assert returned["source"] == "robot_ui:usage_complete"
     assert returned["expected_ros_source"] == (
-        "ws:usage_complete:site_exit_first"
+        "robot_ui:usage_complete:site_exit_first"
     )
     methods = [method for method, _ in client.cdp_calls]
     assert "Input.dispatchMouseEvent" in methods
@@ -1455,10 +1614,10 @@ def test_operator_return_uses_owned_panel_when_modal_is_absent_and_clears_probe(
         assert reset, "reset must precede the acknowledgement click"
         result = call(method, params)
         if method == "Input.dispatchMouseEvent" and params.get("type") == "mouseReleased":
-            probe["websocket"].append({"frame": {"usage_complete": True, "site": "B1", "mission_generation": 13}})
+            probe["websocket"].append({"frame": {"usage_complete": True, "site": "B1", "mission_generation": 13, "recall_final_return": False}})
         return result
     client._call = page_input
-    returned = client.request_return()
+    returned = client.request_return(_return_test_context())
     assert returned["interactions"][0]["selector"] == '[data-ui="operator-arrival-return"]'
     assert returned["frame"]["site"] == "B1"
     assert reset == [True]
@@ -1472,7 +1631,7 @@ def test_operator_return_rejects_previous_mission_frame_without_a_new_send():
     client._probe = lambda: probe
     client._wait_probe = matrix.OperatorBrowserClient._wait_probe.__get__(client)
     with pytest.raises(matrix.MatrixError, match="expected arrival usage_complete"):
-        client.request_return()
+        client.request_return(_return_test_context())
 
 
 @pytest.mark.parametrize("element", [
@@ -1484,7 +1643,7 @@ def test_operator_return_never_bypasses_missing_or_disabled_ui_authority(element
     client.timeout_s = 0.01
     client._element = lambda selector: element
     with pytest.raises(matrix.MatrixError, match="arrival/mission ownership"):
-        client.request_return()
+        client.request_return(_return_test_context())
     assert client.cdp_calls == []
 
 

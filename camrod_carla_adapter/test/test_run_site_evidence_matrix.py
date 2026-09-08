@@ -374,7 +374,7 @@ def test_operator_browser_plan_selects_visible_robot_ui_and_cdp_input_matrix(
     assert "Robot UI" in result.stdout
     assert "local-only CDP 9224" in result.stdout
     assert "site_access.sh camping-sites-browser-recall" in result.stdout
-    assert "ws:usage_complete:site_exit_first" in result.stdout
+    assert "robot_ui:usage_complete:site_exit_first" in result.stdout
 
 
 def test_plan_renders_explicit_timeout_capture_and_mp4_policy(
@@ -436,7 +436,7 @@ def test_static_control_and_retention_contract() -> None:
     assert 'MATRIX_SUBCOMMAND="camping-sites-browser"' in source
     assert 'MATRIX_SUBCOMMAND="camping-sites-browser-recall"' in source
     assert 'EXPECTED_RETURN_SOURCE="guest:usage_complete"' in source
-    assert 'EXPECTED_RETURN_SOURCE="ws:usage_complete:site_exit_first"' in source
+    assert 'EXPECTED_RETURN_SOURCE="robot_ui:usage_complete:site_exit_first"' in source
     assert '--ui-window-title "${CAPTURE_UI_TITLE}"' in source
     assert '--ui-kind "${CAPTURE_UI_KIND}"' in source
     assert 'response.get("action") != "usage_complete"' in source

@@ -58,6 +58,9 @@ protected:
   void charging() { node_->is_charging_ = true; }
   void requireCharging() { node_->complete_without_charging_ = false; }
   void travelLimit(const double limit) { node_->maximum_reverse_distance_m_ = limit; }
+  void expireReverseTimeout() {
+    node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(31.0);
+  }
   void cancel() { node_->applyOperation(avg_msgs::msg::MotionOperation::CANCEL, "test"); }
   ReverseParkingPhase phase() const { return node_->phase_; }
   std::string detail() const { return node_->phase_detail_; }
@@ -105,12 +108,61 @@ TEST_F(ReverseParkingControllerTest, ExplicitSmallerOrInvalidBoundCannotBeAutoEx
   EXPECT_EQ(phase(), ReverseParkingPhase::kError);
 }
 
-TEST_F(ReverseParkingControllerTest, LateralAxisMissStopsAtOldBoundaryWithoutFurtherMotion) {
+TEST_F(ReverseParkingControllerTest, UnreachableLateralMissStopsInsideAxialEnvelope) {
   ASSERT_TRUE(start(1.0));
   pose(0.8, 0.4);
   tick();
   EXPECT_EQ(phase(), ReverseParkingPhase::kError);
   EXPECT_NE(detail().find("station reverse axis reached"), std::string::npos);
+}
+
+TEST_F(ReverseParkingControllerTest, ReachableLateralOffsetContinuesUntilActualXyGoal) {
+  ASSERT_TRUE(start(1.0));
+  pose(0.75, 0.128);  // axis .25, XY .2809: not arrived, but still reachable.
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kReverseApproach);
+  pose(0.79, 0.128);  // axis .21, XY .2459: inside the unchanged .25 m disk.
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kParked);
+  EXPECT_NE(detail().find("station XY goal reached"), std::string::npos);
+}
+
+TEST_F(ReverseParkingControllerTest, ReachableNegativeLateralOffsetAlsoContinues) {
+  ASSERT_TRUE(start(1.0));
+  pose(0.75, -0.128);
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kReverseApproach);
+  pose(0.79, -0.128);
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kParked);
+}
+
+TEST_F(ReverseParkingControllerTest, FinalApproachCannotCrossStationPlaneOutsideGoal) {
+  ASSERT_TRUE(start(1.0));
+  pose(0.75, 0.128);
+  tick();
+  ASSERT_EQ(phase(), ReverseParkingPhase::kReverseApproach);
+  pose(1.01, 0.26);
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  EXPECT_NE(detail().find("station plane passed"), std::string::npos);
+}
+
+TEST_F(ReverseParkingControllerTest, TangentialLateralMissDoesNotChaseStationPlane) {
+  ASSERT_TRUE(start(1.0));
+  pose(0.8, 0.25);
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  EXPECT_NE(detail().find("lateral miss outside XY disk"), std::string::npos);
+}
+
+TEST_F(ReverseParkingControllerTest, BoundedFinalApproachRetainsTimeout) {
+  ASSERT_TRUE(start(1.0));
+  pose(0.75, 0.128);
+  expireReverseTimeout();
+  tick();
+  EXPECT_EQ(phase(), ReverseParkingPhase::kError);
+  EXPECT_EQ(detail(), "reverse parking timeout");
 }
 
 TEST_F(ReverseParkingControllerTest, OvershootingAxisDoesNotCountAsArrival) {

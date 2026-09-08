@@ -18,6 +18,7 @@ on a plain Python installation.
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import importlib.util
@@ -619,14 +620,27 @@ def arrival_ready_for_return(
 def effective_service_mode(site: Site, mission_intent: str) -> str:
     """Return the controller policy that must be observed for this mission."""
     if mission_intent == "recall":
-        # Latest develop defines every B1-B13 recall as a bounded roadside
-        # pickup, independent of the site's normal delivery service policy.
+        # All recalls initially stop roadside. Turnaround B1-B10 then require
+        # a separately confirmed in-site loading stage before their final exit.
         return "roadside_stop"
     if mission_intent == "delivery":
         return site.service_mode
     raise MatrixError(
         f"mission_intent must be one of {MISSION_INTENTS}, got {mission_intent!r}"
     )
+
+
+def recall_requires_final_confirmation(site: Site, mission_intent: str) -> bool:
+    return (mission_intent == "recall" and site.service_mode == "turnaround"
+            and site.key in {f"B{index}" for index in range(1, 11)})
+
+
+def expected_site_phases(site: Site, mission_intent: str) -> tuple[str, ...]:
+    if recall_requires_final_confirmation(site, mission_intent):
+        return ("CRAB_IN", "UNLOAD_WAIT", "WAIT_RETURN", "RECALL_CLEARANCE_WAIT",
+                "ALIGN_ENTRY_YAW", "CRAB_IN", "ROTATE_180", "RECALL_RETURN_WAIT",
+                "ALIGN_RETRACE_YAW", "CRAB_OUT", "DONE")
+    return SITE_PHASES[effective_service_mode(site, mission_intent)]
 
 
 def required_service_state_ids(mission_intent: str) -> tuple[int, ...]:
@@ -713,17 +727,17 @@ def return_source_matches(
     observed: Any,
     expected_source: str,
     expected_site: str = "",
+    expected_generation: int = 0,
+    expected_token: str = "",
 ) -> bool:
-    """Match a frontend RETURN source, including its current mission nonce."""
-    if observed == expected_source:
-        return True
-    if not isinstance(observed, str) or not expected_source:
+    """Require current identity; a legacy prefix is never proof of Return."""
+    if (not isinstance(observed, str) or not expected_source
+            or type(expected_generation) is not int or expected_generation <= 0):
         return False
     if expected_source == "guest:usage_complete":
         match = GUEST_RETURN_SOURCE_RE.fullmatch(observed)
-        return match is not None and (
-            not expected_site or match.group(1) == expected_site
-        )
+        return bool(match and match.group(1) == expected_site
+                    and int(match.group(2)) == expected_generation)
     site_exit_suffix = ":site_exit_first"
     if not expected_source.endswith(site_exit_suffix):
         return False
@@ -734,13 +748,17 @@ def return_source_matches(
     ):
         return False
     token = observed[len(token_prefix) : -len(site_exit_suffix)]
-    return UI_RETURN_TOKEN_RE.fullmatch(token) is not None
+    return bool(UI_RETURN_TOKEN_RE.fullmatch(token)
+                and token.startswith(f"g{expected_generation}-s")
+                and (not expected_token or token == expected_token))
 
 
 def return_source_observed(
     snapshot: Mapping[str, Any],
     expected_source: str,
     expected_site: str = "",
+    expected_generation: int = 0,
+    expected_token: str = "",
 ) -> bool:
     """Require the authenticated frontend RETURN source at a ROS boundary."""
     if not expected_source:
@@ -764,11 +782,89 @@ def return_source_observed(
             if (
                 operation == RETURN_OPERATION
                 and return_source_matches(
-                    request.get("source"), expected_source, expected_site
+                    request.get("source"), expected_source, expected_site,
+                    expected_generation, expected_token,
                 )
             ):
                 return True
     return False
+
+
+def mission_identity(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Read the same backend snapshot used by the production UI heartbeat."""
+    generation = state.get("mission_dispatch_generation")
+    if (state.get("mission_dispatch_active") is not True
+            or type(generation) is not int or generation <= 0):
+        raise MatrixError("UI has no live mission identity")
+    return {"site": state.get("mission_dispatch_site"),
+            "owner": state.get("mission_dispatch_owner"),
+            "intent": state.get("mission_dispatch_intent"),
+            "generation": generation}
+
+
+def return_context(state: Mapping[str, Any], snapshot: Mapping[str, Any],
+                   identity: Mapping[str, Any], *, final_return: bool = False) -> dict[str, Any]:
+    if mission_identity(state) != identity:
+        raise MatrixError("Return rejected: active site/generation/owner/intent changed")
+    expected_state = GUEST_LOADING_WAIT if identity.get("intent") == "recall" else WAITING_FOR_RETURN_REQUEST
+    phase = str((snapshot.get("site") or {}).get("operating_state", ""))
+    expected_phase = "RECALL_RETURN_WAIT" if final_return else "WAIT_RETURN"
+    if (state.get("service_state") != expected_state
+            or (snapshot.get("service_state") or {}).get("state") != expected_state
+            or phase != expected_phase
+            or (final_return and state.get("recall_final_return_ready") is not True)):
+        raise MatrixError(f"Return rejected: stale/wrong completion phase {phase!r}")
+    sequences = snapshot.get("sequences") or {}
+    return {"mission_identity": dict(identity), "service_state": expected_state,
+            "site_phase": phase, "final_return": final_return,
+            "controller_request_count_before": len(sequences.get("controller_operation_requests") or []),
+            "ui_request_count_before": len(sequences.get("ui_operation_requests") or [])}
+
+
+def return_acknowledgement(snapshot: Mapping[str, Any], response: Mapping[str, Any]) -> dict[str, str] | None:
+    """Bind this click to a new ROS operation, exact owner and mission nonce.
+
+    The nonce is generated by the backend (not sent by the browser). Capture it
+    only after the request boundary, then preserve the exact value for offline
+    verification. Earlier queued operations cannot satisfy a later click.
+    """
+    context = response.get("context") or {}
+    identity = context.get("mission_identity") or {}
+    site, generation = identity.get("site"), identity.get("generation")
+    source = response.get("source")
+    final = context.get("final_return") is True
+    if (source not in {"robot_ui:usage_complete", "http:manual_return", "guest:usage_complete"}
+            or type(generation) is not int or generation <= 0):
+        return None
+    if (context.get("site_phase") != ("RECALL_RETURN_WAIT" if final else "WAIT_RETURN")
+            or context.get("service_state") != (GUEST_LOADING_WAIT if identity.get("intent") == "recall" else WAITING_FOR_RETURN_REQUEST)
+            or (final and identity.get("intent") != "recall")
+            or any(type(context.get(key)) is not int or context[key] < 0 for key in
+                   ("controller_request_count_before", "ui_request_count_before"))):
+        return None
+    guest = source == "guest:usage_complete"
+    if (identity.get("owner") not in ({"guest"} if guest else {"operator", "robot", "guest"})
+            or (identity.get("owner") == "guest" and not guest and identity.get("intent") != "recall")):
+        return None
+    ui_source = f"guest:usage_complete:site={site}:g={generation}" if guest else ""
+    if guest and final:
+        ui_source += ":recall_final_return"
+    sequences = snapshot.get("sequences") or {}
+    if guest and not any(item.get("operation") == RETURN_OPERATION and item.get("source") == ui_source
+                         for item in (sequences.get("ui_operation_requests") or [])[context.get("ui_request_count_before", 0):]):
+        return None
+    base = ui_source if guest else source
+    final_source = f"{base}:recall_final_return:site={site}:g={generation}"
+    for item in (sequences.get("controller_operation_requests") or [])[context.get("controller_request_count_before", 0):]:
+        observed = item.get("source", "")
+        if item.get("operation") != RETURN_OPERATION:
+            continue
+        if final and observed == final_source:
+            return {"controller_source": observed, "ui_source": ui_source, "token": ""}
+        if not final and return_source_matches(observed, f"{base}:site_exit_first", site, generation):
+            token = observed.split(":ui_return_token=", 1)[1].removesuffix(":site_exit_first")
+            return {"controller_source": observed, "ui_source": ui_source, "token": token}
+    return None
 
 
 def dispatch_source_observed(
@@ -1316,6 +1412,17 @@ class UIClient:
             raise MatrixError(f"UI rejected {url}: {decoded}")
         return decoded
 
+    def state(self) -> dict[str, Any]:
+        """Read the production heartbeat snapshot without acquiring control."""
+        try:
+            with urlopen(Request(f"{self.base_url}/ui/state", method="GET"), timeout=self.timeout_s) as response:
+                value = json.loads(response.read())
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+            raise MatrixError(f"UI identity snapshot failed: {error}") from None
+        if not isinstance(value, dict):
+            raise MatrixError("UI identity snapshot is not an object")
+        return value
+
     def dispatch(
         self, site: str, mission_intent: str = "delivery"
     ) -> dict[str, Any]:
@@ -1331,15 +1438,18 @@ class UIClient:
             f"got {mission_intent!r}"
         )
 
-    def request_return(self) -> dict[str, Any]:
-        return self.post("/ui/manual_return")
+    def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
+        if context.get("final_return"):
+            raise MatrixError("REST cannot authorize final recall loading confirmation; use the visible Robot UI")
+        return {**self.post("/ui/manual_return"), "context": dict(context),
+                "source": "http:manual_return", "transport": "operator_rest"}
 
     def stop(self) -> dict[str, Any]:
         return self.post("/ui/stop")
 
     @property
     def expected_return_source(self) -> str:
-        return ""
+        return "http:manual_return:site_exit_first"
 
     def close(self) -> None:
         return None
@@ -1487,6 +1597,8 @@ class GuestBrowserClient:
                 "params": dict(params),
             }))
             deadline = time.monotonic() + self.timeout_s
+            dialog_ids = getattr(self, "_pending_dialog_ids", set())
+            self._pending_dialog_ids = dialog_ids
             while time.monotonic() < deadline:
                 remaining = max(0.01, deadline - time.monotonic())
                 self._connection.settimeout(remaining)
@@ -1496,7 +1608,20 @@ class GuestBrowserClient:
                         "Guest browser CDP frame must be a JSON object"
                     )
                 if "id" not in payload:
+                    if payload.get("method") == "Page.javascriptDialogOpening":
+                        params = payload.get("params") or {}
+                        if not getattr(self, "_accept_expected_confirmation", False) or params.get("type") != "confirm":
+                            raise MatrixError("unexpected browser dialog; no confirmation authority")
+                        self._command_id += 1
+                        dialog_ids.add(self._command_id)
+                        self._connection.send(json.dumps({"id": self._command_id,
+                            "method": "Page.handleJavaScriptDialog", "params": {"accept": True}}))
                     # Runtime events are valid between a command and response.
+                    continue
+                if payload.get("id") in dialog_ids:
+                    dialog_ids.discard(payload["id"])
+                    if payload.get("error"):
+                        raise MatrixError(f"Guest confirmation dialog failed: {payload['error']}")
                     continue
                 if payload.get("id") != command_id:
                     raise MatrixError(
@@ -1603,9 +1728,13 @@ class GuestBrowserClient:
             self.close()
             raise
 
-    def request_return(self) -> dict[str, Any]:
+    def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
+        identity = context["mission_identity"]
+        final_return = context.get("final_return") is True
         expression = (
             "(() => {"
+            f"const expectedIdentity = {json.dumps(dict(identity))};"
+            f"const expectedFinal = {json.dumps(final_return)};"
             "if (document.readyState !== 'complete' || typeof ws === 'undefined' || !ws || "
             "ws.readyState !== WebSocket.OPEN || typeof sendUsageComplete !== 'function') "
             "return {accepted:false, reason:'guest_ui_not_ready'};"
@@ -1613,6 +1742,9 @@ class GuestBrowserClient:
             "typeof currentState === 'undefined' || currentState !== 8) "
             "return {accepted:false, reason:'guest_ui_not_waiting_for_return', "
             "phase:currentPhase, state:currentState};"
+            "if (lastDestSite !== expectedIdentity.site || activeRequestOwner !== expectedIdentity.owner || "
+            "activeRequestIntent !== expectedIdentity.intent || activeMissionGeneration !== expectedIdentity.generation || "
+            "recallFinalReturnReady !== expectedFinal) return {accepted:false, reason:'stale_guest_mission_or_stage'};"
             "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
             "const captureSend = function(payload) { sentFrame = String(payload); "
             "return originalSend.call(socket, payload); };"
@@ -1620,18 +1752,23 @@ class GuestBrowserClient:
             "if (socket.send !== captureSend) return {accepted:false, reason:'send_capture_failed'};"
             "sendUsageComplete(); } finally { socket.send = originalSend; }"
             "let frame = null; try { frame = JSON.parse(sentFrame); } catch (_) {}"
-            "if (!frame || frame.action !== 'usage_complete') "
+            "if (!frame || frame.action !== 'usage_complete' || frame.recall_final_return !== expectedFinal) "
             "return {accepted:false, reason:'usage_complete_frame_not_sent', frame:sentFrame};"
             "return {accepted:true, action:'usage_complete', frame:frame, "
             "transport:'visible_guest_page_websocket_via_cdp', state:currentState};"
             "})()"
         )
         try:
+            self._call("Page.enable", {})
+            self._accept_expected_confirmation = True
             value = self._evaluate(expression)
-            return self._accepted(value, "usage_complete")
+            return {**self._accepted(value, "usage_complete"), "context": dict(context),
+                    "source": "guest:usage_complete"}
         except BaseException:
             self.close()
             raise
+        finally:
+            self._accept_expected_confirmation = False
 
     def stop(self) -> dict[str, Any]:
         return self.stop_client.stop()
@@ -1739,6 +1876,7 @@ class OperatorBrowserClient(GuestBrowserClient):
             raise MatrixError(
                 f"Robot UI browser CDP WebSocket connection failed: {error}"
             ) from None
+        self._call("Page.bringToFront", {})
         ready = self._evaluate(
             "(() => ({"
             "title: document.title, href: document.location.href, "
@@ -2060,8 +2198,10 @@ class OperatorBrowserClient(GuestBrowserClient):
             "interactions": list(self._interactions),
         }
 
-    def request_return(self) -> dict[str, Any]:
+    def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
         self._interactions = []
+        identity = context["mission_identity"]
+        final_return = context.get("final_return") is True
         # Both production buttons call the same ownership-checked handler.
         # Prefer the modal when shown; the panel remains usable if the user
         # dismissed it. Neither may exist when arrivedSite/return authority
@@ -2097,7 +2237,10 @@ class OperatorBrowserClient(GuestBrowserClient):
                 {"frame": matched}
                 if (matched := self._matching_ws_frame(
                     probe,
-                    lambda item: item.get("usage_complete") is True,
+                    lambda item: (item.get("usage_complete") is True
+                        and item.get("site") == identity["site"]
+                        and item.get("mission_generation") == identity["generation"]
+                        and item.get("recall_final_return") is final_return),
                 )) is not None
                 else None
             ),
@@ -2107,8 +2250,9 @@ class OperatorBrowserClient(GuestBrowserClient):
             "accepted": True,
             "action": "usage_complete",
             "frame": frame,
-            "source": "ws:usage_complete",
-            "expected_ros_source": "ws:usage_complete:site_exit_first",
+            "source": "robot_ui:usage_complete",
+            "expected_ros_source": "robot_ui:usage_complete:site_exit_first",
+            "context": dict(context),
             "transport": "visible_operator_page_websocket_via_cdp_input",
             "interactions": list(self._interactions),
         }
@@ -2118,7 +2262,39 @@ class OperatorBrowserClient(GuestBrowserClient):
 
     @property
     def expected_return_source(self) -> str:
-        return "ws:usage_complete:site_exit_first"
+        return "robot_ui:usage_complete:site_exit_first"
+
+
+def capture_ui_handoff_view(client: Any, directory: Path, label: str,
+                            *, screenshot: bool = True) -> dict[str, Any]:
+    """Foreground and capture the real production page, never a recreated UI."""
+    client._call("Page.bringToFront", {})
+    deadline = time.monotonic() + client.timeout_s
+    view: Any = None
+    while time.monotonic() < deadline:
+        view = client._evaluate("(() => ({title:document.title,url:location.href,"
+            "visibility:document.visibilityState,focused:document.hasFocus(),"
+            "x:window.screenX,y:window.screenY,width:outerWidth,height:outerHeight}))()")
+        if isinstance(view, dict) and view.get("visibility") == "visible" and view.get("focused") is True:
+            break
+        time.sleep(0.05)
+    else:
+        raise MatrixError(f"handoff did not foreground the production {label} page: {view!r}")
+    view["captured_at_utc"] = utc_now()
+    if screenshot:
+        payload = client._call("Page.captureScreenshot", {"format": "png", "fromSurface": True})
+        try:
+            png = base64.b64decode(payload["result"]["data"], validate=True)
+        except (KeyError, ValueError, TypeError) as error:
+            raise MatrixError(f"real UI screenshot failed: {error}") from None
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise MatrixError("real UI capture did not return a PNG")
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{label}.png"
+        with path.open("xb") as stream:
+            stream.write(png)
+        view["png"] = {"path": str(path.resolve()), "sha256": sha256_file(path), "bytes": len(png)}
+    return dict(view)
 
 
 def _attr(message: Any, name: str, default: Any = None) -> Any:
@@ -2801,6 +2977,9 @@ def _parser() -> argparse.ArgumentParser:
         ),
         help="local Chrome DevTools endpoint for the visible Robot UI browser",
     )
+    parser.add_argument("--guest-final-return-authority", choices=("robot", "guest"),
+                        default=os.environ.get("CAMROD_GUEST_FINAL_RETURN_AUTHORITY", "robot"),
+                        help="B1-B10 Guest recall final loading confirmation UI; default verifies Guest-to-Robot handoff")
     parser.add_argument("--role-name", default=os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"))
     parser.add_argument(
         "--expected-actor-id",
@@ -2827,6 +3006,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    if args.guest_final_return_authority not in {"robot", "guest"}:
+        raise MatrixError("--guest-final-return-authority must be robot or guest")
     if args.parking_completion not in {"policy", "reverse", "charging"}:
         raise MatrixError("--parking-completion must be policy, reverse, or charging")
     if not math.isfinite(args.phase_timeout_s) or args.phase_timeout_s <= 0.0 or args.phase_timeout_s > 3600.0:
@@ -2908,7 +3089,7 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
                 "robot_ui:recall" if recall else "ws"
             ),
             "expected_return_operation": RETURN_OPERATION,
-            "expected_return_source": "ws:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
             "ui_endpoints": {
                 "dispatch": (
                     "visible Robot UI data-ui controls -> CDP pointer/text "
@@ -2939,8 +3120,8 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
             "required_service_state_ids": list(
                 required_service_state_ids("recall")
             ),
-            "expected_return_operation": None,
-            "expected_return_source": "",
+            "expected_return_operation": RETURN_OPERATION,
+            "expected_return_source": "http:manual_return:site_exit_first",
             "ui_endpoints": {
                 "dispatch": (
                     "POST /ui/camping_site_recall?site=Bx&intent=recall"
@@ -2961,8 +3142,8 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
         "required_service_state_ids": list(
             required_service_state_ids("delivery")
         ),
-        "expected_return_operation": None,
-        "expected_return_source": "",
+        "expected_return_operation": RETURN_OPERATION,
+        "expected_return_source": "http:manual_return:site_exit_first",
         "ui_endpoints": {
             "dispatch": "POST /ui/destination?site=Bx&run=true",
             "return": "POST /ui/manual_return",
@@ -2990,6 +3171,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
         )
     else:
         client = UIClient(args.ui_url)
+    identity_client = UIClient(args.ui_url)
     observer: RosObservation | None = None
     authority = ui_authority_contract(args)
     try:
@@ -2997,6 +3179,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             args.role_name, expected_actor_id=args.expected_actor_id
         )
         report["scope"].update({
+            "guest_final_return_authority": args.guest_final_return_authority,
             "expected_parking_completion": args.parking_completion,
             "mission_intent": authority["mission_intent"],
             "return_authority": authority["return_authority"],
@@ -3113,6 +3296,23 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 return
         raise MatrixError(f"{result['site']}: timeout waiting for {label}")
 
+    def await_return_context(identity: Mapping[str, Any], *, final_return: bool = False) -> dict[str, Any]:
+        # ROS lifecycle and the HTTP/WS mirror are independent callbacks. Wait
+        # briefly for agreement, but fail immediately if mission authority
+        # changed. This never makes a stale phase or different owner eligible.
+        deadline = time.monotonic() + 10.0
+        last = ""
+        while time.monotonic() < deadline:
+            state = identity_client.state()
+            if mission_identity(state) != identity:
+                raise MatrixError("Return rejected: mission authority changed before acknowledgement")
+            try:
+                return return_context(state, observer.snapshot(), identity, final_return=final_return)
+            except MatrixError as error:
+                last = str(error)
+            observer.spin_once(0.05)
+        raise MatrixError(last or "Return context did not become authoritative")
+
     def copy_final_observation(result: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
         result["final_service_state"] = snapshot.get("service_state") or {}
         result["final_parking_status"] = snapshot.get("parking") or {}
@@ -3192,6 +3392,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             result = next(item for item in report["sites"] if item["site"] == key)
             site = sites[key]
             result["status"] = "RUNNING"
+            result["guest_final_return_authority"] = args.guest_final_return_authority
             result["started_at_utc"] = utc_now()
             started_monotonic[key] = time.monotonic()
             observer.begin_site()
@@ -3283,9 +3484,27 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             )
             dispatch_monotonic[key] = time.monotonic()
             result["dispatch_started_at_utc"] = utc_now()
+            prior_generation = identity_client.state().get("mission_dispatch_generation", 0)
             response = client.dispatch(key, args.mission_intent)
             result["dispatch_response"] = response
             checkpoint(result, "dispatch accepted")
+            deadline = time.monotonic() + 10.0
+            identity = None
+            while time.monotonic() < deadline:
+                state = identity_client.state()
+                if state.get("mission_dispatch_active") is True:
+                    candidate = mission_identity(state)
+                    if (candidate["site"] == key and candidate["intent"] == args.mission_intent
+                            and candidate["generation"] != prior_generation
+                            and candidate["owner"] == ("guest" if args.return_authority == "guest_browser"
+                                else "robot" if args.return_authority == "operator_browser" and args.mission_intent == "recall"
+                                else "operator")):
+                        identity = candidate
+                        break
+                observer.spin_once(0.05)
+            if identity is None:
+                raise MatrixError(f"{key}: dispatch did not acquire a fresh matching UI mission identity")
+            result["mission_identity"] = identity
             expected_dispatch_source = str(
                 authority.get("expected_dispatch_source", "")
             )
@@ -3306,7 +3525,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 )
                 result["dispatch_source_verified"] = True
             service_mode = effective_service_mode(site, args.mission_intent)
-            expected_phases = SITE_PHASES[service_mode]
+            expected_phases = expected_site_phases(site, args.mission_intent)
             expected_arrival_state = int(authority["expected_arrival_state"])
             expected_arrival_name = (
                 "GUEST_LOADING_WAIT"
@@ -3344,17 +3563,50 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                 )
             return_request_monotonic[key] = time.monotonic()
             return_request_distance_m[key] = arrival_distance_m[key]
-            result["return_response"] = client.request_return()
+            context = await_return_context(identity)
+            result["return_response"] = client.request_return(context)
             checkpoint(result, "return request accepted")
-            if client.expected_return_source:
+            wait_until(
+                lambda snap: return_acknowledgement(snap, result["return_response"]) is not None,
+                10.0, "fresh mission-bound RETURN source observed", result,
+            )
+            result["return_response"]["ros_ack"] = return_acknowledgement(observer.snapshot(), result["return_response"])
+            if recall_requires_final_confirmation(site, args.mission_intent):
                 wait_until(
-                    lambda snap: return_source_observed(
-                        snap, client.expected_return_source, key
-                    ),
-                    10.0,
-                    f"RETURN source {client.expected_return_source} observed",
-                    result,
+                    lambda snap: (snap.get("site") or {}).get("operating_state") == "RECALL_RETURN_WAIT"
+                        and contains_ordered_subsequence((snap.get("sequences") or {}).get("site_phases") or [], expected_phases[:8]),
+                    args.phase_timeout_s, "post-turn recall loading wait", result,
                 )
+                final_context = await_return_context(identity, final_return=True)
+                guest_handoff = args.return_authority == "guest_browser" and args.guest_final_return_authority == "robot"
+                if args.return_authority == "operator_rest" or guest_handoff:
+                    # This production API intentionally has no final-loading
+                    # authority. Exercise the real robot display, label both
+                    # transports, and never synthesize a ROS RETURN operation.
+                    handoff = None
+                    if guest_handoff:
+                        handoff_dir = args.output.parent / f"guest_robot_handoff_{key}"
+                        handoff = {"transport": "CDP.Page.bringToFront_and_captureScreenshot",
+                            "from_guest": capture_ui_handoff_view(client, handoff_dir, "guest_before", screenshot=False)}
+                    final_client = None
+                    try:
+                        final_client = OperatorBrowserClient(args.operator_cdp_url, args.ui_url)
+                        if handoff is not None:
+                            handoff["robot_before"] = capture_ui_handoff_view(final_client, handoff_dir, "robot_before")
+                        result["final_return_response"] = final_client.request_return(final_context)
+                    finally:
+                        if final_client is not None:
+                            final_client.close()
+                        if handoff is not None:
+                            handoff["guest_after"] = capture_ui_handoff_view(client, handoff_dir, "guest_after")
+                    if handoff is not None:
+                        result["final_return_response"]["ui_handoff"] = handoff
+                else:
+                    result["final_return_response"] = client.request_return(final_context)
+                checkpoint(result, "final recall loading confirmation sent")
+                wait_until(lambda snap: return_acknowledgement(snap, result["final_return_response"]) is not None,
+                           10.0, "fresh final-loading RETURN source observed", result)
+                result["final_return_response"]["ros_ack"] = return_acknowledgement(observer.snapshot(), result["final_return_response"])
             wait_until(
                 lambda snap: bool(parking_completion(snap, args.parking_completion)),
                 args.phase_timeout_s,

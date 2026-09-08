@@ -57,6 +57,30 @@ before Return so a previous mission's frame cannot count as a fresh request.
 Desktop capture also includes a sample from the last second of each recording;
 the former fixed 90-percent sample could miss the final parking state entirely.
 
+The next actual B1 run verified that the restored button emitted Return and
+the vehicle completed crab-out to the live lanelet handoff. Its old assertion
+then rejected the new generation-bound `robot_ui:usage_complete` source.
+The updated runner/offline validator now bind owner, site, intent, generation
+and a fresh post-click ROS ACK; old transport labels are not acceptance proof.
+B1–B10 recall includes separate clearance and final loading confirmations.
+Guest missions default to real Guest first confirmation and real Robot UI
+final confirmation, preserving Guest ownership and recording both visible UI
+identities/screenshots. `--guest-final-return-authority guest` explicitly tests
+the Guest-only alternative. B11–B13 retain the single-confirmation route.
+
+### Reverse goal stop-condition fix
+
+A separately labelled real return-only recovery reached the new station but
+failed at XY error 0.280 m against the unchanged 0.250 m tolerance. The axial
+stop threshold was also 0.250 m, so a lateral offset of about 0.128 m caused
+premature failure before the vehicle entered the circular XY acceptance area.
+Pure commit `ddd599672` permits the existing bounded final approach while the
+station remains ahead and the reverse line can reach that area. It still stops
+on a lateral miss, crossing the station plane outside the goal, invalid/stale
+pose, maximum travel, timeout or charger detection. No tolerance was increased.
+Native controller/completion tests: 20 passed; rebuilt main control CTest:
+9 suites passed. This fix still requires a fresh complete driving matrix.
+
 ### GNSS/yaw verification boundary
 
 Pure localization implements `center = antenna - R(yaw) * offset`, with the

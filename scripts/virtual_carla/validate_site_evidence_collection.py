@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 
 COLLECTION_SCHEMA = "camrod.virtual_carla.site_evidence_collection_validation.v1"
@@ -1197,16 +1198,18 @@ def _return_source_matches(
     observed: Any,
     expected: str,
     expected_site: str = "",
+    expected_generation: int | None = None,
 ) -> bool:
-    """Accept the legacy exact source or the current mission-bound nonce."""
-    if observed == expected:
-        return True
+    """Require the current exact mission identity, never a historical bare source."""
     if not isinstance(observed, str) or not expected:
+        return False
+    if type(expected_generation) is not int or expected_generation <= 0:
         return False
     if expected == "guest:usage_complete":
         match = GUEST_RETURN_SOURCE_RE.fullmatch(observed)
         return match is not None and (
-            not expected_site or match.group(1) == expected_site
+            match.group(1) == expected_site
+            and int(match.group(2)) == expected_generation
         )
     site_exit_suffix = ":site_exit_first"
     if not expected.endswith(site_exit_suffix):
@@ -1218,7 +1221,161 @@ def _return_source_matches(
     ):
         return False
     token = observed[len(token_prefix) : -len(site_exit_suffix)]
-    return UI_RETURN_TOKEN_RE.fullmatch(token) is not None
+    return (UI_RETURN_TOKEN_RE.fullmatch(token) is not None
+            and token.startswith(f"g{expected_generation}-"))
+
+
+def _validate_ui_handoff(value: Any, label: str) -> None:
+    """Verify retained real-page metadata and both immutable CDP PNG captures."""
+    handoff = _mapping(value, label)
+    _assert_equal(handoff.get("transport"), "CDP.Page.bringToFront_and_captureScreenshot", f"{label}.transport")
+    pages: dict[str, Mapping[str, Any]] = {}
+    timestamps = []
+    captures = []
+    for name in ("from_guest", "robot_before", "guest_after"):
+        page_label = f"{label}.{name}"
+        page = _mapping(handoff.get(name), page_label)
+        pages[name] = page
+        if not _string(page.get("title"), f"{page_label}.title").strip():
+            raise CollectionValidationError(f"{page_label}.title cannot be empty")
+        url = urlsplit(_string(page.get("url"), f"{page_label}.url"))
+        if url.scheme not in {"http", "https"} or not url.netloc:
+            raise CollectionValidationError(f"{page_label}.url must identify the actual HTTP UI page")
+        visibility = _string(page.get("visibility"), f"{page_label}.visibility")
+        if visibility not in {"visible", "hidden"}:
+            raise CollectionValidationError(f"{page_label}.visibility is invalid")
+        focused = _boolean(page.get("focused"), f"{page_label}.focused")
+        timestamp = _string(page.get("captured_at_utc"), f"{page_label}.captured_at_utc")
+        try:
+            captured = dt.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise CollectionValidationError(f"{page_label}.captured_at_utc is invalid") from None
+        if captured.utcoffset() != dt.timedelta(0):
+            raise CollectionValidationError(f"{page_label}.captured_at_utc must contain UTC offset")
+        timestamps.append(captured)
+        if name != "from_guest":
+            if visibility != "visible" or not focused:
+                raise CollectionValidationError(f"{page_label} was not visibly focused for capture")
+            record = _mapping(page.get("png"), f"{page_label}.png")
+            path = _absolute_path(record.get("path"), f"{page_label}.png.path")
+            fact = _verify_artifact_record(record, path, f"{page_label}.png")
+            with path.open("rb") as stream:
+                if stream.read(8) != b"\x89PNG\r\n\x1a\n":
+                    raise CollectionValidationError(f"{page_label}.png is not PNG data")
+            captures.append(fact["path"])
+    if timestamps != sorted(timestamps):
+        raise CollectionValidationError(f"{label} capture timestamps are out of order")
+    _assert_equal(pages["from_guest"]["url"], pages["guest_after"]["url"], f"{label}.guest_page_restored")
+    if pages["robot_before"]["url"] == pages["from_guest"]["url"] or len(set(captures)) != 2:
+        raise CollectionValidationError(f"{label} must retain distinct actual Robot and Guest pages/captures")
+
+
+def _validate_return_evidence(
+    item: Mapping[str, Any], *, site: str, authority: str, mission_intent: str,
+    label: str,
+) -> None:
+    """Bind both visible confirmations to fresh, exact ROS acknowledgements.
+
+    Old evidence stays readable as an artifact, but cannot be promoted to the
+    current contract merely because it contains some RETURN operation.
+    """
+    identity = _mapping(item.get("mission_identity"), f"{label}.mission_identity")
+    _assert_equal(identity.get("site"), site, f"{label}.mission_identity.site")
+    _assert_equal(identity.get("intent"), mission_intent, f"{label}.mission_identity.intent")
+    generation = _exact_integer(identity.get("generation"), f"{label}.mission_identity.generation", 1)
+    expected_owner = ("guest" if authority == "guest" else
+                      "robot" if authority == "operator-browser" and mission_intent == "recall" else "operator")
+    _assert_equal(identity.get("owner"), expected_owner, f"{label}.mission_identity.owner")
+    controller_requests = _list(item.get("controller_operation_request_sequence"), f"{label}.controller_operation_request_sequence")
+    ui_requests = _list(item.get("ui_operation_request_sequence"), f"{label}.ui_operation_request_sequence")
+    first_source = {
+        "operator": "http:manual_return", "operator-browser": "robot_ui:usage_complete",
+        "guest": "guest:usage_complete",
+    }[authority]
+    two_stage = mission_intent == "recall" and int(site[1:]) <= 10
+    guest_final_authority = item.get("guest_final_return_authority")
+    if authority == "guest" and two_stage and guest_final_authority not in {"robot", "guest"}:
+        raise CollectionValidationError(f"{label}.guest_final_return_authority must explicitly record robot or guest")
+    previous_controller_index = -1
+    previous_ui_index = -1
+    for final, field in ((False, "return_response"), (True, "final_return_response")):
+        if final and not two_stage:
+            if item.get(field) not in (None, {}):
+                raise CollectionValidationError(f"{label} unexpected second confirmation for {site}")
+            continue
+        response_label = f"{label}.{field}"
+        response = _mapping(item.get(field), response_label)
+        context = _mapping(response.get("context"), f"{response_label}.context")
+        _assert_exact_tree(context.get("mission_identity"), dict(identity), f"{response_label}.identity")
+        _assert_equal(_exact_integer(context.get("service_state"), f"{response_label}.service_state"), 8 if mission_intent == "recall" else 11, f"{response_label}.service_state")
+        _assert_equal(context.get("site_phase"), "RECALL_RETURN_WAIT" if final else "WAIT_RETURN", f"{response_label}.site_phase")
+        _assert_equal(_boolean(context.get("final_return"), f"{response_label}.final_return"), final, f"{response_label}.final_return")
+        controller_start = _exact_integer(context.get("controller_request_count_before"), f"{response_label}.controller_request_count_before", 0)
+        ui_start = _exact_integer(context.get("ui_request_count_before"), f"{response_label}.ui_request_count_before", 0)
+        if controller_start > len(controller_requests) or ui_start > len(ui_requests):
+            raise CollectionValidationError(f"{response_label} request boundary exceeds recorded sequence")
+        if controller_start <= previous_controller_index or ui_start < previous_ui_index + 1:
+            raise CollectionValidationError(f"{response_label} reuses a previous confirmation boundary")
+        # The REST diagnostic route has no final-loading confirmation API; its
+        # second stage must be an actual Robot UI confirmation, recorded as such.
+        robot_final = final and (authority == "operator" or
+                                 (authority == "guest" and guest_final_authority == "robot"))
+        source = "robot_ui:usage_complete" if robot_final else first_source
+        _assert_equal(response.get("source"), source, f"{response_label}.source")
+        if source != "http:manual_return":
+            expected_transport = ("visible_guest_page_websocket_via_cdp" if source.startswith("guest:")
+                                  else "visible_operator_page_websocket_via_cdp_input")
+            _assert_equal(response.get("transport"), expected_transport, f"{response_label}.transport")
+            frame = _mapping(response.get("frame"), f"{response_label}.frame")
+            _assert_equal(frame.get("recall_final_return"), final, f"{response_label}.frame.recall_final_return")
+            if source.startswith("guest:"):
+                _assert_equal(frame.get("action"), "usage_complete", f"{response_label}.frame.action")
+            else:
+                _assert_equal(frame.get("usage_complete"), True, f"{response_label}.frame.usage_complete")
+                _assert_equal(frame.get("site"), site, f"{response_label}.frame.site")
+                _assert_equal(frame.get("mission_generation"), generation, f"{response_label}.frame.mission_generation")
+        ack = _mapping(response.get("ros_ack"), f"{response_label}.ros_ack")
+        guest_source = f"guest:usage_complete:site={site}:g={generation}" if source.startswith("guest:") else ""
+        if guest_source and final:
+            guest_source += ":recall_final_return"
+        _assert_equal(ack.get("ui_source"), guest_source, f"{response_label}.ros_ack.ui_source")
+        base = guest_source or source
+        observed = ack.get("controller_source")
+        if final:
+            _assert_equal(ack.get("token"), "", f"{response_label}.ros_ack.token")
+            _assert_equal(observed, f"{base}:recall_final_return:site={site}:g={generation}", f"{response_label}.ros_ack.controller_source")
+        else:
+            if not _return_source_matches(observed, f"{base}:site_exit_first", site, generation):
+                raise CollectionValidationError(f"{response_label} lacks the exact mission-bound RETURN token")
+            token = observed.split(":ui_return_token=", 1)[1].removesuffix(":site_exit_first")
+            _assert_equal(ack.get("token"), token, f"{response_label}.ros_ack.token")
+        matched = [index for index, request in enumerate(controller_requests)
+                   if index >= controller_start and isinstance(request, dict)
+                   and type(request.get("operation")) is int and request.get("operation") == 3
+                   and request.get("source") == observed]
+        if not matched:
+            raise CollectionValidationError(f"{response_label} lacks a fresh controller RETURN acknowledgement")
+        previous_controller_index = matched[0]
+        if final and authority == "guest" and guest_final_authority == "robot":
+            _validate_ui_handoff(response.get("ui_handoff"), f"{response_label}.ui_handoff")
+        if guest_source:
+            matched_ui = [index for index, request in enumerate(ui_requests)
+                          if index >= ui_start and isinstance(request, dict)
+                          and type(request.get("operation")) is int and request.get("operation") == 3
+                          and request.get("source") == guest_source]
+            if not matched_ui:
+                raise CollectionValidationError(f"{response_label} lacks a fresh Guest RETURN acknowledgement")
+            previous_ui_index = matched_ui[0]
+    if two_stage:
+        phases = _list(item.get("site_phase_sequence"), f"{label}.site_phase_sequence")
+        required = ("WAIT_RETURN", "RECALL_CLEARANCE_WAIT", "CRAB_IN", "ROTATE_180",
+                    "RECALL_RETURN_WAIT", "ALIGN_RETRACE_YAW", "CRAB_OUT", "DONE")
+        position = 0
+        for phase in required:
+            try:
+                position = phases.index(phase, position) + 1
+            except ValueError:
+                raise CollectionValidationError(f"{label} lacks ordered two-stage recall phase {phase}") from None
 
 
 def _authority_contract(authority: str, mission_intent: str) -> dict[str, Any]:
@@ -1226,25 +1383,25 @@ def _authority_contract(authority: str, mission_intent: str) -> dict[str, Any]:
     contracts = {
         ("operator", "delivery"): {
             "matrix_return_authority": "operator_rest",
-            "expected_return_source": "",
+            "expected_return_source": "http:manual_return:site_exit_first",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites",
         },
         ("operator", "recall"): {
             "matrix_return_authority": "operator_rest",
-            "expected_return_source": "",
+            "expected_return_source": "http:manual_return:site_exit_first",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites-recall",
         },
         ("operator-browser", "delivery"): {
             "matrix_return_authority": "operator_browser",
-            "expected_return_source": "ws:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites-browser",
         },
         ("operator-browser", "recall"): {
             "matrix_return_authority": "operator_browser",
-            "expected_return_source": "ws:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
             "captured_ui_kind": "operator",
             "matrix_subcommand": "camping-sites-browser-recall",
         },
@@ -1326,31 +1483,9 @@ def _validate_native_matrix(
         if authority == "operator":
             response = _mapping(item.get("dispatch_response"), f"{label}.dispatch")
             _assert_equal(response.get("intent"), "recall", f"{label}.dispatch.intent")
-        elif authority == "guest":
-            response = _mapping(item.get("return_response"), f"{label}.return")
-            _assert_equal(response.get("action"), "usage_complete", f"{label}.action")
-            _assert_equal(
-                response.get("transport"),
-                "visible_guest_page_websocket_via_cdp",
-                f"{label}.transport",
-            )
-            requests = _list(
-                item.get("ui_operation_request_sequence"),
-                f"{label}.ui_operation_request_sequence",
-            )
-            if not any(
-                isinstance(request, dict)
-                and request.get("operation") == 3
-                and _return_source_matches(
-                    request.get("source"),
-                    contract["expected_return_source"],
-                    site,
-                )
-                for request in requests
-            ):
-                raise CollectionValidationError(
-                    f"{label} did not observe the Guest RETURN source"
-                )
+
+    _validate_return_evidence(item, site=site, authority=authority,
+                              mission_intent=mission_intent, label=label)
 
     if authority == "operator-browser":
         dispatch = _mapping(item.get("dispatch_response"), f"{label}.dispatch")
@@ -1399,28 +1534,12 @@ def _validate_native_matrix(
             )
         response = _mapping(item.get("return_response"), f"{label}.return")
         _assert_equal(response.get("action"), "usage_complete", f"{label}.return.action")
-        _assert_equal(response.get("source"), "ws:usage_complete", f"{label}.return.source")
+        _assert_equal(response.get("source"), "robot_ui:usage_complete", f"{label}.return.source")
         _assert_equal(
             response.get("transport"),
             "visible_operator_page_websocket_via_cdp_input",
             f"{label}.return.transport",
         )
-        controller_requests = _list(
-            item.get("controller_operation_request_sequence"),
-            f"{label}.controller_operation_request_sequence",
-        )
-        if not any(
-            isinstance(request, dict)
-            and request.get("operation") == 3
-            and _return_source_matches(
-                request.get("source"), contract["expected_return_source"]
-            )
-            for request in controller_requests
-        ):
-            raise CollectionValidationError(
-                f"{label} did not observe the Robot UI controller RETURN source"
-            )
-
     collision = _mapping(item.get("collision_evidence"), f"{label}.collision")
     _assert_equal(
         collision.get("subscriber_created"), True, f"{label}.collision subscriber"

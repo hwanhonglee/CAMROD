@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/run_site_evidence_matrix.sh"
 SOURCE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SCRIPT_VERSION="9"
+SCRIPT_VERSION="10"
 DEFAULT_SITES="B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13"
 CAPTURE_DURATION_SECONDS="86400"
 CAPTURE_FPS="${CAMROD_SITE_EVIDENCE_CAPTURE_FPS:-1}"
@@ -16,6 +16,7 @@ WHEEL_RATE_HZ="${CAMROD_SITE_EVIDENCE_WHEEL_RATE_HZ:-10.0}"
 PHASE_TIMEOUT_S="${CAMROD_CARLA_MATRIX_PHASE_TIMEOUT_S:-900}"
 RETAIN_SOURCE_VIDEO="${CAMROD_SITE_EVIDENCE_RETAIN_SOURCE_VIDEO:-false}"
 MISSION_INTENT="${CAMROD_SITE_EVIDENCE_MISSION_INTENT:-delivery}"
+export CAMROD_GUEST_FINAL_RETURN_AUTHORITY="${CAMROD_GUEST_FINAL_RETURN_AUTHORITY:-robot}"
 MINIMUM_CAPTURE_SECONDS=12
 
 usage() {
@@ -41,6 +42,9 @@ Options:
   --mission-intent MODE
                        delivery enters the authored campsite; recall stops at
                        the latest-develop roadside pickup pose (default: delivery)
+  --guest-final-return-authority MODE
+                       robot (default): Guest B1-B10 second loading confirmation
+                       on the real Robot UI with two handoff PNGs; guest: Guest-only
   --output-root PATH new or empty absolute evidence directory (required by run)
   --phase-timeout-s N
                        timeout for each outbound/return/parking wait,
@@ -121,7 +125,7 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sites|--authority|--mission-intent|--output-root|--phase-timeout-s|--capture-fps|\
+    --sites|--authority|--mission-intent|--guest-final-return-authority|--output-root|--phase-timeout-s|--capture-fps|\
     --gif-fps|--derived-width|--wheel-rate-hz|--retain-source-video|\
     --display|--xauthority)
       [[ $# -ge 2 ]] || die "missing value for $1"
@@ -132,6 +136,7 @@ while [[ $# -gt 0 ]]; do
         --sites) SITES_CSV="${value}" ;;
         --authority) AUTHORITY="${value}" ;;
         --mission-intent) MISSION_INTENT="${value}" ;;
+        --guest-final-return-authority) CAMROD_GUEST_FINAL_RETURN_AUTHORITY="${value}" ;;
         --output-root) OUTPUT_ROOT="${value}" ;;
         --phase-timeout-s) PHASE_TIMEOUT_S="${value}" ;;
         --capture-fps) CAPTURE_FPS="${value}" ;;
@@ -148,6 +153,8 @@ while [[ $# -gt 0 ]]; do
     *) die "unknown argument: $1" ;;
   esac
 done
+[[ "${CAMROD_GUEST_FINAL_RETURN_AUTHORITY}" == "robot" || "${CAMROD_GUEST_FINAL_RETURN_AUTHORITY}" == "guest" ]] ||
+  die "--guest-final-return-authority must be robot or guest"
 
 # Preserve which map selections came from the invoking shell. env.sh may load
 # an RANGER_ENV_FILE and also supplies the direct-runner map defaults; neither
@@ -313,7 +320,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix"
     MATRIX_RETURN_AUTHORITY="operator_rest"
-    EXPECTED_RETURN_SOURCE=""
+    EXPECTED_RETURN_SOURCE="http:manual_return:site_exit_first"
     CAPTURE_UI_TITLE="CAMROD Operator UI"
     CAPTURE_UI_KIND="operator"
     ;;
@@ -321,7 +328,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites-recall"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_recall"
     MATRIX_RETURN_AUTHORITY="operator_rest"
-    EXPECTED_RETURN_SOURCE=""
+    EXPECTED_RETURN_SOURCE="http:manual_return:site_exit_first"
     CAPTURE_UI_TITLE="CAMROD Operator UI"
     CAPTURE_UI_KIND="operator"
     ;;
@@ -329,7 +336,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites-browser"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_browser_delivery"
     MATRIX_RETURN_AUTHORITY="operator_browser"
-    EXPECTED_RETURN_SOURCE="ws:usage_complete:site_exit_first"
+    EXPECTED_RETURN_SOURCE="robot_ui:usage_complete:site_exit_first"
     CAPTURE_UI_TITLE="Robot UI"
     CAPTURE_UI_KIND="operator"
     ;;
@@ -337,7 +344,7 @@ case "${AUTHORITY}:${MISSION_INTENT}" in
     MATRIX_SUBCOMMAND="camping-sites-browser-recall"
     MATRIX_ROOT="${RANGER_EVIDENCE_ROOT}/camrod_camping_site_matrix_operator_browser_recall"
     MATRIX_RETURN_AUTHORITY="operator_browser"
-    EXPECTED_RETURN_SOURCE="ws:usage_complete:site_exit_first"
+    EXPECTED_RETURN_SOURCE="robot_ui:usage_complete:site_exit_first"
     CAPTURE_UI_TITLE="Robot UI"
     CAPTURE_UI_KIND="operator"
     ;;
@@ -360,6 +367,7 @@ print_plan() {
 Selected sites (strict order): ${SITES_CSV}
 Frontend authority: ${AUTHORITY} (${MATRIX_RETURN_AUTHORITY})
 Mission intent: ${MISSION_INTENT}
+Guest B1-B10 final confirmation UI: ${CAMROD_GUEST_FINAL_RETURN_AUTHORITY}
 Expected return source: ${EXPECTED_RETURN_SOURCE:-operator REST /ui/manual_return}
 Output root: ${shown_root}
 Native matrix root: ${MATRIX_ROOT}
@@ -381,6 +389,9 @@ EOF
     cat <<EOF
   Keep a separate '${RUNNER} guest-ui' terminal open so the one visible Guest
   page owns its WebSocket and local-only CDP endpoint for usage_complete.
+  Default B1-B10 final loading confirmation also needs '${RUNNER} operator-ui'
+  on the Robot UI CDP endpoint; its actual page is foregrounded/captured and
+  Guest UI is restored afterward. B11-B13 retain one roadside confirmation.
 
 EOF
   fi
@@ -418,7 +429,7 @@ EOF
      the complete collection into <output>.strict_validation before PASS.
 
 Live command:
-  ${0@Q} run --authority ${AUTHORITY@Q} --mission-intent ${MISSION_INTENT@Q} --sites ${SITES_CSV@Q} --output-root ${shown_root@Q} --phase-timeout-s ${PHASE_TIMEOUT_S@Q} --capture-fps ${CAPTURE_FPS@Q} --gif-fps ${GIF_FPS@Q} --derived-width ${DERIVED_WIDTH@Q} --wheel-rate-hz ${WHEEL_RATE_HZ@Q} --retain-source-video ${RETAIN_SOURCE_VIDEO@Q}
+  ${0@Q} run --authority ${AUTHORITY@Q} --mission-intent ${MISSION_INTENT@Q} --guest-final-return-authority ${CAMROD_GUEST_FINAL_RETURN_AUTHORITY@Q} --sites ${SITES_CSV@Q} --output-root ${shown_root@Q} --phase-timeout-s ${PHASE_TIMEOUT_S@Q} --capture-fps ${CAPTURE_FPS@Q} --gif-fps ${GIF_FPS@Q} --derived-width ${DERIVED_WIDTH@Q} --wheel-rate-hz ${WHEEL_RATE_HZ@Q} --retain-source-video ${RETAIN_SOURCE_VIDEO@Q}
 EOF
 }
 
@@ -784,9 +795,10 @@ finalize_site_manifest() {
       "${MATRIX_SUBCOMMAND}" \
       "${MATRIX_RETURN_AUTHORITY}" "${EXPECTED_RETURN_SOURCE}" \
       "${CAPTURE_UI_KIND}" "${RETAIN_SOURCE_VIDEO}" \
-      "${PHASE_TIMEOUT_S}" <<'PY'
+      "${PHASE_TIMEOUT_S}" "${SCRIPT_DIR}/camping_site_matrix.py" <<'PY'
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -813,7 +825,17 @@ import sys
     capture_ui_kind,
     retain_source_video_raw,
     phase_timeout_raw,
+    matrix_script_raw,
 ) = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("matrix_return_contract", matrix_script_raw)
+matrix_contract = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = matrix_contract
+spec.loader.exec_module(matrix_contract)
+validation_spec = importlib.util.spec_from_file_location("collection_return_contract",
+    str(Path(matrix_script_raw).with_name("validate_site_evidence_collection.py")))
+return_validation = importlib.util.module_from_spec(validation_spec)
+sys.modules[validation_spec.name] = return_validation
+validation_spec.loader.exec_module(return_validation)
 site_dir = Path(site_dir_raw)
 matrix_exit = int(matrix_exit_raw)
 tee_exit = int(tee_exit_raw)
@@ -845,29 +867,10 @@ def load_json(path: Path, label: str):
         return None
 
 def return_source_matches(observed, expected, expected_site=""):
-    if observed == expected:
-        return True
-    if not isinstance(observed, str) or not expected:
-        return False
-    if expected == "guest:usage_complete":
-        match = re.fullmatch(
-            r"guest:usage_complete:site=(B(?:[1-9]|1[0-3])):g=([1-9][0-9]*)",
-            observed,
-        )
-        return match is not None and (
-            not expected_site or match.group(1) == expected_site
-        )
-    suffix = ":site_exit_first"
-    if not expected.endswith(suffix):
-        return False
-    authority = expected[:-len(suffix)]
-    prefix = f"{authority}:ui_return_token="
-    if not observed.startswith(prefix) or not observed.endswith(suffix):
-        return False
-    token = observed[len(prefix):-len(suffix)]
-    return re.fullmatch(
-        r"g[1-9][0-9]*-s[1-9][0-9]*-[0-9a-f]+", token
-    ) is not None
+    identity = matrix_item.get("mission_identity") or {}
+    ack = (matrix_item.get("return_response") or {}).get("ros_ack") or {}
+    return matrix_contract.return_source_matches(observed, expected, expected_site or site,
+        identity.get("generation", 0), ack.get("token", ""))
 
 if matrix_exit != 0:
     reasons.append(f"run.sh {matrix_subcommand} exited {matrix_exit}")
@@ -944,6 +947,25 @@ if matrix_report_raw:
                 f"{matrix_scope.get('expected_return_source')!r}, expected "
                 f"{expected_return_source!r}"
             )
+        return_fields = ["return_response"]
+        if (mission_intent == "recall" and int(site[1:]) <= 10
+                and matrix_item.get("configured_service_mode") == "turnaround"):
+            return_fields.append("final_return_response")
+        snapshot = {"sequences": {
+            "controller_operation_requests": matrix_item.get("controller_operation_request_sequence") or [],
+            "ui_operation_requests": matrix_item.get("ui_operation_request_sequence") or [],
+        }}
+        for field in return_fields:
+            response = matrix_item.get(field) or {}
+            ack = matrix_contract.return_acknowledgement(snapshot, response)
+            if ((response.get("context") or {}).get("mission_identity") != matrix_item.get("mission_identity")
+                    or ack is None or ack != response.get("ros_ack")):
+                reasons.append(f"{field} did not bind the fresh mission owner/generation and exact ROS nonce")
+        try:
+            return_validation._validate_return_evidence(matrix_item, site=site,
+                authority=authority, mission_intent=mission_intent, label=f"{site}.return_contract")
+        except return_validation.CollectionValidationError as error:
+            reasons.append(str(error))
         if authority == "guest":
             response = matrix_item.get("return_response") or {}
             if response.get("action") != "usage_complete":
@@ -1009,7 +1031,7 @@ if matrix_report_raw:
                 reasons.append(
                     "Robot UI arrival Return did not record action=usage_complete"
                 )
-            if response.get("source") != "ws:usage_complete":
+            if response.get("source") != "robot_ui:usage_complete":
                 reasons.append(
                     "Robot UI arrival Return did not retain its frontend source"
                 )

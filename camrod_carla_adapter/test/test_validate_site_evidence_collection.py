@@ -33,44 +33,48 @@ SPEC.loader.exec_module(validator)
 
 
 def test_operator_return_source_accepts_only_current_mission_nonce_shape():
-    expected = "ws:usage_complete:site_exit_first"
-    assert validator._return_source_matches(expected, expected)
+    expected = "robot_ui:usage_complete:site_exit_first"
+    generation = 1788692609018001
+    assert not validator._return_source_matches(expected, expected, "B1", generation)
     assert validator._return_source_matches(
-        "ws:usage_complete:ui_return_token="
+        "robot_ui:usage_complete:ui_return_token="
         "g1788692609018001-s1-326ebcaa9335f:site_exit_first",
-        expected,
+        expected, "B1", generation,
     )
     for rejected in (
-        "ws:usage_complete:ui_return_token=:site_exit_first",
-        "ws:usage_complete:ui_return_token=g0-s1-deadbeef:site_exit_first",
-        "ws:usage_complete:ui_return_token=g1-s1-NOTHEX:site_exit_first",
-        "ws:usage_complete:ui_return_token=g1-s1-deadbeef:spoof:site_exit_first",
-        "ws-spoof:usage_complete:ui_return_token=g1-s1-deadbeef:site_exit_first",
+        "robot_ui:usage_complete:ui_return_token=:site_exit_first",
+        "robot_ui:usage_complete:ui_return_token=g0-s1-deadbeef:site_exit_first",
+        "robot_ui:usage_complete:ui_return_token=g1-s1-NOTHEX:site_exit_first",
+        "robot_ui:usage_complete:ui_return_token=g1-s1-deadbeef:site_exit_first",
+        "robot_ui:usage_complete:ui_return_token=g1-s1-deadbeef:spoof:site_exit_first",
+        "ws:usage_complete:ui_return_token=g1788692609018001-s1-deadbeef:site_exit_first",
     ):
-        assert not validator._return_source_matches(rejected, expected)
+        assert not validator._return_source_matches(rejected, expected, "B1", generation)
 
 
 def test_guest_return_source_accepts_only_site_bound_generation_shape():
     expected = "guest:usage_complete"
-    assert validator._return_source_matches(expected, expected, "B13")
+    generation = 1788726927385002
+    assert not validator._return_source_matches(expected, expected, "B13", generation)
     assert validator._return_source_matches(
         "guest:usage_complete:site=B13:g=1788726927385002",
         expected,
-        "B13",
+        "B13", generation,
     )
     assert not validator._return_source_matches(
         "guest:usage_complete:site=B12:g=1788726927385002",
         expected,
-        "B13",
+        "B13", generation,
     )
     for rejected in (
         "guest:usage_complete:site=B0:g=1",
         "guest:usage_complete:site=B14:g=1",
         "guest:usage_complete:site=B1:g=0",
         "guest:usage_complete:site=B1:g=not-a-generation",
+        "guest:usage_complete:site=B1:g=1788726927385001",
         "spoof:guest:usage_complete:site=B1:g=1",
     ):
-        assert not validator._return_source_matches(rejected, expected, "B1")
+        assert not validator._return_source_matches(rejected, expected, "B1", generation)
 
 
 def _write_json(path: Path, value: Any) -> Path:
@@ -114,7 +118,7 @@ def _authority(authority: str, mission: str) -> dict[str, str]:
     if authority == "operator-browser":
         return {
             "matrix_return_authority": "operator_browser",
-            "expected_return_source": "ws:usage_complete:site_exit_first",
+            "expected_return_source": "robot_ui:usage_complete:site_exit_first",
             "captured_ui_kind": "operator",
             "matrix_subcommand": (
                 "camping-sites-browser-recall"
@@ -124,7 +128,7 @@ def _authority(authority: str, mission: str) -> dict[str, str]:
         }
     return {
         "matrix_return_authority": "operator_rest",
-        "expected_return_source": "",
+        "expected_return_source": "http:manual_return:site_exit_first",
         "captured_ui_kind": "operator",
         "matrix_subcommand": (
             "camping-sites-recall" if mission == "recall" else "camping-sites"
@@ -140,6 +144,159 @@ def _git(root: Path, *arguments: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _add_current_return_evidence(item: dict[str, Any], authority: str,
+                                 handoff_root: Path | None = None,
+                                 guest_final_authority: str = "robot") -> None:
+    """Authored fixture, not live proof: use exactly the latest producer schema."""
+    site, intent = item["site"], item["mission_intent"]
+    generation = 1788839900000001
+    identity = {"site": site, "intent": intent, "generation": generation,
+                "owner": ("guest" if authority == "guest" else
+                          "robot" if authority == "operator-browser" and intent == "recall" else "operator")}
+    item["mission_identity"] = identity
+    if authority == "guest":
+        item["guest_final_return_authority"] = guest_final_authority
+    item["controller_operation_request_sequence"] = []
+    item["ui_operation_request_sequence"] = []
+    two_stage = intent == "recall" and int(site[1:]) <= 10
+    item["site_phase_sequence"] = (["WAIT_RETURN", "RECALL_CLEARANCE_WAIT", "CRAB_IN", "ROTATE_180",
+                                    "RECALL_RETURN_WAIT", "ALIGN_RETRACE_YAW", "CRAB_OUT", "DONE"]
+                                   if two_stage else ["WAIT_RETURN", "CRAB_OUT", "DONE"])
+    for final, field in ((False, "return_response"), (True, "final_return_response")):
+        if final and not two_stage:
+            continue
+        source = {"operator": "http:manual_return", "operator-browser": "robot_ui:usage_complete",
+                  "guest": "guest:usage_complete"}[authority]
+        if final and (authority == "operator" or
+                      (authority == "guest" and guest_final_authority == "robot")):
+            source = "robot_ui:usage_complete"
+        guest = source.startswith("guest:")
+        ui_source = f"guest:usage_complete:site={site}:g={generation}" if guest else ""
+        if guest and final:
+            ui_source += ":recall_final_return"
+        base = ui_source or source
+        token = "" if final else f"g{generation}-s1-deadbeef"
+        controller_source = (f"{base}:recall_final_return:site={site}:g={generation}" if final
+                             else f"{base}:ui_return_token={token}:site_exit_first")
+        frame = ({"action": "usage_complete", "recall_final_return": final} if guest else
+                 {"usage_complete": True, "site": site, "mission_generation": generation,
+                  "recall_final_return": final})
+        item[field] = {
+            "success": True, "accepted": True, "action": "usage_complete", "source": source,
+            "transport": ("visible_guest_page_websocket_via_cdp" if guest else
+                          "visible_operator_page_websocket_via_cdp_input"), "frame": frame,
+            "context": {"mission_identity": dict(identity), "service_state": 8 if intent == "recall" else 11,
+                        "site_phase": "RECALL_RETURN_WAIT" if final else "WAIT_RETURN", "final_return": final,
+                        "controller_request_count_before": len(item["controller_operation_request_sequence"]),
+                        "ui_request_count_before": len(item["ui_operation_request_sequence"])},
+            "ros_ack": {"controller_source": controller_source, "ui_source": ui_source, "token": token},
+        }
+        item["controller_operation_request_sequence"].append({"operation": 3, "source": controller_source})
+        if ui_source:
+            item["ui_operation_request_sequence"].append({"operation": 3, "source": ui_source})
+        if final and authority == "guest" and guest_final_authority == "robot":
+            assert handoff_root is not None
+            handoff_root.mkdir(parents=True, exist_ok=True)
+            handoff = {"transport": "CDP.Page.bringToFront_and_captureScreenshot"}
+            for number, name in enumerate(("from_guest", "robot_before", "guest_after"), 1):
+                robot = name == "robot_before"
+                page = {"title": "Robot UI" if robot else "국립공원 로봇 서비스",
+                        "url": "http://127.0.0.1:8010/" if robot else "http://127.0.0.1:8020/",
+                        "visibility": "visible", "focused": True,
+                        "captured_at_utc": f"2026-09-08T05:00:0{number}+00:00"}
+                if name != "from_guest":
+                    png = handoff_root / f"{site}_{name}.png"
+                    png.write_bytes(b"\x89PNG\r\n\x1a\nfixture-" + name.encode())
+                    page["png"] = _artifact(png)
+                handoff[name] = page
+            item[field]["ui_handoff"] = handoff
+
+
+@pytest.mark.parametrize("site", ["B1", "B10", "B11", "B13"])
+@pytest.mark.parametrize("authority", ["operator", "operator-browser", "guest"])
+def test_current_recall_confirmation_shape_is_site_and_authority_bound(tmp_path, site, authority):
+    item = {"site": site, "mission_intent": "recall"}
+    _add_current_return_evidence(item, authority, tmp_path)
+    validator._validate_return_evidence(item, site=site, authority=authority,
+                                       mission_intent="recall", label="test")
+    assert ("final_return_response" in item) == (int(site[1:]) <= 10)
+
+
+@pytest.mark.parametrize("mutate,pattern", [
+    (lambda item: item.pop("mission_identity"), "mission_identity"),
+    (lambda item: item["mission_identity"].update(generation=True), "generation"),
+    (lambda item: item["mission_identity"].update(owner="guest"), "owner"),
+    (lambda item: item["return_response"]["context"]["mission_identity"].update(site="B2"), "identity"),
+    (lambda item: item["return_response"]["context"].update(service_state=11), "service_state"),
+    (lambda item: item["return_response"]["context"].update(site_phase="RECALL_RETURN_WAIT"), "site_phase"),
+    (lambda item: item["return_response"].update(source="ws:usage_complete"), "source"),
+    (lambda item: item["return_response"]["frame"].update(mission_generation=1), "mission_generation"),
+    (lambda item: item["return_response"]["frame"].update(recall_final_return=True), "recall_final_return"),
+    (lambda item: item["return_response"]["ros_ack"].update(controller_source="robot_ui:usage_complete:ui_return_token=g1-s1-deadbeef:site_exit_first"), "mission-bound"),
+    (lambda item: item["return_response"]["context"].update(controller_request_count_before=1), "fresh controller"),
+    (lambda item: item["return_response"]["ros_ack"].update(token="g1-s1-deadbeef"), "token"),
+    (lambda item: item.pop("final_return_response"), "final_return_response"),
+    (lambda item: item["final_return_response"]["context"].update(controller_request_count_before=0), "previous confirmation"),
+    (lambda item: item["final_return_response"]["context"].update(final_return=False), "final_return"),
+    (lambda item: item["final_return_response"]["ros_ack"].update(controller_source="robot_ui:usage_complete:recall_final_return:site=B2:g=1788839900000001"), "controller_source"),
+    (lambda item: item.update(site_phase_sequence=["WAIT_RETURN", "RECALL_RETURN_WAIT", "DONE"]), "ordered two-stage"),
+])
+def test_current_return_rejects_stale_spoofed_or_missing_two_stage_evidence(mutate, pattern):
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "operator-browser")
+    mutate(item)
+    with pytest.raises(validator.CollectionValidationError, match=pattern):
+        validator._validate_return_evidence(item, site="B1", authority="operator-browser",
+                                           mission_intent="recall", label="test")
+
+
+def test_guest_final_confirmation_requires_fresh_ui_and_exact_controller_sources():
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "guest", guest_final_authority="guest")
+    item["final_return_response"]["context"]["ui_request_count_before"] = 2
+    with pytest.raises(validator.CollectionValidationError, match="fresh Guest"):
+        validator._validate_return_evidence(item, site="B1", authority="guest",
+                                           mission_intent="recall", label="test")
+
+
+def test_roadside_only_recall_rejects_an_invented_second_confirmation():
+    item = {"site": "B11", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "operator-browser")
+    item["final_return_response"] = copy.deepcopy(item["return_response"])
+    with pytest.raises(validator.CollectionValidationError, match="unexpected second confirmation"):
+        validator._validate_return_evidence(item, site="B11", authority="operator-browser",
+                                           mission_intent="recall", label="test")
+
+
+@pytest.mark.parametrize("final_authority", ["robot", "guest"])
+def test_guest_recall_records_explicit_final_ui_without_changing_owner(tmp_path, final_authority):
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "guest", tmp_path, final_authority)
+    validator._validate_return_evidence(item, site="B1", authority="guest",
+                                       mission_intent="recall", label="test")
+    assert item["final_return_response"]["context"]["mission_identity"]["owner"] == "guest"
+    assert ("ui_handoff" in item["final_return_response"]) == (final_authority == "robot")
+
+
+@pytest.mark.parametrize("mutate,pattern", [
+    (lambda item: item.pop("guest_final_return_authority"), "guest_final_return_authority"),
+    (lambda item: item["final_return_response"].pop("ui_handoff"), "ui_handoff"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["robot_before"].update(visibility="hidden"), "visibly focused"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["robot_before"].update(focused=False), "visibly focused"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["guest_after"].update(title=""), "title"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["guest_after"].update(url="http://127.0.0.1:8010/"), "guest_page_restored"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["guest_after"].update(captured_at_utc="2026-09-08T04:00:00+00:00"), "out of order"),
+    (lambda item: item["final_return_response"]["ui_handoff"]["robot_before"]["png"].update(sha256="0" * 64), "SHA-256 mismatch"),
+])
+def test_guest_robot_handoff_rejects_missing_hidden_or_corrupted_ui_proof(tmp_path, mutate, pattern):
+    item = {"site": "B1", "mission_intent": "recall"}
+    _add_current_return_evidence(item, "guest", tmp_path)
+    mutate(item)
+    with pytest.raises(validator.CollectionValidationError, match=pattern):
+        validator._validate_return_evidence(item, site="B1", authority="guest",
+                                           mission_intent="recall", label="test")
 
 
 def _build_runtime_contract_fixture(tmp_path: Path) -> dict[str, Any]:
@@ -483,6 +640,7 @@ def _build_collection(
                 "operation": 3,
                 "source": "ws:usage_complete:site_exit_first",
             }]
+        _add_current_return_evidence(native_site, authority, native_dir / "ui_handoff")
         if parking_completion == "reverse":
             native_site.update({
                 "parking_completion": "reverse",
