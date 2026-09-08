@@ -80,3 +80,33 @@ ROS_DOMAIN_ID=192 ctest --test-dir "$verification_build/planning" \
 
 Controller fixtures additionally set their own isolated DDS domains 187/188.
 Use the install path of the target workspace when reproducing on another host.
+
+## Follow-up: nested detector launch replaced controller parameters
+
+`parking.launch.py` included the detector launch with an argument also named
+`parameter_file`. The unscoped include left the detector YAML in its parent's
+launch context. In `auto`/`apriltag` mode with the detector enabled, the later
+parking nodes consequently received perception YAML rather than `parking.yaml`.
+Missing node parameters then fell back to constructor defaults, including
+`complete_without_charging=false` despite the configured value being `true`.
+
+The detector include now runs inside `GroupAction(scoped=True)`. It receives
+the configured detector YAML and restores the outer controller YAML before
+the dispatcher, reverse controller and AprilTag controller are evaluated.
+
+`test_parking_launch_parameter_scope.py` executes the actual nested launch
+descriptions, arguments, conditions and scope push/pop in `LaunchContext`.
+Only process startup is replaced with parameter-file observations. It checks
+auto/apriltag with detector on and reverse/auto with detector off, including
+the controller's `complete_without_charging=true` and 5.0 m reverse bound.
+The test produced 2 failures and 2 passes before the fix, then 4 passes after
+the fix. The existing 10 AprilTag docking contracts also passed (14 total).
+
+```bash
+python3 -m pytest -q \
+  camrod_bringup/test/test_parking_launch_parameter_scope.py \
+  camrod_bringup/test/test_apriltag_docking_contract.py
+```
+
+The regression is registered with bringup CTest. Restart the launch after
+installing the change; existing controller processes retain their old parameters.
