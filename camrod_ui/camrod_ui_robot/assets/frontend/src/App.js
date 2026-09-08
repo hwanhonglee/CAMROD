@@ -162,6 +162,22 @@ function serviceMotionNotice(missionPhase, systemHealth) {
   return null;
 }
 
+// Guest call notifications are admission information, never modal authority.
+// Once progress/arrival/safety has its own screen, stale notification flags
+// must not cover Stop, loading confirmation, or an error explanation.
+function guestAdmissionNotice({ dispatch, showRecall, noticeSite, missionPhase,
+  serviceStateName, systemHealth, arrivalVisible, arrivedSite, executionError }) {
+  if ((!showRecall && !noticeSite) || !dispatch?.active || dispatch.owner !== 'guest'
+      || !Number.isSafeInteger(dispatch.generation) || dispatch.generation <= 0
+      || !/^B(?:[1-9]|1[0-3])$/.test(String(dispatch.site || ''))
+      || !['delivery', 'recall'].includes(dispatch.intent)
+      || (noticeSite && noticeSite !== dispatch.site)) return '';
+  if (arrivalVisible || arrivedSite || executionError || systemHealth === 'ERROR'
+      || !['READY', 'GOAL_RECEIVED'].includes(missionPhase)
+      || !['DROP_ZONE_WAIT', 'CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName)) return '';
+  return `${dispatch.site} 사이트 호출을 접수했습니다. 출발을 준비합니다.`;
+}
+
 function robotCanCompleteMission(dispatch, site, serviceStateName) {
   if (!dispatch.active || !site || dispatch.site !== site
       || !Number.isSafeInteger(dispatch.generation) || dispatch.generation <= 0) return false;
@@ -1356,6 +1372,17 @@ function App() {
   );
   const recallProgress = recallReturnProgress(activeRecallSite, serviceStateDescription);
   const motionNotice = serviceMotionNotice(missionPhase, systemHealth);
+  const guestAdmissionMessage = guestAdmissionNotice({
+    dispatch: missionDispatch, showRecall: showGuestRecall, noticeSite: guestNavigateSite,
+    missionPhase, serviceStateName, systemHealth,
+    arrivalVisible: showArrivalComplete, arrivedSite, executionError: missionExecutionError,
+  });
+  const guestAdmissionStatus = guestAdmissionMessage ? (
+    <span data-ui="guest-admission-status" role="status" aria-live="polite"
+      style={{ display: 'block', fontSize: '0.85rem', position: 'static', pointerEvents: 'none' }}>
+      {guestAdmissionMessage}
+    </span>
+  ) : null;
   const guestOwnsReturn =
     missionDispatch.active
     && missionDispatch.site === arrivedSite
@@ -2383,6 +2410,7 @@ function App() {
               <div className="wh-title-block">
                 <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
                 <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+                {guestAdmissionStatus}
               </div>
             </div>
             <div className="wh-right-group">
@@ -2471,22 +2499,6 @@ function App() {
           </div>
         )}
 
-        {/* HJ_260601: 게스트 호출 알림 팝업 (대기 화면) */}
-        {showGuestRecall && (
-          <div className="guest-recall-overlay">
-            <div className="guest-recall-box">
-              <p className="guest-recall-msg">{motionNotice?.message || '이용객 호출 요청을 받았습니다'}</p>
-            </div>
-          </div>
-        )}
-        {/* 게스트 사이트 이동 알림 팝업 (대기 화면) */}
-        {guestNavigateSite && (
-          <div className="guest-recall-overlay">
-            <div className="guest-recall-box">
-              <p className="guest-recall-msg">{guestNavigateSite} 사이트 이용객이 도로 대기점으로 로봇을 호출했습니다</p>
-            </div>
-          </div>
-        )}
         {batteryReturnMessage && (
           <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
             <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
@@ -2525,6 +2537,7 @@ function App() {
             <div className="ch-title-block">
               <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
               <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+              {guestAdmissionStatus}
             </div>
           </div>
           <div className="ch-right">
@@ -3021,22 +3034,6 @@ function App() {
         </div>
       )}
 
-      {/* HJ_260601: 게스트 호출 알림 팝업 */}
-      {showGuestRecall && (
-        <div className="guest-recall-overlay">
-          <div className="guest-recall-box">
-            <p className="guest-recall-msg">{motionNotice?.message || '이용객 호출 요청을 받았습니다'}</p>
-          </div>
-        </div>
-      )}
-      {/* 게스트 사이트 이동 알림 팝업 */}
-      {guestNavigateSite && (
-        <div className="guest-recall-overlay">
-          <div className="guest-recall-box">
-            <p className="guest-recall-msg">{guestNavigateSite} 사이트 이용객이 도로 대기점으로 로봇을 호출했습니다</p>
-          </div>
-        </div>
-      )}
 
     </div>
   );

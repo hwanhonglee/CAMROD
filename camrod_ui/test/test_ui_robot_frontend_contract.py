@@ -142,7 +142,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
                             (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
             block = self.source[self.source.index(first):self.source.index(last)]
             self.assertIn("motionNotice?.message ||", block)
-        self.assertEqual(self.source.count("motionNotice?.message || '이용객 호출 요청을 받았습니다'"), 2)
+        self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
+        self.assertNotIn('className="guest-recall-overlay"', self.source)
         arrival = self.source[self.source.index(") : arrivedSite ? ("):
                               self.source.index(") : displayedReturning ? (")]
         self.assertNotIn("motionNotice", arrival)
