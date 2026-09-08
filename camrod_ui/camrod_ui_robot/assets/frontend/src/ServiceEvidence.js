@@ -323,7 +323,6 @@ export function ServiceEvidenceSummary({ data, loading, error, onOpen }) {
       aria-label="실증 운행 현황 상세 보기"
     >
       <span className="evidence-summary-heading">
-        <span className="evidence-summary-eyebrow">CAMROD FIELD OPERATION</span>
         <strong>실증 운행 현황</strong>
         <small>
           {stale
