@@ -1405,7 +1405,7 @@ def test_guest_pointer_never_clicks_hidden_disabled_obstructed_or_wrong_stage_co
         "hit": True, "text": "정리 완료 · 사이트 재진입", "x": 1, "y": 2, **failure}
     with pytest.raises(matrix.MatrixError, match="hidden/disabled/obstructed or has wrong text"):
         client._guest_click("#completeAction", "loading", "정리 완료 · 사이트 재진입")
-    assert not client.calls
+    assert client.calls == [("Page.bringToFront", {})]
 
 
 @pytest.mark.parametrize("site,final,label", [
@@ -1718,8 +1718,7 @@ def test_immediate_confirmation_capture_binds_actual_png_dom_and_mission_context
     assert path.read_bytes() == page.png
     assert record["png"]["sha256"] == matrix.sha256_file(path)
     assert "B1_g13_" in path.name
-    assert page.calls == ["Page.captureScreenshot"]
-    assert "Page.bringToFront" not in page.calls
+    assert page.calls == ["Page.bringToFront", "Page.captureScreenshot"]
     assert all(".click(" not in expression and "Input.dispatch" not in expression for expression in page.expressions)
     context["mission_identity"]["generation"] = 99
     assert record["context"]["mission_identity"]["generation"] == 13
@@ -1737,7 +1736,7 @@ def test_confirmation_capture_failure_is_retained_before_any_click(tmp_path, fai
     assert result["confirmation_views"][0]["status"] == "CAPTURE_FAILED"
     assert result["confirmation_views"][0]["context"] == context
     assert not list(tmp_path.glob("*.png"))
-    assert set(page.calls) <= {"Page.captureScreenshot"}
+    assert set(page.calls) <= {"Page.bringToFront", "Page.captureScreenshot"}
 
 
 def test_all_browser_confirmation_paths_checkpoint_capture_before_request():
@@ -1764,7 +1763,7 @@ def test_confirmation_png_waits_for_same_unobscured_settled_pointer_contract(tmp
     result = {}
     with pytest.raises(matrix.MatrixError, match="unobscured/settled/stable"):
         matrix.capture_before_confirmation(page, tmp_path, context, result, frontend="robot")
-    assert page.calls == []
+    assert page.calls == ["Page.bringToFront"]
     assert result["confirmation_views"][0]["status"] == "CAPTURE_FAILED"
     assert not list(tmp_path.glob("*.png"))
 
@@ -1804,17 +1803,96 @@ def test_robot_pointer_never_presses_covered_fading_or_background_control(failur
     client._element = lambda selector: {**original(selector), **failure}
     with pytest.raises(matrix.MatrixError, match="unobscured/settled/stable"):
         client._click('[data-ui="operator-arrival-return-confirm"]', "test final confirmation")
-    assert client.cdp_calls == []
+    assert client.cdp_calls == [("Page.bringToFront", {})]
 
 
 def test_robot_hover_overlay_is_rechecked_before_mouse_press():
     client = _operator_client_with_fake_visible_dom({})
     client.timeout_s = 0.4
     original = client._element
-    client._element = lambda selector: {**original(selector), "hit": not bool(client.cdp_calls)}
+    client._element = lambda selector: {**original(selector), "hit": not any(
+        method == "Input.dispatchMouseEvent" for method, _ in client.cdp_calls)}
     with pytest.raises(matrix.MatrixError, match="after pointer hover"):
         client._click('[data-ui="operator-arrival-return-confirm"]', "test final confirmation")
-    assert [params["type"] for _, params in client.cdp_calls] == ["mouseMoved"]
+    assert client.cdp_calls[0] == ("Page.bringToFront", {})
+    assert [params["type"] for method, params in client.cdp_calls
+            if method == "Input.dispatchMouseEvent"] == ["mouseMoved"]
+
+
+@pytest.mark.parametrize("frontend", ["guest", "robot"])
+def test_pointer_restores_lost_focus_then_checks_ready_before_actual_input(frontend):
+    client = _guest_pointer_fixture() if frontend == "guest" else _operator_client_with_fake_visible_dom({})
+    client._guest_interactions = []
+    client._expected_confirmation_text = "offline current loading confirmation"
+    focused = False
+    reads = []
+    original_call = client._call
+    original_read = client._guest_control if frontend == "guest" else client._element
+    def read(selector, **kwargs):
+        reads.append(focused)
+        return {**original_read(selector, **kwargs), "pageReady": focused}
+    def call(method, params):
+        nonlocal focused
+        if method == "Page.bringToFront":
+            focused = True
+        if method.startswith("Input."):
+            assert focused and reads and all(reads), "real input follows focused DOM acceptance"
+        return original_call(method, params)
+    client._call = call
+    if frontend == "guest":
+        client._guest_control = read
+        client._guest_click("#completeAction", "loading", "정리 완료 · 사이트 재진입")
+        calls = client.calls
+    else:
+        client._element = read
+        client._click('[data-ui="operator-arrival-return-confirm"]', "loading")
+        calls = client.cdp_calls
+    assert calls[0] == ("Page.bringToFront", {})
+    assert [params["type"] for method, params in calls if method == "Input.dispatchMouseEvent"] == [
+        "mouseMoved", "mousePressed", "mouseReleased"]
+    assert len(reads) >= 2, "focus restoration never replaces stable/hit-test observations"
+
+
+@pytest.mark.parametrize("frontend", ["guest", "robot"])
+def test_confirmation_capture_restores_lost_focus_before_settled_png_only(tmp_path, frontend):
+    context = _return_test_context(owner="guest" if frontend == "guest" else "robot", intent="recall")
+    page = _ConfirmationCapturePage(context["mission_identity"])
+    focused = False
+    pointer_reads = []
+    original_call, original_evaluate = page._call, page._evaluate
+    def evaluate(expression):
+        value = original_evaluate(expression)
+        if "activeFiniteAnimations" in expression:
+            pointer_reads.append(focused)
+            return {**value, "pageReady": focused}
+        return {**value, "focused": focused}
+    def call(method, params):
+        nonlocal focused
+        if method == "Page.bringToFront":
+            focused = True
+        if method == "Page.captureScreenshot":
+            assert focused and pointer_reads and all(pointer_reads)
+        assert not method.startswith("Input."), "capture must never click the mission control"
+        return original_call(method, params)
+    page._call, page._evaluate = call, evaluate
+    record = matrix.capture_before_confirmation(page, tmp_path, context, {}, frontend=frontend)
+    assert record["status"] == "CAPTURED"
+    assert page.calls == ["Page.bringToFront", "Page.captureScreenshot"]
+    assert Path(record["png"]["path"]).read_bytes() == page.png
+
+
+@pytest.mark.parametrize("invalid", ["generation", "phase"])
+def test_confirmation_capture_rejects_invalid_context_before_even_foreground(tmp_path, invalid):
+    context = _return_test_context(intent="recall")
+    if invalid == "generation":
+        context["mission_identity"]["generation"] = 0
+    else:
+        context["site_phase"] = "CRAB_IN"
+    page = _ConfirmationCapturePage(context["mission_identity"])
+    with pytest.raises(matrix.MatrixError, match="evidence capture failed"):
+        matrix.capture_before_confirmation(page, tmp_path, context, {}, frontend="robot")
+    assert page.calls == []
+    assert not list(tmp_path.glob("*.png"))
 
 
 def test_handoff_captures_real_foreground_page_metadata_and_png(tmp_path):

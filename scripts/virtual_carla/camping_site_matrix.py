@@ -1990,6 +1990,9 @@ class GuestBrowserClient:
         self._guest_assertions.append({"selector": selector, "text": value["text"], "visible": True})
 
     def _guest_click(self, selector: str, stage: str, expected_text: str) -> None:
+        # Long preflight/arrival waits can leave CARLA owning X11 focus.
+        # Restore the actual target before validating (never bypass focus/hit checks).
+        self._call("Page.bringToFront", {})
         value = self._guest_wait_control(selector, expected_text, click=True)
         x, y = float(value["x"]), float(value["y"])
         for kind, buttons in (("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)):
@@ -2206,6 +2209,7 @@ class OperatorBrowserClient(GuestBrowserClient):
         )
 
     def _click(self, selector: str, description: str) -> dict[str, Any]:
+        self._call("Page.bringToFront", {})
         element = self._wait_element(selector, description)
         x = float(element["x"])
         y = float(element["y"])
@@ -2517,7 +2521,7 @@ def capture_ui_handoff_view(client: Any, directory: Path, label: str,
 
 def capture_before_confirmation(client: Any, directory: Path, context: Mapping[str, Any],
                                 result: dict[str, Any], *, frontend: str) -> dict[str, Any]:
-    """Retain the actual pre-click page without focusing it or injecting state.
+    """Foreground and retain the actual pre-click page without injecting state.
 
     Store context before capture so a failed PNG/DOM check remains attributable
     to the exact mission and confirmation stage in an interrupted/failed case.
@@ -2536,6 +2540,7 @@ def capture_before_confirmation(client: Any, directory: Path, context: Mapping[s
         expected_phase = "RECALL_RETURN_WAIT" if stage == "final" else "WAIT_RETURN"
         if context.get("site_phase") != expected_phase:
             raise MatrixError("confirmation screenshot has wrong confirmation phase")
+        client._call("Page.bringToFront", {})
         selectors = (['[data-ui="operator-arrival-return-confirm"]', '[data-ui="operator-arrival-return"]']
                      if frontend == "robot" else ["#completeAction"])
         expression = "(() => {" + f"const selectors={json.dumps(selectors)};" + (
