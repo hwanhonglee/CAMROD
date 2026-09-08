@@ -4762,6 +4762,11 @@ class UiBackendNode(Node):
             )
             self._state.mission_phase = self._runtime_policy.mission_phase
             self._state.mission_source = self._runtime_policy.mission_source
+            if UiBackendNode._completed_station_goal_is_display_only(self):
+                # Accepted parking ended this intent. Cached planning source
+                # metadata must not advertise a new goal on the idle home page.
+                self._state.mission_phase = UiStatePolicy.READY
+                self._state.mission_source = "none"
             current = (
                 self._state.ready,
                 self._state.ready_message,
@@ -4788,6 +4793,31 @@ class UiBackendNode(Node):
                     "mission_source": current[5],
                 }
             )
+
+    def _completed_station_goal_is_display_only(self) -> bool:
+        completed = getattr(self, "_ui_completed_station_goal", None)
+        policy = self._runtime_policy
+        if not completed or policy.mission_phase != UiStatePolicy.GOAL_RECEIVED:
+            return False
+        if (policy.mission_source == "manual" or policy.engaged
+                or policy.planning_state != "WAIT_DZ"
+                or policy.gate_state not in {"STANDBY", "CHARGING"}
+                or int(getattr(self, "_active_mission_generation", 0)) > 0
+                or bool(getattr(self, "_active_mission_site", ""))
+                or bool(getattr(self, "_generation_zero_authority", ""))
+                or getattr(self, "_pending_site_after_drop_zone_exit", None) is not None
+                or getattr(self, "_charging_departure_delay_pending", False)
+                or getattr(self, "_drop_zone_exit_active", False)
+                or getattr(self, "_redock_after_disconnect_pending", False)
+                or getattr(self, "_parking_rearm_waiting_for_can", False)):
+            return False
+        return bool(
+            self._state.service_state in {
+                int(AvgServiceState.DROP_ZONE_WAIT), int(AvgServiceState.CHARGING),
+            }
+            and policy.active_goal_source == completed["goal_source"]
+            and policy.active_mission_key == completed["mission_key"]
+        )
 
     def _log_readiness_transition(self, ready: bool, message: str) -> None:
         """Surface readiness blockers on the console, at most once per second."""
@@ -4850,6 +4880,13 @@ class UiBackendNode(Node):
         # correspondence may populate a campsite return anchor; manual/RViz or
         # another campsite's latest route must never authorize roadside adopt.
         stamp_key = self._route_goal_stamp_key(msg)
+        previous_stamp = getattr(self, "_ui_last_route_goal_stamp", (0, 0))
+        completed = getattr(self, "_ui_completed_station_goal", None)
+        if completed and stamp_key > completed["goal_stamp"]:
+            # A fresh timestamped route goal is new intent, including RViz.
+            # An old transient-local/duplicate echo is not a new mission.
+            self._ui_completed_station_goal = None
+        self._ui_last_route_goal_stamp = max(previous_stamp, stamp_key)
         mission_key = ""
         with self._lock:
             mission_key = self._pending_site_route_goal_stamps.pop(
@@ -6127,6 +6164,17 @@ class UiBackendNode(Node):
                 self._recall_final_return_generation = 0
                 self._mission_execution_error = ""
         if terminal_mission_completed or state == int(AvgServiceState.OPERATOR_STOPPED):
+            policy = getattr(self, "_runtime_policy", None)
+            if terminal_mission_completed and isinstance(policy, UiStatePolicy):
+                # Marker follows existing generation/token/physical acceptance;
+                # it does not replace any terminal or standalone-Return guard.
+                self._ui_completed_station_goal = {
+                    "generation": active_generation,
+                    "goal_stamp": getattr(self, "_ui_last_route_goal_stamp", (0, 0)),
+                    "goal_source": policy.active_goal_source,
+                    "mission_key": policy.active_mission_key,
+                }
+                self._update_runtime_state(lambda: None, force_broadcast=True)
             UiBackendNode._publish_destination_dispatch_status(
                 self,
                 completed_site,
@@ -7477,6 +7525,7 @@ class UiBackendNode(Node):
             self._lock = state_lock
         with state_lock:
             UiBackendNode._clear_generation_zero_authority(self)
+            self._ui_completed_station_goal = None
             current_site = str(
                 getattr(self, "_active_mission_site", "")
             ).strip()
@@ -9196,6 +9245,7 @@ class UiBackendNode(Node):
             "http_manual_goal",
             {"message": "campsite mission replaced by manual map goal"},
         )
+        self._ui_completed_station_goal = None
         self._update_runtime_state(
             lambda: self._runtime_policy.update_goal_received("manual")
         )
