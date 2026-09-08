@@ -998,7 +998,8 @@ def test_authority_contract_preserves_operator_and_identifies_guest_path():
     assert guest_contract["expected_return_source"] == "guest:usage_complete"
     assert guest_contract["expected_arrival_state"] == matrix.GUEST_LOADING_WAIT
     assert guest_contract["mission_intent"] == "recall"
-    assert "sendUsageComplete" in guest_contract["ui_endpoints"]["return"]
+    assert "#completeAction" in guest_contract["ui_endpoints"]["return"]
+    assert "CDP pointer input" in guest_contract["ui_endpoints"]["dispatch"]
 
     operator_recall = matrix._parser().parse_args([
         "--mission-intent", "recall",
@@ -1332,40 +1333,156 @@ def test_cdp_evaluate_ignores_events_and_requires_by_value_response():
     assert javascript_error_connection.closed is True
 
 
-def test_guest_actions_call_page_lexicals_and_verify_exact_ws_frames():
+def _guest_pointer_fixture(site="B1", final=False):
     client = matrix.GuestBrowserClient.__new__(matrix.GuestBrowserClient)
-    expressions = []
-
-    def evaluate(expression):
-        expressions.append(expression)
-        action = "usage_complete" if "sendUsageComplete" in expression else "navigate"
-        return {"accepted": True, "action": action}
-
-    client._evaluate = evaluate
-    client._call = lambda *args: {}
-    assert client.dispatch("B1")["accepted"] is True
-    assert client.request_return(_return_test_context(owner="guest", intent="recall"))["accepted"] is True
-
-    dispatch_expression, return_expression = expressions
-    assert "window.ws" not in dispatch_expression
-    assert "selectSite(requestedSite)" in dispatch_expression
-    assert "openConfirm(); confirmNavigate();" in dispatch_expression
-    assert "frame.action !== 'navigate'" in dispatch_expression
-    assert "frame.site !== requestedSite" in dispatch_expression
-    assert "currentPhase !== 'arrived'" in return_expression
-    assert "currentState !== 8" in return_expression
-    assert "sendUsageComplete()" in return_expression
-    assert "frame.action !== 'usage_complete'" in return_expression
-
-    rejected_connection = _FakeCDPConnection([])
-    rejected = _guest_client_with_connection(rejected_connection)
-    rejected._evaluate = lambda expression: {
-        "accepted": False,
-        "reason": "guest_ui_not_ready",
+    client._connection = _FakeCDPConnection([])
+    client.timeout_s = 0.01
+    client.expressions, client.calls, client.frames = [], [], []
+    copy = matrix.guest_return_ui_copy(site, final)
+    client.controls = {
+        f'#siteGrid .site-btn[data-site="{site}"]': site,
+        "#navigateBtn": f"{site} 도로 대기점으로 호출",
+        "#confirmOverlay .confirm-title": "로봇을 호출하시겠습니까?",
+        "#confirmSiteTag": f"{site} 사이트", "#confirmOverlay .btn-confirm": "호출",
+        "#completeTitle": copy["title"], "#completeHelp": copy["help"], "#completeAction": copy["label"],
     }
-    with pytest.raises(matrix.MatrixError, match="rejected navigate"):
-        rejected.dispatch("B2")
-    assert rejected_connection.closed is True
+    def control(selector, *, scroll=False):
+        client.current_selector = selector
+        return {"visibleCount": 1, "disabled": False, "hit": True,
+                "text": client.controls[selector], "x": 12.5, "y": 24.0}
+    def evaluate(expression):
+        client.expressions.append(expression)
+        if expression.startswith("(window.__camrodGuestPointerEvidence"):
+            return client.frames
+        if "store.captureSend =" in expression:
+            client.frames = []
+        return {"accepted": True}
+    def call(method, params):
+        client.calls.append((method, params))
+        if method == "Input.dispatchMouseEvent" and params["type"] == "mouseReleased":
+            if client.current_selector == "#confirmOverlay .btn-confirm":
+                client.frames.append({"action": "navigate", "site": site})
+            if client.current_selector == "#completeAction":
+                client._observed_confirmation = {"type": "confirm", "message": client._expected_confirmation_text}
+                client.frames.append({"action": "usage_complete", "recall_final_return": final})
+        return {}
+    client._guest_control = control
+    client._evaluate = evaluate
+    client._call = call
+    return client
+
+
+def test_guest_actions_use_actual_pointer_controls_and_never_invoke_action_functions():
+    client = _guest_pointer_fixture()
+    dispatch = client.dispatch("B1")
+    returned = client.request_return(_return_test_context(owner="guest", intent="recall"))
+    assert dispatch["frame"] == {"action": "navigate", "site": "B1"}
+    assert [item["selector"] for item in dispatch["interactions"]] == [
+        '#siteGrid .site-btn[data-site="B1"]', "#navigateBtn", "#confirmOverlay .btn-confirm"]
+    assert dispatch["ui_assertions"] == [
+        {"selector": "#confirmOverlay .confirm-title", "text": "로봇을 호출하시겠습니까?", "visible": True},
+        {"selector": "#confirmSiteTag", "text": "B1 사이트", "visible": True}]
+    assert returned["frame"] == {"action": "usage_complete", "recall_final_return": False}
+    assert returned["interactions"][0]["text"] == "정리 완료 · 사이트 재진입"
+    assert returned["confirmation_dialog"]["message"].endswith("[정리 완료 · 사이트 재진입]를 요청하시겠습니까?")
+    assert sum(method == "Input.dispatchMouseEvent" for method, _ in client.calls) == 12
+    expressions = "\n".join(client.expressions)
+    for forbidden in ("selectSite(", "openConfirm(", "confirmNavigate(", "sendUsageComplete()", ".click("):
+        assert forbidden not in expressions
+    assert "currentPhase !== 'arrived'" in expressions and "currentState !== 8" in expressions
+    assert "activeMissionGeneration !== expectedIdentity.generation" in expressions
+    assert "recallFinalReturnReady !== expectedFinal" in expressions
+
+
+@pytest.mark.parametrize("failure", [{"visibleCount": 0}, {"disabled": True}, {"hit": False}, {"text": "다른 단계"}])
+def test_guest_pointer_never_clicks_hidden_disabled_obstructed_or_wrong_stage_control(failure):
+    client = _guest_pointer_fixture()
+    client._guest_interactions = []
+    client._guest_control = lambda *args, **kwargs: {"visibleCount": 1, "disabled": False,
+        "hit": True, "text": "정리 완료 · 사이트 재진입", "x": 1, "y": 2, **failure}
+    with pytest.raises(matrix.MatrixError, match="hidden/disabled/obstructed or has wrong text"):
+        client._guest_click("#completeAction", "loading", "정리 완료 · 사이트 재진입")
+    assert not client.calls
+
+
+@pytest.mark.parametrize("site,final,label", [
+    ("B1", False, "정리 완료 · 사이트 재진입"), ("B10", True, "짐 싣기 완료 · 복귀"),
+    ("B11", False, "적재 완료 · 복귀"), ("B13", False, "적재 완료 · 복귀"),
+])
+def test_guest_pointer_requires_stage_specific_completion_dom_and_native_dialog(site, final, label):
+    client = _guest_pointer_fixture(site, final)
+    context = _return_test_context(site=site, owner="guest", intent="recall", final=final)
+    response = client.request_return(context)
+    assert response["interactions"][0]["text"] == label
+    assert response["frame"]["recall_final_return"] is final
+    assert response["context"] == context
+    assert [item["selector"] for item in response["ui_assertions"]] == ["#completeTitle", "#completeHelp"]
+    assert f"[{label}]" in response["confirmation_dialog"]["message"]
+
+
+def test_guest_pointer_rejects_wrong_return_frame_and_resets_stale_probe():
+    client = _guest_pointer_fixture()
+    client._guest_interactions = []
+    client.frames = [{"action": "usage_complete", "recall_final_return": False}]
+    client._guest_start_probe()
+    assert client.frames == []
+    client.frames = [{"action": "usage_complete", "recall_final_return": True}]
+    with pytest.raises(matrix.MatrixError, match="exact page-owned WebSocket frame"):
+        client._guest_wait_frame(lambda item: item.get("action") == "usage_complete" and item.get("recall_final_return") is False)
+
+
+def test_guest_pointer_requires_visible_confirmation_modal_before_dispatch():
+    client = _guest_pointer_fixture()
+    original = client._guest_control
+    client._guest_control = lambda selector, **kwargs: ({"visibleCount": 0}
+        if selector == "#confirmOverlay .confirm-title" else original(selector, **kwargs))
+    with pytest.raises(matrix.MatrixError, match="hidden/disabled/obstructed"):
+        client.dispatch("B1")
+    assert client.frames == []
+    assert [item["selector"] for item in client._guest_interactions] == [
+        '#siteGrid .site-btn[data-site="B1"]', "#navigateBtn"]
+
+
+def test_guest_pointer_checks_current_identity_before_any_return_click():
+    client = _guest_pointer_fixture()
+    original = client._evaluate
+    client._evaluate = lambda expression: ({"accepted": False, "reason": "stale_guest_mission_or_stage"}
+        if "expectedIdentity" in expression else original(expression))
+    with pytest.raises(matrix.MatrixError, match="current mission Return authority"):
+        client.request_return(_return_test_context(owner="guest", intent="recall"))
+    assert not client.calls
+
+
+def test_guest_pointer_metadata_checks_disabled_state_and_actual_hit_target():
+    client = _guest_pointer_fixture()
+    client._guest_control = matrix.GuestBrowserClient._guest_control.__get__(client)
+    client._guest_control("#completeAction", scroll=True)
+    expression = client.expressions[-1]
+    assert "document.elementFromPoint(x,y)" in expression
+    assert "el.matches(':disabled')" in expression
+    assert "el.closest('[inert]')" in expression
+    assert "hit===el||Boolean(hit&&el.contains(hit))" in expression
+    assert "scrollIntoView" in expression
+    assert ".click(" not in expression
+
+
+def test_guest_final_copy_rejects_nonexistent_second_stage_and_matches_production_helpers():
+    import re
+    import subprocess
+    page = (CAMROD / "camrod_ui/camrod_ui_guest/assets/guest_frontend/index.html").read_text()
+    helpers = []
+    for name in ("recallReturnInstructions", "recallCompletionLabel"):
+        match = re.search(r"  function " + name + r"\([^\n]*\) \{.*?\n  \}", page, re.S)
+        assert match
+        helpers.append(match.group(0))
+    samples = [(site, final) for site in ("B1", "B10", "B11", "B13") for final in (False, True) if not final or int(site[1:]) <= 10]
+    script = "\n".join(helpers) + "\nconsole.log(JSON.stringify(" + json.dumps(samples) + ".map(([site,final])=>({help:recallReturnInstructions(site,final),label:recallCompletionLabel(site,final)}))));"
+    observed = json.loads(subprocess.check_output(["node", "-e", script], text=True))
+    for (site, final), actual in zip(samples, observed):
+        expected = matrix.guest_return_ui_copy(site, final)
+        assert actual == {key: expected[key] for key in ("help", "label")}
+    with pytest.raises(matrix.MatrixError, match="invalid Guest recall"):
+        matrix.guest_return_ui_copy("B11", True)
 
 
 def _return_test_context(site="B1", generation=13, owner="operator", intent="delivery", final=False):
@@ -1528,6 +1645,18 @@ def test_guest_native_confirmation_uses_cdp_dialog_without_replacing_window_conf
     ]))
     with pytest.raises(matrix.MatrixError, match="unexpected browser dialog"):
         blocked._evaluate("unknownAction()")
+
+
+def test_guest_native_confirmation_rejects_other_stage_message_without_accepting():
+    client = _guest_client_with_connection(_FakeCDPConnection([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "confirm", "message": "다른 임무 확인"}},
+    ]))
+    connection = client._connection
+    client._accept_expected_confirmation = True
+    client._expected_confirmation_text = "현재 단계 확인"
+    with pytest.raises(matrix.MatrixError, match="current recall stage"):
+        client._call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": 1, "y": 2})
+    assert not any(item["method"] == "Page.handleJavaScriptDialog" for item in connection.sent)
 
 
 def test_guest_dialog_ack_can_arrive_after_evaluation_without_corrupting_next_cdp_call():

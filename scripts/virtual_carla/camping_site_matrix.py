@@ -732,6 +732,25 @@ def first_return_suffix(mission_intent: str) -> str:
     raise MatrixError(f"invalid Return mission intent: {mission_intent!r}")
 
 
+def guest_return_ui_copy(site: str, final_return: bool) -> dict[str, str]:
+    """Expected v2.2.4 production Guest copy, checked against actual DOM text.
+
+    Do not call frontend action/label helpers to manufacture the expected value.
+    B1–B10 have two confirmations; B11–B13 have only the roadside confirmation.
+    """
+    if site not in DEFAULT_SITES or (final_return and int(site[1:]) > 10):
+        raise MatrixError("invalid Guest recall site/final-confirmation combination")
+    title = "짐 싣기 완료 확인" if final_return else "짐 정리 완료 확인"
+    if int(site[1:]) <= 10:
+        if final_return:
+            return {"title": title, "label": "짐 싣기 완료 · 복귀",
+                "help": "사이트 안에서 180도 회전을 마치고 정차했습니다. 짐 싣기를 모두 마친 뒤 [짐 싣기 완료 · 복귀]를 눌러주세요. 확인 전에는 출차하지 않습니다."}
+        return {"title": title, "label": "정리 완료 · 사이트 재진입",
+            "help": "정리를 마친 뒤 버튼을 눌러주세요. 음성 안내 후 사이트 안으로 다시 들어가 180도 회전하므로 주변을 비워주세요. 회전 후 다시 정차하며, 짐 싣기를 마치고 두 번째 완료 버튼을 눌러야 복귀합니다."}
+    return {"title": title, "label": "적재 완료 · 복귀",
+        "help": "짐 적재와 정리를 마친 뒤 버튼을 눌러주세요. 사이트로 다시 들어가지 않고 기존 반대쪽 경로로 복귀합니다. 로봇 주변을 비워주세요."}
+
+
 def return_source_matches(
     observed: Any,
     expected_source: str,
@@ -1636,6 +1655,11 @@ class GuestBrowserClient:
                         params = payload.get("params") or {}
                         if not getattr(self, "_accept_expected_confirmation", False) or params.get("type") != "confirm":
                             raise MatrixError("unexpected browser dialog; no confirmation authority")
+                        expected_message = getattr(self, "_expected_confirmation_text", None)
+                        if expected_message is not None and params.get("message") != expected_message:
+                            raise MatrixError("Guest native confirmation text does not match the current recall stage")
+                        self._observed_confirmation = {"type": params.get("type"),
+                            "message": params.get("message"), "observed_at_utc": utc_now()}
                         self._command_id += 1
                         dialog_ids.add(self._command_id)
                         self._connection.send(json.dumps({"id": self._command_id,
@@ -1716,41 +1740,27 @@ class GuestBrowserClient:
                 "visible Guest UI dispatch is a roadside recall; "
                 "mission_intent must be 'recall'"
             )
-        literal = json.dumps(site)
-        expression = (
-            "(() => {"
-            f"const requestedSite = {literal};"
-            "if (document.readyState !== 'complete' || typeof ws === 'undefined' || !ws || "
-            "ws.readyState !== WebSocket.OPEN || typeof isDispatchReady !== 'function' || "
-            "typeof selectSite !== 'function' || typeof openConfirm !== 'function' || "
-            "typeof confirmNavigate !== 'function') "
-            "return {accepted:false, reason:'guest_ui_not_ready'};"
-            "if (!isDispatchReady()) return {accepted:false, reason:'dispatch_not_ready', "
-            "phase:currentPhase, state:currentState};"
-            "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
-            "const captureSend = function(payload) { sentFrame = String(payload); "
-            "return originalSend.call(socket, payload); };"
-            "try {"
-            "socket.send = captureSend;"
-            "if (socket.send !== captureSend) return {accepted:false, reason:'send_capture_failed'};"
-            "selectSite(requestedSite);"
-            "if (selectedSite !== requestedSite) "
-            "return {accepted:false, reason:'site_not_selected'};"
-            "openConfirm(); confirmNavigate();"
-            "} finally { socket.send = originalSend; }"
-            "let frame = null; try { frame = JSON.parse(sentFrame); } catch (_) {}"
-            "if (!frame || frame.action !== 'navigate' || frame.site !== requestedSite) "
-            "return {accepted:false, reason:'navigate_frame_not_sent', frame:sentFrame};"
-            "return {accepted:true, action:'navigate', site:requestedSite, "
-            "frame:frame, transport:'visible_guest_page_websocket_via_cdp'};"
-            "})()"
-        )
+        if site not in DEFAULT_SITES:
+            raise MatrixError(f"invalid Guest site: {site!r}")
+        self._guest_interactions = []
+        self._guest_assertions = []
         try:
-            value = self._evaluate(expression)
-            return self._accepted(value, "navigate")
+            self._guest_start_probe()
+            self._guest_click(f'#siteGrid .site-btn[data-site="{site}"]', "select Guest site", site)
+            self._guest_click("#navigateBtn", "open Guest recall confirmation", f"{site} 도로 대기점으로 호출")
+            self._guest_assert_text("#confirmOverlay .confirm-title", "로봇을 호출하시겠습니까?")
+            self._guest_assert_text("#confirmSiteTag", f"{site} 사이트")
+            self._guest_click("#confirmOverlay .btn-confirm", "confirm Guest recall", "호출")
+            frame = self._guest_wait_frame(lambda item: item.get("action") == "navigate" and item.get("site") == site)
+            return {"accepted": True, "action": "navigate", "site": site, "frame": frame,
+                    "transport": "visible_guest_page_websocket_via_cdp",
+                    "interaction_method": "CDP.Input.dispatchMouseEvent",
+                    "interactions": list(self._guest_interactions), "ui_assertions": list(self._guest_assertions)}
         except BaseException:
             self.close()
             raise
+        finally:
+            self._guest_finish_probe()
 
     def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
         identity = context["mission_identity"]
@@ -1769,30 +1779,117 @@ class GuestBrowserClient:
             "if (lastDestSite !== expectedIdentity.site || activeRequestOwner !== expectedIdentity.owner || "
             "activeRequestIntent !== expectedIdentity.intent || activeMissionGeneration !== expectedIdentity.generation || "
             "recallFinalReturnReady !== expectedFinal) return {accepted:false, reason:'stale_guest_mission_or_stage'};"
-            "const socket = ws; const originalSend = socket.send; let sentFrame = null;"
-            "const captureSend = function(payload) { sentFrame = String(payload); "
-            "return originalSend.call(socket, payload); };"
-            "try { socket.send = captureSend;"
-            "if (socket.send !== captureSend) return {accepted:false, reason:'send_capture_failed'};"
-            "sendUsageComplete(); } finally { socket.send = originalSend; }"
-            "let frame = null; try { frame = JSON.parse(sentFrame); } catch (_) {}"
-            "if (!frame || frame.action !== 'usage_complete' || frame.recall_final_return !== expectedFinal) "
-            "return {accepted:false, reason:'usage_complete_frame_not_sent', frame:sentFrame};"
-            "return {accepted:true, action:'usage_complete', frame:frame, "
-            "transport:'visible_guest_page_websocket_via_cdp', state:currentState};"
+            "return {accepted:true, state:currentState};"
             "})()"
         )
+        self._guest_interactions = []
+        self._guest_assertions = []
+        copy = guest_return_ui_copy(identity["site"], final_return)
         try:
+            self._accepted(self._evaluate(expression), "current mission Return authority")
+            self._guest_assert_text("#completeTitle", copy["title"])
+            self._guest_assert_text("#completeHelp", copy["help"])
+            self._guest_start_probe()
             self._call("Page.enable", {})
             self._accept_expected_confirmation = True
-            value = self._evaluate(expression)
-            return {**self._accepted(value, "usage_complete"), "context": dict(context),
-                    "source": "guest:usage_complete"}
+            self._expected_confirmation_text = copy["help"] + "\n[" + copy["label"] + "]를 요청하시겠습니까?"
+            self._observed_confirmation = None
+            self._guest_click("#completeAction", "confirm Guest loading stage", copy["label"])
+            frame = self._guest_wait_frame(lambda item: item.get("action") == "usage_complete"
+                                          and item.get("recall_final_return") is final_return)
+            if not self._observed_confirmation:
+                raise MatrixError("Guest Return did not display the native confirmation dialog")
+            return {"accepted": True, "action": "usage_complete", "frame": frame,
+                    "context": dict(context), "source": "guest:usage_complete",
+                    "transport": "visible_guest_page_websocket_via_cdp",
+                    "interaction_method": "CDP.Input.dispatchMouseEvent",
+                    "interactions": list(self._guest_interactions), "ui_assertions": list(self._guest_assertions),
+                    "confirmation_dialog": dict(self._observed_confirmation)}
         except BaseException:
             self.close()
             raise
         finally:
             self._accept_expected_confirmation = False
+            self._expected_confirmation_text = None
+            self._guest_finish_probe()
+
+    def _guest_start_probe(self) -> None:
+        """Observe the page-owned socket; never send a command from evaluation."""
+        value = self._evaluate("(() => {"
+            "if (typeof ws === 'undefined' || !ws || ws.readyState !== WebSocket.OPEN) "
+            "return {accepted:false,reason:'guest_socket_not_ready'};"
+            "const previous=window.__camrodGuestPointerEvidence;"
+            "if(previous && previous.socket.send===previous.captureSend) previous.socket.send=previous.originalSend;"
+            "const store = {socket:ws,originalSend:ws.send,frames:[]};"
+            "store.captureSend = function(payload) {let frame=null;"
+            "try {frame=JSON.parse(String(payload));} catch (_) {} store.frames.push(frame);"
+            "return store.originalSend.call(this,payload);};"
+            "window.__camrodGuestPointerEvidence=store; ws.send=store.captureSend;"
+            "return {accepted:ws.send===store.captureSend};})()")
+        self._accepted(value, "pointer transport probe")
+
+    def _guest_finish_probe(self) -> None:
+        if getattr(self, "_connection", None) is None:
+            return
+        self._evaluate("(() => {const store=window.__camrodGuestPointerEvidence;"
+            "if (store && store.socket.send===store.captureSend) store.socket.send=store.originalSend;"
+            "delete window.__camrodGuestPointerEvidence; return true;})()")
+
+    def _guest_wait_frame(self, predicate: Callable[[Mapping[str, Any]], bool]) -> dict[str, Any]:
+        deadline = time.monotonic() + self.timeout_s
+        while time.monotonic() < deadline:
+            frames = self._evaluate("(window.__camrodGuestPointerEvidence || {}).frames || []")
+            if isinstance(frames, list):
+                for frame in reversed(frames):
+                    if isinstance(frame, Mapping) and predicate(frame):
+                        return dict(frame)
+            time.sleep(0.05)
+        raise MatrixError("Guest pointer action did not emit the exact page-owned WebSocket frame")
+
+    def _guest_control(self, selector: str, *, scroll: bool = False) -> dict[str, Any]:
+        """Measure the real rendered control, including obstruction at its hit point."""
+        value = self._evaluate("(() => {"
+            f"const selector={json.dumps(selector)}; const scroll={json.dumps(scroll)};"
+            "const matches=Array.from(document.querySelectorAll(selector));"
+            "const visible=matches.filter(el=>{const r=el.getBoundingClientRect();"
+            "const s=getComputedStyle(el); return r.width>0 && r.height>0 && "
+            "s.display!=='none' && s.visibility!=='hidden' && Number(s.opacity)!==0;});"
+            "if (visible.length!==1) return {visibleCount:visible.length};"
+            "const el=visible[0]; if(scroll) el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});"
+            "const r=el.getBoundingClientRect(); const x=r.left+r.width/2,y=r.top+r.height/2;"
+            "const hit=document.elementFromPoint(x,y);"
+            "return {visibleCount:1,disabled:Boolean(el.disabled)||el.matches(':disabled')||"
+            "el.getAttribute('aria-disabled')==='true'||Boolean(el.closest('[inert]')),"
+            "text:el.textContent.replace(/\\s+/g,' ').trim(),x:x,y:y,"
+            "hit:hit===el||Boolean(hit&&el.contains(hit))};})()")
+        return dict(value) if isinstance(value, Mapping) else {}
+
+    def _guest_wait_control(self, selector: str, expected_text: str, *, click: bool) -> dict[str, Any]:
+        deadline = time.monotonic() + self.timeout_s
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            last = self._guest_control(selector, scroll=click)
+            if (last.get("visibleCount") == 1 and last.get("text") == expected_text
+                    and (not click or (last.get("disabled") is False and last.get("hit") is True))):
+                return last
+            time.sleep(0.05)
+        raise MatrixError(f"Guest control is hidden/disabled/obstructed or has wrong text: {selector}: {last!r}")
+
+    def _guest_assert_text(self, selector: str, expected_text: str) -> None:
+        value = self._guest_wait_control(selector, expected_text, click=False)
+        self._guest_assertions.append({"selector": selector, "text": value["text"], "visible": True})
+
+    def _guest_click(self, selector: str, stage: str, expected_text: str) -> None:
+        value = self._guest_wait_control(selector, expected_text, click=True)
+        x, y = float(value["x"]), float(value["y"])
+        for kind, buttons in (("mouseMoved", 0), ("mousePressed", 1), ("mouseReleased", 0)):
+            params: dict[str, Any] = {"type": kind, "x": x, "y": y}
+            if kind != "mouseMoved":
+                params.update(button="left", buttons=buttons, clickCount=1)
+            self._call("Input.dispatchMouseEvent", params)
+        self._guest_interactions.append({"selector": selector, "stage": stage, "text": value["text"],
+            "x": round(x, 3), "y": round(y, 3), "visible": True, "enabled": True, "hit_test": True,
+            "transport": "CDP.Input.dispatchMouseEvent"})
 
     def stop(self) -> dict[str, Any]:
         return self.stop_client.stop()
@@ -3085,12 +3182,12 @@ def ui_authority_contract(args: argparse.Namespace) -> dict[str, Any]:
             "expected_return_source": "guest:usage_complete",
             "ui_endpoints": {
                 "dispatch": (
-                    "visible Guest page selectSite/openConfirm/confirmNavigate "
-                    "-> page-owned WebSocket action=navigate"
+                    "visible Guest site button -> #navigateBtn -> displayed #confirmOverlay .btn-confirm "
+                    "via CDP pointer input -> page-owned WebSocket action=navigate"
                 ),
                 "return": (
-                    "visible Guest page sendUsageComplete -> page-owned "
-                    "WebSocket action=usage_complete"
+                    "visible Guest #completeAction -> real native confirmation "
+                    "via CDP pointer input -> page-owned WebSocket action=usage_complete"
                 ),
                 "stop": "POST /ui/stop (operator safety endpoint only)",
             },
