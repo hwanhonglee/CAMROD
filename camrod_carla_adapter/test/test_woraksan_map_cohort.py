@@ -7,6 +7,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+import pytest
+
 from lanelet2.core import BasicPoint2d
 from lanelet2.geometry import inside
 from lanelet2.io import Origin, load
@@ -24,7 +26,6 @@ TARGET_WAYS = {
     6304,
     6147,
     6214,
-    6975,
 }
 MOVED_ENDPOINTS = {6201, 6141, 6146}
 PRESERVED_BOUNDARY_WAYS = {
@@ -151,7 +152,11 @@ def test_virtual_map_changes_only_the_authorized_centerline_surface():
 
     assert production_nodes.keys() <= virtual_nodes.keys()
     generated_node_ids = set(virtual_nodes) - set(production_nodes)
-    assert generated_node_ids == set(range(7000, 7071))
+    first_generated_id = max(int(element.attrib["id"]) for element in production_root
+                             if element.tag in {"node", "way", "relation"}) + 1
+    # Three connector ways add 67 samples. The old B12 four-point correction
+    # is retired because develop authored a different centerline and nodes.
+    assert generated_node_ids == set(range(first_generated_id, first_generated_id + 67))
     for node_id, production_node in production_nodes.items():
         if node_id not in MOVED_ENDPOINTS:
             assert _canonical(virtual_nodes[node_id]) == _canonical(
@@ -247,44 +252,23 @@ def test_corrected_centerlines_retain_the_frozen_xodr_samples():
             assert nearest < 2.0e-6
 
 
-def test_b12_return_centerline_moves_inward_without_changing_the_shared_seam():
+def test_b12_authored_replacement_is_preserved_without_reviving_deleted_geometry():
     generator = _load_generator_module()
+    production_root = ET.parse(PRODUCTION_MAP).getroot()
     virtual_root = ET.parse(VIRTUAL_MAP).getroot()
-    virtual_nodes = _by_id(virtual_root, "node")
-    virtual_ways = _by_id(virtual_root, "way")
-    refs = [int(nd.attrib["ref"]) for nd in virtual_ways[6975].findall("nd")]
-
-    assert refs == [
-        6963,
-        7067,
-        7068,
-        7069,
-        7070,
-        6970,
-        6971,
-        6972,
-        6973,
-        6974,
-        5395,
-    ]
+    assert not generator._legacy_b12_adjustment_enabled(production_root)
+    assert virtual_root.find("way[@id='6975']") is None
+    authored_way = production_root.find("way[@id='6998']")
+    assert authored_way is not None
+    assert _canonical(virtual_root.find("way[@id='6998']")) == _canonical(authored_way)
+    assert _canonical(virtual_root.find("relation[@id='2744']")) == _canonical(
+        production_root.find("relation[@id='2744']"))
+    refs = [int(nd.attrib["ref"]) for nd in authored_way.findall("nd")]
+    assert 7020 in refs
+    for node_id in refs:
+        assert _canonical(virtual_root.find(f"node[@id='{node_id}']")) == _canonical(
+            production_root.find(f"node[@id='{node_id}']"))
     projector = LocalCartesianProjector(ORIGIN)
-    for generated_id, (_, expected) in zip(
-        range(7067, 7071), generator.WAY_6975_INWARD_REPLACEMENTS
-    ):
-        node = virtual_nodes[generated_id]
-        point = projector.forward(
-            generator.GPSPoint(
-                float(node.attrib["lat"]),
-                float(node.attrib["lon"]),
-                float(next(
-                    tag.attrib["v"]
-                    for tag in node.findall("tag")
-                    if tag.attrib.get("k") == "ele"
-                )),
-            )
-        )
-        assert math.hypot(point.x - expected[0], point.y - expected[1]) < 2.0e-6
-
     virtual = load(str(VIRTUAL_MAP), projector)
     lanelet = virtual.laneletLayer[2744]
     centerline = _points(lanelet.centerline)
@@ -294,6 +278,48 @@ def test_b12_return_centerline_moves_inward_without_changing_the_shared_seam():
         for point in centerline[1:-1]
     )
     assert max(_heading_jumps(centerline)) < 39.0
+
+
+def test_generator_recognizes_legacy_b12_only_with_its_original_samples():
+    generator = _load_generator_module()
+    root = ET.fromstring('''<osm><relation id="2744">
+      <member type="way" role="centerline" ref="6975"/></relation>
+      <way id="6975"><nd ref="6978"/><nd ref="6977"/>
+      <nd ref="6976"/><nd ref="6969"/></way></osm>''')
+    assert generator._legacy_b12_adjustment_enabled(root)
+    root.find("way").remove(root.find("way/nd"))
+    with pytest.raises(RuntimeError, match="review required"):
+        generator._legacy_b12_adjustment_enabled(root)
+
+
+def test_generator_rejects_unknown_replacement_without_inventing_geometry(tmp_path):
+    generator = _load_generator_module()
+    tree = ET.parse(PRODUCTION_MAP)
+    relation = tree.getroot().find("relation[@id='2744']")
+    for member in relation.findall("member"):
+        if member.get("role") == "centerline":
+            member.set("ref", "999999")
+    source = tmp_path / "unknown_source.osm"
+    output = tmp_path / "must_not_exist.osm"
+    tree.write(source)
+    with pytest.raises(RuntimeError, match="review required"):
+        generator.generate(source, output)
+    assert not output.exists()
+
+
+def test_generated_ids_do_not_collide_with_later_authored_primitive_ids(tmp_path):
+    generator = _load_generator_module()
+    tree = ET.parse(PRODUCTION_MAP)
+    ET.SubElement(tree.getroot(), "relation", {"id": "1000000"})
+    source = tmp_path / "higher_relation_id.osm"
+    output = tmp_path / "generated.osm"
+    tree.write(source)
+    generator.generate(source, output)
+    generated = ET.parse(output).getroot()
+    new_ids = set(_by_id(generated, "node")) - set(_by_id(tree.getroot(), "node"))
+    assert new_ids == set(range(1000001, 1000068))
+    assert _canonical(generated.find("relation[@id='1000000']")) == _canonical(
+        tree.getroot().find("relation[@id='1000000']"))
 
 
 def test_virtual_map_is_packaged_with_the_adapter():

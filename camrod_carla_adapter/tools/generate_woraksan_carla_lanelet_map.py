@@ -8,9 +8,12 @@ to put the Ranger front-left corner into Terrain.  Replacing only the
 centerline intentionally does not authorize more drivable surface: the
 physical connector is narrower than the Ranger at several terrain overlaps,
 so the unchanged production boundaries remain a fail-closed safety limit.
-The virtual B12 return also needs four interior samples of lanelet 2744 moved
-inward from its outer S-bend boundary.  This generator keeps every production
-boundary/relation/tag and changes only those four explicit centerline ways.
+Older maps also needed four interior samples of lanelet 2744 moved inward.
+The latest authored map replaces that legacy way 6975 with way 6998 and new
+samples. Preserve that replacement unchanged: the old four-point correction
+is retired, not projected onto unrelated new node IDs. This optional artifact
+is not the current raw-develop-map runtime profile. Every production boundary,
+relation and tag is preserved.
 
 The coordinates below are a frozen export from the accepted Woraksan CARLA
 map (Road26 lane 2 -> Road20 lane 2 -> Road54 lane -1), transformed through
@@ -123,9 +126,8 @@ WAY_6975_INWARD_REPLACEMENTS = (
     (6969, (10.950121780, 45.064342302)),
 )
 
-TARGET_WAYS = (6304, 6147, 6214, 6975)
+TARGET_WAYS = (6304, 6147, 6214)
 MOVED_ENDPOINTS = (6201, 6141, 6146)
-FIRST_GENERATED_NODE_ID = 7000
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -137,6 +139,23 @@ def _parser() -> argparse.ArgumentParser:
 
 def _elements_by_id(root: ET.Element, tag: str) -> dict[int, ET.Element]:
     return {int(element.attrib["id"]): element for element in root.findall(tag)}
+
+
+def _legacy_b12_adjustment_enabled(root: ET.Element) -> bool:
+    """Recognize the authored replacement, never guess a removed centerline."""
+    relation = root.find("relation[@id='2744']")
+    if relation is None:
+        raise RuntimeError("source map lacks expected lanelet 2744")
+    centerlines = [member.get("ref") for member in relation.findall("member")
+                   if member.get("type") == "way" and member.get("role") == "centerline"]
+    if centerlines == ["6998"] and root.find("way[@id='6998']") is not None:
+        return False
+    if centerlines == ["6975"]:
+        way = root.find("way[@id='6975']")
+        refs = set() if way is None else {int(nd.attrib["ref"]) for nd in way.findall("nd")}
+        if {node_id for node_id, _ in WAY_6975_INWARD_REPLACEMENTS} <= refs:
+            return True
+    raise RuntimeError("lanelet 2744 centerline is neither the audited legacy way nor authored replacement 6998; review required")
 
 
 def _tag_value(node: ET.Element, key: str) -> str:
@@ -276,16 +295,16 @@ def generate(source: Path, output: Path) -> None:
     for way_id in TARGET_WAYS:
         if way_id not in ways:
             raise RuntimeError(f"source map lacks expected way {way_id}")
-    if any(node_id >= FIRST_GENERATED_NODE_ID for node_id in nodes):
-        raise RuntimeError(
-            f"generated node range >= {FIRST_GENERATED_NODE_ID} is already occupied"
-        )
+    legacy_b12_adjustment = _legacy_b12_adjustment_enabled(root)
 
     projector = LocalCartesianProjector(ORIGIN)
     first_way_index = next(
         index for index, element in enumerate(list(root)) if element.tag == "way"
     )
-    next_node_id = FIRST_GENERATED_NODE_ID
+    # Lanelet primitives share an ID registry. Avoid every authored node, way
+    # and relation ID, not only the old node range beginning at 7000.
+    next_node_id = max(int(element.attrib["id"]) for element in root
+                       if element.tag in {"node", "way", "relation"}) + 1
 
     def install_centerline(
         way_id: int,
@@ -356,10 +375,10 @@ def generate(source: Path, output: Path) -> None:
     refs.extend((join_node_id, 6211, 6212, 6213))
     _replace_way_refs(ways[6214], refs)
 
-    # Preserve way 6975's endpoints and unaffected samples.  Only the four
-    # audited outer-bend samples receive virtual node IDs 7067..7070.
+    # Apply the four-point correction only to its original, recognized source.
+    # Current develop's re-authored 6998 centerline stays byte-semantically exact.
     replacement_refs: dict[int, int] = {}
-    for source_node_id, point in WAY_6975_INWARD_REPLACEMENTS:
+    for source_node_id, point in (WAY_6975_INWARD_REPLACEMENTS if legacy_b12_adjustment else ()):
         elevation = float(_tag_value(nodes[source_node_id], "ele"))
         _append_generated_node(
             root,
@@ -372,11 +391,12 @@ def generate(source: Path, output: Path) -> None:
         replacement_refs[source_node_id] = next_node_id
         next_node_id += 1
         first_way_index += 1
-    original_refs = [int(nd.attrib["ref"]) for nd in ways[6975].findall("nd")]
-    _replace_way_refs(
-        ways[6975],
-        [replacement_refs.get(node_id, node_id) for node_id in original_refs],
-    )
+    if legacy_b12_adjustment:
+        original_refs = [int(nd.attrib["ref"]) for nd in ways[6975].findall("nd")]
+        _replace_way_refs(
+            ways[6975],
+            [replacement_refs.get(node_id, node_id) for node_id in original_refs],
+        )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     ET.indent(tree, space="  ")

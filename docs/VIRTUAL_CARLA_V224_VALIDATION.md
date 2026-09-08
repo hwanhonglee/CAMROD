@@ -79,7 +79,52 @@ station remains ahead and the reverse line can reach that area. It still stops
 on a lateral miss, crossing the station plane outside the goal, invalid/stale
 pose, maximum travel, timeout or charger detection. No tolerance was increased.
 Native controller/completion tests: 20 passed; rebuilt main control CTest:
-9 suites passed. This fix still requires a fresh complete driving matrix.
+9 suites passed. A fresh full B1 round trip subsequently passed on virtual
+commit `78f4f0b64102fdb5ba708dee33806835158ed189`, actor 18:
+
+| Segment | Elapsed time | Actual odometry distance |
+| --- | ---: | ---: |
+| Delivery and site arrival | 264.157 s | 83.598284 m |
+| Return and reverse parking | 483.751 s | 85.697460 m |
+| Total | 747.908 s | 169.295744 m |
+
+Final XY error was 0.216393 m, collision events were zero, both reverse
+controller and dispatcher were PARKED, service was DROP_ZONE_WAIT and
+charging remained false. This is B1 evidence, not B2–B13 or recall acceptance.
+Its completed PNG/GIF, physical-wheel summary and native report references are
+under `v224_validation/operator_delivery_current/B1/`.
+
+### Interrupted B2 and standalone Return completion
+
+B2 genuinely departed the non-charging parked position and received its road
+navigation goal. The test/recording process group then exited with signal 15
+(exit 143); CARLA and CAMROD remained alive. A production Stop was issued.
+That incomplete attempt is not accepted as a B2 round trip. Subsequent runners
+use independent user-systemd services with this runtime's explicit ROS domain
+5; `env.sh` otherwise defaults to 188 in a fresh service environment.
+
+During supervised Return-only recovery, the physical controller reached
+reverse PARKED again. The virtual-only standalone-Return UI guard rejected
+its DROP_ZONE_WAIT heartbeat: it required observing parking start inside the
+station polygon, although reverse parking starts at the road approach point
+outside that polygon. The same guard is absent from the pure develop branch.
+The virtual-only correction binds a new current dispatcher attempt, real
+reverse approach, matching reverse PARKED and fresh in-station pose; stale or
+uncorrelated terminal heartbeats remain rejected. Replaying the previous
+actual callback fails the new regression; the corrected callback passes.
+Related backend Stop, manual-drive and frontend tests: 168 passed. This is
+deterministic callback evidence, not a claim of completed fresh live Return.
+
+### Optional legacy generated-map compatibility
+
+The active map remains the exact latest develop `lanelet2_maps.osm`, SHA-256
+`2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7`.
+The unused optional generated artifact was refreshed separately: develop
+replaced old B12 centerline 6975 with authored 6998, so its obsolete four-point
+override is retired, while the three existing connector adjustments remain.
+Generated IDs now start after every existing OSM primitive ID. No active
+lanelet map, UE terrain or mesh is changed by this compatibility fix.
+Adapter offline tests after regeneration and clean map environment: 577 passed.
 
 ### GNSS/yaw verification boundary
 
@@ -98,7 +143,7 @@ Current logs and new artifacts are under
 the canonical Robot UI bundle and camrod_voice. A separate PulseAudio monitor
 WAV proves playback of return/recall clips, not automatic mission triggering.
 
-Pending runtime completion: B1–B13 Operator delivery/Return, Operator recall,
+Pending runtime completion: B2–B13 Operator delivery/Return, Operator recall,
 Guest recall/usage complete, reverse parking, optional docking, and Manual 4WS.
 Each accepted mission must retain PNG/GIF, timing/distance, wheel telemetry
 summaries and source/runtime hashes. A failed run remains labelled FAIL.
