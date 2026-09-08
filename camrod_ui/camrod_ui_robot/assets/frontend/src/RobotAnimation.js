@@ -3,7 +3,7 @@ import React from 'react';
 // HH_260721 - Use chassis-neutral component naming for the Ranger operator UI.
 export default function RobotAnimation() {
   return (
-    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"
+    <svg viewBox="-2 -3 104 106" fill="none" xmlns="http://www.w3.org/2000/svg"
       style={{ width: '100%', height: '100%' }}>
       {/* HH_260804 - Static range rings avoid permanent full-surface repaints
           on the Jetson operator display while preserving the location cue. */}

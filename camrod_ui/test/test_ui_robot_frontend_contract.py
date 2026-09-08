@@ -68,6 +68,191 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("if (isReturning && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
 
+    def test_parking_and_charging_lifecycle_has_distinct_english_labels(self) -> None:
+        for label in (
+            "Charging",
+            "Waiting for charging connection",
+            "Parking in progress",
+            "Docking in progress",
+            "Drop-zone parking in progress",
+            "Parked at drop zone",
+        ):
+            self.assertIn(label, self.source)
+        self.assertIn("parkingLifecycleStatus(", self.source)
+        self.assertIn("serviceStateName={serviceStateName}", self.source)
+        self.assertIn("serviceStateDescription={serviceStateDescription}", self.source)
+        self.assertIn("tone: 'parking',", self.source)
+        self.assertIn('className="waiting-runtime-dot"', self.source)
+        # The green header keeps only Wi-Fi, SOC, and the clock.
+        self.assertNotIn("<RuntimeStatus", self.source)
+        self.assertNotIn("ch-runtime", self.source)
+
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(
+            ".waiting-runtime-item.parking .waiting-runtime-dot",
+            css_source,
+        )
+        self.assertNotIn("ch-runtime", css_source)
+
+    def test_waiting_runtime_status_is_below_banner_and_above_evidence(self) -> None:
+        waiting_start = self.source.index("if (showWaiting)")
+        waiting_end = self.source.index("if (showServiceSelection)", waiting_start)
+        waiting_source = self.source[waiting_start:waiting_end]
+
+        header_start = waiting_source.index('className="waiting-header"')
+        panel_start = waiting_source.index("<WaitingRuntimeStatusPanel", header_start)
+        evidence_start = waiting_source.index("<ServiceEvidenceSummary", panel_start)
+        self.assertNotIn("<RuntimeStatus", waiting_source[header_start:panel_start])
+        self.assertLess(panel_start, evidence_start)
+        self.assertIn('className="waiting-runtime-panel"', self.source)
+
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".waiting-runtime-panel", css_source)
+        self.assertIn(
+            "grid-template-columns: repeat(4, minmax(0, 1fr));",
+            css_source,
+        )
+
+    def test_destination_entry_opens_three_block_service_menu(self) -> None:
+        handler_start = self.source.index("const handleWaitingClick = () => {")
+        handler_end = self.source.index("};", handler_start)
+        handler = self.source[handler_start:handler_end]
+        self.assertIn("setShowServiceSelection(true);", handler)
+        self.assertIn("setShowWaiting(false);", handler)
+
+        menu_start = self.source.index("if (showServiceSelection)")
+        menu_end = self.source.index('data-ui="operator-control-screen"', menu_start)
+        menu = self.source[menu_start:menu_end]
+        for expected in (
+            "배달 서비스",
+            "선택한 캠핑 사이트 안으로 짐을 배달해드립니다.",
+            "호출 서비스",
+            "사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.",
+            "service-selection-dock-wrap",
+            "대기·충전 장소에서 충전 도킹을 시작합니다.",
+            "setShowDeliveryConfirm(true)",
+            "activateDestinationService('recall')",
+        ):
+            self.assertIn(expected, menu)
+        self.assertNotIn("관리자 인증", menu)
+        # The service chooser shows the same operating-status band as standby.
+        body_start = menu.index('<main className="service-selection-body">')
+        grid_start = menu.index('<div className="service-selection-grid">', body_start)
+        self.assertLess(body_start, grid_start)
+        panel_start = menu.index("<WaitingRuntimeStatusPanel")
+        self.assertLess(panel_start, body_start)
+        self.assertIn("setShowServiceSelection(true)", self.source)
+        # Recall and docking must confirm through the in-page styled dialog, never
+        # through the browser's native confirm() chrome.
+        self.assertIn("setShowRecallConfirm(true)", menu)
+        self.assertIn("setShowDeliveryConfirm(true)", menu)
+        self.assertNotIn("window.confirm", menu)
+        for expected in (
+            "호출 서비스는 사이트 내부로 진입하지 않습니다.<br />",
+            "배달 서비스는 사이트 내부로 진입합니다.<br />",
+            "사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?",
+            "도로 측 대기점으로 이동합니다. 진행하시겠습니까?",
+            "배터리 잔량과 관계없이 충전 도킹을 요청합니다.<br />",
+            "도킹을 진행하시겠습니까?",
+            'className="move-confirm-yes"',
+            'className="move-confirm-no"',
+        ):
+            self.assertIn(expected, self.source)
+
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".service-selection-grid", css_source)
+        self.assertIn("grid-column: 1 / -1;", css_source)
+
+    def test_service_card_is_the_only_place_the_mission_role_is_chosen(self) -> None:
+        # 배달 서비스 and 호출 서비스 each own exactly one role. The destination
+        # screen must show the confirmed role read-only instead of asking again.
+        self.assertNotIn('aria-label="사이트 운행 목적"', self.source)
+        self.assertNotIn("selectDestinationIntent('delivery')", self.source)
+        self.assertNotIn("selectDestinationIntent('recall')", self.source)
+        # activateDestinationService holds the only call site left.
+        self.assertEqual(self.source.count("selectDestinationIntent("), 1)
+        # The confirmed role sits on its own full-width band above the site
+        # viewer and the site grid, not inside the right-hand panel.
+        self.assertIn(
+            "className={`mission-role-banner role-${destinationIntent}`}",
+            self.source,
+        )
+        banner_start = self.source.index('className={`mission-role-banner')
+        body_start = self.source.index('<div className="control-body">', banner_start)
+        panel_start = self.source.index('<div className="app">', body_start)
+        self.assertLess(banner_start, body_start)
+        self.assertLess(body_start, panel_start)
+        self.assertNotIn("destination-intent-badge", self.source)
+        # Standby, the service chooser, and the destination screen all carry
+        # the operating-status band.
+        self.assertEqual(self.source.count("<WaitingRuntimeStatusPanel"), 3)
+        # The status band sits above the role banner on this screen.
+        destination_panel = self.source.rindex(
+            "<WaitingRuntimeStatusPanel", 0, banner_start
+        )
+        self.assertLess(destination_panel, banner_start)
+        self.assertLess(banner_start, body_start)
+
+        # An idle "no mission" snapshot must not silently downgrade a recall
+        # visit back to delivery once the toggle is gone.
+        self.assertIn(
+            "} else if (!dispatchIntent && !intentPinnedRef.current) {",
+            self.source,
+        )
+        activate_start = self.source.index("const activateDestinationService = (intent) => {")
+        activate_end = self.source.index("};", activate_start)
+        self.assertIn(
+            "intentPinnedRef.current = true;",
+            self.source[activate_start:activate_end],
+        )
+        self.assertIn("if (showWaiting) intentPinnedRef.current = false;", self.source)
+
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".mission-role-banner", css_source)
+        self.assertIn(".mission-role-banner.role-recall", css_source)
+        self.assertNotIn(".destination-intent-badge", css_source)
+
+    def test_engage_and_light_commands_live_in_operator_diagnostics(self) -> None:
+        # ENGAGE is an operator authority, not a public campsite tile. It must
+        # not sit in the site grid, and the safety/control tab owns it.
+        self.assertNotIn('<span className="site-label">ENGAGE</span>', self.source)
+        self.assertNotIn("onClick={handleEngage}", self.source)
+        # Neither command is a campsite tile any more.
+        self.assertNotIn("engage-card", self.source)
+        self.assertNotIn('<span className="site-label">LIGHT</span>', self.source)
+        self.assertIn("onToggleEngage={handleEngage}", self.source)
+        self.assertIn("engageDisabled={isReturning}", self.source)
+
+        self.assertIn("className=\"safety-engage-row\"", self.telemetry_source)
+        self.assertIn("onClick={onToggleEngage}", self.telemetry_source)
+        self.assertIn("disabled={engageDisabled}", self.telemetry_source)
+        self.assertIn("{engageState ? 'ENGAGE OFF' : 'ENGAGE ON'}", self.telemetry_source)
+        safety_start = self.telemetry_source.index("function SafetyView(")
+        engage_start = self.telemetry_source.index("safety-engage-row", safety_start)
+        layout_start = self.telemetry_source.index(
+            "telemetry-safety-layout", safety_start
+        )
+        self.assertLess(engage_start, layout_start)
+
+        # LIGHT belongs to the diagnostics System tab command bar.
+        self.assertIn("onToggleHeadlight={handleHeadlight}", self.source)
+        self.assertIn("headlight-command-btn", self.source)
+        self.assertIn("{headlightState ? 'LIGHT OFF' : 'LIGHT ON'}", self.source)
+        # LIGHT owns its own panel below the Manual Motion bar.
+        motion_bar = self.source.index('className="diag-control-bar"')
+        light_bar = self.source.index('className="diag-control-bar light-control-bar"')
+        tuning_start = self.source.index("steering-tuning-card", motion_bar)
+        self.assertLess(motion_bar, light_bar)
+        self.assertLess(light_bar, tuning_start)
+        light_btn = self.source.index("headlight-command-btn", light_bar)
+        self.assertLess(light_btn, tuning_start)
+        self.assertIn("Light Control", self.source)
+
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".safety-engage-btn", css_source)
+        self.assertIn(".headlight-command-btn", css_source)
+        self.assertNotIn(".engage-card", css_source)
+
     def test_return_in_progress_exposes_authoritative_operator_stop(self) -> None:
         handler_start = self.source.index("const handleStopMove = () => {")
         handler = self.source[
@@ -145,7 +330,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
         self.assertNotIn('className="guest-recall-overlay"', self.source)
         arrival = self.source[self.source.index(") : arrivedSite ? ("):
-                              self.source.index(") : displayedReturning ? (")]
+                              self.source.index(") : ['CHARGING'")]
         self.assertNotIn("motionNotice", arrival)
         self.assertIn("recallReturnInstructions(arrivedSite, recallFinalReturnReady)", arrival)
         self.assertIn("recallCompletionLabel(arrivedSite, recallFinalReturnReady)", arrival)
@@ -435,8 +620,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # WebSocket command, which is intentionally ordinary campsite delivery.
         for token in (
             "const [destinationIntent, setDestinationIntent] = useState('delivery')",
-            "이용객 호출 · 도로 대기",
-            "배송 · 사이트 내부 진입",
+            "'호출 서비스' : '배달 서비스'",
             "사이트 내부로 들어가지 않고 도로 측 대기점",
             "destinationIntent === 'delivery'",
             "텐트 · 호출 가능",
@@ -1202,7 +1386,7 @@ process.stdout.write(JSON.stringify({robotCalls, guestCalls, warnings, labels}))
         )
         prefix += self.source[
             battery_helpers_start : self.source.index(
-                "// HH_260721 - Reuse one health",
+                "function WaitingRuntimeStatusPanel(",
                 battery_helpers_start,
             )
         ]
@@ -1332,19 +1516,9 @@ process.stdout.write(JSON.stringify({restored, afterBatteryHeartbeat, operatorAf
         self,
     ) -> None:
         start = self.source.index("const emptyBatteryReturnState =")
-        helpers = self.source[
-            start : self.source.index(
-                "// HH_260721 - Reuse one health",
-                start,
-            )
-        ]
-        guest_source = (
-            APP_SOURCE.parents[4]
-            / "camrod_ui_guest"
-            / "assets"
-            / "guest_frontend"
-            / "index.html"
-        ).read_text(encoding="utf-8")
+        helpers = self.source[start:self.source.index("function WaitingRuntimeStatusPanel(", start)]
+        guest_source = (APP_SOURCE.parents[4] / "camrod_ui_guest" / "assets"
+                        / "guest_frontend" / "index.html").read_text(encoding="utf-8")
         guest_start = guest_source.index("function guestBatteryPolicyMessage(")
         guest_helper = guest_source[
             guest_start : guest_source.index(
@@ -1439,10 +1613,13 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         self.assertEqual(output["accepted"]["action"], "force_docking")
         self.assertEqual(output["error"], "CAN unavailable")
         self.assertIn("충전하지 않음", output["reverse"])
-        self.assertEqual(output["april"], "충전 도킹 선택됨")
+        # An explicit charging-dock selection shows no policy line at all.
+        self.assertEqual(output["april"], "")
         self.assertEqual(output["stationAllowed"], [True] * 4)
         self.assertEqual(output["awayBlocked"], [False] * 6)
-        self.assertGreaterEqual(self.source.count("<DockingCommandButton"), 3)
+        # The public chooser owns an in-app confirmation; the reusable command
+        # component remains available inside diagnostics.
+        self.assertEqual(self.source.count("<DockingCommandButton"), 1)
         self.assertIn("<DockingCommandButton", self.telemetry_source)
 
 

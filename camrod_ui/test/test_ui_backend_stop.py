@@ -4837,6 +4837,47 @@ class UiBackendStopTest(unittest.TestCase):
         )
         self.assertEqual(events[0], ("drive_enable", True))
 
+    def test_recall_final_return_latches_return_ownership(self) -> None:
+        # HH_260908 - Without this latch the service-state bridge drops every
+        # RETURN_WITH_CARGO/DROP_ZONE_PARKING/standby frame after the final
+        # loading confirmation as "uncorrelated", so neither UI ever sees the
+        # cargo return and the mission identity never clears.
+        events = []
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _latest_campsite_phase="RECALL_RETURN_WAIT",
+            _latest_campsite_site="B1",
+            _latest_campsite_status_time_s=99.5,
+            _now_s=lambda: 100.0,
+            _recall_final_return_generation=0,
+            _mission_execution_error="",
+            publish_mission_engage_from_destination=True,
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("engage", enabled)
+            ),
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
+            ),
+            _schedule_broadcast=lambda payload: None,
+        )
+
+        result = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+            recall_final_return=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["transition"], "recall_final_return")
+        self.assertEqual(backend._recall_final_return_generation, 41)
+        self.assertEqual(backend._return_requested_generation, 41)
+        self.assertEqual(
+            [event[0] for event in events], ["engage", "controller_return"]
+        )
+
     def test_robot_guest_completion_rejects_wrong_site_generation_and_early_return(
         self,
     ) -> None:

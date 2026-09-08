@@ -7907,7 +7907,7 @@ class UiBackendNode(Node):
             source = "http:manual_dock:force_docking"
             self._publish_parking_operation(MotionOperation.START, source=source)
             return {"success": True, "action": "docking_requested",
-                    "message": "Explicit charging docking requested", "parking_selected_method": "apriltag"}
+                    "parking_selected_method": "apriltag"}
 
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
         msg = MotionOperation()
@@ -9489,6 +9489,10 @@ class UiBackendNode(Node):
                         **UiBackendNode._mission_dispatch_snapshot(self),
                     }
                 self._recall_final_return_generation = active_generation
+                # HH_260908 - Preserve ownership before the controller emits
+                # cargo-return/parking progress. Uncorrelated generations are
+                # deliberately rejected by the service-state bridge.
+                self._return_requested_generation = active_generation
                 final_source = (
                     f"{source}:recall_final_return:site={active_site}:"
                     f"g={active_generation}"

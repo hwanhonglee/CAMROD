@@ -10,8 +10,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import RobotAnimation from './RobotAnimation';
-import TelemetryWorkspace, { TELEMETRY_TABS, DockingCommandButton, parkingPolicyMessage } from './TelemetryWorkspace';
+import TelemetryWorkspace, {
+  TELEMETRY_TABS,
+  DockingCommandButton,
+  dockingAllowedAtServiceState,
+  parkingPolicyMessage,
+  postDockingRequest,
+} from './TelemetryWorkspace';
 import {
   ServiceEvidenceDashboard,
   ServiceEvidenceSummary,
@@ -74,6 +79,16 @@ const SYSTEM_HEALTH_LABELS = Object.freeze({
   WARNING: '시스템 경고',
   ERROR: '시스템 오류',
 });
+// HH_260908 - The guest-recall overlays announce the ride TO the guest.
+// Any state outside the en-route phase (arrival, loading wait, return,
+// standby, stop) must drop them so they never cover the mission UI.
+const GUEST_RECALL_ENROUTE_STATES = new Set([
+  SERVICE_STATE.MOVING_TO_SITE,
+  SERVICE_STATE.GUEST_RECALL_SERVICE,
+  SERVICE_STATE.RECALL_TO_SITE_ROAD,
+  SERVICE_STATE.DEPARTING_CHARGER,
+  SERVICE_STATE.DEPARTING_DROP_ZONE,
+]);
 const ARRIVAL_STATES = new Set([
   SERVICE_STATE.SITE_ARRIVED,
   SERVICE_STATE.UNLOAD_WAIT,
@@ -268,30 +283,80 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   return { tone: 'ok', label: `임무 배터리 준비 완료 ${battery}%` };
 };
 
-// HH_260721 - Reuse one health/service presentation on waiting and destination screens.
-function RuntimeStatus({ systemHealth, missionPhase, batteryPolicy, parkingPolicy }) {
+const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parkingPolicy) => {
+  const state = String(serviceStateName || '').trim().toUpperCase();
+  const description = String(serviceStateDescription || '').trim().toUpperCase();
+  const selectedMethod = String(parkingPolicy?.parking_selected_method || '').trim().toLowerCase();
+
+  if (state === 'CHARGING') return 'Charging';
+  if (state === 'WAITING_FOR_CHARGING') return 'Waiting for charging connection';
+  if (state === 'DROP_ZONE_WAIT') return 'Parked at drop zone';
+  if (state === 'DROP_ZONE_PARKING') {
+    if (
+      description.includes('DROP_ZONE_MANEUVER_CONTROLLER')
+      || description.includes('PARKING_APPROACH')
+      || description.includes('ALIGN_FOR_PARKING')
+    ) return 'Drop-zone parking in progress';
+    if (selectedMethod === 'apriltag') return 'Docking in progress';
+    if (selectedMethod === 'reverse') return 'Parking in progress';
+    return 'Drop-zone parking in progress';
+  }
+
+  if (selectedMethod === 'apriltag') return 'Charging docking selected';
+  if (selectedMethod === 'reverse') return 'Non-charging parking selected';
+  return parkingPolicy?.charging_required
+    ? 'Charging docking required'
+    : 'Automatic parking · 35% threshold';
+};
+
+function WaitingRuntimeStatusPanel({
+  systemHealth,
+  missionPhase,
+  batteryPolicy,
+  parkingPolicy,
+  serviceStateName,
+  serviceStateDescription,
+}) {
+  const items = [
+    {
+      key: 'system',
+      label: 'SYSTEM',
+      value: SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING,
+      tone: `health-${systemHealth.toLowerCase()}`,
+    },
+    {
+      key: 'mission',
+      label: 'MISSION',
+      value: MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING,
+      tone: 'mission',
+    },
+    {
+      key: 'parking',
+      label: 'PARKING',
+      value: parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy),
+      tone: 'parking',
+      title: parkingPolicyMessage(parkingPolicy),
+    },
+    {
+      key: 'battery',
+      label: 'BATTERY',
+      value: batteryPolicy?.label || 'Battery status pending',
+      tone: `battery-${batteryPolicy?.tone || 'warning'}`,
+    },
+  ];
+
   return (
-    <div className="ch-runtime-status" aria-live="polite">
-      <span className={`ch-runtime-line health-${systemHealth.toLowerCase()}`}>
-        <span className="ch-runtime-dot" />
-        {SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING}
-      </span>
-      <span className="ch-runtime-line service-state">
-        <span className="ch-runtime-dot" />
-        {MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING}
-      </span>
-      <span className="ch-runtime-line service-state" title={parkingPolicyMessage(parkingPolicy)}>
-        {parkingPolicy?.parking_selected_method === 'apriltag' ? '충전 도킹'
-          : parkingPolicy?.parking_selected_method === 'reverse' ? '일반 주차 · 비충전'
-            : parkingPolicy?.charging_required ? '충전 도킹 필요' : '자동 주차 · 35% 기준'}
-      </span>
-      {batteryPolicy && (
-        <span className={`ch-runtime-line battery-policy policy-${batteryPolicy.tone}`}>
-          <span className="ch-runtime-dot" />
-          {batteryPolicy.label}
-        </span>
-      )}
-    </div>
+    <section className="waiting-runtime-panel" aria-label="Robot operating status" aria-live="polite">
+      {items.map(item => (
+        <div key={item.key} className={`waiting-runtime-item ${item.tone}`} title={item.title || item.value}>
+          <span className="waiting-runtime-dot" />
+          <span className="waiting-runtime-copy">
+            <small>{item.label}</small>
+            <strong>{item.value}</strong>
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -365,7 +430,16 @@ function TrailCarousel({ title, images }) {
 }
 
 // ── 진단 모니터 컴포넌트 ──────────────────────────────────────────────────────
-function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceStateName = '' }) {
+function DiagnosticsMonitor({
+  redockStatus = null,
+  parkingPolicy = {},
+  serviceStateName = '',
+  engageState = false,
+  engageDisabled = false,
+  onToggleEngage = null,
+  headlightState = false,
+  onToggleHeadlight = null,
+}) {
   const [activeTab, setActiveTab] = useState('system');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -560,6 +634,24 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
       </div>
       <p className="manual-motion-status" role="status">{parkingPolicyMessage(parkingPolicy)}</p>
 
+      {/* ── 전조등 컨트롤 패널 ── */}
+      {onToggleHeadlight && (
+        <div className="diag-control-bar light-control-bar">
+          <span className="diag-control-label">Light Control</span>
+          <button
+            type="button"
+            className={`manual-return-btn headlight-command-btn ${headlightState ? 'headlight-on' : ''}`}
+            onClick={onToggleHeadlight}
+            title="전조등을 켜거나 끕니다"
+          >
+            {headlightState ? 'LIGHT OFF' : 'LIGHT ON'}
+          </button>
+          <span className="manual-motion-status" role="status">
+            {headlightState ? '전조등 켜짐' : '전조등 꺼짐'}
+          </span>
+        </div>
+      )}
+
       <div className="steering-tuning-card">
         <div className="steering-tuning-copy">
           <div className="steering-tuning-title">횡↔종 조향 전환 속도</div>
@@ -672,7 +764,15 @@ function DiagnosticsMonitor({ redockStatus = null, parkingPolicy = {}, serviceSt
     </div>
         </>
       ) : (
-        <TelemetryWorkspace activeTab={activeTab} redockStatus={redockStatus} parkingPolicy={parkingPolicy} serviceStateName={serviceStateName} />
+        <TelemetryWorkspace
+          activeTab={activeTab}
+          redockStatus={redockStatus}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          engageState={engageState}
+          engageDisabled={engageDisabled}
+          onToggleEngage={onToggleEngage}
+        />
       )}
     </div>
   );
@@ -867,7 +967,7 @@ const SIDE_BUTTONS = [
         </div>
         <div className="guide-grid">
 
-        {/* ── 1. 목적지 선택 방법 ── */}
+        {/* ── 1. 서비스 선택 방법 ── */}
         <div className="guide-card">
           <div className="guide-card-header" style={{ background: 'linear-gradient(135deg,#2d6e40,#43a047)' }}>
             <svg viewBox="0 0 32 32" fill="none">
@@ -875,12 +975,12 @@ const SIDE_BUTTONS = [
               <circle cx="16" cy="14" r="2.5" fill="#fff"/>
               <path d="M16 21 C10 26 6 29 6 29 L16 27 L26 29 C26 29 22 26 16 21Z" fill="#fff" opacity="0.8"/>
             </svg>
-            <span>목적지 선택 방법</span>
+            <span>서비스 선택 방법</span>
           </div>
           <div className="guide-card-body">
             {[
-              '대기 화면의 목적지 선택을 터치해 제어 패널로 이동합니다.',
-              '배송 또는 이용객 호출을 선택한 뒤 원하는 사이트(B1 ~ B13)를 선택합니다.',
+              '대기 화면의 서비스 선택에서 배송 또는 이용객 호출을 선택합니다.',
+              '서비스 안내를 확인한 뒤 원하는 사이트(B1 ~ B13)를 선택합니다.',
               '목적지 이미지와 "이동하시겠습니까?" 를 확인합니다.',
               '[예] 버튼을 누르고 사이트명을 입력해 로봇 출발을 확정합니다.',
             ].map((text, i) => (
@@ -1190,6 +1290,7 @@ function App() {
     return 1;
   });
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
+  const [showServiceSelection, setShowServiceSelection] = useState(false);
   const wsRef = useRef(null);
   const wsMountedRef = useRef(false);
   const wsGenerationRef = useRef(0);
@@ -1202,6 +1303,11 @@ function App() {
   // roadside wait pose. Keep the intent explicit through both confirmations.
   const [destinationIntent, setDestinationIntent] = useState('delivery');
   const destinationIntentRef = useRef('delivery');
+  // The service menu owns the delivery/recall role. Pin it so an idle
+  // "no mission" snapshot cannot silently flip the role back to delivery.
+  const intentPinnedRef = useRef(false);
+  // The backend owns mission admission. Keep its exact identity so OFF and
+  // Return commands cannot affect a mission accepted after this UI snapshot.
   const missionDispatchActiveRef = useRef(false);
   const missionDispatchGenerationRef = useRef(0);
   const missionDispatchSiteRef = useRef('');
@@ -1232,6 +1338,12 @@ function App() {
   const [guestNavigateSite, setGuestNavigateSite] = useState(null); // 게스트 사이트 이동 알림
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
+  const [showDockingConfirm, setShowDockingConfirm] = useState(false);
+  const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
+  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
+  const [serviceDockingPending, setServiceDockingPending] = useState(false);
+  const [serviceDockingStatus, setServiceDockingStatus] = useState('');
+  const serviceDockingPendingRef = useRef(false);
   const [showMoveVerify, setShowMoveVerify] = useState(false);  // 사이트명 입력 확인 팝업
   const [moveVerifyInput, setMoveVerifyInput] = useState('');
   const [moveVerifyError, setMoveVerifyError] = useState(false);
@@ -1406,6 +1518,10 @@ function App() {
   // ── 대기 화면 터치 핸들러 (운영시간 체크) ──────────────────────────────
   const handleWaitingClick = () => {
     if (isWithinOperatingHours()) {
+      // Pin the public chooser immediately, not only after role selection:
+      // idle station heartbeats are status, not navigation commands.
+      intentPinnedRef.current = true;
+      setShowServiceSelection(true);
       setShowWaiting(false);
     } else {
       setOutsideHoursMsg(true);
@@ -1454,6 +1570,26 @@ function App() {
       setShowWaiting(false);
     }
   }, [isReturning, showWaiting]);
+
+  // Reopening standby ends the visit, so the next visitor starts from the
+  // service menu instead of inheriting the previous role.
+  useEffect(() => {
+    if (showWaiting) intentPinnedRef.current = false;
+  }, [showWaiting]);
+
+  // An accepted or already-running mission must always show the live control
+  // surface instead of the public service chooser.
+  useEffect(() => {
+    if (anyOn || manualDriveActive || isReturning || missionDispatch.active) {
+      setShowServiceSelection(false);
+    }
+  }, [anyOn, manualDriveActive, isReturning, missionDispatch.active]);
+
+  useEffect(() => {
+    if (!showServiceSelection) {
+      setShowDockingConfirm(false);
+    }
+  }, [showServiceSelection]);
 
   // ── 인터넷 신호 강도 감지 (navigator.connection + online/offline) ─────
   useEffect(() => {
@@ -1731,7 +1867,15 @@ function App() {
         if (!dispatchActive || (dispatchOwner === 'guest' && dispatchIntent !== 'recall')) {
           setShowArrivalComplete(false);
         }
+        // The guest notifications describe an admitted mission. Once the
+        // backend reports no active identity they are stale regardless of
+        // which service state (if any) accompanied the clear.
+        if (!dispatchActive) {
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        }
         if (dispatchActive) {
+          intentPinnedRef.current = false;
           setShowWaiting(false);
           if (dispatchIntent === 'recall' && SITE_NAMES.includes(dispatchSite)) {
             destinationIntentRef.current = 'recall';
@@ -1742,7 +1886,7 @@ function App() {
             setDestinationIntent('delivery');
             setActiveRecallSite(null);
           }
-        } else if (!dispatchIntent) {
+        } else if (!dispatchIntent && !intentPinnedRef.current) {
           destinationIntentRef.current = 'delivery';
           setDestinationIntent('delivery');
           setActiveRecallSite(null);
@@ -1769,7 +1913,7 @@ function App() {
           // CHARGING.  Keep the accepted recall visible instead of allowing
           // that terminal heartbeat to reopen the standby screen.
           setShowWaiting(false);
-        } else {
+        } else if (!intentPinnedRef.current) {
           // The backend sends an explicit empty replay when the recall-owned
           // site mirror reaches its terminal state.  Do not infer intent from
           // the shared RETURN_WITH_CARGO state after that point.
@@ -1813,6 +1957,12 @@ function App() {
         } else if (previousServiceState !== serviceState) {
           setServiceStateDescription('');
         }
+        // HH_260908 - Arrival ends the "moving to the guest" announcement:
+        // the loading-wait / return / standby screens own the display now.
+        if (!GUEST_RECALL_ENROUTE_STATES.has(serviceState)) {
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        }
         if (
           serviceState === SERVICE_STATE.DROP_ZONE_WAIT
           || serviceState === SERVICE_STATE.WAITING_FOR_CHARGING
@@ -1829,6 +1979,7 @@ function App() {
           if (
             destinationIntentRef.current !== 'recall'
             && !missionDispatchActiveRef.current
+            && !intentPinnedRef.current
           ) {
             setShowWaiting(true);
           }
@@ -2023,6 +2174,35 @@ function App() {
     setMoveVerifyInput('');
     setMoveVerifyError(false);
     setMissionBlockMessage('');
+  };
+
+  const activateDestinationService = (intent) => {
+    selectDestinationIntent(intent);
+    intentPinnedRef.current = true;
+    setTogglePage(0);
+    setShowServiceSelection(false);
+  };
+
+  const handleServiceDocking = async () => {
+    if (
+      serviceDockingPendingRef.current
+      || !dockingAllowedAtServiceState(serviceStateName)
+    ) {
+      return;
+    }
+    setShowDockingConfirm(false);
+    serviceDockingPendingRef.current = true;
+    setServiceDockingPending(true);
+    setServiceDockingStatus('');
+    try {
+      const body = await postDockingRequest();
+      setServiceDockingStatus(body.message || '충전 도킹 요청이 접수되었습니다.');
+    } catch (error) {
+      setServiceDockingStatus(error.message || '도킹 요청 실패');
+    } finally {
+      serviceDockingPendingRef.current = false;
+      setServiceDockingPending(false);
+    }
   };
 
   const requestCampingSiteRecall = async (site) => {
@@ -2359,7 +2539,18 @@ function App() {
                   onClick={() => setActiveModal(null)}
                 >뒤로가기</button>
               </div>
-              <div className="modal-body"><DiagnosticsMonitor redockStatus={redockStatus} parkingPolicy={parkingPolicy} serviceStateName={serviceStateName} /></div>
+              <div className="modal-body">
+                <DiagnosticsMonitor
+                  redockStatus={redockStatus}
+                  parkingPolicy={parkingPolicy}
+                  serviceStateName={serviceStateName}
+                  engageState={engageState}
+                  engageDisabled={isReturning}
+                  onToggleEngage={handleEngage}
+                  headlightState={headlightState}
+                  onToggleHeadlight={handleHeadlight}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -2414,12 +2605,6 @@ function App() {
               </div>
             </div>
             <div className="wh-right-group">
-              <RuntimeStatus
-                systemHealth={systemHealth}
-                missionPhase={missionPhase}
-                batteryPolicy={currentBatteryPolicy}
-                parkingPolicy={parkingPolicy}
-              />
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -2431,10 +2616,18 @@ function App() {
                 </span>
               </div>
               <LiveClock />
-              <DockingCommandButton serviceStateName={serviceStateName} />
             </div>
           </div>
         </div>
+
+        <WaitingRuntimeStatusPanel
+          systemHealth={systemHealth}
+          missionPhase={missionPhase}
+          batteryPolicy={currentBatteryPolicy}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          serviceStateDescription={serviceStateDescription}
+        />
 
         {/* ── 하단 콘텐츠 영역: 실증 요약 + 기존 4개 버튼 2×2 ── */}
         <div className="waiting-body">
@@ -2448,20 +2641,18 @@ function App() {
             onOpen={() => setActiveModal('service-evidence')}
           />
 
-          {/* ── 목적지 선택 ── */}
-          <button
-            className="waiting-grid-btn"
-            data-ui="operator-open-destination"
-            onClick={handleWaitingClick}
-          >
-            <span className="waiting-grid-btn-icon">
-              <div style={{ width: '100%', height: '100%' }}>
-                <RobotAnimation />
-              </div>
+          {/* ── 서비스 선택 ── */}
+          <button className="waiting-grid-btn" data-ui="operator-open-destination" onClick={handleWaitingClick}>
+            <span className="waiting-grid-btn-icon waiting-grid-btn-icon-destination">
+              <img
+                src={`${process.env.PUBLIC_URL}/서비스_선택.png`}
+                alt="서비스 선택"
+                className="waiting-grid-btn-icon-img"
+              />
             </span>
             {outsideHoursMsg
               ? <span className="waiting-text outside-hours">현재는 운영시간이 아닙니다.</span>
-              : <span className="waiting-grid-btn-label">목적지 선택</span>
+              : <span className="waiting-grid-btn-label">서비스 선택</span>
             }
           </button>
 
@@ -2518,6 +2709,194 @@ function App() {
     );
   }
 
+  if (showServiceSelection) {
+    const dockingAvailable = dockingAllowedAtServiceState(serviceStateName);
+    return (
+      <div className="main-layout" data-ui="operator-service-selection-screen" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+        {adminEntryZone}
+
+        <div className="control-header">
+          <div className="ch-content">
+            <div className="ch-left">
+              <div className="ch-logo">
+                <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
+              </div>
+              <div className="ch-title-block">
+                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
+                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+              </div>
+            </div>
+            <div className="ch-right">
+              <div className="wh-wifi ch-wifi">
+                <WifiIcon level={signalLevel} />
+                <span className="wh-wifi-label">WIFI</span>
+              </div>
+              <div className="wh-battery ch-wifi">
+                <BatteryIcon pct={batteryPct} />
+                <span className="wh-battery-label">
+                  {batteryPct === null ? '–%' : `${batteryPct}%`}
+                </span>
+              </div>
+              <LiveClock />
+            </div>
+          </div>
+        </div>
+
+        {/* 대기 화면과 같은 운행 상태 배너를 서비스 선택 화면에서도 유지한다. */}
+        <WaitingRuntimeStatusPanel
+          systemHealth={systemHealth}
+          missionPhase={missionPhase}
+          batteryPolicy={currentBatteryPolicy}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          serviceStateDescription={serviceStateDescription}
+        />
+
+        <main className="service-selection-body">
+          <div className="service-selection-heading">
+            <span>SERVICE MENU</span>
+            <h1>이용할 서비스를 선택해주세요</h1>
+          </div>
+
+          <div className="service-selection-grid">
+            <button
+              type="button"
+              className="service-choice-card service-choice-delivery"
+              data-ui="operator-intent-delivery"
+              onClick={() => setShowDeliveryConfirm(true)}
+            >
+              <span className="service-choice-icon" aria-hidden="true">📦</span>
+              <strong>배달 서비스</strong>
+              <span>선택한 캠핑 사이트 안으로 짐을 배달해드립니다.</span>
+            </button>
+
+            <button
+              type="button"
+              className="service-choice-card service-choice-recall"
+              data-ui="operator-intent-recall"
+              onClick={() => setShowRecallConfirm(true)}
+            >
+              <span className="service-choice-icon" aria-hidden="true">↩</span>
+              <strong>호출 서비스</strong>
+              <span>사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.</span>
+            </button>
+
+            <div className="service-selection-dock-wrap">
+              <button
+                type="button"
+                className="service-choice-card service-choice-docking"
+                data-ui="operator-service-docking"
+                disabled={!dockingAvailable || serviceDockingPending}
+                onClick={() => {
+                  setServiceDockingStatus('');
+                  setShowDockingConfirm(true);
+                }}
+              >
+                <span className="service-choice-icon" aria-hidden="true">🔒</span>
+                <strong>{serviceDockingPending ? '도킹 요청 중' : '도킹'}</strong>
+                <span>
+                  {dockingAvailable
+                    ? '대기·충전 장소에서 충전 도킹을 시작합니다.'
+                    : '대기·충전 장소에서만 이용할 수 있습니다.'}
+                </span>
+              </button>
+              {serviceDockingStatus && (
+                <span className="manual-motion-status" role="status">
+                  {serviceDockingStatus}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="service-selection-back"
+            onClick={() => {
+              setShowDockingConfirm(false);
+              setShowDeliveryConfirm(false);
+              setShowRecallConfirm(false);
+              setShowServiceSelection(false);
+              setShowWaiting(true);
+            }}
+          >
+            ← 대기 화면으로
+          </button>
+        </main>
+
+        {showDeliveryConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowDeliveryConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                배달 서비스는 사이트 내부로 진입합니다.<br />
+                사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button
+                  className="move-confirm-yes"
+                  data-ui="operator-service-delivery-confirm"
+                  onClick={() => {
+                    setShowDeliveryConfirm(false);
+                    activateDestinationService('delivery');
+                  }}
+                >
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowDeliveryConfirm(false)}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showRecallConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowRecallConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
+                도로 측 대기점으로 이동합니다. 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button
+                  className="move-confirm-yes"
+                  data-ui="operator-service-recall-confirm"
+                  onClick={() => {
+                    setShowRecallConfirm(false);
+                    activateDestinationService('recall');
+                  }}
+                >
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowRecallConfirm(false)}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDockingConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowDockingConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                배터리 잔량과 관계없이 충전 도킹을 요청합니다.<br />
+                도킹을 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button className="move-confirm-yes" data-ui="operator-service-docking-confirm" onClick={handleServiceDocking}>
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowDockingConfirm(false)}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className="main-layout"
@@ -2541,12 +2920,6 @@ function App() {
             </div>
           </div>
           <div className="ch-right">
-            <RuntimeStatus
-              systemHealth={systemHealth}
-              missionPhase={missionPhase}
-              batteryPolicy={currentBatteryPolicy}
-              parkingPolicy={parkingPolicy}
-            />
             <div className="wh-wifi ch-wifi">
               <WifiIcon level={signalLevel} />
               <span className="wh-wifi-label">WIFI</span>
@@ -2560,6 +2933,21 @@ function App() {
             <LiveClock />
           </div>
         </div>
+      </div>
+
+      {/* 대기·서비스 선택 화면과 같은 운행 상태 배너를 목적지 화면에서도 유지한다. */}
+      <WaitingRuntimeStatusPanel
+        systemHealth={systemHealth}
+        missionPhase={missionPhase}
+        batteryPolicy={currentBatteryPolicy}
+        parkingPolicy={parkingPolicy}
+        serviceStateName={serviceStateName}
+        serviceStateDescription={serviceStateDescription}
+      />
+
+      {/* ── 역할 배너: 서비스 메뉴에서 확정된 배달/리콜을 바디 전체 폭에 표시 ── */}
+      <div className={`mission-role-banner role-${destinationIntent}`}>
+        <strong>{destinationIntent === 'recall' ? '호출 서비스' : '배달 서비스'}</strong>
       </div>
 
       {/* ── 바디: 프리뷰 + 컨트롤 패널 ── */}
@@ -2639,6 +3027,19 @@ function App() {
                 </p>
               )}
             </>
+          ) : ['CHARGING', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING'].includes(serviceStateName) ? (
+            <>
+              <span className="preview-placeholder-title">
+                {motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy)}
+              </span>
+              <p className="preview-returning" aria-live="polite">
+                {motionNotice?.message || (serviceStateName === 'CHARGING'
+                  ? 'Charging is confirmed by the platform.'
+                  : serviceStateName === 'WAITING_FOR_CHARGING'
+                    ? 'Docking alignment is complete. Waiting for charger contact.'
+                    : 'The robot is completing its final parking maneuver at the drop zone.')}
+              </p>
+            </>
           ) : displayedReturning ? (
             <>
               <span className="preview-placeholder-title">대기·충전 장소</span>
@@ -2708,7 +3109,7 @@ function App() {
           ) : (
             <>
               <span className="preview-placeholder-title">캠핑 사이트 선택</span>
-              <span className="preview-placeholder">목적지 선택 버튼을 눌러주세요</span>
+              <span className="preview-placeholder">서비스 선택 버튼을 눌러주세요</span>
             </>
           )}
           <ServiceTripBadge
@@ -2724,29 +3125,7 @@ function App() {
 
         {/* ── 오른쪽: 컨트롤 패널 ── */}
         <div className="app">
-          <h1>{destinationIntent === 'recall' ? '이용객 호출 사이트 선택' : '배송 목적지 선택'}</h1>
-          <div className="preview-yn-btns" role="group" aria-label="사이트 운행 목적">
-            <button
-              type="button"
-              data-ui="operator-intent-delivery"
-              className={destinationIntent === 'delivery' ? 'preview-yes-btn' : 'preview-no-btn'}
-              aria-pressed={destinationIntent === 'delivery'}
-              disabled={missionSelectionLocked}
-              onClick={() => selectDestinationIntent('delivery')}
-            >
-              배송 · 사이트 내부 진입
-            </button>
-            <button
-              type="button"
-              data-ui="operator-intent-recall"
-              className={destinationIntent === 'recall' ? 'preview-yes-btn' : 'preview-no-btn'}
-              aria-pressed={destinationIntent === 'recall'}
-              disabled={missionSelectionLocked}
-              onClick={() => selectDestinationIntent('recall')}
-            >
-              이용객 호출 · 도로 대기
-            </button>
-          </div>
+          <h1>{destinationIntent === 'recall' ? '호출 목적지 선택' : '배송 목적지 선택'}</h1>
           <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
             {destinationIntent === 'recall'
               ? '텐트가 설치된 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
@@ -2789,25 +3168,6 @@ function App() {
                   )}
                 </button>
               ))}
-              {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
-                <button
-                  className={`toggle-card engage-card ${engageState ? 'engage-on' : ''} ${isReturning ? 'locked' : ''}`}
-                  onClick={handleEngage}
-                  disabled={isReturning}
-                >
-                  <span className="site-label">ENGAGE</span>
-                  {engageState && <span className="site-on-badge">ON</span>}
-                </button>
-              )}
-              {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
-                <button
-                  className={`toggle-card engage-card ${headlightState ? 'engage-on' : ''}`}
-                  onClick={handleHeadlight}
-                >
-                  <span className="site-label">LIGHT</span>
-                  {headlightState && <span className="site-on-badge">ON</span>}
-                </button>
-              )}
             </div>
 
             {/* 오른쪽 화살표 */}
@@ -2832,13 +3192,13 @@ function App() {
             ))}
           </div>
 
-          <DockingCommandButton serviceStateName={serviceStateName} />
           <button
             className="control-back-btn"
-            onClick={() => setShowWaiting(true)}
+            data-ui="operator-back-to-services"
+            onClick={() => setShowServiceSelection(true)}
             disabled={Boolean(activeSite || activeRecallSite || isReturning)}
           >
-            ← 뒤로가기
+            ← 서비스 선택
           </button>
         </div>
 
@@ -2892,7 +3252,7 @@ function App() {
             <p className="move-confirm-msg">
               {destinationIntent === 'recall' ? (
                 <>
-                  이용객 호출은 사이트 내부로 진입하지 않습니다.<br />
+                  호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
                   도로 측 대기점으로 호출하시겠습니까?
                 </>
               ) : (
@@ -2933,8 +3293,8 @@ function App() {
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
               {destinationIntent === 'recall'
-                ? '지금 로봇을 호출할 사이트는'
-                : '지금 배송할 사이트는'}<br />
+                ? '지금 호출할 사이트는'
+                : '지금 배송 이동할 사이트는'}<br />
               <span className="move-verify-site">{selectedSite}</span><br />
               입니다
             </p>
