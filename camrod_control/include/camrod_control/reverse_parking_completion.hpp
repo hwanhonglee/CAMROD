@@ -12,8 +12,9 @@ struct ReverseParkingGoalCheck {
 };
 
 // A travel/axis limit is permission to STOP, never evidence that parking
-// succeeded. Check the actual station XY at the existing stop boundary;
-// lateral error and overshooting the station must not count as arrival.
+// succeeded. Check the actual station XY disk, including during the bounded
+// final approach inside its axial envelope. An outside-disk lateral miss or
+// overshoot must not count as arrival.
 inline ReverseParkingGoalCheck checkReverseParkingGoal(
     const double vehicle_x, const double vehicle_y,
     const double station_x, const double station_y, const double tolerance_m) {

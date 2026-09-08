@@ -433,10 +433,10 @@ private:
   void finishTravel(const std::string & detail)
   {
     publishZero();
-    // Preserve both existing stop boundaries (distance and signed axis).
-    // Never continue farther to correct a miss, and never report their limit
-    // as PARKED unless fresh localization is actually inside the station XY
-    // tolerance. Charger-contact completion remains authoritative elsewhere.
+    // A hard travel bound or an unreachable/passed station still stops here.
+    // PARKED requires fresh localization inside the actual station XY disk;
+    // reaching its axial bounding box alone is not completion evidence.
+    // Charger-contact completion remains authoritative elsewhere.
     if (!vehiclePoseIsFresh()) {
       setError(detail + "; fresh finite pose unavailable for parking completion");
       return;
@@ -473,6 +473,13 @@ private:
       setError("station pose is not finite during reverse parking");
       return;
     }
+    const auto goal = camrod_control::checkReverseParkingGoal(
+      last_vehicle_pose_->pose.position.x, last_vehicle_pose_->pose.position.y,
+      station_pose_.x_m, station_pose_.y_m, station_axis_tolerance_m_);
+    if (!goal.valid) {
+      setError("station XY goal is not finite or has invalid tolerance");
+      return;
+    }
     const double reversed = distanceReversed();
     if (reversed >= maximum_reverse_distance_m_) {
       finishTravel("reverse distance limit reached");
@@ -490,8 +497,23 @@ private:
       return;
     }
     if (reversed > 0.05 && station_axis_distance <= station_axis_tolerance_m_) {
-      finishTravel("station reverse axis reached");
-      return;
+      if (goal.reached) {
+        finishTravel("station XY goal reached");
+        return;
+      }
+      if (station_axis_distance <= 0.0) {
+        finishTravel("station plane passed without reaching XY goal");
+        return;
+      }
+      if (std::abs(stationLateralError()) >= station_axis_tolerance_m_) {
+        finishTravel("station reverse axis reached with lateral miss outside XY disk");
+        return;
+      }
+      // The axial tolerance bounds a square, while acceptance uses a circle.
+      // For example (axis=.25, lateral=.128) is still .281 m from a .25 m
+      // goal. Continue the existing slow final approach while the station is
+      // ahead and the reverse-axis line intersects the XY disk. Do not cross
+      // the station plane to chase a miss; distance/timeout remain hard bounds.
     }
 
     const double heading_error = camrod_control::normalizeAngle(
