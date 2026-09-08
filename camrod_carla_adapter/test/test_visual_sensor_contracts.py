@@ -40,13 +40,13 @@ SYSTEM_CARLA_LIDAR_CHECKER = (
 CAMROD_LIDAR_COST_GRID = (
     REPO_ROOT / "camrod_bringup" / "config" / "sensing" / "lidar" / "cost_grid.yaml"
 )
-DROP_ZONE_FRONT_SPAWN = {
-    "x": -20.672548294067383,
-    "y": 33.95176696777344,
-    "z": 3.063404083251953,
+DROP_ZONE_PARKED_SPAWN = {
+    "x": -18.3106592128,
+    "y": 30.5999291974,
+    "z": -0.4365966,
     "roll": 0.0,
     "pitch": 0.0,
-    "yaw": 6.8785247802734375,
+    "yaw": 97.7872533451,
 }
 
 
@@ -79,9 +79,9 @@ def test_visual_profile_preserves_the_accepted_actor_and_control_sensors():
     assert control_contract <= visual_contract
 
 
-def test_both_profiles_spawn_on_road_in_front_of_woraksan_drop_zone():
-    assert _vehicle(CONTROL_SPAWN)["spawn_point"] == DROP_ZONE_FRONT_SPAWN
-    assert _vehicle(VISUAL_SPAWN)["spawn_point"] == DROP_ZONE_FRONT_SPAWN
+def test_both_profiles_spawn_parked_inside_current_woraksan_drop_zone():
+    assert _vehicle(CONTROL_SPAWN)["spawn_point"] == DROP_ZONE_PARKED_SPAWN
+    assert _vehicle(VISUAL_SPAWN)["spawn_point"] == DROP_ZONE_PARKED_SPAWN
 
 
 def test_carla_lidar_cost_grid_returns_to_production_height_after_ground_filter():

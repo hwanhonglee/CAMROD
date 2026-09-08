@@ -959,7 +959,7 @@ def _validate_runtime_world_identity(
     ).as_posix()
     if not umap_path.as_posix().endswith("/" + expected_suffix):
         raise CollectionValidationError(
-            f"{label}.carla.ue_map_asset.path is not the exact v15 UMAP identity: "
+            f"{label}.carla.ue_map_asset.path is not the exact current UMAP identity: "
             f"{umap_path}"
         )
     umap_fact = _stable_file_fact(umap_path, f"{label}.carla.ue_map_asset")
@@ -1453,18 +1453,53 @@ def _validate_native_matrix(
     _assert_equal(collision.get("events"), [], f"{label}.collision.events")
 
     _assert_equal(item.get("parking_confirmed"), True, f"{label}.parking_confirmed")
-    _assert_equal(item.get("charging_confirmed"), True, f"{label}.charging_confirmed")
     final_state = _mapping(
         item.get("final_service_state"), f"{label}.final_service_state"
     )
-    _assert_equal(final_state.get("state_name"), "CHARGING", f"{label}.final_state")
     final_gate = _mapping(item.get("final_gate_status"), f"{label}.final_gate_status")
-    _assert_equal(final_gate.get("operating_state"), "CHARGING", f"{label}.gate")
     final_parking = _mapping(
         item.get("final_parking_status"), f"{label}.final_parking_status"
     )
     if not _has_nested_state(final_parking, "operating_state", "PARKED"):
         raise CollectionValidationError(f"{label} has no final PARKED controller state")
+    completion = item.get("parking_completion", "charging")
+    expected_completion = scope.get("expected_parking_completion", "charging")
+    if expected_completion not in ("policy", "reverse", "charging"):
+        raise CollectionValidationError(f"{label}.expected_parking_completion is invalid")
+    if completion not in ("reverse", "charging") or expected_completion not in ("policy", completion):
+        raise CollectionValidationError(f"{label}.parking_completion differs from expected policy")
+    charging = completion == "charging"
+    _assert_equal(item.get("charging_confirmed"), charging, f"{label}.charging_confirmed")
+    final_state_name = "CHARGING" if charging else "DROP_ZONE_WAIT"
+    _assert_equal(final_state.get("state_name"), final_state_name, f"{label}.final_state")
+    _assert_equal(final_state.get("state"), 13 if charging else 0, f"{label}.final_state_id")
+    _assert_equal(final_gate.get("operating_state"), "CHARGING" if charging else "STANDBY", f"{label}.gate")
+    if "parking_completion" in item:
+        dispatcher = _mapping(final_parking.get("dispatcher"), f"{label}.dispatcher")
+        _assert_equal(dispatcher.get("operating_state"), "PARKED", f"{label}.dispatcher.phase")
+        _assert_equal(dispatcher.get("level"), 0, f"{label}.dispatcher.level")
+        selection = str(dispatcher.get("message", ""))
+        for token in (
+            f"parking_method={'apriltag' if charging else 'reverse'}",
+            f"charging_required={'true' if charging else 'false'}",
+        ):
+            if token not in selection.split():
+                raise CollectionValidationError(f"{label}.dispatcher selection is missing {token}")
+    if not charging:
+        # A parked flag alone could be left over from the preceding mission.
+        # Require this mission's reverse motion, yaw alignment and lifecycle.
+        reverse = _mapping(final_parking.get("reverse"), f"{label}.reverse")
+        _assert_equal(reverse.get("operating_state"), "PARKED", f"{label}.reverse.phase")
+        _assert_equal(reverse.get("level"), 0, f"{label}.reverse.level")
+        _assert_equal(final_gate.get("level"), 0, f"{label}.gate.level")
+        for field, required in (
+            ("parking_phase_sequence", ("reverse:REVERSE_APPROACH", "reverse:PARKED")),
+            ("service_state_sequence", ("DROP_ZONE_PARKING", "DROP_ZONE_WAIT")),
+            ("drop_zone_phase_sequence", ("ALIGN_PARKING_YAW",)),
+        ):
+            observed = iter(_list(item.get(field), f"{label}.{field}"))
+            if not all(any(value == phase for value in observed) for phase in required):
+                raise CollectionValidationError(f"{label}.{field} is missing ordered reverse parking phases")
 
     actor_id = _exact_integer(item.get("actor_id"), f"{label}.actor_id", 1)
     physical = _mapping(
@@ -1617,6 +1652,9 @@ def _validate_native_matrix(
         "actor_id": actor_id,
         "publisher_count": publisher_count,
         "final_speed_mps": final_speed,
+        "charging_confirmed": charging,
+        "parking_completion": completion,
+        "final_service_state": final_state_name,
         "elapsed_s": elapsed,
         "outbound_duration_s": outbound_duration,
         "return_duration_s": return_duration,
@@ -2041,7 +2079,9 @@ def _validate_site(
         "collision_publisher_count": native["publisher_count"],
         "collision_event_count": 0,
         "parking_confirmed": True,
-        "charging_confirmed": True,
+        "charging_confirmed": native["charging_confirmed"],
+        "parking_completion": native["parking_completion"],
+        "final_service_state": native["final_service_state"],
         "wheel_sample_count": wheels["sample_count"],
         "all_wheel_in_air_count": 0,
         "matrix_sha256": matrix_fact["sha256"],
@@ -2134,8 +2174,8 @@ def _validate_metrics_summary(
             _same_number(actual, float(expected[row_key]), f"{label}.{site}.{metric_key}")
         _assert_equal(metric.get("actor_id"), expected["actor_id"], f"{label}.{site}.actor")
         _assert_equal(metric.get("parking_confirmed"), True, f"{label}.{site}.parking")
-        _assert_equal(metric.get("charging_confirmed"), True, f"{label}.{site}.charging")
-        _assert_equal(metric.get("final_service_state"), "CHARGING", f"{label}.{site}.state")
+        _assert_equal(metric.get("charging_confirmed"), expected["charging_confirmed"], f"{label}.{site}.charging")
+        _assert_equal(metric.get("final_service_state"), expected["final_service_state"], f"{label}.{site}.state")
         _assert_equal(
             _sha256(metric.get("source_report_sha256"), f"{label}.{site}.report sha"),
             expected["matrix_sha256"],
@@ -2333,7 +2373,7 @@ def validate_collection(
     for key, description in (
         ("software_binding_sha256", "software identity binding"),
         ("runtime_install_sha256", "runtime install identity"),
-        ("umap_sha256", "v15 UMAP identity"),
+        ("umap_sha256", "current UMAP identity"),
         ("lanelet_sha256", "lanelet identity"),
         ("launch_cmdline_sha256", "v27 launch identity"),
     ):
@@ -2377,7 +2417,9 @@ def validate_collection(
         "total_collision_events": 0,
         "maximum_final_speed_mps": max(row["final_speed_mps"] for row in rows),
         "all_sites_parking_confirmed": True,
-        "all_sites_charging_confirmed": True,
+        "all_sites_charging_confirmed": all(row["charging_confirmed"] for row in rows),
+        "reverse_parking_count": sum(row["parking_completion"] == "reverse" for row in rows),
+        "charging_completion_count": sum(row["charging_confirmed"] for row in rows),
         "all_four_wheels_grounded_for_every_sample": True,
     }
     return {
@@ -2417,9 +2459,10 @@ def validate_collection(
             "collision_graph_discovered_and_zero_events": True,
             "physical_actor_type_role_backend_consistent": True,
             "software_identity_independently_recomputed": True,
-            "v15_map_umap_lanelet_identity_verified": True,
+            "current_map_umap_lanelet_identity_verified": True,
             "v27_launch_identity_verified": True,
-            "parking_and_charging_confirmed": True,
+            "parking_policy_completion_confirmed": True,
+            "parking_and_charging_confirmed": all(row["charging_confirmed"] for row in rows),
             "final_speed_at_or_below_0_05_mps": True,
             "canonical_wheels_grounded": True,
             "visual_png_gif_and_hashes_verified": True,

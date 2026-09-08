@@ -393,11 +393,11 @@ def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
         capture_output=True,
         text=True,
     )
-    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15"
+    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone"
     expected_relative = f"map_package/Maps/{expected_name}/{expected_name}"
     assert (
         "export CAMROD_CARLA_MAP_PROFILE="
-        "woraksan-camrod-site-geometry-v15"
+        "woraksan-camrod-site-geometry-v224"
     ) in selected.stdout
     assert f"export CARLA_UE_MAP=/Game/{expected_relative}" in selected.stdout
     assert f"export CARLA_TOWN={expected_relative}" in selected.stdout
@@ -416,7 +416,7 @@ def test_site_access_wrapper_selects_new_map_without_changing_direct_default(
     )
 
 
-@pytest.mark.parametrize("version", ("v13", "v12", "v11"))
+@pytest.mark.parametrize("version", ("v15", "v13", "v12", "v11"))
 def test_site_access_wrapper_keeps_previous_maps_as_explicit_legacy_profiles(
     tmp_path: Path,
     version: str,

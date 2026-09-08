@@ -126,6 +126,23 @@ def test_unsorted_individual_reports_emit_numeric_site_order_and_measured_splits
     _verify_sha256s(output)
 
 
+def test_reverse_parked_summary_reports_actual_no_charging_state(tmp_path):
+    row = _site(
+        parking_completion="reverse", charging_confirmed=False,
+        final_service_state={"state": 0, "state_name": "DROP_ZONE_WAIT"},
+        final_parking_status={"reverse": {"level": 0, "operating_state": "PARKED"}},
+    )
+    report = _report(tmp_path / "reverse.json", [row])
+    summary = metrics.build_summary([report])
+    assert summary["sites"][0]["parking_confirmed"] is True
+    assert summary["sites"][0]["charging_confirmed"] is False
+    assert summary["sites"][0]["final_service_state"] == "DROP_ZONE_WAIT"
+    row["final_parking_status"]["reverse"]["operating_state"] = "IDLE"
+    _report(report, [row])
+    with pytest.raises(metrics.SummaryError, match="healthy PARKED"):
+        metrics.build_summary([report])
+
+
 def test_outputs_are_byte_deterministic_and_output_must_be_new(tmp_path):
     report = _report(tmp_path / "b1.json", [_site("B1")])
     summary = metrics.build_summary([report])

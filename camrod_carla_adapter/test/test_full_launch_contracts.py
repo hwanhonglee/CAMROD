@@ -87,7 +87,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "return_site_exit_rearm_enabled": "true",
         "launch_charging_contact_emulator": "true",
         "carla_charging_contact_parking_status_topic": (
-            "/parking/apriltag_parking_controller/status"
+            "/parking/status"
         ),
         "recovery_breakaway_enable": "true",
         "rotation_recovery_breakaway_enable": "true",
@@ -1280,7 +1280,7 @@ def test_parking_and_charger_emulation_are_opt_in_carla_profiles_only():
     )
     assert site_module.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_charging_contact_parking_status_topic"
-    ] == "/parking/apriltag_parking_controller/status"
+    ] == "/parking/status"
     assert '"carla_parking_runtime_override_param_file": tuned_parking' in tuned_launch
     assert '"parking_runtime_override_param_file": LaunchConfiguration(' in full_launch
     assert '"carla_charging_contact_position_tolerance_m"' in full_launch

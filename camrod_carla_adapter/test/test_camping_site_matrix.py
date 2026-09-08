@@ -29,8 +29,8 @@ def test_active_configuration_contains_all_thirteen_sites_and_drop_zone():
     assert tuple(sites) == matrix.DEFAULT_SITES
     assert sites["B11"].service_mode == "roadside_stop"
     assert sites["B12"].service_mode == "roadside_stop"
-    assert drop_zone.source_id == "dz_area_2320"
-    assert (drop_zone.x_m, drop_zone.y_m) == pytest.approx((-14.2347, 39.7863))
+    assert drop_zone.source_id == "dz_area_7019"
+    assert (drop_zone.x_m, drop_zone.y_m) == pytest.approx((-11.3585, 40.0901))
 
 
 def test_site_selection_defaults_to_all_and_rejects_duplicates_or_unknown():
@@ -216,9 +216,56 @@ def test_recall_waits_for_guest_loading_and_always_uses_roadside_policy():
         matrix.GUEST_LOADING_WAIT,
         matrix.RETURN_WITH_CARGO,
         matrix.DROP_ZONE_PARKING,
-        matrix.WAITING_FOR_CHARGING,
-        matrix.CHARGING,
     )
+
+
+def _reverse_completion_snapshot():
+    return {
+        "service_state": {"state": 0, "state_name": "DROP_ZONE_WAIT"},
+        "gate": {"level": 0, "operating_state": "STANDBY"},
+        "parking": {
+            "reverse": {"level": 0, "operating_state": "PARKED"},
+            "dispatcher": {"level": 0, "operating_state": "PARKED", "message": "parking_method=reverse charging_required=false"},
+        },
+        "sequences": {
+            "parking_phases": ["reverse:REVERSE_APPROACH", "reverse:PARKED"],
+            "service_state_ids": [0, 10, 0],
+        },
+    }
+
+
+def test_reverse_parking_completes_without_fabricating_charging():
+    snapshot = _reverse_completion_snapshot()
+    assert matrix.parking_completion(snapshot) == "reverse"
+    assert matrix.parking_completion(snapshot, "reverse") == "reverse"
+    assert matrix.parking_completion(snapshot, "charging") == ""
+    snapshot["parking"]["dispatcher"]["message"] = "parking_method=apriltag charging_required=true"
+    assert matrix.parking_completion(snapshot) == ""
+
+
+@pytest.mark.parametrize("field,value", [
+    ("parking_phases", ["reverse:PARKED"]),
+    ("parking_phases", ["reverse:PARKED", "reverse:REVERSE_APPROACH"]),
+    ("service_state_ids", [0, 10]),
+])
+def test_reverse_parking_rejects_stale_or_out_of_order_completion(field, value):
+    snapshot = _reverse_completion_snapshot()
+    snapshot["sequences"][field] = value
+    assert matrix.parking_completion(snapshot) == ""
+
+
+def test_charging_completion_still_requires_current_contact_state_and_gate():
+    snapshot = _reverse_completion_snapshot()
+    snapshot["service_state"] = {"state": 13, "state_name": "CHARGING"}
+    snapshot["gate"]["operating_state"] = "CHARGING"
+    snapshot["parking"]["dispatcher"]["message"] = "parking_method=apriltag charging_required=true"
+    snapshot["parking"]["apriltag"] = {"level": 0, "operating_state": "PARKED"}
+    snapshot["sequences"]["parking_phases"].append("apriltag:PARKED")
+    snapshot["sequences"]["service_state_ids"] = [10, 12, 13]
+    assert matrix.parking_completion(snapshot) == "charging"
+    assert matrix.parking_completion(snapshot, "reverse") == ""
+    snapshot["gate"]["level"] = 2
+    assert matrix.parking_completion(snapshot) == ""
 
 
 def test_sensor_audit_requires_exact_36_streams_and_13_actors(tmp_path):
@@ -439,7 +486,7 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
         "pose_topic": "/localization/pose",
         "odometry_topic": "/odom",
         "parking_status_topic": (
-            "/parking/apriltag_parking_controller/status"
+            "/parking/status"
         ),
         "planning_state_topic": "/planning/state_machine/state",
         "charging_topic": "/camrod_carla/platform_heartbeat/charging",
@@ -557,10 +604,10 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
         "RPPReverse.allow_reversing"
     ] is True
     parking = "/parking/apriltag_parking_controller"
-    assert parity[parking]["heading_gain"] == 1.5
-    assert parity[parking]["lateral_to_heading_gain"] == 2.5
-    assert parity[parking]["reverse_approach_speed_mps"] == 0.2
-    assert parity[parking]["final_insertion_speed_mps"] == 0.05
+    assert parity[parking]["heading_gain"] == 1.2
+    assert parity[parking]["lateral_to_heading_gain"] == 2.0
+    assert parity[parking]["reverse_approach_speed_mps"] == 0.555556
+    assert parity[parking]["final_insertion_speed_mps"] == 0.138889
     assert site[parking]["heading_gain"] == 1.5
     assert site[parking]["lateral_to_heading_gain"] == 2.7
     assert site[parking]["reverse_approach_speed_mps"] == 0.2

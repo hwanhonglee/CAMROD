@@ -284,6 +284,7 @@ def _build_collection(
     sites: tuple[str, ...] = ("B1", "B2"),
     authority: str = "operator",
     mission: str = "recall",
+    parking_completion: str = "charging",
 ) -> Path:
     root = tmp_path / "runner-output"
     root.mkdir(parents=True)
@@ -482,6 +483,20 @@ def _build_collection(
                 "operation": 3,
                 "source": "ws:usage_complete:site_exit_first",
             }]
+        if parking_completion == "reverse":
+            native_site.update({
+                "parking_completion": "reverse",
+                "charging_confirmed": False,
+                "final_service_state": {"state": 0, "state_name": "DROP_ZONE_WAIT"},
+                "final_gate_status": {"level": 0, "operating_state": "STANDBY"},
+                "final_parking_status": {
+                    "reverse": {"level": 0, "operating_state": "PARKED"},
+                    "dispatcher": {"level": 0, "operating_state": "PARKED", "message": "parking_method=reverse charging_required=false"},
+                },
+                "parking_phase_sequence": ["reverse:REVERSE_APPROACH", "reverse:PARKED"],
+                "drop_zone_phase_sequence": ["ALIGN_PARKING_YAW"],
+                "service_state_sequence": service_sequence[:-2] + ["DROP_ZONE_WAIT"],
+            })
         matrix = {
             "schema": validator.MATRIX_SCHEMA,
             "status": "PASS",
@@ -493,6 +508,7 @@ def _build_collection(
                 "fake_sensor_data_used": False,
                 "return_authority": contract["matrix_return_authority"],
                 "expected_return_source": contract["expected_return_source"],
+                "expected_parking_completion": parking_completion,
             },
             "runtime_profile_audit": {
                 "path": str(runtime_path.resolve()),
@@ -724,9 +740,9 @@ def _build_collection(
                 "outbound_distance_m": outbound_distance,
                 "return_distance_m": return_distance,
                 "drop_zone_error_m": 0.1,
-                "final_service_state": "CHARGING",
+                "final_service_state": native_site["final_service_state"]["state_name"],
                 "parking_confirmed": True,
-                "charging_confirmed": True,
+                "charging_confirmed": native_site["charging_confirmed"],
                 "actor_id": actor_id,
                 "source_report": str(matrix_path),
                 "source_report_sha256": _sha(matrix_path),
@@ -986,6 +1002,32 @@ def test_current_collection_rejects_noncanonical_recorded_entrypoint(tmp_path):
         validator.CollectionValidationError,
         match="run_manifest.source.entrypoint.path resolves",
     ):
+        _validate(root, sites=("B1",))
+
+
+def test_reverse_parking_collection_preserves_non_charging_completion(tmp_path):
+    root = _build_collection(tmp_path, sites=("B1",), parking_completion="reverse")
+    document = _validate(root, sites=("B1",))
+    assert document["sites"][0]["parking_completion"] == "reverse"
+    assert document["sites"][0]["charging_confirmed"] is False
+    assert document["aggregate"]["all_sites_charging_confirmed"] is False
+    assert document["aggregate"]["reverse_parking_count"] == 1
+    assert document["validation"]["parking_policy_completion_confirmed"] is True
+
+
+@pytest.mark.parametrize("mutation,pattern", [
+    (lambda item: item.update(parking_phase_sequence=["reverse:PARKED"]), "ordered reverse"),
+    (lambda item: item.update(drop_zone_phase_sequence=[]), "ordered reverse"),
+    (lambda item: item.update(service_state_sequence=["DROP_ZONE_WAIT", "DROP_ZONE_PARKING"]), "recall sequence"),
+    (lambda item: item["final_gate_status"].update(operating_state="FAULT_HOLD"), "gate"),
+    (lambda item: item["final_parking_status"]["reverse"].update(level=2), "reverse.level"),
+    (lambda item: item.update(charging_confirmed=True), "charging_confirmed"),
+    (lambda item: item["final_parking_status"]["dispatcher"].update(message="parking_method=apriltag charging_required=true"), "dispatcher selection"),
+])
+def test_reverse_parking_collection_rejects_unproven_or_unsafe_completion(tmp_path, mutation, pattern):
+    root = _build_collection(tmp_path, sites=("B1",), parking_completion="reverse")
+    _mutate_native_matrix(root, "B1", lambda matrix: mutation(matrix["sites"][0]))
+    with pytest.raises(validator.CollectionValidationError, match=pattern):
         _validate(root, sites=("B1",))
 
 

@@ -86,6 +86,21 @@ def test_restart_recovers_only_from_fresh_idle_wait_dz_at_station():
     assert contact_candidate(RESTARTED_AT_STATION, STATION)
 
 
+@pytest.mark.parametrize("phase", ["IDLE", "PARKED", "WAIT_FOR_CHARGING"])
+def test_dispatcher_reverse_owner_never_synthesizes_docking_contact(phase):
+    assert not contact_candidate(
+        replace(RESTARTED_AT_STATION, parking_state=phase, parking_method="reverse"),
+        STATION,
+    )
+
+
+def test_dispatcher_apriltag_owner_requires_measured_contact():
+    assert contact_candidate(replace(GOOD, parking_method="apriltag"), STATION)
+    assert not contact_candidate(
+        replace(GOOD, parking_method="apriltag", x_m=-13.0), STATION,
+    )
+
+
 @pytest.mark.parametrize(
     "sample",
     [

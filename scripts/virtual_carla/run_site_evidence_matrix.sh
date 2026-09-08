@@ -265,6 +265,10 @@ pin_default_site_access_map() {
       selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_UE_MAP}"
       selected_town="${CAMROD_CARLA_SITE_ACCESS_TOWN}"
       ;;
+    "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_PROFILE_ID}")
+      selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_UE_MAP}"
+      selected_town="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_TOWN}"
+      ;;
     "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_PROFILE_ID}")
       selected_ue_map="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_UE_MAP}"
       selected_town="${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_TOWN}"

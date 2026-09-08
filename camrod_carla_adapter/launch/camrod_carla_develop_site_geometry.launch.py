@@ -115,14 +115,14 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
     # entire bounded timeout issuing commands into STANDBY.  The shared full
     # launch and ordinary develop profile keep the fail-closed default false.
     "return_site_exit_rearm_enabled": "true",
-    # The campsite return ends in the production AprilTag controller rather
-    # than reverse_parking_controller.  CARLA has no physical charger/BMS, so
-    # this site-only node converts a verified stopped contact pose into the
-    # same heartbeat input the real platform supplies.  The full/develop-
-    # parity launch remains disabled by default.
+    # The production dispatcher chooses reverse parking or AprilTag docking.
+    # Use its public owner/status, so reverse PARKED cannot be mistaken for
+    # charging through the inactive AprilTag controller's IDLE heartbeat.
+    # CARLA has no physical charger/BMS; verified docking contact supplies the
+    # simulated platform input while ordinary parked waiting remains uncharged.
     "launch_charging_contact_emulator": "true",
     "carla_charging_contact_parking_status_topic": (
-        "/parking/apriltag_parking_controller/status"
+        "/parking/status"
     ),
     # CARLA plant-only low-speed breakaway.  The command adapter authenticates
     # the bounded recovery node before setting the backend authorization bit.

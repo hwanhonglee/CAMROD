@@ -415,15 +415,24 @@ def _site_row(
     )
 
     if status == "PASS":
-        if final_state_name != "CHARGING":
+        completion = site.get("parking_completion", "charging")
+        expected_state = "DROP_ZONE_WAIT" if completion == "reverse" else "CHARGING"
+        if completion not in {"reverse", "charging"} or final_state_name != expected_state:
             raise SummaryError(
                 f"inconsistent {name} PASS final_service_state={final_state_name}"
             )
-        if not parking or not charging:
+        if not parking or charging != (completion == "charging"):
             raise SummaryError(
                 f"inconsistent {name} PASS parking/charging="
                 f"{parking}/{charging}"
             )
+        if completion == "reverse":
+            reverse = _mapping(
+                _mapping(site.get("final_parking_status"), f"{name}.final_parking_status").get("reverse"),
+                f"{name}.reverse",
+            )
+            if reverse.get("operating_state") != "PARKED" or reverse.get("level") != 0:
+                raise SummaryError(f"{name} reverse completion requires healthy PARKED controller")
         if drop_zone_error is None:
             raise SummaryError(f"{name}.drop_zone_error_m is required for PASS")
 

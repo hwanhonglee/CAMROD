@@ -43,6 +43,7 @@ RETURN_WITH_CARGO = 9
 WAITING_FOR_RETURN_REQUEST = 11
 WAITING_FOR_CHARGING = 12
 CHARGING = 13
+DROP_ZONE_WAIT = 0
 DROP_ZONE_PARKING = 10
 FAILURE_STATES = {16}
 RETURN_OPERATION = 3
@@ -74,6 +75,7 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "rotation_recovery_breakaway_status_timeout_sec": 0.30,
     },
     "/control/cmd_vel_safety_gate": {
+        "parking_dispatcher_status_topic": "/parking/status",
         "speed_scale": 0.5,
         "navigation_minimum_ackermann_turn_radius_m": 0.0,
         "cost_stop_threshold": 85,
@@ -132,13 +134,27 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "pose_jump_check_topic": "",
         "reissue_active_goal_after_route_recovery_when_nav_active": False,
     },
+    "/parking/parking_dispatcher": {
+        "charging_threshold_percent": 35.0,
+        "status_topic": "/parking/status",
+        "service_state_topic": "/service/state",
+    },
+    "/parking/reverse_parking_controller": {
+        "status_topic": "/parking/private/reverse/status",
+        "complete_without_charging": True,
+        "maximum_reverse_distance_m": 5.0,
+        "reverse_speed_mps": 0.444444,
+        "final_approach_speed_mps": 0.138889,
+        "charging_wait_timeout_s": 45.0,
+    },
     "/parking/apriltag_parking_controller": {
-        "heading_gain": 1.5,
-        "lateral_to_heading_gain": 2.5,
-        # Match the effective latest-develop node defaults selected by the
-        # nested AprilTag detector/controller launch composition.
-        "reverse_approach_speed_mps": 0.2,
-        "final_insertion_speed_mps": 0.05,
+        "status_topic": "/parking/private/apriltag/status",
+        "heading_gain": 1.2,
+        "lateral_to_heading_gain": 2.0,
+        # Production parking parameters must survive the scoped detector
+        # include, rather than falling back to unconfigured C++ defaults.
+        "reverse_approach_speed_mps": 0.555556,
+        "final_insertion_speed_mps": 0.138889,
         "translation_stop_tag_distance_m": 0.40,
         "final_lateral_tolerance_m": 0.03,
         "minimum_approach_turn_radius_m": 0.85,
@@ -176,6 +192,7 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "reverse_controller_id": "RPP",
     },
     "/ui_backend": {
+        "parking_method": "auto",
         "telemetry_raw_lidar_bbox_overlay_enabled": False,
         "telemetry_docking_rear_camera_fallback_enabled": False,
         "telemetry_obstacle_cloud_topic": "/perception/obstacles",
@@ -198,7 +215,7 @@ def _with_site_geometry_runtime_signature(
         "pose_topic": "/localization/pose",
         "odometry_topic": "/odom",
         "parking_status_topic": (
-            "/parking/apriltag_parking_controller/status"
+            "/parking/status"
         ),
         "planning_state_topic": "/planning/state_machine/state",
         "charging_topic": "/camrod_carla/platform_heartbeat/charging",
@@ -440,6 +457,7 @@ class SiteResult:
     drop_zone_error_m: float | None = None
     parking_confirmed: bool = False
     charging_confirmed: bool = False
+    parking_completion: str = ""
 
 
 def utc_now() -> str:
@@ -612,21 +630,83 @@ def effective_service_mode(site: Site, mission_intent: str) -> str:
 
 
 def required_service_state_ids(mission_intent: str) -> tuple[int, ...]:
-    """Return ordered-state membership required before a mission may pass."""
+    """Return common mission states; terminal parking depends on battery policy."""
     if mission_intent == "recall":
         return (
             RECALL_TO_SITE_ROAD,
             GUEST_LOADING_WAIT,
             RETURN_WITH_CARGO,
             DROP_ZONE_PARKING,
-            WAITING_FOR_CHARGING,
-            CHARGING,
         )
     if mission_intent == "delivery":
-        return (DROP_ZONE_PARKING, WAITING_FOR_CHARGING, CHARGING)
+        return (DROP_ZONE_PARKING,)
     raise MatrixError(
         f"mission_intent must be one of {MISSION_INTENTS}, got {mission_intent!r}"
     )
+
+
+def parking_completion(snapshot: Mapping[str, Any], expected: str = "policy") -> str:
+    """Identify a current, stopped controller completion, never a stale PARKED.
+
+    v2.2.4 ordinary reverse parking ends in DROP_ZONE_WAIT without contact.
+    Low-SOC/explicit docking still requires WAITING_FOR_CHARGING -> CHARGING.
+    Both paths need a current healthy gate/controller and a parking transition
+    from this mission; the runner separately verifies pose, speed and physics.
+    """
+    state = snapshot.get("service_state") or {}
+    gate = snapshot.get("gate") or {}
+    parking = snapshot.get("parking") or {}
+    sequences = snapshot.get("sequences") or {}
+    if not all(isinstance(value, Mapping) for value in (state, gate, parking, sequences)):
+        return ""
+    phases = sequences.get("parking_phases") or []
+    service_ids = sequences.get("service_state_ids") or []
+    if not all(isinstance(value, (list, tuple)) for value in (phases, service_ids)):
+        return ""
+    if gate.get("level", 0) != 0:
+        return ""
+    dispatcher = parking.get("dispatcher") or {}
+    if (
+        not isinstance(dispatcher, Mapping)
+        or dispatcher.get("operating_state") != "PARKED"
+        or dispatcher.get("level", 0) != 0
+    ):
+        return ""
+    selection = str(dispatcher.get("message", ""))
+    reverse = parking.get("reverse") or {}
+    if (
+        expected in {"policy", "reverse"}
+        and state.get("state") == DROP_ZONE_WAIT
+        and state.get("state_name") == "DROP_ZONE_WAIT"
+        and gate.get("operating_state") == "STANDBY"
+        and isinstance(reverse, Mapping)
+        and re.search(r"(?:^|\s)parking_method=reverse(?:\s|$)", selection)
+        and re.search(r"(?:^|\s)charging_required=false(?:\s|$)", selection)
+        and reverse.get("operating_state") == "PARKED"
+        and reverse.get("level", 0) == 0
+        and contains_ordered_subsequence(phases, ("reverse:REVERSE_APPROACH", "reverse:PARKED"))
+        and contains_ordered_subsequence(service_ids, (DROP_ZONE_PARKING, DROP_ZONE_WAIT))
+    ):
+        return "reverse"
+    if (
+        expected in {"policy", "charging"}
+        and state.get("state") == CHARGING
+        and state.get("state_name") == "CHARGING"
+        and gate.get("operating_state") == "CHARGING"
+        and re.search(r"(?:^|\s)parking_method=apriltag(?:\s|$)", selection)
+        and re.search(r"(?:^|\s)charging_required=true(?:\s|$)", selection)
+        and contains_ordered_subsequence(service_ids, (DROP_ZONE_PARKING, WAITING_FOR_CHARGING, CHARGING))
+        and any(
+            controller == "apriltag"
+            and isinstance(status, Mapping)
+            and status.get("operating_state") == "PARKED"
+            and status.get("level", 0) == 0
+            and f"{controller}:PARKED" in phases
+            for controller, status in parking.items()
+        )
+    ):
+        return "charging"
+    return ""
 
 
 def return_source_matches(
@@ -1116,8 +1196,9 @@ def observation_contract(role_name: str = "ego_vehicle") -> dict[str, Any]:
             "/planning/state_machine/camping_site_recall",
         ],
         "status_topics": [
-            "/parking/reverse_parking_controller/status",
-            "/parking/apriltag_parking_controller/status",
+            "/parking/private/reverse/status",
+            "/parking/private/apriltag/status",
+            "/parking/status",
             "/control/drop_zone_maneuver_controller/status",
             "/control/cmd_vel_safety_gate/status",
         ],
@@ -2214,8 +2295,9 @@ class RosObservation:
         self.node.create_subscription(Odometry, "/carla/ego_vehicle/odometry", lambda msg: self._odom(msg), qos)
         self.node.create_subscription(PhysicalFourWheelStatus, f"/carla/{role_name}/physical_four_wheel_status", lambda msg: self._physical(msg), qos)
         self.node.create_subscription(ModuleState, "/control/camping_site_maneuver_controller/status", lambda msg: self._site(msg), qos)
-        self.node.create_subscription(ModuleState, "/parking/reverse_parking_controller/status", lambda msg: self._parking("reverse", msg), qos)
-        self.node.create_subscription(ModuleState, "/parking/apriltag_parking_controller/status", lambda msg: self._parking("apriltag", msg), qos)
+        self.node.create_subscription(ModuleState, "/parking/private/reverse/status", lambda msg: self._parking("reverse", msg), qos)
+        self.node.create_subscription(ModuleState, "/parking/private/apriltag/status", lambda msg: self._parking("apriltag", msg), qos)
+        self.node.create_subscription(ModuleState, "/parking/status", lambda msg: self._parking("dispatcher", msg), qos)
         self.node.create_subscription(ModuleState, "/control/drop_zone_maneuver_controller/status", lambda msg: self._drop_zone(msg), qos)
         self.node.create_subscription(ModuleState, "/control/cmd_vel_safety_gate/status", lambda msg: self._gate(msg), qos)
         self.node.create_subscription(MotionOperation, "/ui/camping_site_operation_request", lambda msg: self._ui_operation(msg), command_qos)
@@ -2703,6 +2785,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--phase-timeout-s", type=float, default=900.0)
     parser.add_argument(
+        "--parking-completion", choices=("policy", "reverse", "charging"),
+        default=os.environ.get("CAMROD_CARLA_PARKING_COMPLETION", "policy"),
+        help="expected battery-policy completion; reverse requires PARKED without charging",
+    )
+    parser.add_argument(
         "--start-drop-zone-tolerance-m",
         type=float,
         default=5.0,
@@ -2716,6 +2803,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    if args.parking_completion not in {"policy", "reverse", "charging"}:
+        raise MatrixError("--parking-completion must be policy, reverse, or charging")
     if not math.isfinite(args.phase_timeout_s) or args.phase_timeout_s <= 0.0 or args.phase_timeout_s > 3600.0:
         raise MatrixError("--phase-timeout-s must be in (0, 3600]")
     if not math.isfinite(args.drop_zone_tolerance_m) or args.drop_zone_tolerance_m <= 0.0:
@@ -2884,6 +2973,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             args.role_name, expected_actor_id=args.expected_actor_id
         )
         report["scope"].update({
+            "expected_parking_completion": args.parking_completion,
             "mission_intent": authority["mission_intent"],
             "return_authority": authority["return_authority"],
             "expected_arrival_state": authority["expected_arrival_state"],
@@ -2945,7 +3035,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     "frontend dispatch attempt through frontend return request"
                 ),
                 "return_duration_s": (
-                    "frontend return request attempt through PARKED+CHARGING"
+                    "frontend return request attempt through confirmed parking-policy completion"
                 ),
                 "outbound_distance_m": (
                     "CARLA odometry accumulated from dispatch to WAIT_RETURN"
@@ -3242,29 +3332,12 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     result,
                 )
             wait_until(
-                lambda snap: WAITING_FOR_CHARGING
-                in ((snap.get("sequences") or {}).get("service_state_ids") or []),
+                lambda snap: bool(parking_completion(snap, args.parking_completion)),
                 args.phase_timeout_s,
-                "WAITING_FOR_CHARGING at Drop Zone",
+                f"confirmed {args.parking_completion} parking completion",
                 result,
             )
-            wait_until(
-                lambda snap: (
-                    (snap.get("service_state") or {}).get("state") == CHARGING
-                    and any(
-                        phase.endswith(":PARKED")
-                        for phase in (
-                            (snap.get("sequences") or {}).get(
-                                "parking_phases"
-                            ) or []
-                        )
-                    )
-                ),
-                args.phase_timeout_s,
-                "PARKED and CHARGING",
-                result,
-            )
-            # PARKED/CHARGING and a same-frame collision can be ready in the
+            # Parking completion and a same-frame collision can be ready in the
             # executor together.  wait_until() returns after the terminal
             # state callback, so drain the remaining ready callbacks before
             # freezing per-site evidence.
@@ -3296,7 +3369,7 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
             ]
             if missing_observations:
                 raise MatrixError(
-                    f"{key}: required live observations missing at charging: "
+                    f"{key}: required live observations missing at parking completion: "
                     f"{', '.join(missing_observations)}"
                 )
             error = pose_error_m(result["final_localization_pose"], drop_zone)
@@ -3324,12 +3397,12 @@ def run_matrix(args: argparse.Namespace, sites: Mapping[str, Site], drop_zone: D
                     f"is incomplete; required={required_states}, "
                     f"observed={service_ids}"
                 )
-            parked = any(phase.endswith(":PARKED") for phase in parking_phases)
-            result["parking_confirmed"] = parked
-            result["charging_confirmed"] = bool(
-                (final_snapshot.get("service_state") or {}).get("state")
-                == CHARGING
-            )
+            completion = parking_completion(final_snapshot, args.parking_completion)
+            if not completion:
+                raise MatrixError(f"{key}: parking completion changed during final callback drain")
+            result["parking_completion"] = completion
+            result["parking_confirmed"] = True
+            result["charging_confirmed"] = completion == "charging"
             if not bool(motion.get("motion_command_observed")):
                 raise MatrixError(f"{key}: no nonzero final cmd_vel was observed")
             if int(motion.get("cmd_vel_samples", 0)) < 2:
@@ -3448,6 +3521,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         authority = ui_authority_contract(args)
         report["scope"].update({
+            "expected_parking_completion": args.parking_completion,
             "mission_intent": authority["mission_intent"],
             "return_authority": authority["return_authority"],
             "expected_arrival_state": authority["expected_arrival_state"],

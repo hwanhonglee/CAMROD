@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import pytest
 
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
@@ -145,11 +146,11 @@ def test_dry_plan_preserves_site_order_and_writes_nothing(tmp_path: Path) -> Non
         "B7",
     ]
     assert all(line.endswith("site_access.sh camping-sites") for line in commands)
-    assert "CARLA map profile: woraksan-camrod-site-geometry-v15" in result.stdout
-    assert "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15" in result.stdout
+    assert "CARLA map profile: woraksan-camrod-site-geometry-v224" in result.stdout
+    assert "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone" in result.stdout
 
 
-def test_default_entrypoint_self_pins_v15_over_stale_ranger_environment(
+def test_default_entrypoint_self_pins_v224_over_stale_ranger_environment(
     tmp_path: Path,
 ) -> None:
     ranger_root = tmp_path / "ranger"
@@ -179,19 +180,21 @@ def test_default_entrypoint_self_pins_v15_over_stale_ranger_environment(
         text=True,
     )
 
-    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15"
+    expected_name = "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone"
     expected_town = f"map_package/Maps/{expected_name}/{expected_name}"
     assert "Lifecycle entrypoint:" in result.stdout
     assert result.stdout.count("site_access.sh") >= 2
-    assert "CARLA map profile: woraksan-camrod-site-geometry-v15" in result.stdout
+    assert "CARLA map profile: woraksan-camrod-site-geometry-v224" in result.stdout
     assert f"CARLA map: /Game/{expected_town}" in result.stdout
     assert f"CARLA town: {expected_town}" in result.stdout
     assert "stale-profile" not in result.stdout
     assert "/Maps/stale/stale" not in result.stdout
 
 
+@pytest.mark.parametrize("version", ("v15", "v13"))
 def test_default_entrypoint_supports_explicit_legacy_profile_over_stale_env(
     tmp_path: Path,
+    version: str,
 ) -> None:
     environment_file = tmp_path / "environment.env"
     environment_file.write_text(
@@ -203,7 +206,7 @@ def test_default_entrypoint_supports_explicit_legacy_profile_over_stale_env(
     environment.update(
         {
             "RANGER_ENV_FILE": str(environment_file),
-            "CAMROD_CARLA_MAP_PROFILE": "woraksan-camrod-site-geometry-v13",
+            "CAMROD_CARLA_MAP_PROFILE": f"woraksan-camrod-site-geometry-{version}",
         }
     )
 
@@ -216,8 +219,8 @@ def test_default_entrypoint_supports_explicit_legacy_profile_over_stale_env(
         text=True,
     )
 
-    assert "CARLA map profile: woraksan-camrod-site-geometry-v13" in result.stdout
-    assert "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v13" in result.stdout
+    assert f"CARLA map profile: woraksan-camrod-site-geometry-{version}" in result.stdout
+    assert f"Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_{version}" in result.stdout
     assert "/Maps/stale/stale" not in result.stdout
 
 
@@ -279,7 +282,7 @@ def test_explicit_canonical_lifecycle_entrypoint_is_accepted() -> None:
     )
 
     assert "site_access.sh camping-sites" in result.stdout
-    assert "CARLA map profile: woraksan-camrod-site-geometry-v15" in result.stdout
+    assert "CARLA map profile: woraksan-camrod-site-geometry-v224" in result.stdout
 
 
 def test_guest_plan_selects_visible_usage_complete_authority_and_writes_nothing(

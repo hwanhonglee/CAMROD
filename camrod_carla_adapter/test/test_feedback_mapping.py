@@ -1,4 +1,5 @@
 import math
+import json
 from pathlib import Path
 
 import pytest
@@ -45,22 +46,32 @@ def test_woraksan_alignment_maps_xodr_origin_from_georeferences():
         8.142811119961662e-7, abs=1.0e-15)
 
 
-def test_woraksan_drop_zone_spawn_maps_inside_lanelet_751():
+def test_woraksan_spawn_maps_to_current_develop_drop_zone_center_and_yaw():
     transform = _woraksan_transform()
-    # CARLA XODR Road 12/lane 2/s=2.0 is a road-center start just ahead of the
-    # drop zone. The test locks the spawn/alignment cohort used by navigation.
-    position, orientation = transform_pose(
-        (-20.672548294067383, 33.95176696777344, 3.063404083251953),
-        quaternion_from_yaw(math.radians(6.8785247802734375)),
-        transform,
+    package = Path(__file__).resolve().parents[1]
+    drop_zones = yaml.safe_load(
+        (package.parent / "camrod_bringup/config/map/drop_zones.yaml").read_text(encoding="utf-8")
+    )["drop_zones"]
+    drop_zone = next(item for item in drop_zones if item["type"] == "drop_zone")
+    parking = yaml.safe_load(
+        (package.parent / "camrod_control/config/parking.yaml").read_text(encoding="utf-8")
+    )["/parking/reverse_parking_controller"]["ros__parameters"]
+    body_yaw_deg = drop_zone["yaw_deg"] + (
+        180.0 if parking["station_yaw_represents_reverse_axis"] else 0.0
     )
-    assert position[0] == pytest.approx(-13.720391810621027, abs=1.0e-12)
-    assert position[1] == pytest.approx(43.441935847136165, abs=1.0e-12)
-    assert position[2] == pytest.approx(3.063404083251953)
-    expected_yaw = math.radians(6.8785247802734375) + 8.142811119961662e-7
-    assert _angle_difference(
-        yaw_from_quaternion(orientation), expected_yaw) == pytest.approx(
-            0.0, abs=1.0e-12)
+    # Start inside the authored station so the first real UI dispatch must
+    # exercise the production Drop Zone departure state machine.
+    for name in ("ranger_spawn_camrod_control_only.json", "ranger_spawn_camrod_full_sensors.json"):
+        objects = json.loads((package / "config" / name).read_text(encoding="utf-8"))["objects"]
+        spawn = next(item for item in objects if item["type"] == "vehicle.ranger.default")["spawn_point"]
+        position, orientation = transform_pose(
+            (spawn["x"], spawn["y"], spawn["z"]),
+            quaternion_from_yaw(math.radians(spawn["yaw"])), transform,
+        )
+        assert position[:2] == pytest.approx((drop_zone["x"], drop_zone["y"]), abs=1.0e-8)
+        assert _angle_difference(
+            yaw_from_quaternion(orientation), math.radians(body_yaw_deg)
+        ) == pytest.approx(0.0, abs=1.0e-8)
 
 
 def test_transform_rotates_translation_and_orientation():

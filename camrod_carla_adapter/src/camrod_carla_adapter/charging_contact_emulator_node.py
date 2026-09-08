@@ -49,6 +49,9 @@ class ContactSample:
     planning_state: str = ""
     parking_status_age_s: float = math.inf
     planning_state_age_s: float = math.inf
+    # The auto dispatcher distinguishes a non-charging reverse park from an
+    # AprilTag docking attempt. Proximity alone must not turn parking into charge.
+    parking_method: str = ""
 
 
 def _finite_positive(value, name):
@@ -110,6 +113,8 @@ def contact_candidate(sample, station, config=ContactConfig()):
     checked = validate_contact_config(config)
     parking_state = str(sample.parking_state).strip().upper()
     planning_state = str(sample.planning_state).strip().upper()
+    if str(sample.parking_method).strip().lower() == "reverse":
+        return False
     # The reverse-parking controller reports WAIT_FOR_CHARGING, while the
     # AprilTag controller uses WAITING_FOR_CHARGING for the same physical
     # terminal state.  Accept both exact spellings; every pose, odometry,
@@ -242,6 +247,7 @@ class CarlaChargingContactEmulatorNode(Node):
 
         self._lock = threading.Lock()
         self._parking_state = "IDLE"
+        self._parking_method = ""
         self._parking_status_received_s = None
         self._planning_state = ""
         self._planning_state_received_s = None
@@ -301,6 +307,11 @@ class CarlaChargingContactEmulatorNode(Node):
     def _on_parking_status(self, message):
         with self._lock:
             self._parking_state = str(message.operating_state).strip().upper()
+            self._parking_method = next(
+                (part.split("=", 1)[1] for part in str(message.message).split()
+                 if part.startswith("parking_method=")),
+                "",
+            )
             self._parking_status_received_s = self._now_s()
 
     def _on_planning_state(self, message):
@@ -334,6 +345,7 @@ class CarlaChargingContactEmulatorNode(Node):
                 pose_age_s=now_s - self._pose_received_s,
                 odometry_age_s=now_s - self._odometry_received_s,
                 planning_state=self._planning_state,
+                parking_method=self._parking_method,
                 parking_status_age_s=(
                     math.inf
                     if self._parking_status_received_s is None

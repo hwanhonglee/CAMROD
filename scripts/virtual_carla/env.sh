@@ -496,6 +496,14 @@ virtual_carla_validate_map_selection() {
         return 1
       fi
       ;;
+    "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_PROFILE_ID}")
+      if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_UE_MAP}" || \
+            "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_TOWN}" ]]; then
+        virtual_carla_die \
+          "map profile ${CAMROD_CARLA_MAP_PROFILE} is bound to ${CAMROD_CARLA_SITE_ACCESS_LEGACY_V15_UE_MAP}"
+        return 1
+      fi
+      ;;
     "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_PROFILE_ID}")
       if [[ "${CARLA_UE_MAP}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_UE_MAP}" || \
             "${CARLA_TOWN}" != "${CAMROD_CARLA_SITE_ACCESS_LEGACY_V13_TOWN}" ]]; then

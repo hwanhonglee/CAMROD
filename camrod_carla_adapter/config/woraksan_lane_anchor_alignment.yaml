@@ -8,9 +8,11 @@
     # This SE(2) maps ROS-convention CARLA/XODR odometry into the CAMROD map.
     # It is not a one-point fit to an arbitrary spawn or a settled actor pose.
     # A 1 m eastward XODR baseline gives the small meridian-convergence yaw.
-    # The checked-in Ranger spawn is XODR Road 12/lane 2/s=2.0, whose mapped
-    # point (-13.72039181, 43.44193585) is inside lanelet 751, 3.8 m in front
-    # of the drop-zone center and connected to every configured campsite.
+    # The checked-in Ranger spawn maps to the v2.2.4 dz_area_7019 center
+    # (-11.3585, 40.0901), body yaw +97.7873 deg (station reverse axis + 180).
+    # Its z is 0.50 m above the
+    # ray-cast road surface so the same physical vehicle settles normally
+    # before charger-departure tests. The coordinate transform is unchanged.
     map_offset_x_m: 6.952184129722062
     map_offset_y_m: 9.490185712639594
     map_yaw_offset_rad: 8.142811119961662e-7

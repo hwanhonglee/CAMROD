@@ -307,25 +307,25 @@ def test_ui_identity_rejects_installed_bundle_content_mismatch(tmp_path):
         audit.audit_installed_ui_identity(source, install)
 
 
-def test_current_site_geometry_map_is_exactly_v15():
+def test_current_site_geometry_map_is_exactly_v224_station_layout():
     assert audit.SITE_GEOMETRY_ALLOWED_CARLA_MAPS == (
         audit.SITE_GEOMETRY_CURRENT_CARLA_MAP,
     )
-    v15 = audit.SITE_GEOMETRY_CURRENT_CARLA_MAP
-    assert v15.endswith(
-        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15/"
-        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15"
+    current = audit.SITE_GEOMETRY_CURRENT_CARLA_MAP
+    assert current.endswith(
+        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone/"
+        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone"
     )
     audit.validate_audited_map(
-        "develop-plus-carla-site-geometry-v27", v15
+        "develop-plus-carla-site-geometry-v27", current
     )
-    for legacy_version in ("v13", "v12", "v11"):
-        legacy = v15.replace("v15", legacy_version)
-        with pytest.raises(audit.AuditError, match="exact v15 map"):
+    for legacy_version in ("v15", "v13", "v12", "v11"):
+        legacy = current.replace("v224_dropzone", legacy_version)
+        with pytest.raises(audit.AuditError, match="exact v224 Drop Zone map"):
             audit.validate_audited_map(
                 "develop-plus-carla-site-geometry-v27", legacy
             )
-    with pytest.raises(audit.AuditError, match="exact v15 map"):
+    with pytest.raises(audit.AuditError, match="exact v224 Drop Zone map"):
         audit.validate_audited_map(
             "develop-plus-carla-site-geometry-v27",
             "map_package/Maps/unreviewed/unreviewed",
@@ -435,7 +435,7 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "pose_topic": "/localization/pose",
         "odometry_topic": "/odom",
         "parking_status_topic": (
-            "/parking/apriltag_parking_controller/status"
+            "/parking/status"
         ),
         "planning_state_topic": "/planning/state_machine/state",
         "charging_topic": "/camrod_carla/platform_heartbeat/charging",
@@ -600,10 +600,10 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "RPPReverse.allow_reversing"
     ] is True
     parking = "/parking/apriltag_parking_controller"
-    assert parity[parking]["heading_gain"] == 1.5
-    assert parity[parking]["lateral_to_heading_gain"] == 2.5
-    assert parity[parking]["reverse_approach_speed_mps"] == 0.2
-    assert parity[parking]["final_insertion_speed_mps"] == 0.05
+    assert parity[parking]["heading_gain"] == 1.2
+    assert parity[parking]["lateral_to_heading_gain"] == 2.0
+    assert parity[parking]["reverse_approach_speed_mps"] == 0.555556
+    assert parity[parking]["final_insertion_speed_mps"] == 0.138889
     assert site[parking]["heading_gain"] == 1.5
     assert site[parking]["lateral_to_heading_gain"] == 2.7
     assert site[parking]["reverse_approach_speed_mps"] == 0.2

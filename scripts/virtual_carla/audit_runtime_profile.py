@@ -28,10 +28,10 @@ PROFILE_LAUNCHES = {
     "camrod_carla_woraksan_tuned.launch.py": "woraksan-tuned",
 }
 SITE_GEOMETRY_CURRENT_CARLA_MAP = (
-    "map_package/Maps/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15/"
-    "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15"
+    "map_package/Maps/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone/"
+    "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone"
 )
-# Current v27 evidence is accepted only on the exact v15 world. Older maps
+# Current v27 runtime evidence is accepted only on the v2.2.4 station world. Older maps
 # remain usable for replaying their already-labelled historical artifacts, but
 # they must never authorize a new current-profile motion run.
 SITE_GEOMETRY_ALLOWED_CARLA_MAPS = (SITE_GEOMETRY_CURRENT_CARLA_MAP,)
@@ -39,7 +39,7 @@ CARLA_CHARGING_CONTACT_PARAMETERS = {
     "drop_zone_id": "drop_zone",
     "pose_topic": "/localization/pose",
     "odometry_topic": "/odom",
-    "parking_status_topic": "/parking/apriltag_parking_controller/status",
+    "parking_status_topic": "/parking/status",
     "planning_state_topic": "/planning/state_machine/state",
     "charging_topic": "/camrod_carla/platform_heartbeat/charging",
     "position_tolerance_m": 0.35,
@@ -113,6 +113,7 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
         "rotation_recovery_breakaway_status_timeout_sec": 0.30,
     },
     "/control/cmd_vel_safety_gate": {
+        "parking_dispatcher_status_topic": "/parking/status",
         "speed_scale": 0.5,
         "allow_manual_departure_while_charging": False,
         "manual_charging_departure_command_timeout_s": 0.35,
@@ -187,14 +188,28 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
         "pose_jump_check_topic": "",
         "reissue_active_goal_after_route_recovery_when_nav_active": False,
     },
+    "/parking/parking_dispatcher": {
+        "charging_threshold_percent": 35.0,
+        "status_topic": "/parking/status",
+        "service_state_topic": "/service/state",
+    },
+    "/parking/reverse_parking_controller": {
+        "status_topic": "/parking/private/reverse/status",
+        "complete_without_charging": True,
+        "maximum_reverse_distance_m": 5.0,
+        "reverse_speed_mps": 0.444444,
+        "final_approach_speed_mps": 0.138889,
+        "charging_wait_timeout_s": 45.0,
+    },
     "/parking/apriltag_parking_controller": {
-        "heading_gain": 1.5,
-        "lateral_to_heading_gain": 2.5,
-        # The latest develop node defaults are the effective values in the
-        # AprilTag composition because the nested detector launch scopes its
-        # generic `parameter_file` argument over the controller include.
-        "reverse_approach_speed_mps": 0.2,
-        "final_insertion_speed_mps": 0.05,
+        "status_topic": "/parking/private/apriltag/status",
+        "heading_gain": 1.2,
+        "lateral_to_heading_gain": 2.0,
+        # The scoped detector include must preserve the production parking
+        # parameter file for both controllers; C++ fallback defaults are not
+        # evidence that the configured develop behavior reached the runtime.
+        "reverse_approach_speed_mps": 0.555556,
+        "final_insertion_speed_mps": 0.138889,
         "translation_stop_tag_distance_m": 0.40,
         "final_lateral_tolerance_m": 0.03,
         "minimum_approach_turn_radius_m": 0.85,
@@ -245,6 +260,7 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
         "fallback_odom_topic": "",
     },
     "/ui_backend": {
+        "parking_method": "auto",
         "enable_operator_telemetry": True,
         "return_site_exit_rearm_enabled": False,
         "telemetry_raw_lidar_bbox_overlay_enabled": False,
@@ -976,7 +992,7 @@ def validate_audited_map(profile: str, normalized_map: str) -> None:
         and normalized_map != SITE_GEOMETRY_CURRENT_CARLA_MAP
     ):
         raise AuditError(
-            "current site-geometry v27 profile requires the exact v15 map "
+            "current site-geometry v27 profile requires the exact v224 Drop Zone map "
             f"{SITE_GEOMETRY_CURRENT_CARLA_MAP!r}; got {normalized_map!r}"
         )
 
