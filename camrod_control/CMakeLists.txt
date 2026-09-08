@@ -192,6 +192,14 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_parking_selection_policy PRIVATE include)
 
+  # Real dispatcher callbacks, isolated from field DDS and private controllers.
+  ament_add_gtest(test_parking_dispatcher test/test_parking_dispatcher.cpp)
+  ament_target_dependencies(test_parking_dispatcher rclcpp avg_msgs diagnostic_msgs)
+  target_compile_options(test_parking_dispatcher PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>)
+  set_tests_properties(test_parking_dispatcher PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=189;ROS_LOCALHOST_ONLY=1")
+
   ament_add_gtest(test_reverse_parking_completion
     test/test_reverse_parking_completion.cpp
   )

@@ -67,9 +67,18 @@ inline std::optional<double> usableParkingBatteryPercent(
 inline ParkingMethod selectParkingMethod(const std::optional<double> &percent,
                                          const double threshold,
                                          const bool force_docking) {
-  // Unknown/stale SOC cannot authorize a non-charging parking completion.
+  // The final destination AFTER reverse parking. Unknown/stale SOC cannot
+  // authorize a non-charging completion; it never skips the reverse approach.
   return force_docking || !percent.has_value() || !std::isfinite(*percent) ||
                  *percent < threshold
+      ? ParkingMethod::kAprilTag : ParkingMethod::kReverse;
+}
+
+inline ParkingMethod initialParkingMethod(const bool force_docking,
+                                          const bool fresh_reverse_parked) {
+  // A normal Return always establishes the near-station reverse pose first.
+  // Only an explicit Dock may reuse an actual, fresh, owned reverse completion.
+  return force_docking && fresh_reverse_parked
       ? ParkingMethod::kAprilTag : ParkingMethod::kReverse;
 }
 
