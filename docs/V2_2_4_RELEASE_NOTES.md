@@ -131,8 +131,11 @@ docking success.
 Preserve the operator's current values: Nav2 route XY tolerance 0.10 m in both
 planning profiles; AprilTag heading/lateral gains 1.2/2.0 in both parking profiles;
 bringup GNSS heading trim -92 degrees. These are not silently reset to upstream
-defaults. The local snap correction remains 0.05 m, and final reverse parking
-remains 0.25 m: they are distinct arrival checks.
+defaults. The field-tuned local parking-approach tolerance is 0.20 m, and final
+reverse parking remains 0.25 m: they are distinct arrival checks. The wider
+local tolerance avoids redundant correction before the 90-degree turn; there
+is no post-turn XY recheck, so it must not be treated as compensation for a
+wrong antenna offset or asynchronous Fix/heading timestamps.
 
 The operator confirmed that the LEFT GNSS antenna produces NavSatFix. Existing
 TF and explicit lever-arm parameters use x=0, y=+0.45 m from robot_center_link.

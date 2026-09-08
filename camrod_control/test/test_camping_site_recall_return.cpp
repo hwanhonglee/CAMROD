@@ -77,6 +77,9 @@ protected:
   void elapsed(const double seconds) {
     node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(seconds);
   }
+  void setCrabReturnTimeout(const double seconds) {
+    node_->crab_return_timeout_s_ = seconds;
+  }
   std::pair<bool, std::string> returnRequest() {
     return node_->requestReturn("robot_ui:loading_complete");
   }
@@ -447,6 +450,19 @@ TEST_F(CampingSiteManeuverControllerTest, BatteryUrgentReturnSkipsLoadingConfirm
   EXPECT_DOUBLE_EQ(offset(), 0.30);
   tick();
   EXPECT_EQ(phase(), Phase::kCrabOut);
+  EXPECT_FALSE(returnPublished());
+}
+
+TEST_F(CampingSiteManeuverControllerTest, BatteryUrgentYawAlignmentTimesOutFailClosed) {
+  startRecall(1, false);
+  ASSERT_TRUE(urgentReturnRequest().first);
+  ASSERT_EQ(phase(), Phase::kAlignRetraceYaw);
+  setCrabReturnTimeout(1.0);
+  elapsed(1.1);
+
+  tick();
+
+  EXPECT_EQ(phase(), Phase::kError);
   EXPECT_FALSE(returnPublished());
 }
 
