@@ -1,0 +1,431 @@
+{
+  "observed_at_utc": "2026-09-08T05:59:54.889404+00:00",
+  "method": "8kHz mono float PCM; normalized FFT cross-correlation in 20s timestamp-local recording window; threshold .90",
+  "event_file": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/events_domain5.jsonl",
+  "read_prefix_bytes": 114858,
+  "read_prefix_sha256": "a7fd8031c3736c6139b420208905080cf1d5339854cb400e4f724a0c3502eb15",
+  "audio_source": "actual USB PulseAudio output monitor; not microphone; not dummy sink",
+  "interpretation": "Waveform match proves the packaged clip in recorded software output, not acoustic audibility or mission success. AudioRequest lacks mission/site fields; mission attribution is time-correlated to native matrix evidence.",
+  "records": [
+    {
+      "scope": "accepted_suite02_B1_delivery",
+      "key": "navigation.to_campsite",
+      "request": {
+        "received_utc": "2026-09-08T05:14:12.841605+00:00",
+        "received_unix_ns": 1788844452841621503,
+        "monotonic_ns": 1038666740368209,
+        "node_clock_ns": 1788844452841629910,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "navigation.to_campsite",
+          "priority": 1,
+          "interrupt": false,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 87
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:14:13.077948+00:00",
+        "received_unix_ns": 1788844453077963216,
+        "monotonic_ns": 1038666976709829,
+        "node_clock_ns": 1788844453077970645,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844453,
+              "nanosec": 77633182
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "navigation.to_campsite",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 91
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:14:19.240618+00:00",
+        "received_unix_ns": 1788844459240632817,
+        "monotonic_ns": 1038673139379416,
+        "node_clock_ns": 1788844459240639576,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844459,
+              "nanosec": 240289423
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 92
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0003.ogg",
+      "recording_sha256": "a8c0933c1715dca1834c4389aab6aebe53614a7b35125c2e74151e6edf0408b3",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/navigation/to_campsite.wav",
+      "asset_sha256": "4d384985e8ce88a1fe176565cd1a74f4b5c3747695d2c656f007fcfe5591680a",
+      "asset_duration_s": 5.88,
+      "matched_segment_offset_s": 71.979875,
+      "normalized_waveform_correlation": 0.9642374546860516,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    },
+    {
+      "scope": "accepted_suite02_B1_delivery",
+      "key": "navigation.arrived_campsite",
+      "request": {
+        "received_utc": "2026-09-08T05:17:37.441908+00:00",
+        "received_unix_ns": 1788844657441927484,
+        "monotonic_ns": 1038871340674284,
+        "node_clock_ns": 1788844657441939098,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "navigation.arrived_campsite",
+          "priority": 1,
+          "interrupt": false,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 110
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:17:37.678869+00:00",
+        "received_unix_ns": 1788844657678883202,
+        "monotonic_ns": 1038871577629759,
+        "node_clock_ns": 1788844657678888899,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844657,
+              "nanosec": 678560327
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "navigation.arrived_campsite",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 113
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:17:42.586880+00:00",
+        "received_unix_ns": 1788844662586890354,
+        "monotonic_ns": 1038876485636895,
+        "node_clock_ns": 1788844662586895880,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844662,
+              "nanosec": 586579542
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 114
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0003.ogg",
+      "recording_sha256": "a8c0933c1715dca1834c4389aab6aebe53614a7b35125c2e74151e6edf0408b3",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/navigation/arrived_campsite.wav",
+      "asset_sha256": "2ec89fe0f9697a7006ac544d9530eeb7af62b842573a2e89c6832b7e41e45605",
+      "asset_duration_s": 4.584,
+      "matched_segment_offset_s": 276.597625,
+      "normalized_waveform_correlation": 0.9905679273271015,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    },
+    {
+      "scope": "accepted_suite02_B1_delivery",
+      "key": "navigation.to_dropzone",
+      "request": {
+        "received_utc": "2026-09-08T05:18:21.039279+00:00",
+        "received_unix_ns": 1788844701039293952,
+        "monotonic_ns": 1038914938040669,
+        "node_clock_ns": 1788844701039300819,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "navigation.to_dropzone",
+          "priority": 1,
+          "interrupt": false,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 115
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:18:21.272131+00:00",
+        "received_unix_ns": 1788844701272144136,
+        "monotonic_ns": 1038915170891051,
+        "node_clock_ns": 1788844701272150728,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844701,
+              "nanosec": 271841854
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "navigation.to_dropzone",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 118
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:18:23.626658+00:00",
+        "received_unix_ns": 1788844703626671932,
+        "monotonic_ns": 1038917525418553,
+        "node_clock_ns": 1788844703626677760,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788844703,
+              "nanosec": 626383998
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 119
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0003.ogg",
+      "recording_sha256": "a8c0933c1715dca1834c4389aab6aebe53614a7b35125c2e74151e6edf0408b3",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/navigation/to_dropzone.wav",
+      "asset_sha256": "8c7f268e4c204cae05a8e785c12bbbb0de3b70a311f94ce2d5737addcba56f4c",
+      "asset_duration_s": 2.035375,
+      "matched_segment_offset_s": 320.20550000000003,
+      "normalized_waveform_correlation": 0.973782047373778,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    },
+    {
+      "scope": "FAILED_suite02_B1_recall_clearance_only",
+      "key": "navigation.recall_clear_site",
+      "request": {
+        "received_utc": "2026-09-08T05:34:37.519111+00:00",
+        "received_unix_ns": 1788845677519125977,
+        "monotonic_ns": 1039891417872808,
+        "node_clock_ns": 1788845677519133744,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "navigation.recall_clear_site",
+          "priority": 2,
+          "interrupt": true,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 180
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:34:37.788560+00:00",
+        "received_unix_ns": 1788845677788575615,
+        "monotonic_ns": 1039891687322191,
+        "node_clock_ns": 1788845677788582995,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788845677,
+              "nanosec": 787491904
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "navigation.recall_clear_site",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 182
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:34:44.699088+00:00",
+        "received_unix_ns": 1788845684699099523,
+        "monotonic_ns": 1039898597846013,
+        "node_clock_ns": 1788845684699105564,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788845684,
+              "nanosec": 698828458
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 183
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0005.ogg",
+      "recording_sha256": "f87625821eb0f53920233da4d3ee477ddd2b54d602e2904dad0117144d1edb0b",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/navigation/recall_clear_site.wav",
+      "asset_sha256": "159ec26b24c574f971a89a50b500c893a531caaf822061e313c211d18ef89d72",
+      "asset_duration_s": 6.552,
+      "matched_segment_offset_s": 96.713625,
+      "normalized_waveform_correlation": 0.9982714391035968,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    },
+    {
+      "scope": "runtime_restart_station_contact_NOT_optional_dock_E2E",
+      "key": "battery.charging",
+      "request": {
+        "received_utc": "2026-09-08T05:44:54.963054+00:00",
+        "received_unix_ns": 1788846294963060350,
+        "monotonic_ns": 1040508861806490,
+        "node_clock_ns": 1788846294963063650,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "battery.charging",
+          "priority": 1,
+          "interrupt": false,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 252
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:44:55.177873+00:00",
+        "received_unix_ns": 1788846295177884514,
+        "monotonic_ns": 1040509076630929,
+        "node_clock_ns": 1788846295177889799,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788846295,
+              "nanosec": 177633685
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "battery.charging",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 254
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:44:56.984228+00:00",
+        "received_unix_ns": 1788846296984243226,
+        "monotonic_ns": 1040510882989933,
+        "node_clock_ns": 1788846296984249120,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788846296,
+              "nanosec": 983914592
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 255
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0006.ogg",
+      "recording_sha256": "fa9d7fff34e8591b372a4ffb8188bacee2ffc4666b3182b39f271e4e64b4f13a",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/battery/charging.wav",
+      "asset_sha256": "efde29b038b19eba3817a48b09c76db9281a9cb9da73b0bb17181a99b773b200",
+      "asset_duration_s": 1.488,
+      "matched_segment_offset_s": 113.98575,
+      "normalized_waveform_correlation": 0.9820102526610444,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    },
+    {
+      "scope": "INTERRUPTED_suite03_B1_recall_departure_only",
+      "key": "navigation.to_campsite",
+      "request": {
+        "received_utc": "2026-09-08T05:52:11.033529+00:00",
+        "received_unix_ns": 1788846731033546525,
+        "monotonic_ns": 1040944932293282,
+        "node_clock_ns": 1788846731033559052,
+        "topic": "/voice/voice_announcer/say",
+        "message": {
+          "key": "navigation.to_campsite",
+          "priority": 1,
+          "interrupt": false,
+          "locale": ""
+        },
+        "observation_only": true,
+        "evidence_line": 257
+      },
+      "playing": {
+        "received_utc": "2026-09-08T05:52:11.289861+00:00",
+        "received_unix_ns": 1788846731289875226,
+        "monotonic_ns": 1040945188621905,
+        "node_clock_ns": 1788846731289882293,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788846731,
+              "nanosec": 289572401
+            },
+            "frame_id": ""
+          },
+          "state": 1,
+          "current_key": "navigation.to_campsite",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 261
+      },
+      "idle_after_playing": {
+        "received_utc": "2026-09-08T05:52:17.502345+00:00",
+        "received_unix_ns": 1788846737502357554,
+        "monotonic_ns": 1040951401104177,
+        "node_clock_ns": 1788846737502363889,
+        "topic": "/voice/voice_announcer/state",
+        "message": {
+          "header": {
+            "stamp": {
+              "sec": 1788846737,
+              "nanosec": 501335297
+            },
+            "frame_id": ""
+          },
+          "state": 0,
+          "current_key": "",
+          "queue_size": 0
+        },
+        "observation_only": true,
+        "evidence_line": 262
+      },
+      "recording": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/mission_audio/resumed_20260908T044213Z_domain188/segments_aSGKBY/mission_0006.ogg",
+      "recording_sha256": "fa9d7fff34e8591b372a4ffb8188bacee2ffc4666b3182b39f271e4e64b4f13a",
+      "asset": "/home/hong/camrod_ws/src/camrod_voice/resource/audio/ko-KR/navigation/to_campsite.wav",
+      "asset_sha256": "4d384985e8ce88a1fe176565cd1a74f4b5c3747695d2c656f007fcfe5591680a",
+      "asset_duration_s": 5.88,
+      "matched_segment_offset_s": 550.21625,
+      "normalized_waveform_correlation": 0.9687981685021999,
+      "software_output_waveform_match": true,
+      "acoustic_room_audibility_verified": false
+    }
+  ]
+}

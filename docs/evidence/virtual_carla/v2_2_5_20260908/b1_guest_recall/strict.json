@@ -1,0 +1,119 @@
+{
+  "aggregate": {
+    "actor_id": 98,
+    "all_four_wheels_grounded_for_every_sample": true,
+    "all_sites_charging_confirmed": false,
+    "all_sites_parking_confirmed": true,
+    "charging_completion_count": 0,
+    "fail_count": 0,
+    "maximum_final_speed_mps": 0.003376167554516712,
+    "pass_count": 1,
+    "reverse_parking_count": 1,
+    "site_count": 1,
+    "total_collision_events": 0,
+    "total_elapsed_s": 868.907,
+    "total_odom_distance_m": 173.93541
+  },
+  "expectation": {
+    "actor_role_name": "ego_vehicle",
+    "actor_type_id": "vehicle.ranger.default",
+    "authority": "guest",
+    "canonical_wheels": [
+      "FL",
+      "FR",
+      "RL",
+      "RR"
+    ],
+    "collision_event_count": 0,
+    "maximum_final_speed_mps": 0.05,
+    "mission_intent": "recall",
+    "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+    "sites": [
+      "B1"
+    ],
+    "wheel_in_air_count": 0
+  },
+  "schema": "camrod.virtual_carla.site_evidence_collection_validation.v1",
+  "sites": [
+    {
+      "actor_id": 98,
+      "actor_role_name": "ego_vehicle",
+      "actor_type_id": "vehicle.ranger.default",
+      "all_wheel_in_air_count": 0,
+      "authority": "guest",
+      "charging_confirmed": false,
+      "collision_event_count": 0,
+      "collision_publisher_count": 1,
+      "drop_zone_error_m": 0.23211044921239204,
+      "elapsed_s": 868.907,
+      "final_service_state": "DROP_ZONE_WAIT",
+      "final_speed_mps": 0.003376167554516712,
+      "gif_sha256": "d9046e5949bf6e4f03109d52c7cef8fba9ffb517420530cd1ebd5e337296b05f",
+      "lanelet_sha256": "2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7",
+      "launch_cmdline_sha256": "79a8853e07b0ca98a83872444670d4e3244bfbe9c0d90e687f6f833648b8c433",
+      "matrix_sha256": "dec2a0d2aa7d3c0582cf940b6526ac63700936f0ddb47370b7c40b2a086e82c6",
+      "mission_intent": "recall",
+      "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+      "outbound_distance_m": 81.125159,
+      "outbound_duration_s": 247.615,
+      "parking_completion": "reverse",
+      "parking_confirmed": true,
+      "physical_manifest_sha256": "bcc1526c994015de38c751a1710bdb4e6ec83873584dd5c1d9438790f7cf3276",
+      "png_sha256": "1af698b351603df95a0550eb25b806dc3128e66edb987bf04507171ca26d597e",
+      "return_distance_m": 92.810251,
+      "return_duration_s": 621.292,
+      "runtime_audit_sha256": "c8891e608fb8999033482a92ce53d212657a3cf723a3ff2e61d393e9bb686c6e",
+      "runtime_install_sha256": "c1ec815067a69b4d63a21796c713687f2a2fb883ed90605f497b1534fa665632",
+      "runtime_source_branch": "virtual/carla",
+      "runtime_source_head": "067568ecfe411a5cc31844fa84696220da879249",
+      "runtime_source_path": "/home/hong/camrod_ws/src",
+      "sensor_audit_sha256": "c4f7570b51acd3bc1409df874cd5e9e57ed9a8bd5963f79d1575581a3264403a",
+      "site": "B1",
+      "site_manifest_sha256": "f3761adf43d34cc1f83a2dc5ec3598cb909852359e8d29af18cd351e0c84a746",
+      "software_binding_sha256": "0cbc871a0e963825f3d88542c60d5ce4f034d2ce45eb154d1740d34bbe63df2c",
+      "status": "PASS",
+      "total_odom_distance_m": 173.93541,
+      "umap_sha256": "1af1a6d160f8ee24a97294b104e5be9ca6aec767fc456abcf51f43a0ee4b1343",
+      "wheel_jsonl_sha256": "25f28b20a79b8c35bfe7859b2e2a5c722b3879b4322bce292d53acb20e0f2c8e",
+      "wheel_planar_distance_m": 173.7342228830367,
+      "wheel_sample_count": 9197,
+      "wheel_summary_sha256": "62417edcc6d5eb9ccfed6a772c667c8396f5a65a797d84b029d834db8580b6f6"
+    }
+  ],
+  "source": {
+    "input_root": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff",
+    "metrics_summary": {
+      "checksums_sha256": "b2a007f60d090c9fde0fc25dfd95722469a2baec19862fe6ecec01c233596ac4",
+      "csv_sha256": "83671e01e03caf728c63df3e170b3fdc507b616493a9ecbaa042e68128e84c31",
+      "json_sha256": "b7e896f5aac7a84d5902b825fb934c4efda95b32472430928b5b4b26cf81c702",
+      "markdown_sha256": "b36739508da5b6df40e05862e52f3d8a6b2942b7321118dc14f83d216101155f"
+    },
+    "run_manifest": {
+      "bytes": 11390,
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/run_manifest.json",
+      "sha256": "72c7b9d376fe4d7879623ad31f0bceeb04f706f0b542ebd2b21cf389d7132714"
+    }
+  },
+  "status": "PASS",
+  "validated_at_utc": "2026-09-08T08:56:26.489479+00:00",
+  "validation": {
+    "authority_and_mission_exact": true,
+    "canonical_wheels_grounded": true,
+    "collision_graph_discovered_and_zero_events": true,
+    "current_map_umap_lanelet_identity_verified": true,
+    "final_speed_at_or_below_0_05_mps": true,
+    "input_was_read_only": true,
+    "metrics_cross_checked": true,
+    "native_matrix_status_pass": true,
+    "parking_and_charging_confirmed": false,
+    "parking_policy_completion_confirmed": true,
+    "physical_actor_type_role_backend_consistent": true,
+    "runner_prepass_validating": true,
+    "runner_status_pass": false,
+    "site_manifest_status_pass": true,
+    "site_set_exact_and_unique": true,
+    "software_identity_independently_recomputed": true,
+    "v27_launch_identity_verified": true,
+    "visual_png_gif_and_hashes_verified": true
+  }
+}

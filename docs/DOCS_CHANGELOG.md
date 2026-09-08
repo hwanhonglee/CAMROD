@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+## [virtual-carla-v2.2.5-partial-validation] - 2026-09-08
+
+- Merge pure release `bfc704759` / tag `v2.2.5`; keep CARLA integration separate.
+- Preserve actual runtime067 B1 Guest/Robot handoff, return and reverse-park PASS;
+  preserve optional Dock FAIL and the 38 remaining unaccepted driving cases.
+- Add byte-identical portable evidence, original source/runtime hashes and
+  explicit PNG/GIF, sensor/voice, GNSS and field-acceptance limitations.
+- Correct the active GNSS-profile description. No map, model, controller or
+  sensor runtime was modified by this release documentation/export.
+
+See [current request/verification summary](VIRTUAL_CARLA_V2_2_5_VERIFICATION.md).
+
+---
+
 ## [v2.2.5-pure-parking-planning-ui] - 2026-09-08
 
 - Document isolated detector launch arguments, bounded reverse XY completion,

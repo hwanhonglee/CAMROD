@@ -1,0 +1,122 @@
+{
+  "status": "FAIL",
+  "started_utc": "2026-09-08T08:38:50.121186+00:00",
+  "active_stage": "B1_optional_docking",
+  "completed": [
+    {
+      "stage": "B1_guest_recall_robot_handoff",
+      "status": "PASS",
+      "elapsed_wall_s": 1056.452407117933,
+      "ended_utc": "2026-09-08T08:56:26.573822+00:00",
+      "test_driver_checkout_head": "067568ecfe411a5cc31844fa84696220da879249",
+      "test_driver_identity_file": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/logs/B1_guest_recall_robot_handoff_test_driver_identity.json"
+    }
+  ],
+  "failed_stage": "B1_optional_docking",
+  "guest_service": {
+    "reused_existing_valid_production_page": true,
+    "page_id": "44FC0370BAA823186939243F7FBCDDB1",
+    "preparation": {
+      "started_utc": "2026-09-08T08:38:50.125351+00:00",
+      "page_id": "44FC0370BAA823186939243F7FBCDDB1",
+      "same_url": "http://127.0.0.1:8012/",
+      "action": "Page.reload",
+      "reload_count": 1,
+      "manual_drive_armed": "not_observed_no_manual_websocket_opened",
+      "status": "READY_AFTER_RELOAD",
+      "server_before": {
+        "service_state": 13,
+        "service_state_name": "CHARGING",
+        "ready": true,
+        "engaged": false,
+        "mission_dispatch_active": false,
+        "mission_dispatch_generation": 0,
+        "mission_dispatch_owner": "",
+        "mission_dispatch_intent": "",
+        "mission_phase": "READY",
+        "mission_source": "none"
+      },
+      "before": {
+        "url": "http://127.0.0.1:8012/",
+        "title": "국립공원 로봇 서비스",
+        "ready_state": "complete",
+        "time_origin": 1788856117506.6,
+        "ws_ready": 1,
+        "identity_revision": 9,
+        "service_state": 13,
+        "phase": "charging",
+        "active_intent": null,
+        "mission_generation": 0,
+        "site_card_visible": true,
+        "visible_site_count": 13
+      },
+      "after": {
+        "url": "http://127.0.0.1:8012/",
+        "title": "국립공원 로봇 서비스",
+        "ready_state": "complete",
+        "time_origin": 1788856730141,
+        "ws_ready": 1,
+        "identity_revision": 9,
+        "service_state": 13,
+        "phase": "charging",
+        "active_intent": null,
+        "mission_generation": 0,
+        "site_card_visible": true,
+        "visible_site_count": 13
+      },
+      "server_after": {
+        "service_state": 13,
+        "service_state_name": "CHARGING",
+        "ready": true,
+        "engaged": false,
+        "mission_dispatch_active": false,
+        "mission_dispatch_generation": 0,
+        "mission_dispatch_owner": "",
+        "mission_dispatch_intent": "",
+        "mission_phase": "READY",
+        "mission_source": "none"
+      },
+      "finished_utc": "2026-09-08T08:38:52.193595+00:00"
+    }
+  },
+  "total_stages": 40,
+  "status_scope": "STAGES_EXECUTED_IN_THIS_SUITE_ONLY",
+  "total_planned_stages": 40,
+  "skipped_prior_stages": [],
+  "continuation_of": null,
+  "test_driver_identity": {
+    "checkout_head": "067568ecfe411a5cc31844fa84696220da879249",
+    "meaning": "test_driver_checkout_not_live_runtime_binary",
+    "files": [
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/camping_site_matrix.py",
+        "bytes": 192228,
+        "sha256": "b99a9a02e333a66984917c841c4218c5bbe85c47a1cebf3558b4689338005bc5"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/run_site_evidence_matrix.sh",
+        "bytes": 64151,
+        "sha256": "3fcfa366c7bf2baccbc8b4ea770c88da95f493f5f69c8fb5fe96a7f4f371f5ae"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/validate_site_evidence_collection.py",
+        "bytes": 120525,
+        "sha256": "a86ee4b67a8e2efc0ecb0c33ed1ddcf6c79ce1e60cc32bd781fa02b5e9085cda"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/capture_ui_evidence.sh",
+        "bytes": 36423,
+        "sha256": "f85b0c74d61793966edb9552e280656fe7b2a84acd3482f775b25c1ce1bdaa13"
+      }
+    ],
+    "suite_helper": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/run_durable_suite.py",
+      "bytes": 30968,
+      "sha256": "70258b9c1b19d454396ce52a7cd0f5deaee0fda67bbf8d724824d3e203e4b1fd"
+    }
+  },
+  "defer_earlier_stages": true,
+  "updated_utc": "2026-09-08T08:56:49.262657+00:00",
+  "error": "Command '['/usr/bin/python3', '/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/run_optional_docking_ui.py', '--run', '--camrod-root', '/home/hong/camrod_ws/src', '--output', '/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_optional_docking/functional', '--timeout', '300']' returned non-zero exit status 1.",
+  "ended_utc": "2026-09-08T08:56:49.262471+00:00"
+}

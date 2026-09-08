@@ -1,0 +1,206 @@
+{
+  "schema": "camrod.virtual_carla.desktop_ui_capture.v4",
+  "status": "PASS",
+  "created_at_utc": "2026-09-08T08:56:22.848296+00:00",
+  "script_version": 5,
+  "source": {
+    "git_root": "/home/hong/camrod_ws/src",
+    "branch": "virtual/carla",
+    "head": "067568ecfe411a5cc31844fa84696220da879249",
+    "worktree_clean": false,
+    "worktree_status": [
+      "?? docs/evidence/virtual_carla/current/virtual_test_results.zip"
+    ],
+    "worktree_status_excluded_paths": [
+      "camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/cmake/vanjee_driverConfig.cmake"
+    ],
+    "capture_script": {
+      "path": "capture_ui_evidence.sh",
+      "bytes": 36423,
+      "sha256": "f85b0c74d61793966edb9552e280656fe7b2a84acd3482f775b25c1ce1bdaa13"
+    }
+  },
+  "scope": {
+    "kind": "actual X11 desktop-region recording",
+    "single_region_capture": true,
+    "windows_post_composited": false,
+    "carla_sensor_camera_evidence": false,
+    "ai_generated_or_enhanced": false,
+    "vehicle_motion_or_ui_input_sent_by_capture": false,
+    "unoccluded_window_pixels_validated": false,
+    "statement": "The script recorded already-visible CarlaUE4 and CAMROD Guest UI pixels. It did not command CARLA, ROS, the UI, or the vehicle."
+  },
+  "x11": {
+    "display": ":0",
+    "xauthority": "/run/user/1000/gdm/Xauthority",
+    "geometry_validated_side_by_side": true,
+    "same_titles_and_geometry_before_after_capture": true,
+    "unoccluded_pixels_validated": false,
+    "capture_region": "3620x2016+140+128",
+    "windows": {
+      "carla": {
+        "id": "0x4200037",
+        "title": "CarlaUE4 (64-bit Development SF_VULKAN_SM5) ",
+        "geometry_before": "1780x2010+140+134",
+        "geometry_after": "1780x2010+140+134"
+      },
+      "camrod_guest_ui": {
+        "kind": "guest",
+        "id": "0x4c00004",
+        "title": "국립공원 로봇 서비스",
+        "geometry_before": "1840x2010+1920+128",
+        "geometry_after": "1840x2010+1920+128"
+      }
+    }
+  },
+  "recording": {
+    "requested_duration_s": 86400.0,
+    "actual_duration_s": 919.4,
+    "allow_short_capture": true,
+    "early_finalized": true,
+    "duration_validation_tolerance_s": 1.0,
+    "minimum_short_capture_duration_s": 12.0,
+    "capture_fps": 5,
+    "ffprobe": {
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "h264",
+          "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+          "profile": "High",
+          "codec_type": "video",
+          "codec_tag_string": "avc1",
+          "codec_tag": "0x31637661",
+          "width": 3620,
+          "height": 2016,
+          "coded_width": 3620,
+          "coded_height": 2016,
+          "closed_captions": 0,
+          "has_b_frames": 2,
+          "pix_fmt": "yuv420p",
+          "level": 51,
+          "chroma_location": "left",
+          "refs": 1,
+          "is_avc": "true",
+          "nal_length_size": "4",
+          "r_frame_rate": "5/1",
+          "avg_frame_rate": "5/1",
+          "time_base": "1/10240",
+          "start_pts": 0,
+          "start_time": "0.000000",
+          "duration_ts": 9414656,
+          "duration": "919.400000",
+          "bit_rate": "27930341",
+          "bits_per_raw_sample": "8",
+          "nb_frames": "4597",
+          "disposition": {
+            "default": 1,
+            "dub": 0,
+            "original": 0,
+            "comment": 0,
+            "lyrics": 0,
+            "karaoke": 0,
+            "forced": 0,
+            "hearing_impaired": 0,
+            "visual_impaired": 0,
+            "clean_effects": 0,
+            "attached_pic": 0,
+            "timed_thumbnails": 0
+          },
+          "tags": {
+            "language": "und",
+            "handler_name": "VideoHandler",
+            "vendor_id": "[0][0][0][0]"
+          }
+        }
+      ],
+      "format": {
+        "filename": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4",
+        "nb_streams": 1,
+        "nb_programs": 0,
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "format_long_name": "QuickTime / MOV",
+        "start_time": "0.000000",
+        "duration": "919.400000",
+        "size": "3209966895",
+        "bit_rate": "27930971",
+        "probe_score": 100,
+        "tags": {
+          "major_brand": "isom",
+          "minor_version": "512",
+          "compatible_brands": "isomiso2avc1mp41",
+          "encoder": "Lavf58.76.100"
+        }
+      }
+    },
+    "source_video": {
+      "path": "carla_camrod_desktop.mp4",
+      "retained": false,
+      "removed_after_derivation": true,
+      "bytes_before_retention_action": 3209966895,
+      "sha256_before_retention_action": "95a7385b00c676bb400c95cfa5eae5817c533df173ea355fedfbdd69ea0ee89b"
+    }
+  },
+  "derivatives": {
+    "panel_width_px": 1920,
+    "gif_fps": 8,
+    "contact_sheet_sample_times_s": [
+      45.97,
+      202.268,
+      358.566,
+      514.864,
+      671.162,
+      918.775
+    ],
+    "gif_intervals": [
+      {
+        "start_s": 45.345,
+        "end_s": 46.595
+      },
+      {
+        "start_s": 201.643,
+        "end_s": 202.893
+      },
+      {
+        "start_s": 357.941,
+        "end_s": 359.191
+      },
+      {
+        "start_s": 514.239,
+        "end_s": 515.489
+      },
+      {
+        "start_s": 670.537,
+        "end_s": 671.787
+      },
+      {
+        "start_s": 918.15,
+        "end_s": 919.4
+      }
+    ]
+  },
+  "exact_commands": [
+    "env DISPLAY=:0 LC_ALL=C.UTF-8 XAUTHORITY=/run/user/1000/gdm/Xauthority ffmpeg -n -hide_banner -loglevel warning -f x11grab -draw_mouse 0 -framerate 5 -video_size 3620x2016 -i :0+140\\,128 -t 86400 -an -vf pad=ceil\\(iw/2\\)\\*2:ceil\\(ih/2\\)\\*2:color=black -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 ",
+    "ffprobe -v error -show_format -show_streams -of json /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 ",
+    "ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 ",
+    "# capture_duration_policy allow_short_capture=true requested_duration_s=86400 actual_duration_s=919.400000 tolerance_s=1.000000 early_finalized=true",
+    "ffmpeg -n -hide_banner -loglevel warning -i /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 -vf select=\\'eq\\(n\\\\\\,229\\)+eq\\(n\\\\\\,1011\\)+eq\\(n\\\\\\,1792\\)+eq\\(n\\\\\\,2574\\)+eq\\(n\\\\\\,3355\\)+eq\\(n\\\\\\,4593\\)\\'\\,scale=1920:-2:flags=lanczos\\,tile=2x3:padding=0:margin=0:color=black -frames:v 1 -vsync vfr /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/representative_contact_sheet.png ",
+    "ffmpeg -n -hide_banner -loglevel warning -i /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 -filter_complex \\[0:v\\]select=\\'between\\(t\\\\\\,45.345\\\\\\,46.595\\)+between\\(t\\\\\\,201.643\\\\\\,202.893\\)+between\\(t\\\\\\,357.941\\\\\\,359.191\\)+between\\(t\\\\\\,514.239\\\\\\,515.489\\)+between\\(t\\\\\\,670.537\\\\\\,671.787\\)+between\\(t\\\\\\,918.150\\\\\\,919.400\\)\\'\\,setpts=N/\\(5\\*TB\\)\\,scale=1920:-2:flags=lanczos\\,fps=8\\,split\\[gif_a\\]\\[gif_b\\]\\;\\[gif_a\\]palettegen=stats_mode=diff:max_colors=192\\[palette\\]\\;\\[gif_b\\]\\[palette\\]paletteuse=dither=bayer:bayer_scale=3\\[gif_out\\] -map \\[gif_out\\] -loop 0 /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/representative_motion.gif ",
+    "rm -- /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual/carla_camrod_desktop.mp4 ",
+    "(cd /home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/visual && sha256sum representative_contact_sheet.png representative_motion.gif ffprobe.json exact_commands.txt capture_manifest.json > sha256sums.txt)"
+  ],
+  "artifacts": {
+    "contact_sheet_png": {
+      "path": "representative_contact_sheet.png",
+      "bytes": 12702517,
+      "sha256": "1af698b351603df95a0550eb25b806dc3128e66edb987bf04507171ca26d597e"
+    },
+    "representative_gif": {
+      "path": "representative_motion.gif",
+      "bytes": 20256423,
+      "sha256": "d9046e5949bf6e4f03109d52c7cef8fba9ffb517420530cd1ebd5e337296b05f"
+    }
+  },
+  "sha256sums_scope": "retained files only; when source_video.retained is false, its pre-removal provenance is recorded under recording.source_video",
+  "acceptance_limit": "Visual evidence alone does not prove CARLA actor identity, sensor-source ownership, physical wheel telemetry, safety-gate state, mission success, or that no third-party X11 window occluded part of the recorded region."
+}

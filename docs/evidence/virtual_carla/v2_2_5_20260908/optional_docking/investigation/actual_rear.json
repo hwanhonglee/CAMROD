@@ -1,0 +1,20 @@
+{
+  "received_utc": "2026-09-08T09:08:35.347230+00:00",
+  "topic": "/sensing/camera/econ_rear/image_rect",
+  "source": "actual ROS Image callback, no image synthesis or overlays",
+  "width": 960,
+  "height": 720,
+  "source_encoding": "bgra8",
+  "frame_id": "camera_rear",
+  "ros_stamp": {
+    "sec": 1788858515,
+    "nanosec": 332177855
+  },
+  "png": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/optional_docking_investigation/actual_rear_20260908T090835347230Z.png",
+    "bytes": 1403444,
+    "sha256": "a8f4892375f5bbe7cf72c0da8d0705700ca218a1c9cd8a1049bf638adbb04117"
+  },
+  "ros_commands_published": false,
+  "ui_or_motion_commands_sent": false
+}

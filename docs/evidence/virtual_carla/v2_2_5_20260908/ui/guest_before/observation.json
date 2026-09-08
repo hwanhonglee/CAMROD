@@ -1,0 +1,27 @@
+{
+  "utc": "2026-09-08T07:54:11.269883+00:00",
+  "page_id": "44FC0370BAA823186939243F7FBCDDB1",
+  "browser": {
+    "lastIdentityRevision": 79,
+    "currentServiceStateName": "OPERATOR_STOPPED",
+    "currentPhase": "stopped",
+    "activeMissionGeneration": 0,
+    "wsReady": 1,
+    "siteCardDisplay": "none",
+    "text": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n배터리·주차 안내\n배터리 35% 이상 · 새 호출 가능, 일반 복귀 시 충전하지 않고 후진 주차합니다.\n로봇 상태\n관리자에 의해 중지됨\n현재 운행이 취소되었습니다\n새 운행은 로봇 화면에서 선택해 주세요."
+  },
+  "robot_api": {
+    "service_state": 13,
+    "service_state_name": "CHARGING",
+    "mission_dispatch_active": false,
+    "mission_phase": "READY",
+    "engaged": false,
+    "ready": true
+  },
+  "png": {
+    "path": "guest_actual.png",
+    "bytes": 194298,
+    "sha256": "e8888a39c92c20ba0d078122ea25bd7b77ce51d4982fbc6bd031ded78673cadf"
+  },
+  "scope": "actual read-only DOM, GET and PNG; no motion or page reload"
+}

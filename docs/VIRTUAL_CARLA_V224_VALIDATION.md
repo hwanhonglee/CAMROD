@@ -1,5 +1,9 @@
 # CAMROD v2.2.4 CARLA validation — 2026-09-08
 
+This is a historical investigation log. Current source/result distinctions,
+actual B1 Guest PASS, optional Dock FAIL, PNG/GIF links and the corrected
+GNSS profile scope are in [the v2.2.5 validation summary](VIRTUAL_CARLA_V2_2_5_VERIFICATION.md).
+
 Status: runtime validation in progress. The historical B1–B13 PNG/GIF bundles
 under `docs/evidence/virtual_carla/current` predate this update and do not prove
 the v2.2.4 reverse-first parking workflow.
@@ -132,9 +136,11 @@ Pure localization implements `center = antenna - R(yaw) * offset`, with the
 current left-antenna offset `(0, +0.45 m)` and heading trim `-92 degrees`.
 Five native tests pass, including invariant center over cardinal rotations
 and the error from a lagged heading. This mount must match the actual robot.
-The CARLA profile uses measured simulator center pose and disables that GNSS
-correction path, so a successful driving test does not prove physical GNSS
-timestamp synchronization. There is currently no post-yaw XY correction after
+The separate metric-pose CARLA profile disables that GNSS correction path.
+The active site-geometry profile instead uses production raw GNSS and lever-arm
+correction, with simulated side-mounted antennas and IMU-derived heading.
+Neither profile proves physical GNSS timestamp synchronization or a real
+front-mounted antenna calibration. There is currently no post-yaw XY correction after
 parking-point alignment. A passive observer records fresh localization pose
 against the latched approach target; cached status error is not final XY proof.
 

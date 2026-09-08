@@ -1,0 +1,293 @@
+{
+  "action": "run",
+  "created_utc": "2026-09-08T08:38:50.118435+00:00",
+  "output_root": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12",
+  "stages": [
+    {
+      "name": "B1_guest_recall_robot_handoff",
+      "site": "B1",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B1_optional_docking",
+      "kind": "dock"
+    },
+    {
+      "name": "B2_robot_delivery",
+      "site": "B2",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B2_operator_recall",
+      "site": "B2",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B2_guest_recall_robot_handoff",
+      "site": "B2",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B3_robot_delivery",
+      "site": "B3",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B3_operator_recall",
+      "site": "B3",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B3_guest_recall_robot_handoff",
+      "site": "B3",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B4_robot_delivery",
+      "site": "B4",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B4_operator_recall",
+      "site": "B4",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B4_guest_recall_robot_handoff",
+      "site": "B4",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B5_robot_delivery",
+      "site": "B5",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B5_operator_recall",
+      "site": "B5",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B5_guest_recall_robot_handoff",
+      "site": "B5",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B6_robot_delivery",
+      "site": "B6",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B6_operator_recall",
+      "site": "B6",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B6_guest_recall_robot_handoff",
+      "site": "B6",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B7_robot_delivery",
+      "site": "B7",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B7_operator_recall",
+      "site": "B7",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B7_guest_recall_robot_handoff",
+      "site": "B7",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B8_robot_delivery",
+      "site": "B8",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B8_operator_recall",
+      "site": "B8",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B8_guest_recall_robot_handoff",
+      "site": "B8",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B9_robot_delivery",
+      "site": "B9",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B9_operator_recall",
+      "site": "B9",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B9_guest_recall_robot_handoff",
+      "site": "B9",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B10_robot_delivery",
+      "site": "B10",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B10_operator_recall",
+      "site": "B10",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B10_guest_recall_robot_handoff",
+      "site": "B10",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B11_robot_delivery",
+      "site": "B11",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B11_operator_recall",
+      "site": "B11",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B11_guest_recall_robot_handoff",
+      "site": "B11",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B12_robot_delivery",
+      "site": "B12",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B12_operator_recall",
+      "site": "B12",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B12_guest_recall_robot_handoff",
+      "site": "B12",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B13_robot_delivery",
+      "site": "B13",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B13_operator_recall",
+      "site": "B13",
+      "authority": "operator-browser",
+      "intent": "recall"
+    },
+    {
+      "name": "B13_guest_recall_robot_handoff",
+      "site": "B13",
+      "authority": "guest",
+      "intent": "recall"
+    },
+    {
+      "name": "B1_robot_delivery",
+      "site": "B1",
+      "authority": "operator-browser",
+      "intent": "delivery"
+    },
+    {
+      "name": "B1_operator_recall",
+      "site": "B1",
+      "authority": "operator-browser",
+      "intent": "recall"
+    }
+  ],
+  "start_at": "B1_guest_recall_robot_handoff",
+  "continuation_of": null,
+  "defer_earlier_stages": true,
+  "skipped_prior_stages": [],
+  "total_planned_stages": 40,
+  "execution_stage_count": 40,
+  "test_driver_identity": {
+    "checkout_head": "067568ecfe411a5cc31844fa84696220da879249",
+    "meaning": "test_driver_checkout_not_live_runtime_binary",
+    "files": [
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/camping_site_matrix.py",
+        "bytes": 192228,
+        "sha256": "b99a9a02e333a66984917c841c4218c5bbe85c47a1cebf3558b4689338005bc5"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/run_site_evidence_matrix.sh",
+        "bytes": 64151,
+        "sha256": "3fcfa366c7bf2baccbc8b4ea770c88da95f493f5f69c8fb5fe96a7f4f371f5ae"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/validate_site_evidence_collection.py",
+        "bytes": 120525,
+        "sha256": "a86ee4b67a8e2efc0ecb0c33ed1ddcf6c79ce1e60cc32bd781fa02b5e9085cda"
+      },
+      {
+        "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/capture_ui_evidence.sh",
+        "bytes": 36423,
+        "sha256": "f85b0c74d61793966edb9552e280656fe7b2a84acd3482f775b25c1ce1bdaa13"
+      }
+    ],
+    "suite_helper": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/run_durable_suite.py",
+      "bytes": 30968,
+      "sha256": "70258b9c1b19d454396ce52a7cd0f5deaee0fda67bbf8d724824d3e203e4b1fd"
+    }
+  },
+  "env": {
+    "ROS_DOMAIN_ID": "5",
+    "ROS_LOCALHOST_ONLY": "0",
+    "DISPLAY": ":0",
+    "XAUTHORITY": "/run/user/1000/gdm/Xauthority",
+    "CAMROD_CARLA_MAP_PROFILE": "woraksan-camrod-site-geometry-v224",
+    "CARLA_UE_MAP": "/Game/map_package/Maps/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone",
+    "CARLA_TOWN": "map_package/Maps/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone/Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone"
+  },
+  "stop_on_first_failure": true,
+  "automatically_push": false
+}

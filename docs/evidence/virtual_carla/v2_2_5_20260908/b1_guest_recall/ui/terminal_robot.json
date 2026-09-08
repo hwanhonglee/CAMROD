@@ -1,0 +1,5763 @@
+{
+  "started_at_utc": "2026-09-08T08:55:58.706107+00:00",
+  "motion_commands": false,
+  "focus_input_reload": false,
+  "before": {
+    "engaged": false,
+    "ready": true,
+    "headlight": false,
+    "operation_mode": "STOP",
+    "ready_message": "ready",
+    "module_states": [
+      {
+        "name": "camera_checker",
+        "level": 0,
+        "message": "OK (4.4 fps)"
+      },
+      {
+        "name": "control",
+        "level": 0,
+        "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.543 parking_point_error_m=0.100 parking_point_body_forward_m=0.100 parking_point_body_lateral_m=-0.004 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+      },
+      {
+        "name": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (6.0 Hz, unknown=0%)"
+      },
+      {
+        "name": "final_parking",
+        "level": 0,
+        "message": "exactly one alternative graph ok"
+      },
+      {
+        "name": "gnss_checker",
+        "level": 0,
+        "message": "OK (9.0 Hz, fix=0)"
+      },
+      {
+        "name": "gpu_checker",
+        "level": 0,
+        "message": "GPU0 OK (NVIDIA GeForce RTX 3060)"
+      },
+      {
+        "name": "hw_checker",
+        "level": 2,
+        "message": "CPU 98.7% (Critical)"
+      },
+      {
+        "name": "imu_checker",
+        "level": 0,
+        "message": "OK (9 Hz)"
+      },
+      {
+        "name": "lidar_checker",
+        "level": 0,
+        "message": "OK (8.7 Hz, 2751 pts)"
+      },
+      {
+        "name": "localization",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "localization_gnss_checker",
+        "level": 0,
+        "message": "OK (8.9 Hz, cov_trace=0.200)"
+      },
+      {
+        "name": "localization_init_checker",
+        "level": 0,
+        "message": "Drop zone init check disabled"
+      },
+      {
+        "name": "localization_lanelet_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.3400)"
+      },
+      {
+        "name": "localization_mode_checker",
+        "level": 0,
+        "message": "NORMAL - localization healthy"
+      },
+      {
+        "name": "localization_pose_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.0222)"
+      },
+      {
+        "name": "localization_source_checker",
+        "level": 0,
+        "message": "Primary EKF filter active"
+      },
+      {
+        "name": "map",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "map_cost_grid_checker",
+        "level": 0,
+        "message": "OK (1.0 Hz, unknown=0%)"
+      },
+      {
+        "name": "parking",
+        "level": 0,
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=PARKED"
+      },
+      {
+        "name": "perception",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (3.8 Hz, 0 det)"
+      },
+      {
+        "name": "planning",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (1.7 Hz, 0.5s ago)"
+      },
+      {
+        "name": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/planner_server ACTIVE"
+      },
+      {
+        "name": "planning_nav_status_checker",
+        "level": 0,
+        "message": "idle: SUCCEEDED"
+      },
+      {
+        "name": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle"
+      },
+      {
+        "name": "platform",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)"
+      },
+      {
+        "name": "sensing",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "system",
+        "level": 0,
+        "message": "ok"
+      },
+      {
+        "name": "velocity_converter_checker",
+        "level": 0,
+        "message": "OK (17.8 Hz)"
+      },
+      {
+        "name": "wheel_odometry_checker",
+        "level": 0,
+        "message": "OK (18 Hz, vx=0.00 m/s)"
+      }
+    ],
+    "diagnostics": [
+      {
+        "name": "planning_costmap_checker: /planning/global_costmap",
+        "module": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (0.4 Hz, 2.7s ago)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "0.4"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "2.67"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/global_costmap/costmap"
+          },
+          {
+            "key": "updates_topic",
+            "value": "/planning/global_costmap/costmap_updates"
+          },
+          {
+            "key": "last_source",
+            "value": "update"
+          },
+          {
+            "key": "costmap",
+            "value": "global"
+          },
+          {
+            "key": "rate_is_error",
+            "value": "true"
+          },
+          {
+            "key": "width",
+            "value": "2073"
+          },
+          {
+            "key": "height",
+            "value": "1938"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/final_parking",
+        "module": "final_parking",
+        "level": 0,
+        "message": "exactly one alternative graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "final_parking"
+          },
+          {
+            "key": "module",
+            "value": "final_parking"
+          },
+          {
+            "key": "checked_alternatives",
+            "value": "parking_dispatcher,reverse_parking_controller,apriltag_parking_controller"
+          },
+          {
+            "key": "healthy_alternatives",
+            "value": "parking_dispatcher"
+          },
+          {
+            "key": "failed_alternatives",
+            "value": "reverse_parking_controller(publishers=/parking/reverse_parking_controller/status publishers=0),apriltag_parking_controller(publishers=/parking/apriltag_parking_controller/status publishers=0)"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          },
+          {
+            "key": "selected_alternative",
+            "value": "parking_dispatcher"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/platform",
+        "module": "platform",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "platform"
+          },
+          {
+            "key": "module",
+            "value": "platform"
+          },
+          {
+            "key": "required_nodes",
+            "value": "2"
+          },
+          {
+            "key": "required_topics",
+            "value": "4"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/planning",
+        "module": "planning",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "planning"
+          },
+          {
+            "key": "module",
+            "value": "planning"
+          },
+          {
+            "key": "required_nodes",
+            "value": "12"
+          },
+          {
+            "key": "required_topics",
+            "value": "6"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/perception",
+        "module": "perception",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "perception"
+          },
+          {
+            "key": "module",
+            "value": "perception"
+          },
+          {
+            "key": "required_nodes",
+            "value": "1"
+          },
+          {
+            "key": "required_topics",
+            "value": "1"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/localization",
+        "module": "localization",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "localization"
+          },
+          {
+            "key": "module",
+            "value": "localization"
+          },
+          {
+            "key": "required_nodes",
+            "value": "5"
+          },
+          {
+            "key": "required_topics",
+            "value": "9"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/sensing",
+        "module": "sensing",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "sensing"
+          },
+          {
+            "key": "module",
+            "value": "sensing"
+          },
+          {
+            "key": "required_nodes",
+            "value": "4"
+          },
+          {
+            "key": "required_topics",
+            "value": "20"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/map",
+        "module": "map",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "map"
+          },
+          {
+            "key": "module",
+            "value": "map"
+          },
+          {
+            "key": "required_nodes",
+            "value": "2"
+          },
+          {
+            "key": "required_topics",
+            "value": "2"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/nodes",
+        "module": "system",
+        "level": 0,
+        "message": "ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "system"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "control/camping_site_maneuver_controller",
+        "module": "control",
+        "level": 0,
+        "message": "phase=DONE site=camping_site_1 service_mode=turnaround roadside_return=turnaround recall_turnaround_return=True battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=668.2 current_yaw_deg=95.42 target_yaw_deg=116.75 yaw_error_deg=21.33 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=live lanelet handoff current=(22.46,-6.80) projection=(22.33,-6.86) lateral_error=0.14m original_anchor_error=0.15m return_published=True return_ack=True",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "phase",
+            "value": "DONE"
+          },
+          {
+            "key": "phase_detail",
+            "value": "live lanelet handoff current=(22.46,-6.80) projection=(22.33,-6.86) lateral_error=0.14m original_anchor_error=0.15m"
+          },
+          {
+            "key": "phase_ros_elapsed_s",
+            "value": "668.21"
+          },
+          {
+            "key": "phase_wall_elapsed_s",
+            "value": "668.21"
+          },
+          {
+            "key": "current_yaw_deg",
+            "value": "95.420"
+          },
+          {
+            "key": "target_yaw_deg",
+            "value": "116.748"
+          },
+          {
+            "key": "yaw_error_deg",
+            "value": "21.328"
+          },
+          {
+            "key": "yaw_rate_degps",
+            "value": "0.000"
+          },
+          {
+            "key": "yaw_within_tolerance",
+            "value": "false"
+          },
+          {
+            "key": "last_angular_command_radps",
+            "value": "0.0000"
+          },
+          {
+            "key": "roadside_reverse_return_enable",
+            "value": "true"
+          },
+          {
+            "key": "roadside_return_policy",
+            "value": "turnaround"
+          },
+          {
+            "key": "recall_turnaround_return",
+            "value": "true"
+          },
+          {
+            "key": "battery_urgent_return",
+            "value": "false"
+          },
+          {
+            "key": "return_source",
+            "value": ""
+          },
+          {
+            "key": "cmd_vel_topic",
+            "value": "/control/cmd_vel_raw"
+          },
+          {
+            "key": "crab_duration_s",
+            "value": "15.59"
+          },
+          {
+            "key": "crab_offset_m",
+            "value": "3.07"
+          },
+          {
+            "key": "crab_approach_slowdown_distance_m",
+            "value": "1.00"
+          },
+          {
+            "key": "crab_approach_min_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "crab_approach_remaining_m",
+            "value": "11.77"
+          },
+          {
+            "key": "last_crab_command_mps",
+            "value": "0.0000"
+          },
+          {
+            "key": "entry_anchor_centering_active",
+            "value": "false"
+          },
+          {
+            "key": "entry_anchor_centering_completed",
+            "value": "false"
+          },
+          {
+            "key": "entry_anchor_centering_stage",
+            "value": "longitudinal"
+          },
+          {
+            "key": "entry_anchor_centering_error_m",
+            "value": "57.86"
+          },
+          {
+            "key": "entry_anchor_centering_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "entry_anchor_centering_max_initial_error_m",
+            "value": "0.00"
+          },
+          {
+            "key": "entry_anchor_centering_max_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "entry_anchor_centering_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "entry_anchor_centering_tolerance_m",
+            "value": "0.05"
+          },
+          {
+            "key": "crab_entry_heading_drift_deg",
+            "value": "156.672"
+          },
+          {
+            "key": "crab_entry_nominal_yaw_deg",
+            "value": "-63.252"
+          },
+          {
+            "key": "crab_entry_body_yaw_target_deg",
+            "value": "-61.252"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_deg",
+            "value": "2.00"
+          },
+          {
+            "key": "crab_entry_body_yaw_applied_compensation_deg",
+            "value": "2.000"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_active",
+            "value": "true"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_state",
+            "value": "active_automatic_turnaround"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_purpose",
+            "value": "inactive"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_tolerance_deg",
+            "value": "1.50"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_min_angular_speed_radps",
+            "value": "0.080"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "compensated_directed_rotation_tracking_active",
+            "value": "true"
+          },
+          {
+            "key": "compensated_rotation_target_delta_deg",
+            "value": "-180.435"
+          },
+          {
+            "key": "compensated_rotation_traveled_deg",
+            "value": "-178.334"
+          },
+          {
+            "key": "crab_entry_max_heading_drift_deg",
+            "value": "0.00"
+          },
+          {
+            "key": "crab_entry_cross_track_m",
+            "value": "-57.1910"
+          },
+          {
+            "key": "crab_entry_max_cross_track_error_m",
+            "value": "0.00"
+          },
+          {
+            "key": "rotate_entry_max_position_error_m",
+            "value": "0.05"
+          },
+          {
+            "key": "rotate_entry_position_error_m",
+            "value": "58.40"
+          },
+          {
+            "key": "rotate_entry_centering_active",
+            "value": "false"
+          },
+          {
+            "key": "rotate_entry_centering_stage",
+            "value": "lateral"
+          },
+          {
+            "key": "rotate_entry_centering_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "rotate_entry_centering_max_initial_error_m",
+            "value": "0.65"
+          },
+          {
+            "key": "rotate_entry_centering_max_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "rotate_entry_centering_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "rotate_180_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_source",
+            "value": "goal_pair"
+          },
+          {
+            "key": "return_anchor_source",
+            "value": "route_goal_snap"
+          },
+          {
+            "key": "return_anchor_offset_m",
+            "value": "0.09"
+          },
+          {
+            "key": "return_anchor_error_m",
+            "value": "57.86"
+          },
+          {
+            "key": "live_lanelet_handoff_enabled",
+            "value": "true"
+          },
+          {
+            "key": "live_lanelet_projection_distance_m",
+            "value": "3.54"
+          },
+          {
+            "key": "live_lanelet_handoff_distance_m",
+            "value": "0.15"
+          },
+          {
+            "key": "live_lanelet_handoff_holding",
+            "value": "false"
+          },
+          {
+            "key": "crab_return_stage",
+            "value": "lateral"
+          },
+          {
+            "key": "crab_return_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_enable",
+            "value": "true"
+          },
+          {
+            "key": "crab_out_yaw_recovery_active",
+            "value": "false"
+          },
+          {
+            "key": "crab_out_yaw_recovery_attempts",
+            "value": "0"
+          },
+          {
+            "key": "crab_out_yaw_recovery_trigger_deg",
+            "value": "8.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_max_attempts",
+            "value": "8"
+          },
+          {
+            "key": "crab_out_yaw_recovery_global_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_elapsed_s",
+            "value": "0.00"
+          }
+        ]
+      },
+      {
+        "name": "gnss_checker: /sensor/gnss/main",
+        "module": "gnss_checker",
+        "level": 0,
+        "message": "OK (9.0 Hz, fix=0)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "fix_status",
+            "value": "0"
+          },
+          {
+            "key": "covariance_type",
+            "value": "2"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.05"
+          },
+          {
+            "key": "component_id",
+            "value": "gnss.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_antenna"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "gnss_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.00000,0.45000,0.00000"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/topics",
+        "module": "system",
+        "level": 0,
+        "message": "ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "system"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "map_cost_grid_checker: /map/cost_grid",
+        "module": "map_cost_grid_checker",
+        "level": 0,
+        "message": "OK (1.0 Hz, unknown=0%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "0.99"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "0.0"
+          },
+          {
+            "key": "unknown_warn_pct",
+            "value": "80"
+          },
+          {
+            "key": "unknown_error_pct",
+            "value": "98"
+          },
+          {
+            "key": "grid_size",
+            "value": "960 x 960"
+          },
+          {
+            "key": "grid_resolution_m",
+            "value": "0.25"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.68"
+          }
+        ]
+      },
+      {
+        "name": "localization_lanelet_checker: /localization/lanelet",
+        "module": "localization_lanelet_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.3400)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10"
+          },
+          {
+            "key": "input_pose_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "evaluated_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.3400"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "10.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "100.0000"
+          },
+          {
+            "key": "pos_x (m)",
+            "value": "-11.732"
+          },
+          {
+            "key": "pos_y (m)",
+            "value": "43.824"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/control",
+        "module": "control",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "required_nodes",
+            "value": "3"
+          },
+          {
+            "key": "required_topics",
+            "value": "6"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "control/drop_zone_maneuver_controller",
+        "module": "control",
+        "level": 0,
+        "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.543 parking_point_error_m=0.100 parking_point_body_forward_m=0.100 parking_point_body_lateral_m=-0.004 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "phase",
+            "value": "IDLE"
+          },
+          {
+            "key": "command_topic",
+            "value": "/control/cmd_vel_raw"
+          },
+          {
+            "key": "exit_travel_distance_m",
+            "value": "0.364"
+          },
+          {
+            "key": "exit_target_source",
+            "value": "lanelet_pose"
+          },
+          {
+            "key": "exit_target_x_m",
+            "value": "-11.908"
+          },
+          {
+            "key": "exit_target_y_m",
+            "value": "43.800"
+          },
+          {
+            "key": "exit_target_initial_distance_m",
+            "value": "3.856"
+          },
+          {
+            "key": "exit_target_initial_forward_m",
+            "value": "3.854"
+          },
+          {
+            "key": "exit_target_initial_lateral_m",
+            "value": "0.141"
+          },
+          {
+            "key": "exit_target_error_m",
+            "value": "3.543"
+          },
+          {
+            "key": "parking_approach_target_x_m",
+            "value": "-11.873"
+          },
+          {
+            "key": "parking_approach_target_y_m",
+            "value": "43.804"
+          },
+          {
+            "key": "parking_approach_error_m",
+            "value": "0.100"
+          },
+          {
+            "key": "parking_approach_body_forward_error_m",
+            "value": "0.100"
+          },
+          {
+            "key": "parking_approach_body_lateral_error_m",
+            "value": "-0.004"
+          },
+          {
+            "key": "parking_approach_goal_age_s",
+            "value": "668.572"
+          },
+          {
+            "key": "station_x_m",
+            "value": "-11.358"
+          },
+          {
+            "key": "station_y_m",
+            "value": "40.090"
+          },
+          {
+            "key": "station_yaw_deg",
+            "value": "-82.213"
+          }
+        ]
+      },
+      {
+        "name": "localization_mode_checker: /localization/mode",
+        "module": "localization_mode_checker",
+        "level": 0,
+        "message": "NORMAL - localization healthy",
+        "values": [
+          {
+            "key": "mode",
+            "value": "NORMAL"
+          },
+          {
+            "key": "mode_value",
+            "value": "0"
+          },
+          {
+            "key": "confidence",
+            "value": "1.000"
+          },
+          {
+            "key": "gnss_ok",
+            "value": "true"
+          },
+          {
+            "key": "imu_ok",
+            "value": "true"
+          },
+          {
+            "key": "wheel_ok",
+            "value": "true"
+          },
+          {
+            "key": "health",
+            "value": "true"
+          },
+          {
+            "key": "gnss_innovation_norm",
+            "value": "0.000"
+          },
+          {
+            "key": "wheel_innovation_norm",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/FRONT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "FRONT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_left"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_front2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_front2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/front2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "1.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.front2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.62787,0.11005,0.33378"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/RIGHT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "RIGHT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "right_front"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_right1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_right1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/right1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.right1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.38,-0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,-90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/LEFT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "LEFT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_front"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_left1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_left1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/left1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.left1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.38,0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_nav_status_checker: /planning/nav_status",
+        "module": "planning_nav_status_checker",
+        "level": 0,
+        "message": "idle: SUCCEEDED",
+        "values": [
+          {
+            "key": "current_status",
+            "value": "SUCCEEDED"
+          },
+          {
+            "key": "service_maneuver_suppressed",
+            "value": "false"
+          },
+          {
+            "key": "current_abort_suppressed",
+            "value": "false"
+          },
+          {
+            "key": "latest_service_state",
+            "value": "0"
+          },
+          {
+            "key": "service_state_age_s",
+            "value": "104.105"
+          },
+          {
+            "key": "service_transition_abort_grace_s",
+            "value": "3"
+          },
+          {
+            "key": "abort_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "effective_abort_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "abort_warn/error",
+            "value": "2 / 5"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "124.74"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /sensing/cost_grid/lidar",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (10.0 Hz, unknown=100%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "99.7"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/cost_grid/lidar"
+          },
+          {
+            "key": "grid_name",
+            "value": "lidar"
+          },
+          {
+            "key": "width",
+            "value": "180"
+          },
+          {
+            "key": "height",
+            "value": "180"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.cost_grid"
+          },
+          {
+            "key": "sensor_location",
+            "value": "derived_from_front_upper_center_lidar"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "map"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "localization_pose_checker: /localization/pose",
+        "module": "localization_pose_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.0222)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "20"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.0222"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "100.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "400.0000"
+          },
+          {
+            "key": "last_jump_m",
+            "value": "0.000"
+          },
+          {
+            "key": "max_jump_m",
+            "value": "20.00"
+          },
+          {
+            "key": "pos_x (m)",
+            "value": "-11.247"
+          },
+          {
+            "key": "pos_y (m)",
+            "value": "40.319"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.03"
+          }
+        ]
+      },
+      {
+        "name": "perception_obstacle_checker: /perception/obstacles/fused_obstacles",
+        "module": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (4.3 Hz, 0 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "4.3"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "count",
+            "value": "0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.07"
+          }
+        ]
+      },
+      {
+        "name": "camera_checker: /sensor/camera/econ_rear",
+        "module": "camera_checker",
+        "level": 0,
+        "message": "OK (4.4 fps)",
+        "values": [
+          {
+            "key": "actual_fps",
+            "value": "4.4"
+          },
+          {
+            "key": "expected_fps",
+            "value": "2.0"
+          },
+          {
+            "key": "image_type",
+            "value": "compressed"
+          },
+          {
+            "key": "width",
+            "value": "960"
+          },
+          {
+            "key": "height",
+            "value": "720"
+          },
+          {
+            "key": "encoding",
+            "value": "jpeg"
+          },
+          {
+            "key": "camera_info",
+            "value": "OK"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.19"
+          },
+          {
+            "key": "component_id",
+            "value": "camera.econ_rear"
+          },
+          {
+            "key": "sensor_location",
+            "value": "rear_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "camera_rear_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.61933,0.00000,0.30013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,180.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /sensing/cost_grid/radar",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (10.0 Hz, unknown=99%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "99.4"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.09"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/cost_grid/radar"
+          },
+          {
+            "key": "grid_name",
+            "value": "radar"
+          },
+          {
+            "key": "width",
+            "value": "120"
+          },
+          {
+            "key": "height",
+            "value": "120"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.cost_grid"
+          },
+          {
+            "key": "sensor_location",
+            "value": "derived_from_seven_body_radars"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "map"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "gpu_checker: /hardware/gpu0",
+        "module": "gpu_checker",
+        "level": 0,
+        "message": "GPU0 OK (NVIDIA GeForce RTX 3060)",
+        "values": [
+          {
+            "key": "name",
+            "value": "NVIDIA GeForce RTX 3060"
+          },
+          {
+            "key": "util_%",
+            "value": "21.0"
+          },
+          {
+            "key": "mem_used_MB",
+            "value": "4275"
+          },
+          {
+            "key": "mem_total_MB",
+            "value": "12288"
+          },
+          {
+            "key": "mem_%",
+            "value": "34.8"
+          },
+          {
+            "key": "temp_C",
+            "value": "60"
+          },
+          {
+            "key": "power_W",
+            "value": "58.02"
+          },
+          {
+            "key": "power_limit_W",
+            "value": "170.00"
+          }
+        ]
+      },
+      {
+        "name": "wheel_odometry_checker: /sensor/wheel/main",
+        "module": "wheel_odometry_checker",
+        "level": 0,
+        "message": "OK (18 Hz, vx=0.00 m/s)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "17.6"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2"
+          },
+          {
+            "key": "vx (m/s)",
+            "value": "0.000"
+          },
+          {
+            "key": "vy (m/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "wz (rad/s)",
+            "value": "0.0000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          },
+          {
+            "key": "component_id",
+            "value": "wheel_odometry.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "drive_wheels"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "lidar_checker: /sensor/lidar/filtered",
+        "module": "lidar_checker",
+        "level": 0,
+        "message": "OK (8.7 Hz, 0 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "8.7"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "point_count",
+            "value": "0"
+          },
+          {
+            "key": "nan_ratio",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.05"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.filtered"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "lidar_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76336,0.00000,0.59538"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "lidar_checker: /sensor/lidar/main",
+        "module": "lidar_checker",
+        "level": 0,
+        "message": "OK (8.7 Hz, 2751 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "8.7"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "point_count",
+            "value": "2751"
+          },
+          {
+            "key": "nan_ratio",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.05"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "lidar_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76336,0.00000,0.59538"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "perception_obstacle_checker: /perception/obstacles/camera_detections",
+        "module": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (3.8 Hz, 0 det)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "3.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "count",
+            "value": "0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.08"
+          }
+        ]
+      },
+      {
+        "name": "planning_costmap_checker: /planning/local_costmap",
+        "module": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (1.7 Hz, 0.5s ago)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "1.7"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.51"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/local_costmap/costmap"
+          },
+          {
+            "key": "updates_topic",
+            "value": "/planning/local_costmap/costmap_updates"
+          },
+          {
+            "key": "last_source",
+            "value": "update"
+          },
+          {
+            "key": "costmap",
+            "value": "local"
+          },
+          {
+            "key": "rate_is_error",
+            "value": "true"
+          },
+          {
+            "key": "width",
+            "value": "201"
+          },
+          {
+            "key": "height",
+            "value": "201"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "parking/parking_dispatcher",
+        "module": "parking",
+        "level": 0,
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=PARKED",
+        "values": [
+          {
+            "key": "category",
+            "value": "parking"
+          },
+          {
+            "key": "module",
+            "value": "parking"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/RIGHT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "RIGHT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "right_rear"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_right2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_right2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/right2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.right2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.38,-0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,-90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "imu_checker: /sensor/imu/main",
+        "module": "imu_checker",
+        "level": 0,
+        "message": "OK (9 Hz)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "8.7"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2"
+          },
+          {
+            "key": "gyro_x (rad/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "gyro_y (rad/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "gyro_z (rad/s)",
+            "value": "0.000"
+          },
+          {
+            "key": "accel_x (m/s^2)",
+            "value": "-0.000"
+          },
+          {
+            "key": "accel_y (m/s^2)",
+            "value": "0.045"
+          },
+          {
+            "key": "accel_z (m/s^2)",
+            "value": "9.810"
+          },
+          {
+            "key": "accel_magnitude (m/s^2)",
+            "value": "9.810"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.08"
+          },
+          {
+            "key": "component_id",
+            "value": "imu.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "imu_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.68800,0.00000,0.75600"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_path_checker: /planning/path/local_path",
+        "module": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle",
+        "values": [
+          {
+            "key": "nav_active",
+            "value": "false"
+          },
+          {
+            "key": "point_count",
+            "value": "12"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/REAR",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "REAR"
+          },
+          {
+            "key": "sensor_location",
+            "value": "rear_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_rear_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_rear"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/rear/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.rear"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.61733,0.00000,0.33978"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,180.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_path_checker: /planning/path/global_path",
+        "module": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle",
+        "values": [
+          {
+            "key": "nav_active",
+            "value": "false"
+          },
+          {
+            "key": "point_count",
+            "value": "394"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/behavior_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/behavior_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "camera_checker: /sensor/camera/econ_front",
+        "module": "camera_checker",
+        "level": 0,
+        "message": "OK (4.4 fps)",
+        "values": [
+          {
+            "key": "actual_fps",
+            "value": "4.4"
+          },
+          {
+            "key": "expected_fps",
+            "value": "2.0"
+          },
+          {
+            "key": "image_type",
+            "value": "compressed"
+          },
+          {
+            "key": "width",
+            "value": "800"
+          },
+          {
+            "key": "height",
+            "value": "600"
+          },
+          {
+            "key": "encoding",
+            "value": "jpeg"
+          },
+          {
+            "key": "camera_info",
+            "value": "OK"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.12"
+          },
+          {
+            "key": "component_id",
+            "value": "camera.econ_front"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "camera_front_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76337,0.00000,0.49568"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "localization_source_checker: /localization/source",
+        "module": "localization_source_checker",
+        "level": 0,
+        "message": "Primary EKF filter active",
+        "values": [
+          {
+            "key": "current_source",
+            "value": "primary_filter"
+          },
+          {
+            "key": "primary_source",
+            "value": "primary_filter"
+          },
+          {
+            "key": "fallback_source",
+            "value": "fallback_source"
+          },
+          {
+            "key": "switch_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "switch_warn/error",
+            "value": "3 / 10"
+          },
+          {
+            "key": "fallback_duration_sec",
+            "value": "0.0"
+          },
+          {
+            "key": "fallback_warn/error_sec",
+            "value": "10 / 60"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.00"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/memory",
+        "module": "hw_checker",
+        "level": 0,
+        "message": "Memory 46.2% (14746 / 31948 MB)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "46.2"
+          },
+          {
+            "key": "used_MB",
+            "value": "14746"
+          },
+          {
+            "key": "total_MB",
+            "value": "31948"
+          },
+          {
+            "key": "available_MB",
+            "value": "17201"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/controller_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/controller_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/controller_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /planning/cost_grid/inflation",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (6.0 Hz, unknown=0%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "6.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "6.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.12"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/cost_grid/inflation"
+          },
+          {
+            "key": "grid_name",
+            "value": "inflation"
+          },
+          {
+            "key": "width",
+            "value": "180"
+          },
+          {
+            "key": "height",
+            "value": "180"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "localization_init_checker: /localization/init",
+        "module": "localization_init_checker",
+        "level": 0,
+        "message": "Drop zone init check disabled",
+        "values": [
+          {
+            "key": "enabled",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/cpu",
+        "module": "hw_checker",
+        "level": 2,
+        "message": "CPU 98.7% (Critical)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "98.7"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/FRONT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "FRONT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_right"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_front1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_front1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/front1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "1.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.front1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.62787,-0.11005,0.33378"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "velocity_converter_checker: /sensing/velocity_converter",
+        "module": "velocity_converter_checker",
+        "level": 0,
+        "message": "OK (17.8 Hz)",
+        "values": [
+          {
+            "key": "velocity_input",
+            "value": "OK"
+          },
+          {
+            "key": "imu_input",
+            "value": "OK"
+          },
+          {
+            "key": "output",
+            "value": "OK"
+          },
+          {
+            "key": "output_hz",
+            "value": "17.8"
+          },
+          {
+            "key": "vel_age_sec",
+            "value": "0.04"
+          },
+          {
+            "key": "imu_age_sec",
+            "value": "0.08"
+          },
+          {
+            "key": "out_age_sec",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "velocity_converter"
+          },
+          {
+            "key": "sensor_location",
+            "value": "virtual_wheel_imu_fusion"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/bt_navigator ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/bt_navigator"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/LEFT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (8.8 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "LEFT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_rear"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_left2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_left2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/left2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "8.8"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.left2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.38,0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/disk",
+        "module": "hw_checker",
+        "level": 0,
+        "message": "Disk 92.2% (915.3 / 993.2 GB)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "92.2"
+          },
+          {
+            "key": "used_GB",
+            "value": "915.3"
+          },
+          {
+            "key": "total_GB",
+            "value": "993.2"
+          },
+          {
+            "key": "free_GB",
+            "value": "77.9"
+          },
+          {
+            "key": "path",
+            "value": "/"
+          }
+        ]
+      },
+      {
+        "name": "localization_gnss_checker: /localization/gnss/main",
+        "module": "localization_gnss_checker",
+        "level": 0,
+        "message": "OK (8.9 Hz, cov_trace=0.200)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "8.9"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.2000"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "4.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "25.0000"
+          },
+          {
+            "key": "last_jump_m",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.10"
+          },
+          {
+            "key": "component_id",
+            "value": "gnss.localization_input"
+          },
+          {
+            "key": "sensor_location",
+            "value": "robot_center_lever_arm_corrected"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.00000,0.00000,0.00000"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/planner_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/planner_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/planner_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      }
+    ],
+    "diagnostics_agg_count": 53,
+    "diagnostics_agg_error_count": 1,
+    "system_health": "ERROR",
+    "mission_phase": "READY",
+    "mission_source": "none",
+    "service_state": 0,
+    "service_state_name": "DROP_ZONE_WAIT",
+    "service_state_description": "reverse_parking_controller:PARKED:station XY goal reached; parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5",
+    "destination": {
+      "site": "",
+      "run": false
+    },
+    "battery_percentage": 80,
+    "battery_return_pending": false,
+    "battery_return_started": false,
+    "battery_return_waiting_for_user": false,
+    "departure_delay_active": false,
+    "departure_delay_seconds": 0.0,
+    "minimum_battery_percentage": 35.0,
+    "occupied_sites": [],
+    "mission_retryable": false,
+    "mission_retry_site": "",
+    "mission_retry_owner": "",
+    "redock_pending": false,
+    "redock_waiting_for_can": false,
+    "redock_status": "idle",
+    "redock_message": "",
+    "mission_dispatch_active": false,
+    "mission_dispatch_site": "",
+    "mission_dispatch_intent": "",
+    "mission_dispatch_owner": "",
+    "mission_dispatch_generation": 0,
+    "departure_failed": false,
+    "battery_return_urgent": false,
+    "charging_required": false,
+    "parking_policy_mode": "auto",
+    "parking_selected_method": "reverse",
+    "urgent_return_battery_percentage": 25.0,
+    "mission_execution_error": "",
+    "recall_final_return_ready": false,
+    "backend_startup_recovery": false
+  },
+  "dom": {
+    "title": "Robot UI",
+    "url": "http://127.0.0.1:8010/",
+    "visibility": "visible",
+    "focused": false,
+    "bundle": [
+      "http://127.0.0.1:8010/static/js/main.60f92f35.js"
+    ],
+    "waiting": true,
+    "control": false,
+    "guestOverlayCount": 0,
+    "header": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n시스템 오류\n운행 준비 완료\n일반 주차 · 비충전\n임무 배터리 준비 완료 80%\nWIFI\n80%\n2026년 9월 8일 화\n오후 05:55:58\n도킹",
+    "body": "국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n시스템 오류\n운행 준비 완료\n일반 주차 · 비충전\n임무 배터리 준비 완료 80%\nWIFI\n80%\n2026년 9월 8일 화\n오후 05:55:58\n도킹\nCAMROD FIELD OPERATION\n실증 운행 현황\n2026. 09. 08. 오후 05:55 기준\n상세 보기 ›\n최근 서비스\n0.18 km\n오늘 누적\n1.35 km\n오늘 완료\n4회\n전체 누적\n25.32 km · 119회\n목적지 선택\n로봇 이용 방법\n시설 안내\n탐방로",
+    "buttons": [
+      {
+        "text": "도킹",
+        "disabled": false,
+        "visible": true,
+        "id": ""
+      }
+    ]
+  },
+  "capture_started_at_utc": "2026-09-08T08:55:58.727294+00:00",
+  "after": {
+    "engaged": false,
+    "ready": true,
+    "headlight": false,
+    "operation_mode": "STOP",
+    "ready_message": "ready",
+    "module_states": [
+      {
+        "name": "camera_checker",
+        "level": 0,
+        "message": "OK (4.6 fps)"
+      },
+      {
+        "name": "control",
+        "level": 0,
+        "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.543 parking_point_error_m=0.100 parking_point_body_forward_m=0.100 parking_point_body_lateral_m=-0.004 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00"
+      },
+      {
+        "name": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (6.0 Hz, unknown=0%)"
+      },
+      {
+        "name": "final_parking",
+        "level": 0,
+        "message": "exactly one alternative graph ok"
+      },
+      {
+        "name": "gnss_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, fix=0)"
+      },
+      {
+        "name": "gpu_checker",
+        "level": 0,
+        "message": "GPU0 OK (NVIDIA GeForce RTX 3060)"
+      },
+      {
+        "name": "hw_checker",
+        "level": 2,
+        "message": "CPU 99.2% (Critical)"
+      },
+      {
+        "name": "imu_checker",
+        "level": 0,
+        "message": "OK (9 Hz)"
+      },
+      {
+        "name": "lidar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, 2751 pts)"
+      },
+      {
+        "name": "localization",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "localization_gnss_checker",
+        "level": 0,
+        "message": "OK (9.0 Hz, cov_trace=0.200)"
+      },
+      {
+        "name": "localization_init_checker",
+        "level": 0,
+        "message": "Drop zone init check disabled"
+      },
+      {
+        "name": "localization_lanelet_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.3400)"
+      },
+      {
+        "name": "localization_mode_checker",
+        "level": 0,
+        "message": "NORMAL - localization healthy"
+      },
+      {
+        "name": "localization_pose_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.0223)"
+      },
+      {
+        "name": "localization_source_checker",
+        "level": 0,
+        "message": "Primary EKF filter active"
+      },
+      {
+        "name": "map",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "map_cost_grid_checker",
+        "level": 0,
+        "message": "OK (1.0 Hz, unknown=0%)"
+      },
+      {
+        "name": "parking",
+        "level": 0,
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=PARKED"
+      },
+      {
+        "name": "perception",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (4.6 Hz, 0 det)"
+      },
+      {
+        "name": "planning",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (1.7 Hz, 0.3s ago)"
+      },
+      {
+        "name": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/planner_server ACTIVE"
+      },
+      {
+        "name": "planning_nav_status_checker",
+        "level": 0,
+        "message": "idle: SUCCEEDED"
+      },
+      {
+        "name": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle"
+      },
+      {
+        "name": "platform",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)"
+      },
+      {
+        "name": "sensing",
+        "level": 0,
+        "message": "module graph ok"
+      },
+      {
+        "name": "system",
+        "level": 0,
+        "message": "ok"
+      },
+      {
+        "name": "velocity_converter_checker",
+        "level": 0,
+        "message": "OK (18.1 Hz)"
+      },
+      {
+        "name": "wheel_odometry_checker",
+        "level": 0,
+        "message": "OK (18 Hz, vx=-0.00 m/s)"
+      }
+    ],
+    "diagnostics": [
+      {
+        "name": "planning_costmap_checker: /planning/global_costmap",
+        "module": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (0.4 Hz, 0.7s ago)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "0.4"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.69"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/global_costmap/costmap"
+          },
+          {
+            "key": "updates_topic",
+            "value": "/planning/global_costmap/costmap_updates"
+          },
+          {
+            "key": "last_source",
+            "value": "update"
+          },
+          {
+            "key": "costmap",
+            "value": "global"
+          },
+          {
+            "key": "rate_is_error",
+            "value": "true"
+          },
+          {
+            "key": "width",
+            "value": "2073"
+          },
+          {
+            "key": "height",
+            "value": "1938"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/final_parking",
+        "module": "final_parking",
+        "level": 0,
+        "message": "exactly one alternative graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "final_parking"
+          },
+          {
+            "key": "module",
+            "value": "final_parking"
+          },
+          {
+            "key": "checked_alternatives",
+            "value": "parking_dispatcher,reverse_parking_controller,apriltag_parking_controller"
+          },
+          {
+            "key": "healthy_alternatives",
+            "value": "parking_dispatcher"
+          },
+          {
+            "key": "failed_alternatives",
+            "value": "reverse_parking_controller(publishers=/parking/reverse_parking_controller/status publishers=0),apriltag_parking_controller(publishers=/parking/apriltag_parking_controller/status publishers=0)"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          },
+          {
+            "key": "selected_alternative",
+            "value": "parking_dispatcher"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/platform",
+        "module": "platform",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "platform"
+          },
+          {
+            "key": "module",
+            "value": "platform"
+          },
+          {
+            "key": "required_nodes",
+            "value": "2"
+          },
+          {
+            "key": "required_topics",
+            "value": "4"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/planning",
+        "module": "planning",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "planning"
+          },
+          {
+            "key": "module",
+            "value": "planning"
+          },
+          {
+            "key": "required_nodes",
+            "value": "12"
+          },
+          {
+            "key": "required_topics",
+            "value": "6"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/perception",
+        "module": "perception",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "perception"
+          },
+          {
+            "key": "module",
+            "value": "perception"
+          },
+          {
+            "key": "required_nodes",
+            "value": "1"
+          },
+          {
+            "key": "required_topics",
+            "value": "1"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/localization",
+        "module": "localization",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "localization"
+          },
+          {
+            "key": "module",
+            "value": "localization"
+          },
+          {
+            "key": "required_nodes",
+            "value": "5"
+          },
+          {
+            "key": "required_topics",
+            "value": "9"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/sensing",
+        "module": "sensing",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "sensing"
+          },
+          {
+            "key": "module",
+            "value": "sensing"
+          },
+          {
+            "key": "required_nodes",
+            "value": "4"
+          },
+          {
+            "key": "required_topics",
+            "value": "20"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/map",
+        "module": "map",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "map"
+          },
+          {
+            "key": "module",
+            "value": "map"
+          },
+          {
+            "key": "required_nodes",
+            "value": "2"
+          },
+          {
+            "key": "required_topics",
+            "value": "2"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/nodes",
+        "module": "system",
+        "level": 0,
+        "message": "ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "system"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "control/camping_site_maneuver_controller",
+        "module": "control",
+        "level": 0,
+        "message": "phase=DONE site=camping_site_1 service_mode=turnaround roadside_return=turnaround recall_turnaround_return=True battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=669.3 current_yaw_deg=95.42 target_yaw_deg=116.75 yaw_error_deg=21.33 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=active_automatic_turnaround detail=live lanelet handoff current=(22.46,-6.80) projection=(22.33,-6.86) lateral_error=0.14m original_anchor_error=0.15m return_published=True return_ack=True",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "phase",
+            "value": "DONE"
+          },
+          {
+            "key": "phase_detail",
+            "value": "live lanelet handoff current=(22.46,-6.80) projection=(22.33,-6.86) lateral_error=0.14m original_anchor_error=0.15m"
+          },
+          {
+            "key": "phase_ros_elapsed_s",
+            "value": "669.31"
+          },
+          {
+            "key": "phase_wall_elapsed_s",
+            "value": "669.31"
+          },
+          {
+            "key": "current_yaw_deg",
+            "value": "95.420"
+          },
+          {
+            "key": "target_yaw_deg",
+            "value": "116.748"
+          },
+          {
+            "key": "yaw_error_deg",
+            "value": "21.328"
+          },
+          {
+            "key": "yaw_rate_degps",
+            "value": "0.000"
+          },
+          {
+            "key": "yaw_within_tolerance",
+            "value": "false"
+          },
+          {
+            "key": "last_angular_command_radps",
+            "value": "0.0000"
+          },
+          {
+            "key": "roadside_reverse_return_enable",
+            "value": "true"
+          },
+          {
+            "key": "roadside_return_policy",
+            "value": "turnaround"
+          },
+          {
+            "key": "recall_turnaround_return",
+            "value": "true"
+          },
+          {
+            "key": "battery_urgent_return",
+            "value": "false"
+          },
+          {
+            "key": "return_source",
+            "value": ""
+          },
+          {
+            "key": "cmd_vel_topic",
+            "value": "/control/cmd_vel_raw"
+          },
+          {
+            "key": "crab_duration_s",
+            "value": "15.59"
+          },
+          {
+            "key": "crab_offset_m",
+            "value": "3.07"
+          },
+          {
+            "key": "crab_approach_slowdown_distance_m",
+            "value": "1.00"
+          },
+          {
+            "key": "crab_approach_min_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "crab_approach_remaining_m",
+            "value": "11.77"
+          },
+          {
+            "key": "last_crab_command_mps",
+            "value": "0.0000"
+          },
+          {
+            "key": "entry_anchor_centering_active",
+            "value": "false"
+          },
+          {
+            "key": "entry_anchor_centering_completed",
+            "value": "false"
+          },
+          {
+            "key": "entry_anchor_centering_stage",
+            "value": "longitudinal"
+          },
+          {
+            "key": "entry_anchor_centering_error_m",
+            "value": "57.86"
+          },
+          {
+            "key": "entry_anchor_centering_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "entry_anchor_centering_max_initial_error_m",
+            "value": "0.00"
+          },
+          {
+            "key": "entry_anchor_centering_max_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "entry_anchor_centering_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "entry_anchor_centering_tolerance_m",
+            "value": "0.05"
+          },
+          {
+            "key": "crab_entry_heading_drift_deg",
+            "value": "156.672"
+          },
+          {
+            "key": "crab_entry_nominal_yaw_deg",
+            "value": "-63.252"
+          },
+          {
+            "key": "crab_entry_body_yaw_target_deg",
+            "value": "-61.252"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_deg",
+            "value": "2.00"
+          },
+          {
+            "key": "crab_entry_body_yaw_applied_compensation_deg",
+            "value": "2.000"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_active",
+            "value": "true"
+          },
+          {
+            "key": "crab_entry_body_yaw_compensation_state",
+            "value": "active_automatic_turnaround"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_purpose",
+            "value": "inactive"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_tolerance_deg",
+            "value": "1.50"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_min_angular_speed_radps",
+            "value": "0.080"
+          },
+          {
+            "key": "crab_entry_body_yaw_alignment_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "compensated_directed_rotation_tracking_active",
+            "value": "true"
+          },
+          {
+            "key": "compensated_rotation_target_delta_deg",
+            "value": "-180.435"
+          },
+          {
+            "key": "compensated_rotation_traveled_deg",
+            "value": "-178.334"
+          },
+          {
+            "key": "crab_entry_max_heading_drift_deg",
+            "value": "0.00"
+          },
+          {
+            "key": "crab_entry_cross_track_m",
+            "value": "-57.1910"
+          },
+          {
+            "key": "crab_entry_max_cross_track_error_m",
+            "value": "0.00"
+          },
+          {
+            "key": "rotate_entry_max_position_error_m",
+            "value": "0.05"
+          },
+          {
+            "key": "rotate_entry_position_error_m",
+            "value": "58.40"
+          },
+          {
+            "key": "rotate_entry_centering_active",
+            "value": "false"
+          },
+          {
+            "key": "rotate_entry_centering_stage",
+            "value": "lateral"
+          },
+          {
+            "key": "rotate_entry_centering_wall_elapsed_s",
+            "value": "0.00"
+          },
+          {
+            "key": "rotate_entry_centering_max_initial_error_m",
+            "value": "0.65"
+          },
+          {
+            "key": "rotate_entry_centering_max_speed_mps",
+            "value": "0.12"
+          },
+          {
+            "key": "rotate_entry_centering_timeout_s",
+            "value": "15.00"
+          },
+          {
+            "key": "rotate_180_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_source",
+            "value": "goal_pair"
+          },
+          {
+            "key": "return_anchor_source",
+            "value": "route_goal_snap"
+          },
+          {
+            "key": "return_anchor_offset_m",
+            "value": "0.09"
+          },
+          {
+            "key": "return_anchor_error_m",
+            "value": "57.86"
+          },
+          {
+            "key": "live_lanelet_handoff_enabled",
+            "value": "true"
+          },
+          {
+            "key": "live_lanelet_projection_distance_m",
+            "value": "3.54"
+          },
+          {
+            "key": "live_lanelet_handoff_distance_m",
+            "value": "0.15"
+          },
+          {
+            "key": "live_lanelet_handoff_holding",
+            "value": "false"
+          },
+          {
+            "key": "crab_return_stage",
+            "value": "lateral"
+          },
+          {
+            "key": "crab_return_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_enable",
+            "value": "true"
+          },
+          {
+            "key": "crab_out_yaw_recovery_active",
+            "value": "false"
+          },
+          {
+            "key": "crab_out_yaw_recovery_attempts",
+            "value": "0"
+          },
+          {
+            "key": "crab_out_yaw_recovery_trigger_deg",
+            "value": "8.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_max_attempts",
+            "value": "8"
+          },
+          {
+            "key": "crab_out_yaw_recovery_global_timeout_s",
+            "value": "90.00"
+          },
+          {
+            "key": "crab_out_yaw_recovery_elapsed_s",
+            "value": "0.00"
+          }
+        ]
+      },
+      {
+        "name": "gnss_checker: /sensor/gnss/main",
+        "module": "gnss_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, fix=0)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "fix_status",
+            "value": "0"
+          },
+          {
+            "key": "covariance_type",
+            "value": "2"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          },
+          {
+            "key": "component_id",
+            "value": "gnss.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_antenna"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "gnss_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.00000,0.45000,0.00000"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/topics",
+        "module": "system",
+        "level": 0,
+        "message": "ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "system"
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "map_cost_grid_checker: /map/cost_grid",
+        "module": "map_cost_grid_checker",
+        "level": 0,
+        "message": "OK (1.0 Hz, unknown=0%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "1.00"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "0.0"
+          },
+          {
+            "key": "unknown_warn_pct",
+            "value": "80"
+          },
+          {
+            "key": "unknown_error_pct",
+            "value": "98"
+          },
+          {
+            "key": "grid_size",
+            "value": "960 x 960"
+          },
+          {
+            "key": "grid_resolution_m",
+            "value": "0.25"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.69"
+          }
+        ]
+      },
+      {
+        "name": "localization_lanelet_checker: /localization/lanelet",
+        "module": "localization_lanelet_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.3400)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10"
+          },
+          {
+            "key": "input_pose_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "evaluated_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.3400"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "10.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "100.0000"
+          },
+          {
+            "key": "pos_x (m)",
+            "value": "-11.732"
+          },
+          {
+            "key": "pos_y (m)",
+            "value": "43.824"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.02"
+          }
+        ]
+      },
+      {
+        "name": "system_checker/control",
+        "module": "control",
+        "level": 0,
+        "message": "module graph ok",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "required_nodes",
+            "value": "3"
+          },
+          {
+            "key": "required_topics",
+            "value": "6"
+          },
+          {
+            "key": "missing_nodes",
+            "value": ""
+          },
+          {
+            "key": "missing_topics",
+            "value": ""
+          },
+          {
+            "key": "type_mismatches",
+            "value": ""
+          },
+          {
+            "key": "publisher_missing",
+            "value": ""
+          },
+          {
+            "key": "operating_state",
+            "value": "READY"
+          }
+        ]
+      },
+      {
+        "name": "control/drop_zone_maneuver_controller",
+        "module": "control",
+        "level": 0,
+        "message": "phase=IDLE exit_target_source=lanelet_pose exit_target_error_m=3.543 parking_point_error_m=0.100 parking_point_body_forward_m=0.100 parking_point_body_lateral_m=-0.004 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00",
+        "values": [
+          {
+            "key": "category",
+            "value": "control"
+          },
+          {
+            "key": "module",
+            "value": "control"
+          },
+          {
+            "key": "phase",
+            "value": "IDLE"
+          },
+          {
+            "key": "command_topic",
+            "value": "/control/cmd_vel_raw"
+          },
+          {
+            "key": "exit_travel_distance_m",
+            "value": "0.364"
+          },
+          {
+            "key": "exit_target_source",
+            "value": "lanelet_pose"
+          },
+          {
+            "key": "exit_target_x_m",
+            "value": "-11.908"
+          },
+          {
+            "key": "exit_target_y_m",
+            "value": "43.800"
+          },
+          {
+            "key": "exit_target_initial_distance_m",
+            "value": "3.856"
+          },
+          {
+            "key": "exit_target_initial_forward_m",
+            "value": "3.854"
+          },
+          {
+            "key": "exit_target_initial_lateral_m",
+            "value": "0.141"
+          },
+          {
+            "key": "exit_target_error_m",
+            "value": "3.543"
+          },
+          {
+            "key": "parking_approach_target_x_m",
+            "value": "-11.873"
+          },
+          {
+            "key": "parking_approach_target_y_m",
+            "value": "43.804"
+          },
+          {
+            "key": "parking_approach_error_m",
+            "value": "0.100"
+          },
+          {
+            "key": "parking_approach_body_forward_error_m",
+            "value": "0.100"
+          },
+          {
+            "key": "parking_approach_body_lateral_error_m",
+            "value": "-0.004"
+          },
+          {
+            "key": "parking_approach_goal_age_s",
+            "value": "669.572"
+          },
+          {
+            "key": "station_x_m",
+            "value": "-11.358"
+          },
+          {
+            "key": "station_y_m",
+            "value": "40.090"
+          },
+          {
+            "key": "station_yaw_deg",
+            "value": "-82.213"
+          }
+        ]
+      },
+      {
+        "name": "localization_mode_checker: /localization/mode",
+        "module": "localization_mode_checker",
+        "level": 0,
+        "message": "NORMAL - localization healthy",
+        "values": [
+          {
+            "key": "mode",
+            "value": "NORMAL"
+          },
+          {
+            "key": "mode_value",
+            "value": "0"
+          },
+          {
+            "key": "confidence",
+            "value": "1.000"
+          },
+          {
+            "key": "gnss_ok",
+            "value": "true"
+          },
+          {
+            "key": "imu_ok",
+            "value": "true"
+          },
+          {
+            "key": "wheel_ok",
+            "value": "true"
+          },
+          {
+            "key": "health",
+            "value": "true"
+          },
+          {
+            "key": "gnss_innovation_norm",
+            "value": "0.000"
+          },
+          {
+            "key": "wheel_innovation_norm",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/FRONT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "FRONT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_left"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_front2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_front2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/front2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "1.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.front2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.62787,0.11005,0.33378"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/RIGHT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "RIGHT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "right_front"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_right1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_right1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/right1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.03"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.right1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.38,-0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,-90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/LEFT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "LEFT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_front"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_left1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_left1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/left1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.left1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.38,0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_nav_status_checker: /planning/nav_status",
+        "module": "planning_nav_status_checker",
+        "level": 0,
+        "message": "idle: SUCCEEDED",
+        "values": [
+          {
+            "key": "current_status",
+            "value": "SUCCEEDED"
+          },
+          {
+            "key": "service_maneuver_suppressed",
+            "value": "false"
+          },
+          {
+            "key": "current_abort_suppressed",
+            "value": "false"
+          },
+          {
+            "key": "latest_service_state",
+            "value": "0"
+          },
+          {
+            "key": "service_state_age_s",
+            "value": "105.105"
+          },
+          {
+            "key": "service_transition_abort_grace_s",
+            "value": "3"
+          },
+          {
+            "key": "abort_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "effective_abort_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "abort_warn/error",
+            "value": "2 / 5"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "125.74"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /sensing/cost_grid/lidar",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (10.0 Hz, unknown=100%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "99.7"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/cost_grid/lidar"
+          },
+          {
+            "key": "grid_name",
+            "value": "lidar"
+          },
+          {
+            "key": "width",
+            "value": "180"
+          },
+          {
+            "key": "height",
+            "value": "180"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.cost_grid"
+          },
+          {
+            "key": "sensor_location",
+            "value": "derived_from_front_upper_center_lidar"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "map"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "localization_pose_checker: /localization/pose",
+        "module": "localization_pose_checker",
+        "level": 0,
+        "message": "OK (20 Hz, cov_trace=0.0223)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "20.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "20"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.0223"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "100.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "400.0000"
+          },
+          {
+            "key": "last_jump_m",
+            "value": "0.000"
+          },
+          {
+            "key": "max_jump_m",
+            "value": "20.00"
+          },
+          {
+            "key": "pos_x (m)",
+            "value": "-11.247"
+          },
+          {
+            "key": "pos_y (m)",
+            "value": "40.319"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.03"
+          }
+        ]
+      },
+      {
+        "name": "perception_obstacle_checker: /perception/obstacles/fused_obstacles",
+        "module": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (4.6 Hz, 0 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "4.6"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "count",
+            "value": "0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.21"
+          }
+        ]
+      },
+      {
+        "name": "camera_checker: /sensor/camera/econ_rear",
+        "module": "camera_checker",
+        "level": 0,
+        "message": "OK (4.6 fps)",
+        "values": [
+          {
+            "key": "actual_fps",
+            "value": "4.6"
+          },
+          {
+            "key": "expected_fps",
+            "value": "2.0"
+          },
+          {
+            "key": "image_type",
+            "value": "compressed"
+          },
+          {
+            "key": "width",
+            "value": "960"
+          },
+          {
+            "key": "height",
+            "value": "720"
+          },
+          {
+            "key": "encoding",
+            "value": "jpeg"
+          },
+          {
+            "key": "camera_info",
+            "value": "OK"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.10"
+          },
+          {
+            "key": "component_id",
+            "value": "camera.econ_rear"
+          },
+          {
+            "key": "sensor_location",
+            "value": "rear_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "camera_rear_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.61933,0.00000,0.30013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,180.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /sensing/cost_grid/radar",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (10.0 Hz, unknown=99%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "10.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "99.4"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.09"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/cost_grid/radar"
+          },
+          {
+            "key": "grid_name",
+            "value": "radar"
+          },
+          {
+            "key": "width",
+            "value": "120"
+          },
+          {
+            "key": "height",
+            "value": "120"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.cost_grid"
+          },
+          {
+            "key": "sensor_location",
+            "value": "derived_from_seven_body_radars"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "map"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "gpu_checker: /hardware/gpu0",
+        "module": "gpu_checker",
+        "level": 0,
+        "message": "GPU0 OK (NVIDIA GeForce RTX 3060)",
+        "values": [
+          {
+            "key": "name",
+            "value": "NVIDIA GeForce RTX 3060"
+          },
+          {
+            "key": "util_%",
+            "value": "24.0"
+          },
+          {
+            "key": "mem_used_MB",
+            "value": "4307"
+          },
+          {
+            "key": "mem_total_MB",
+            "value": "12288"
+          },
+          {
+            "key": "mem_%",
+            "value": "35.1"
+          },
+          {
+            "key": "temp_C",
+            "value": "59"
+          },
+          {
+            "key": "power_W",
+            "value": "57.92"
+          },
+          {
+            "key": "power_limit_W",
+            "value": "170.00"
+          }
+        ]
+      },
+      {
+        "name": "wheel_odometry_checker: /sensor/wheel/main",
+        "module": "wheel_odometry_checker",
+        "level": 0,
+        "message": "OK (18 Hz, vx=-0.00 m/s)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "18.2"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2"
+          },
+          {
+            "key": "vx (m/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "vy (m/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "wz (rad/s)",
+            "value": "-0.0000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.06"
+          },
+          {
+            "key": "component_id",
+            "value": "wheel_odometry.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "drive_wheels"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "lidar_checker: /sensor/lidar/filtered",
+        "module": "lidar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, 0 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "point_count",
+            "value": "0"
+          },
+          {
+            "key": "nan_ratio",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.09"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.filtered"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "lidar_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76336,0.00000,0.59538"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "lidar_checker: /sensor/lidar/main",
+        "module": "lidar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, 2751 pts)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "point_count",
+            "value": "2751"
+          },
+          {
+            "key": "nan_ratio",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.10"
+          },
+          {
+            "key": "component_id",
+            "value": "lidar.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "lidar_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76336,0.00000,0.59538"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "perception_obstacle_checker: /perception/obstacles/camera_detections",
+        "module": "perception_obstacle_checker",
+        "level": 0,
+        "message": "OK (4.6 Hz, 0 det)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "4.6"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "count",
+            "value": "0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          }
+        ]
+      },
+      {
+        "name": "planning_costmap_checker: /planning/local_costmap",
+        "module": "planning_costmap_checker",
+        "level": 0,
+        "message": "OK (1.7 Hz, 0.3s ago)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "1.7"
+          },
+          {
+            "key": "expected_hz",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.31"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/local_costmap/costmap"
+          },
+          {
+            "key": "updates_topic",
+            "value": "/planning/local_costmap/costmap_updates"
+          },
+          {
+            "key": "last_source",
+            "value": "update"
+          },
+          {
+            "key": "costmap",
+            "value": "local"
+          },
+          {
+            "key": "rate_is_error",
+            "value": "true"
+          },
+          {
+            "key": "width",
+            "value": "201"
+          },
+          {
+            "key": "height",
+            "value": "201"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "parking/parking_dispatcher",
+        "module": "parking",
+        "level": 0,
+        "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=PARKED",
+        "values": [
+          {
+            "key": "category",
+            "value": "parking"
+          },
+          {
+            "key": "module",
+            "value": "parking"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/RIGHT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "RIGHT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "right_rear"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_right2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_right2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/right2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.03"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.right2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.38,-0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,-90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "imu_checker: /sensor/imu/main",
+        "module": "imu_checker",
+        "level": 0,
+        "message": "OK (9 Hz)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.2"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2"
+          },
+          {
+            "key": "gyro_x (rad/s)",
+            "value": "0.000"
+          },
+          {
+            "key": "gyro_y (rad/s)",
+            "value": "-0.000"
+          },
+          {
+            "key": "gyro_z (rad/s)",
+            "value": "0.000"
+          },
+          {
+            "key": "accel_x (m/s^2)",
+            "value": "-0.000"
+          },
+          {
+            "key": "accel_y (m/s^2)",
+            "value": "0.045"
+          },
+          {
+            "key": "accel_z (m/s^2)",
+            "value": "9.810"
+          },
+          {
+            "key": "accel_magnitude (m/s^2)",
+            "value": "9.810"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.01"
+          },
+          {
+            "key": "component_id",
+            "value": "imu.main"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_upper_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "imu_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.68800,0.00000,0.75600"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_path_checker: /planning/path/local_path",
+        "module": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle",
+        "values": [
+          {
+            "key": "nav_active",
+            "value": "false"
+          },
+          {
+            "key": "point_count",
+            "value": "12"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/REAR",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "REAR"
+          },
+          {
+            "key": "sensor_location",
+            "value": "rear_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_rear_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_rear"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/rear/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.03"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.rear"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.61733,0.00000,0.33978"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,180.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_path_checker: /planning/path/global_path",
+        "module": "planning_path_checker",
+        "level": 0,
+        "message": "navigation idle",
+        "values": [
+          {
+            "key": "nav_active",
+            "value": "false"
+          },
+          {
+            "key": "point_count",
+            "value": "394"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/behavior_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/behavior_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "camera_checker: /sensor/camera/econ_front",
+        "module": "camera_checker",
+        "level": 0,
+        "message": "OK (4.6 fps)",
+        "values": [
+          {
+            "key": "actual_fps",
+            "value": "4.6"
+          },
+          {
+            "key": "expected_fps",
+            "value": "2.0"
+          },
+          {
+            "key": "image_type",
+            "value": "compressed"
+          },
+          {
+            "key": "width",
+            "value": "800"
+          },
+          {
+            "key": "height",
+            "value": "600"
+          },
+          {
+            "key": "encoding",
+            "value": "jpeg"
+          },
+          {
+            "key": "camera_info",
+            "value": "OK"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "camera.econ_front"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_center"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "camera_front_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.76337,0.00000,0.49568"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "localization_source_checker: /localization/source",
+        "module": "localization_source_checker",
+        "level": 0,
+        "message": "Primary EKF filter active",
+        "values": [
+          {
+            "key": "current_source",
+            "value": "primary_filter"
+          },
+          {
+            "key": "primary_source",
+            "value": "primary_filter"
+          },
+          {
+            "key": "fallback_source",
+            "value": "fallback_source"
+          },
+          {
+            "key": "switch_count_60s",
+            "value": "0"
+          },
+          {
+            "key": "switch_warn/error",
+            "value": "3 / 10"
+          },
+          {
+            "key": "fallback_duration_sec",
+            "value": "0.0"
+          },
+          {
+            "key": "fallback_warn/error_sec",
+            "value": "10 / 60"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.00"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/memory",
+        "module": "hw_checker",
+        "level": 0,
+        "message": "Memory 46.3% (14807 / 31948 MB)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "46.3"
+          },
+          {
+            "key": "used_MB",
+            "value": "14807"
+          },
+          {
+            "key": "total_MB",
+            "value": "31948"
+          },
+          {
+            "key": "available_MB",
+            "value": "17140"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/controller_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/controller_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/controller_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "cost_grid_checker: /planning/cost_grid/inflation",
+        "module": "cost_grid_checker",
+        "level": 0,
+        "message": "OK (6.0 Hz, unknown=0%)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "6.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "6.0"
+          },
+          {
+            "key": "unknown_ratio_pct",
+            "value": "0.0"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.12"
+          },
+          {
+            "key": "topic",
+            "value": "/planning/cost_grid/inflation"
+          },
+          {
+            "key": "grid_name",
+            "value": "inflation"
+          },
+          {
+            "key": "width",
+            "value": "180"
+          },
+          {
+            "key": "height",
+            "value": "180"
+          },
+          {
+            "key": "resolution_m",
+            "value": "0.100"
+          }
+        ]
+      },
+      {
+        "name": "localization_init_checker: /localization/init",
+        "module": "localization_init_checker",
+        "level": 0,
+        "message": "Drop zone init check disabled",
+        "values": [
+          {
+            "key": "enabled",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/cpu",
+        "module": "hw_checker",
+        "level": 2,
+        "message": "CPU 99.2% (Critical)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "99.2"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/FRONT1",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "FRONT1"
+          },
+          {
+            "key": "sensor_location",
+            "value": "front_right"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_front1_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_front1"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/front1/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "1.501"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.front1"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.62787,-0.11005,0.33378"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "velocity_converter_checker: /sensing/velocity_converter",
+        "module": "velocity_converter_checker",
+        "level": 0,
+        "message": "OK (18.1 Hz)",
+        "values": [
+          {
+            "key": "velocity_input",
+            "value": "OK"
+          },
+          {
+            "key": "imu_input",
+            "value": "OK"
+          },
+          {
+            "key": "output",
+            "value": "OK"
+          },
+          {
+            "key": "output_hz",
+            "value": "18.1"
+          },
+          {
+            "key": "vel_age_sec",
+            "value": "0.06"
+          },
+          {
+            "key": "imu_age_sec",
+            "value": "0.11"
+          },
+          {
+            "key": "out_age_sec",
+            "value": "0.06"
+          },
+          {
+            "key": "component_id",
+            "value": "velocity_converter"
+          },
+          {
+            "key": "sensor_location",
+            "value": "virtual_wheel_imu_fusion"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/bt_navigator ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/bt_navigator"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      },
+      {
+        "name": "radar_checker: /sensor/radar/LEFT2",
+        "module": "radar_checker",
+        "level": 0,
+        "message": "OK (9.1 Hz, no target)",
+        "values": [
+          {
+            "key": "sensor_name",
+            "value": "LEFT2"
+          },
+          {
+            "key": "sensor_location",
+            "value": "left_rear"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "radar_left2_link"
+          },
+          {
+            "key": "port",
+            "value": "CARLA:/carla/ego_vehicle/radar_left2"
+          },
+          {
+            "key": "topic",
+            "value": "/sensing/radar/left2/range"
+          },
+          {
+            "key": "enabled",
+            "value": "true"
+          },
+          {
+            "key": "actual_hz",
+            "value": "9.1"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "range_valid",
+            "value": "true(no_target)"
+          },
+          {
+            "key": "no_target",
+            "value": "true"
+          },
+          {
+            "key": "range_m",
+            "value": "0.801"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.04"
+          },
+          {
+            "key": "component_id",
+            "value": "radar.left2"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "-0.38,0.53,0.29013"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,90.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "true"
+          }
+        ]
+      },
+      {
+        "name": "hw_checker: /hardware/disk",
+        "module": "hw_checker",
+        "level": 0,
+        "message": "Disk 92.2% (915.3 / 993.2 GB)",
+        "values": [
+          {
+            "key": "usage_%",
+            "value": "92.2"
+          },
+          {
+            "key": "used_GB",
+            "value": "915.3"
+          },
+          {
+            "key": "total_GB",
+            "value": "993.2"
+          },
+          {
+            "key": "free_GB",
+            "value": "77.9"
+          },
+          {
+            "key": "path",
+            "value": "/"
+          }
+        ]
+      },
+      {
+        "name": "localization_gnss_checker: /localization/gnss/main",
+        "module": "localization_gnss_checker",
+        "level": 0,
+        "message": "OK (9.0 Hz, cov_trace=0.200)",
+        "values": [
+          {
+            "key": "actual_hz",
+            "value": "9.0"
+          },
+          {
+            "key": "expected_hz",
+            "value": "2.0"
+          },
+          {
+            "key": "xy_cov_trace",
+            "value": "0.2000"
+          },
+          {
+            "key": "cov_warn_threshold",
+            "value": "4.0000"
+          },
+          {
+            "key": "cov_error_threshold",
+            "value": "25.0000"
+          },
+          {
+            "key": "last_jump_m",
+            "value": "0.000"
+          },
+          {
+            "key": "last_msg_sec_ago",
+            "value": "0.08"
+          },
+          {
+            "key": "component_id",
+            "value": "gnss.localization_input"
+          },
+          {
+            "key": "sensor_location",
+            "value": "robot_center_lever_arm_corrected"
+          },
+          {
+            "key": "sensor_frame",
+            "value": "robot_center_link"
+          },
+          {
+            "key": "mount_xyz_m",
+            "value": "0.00000,0.00000,0.00000"
+          },
+          {
+            "key": "mount_rpy_deg",
+            "value": "0.0,0.0,0.0"
+          },
+          {
+            "key": "pose_verified",
+            "value": "false"
+          }
+        ]
+      },
+      {
+        "name": "planning_lifecycle_checker: /planning/lifecycle/planning/planner_server",
+        "module": "planning_lifecycle_checker",
+        "level": 0,
+        "message": "/planning/planner_server ACTIVE",
+        "values": [
+          {
+            "key": "node",
+            "value": "/planning/planner_server"
+          },
+          {
+            "key": "state",
+            "value": "active"
+          },
+          {
+            "key": "state_id",
+            "value": "3"
+          },
+          {
+            "key": "polled_sec_ago",
+            "value": "0.47"
+          }
+        ]
+      }
+    ],
+    "diagnostics_agg_count": 53,
+    "diagnostics_agg_error_count": 1,
+    "system_health": "ERROR",
+    "mission_phase": "READY",
+    "mission_source": "none",
+    "service_state": 0,
+    "service_state_name": "DROP_ZONE_WAIT",
+    "service_state_description": "reverse_parking_controller:PARKED:station XY goal reached; parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5",
+    "destination": {
+      "site": "",
+      "run": false
+    },
+    "battery_percentage": 80,
+    "battery_return_pending": false,
+    "battery_return_started": false,
+    "battery_return_waiting_for_user": false,
+    "departure_delay_active": false,
+    "departure_delay_seconds": 0.0,
+    "minimum_battery_percentage": 35.0,
+    "occupied_sites": [],
+    "mission_retryable": false,
+    "mission_retry_site": "",
+    "mission_retry_owner": "",
+    "redock_pending": false,
+    "redock_waiting_for_can": false,
+    "redock_status": "idle",
+    "redock_message": "",
+    "mission_dispatch_active": false,
+    "mission_dispatch_site": "",
+    "mission_dispatch_intent": "",
+    "mission_dispatch_owner": "",
+    "mission_dispatch_generation": 0,
+    "departure_failed": false,
+    "battery_return_urgent": false,
+    "charging_required": false,
+    "parking_policy_mode": "auto",
+    "parking_selected_method": "reverse",
+    "urgent_return_battery_percentage": 25.0,
+    "mission_execution_error": "",
+    "recall_final_return_ready": false,
+    "backend_startup_recovery": false
+  },
+  "status": "TERMINAL_STATE_CAPTURED",
+  "png": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/full_suite_v224_12/B1_guest_recall_robot_handoff/B1/terminal_robot_ui/terminal_robot_ui.png",
+    "bytes": 678423,
+    "sha256": "0809ac5c175f02dea2e8482185b939041c79ecf5f39db10c65de32466087a642"
+  },
+  "ended_at_utc": "2026-09-08T08:55:59.518472+00:00"
+}

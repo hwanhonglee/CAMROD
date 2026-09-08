@@ -1,0 +1,114 @@
+{
+  "started_at_utc": "2026-09-08T08:01:12.512269+00:00",
+  "before": {
+    "engaged": false,
+    "ready": true,
+    "service_state": 13,
+    "mission_dispatch_active": false,
+    "mission_phase": "READY"
+  },
+  "motion_commands": false,
+  "bundle_scripts": [
+    "http://127.0.0.1:8010/static/js/main.940a9ae0.js"
+  ],
+  "actual_get_platform_tuning": {
+    "success": false,
+    "available": false,
+    "message": "/ranger_base_node parameter service is unavailable"
+  },
+  "dom": {
+    "title": "Robot UI",
+    "url": "http://127.0.0.1:8010/",
+    "admin": true,
+    "passwordForm": false,
+    "text": "횡↔종 조향 전환 속도\n바퀴 방향이 종방향과 횡방향 사이에서 회전하는 최대 속도입니다. 설정 서비스 연결 시 재시작 없이 조절할 수 있으며, 아래에는 확인된 적용값을 표시합니다.\n설정 서비스 미가용 · 진단 화면을 다시 열어 확인하세요\n—\nrad/s\n—\n느림 0.05\n기준 1.00\n빠름 2.00",
+    "value": "—",
+    "disabled": true,
+    "sliderValue": "0.05"
+  },
+  "png": {
+    "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tuning_after_fix/tuning_service_unavailable.png",
+    "bytes": 112737,
+    "sha256": "12baac978f576d28778e7964faec43edb2375fa737eafb3ef7cecac8b621cd90"
+  },
+  "after": {
+    "engaged": false,
+    "ready": true,
+    "service_state": 13,
+    "mission_dispatch_active": false,
+    "mission_phase": "READY"
+  },
+  "status": "ACTUAL_UNAVAILABLE_PRESENTATION_PASS",
+  "camera_entry_disarmed": true,
+  "finished_at_utc": "2026-09-08T08:01:18.403100+00:00",
+  "interactions": [
+    {
+      "stage": "administrator long press",
+      "selector": "[data-ui=\"operator-admin-entry\"]",
+      "duration_s": 1.65,
+      "x": 897.0,
+      "y": 502.5,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "at_unix_ns": 1788854474563117016
+    },
+    {
+      "stage": "focus administrator id",
+      "selector": "[data-ui=\"operator-admin-id\"]",
+      "x": 259.117,
+      "y": 171.555,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.3057763599790633
+    },
+    {
+      "stage": "administrator id",
+      "selector": "[data-ui=\"operator-admin-id\"]",
+      "text_length": 5,
+      "secret_redacted": false,
+      "transport": "CDP.Input.insertText",
+      "at_unix_ns": 1788854475643676882
+    },
+    {
+      "stage": "focus administrator password",
+      "selector": "[data-ui=\"operator-admin-password\"]",
+      "x": 661.875,
+      "y": 171.555,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.30490330909378827
+    },
+    {
+      "stage": "administrator password",
+      "selector": "[data-ui=\"operator-admin-password\"]",
+      "text_length": 4,
+      "secret_redacted": true,
+      "transport": "CDP.Input.insertText",
+      "at_unix_ns": 1788854476571023167
+    },
+    {
+      "stage": "administrator login",
+      "selector": "[data-ui=\"operator-admin-login\"]",
+      "x": 460.496,
+      "y": 220.938,
+      "transport": "CDP.Input.dispatchMouseEvent",
+      "hit_test": true,
+      "render_settled": true,
+      "stable_for_s": 0.3054740549996495
+    }
+  ],
+  "navigation": [
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-camera\"]",
+      "stage": "camera diagnostic view only",
+      "text": "카메라",
+      "x": 305.227,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    }
+  ]
+}

@@ -1,0 +1,686 @@
+{
+  "schema": "camrod.diagnostic_tabs.no_motion.v1",
+  "started_at_utc": "2026-09-08T08:01:42.684133+00:00",
+  "status": "CAPTURE_COMPLETE",
+  "motion_commands": false,
+  "tabs": [
+    {
+      "tab": "camera",
+      "captured_at_utc": "2026-09-08T08:01:43.845198+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-camera",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView camera\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "전방 · 목표 10 Hz\nLIVE\n4.8 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "후방 · 목표 10 Hz\nLIVE\n4.8 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [
+          {
+            "src": "http://127.0.0.1:8010/api/camera/front?frame=122",
+            "alt": "전방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 800,
+            "naturalHeight": 600,
+            "visible": true,
+            "unobscured": true
+          },
+          {
+            "src": "http://127.0.0.1:8010/api/camera/rear?frame=122",
+            "alt": "후방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 960,
+            "naturalHeight": 720,
+            "visible": true,
+            "unobscured": true
+          }
+        ],
+        "emptyCameras": [],
+        "plots": [],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView camera\nLIVE 10.0 HZ\nSchema v3\n전방 · 목표 10 Hz\nLIVE\n4.8 Hz\n0.1 s\n후방 · 목표 10 Hz\nLIVE\n4.8 Hz\n0.1 s\n전방 카메라\nLIVE · 4.8 Hz\n프레임\ncamera_front\n형식\njpeg\n출처\ncompressed\n센서 목표 주기\n10 Hz\n데이터 크기\n152.9 KiB\n수신 경과\n0.09 s\n후방 카메라\nLIVE · 4.8 Hz\n프레임\ncamera_rear\n형식\njpeg\n출처\ncompressed\n센서 목표 주기\n10 Hz\n데이터 크기\n262.6 KiB\n수신 경과\n0.05 s\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAMERA_RENDER_FRESHNESS_PASS",
+      "camera_first": {
+        "front": {
+          "rendered": true,
+          "rendered_sequence": 121,
+          "image": {
+            "src": "http://127.0.0.1:8010/api/camera/front?frame=121",
+            "alt": "전방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 800,
+            "naturalHeight": 600,
+            "visible": true,
+            "unobscured": true
+          },
+          "source_fresh": true,
+          "source": {
+            "age_s": 0.171,
+            "rate_hz": 4.75
+          },
+          "metadata": {
+            "available": true,
+            "format": "jpeg",
+            "frame_id": "camera_front",
+            "bytes": 156748,
+            "sequence": 121,
+            "source": "compressed",
+            "endpoint": "/api/camera/front"
+          }
+        },
+        "rear": {
+          "rendered": true,
+          "rendered_sequence": 121,
+          "image": {
+            "src": "http://127.0.0.1:8010/api/camera/rear?frame=121",
+            "alt": "후방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 960,
+            "naturalHeight": 720,
+            "visible": true,
+            "unobscured": true
+          },
+          "source_fresh": true,
+          "source": {
+            "age_s": 0.143,
+            "rate_hz": 4.75
+          },
+          "metadata": {
+            "available": true,
+            "format": "jpeg",
+            "frame_id": "camera_rear",
+            "bytes": 268853,
+            "sequence": 121,
+            "source": "compressed",
+            "endpoint": "/api/camera/rear"
+          }
+        }
+      },
+      "camera_last": {
+        "front": {
+          "rendered": true,
+          "rendered_sequence": 122,
+          "image": {
+            "src": "http://127.0.0.1:8010/api/camera/front?frame=122",
+            "alt": "전방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 800,
+            "naturalHeight": 600,
+            "visible": true,
+            "unobscured": true
+          },
+          "source_fresh": true,
+          "source": {
+            "age_s": 0.163,
+            "rate_hz": 4.75
+          },
+          "metadata": {
+            "available": true,
+            "format": "jpeg",
+            "frame_id": "camera_front",
+            "bytes": 156598,
+            "sequence": 122,
+            "source": "compressed",
+            "endpoint": "/api/camera/front"
+          }
+        },
+        "rear": {
+          "rendered": true,
+          "rendered_sequence": 122,
+          "image": {
+            "src": "http://127.0.0.1:8010/api/camera/rear?frame=122",
+            "alt": "후방 카메라 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 960,
+            "naturalHeight": 720,
+            "visible": true,
+            "unobscured": true
+          },
+          "source_fresh": true,
+          "source": {
+            "age_s": 0.133,
+            "rate_hz": 4.75
+          },
+          "metadata": {
+            "available": true,
+            "format": "jpeg",
+            "frame_id": "camera_rear",
+            "bytes": 268901,
+            "sequence": 122,
+            "source": "compressed",
+            "endpoint": "/api/camera/rear"
+          }
+        }
+      },
+      "camera_failures": [],
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/01_camera.png",
+        "bytes": 2134200,
+        "sha256": "3cd627fe12fdd4187c804cc71290776a1a302cb37fede5b9486fc48849fa93c2"
+      }
+    },
+    {
+      "tab": "gnss",
+      "captured_at_utc": "2026-09-08T08:01:46.355698+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-gnss",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView gnss\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "NAV-PVT\nLIVE\n9.4 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "NavSatFix\nLIVE\n9.4 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Moving base\nLIVE\n9.4 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "IMU\nLIVE\n9.4 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Localization\nLIVE\n20.0 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [
+          {
+            "label": "GNSS IMU localization heading comparison",
+            "visible": true,
+            "polylines": 0,
+            "points": 6
+          }
+        ],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView gnss\nLIVE 10.0 HZ\nSchema v3\nNAV-PVT\nLIVE\n9.4 Hz\n0.0 s\nNavSatFix\nLIVE\n9.4 Hz\n0.0 s\nMoving base\nLIVE\n9.4 Hz\n0.0 s\nIMU\nLIVE\n9.4 Hz\n0.0 s\nLocalization\nLIVE\n20.0 Hz\n0.0 s\nGNSS solution\nNONE\nFix\n3D\nCarrier\nNONE\nSatellites\n0\nH accuracy\n0.100m\nLatitude\n36.8439336\nLongitude\n128.0924320\nAltitude\n-0.94m\nGround speed\n0.00m/s\nPosition DOP\n0.00\nBaseline\n0.900m\nHeading accuracy\n9.00°\nGNSS / IMU delta\n0.0°\nPosition covariance\nN 0.100 m\nE 0.100 m\nD/U 0.200 m\nDirection consistency\nNORMAL\n0°\n90°\n180°\nGNSS\n97.8°\nIMU\n97.8°\nPose\n95.8°\nConfidence\n1.00\nGNSS innovation\n0.00\nWheel innovation\n0.00\nGNSS OK\nIMU OK\nWHEEL OK\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/02_gnss.png",
+        "bytes": 234724,
+        "sha256": "ac7993d1ffb85cb15ce18aa045af09d1644e62559448046a6a3ba598ea626d7a"
+      }
+    },
+    {
+      "tab": "proximity",
+      "captured_at_utc": "2026-09-08T08:01:47.866920+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-proximity",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView proximity\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "Front 1\nLIVE\n9.2 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Front 2\nLIVE\n9.2 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Left 1\nLIVE\n9.2 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Left 2\nLIVE\n9.2 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Right 1\nLIVE\n9.3 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Right 2\nLIVE\n9.3 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Rear\nLIVE\n9.3 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "LiDAR filtered\nLIVE\n1.8 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "LiDAR raw\nLIVE\n1.8 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Planning boundary\nLIVE\n5.5 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [
+          {
+            "label": "Radar lidar top down proximity view",
+            "visible": true,
+            "polylines": 7,
+            "points": 302
+          }
+        ],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView proximity\nLIVE 10.0 HZ\nSchema v3\nFront 1\nLIVE\n9.2 Hz\n0.0 s\nFront 2\nLIVE\n9.2 Hz\n0.0 s\nLeft 1\nLIVE\n9.2 Hz\n0.0 s\nLeft 2\nLIVE\n9.2 Hz\n0.0 s\nRight 1\nLIVE\n9.3 Hz\n0.0 s\nRight 2\nLIVE\n9.3 Hz\n0.0 s\nRear\nLIVE\n9.3 Hz\n0.0 s\nLiDAR filtered\nLIVE\n1.8 Hz\n0.0 s\nLiDAR raw\nLIVE\n1.8 Hz\n0.0 s\nPlanning boundary\nLIVE\n5.5 Hz\n0.1 s\nTop-down proximity\nFiltered 0 / 0\nrobot_center_link\nLiDAR sample\nLiDAR raw\nRadar echo\nRadar cost\nPhysical body\nPlanning boundary\nSeven-channel radar\nLiDAR 1.8 Hz\nChannel\tRange\tWindow\tRate\tState\nFront 1\t∞ m\t0.0 - 1.5 m\t9.2 Hz\tCLEAR\nFront 2\t∞ m\t0.0 - 1.5 m\t9.2 Hz\tCLEAR\nLeft 1\t∞ m\t0.0 - 0.8 m\t9.2 Hz\tCLEAR\nLeft 2\t∞ m\t0.0 - 0.8 m\t9.2 Hz\tCLEAR\nRight 1\t∞ m\t0.0 - 0.8 m\t9.3 Hz\tCLEAR\nRight 2\t∞ m\t0.0 - 0.8 m\t9.3 Hz\tCLEAR\nRear\t0.40 m\t0.0 - 0.5 m\t9.3 Hz\tECHO\nLiDAR frame\nrobot_center_link\n0 filtered\n358 raw\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/03_proximity.png",
+        "bytes": 249684,
+        "sha256": "661efd6f3650df50558d4e1ff0c1fa988e1acd3cc74a99e37e04be41f68ede91"
+      }
+    },
+    {
+      "tab": "trajectory",
+      "captured_at_utc": "2026-09-08T08:01:49.408119+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-trajectory",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView trajectory\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "Pose\nLIVE\n21.5 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Velocity\nLIVE\n5.0 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Global path\n대기",
+            "className": "telemetry-source telemetry-source-waiting"
+          },
+          {
+            "text": "Local path\nLIVE\n3.2 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Tracking error\nLIVE\n42.2 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Lanelet map\nLIVE\n0.5 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [
+          {
+            "label": "Lanelet route local path driven trajectory and manual goal selector",
+            "visible": true,
+            "polylines": 1,
+            "points": 1
+          }
+        ],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView trajectory\nLIVE 10.0 HZ\nSchema v3\nPose\nLIVE\n21.5 Hz\n0.0 s\nVelocity\nLIVE\n5.0 Hz\n0.1 s\nGlobal path\n대기\nLocal path\nLIVE\n3.2 Hz\n0.2 s\nTracking error\nLIVE\n42.2 Hz\n0.0 s\nLanelet map\nLIVE\n0.5 s\nRoute and driven trace\n2957 map points\nGlobal\nLocal\nManeuver\nDriven trace\nManual goal\nTracking\nnone\nSpeed\n0.00km/h\nYaw rate\n0.000rad/s\nLateral error\n0.000m\nHeading error\n0.00°\nPath distance\n0.000m\nMotion mode\n0\nGlobal path\n0\n0 raw\nLocal path\n0\n0 raw\nDriven trace\n110\nbounded\nX\n-11.379 m\nY\n39.980 m\nYaw\n95.8°\n수동 Goal Pose\nmap\n⌖목표 선택\n×지우기\nX\n- m\nY\n- m\nYaw\n-°\n➤목표 확인\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "map": {
+        "frame_id": "map",
+        "point_count": 2957,
+        "polyline_count": 358
+      },
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/04_trajectory.png",
+        "bytes": 188897,
+        "sha256": "5bc900edf1720246cfa6b2c5bcb98dda370406abedeb40253f21196d346ed435"
+      }
+    },
+    {
+      "tab": "perception",
+      "captured_at_utc": "2026-09-08T08:01:50.906603+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-perception",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView perception\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "Lanelet map\nLIVE\n0.6 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Lane cost\n대기",
+            "className": "telemetry-source telemetry-source-waiting"
+          },
+          {
+            "text": "Semantic fusion cost\nLIVE\n0.5 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Radar cost\nLIVE\n0.6 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Semantic obstacle cloud\nLIVE\n0.6 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [
+          {
+            "label": "Lanelet cost grids obstacles and robot footprint",
+            "visible": true,
+            "polylines": 49,
+            "points": 1
+          }
+        ],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView perception\nLIVE 10.0 HZ\nSchema v3\nLanelet map\nLIVE\n0.6 s\nLane cost\n대기\nSemantic fusion cost\nLIVE\n0.5 s\nRadar cost\nLIVE\n0.6 s\nSemantic obstacle cloud\nLIVE\n0.6 s\nMap and perception overlay\n32 m × 18.4 m robot-centered window\nLane boundary\nSemantic fusion cost\nRadar cost\nInflation\nSemantic obstacle\nRuntime layers\n2957 lanelet points\nLane boundary\n대기\n-\nSemantic fusion cost\n0 cells\n0.10 m\nRadar cost\n0 cells\n0.10 m\nInflation\n800 cells\n0.10 m\nObstacle samples\n0\nObstacle source points\n0\nMap polylines\n358\nCoordinate frames\nMap map\nObstacle -\nRobot robot_center_link\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "map": {
+        "frame_id": "map",
+        "point_count": 2957,
+        "polyline_count": 358
+      },
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/05_perception.png",
+        "bytes": 245471,
+        "sha256": "73b82f3fb7d7ab1932293113ae6379efe1dbd27b2dbf0084e6b71da3d1f3a51b"
+      }
+    },
+    {
+      "tab": "safety",
+      "captured_at_utc": "2026-09-08T08:01:52.431966+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-safety",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView safety\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "Safety gate\nLIVE\n14.0 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Radar evidence\nLIVE\n10.0 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Obstacle replan\nLIVE\n5.0 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Camping site\nLIVE\n0.6 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Drop zone\nLIVE\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Route recovery\nLIVE\n10.0 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "Reverse parking\n대기",
+            "className": "telemetry-source telemetry-source-waiting"
+          },
+          {
+            "text": "AprilTag parking\nLIVE\n10.0 Hz\n0.0 s",
+            "className": "telemetry-source telemetry-source-live"
+          }
+        ],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView safety\nLIVE 10.0 HZ\nSchema v3\nSafety gate\nLIVE\n14.0 Hz\n0.0 s\nRadar evidence\nLIVE\n10.0 Hz\n0.1 s\nObstacle replan\nLIVE\n5.0 Hz\n0.2 s\nCamping site\nLIVE\n0.6 s\nDrop zone\nLIVE\n0.0 s\nRoute recovery\nLIVE\n10.0 Hz\n0.1 s\nReverse parking\n대기\nAprilTag parking\nLIVE\n10.0 Hz\n0.0 s\nCommand safety gate\nCHARGING\n\nstate=CHARGING reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,charging charging=true charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 manual_departure_remaining_s=0.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive\n\nMotion owners\nCHARGING\nCamping site\nIDLE\nphase=IDLE site= service_mode=turnaround roadside_return=turnaround recall_turnaround_return=False battery_urgent_return=False return_source= crab_speed_mps=0.67 crab_command_mps=0.00 anchor_centering=inactive phase_wall_elapsed_s=125.9 current_yaw_deg=95.79 target_yaw_deg=0.00 yaw_error_deg=-95.79 yaw_rate_degps=0.00 last_angular_cmd_radps=0.000 crab_out_yaw_recovery_active=false crab_body_yaw_alignment=inactive crab_body_yaw_compensation_state=disabled_zero_default detail=cancel=backend_startup_discovery_reassert:2:operator_stop return_published=False return_ack=False\nDrop zone\nIDLE\nphase=IDLE exit_target_source=none exit_target_error_m=0.000 parking_point_error_m=0.000 parking_point_body_forward_m=0.000 parking_point_body_lateral_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00\nRoute recovery\nIDLE\nwaiting_for_route_safety_hold\nReverse parking\nNO DATA\n-\nAprilTag parking\nIDLE\nparking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE\nMission state\nOK\nMission phase\nREADY\nMission source\nnone\nService state\nCHARGING\nReady\nYES\nEngaged\nNO\nSystem\nOK\nRadar obstacle evidence\nclear\nObstacle replan\nIDLE: navigation inactive\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/06_safety.png",
+        "bytes": 340645,
+        "sha256": "4217ff0823809fe8fbe6d5cd9475873ac55d26045e7475c9819d7a679a2c0d4f"
+      }
+    },
+    {
+      "tab": "docking",
+      "captured_at_utc": "2026-09-08T08:01:53.984602+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": "false",
+        "manualConnected": "true",
+        "activeTab": "operator-diagnostic-tab-docking",
+        "session": "OPERATOR TELEMETRY ACTIVE\nView docking\nLIVE 10.0 HZ\nSchema v3",
+        "sources": [
+          {
+            "text": "AprilTag 디버그 영상\nLIVE\n5.0 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "CARLA 실제 후방카메라 · 대체 영상\nLIVE\n6.9 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "태그 감지\nLIVE\n4.9 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "태그 자세\nLIVE\n5.0 Hz\n0.2 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "충전 CAN\nLIVE\n5.0 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "도킹 제어기\nLIVE\n10.0 Hz\n0.1 s",
+            "className": "telemetry-source telemetry-source-live"
+          },
+          {
+            "text": "주차 제어기\n대기",
+            "className": "telemetry-source telemetry-source-waiting"
+          }
+        ],
+        "images": [
+          {
+            "src": "http://127.0.0.1:8010/api/camera/docking?frame=3",
+            "alt": "AprilTag 도킹 디버그 영상 실시간 ROS 영상",
+            "complete": true,
+            "naturalWidth": 960,
+            "naturalHeight": 720,
+            "visible": true,
+            "unobscured": false
+          }
+        ],
+        "emptyCameras": [],
+        "plots": [],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\nOPERATOR TELEMETRY ACTIVE\nView docking\nLIVE 10.0 HZ\nSchema v3\nAprilTag 디버그 영상\nLIVE\n5.0 Hz\n0.2 s\nCARLA 실제 후방카메라 · 대체 영상\nLIVE\n6.9 Hz\n0.2 s\n태그 감지\nLIVE\n4.9 Hz\n0.2 s\n태그 자세\nLIVE\n5.0 Hz\n0.2 s\n충전 CAN\nLIVE\n5.0 Hz\n0.1 s\n도킹 제어기\nLIVE\n10.0 Hz\n0.1 s\n주차 제어기\n대기\n복귀 · 자동 주차\n도킹\n명령 대기\n\n자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전 도킹\n\nAprilTag 도킹 디버그 영상\nLIVE · 5.0 Hz\n프레임\ncamera_rear\n형식\njpeg\n출처\ncompressed\n센서 목표 주기\n10 Hz\n데이터 크기\n254.8 KiB\n수신 경과\n0.18 s\n도킹 상태\nCHARGING\n태그\n감지됨\n충전\n연결됨 · 정지\n태그 거리\n0.399m\n카메라 X\n0.001m\n카메라 Y\n-0.001m\n카메라 Z\n0.399m\n태그 Yaw\n90.3°\n배터리\n80.0%\nLanelet 주차 지점\nIDLE\nphase=IDLE exit_target_source=none exit_target_error_m=0.000 parking_point_error_m=0.000 parking_point_body_forward_m=0.000 parking_point_body_lateral_m=0.000 target_yaw_deg=97.79 settle_s=0.00 yaw_rate_degps=0.00\nAprilTag 도킹\nIDLE\nparking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE\n후진 주차\n데이터 없음\n-\n주차 접근 경로\n제어기 출력\nNO PARKING PATH\n주차 컨트롤러 경로 토픽 대기 중\n정확한 Lanelet 지점\n후진 주차\nAprilTag 도킹\n목표\nCARLA 수동주행\n직진·조향\nX 0.00\nY 0.00\nYaw 0.00\nSTANDBY\nZERO\nDISARM\n제어 열기"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/07_docking.png",
+        "bytes": 604060,
+        "sha256": "81960dc409e6d7116a3731b4ca80138bee7fb31590fcf545737b8b4df657c432"
+      }
+    },
+    {
+      "tab": "system",
+      "captured_at_utc": "2026-09-08T08:01:55.531054+00:00",
+      "dom": {
+        "title": "Robot UI",
+        "url": "http://127.0.0.1:8010/",
+        "visibility": "visible",
+        "focused": true,
+        "admin": true,
+        "manualArmed": null,
+        "manualConnected": null,
+        "activeTab": "operator-diagnostic-tab-system",
+        "session": "",
+        "sources": [],
+        "images": [],
+        "emptyCameras": [],
+        "plots": [],
+        "text": "시스템\nGNSS · IMU\n레이더 · LiDAR\n카메라\n주행 궤적\n지도 · 인지\n안전 · 제어\n도킹 · 주차\n수동 운행\n복귀\n도킹\n명령 대기\n\n자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전 도킹\n\n횡↔종 조향 전환 속도\n바퀴 방향이 종방향과 횡방향 사이에서 회전하는 최대 속도입니다. 설정 서비스 연결 시 재시작 없이 조절할 수 있으며, 아래에는 확인된 적용값을 표시합니다.\n설정 서비스 미가용 · 진단 화면을 다시 열어 확인하세요\n—\nrad/s\n—\n느림 0.05\n기준 1.00\n빠름 2.00\nDevice groups\n53개 항목\n▶\nOK (53)\n← 항목을 선택하세요"
+      },
+      "status": "CAPTURED_NOT_DATA_CERTIFIED",
+      "png": {
+        "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/v224_validation/diagnostic_tabs_after_ui_fixes/08_system.png",
+        "bytes": 112737,
+        "sha256": "12baac978f576d28778e7964faec43edb2375fa737eafb3ef7cecac8b621cd90"
+      }
+    }
+  ],
+  "source_runner": {
+    "path": "/home/hong/camrod_ws/src/scripts/virtual_carla/manual_4ws_evidence.py",
+    "sha256": "d7c42b47778653198d082ce5f8525b2e28097619aee0f74ef6bc468d6e2dc66d"
+  },
+  "scope": "Rendered diagnostic capture; not sensor provenance or optional Dock/manoeuvre validation",
+  "admin_exit": {
+    "ordinary_operator_screen": true,
+    "at_utc": "2026-09-08T08:01:56.481838+00:00"
+  },
+  "interactions": [
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-camera\"]",
+      "stage": "diagnostic tab camera",
+      "text": "카메라",
+      "x": 305.227,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-gnss\"]",
+      "stage": "diagnostic tab gnss",
+      "text": "GNSS · IMU",
+      "x": 132.777,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-proximity\"]",
+      "stage": "diagnostic tab proximity",
+      "text": "레이더 · LiDAR",
+      "x": 226.641,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-trajectory\"]",
+      "stage": "diagnostic tab trajectory",
+      "text": "주행 궤적",
+      "x": 369.422,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-perception\"]",
+      "stage": "diagnostic tab perception",
+      "text": "지도 · 인지",
+      "x": 444.824,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-safety\"]",
+      "stage": "diagnostic tab safety",
+      "text": "안전 · 제어",
+      "x": 524.77,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-docking\"]",
+      "stage": "diagnostic tab docking",
+      "text": "도킹 · 주차",
+      "x": 604.715,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-diagnostic-tab-system\"]",
+      "stage": "diagnostic tab system",
+      "text": "시스템",
+      "x": 59.969,
+      "y": 103.566,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    },
+    {
+      "selector": "[data-ui=\"operator-admin-exit\"]",
+      "stage": "exit diagnostics after capture",
+      "text": "뒤로가기",
+      "x": 838.504,
+      "y": 54.742,
+      "visible": true,
+      "enabled": true,
+      "hit_test": true,
+      "transport": "CDP.Input.dispatchMouseEvent"
+    }
+  ],
+  "ended_at_utc": "2026-09-08T08:01:56.481939+00:00"
+}

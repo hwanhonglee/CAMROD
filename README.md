@@ -41,6 +41,11 @@ zero-turn Ranger platform. Current release baseline: **`v2.2.5`**.
 planning and UI fixes from inherited features and remaining integration/field
 acceptance. The version tag is not a claim that every campsite or docking cycle passed.
 
+**This `virtual/carla` branch:** [2026-09-08 request-by-request results and actual PNG/GIF](docs/VIRTUAL_CARLA_V2_2_5_VERIFICATION.md).
+Latest validated runtime: one B1 Guest round trip/reverse park passed; optional
+Dock failed; remaining current-version scenarios are unverified. Historical
+full-site evidence below does not override this current status.
+
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
 ## Actual Simulation Runtime
