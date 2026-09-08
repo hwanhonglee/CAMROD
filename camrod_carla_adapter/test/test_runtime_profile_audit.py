@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -213,6 +214,29 @@ def _ui_identity_fixture(tmp_path: Path) -> tuple[Path, Path]:
     )
     shutil.copytree(build, installed_build)
     return source, install
+
+
+@pytest.mark.parametrize("locale_name", ["C", "en_US.utf8", "ko_KR.utf8"])
+def test_shell_ui_fingerprint_matches_audit_independently_of_locale(tmp_path, locale_name):
+    locales = subprocess.check_output(["locale", "-a"], text=True).splitlines()
+    if locale_name not in locales:
+        pytest.skip(f"locale {locale_name} is not installed")
+    source, _ = _ui_identity_fixture(tmp_path)
+    frontend = source / "camrod_ui/camrod_ui_robot/assets/frontend"
+    for filename in ("A.js", "a-b.js", "a_b.js", "B.js", "b.js"):
+        (frontend / "src" / filename).write_text(filename, encoding="utf-8")
+    builder = (SCRIPT.parents[2] / "colcon_build.sh").read_text()
+    start = builder.index("_camrod_ui_frontend_input_fingerprint() {")
+    end = builder.index("\n}\n", start) + 3
+    # Execute only the production fingerprint helper; never source the build
+    # entrypoint or perform package discovery/build/install in this test.
+    shell = builder[start:end] + '\n_camrod_ui_frontend_input_fingerprint "$1"\n'
+    result = subprocess.run(
+        ["bash", "-c", shell, "fingerprint-test", str(frontend)],
+        env={**os.environ, "LC_ALL": locale_name},
+        check=True, capture_output=True, text=True,
+    )
+    assert result.stdout.strip() == audit.frontend_source_input_fingerprint(frontend)
 
 
 def test_ui_identity_records_installed_artifacts_and_rejects_source_mismatch(

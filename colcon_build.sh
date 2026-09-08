@@ -313,13 +313,15 @@ _prepare_camrod_ui_build_environment() {
 
 _camrod_ui_frontend_input_fingerprint() {
   local frontend_dir="$1"
+  # Bind the same bytewise filename order as the Python runtime auditor,
+  # independent of the login shell or systemd service collation locale.
   (
     cd "${frontend_dir}"
     {
       printf '%s\0' package.json package-lock.json camrod-build-env.json
       find src public -type f -print0
     } \
-      | sort -z \
+      | LC_ALL=C sort -z \
       | while IFS= read -r -d '' input; do
           printf '%s\0' "${input}"
           sha256sum "${input}" | awk '{printf "%s\\0", $1}'
