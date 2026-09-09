@@ -221,7 +221,15 @@ controller_server:
       # aligns yaw, so Nav2 must not fight that local maneuver at centimeter scale.
       # HH_260907 - Preserve field-tuned route arrival: 0.10 m (previous 0.30 m).
       # This is separate from the final reverse-parking station tolerance.
-      xy_goal_tolerance: 0.1
+      # HH_260909 - 0.10 m left RPP grinding out the last 0.17 m at the campsite
+      # entry. With the remaining path shorter than the lookahead the carrot pins
+      # to the final point and the 2y/d^2 curvature explodes: measured commands
+      # were 0.278 m/s with 2.17-2.64 rad/s, a 0.11-0.13 m radius, which the
+      # platform must serve as MOTION_MODE_SPINNING below its 0.81 m minimum turn
+      # radius. The zero-turn body then contacted the lanelet boundary (cost 100)
+      # and bounded route-safety recovery reversed, twice, over ~30 s before
+      # GOAL_REACHED finally latched. 0.20 m ends the approach before that region.
+      xy_goal_tolerance: 0.2
       yaw_goal_tolerance: 3.14
       stateful: False
 

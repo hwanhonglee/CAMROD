@@ -18,8 +18,10 @@ RUNTIME_REPORT = (
     / "runtime-capture-20260804"
     / "runtime-visual-capture-20260804.json"
 )
+# HH_260909 - Active map advanced to revision 24: one node retired and the
+# shared parking/docking station yaw retrimmed to -88.2127 deg.
 ACTIVE_MAP_SHA256 = (
-    "2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7"
+    "d4a760623fc507881e26db7e2fe352a21ebaf6a3e6a10da262d6144abc107c98"
 )
 
 
@@ -40,14 +42,15 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "23"
+    assert metadata.attrib["map_version"] == "24"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
     # Preserve every node in the operator's 1.0.13 snapshot, including nodes
     # that are not members of a current semantic area.
-    assert len(root.findall("node")) == 1662
+    # HH_260909 - Revision 24 retires one node from the 1.0.13 snapshot.
+    assert len(root.findall("node")) == 1661
     assert len(root.findall("way")) == 237
 
     # HH_260907 - The new area is shared by parking and docking. The former
@@ -61,7 +64,8 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     assert drops["7019"]["parking_method"] == "auto"
     assert root.find("relation[@id='2320']") is None
     assert root.find("way[@id='2316']") is not None
-    assert {tags["yaw_deg"] for tags in drops.values()} == {"-82.2127"}
+    # HH_260909 - Station yaw retrimmed to -88.2127 deg in the active map.
+    assert {tags["yaw_deg"] for tags in drops.values()} == {"-88.2127"}
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

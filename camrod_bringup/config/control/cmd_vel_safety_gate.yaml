@@ -298,13 +298,21 @@
     route_heading_frame_id: "map"
     route_heading_min_cmd_x_mps: 0.03
     route_heading_lateral_cmd_epsilon_mps: 0.02
-    route_heading_lookahead_m: 2.0
-    route_heading_error_enter_deg: 75.0
+    # HH_260909 - A 2.0 m chord across a 90-degree corner reads almost the
+    # full turn as heading error, so the gate zeroed linear.x and the platform
+    # fell into MOTION_MODE_SPINNING at the corner vertex. The stationary spin
+    # then pushed the body off the lane and triggered a crab recovery before
+    # Dual-Ackermann resumed. A 1.2 m chord plus a 105/25 deg band keeps this
+    # guard for genuine gross start misalignment only.
+    route_heading_lookahead_m: 1.2
+    route_heading_error_enter_deg: 105.0
     # HH_260806 - A gross start alignment must finish before forward motion;
     # ordinary curve tracking stays with continuous RPP control.
-    route_heading_error_exit_deg: 5.0
+    # HH_260909 - Release to RPP once the gross error is gone; the previous
+    # 5 deg exit held a stationary spin through the whole corner.
+    route_heading_error_exit_deg: 25.0
     route_heading_angular_kp: 0.8
-    route_heading_max_angular_z: 0.35
+    route_heading_max_angular_z: 0.5
     route_heading_max_linear_x: 0.0
     route_heading_min_path_points: 2
 

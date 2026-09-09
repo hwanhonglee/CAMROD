@@ -143,7 +143,10 @@ def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     gnss = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["gnss"]
     localization = _wildcard_parameters(PACKAGE_LOCALIZATION_CONFIG)
 
-    assert gnss["x"] == pytest.approx(0.0)
+    # HH_260909 - Longitudinal lever arm remeasured 0.0 -> 0.65 m. The contract
+    # this guards is that robot_params and localization share one value; that
+    # equality is asserted below and is unchanged.
+    assert gnss["x"] == pytest.approx(0.65)
     assert gnss["y"] == pytest.approx(GNSS_LEFT_ANTENNA_OFFSET_M)
     assert gnss["z"] == pytest.approx(0.0)
     assert localization["enable_gnss_lever_arm_correction"] is True

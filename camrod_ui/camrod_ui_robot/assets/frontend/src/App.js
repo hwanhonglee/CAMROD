@@ -2156,9 +2156,9 @@ function App() {
     setServiceDockingStatus('');
     try {
       const body = await postDockingRequest();
-      setServiceDockingStatus(body.message || '충전 도킹 요청이 접수되었습니다.');
+      setServiceDockingStatus(body.message || '충전 요청이 접수되었습니다.');
     } catch (error) {
-      setServiceDockingStatus(error.message || '도킹 요청 실패');
+      setServiceDockingStatus(error.message || '충전 요청 실패');
     } finally {
       serviceDockingPendingRef.current = false;
       setServiceDockingPending(false);
@@ -2731,11 +2731,14 @@ function App() {
                   setShowDockingConfirm(true);
                 }}
               >
+                {/* HH_260909 - Operators read "도킹" as jargon. The card, its
+                    confirm dialog and its status line now all say 충전; the
+                    data-ui hook and CSS class keep the docking identifier. */}
                 <span className="service-choice-icon" aria-hidden="true">🔒</span>
-                <strong>{serviceDockingPending ? '도킹 요청 중' : '도킹'}</strong>
+                <strong>{serviceDockingPending ? '충전 요청 중' : '충전'}</strong>
                 <span>
                   {dockingAvailable
-                    ? '대기·충전 장소에서 충전 도킹을 시작합니다.'
+                    ? '대기·충전 장소에서 충전을 시작합니다.'
                     : '대기·충전 장소에서만 이용할 수 있습니다.'}
                 </span>
               </button>
@@ -2818,8 +2821,8 @@ function App() {
           <div className="move-confirm-overlay" onClick={() => setShowDockingConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
               <p className="move-confirm-msg">
-                배터리 잔량과 관계없이 충전 도킹을 요청합니다.<br />
-                도킹을 진행하시겠습니까?
+                배터리 잔량과 관계없이 충전을 요청합니다.<br />
+                충전을 진행하시겠습니까?
               </p>
               <div className="move-confirm-btns">
                 <button className="move-confirm-yes" data-ui="operator-service-docking-confirm" onClick={handleServiceDocking}>
@@ -2941,7 +2944,9 @@ function App() {
                 <button className="preview-return-btn" onClick={handleArrivalComplete} disabled={returnRequestPending}>
                   {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
                     ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
-                    : '수령 완료 · 복귀'}
+                    /* HH_260909 - Delivery arrival is announced as arrival, not
+                       as receipt of goods. The guest screen uses the same word. */
+                    : '도착 완료 · 복귀'}
                 </button>
               ) : (
                 <p className="preview-question">
@@ -3125,7 +3130,7 @@ function App() {
               {recallArrivalPresentation ? (
                 <>{recallFinalReturnReady ? '짐 싣기를 모두 마친 후,' : '짐 정리를 마친 후,'}<br /><strong>[{recallCompletionLabel(arrivedSite, recallFinalReturnReady)}]</strong> 버튼을 눌러주세요</>
               ) : (
-                <>배송 물품을 모두 내린 후,<br /><strong>[수령 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+                <>배송 물품을 모두 내린 후,<br /><strong>[도착 완료 · 복귀]</strong> 버튼을 눌러주세요</>
               )}
             </p>
             <p className="arrival-complete-sub">
@@ -3137,7 +3142,7 @@ function App() {
             <button className="arrival-complete-btn" onClick={handleArrivalComplete} disabled={returnRequestPending}>
               {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
                 ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
-                : '수령 완료 · 복귀'}
+                : '도착 완료 · 복귀'}
             </button>
           </div>
         </div>

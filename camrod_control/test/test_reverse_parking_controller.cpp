@@ -68,7 +68,8 @@ protected:
   double initialDistance() const { return node_->initial_station_distance_m_; }
   double axisDistance() const { return node_->stationDistanceAlongReverseAxis(); }
   bool startObservedPose() {
-    const double station_yaw = -82.2127 * M_PI / 180.0;
+    // HH_260909 - Station yaw retrimmed to -88.2127 deg.
+    const double station_yaw = -88.2127 * M_PI / 180.0;
     node_->station_pose_ = {-11.3585, 40.0901, station_yaw};
     pose(-11.228455380998474, 39.89074377250848);
     node_->last_vehicle_pose_->pose.orientation.z = std::sin((station_yaw + M_PI) / 2.0);
