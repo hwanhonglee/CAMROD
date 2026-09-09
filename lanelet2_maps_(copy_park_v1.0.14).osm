@@ -11949,7 +11949,7 @@
     <member type="way" role="outer" ref="7018"/>
     <tag k="type" v="multipolygon"/>
     <tag k="subtype" v="drop_zone"/>
-    <tag k="yaw_deg" v="-88.2127"/>
+    <tag k="yaw_deg" v="-82.2127"/>
     <tag k="parking_method" v="auto"/>
   </relation>
 </osm>

@@ -7,7 +7,9 @@ drop_zones:
     x: -11.3585
     y: 40.0901
     z: 0
-    yaw_deg: -82.2127
+    # HH_260909 - Station yaw retrimmed -82.2127 -> -88.2127 deg.
+    # TODO: record the field measurement this came from.
+    yaw_deg: -88.2127
     parking_method: "auto"
     corners:
       - x: -12.4879

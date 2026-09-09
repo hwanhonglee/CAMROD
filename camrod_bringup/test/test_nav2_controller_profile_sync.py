@@ -95,12 +95,15 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
 
 
 def test_route_handoff_uses_field_tuned_goal_checker_before_local_parking() -> None:
-    """Nav2 hands off at 0.10 m; local parking then owns final alignment."""
+    """Nav2 hands off at 0.20 m; local parking then owns final alignment."""
     package = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
     deployed = _parameters(BRINGUP_CONFIG / "nav2_base.yaml")
 
     for profile in (package, deployed):
-        assert profile["goal_checker"]["xy_goal_tolerance"] == 0.1
+        # HH_260909 - Widened 0.10 -> 0.20 m so RPP stops before the
+        # curvature blow-up that forced MOTION_MODE_SPINNING at the
+        # campsite entry.
+        assert profile["goal_checker"]["xy_goal_tolerance"] == 0.2
         assert profile["DWB"]["xy_goal_tolerance"] == 0.3
         # Manual RViz goals retain their yaw-aware operator tolerance and do
         # not participate in the automatic drop-zone return handoff.
@@ -776,8 +779,9 @@ def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> N
     assert base["RotationShim"]["angular_dist_threshold"] == 0.785398
     assert base["RotationShim"]["angular_disengage_threshold"] == 0.0872665
     assert gate["enable_route_heading_alignment"] is True
-    assert gate["route_heading_error_enter_deg"] == 75.0
-    assert gate["route_heading_error_exit_deg"] == 5.0
+    assert gate["route_heading_error_enter_deg"] == 105.0
+    assert gate["route_heading_error_exit_deg"] == 25.0
+    assert gate["route_heading_lookahead_m"] == 1.2
     assert gate["route_heading_max_linear_x"] == 0.0
 
 

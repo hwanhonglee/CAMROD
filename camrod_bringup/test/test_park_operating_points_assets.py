@@ -84,7 +84,8 @@ def test_current_area_export_configs_are_synchronized() -> None:
     ]
     assert drops[0]["x"] == -11.3585
     assert drops[0]["y"] == 40.0901
-    assert drops[0]["yaw_deg"] == -82.2127
+    # HH_260909 - Station yaw retrimmed to -88.2127 deg.
+    assert drops[0]["yaw_deg"] == -88.2127
     assert [site["type"] for site in sites] == [
         f"camping_site_{index}" for index in range(1, 14)
     ]

@@ -126,7 +126,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "호출 서비스",
             "사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.",
             "service-selection-dock-wrap",
-            "대기·충전 장소에서 충전 도킹을 시작합니다.",
+            "대기·충전 장소에서 충전을 시작합니다.",
             "setShowDeliveryConfirm(true)",
             "activateDestinationService('recall')",
         ):
@@ -149,8 +149,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "배달 서비스는 사이트 내부로 진입합니다.<br />",
             "사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?",
             "도로 측 대기점으로 이동합니다. 진행하시겠습니까?",
-            "배터리 잔량과 관계없이 충전 도킹을 요청합니다.<br />",
-            "도킹을 진행하시겠습니까?",
+            "배터리 잔량과 관계없이 충전을 요청합니다.<br />",
+            "충전을 진행하시겠습니까?",
             'className="move-confirm-yes"',
             'className="move-confirm-no"',
         ):
@@ -336,7 +336,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def test_operator_telemetry_tabs_cover_rviz_runtime_surfaces(self) -> None:
         for label in (
             "GNSS · IMU", "레이더 · LiDAR", "카메라", "주행 궤적",
-            "지도 · 인지", "안전 · 제어", "도킹 · 주차",
+            "지도 · 인지", "안전 · 제어", "충전 · 주차",
         ):
             self.assertIn(label, self.telemetry_source)
         self.assertIn("TelemetryWorkspace", self.source)
