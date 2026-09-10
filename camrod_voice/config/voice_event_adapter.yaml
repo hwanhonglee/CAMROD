@@ -13,6 +13,10 @@
     enable_charging_audio: true
     # HH_260813 - Announce the drop-zone docking run and its outcome.
     enable_docking_audio: true
+    # HH_260910 - camrod_ui now plays site_B*/to_campsite/to_dropzone itself
+    # and holds the engage/goal command until playback finishes, so this
+    # node's own reactive cue stays off to avoid announcing twice.
+    enable_reactive_departure_cue: false
 
     # HH_260812 - Music bed runs for the whole trip; speech ducks it.
     enable_bgm: true
