@@ -30,6 +30,7 @@
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/planning_mission_key.hpp"
+#include "avg_msgs/msg/voice_state.hpp"
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/command_source_arbiter.hpp"
@@ -39,6 +40,7 @@
 #include "camrod_control/ros_message_conversion.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/parameter_descriptor.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
@@ -757,6 +759,21 @@ private:
     gate_policy_.setManualEngage(allow_on_start);
     publish_zero_when_blocked_ =
         declare_parameter<bool>("publish_zero_when_blocked", true);
+    // HH_260910 - When an obstacle-hold latch clears, hold zero a little
+    // longer for the "thank you for stepping aside" cue to finish instead of
+    // resuming while it plays. This only ever extends the existing sensor
+    // hold, never shortens or replaces it, and fails open on its own short
+    // timeout so a voice pipeline that is not running (bench/sim profiles)
+    // cannot delay resumption beyond that bound.
+    enable_resume_after_hold_voice_gate_ = declare_parameter<bool>(
+        "enable_resume_after_hold_voice_gate", true);
+    resume_after_hold_voice_key_ = declare_parameter<std::string>(
+        "resume_after_hold_voice_key", "safety.thankyou");
+    resume_after_hold_voice_timeout_s_ = std::max(
+        0.0,
+        declare_parameter<double>("resume_after_hold_voice_timeout_s", 3.0));
+    voice_state_topic_ = declare_parameter<std::string>(
+        "voice_state_topic", "/voice/voice_announcer/state");
     speed_scale_ = declare_parameter<double>("speed_scale", 1.0);
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
     zero_publish_rate_hz_ =
@@ -941,6 +958,15 @@ private:
             onAuthorizationChanged("dr_timeout");
           });
     }
+    if (enable_resume_after_hold_voice_gate_) {
+      voice_state_subscription_ = create_subscription<avg_msgs::msg::VoiceState>(
+          voice_state_topic_, 10,
+          [this](const avg_msgs::msg::VoiceState::SharedPtr message) {
+            resume_after_hold_voice_gate_.onVoiceState(
+                message->state == avg_msgs::msg::VoiceState::STATE_PLAYING,
+                message->current_key, nowSec());
+          });
+    }
     if (enable_gnss_recovery_hold_) {
       localization_mode_subscription_ =
           create_subscription<avg_msgs::msg::AvgLocalizationMode>(
@@ -1120,10 +1146,42 @@ private:
           motion_cost_stop_.evaluate(scaleCommand(command), now_sec);
       updatePolicyCostState();
       if (latch_decision.blocked) {
+        resume_after_hold_voice_pending_ = false;
+        resume_after_hold_voice_gate_.reset();
         publishZero();
         logMotionCostStopDecision(latch_decision, now_sec);
         return;
       }
+      // HH_260910 - The hold itself just cleared (evaluate() above already
+      // released motion_cost_stop_'s own latch as a side effect, so
+      // `latched()` will read false on the very next tick regardless of what
+      // we do here). Arm a short, separate wait for the "thank you" cue
+      // before letting this tick's normal command evaluation resume motion.
+      // This only ever extends the sensor-driven hold, never shortens or
+      // replaces it: a genuinely new hazard on a later tick still latches
+      // normally, since the checks below still run once this wait clears.
+      if (enable_resume_after_hold_voice_gate_ &&
+          !resume_after_hold_voice_pending_) {
+        resume_after_hold_voice_pending_ = true;
+        resume_after_hold_voice_gate_.arm(
+            resume_after_hold_voice_key_, now_sec,
+            resume_after_hold_voice_timeout_s_);
+      }
+    }
+    if (resume_after_hold_voice_pending_) {
+      resume_after_hold_voice_gate_.tick(now_sec);
+      if (!resume_after_hold_voice_gate_.releaseReady()) {
+        publishZero();
+        return;
+      }
+      if (resume_after_hold_voice_gate_.releasedViaTimeout()) {
+        RCLCPP_WARN(
+            get_logger(),
+            "resume-after-hold voice cue '%s' never confirmed finished "
+            "within timeout; resuming motion anyway",
+            resume_after_hold_voice_gate_.key().c_str());
+      }
+      resume_after_hold_voice_pending_ = false;
     }
 
     if (!(opposite_route_recovery ? effectiveEnabledForRouteRecovery(now_sec)
@@ -2476,6 +2534,14 @@ private:
   bool enable_pose_raw_fallback_{false};
   bool cost_source_debug_enable_{true};
   bool publish_zero_when_blocked_{true};
+  bool enable_resume_after_hold_voice_gate_{true};
+  std::string resume_after_hold_voice_key_{"safety.thankyou"};
+  double resume_after_hold_voice_timeout_s_{3.0};
+  std::string voice_state_topic_{"/voice/voice_announcer/state"};
+  VoiceAnnouncementGate resume_after_hold_voice_gate_;
+  bool resume_after_hold_voice_pending_{false};
+  rclcpp::Subscription<avg_msgs::msg::VoiceState>::SharedPtr
+      voice_state_subscription_;
   bool dr_timeout_enabled_{true};
   bool enable_gnss_recovery_hold_{true};
   bool enable_yaw_alignment_zone_{false};
