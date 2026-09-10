@@ -183,6 +183,12 @@ rclcpp_components_register_nodes(
 # HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
 # the full navigation stack.
 if(BUILD_TESTING)
+  # Low SOC may request charger return without hiding real battery faults.
+  add_executable(test_battery_diagnostic_status test/test_battery_diagnostic_status.cpp)
+  target_compile_features(test_battery_diagnostic_status PUBLIC cxx_std_17)
+  ament_target_dependencies(test_battery_diagnostic_status diagnostic_msgs)
+  add_test(NAME battery_diagnostic_status COMMAND test_battery_diagnostic_status)
+
   # HH_260730 - Required graph readiness has a bounded STARTING grace and
   # rejects zero/multiple owners of alternative capabilities deterministically.
   add_executable(

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="15" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-08T18:50:12.894" name="AllTests">
+  <testsuite name="GnssLeverArm" tests="5" failures="0" disabled="0" skipped="0" errors="0" time="0" timestamp="2026-09-08T18:50:12.894">
+    <testcase name="SubtractsLeftOffsetWhenRobotFacesMapPositiveX" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssLeverArm" />
+    <testcase name="RotatesLeftOffsetWithRobotYaw" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssLeverArm" />
+    <testcase name="SupportsCombinedForwardAndLeftOffsets" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssLeverArm" />
+    <testcase name="LeftAntennaOrbitKeepsCenterFixedThroughZeroTurn" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssLeverArm" />
+    <testcase name="CorrectMountOffsetDoesNotCancelMismatchedHeadingTime" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssLeverArm" />
+  </testsuite>
+  <testsuite name="GnssHeadingFallback" tests="7" failures="0" disabled="0" skipped="0" errors="0" time="0" timestamp="2026-09-08T18:50:12.894">
+    <testcase name="RejectsFallbackBeforeFirstValidGnssAnchor" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="PropagatesAnchoredHeadingWithTimeAlignedEkfDelta" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="FreshGnssAlwaysTakesPrecedence" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="ExpiresThreeSecondsAfterValidAnchor" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="RejectsWhenFixHasNoTimeAlignedEkfSample" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="NormalizesEkfDeltaAcrossPiWraparound" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+    <testcase name="InvalidEkfCovarianceCannotCreateOrExtendFallback" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="GnssHeadingFallback" />
+  </testsuite>
+  <testsuite name="DropZoneParkingApproach" tests="3" failures="0" disabled="0" skipped="0" errors="0" time="0" timestamp="2026-09-08T18:50:12.894">
+    <testcase name="ConvertsExactMapTargetIntoBodyVector" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="DropZoneParkingApproach" />
+    <testcase name="StopsInsideFiveCentimeterTolerance" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="DropZoneParkingApproach" />
+    <testcase name="RejectsUnboundedOrNonFiniteCorrection" status="run" result="completed" time="0" timestamp="2026-09-08T18:50:12.894" classname="DropZoneParkingApproach" />
+  </testsuite>
+</testsuites>

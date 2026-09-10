@@ -29,6 +29,8 @@
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
     # HH_260723 - Block entry into a campsite confirmed occupied by perception.
     campsite_occupancy_topic: "/perception/camping_sites/occupancy"
+    # HH_260910 - Voice completion gate for the recall clearance wait below.
+    voice_state_topic: "/voice/voice_announcer/state"
     # HH_260818 - Keep the current tent-at-destination workflow by default.
     # Set true to mark confirmed semantic tent sites unavailable before entry.
     enable_campsite_occupancy_guard: false
@@ -49,6 +51,22 @@
     # HH_260819 - B11-B13 remain immediately beside the narrow road: cap the
     # lateral service offset at 0.30 m and skip the on-site zero-turn.
     roadside_max_lateral_offset_m: 0.30
+    # Guest recall treats every occupied B1-B13 site as a roadside pickup.
+    # This is measured from the current map-derived lanelet snap toward the
+    # signed site side, never from a separately guessed coordinate.
+    recall_wait_lateral_offset_m: 0.30
+    # HH_260907 - Explicit loading completion starts B1-B10 site clearance,
+    # then full site entry/180-degree turn/forward return. Hold zero for the
+    # 6.552 s Korean announcement plus delivery margin; B11-B13 skip this.
+    recall_clearance_wait_s: 8.0
+    # HH_260910 - The wait above is a floor, not a ceiling: entry now also
+    # waits for voice_announcer to confirm recall_clearance_voice_key finished
+    # playing, in case it ever runs long. Fails open after this many extra
+    # seconds past recall_clearance_wait_s if camrod_voice never confirms
+    # (e.g. not launched at all in a bench/sim profile).
+    enable_recall_clearance_voice_gate: true
+    recall_clearance_voice_key: "navigation.recall_clear_site"
+    recall_clearance_voice_timeout_s: 6.0
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.
@@ -81,10 +99,11 @@
     return_lateral_transition_tolerance_m: 0.02
     return_lateral_hysteresis_m: 0.10
     return_steering_settle_s: 1.20
-    # HH_260825 - Complete a normal site exit at the live centerline projection,
-    # regardless of longitudinal offset from the historical entry snap. Hold
-    # zero for steering settlement before LaneletRoute plans from the current XY.
-    # If the live projection is stale, the exact-anchor sequence remains fallback.
+    # HH_260904 - Complete a normal site exit at the live centerline projection,
+    # regardless of longitudinal offset from the historical entry snap. Once a
+    # live handoff is acquired it stays latched through steering settlement.
+    # If the live projection is unavailable, finish after the lateral exit and
+    # steering settlement at the current XY; never reverse to the old entry XY.
     enable_live_lanelet_return_handoff: true
     return_lanelet_handoff_distance_m: 0.15
     return_lanelet_handoff_hold_s: 1.20
@@ -202,12 +221,14 @@
     # HH_260810 - Keep the platform stationary before reverse-parking handoff.
     yaw_settle_hold_s: 1.0
     yaw_settle_max_rate_degps: 3.0
-    # HH_260904 - Automatic return must first settle within 5 cm of the exact
-    # snapped lanelet point. The final gate applies its 0.5 speed scale, so the
+    # HH_260904 - Automatic return must first settle within 20 cm of the exact
+    # snapped lanelet point. Nav2 already hands off within 10 cm; this wider
+    # local tolerance avoids redundant correction before the 90-degree turn.
+    # The final gate applies its 0.5 speed scale, so the
     # 0.20 m/s raw cap reaches the platform as at most 0.10 m/s (0.36 km/h).
     require_exact_parking_approach_for_auto: true
     parking_approach_goal_max_station_distance_m: 8.0
-    parking_approach_position_tolerance_m: 0.05
+    parking_approach_position_tolerance_m: 0.20
     parking_approach_proportional_gain: 0.8
     parking_approach_minimum_speed_mps: 0.06
     parking_approach_maximum_speed_mps: 0.20

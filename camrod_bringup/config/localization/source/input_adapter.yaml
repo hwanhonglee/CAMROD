@@ -23,7 +23,9 @@
     # Rotate that lever arm with fresh dual-GNSS yaw, then subtract it so every
     # published GNSS pose represents robot_center_link instead of the antenna.
     enable_gnss_lever_arm_correction: true
-    gnss_antenna_offset_x_m: 0.0
+    # HH_260909 - Longitudinal GNSS antenna lever arm changed 0.0 -> 0.65 m
+    # ahead of robot_center_link. TODO: record the measurement this came from.
+    gnss_antenna_offset_x_m: 0.65
     gnss_antenna_offset_y_m: 0.45
     gnss_lever_arm_require_fresh_heading: true
     # HH_260807 - During a brief receiver-heading gap, use a time-aligned EKF
@@ -56,7 +58,11 @@
     # HH_260625: Live C-track measurement showed GNSS/localization yaw aligned
     # with each other but ~85 deg clockwise from the lanelet heading. Correct
     # only the dual-antenna heading here; keep map XY/yaw offsets unchanged.
-    gnss_heading_yaw_offset_deg: -90.0
+    # HH_260907 - Preserve the operator's deployment yaw trim, -90 -> -92 deg.
+    # This rotates heading; it does not replace the antenna lever-arm offset.
+    # HH_260909 - Heading yaw offset retrimmed -92.0 -> -91.0 deg.
+    # TODO: record the measurement this came from.
+    gnss_heading_yaw_offset_deg: -91.0 # -90.0
     gnss_heading_covariance_floor_deg: 1.0
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0

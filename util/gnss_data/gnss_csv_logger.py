@@ -120,7 +120,7 @@ class GnssCsvLogger(Node):
 
         # Standalone ublox driver publishes /gnss/...; under full bringup the
         # same stream is namespaced as /sensing/gnss/ublox_gps_node/fix.
-        self.declare_parameter('input_topic', '/gnss/ublox_gps_node/fix')
+        self.declare_parameter('input_topic', '/sensing/gnss/ublox_gps_node/fix')
         self.declare_parameter('output_dir', '/home/nvidia/camrod_ws/src/util/gnss_data')
         self.declare_parameter('accum_filename', 'gnss_path_accum.csv')
         self.declare_parameter('write_session_file', True)

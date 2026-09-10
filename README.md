@@ -31,9 +31,22 @@ DN05Y9E7, and 460800 baud; require physical RTCM and heading evidence. -->
 stopped charger-departure dwell, and a wider route-clipped front radar gate. -->
 <!-- HH_260904 - Publish v2.2.3 with authoritative radar-cost telemetry,
 exact drop-zone parking-point correction, and B1-B13 service metrics. -->
+<!-- HH_260907 - Record v2.2.4 battery-aware parking, two-confirmation Recall,
+shared station geometry and UI departure recovery; field acceptance is separate. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.2.3`**.
+zero-turn Ranger platform. Current release baseline: **`v2.2.6`**.
+
+<!-- HH_260911 - Current bounded validation supersedes no historical evidence. -->
+[v2.2.6 changes](docs/V2_2_6_RELEASE_NOTES.md) and
+[executed validation](docs/V2_2_6_VALIDATION.md) describe station recovery,
+voice cancellation, local build scope, and remaining field/endurance work.
+
+The v2.2.5 notes and results below are retained as historical evidence.
+
+[v2.2.5 release notes](docs/V2_2_5_RELEASE_NOTES.md) distinguish pure control,
+planning and UI fixes from inherited features and remaining integration/field
+acceptance. The version tag is not a claim that every campsite or docking cycle passed.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)
 
@@ -68,29 +81,29 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Planning boundary | `1.59160 x 1.27000 m` bounding extents | Exact `0.10 m` parallel offset of the body contour (`R0.15 m`); endpoint planning clearance remains mandatory for escape |
 | Base platform dimensions | `1.19160 x 0.87000 m` | Chassis-only value retained separately from the fabrication-inclusive collision envelope |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
-| Hard safety stop | `<= 20%` | Final command output is stopped |
+| Battery return / hard safety | urgent return below `25%`; no SOC-only `20%` stop | Voltage, temperature, BMS/platform faults, EStop and fresh safety inputs remain authoritative |
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
 | Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Straight cruise | `2.000 km/h` (`0.555556 m/s` final) | Raw RPP `1.111111 m/s` passes through the retained `0.5` command gate |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
 | Classified fusion stop | route-front `2.0 m`, detection age `<=0.50 s` | Only current YOLO-class-associated camera-LiDAR points stop the active path; unknown/raw LiDAR points do not |
-| Active Lanelet map | `map_version=22`, SHA `8fa131...e59` | User-edited runtime OSM; named copies are user snapshots and are not auto-synchronized |
+| Active Lanelet map | `map_version=23`, SHA `2c96514f...32fef7` | Inherited active OSM; v2.2.5 does not edit the map or named snapshots |
 | RPP preview A/B | bringup velocity-scaled `1.5-3.5 m`; package fixed `1.2 m` | Deliberate `worak-test` field A/B divergence; do not treat package YAML as the deployed mirror yet |
 | Recovery attempt | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | One projected crab/reverse/reverse-yaw stage |
 | Recovery episode | up to `50` attempts, `1.50 m`, `90 s`, `0.5 s` retry pause | Fresh candidates are retried; the first attempt no longer creates a permanent hold |
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |
 | Normal/crab mode selection | `|linear.y| <= 0.02 m/s` stays Dual-Ackermann | Nav2 lateral residue cannot select parallel motion; campsite/recovery commands remain explicit crab |
 | Campsite crab geometry | pure `linear.y`; translate only within `0.05 rad` of `+/-90 deg` | Longitudinal/parallel wheel-mode changes settle while stationary; exit removes lateral error before straight drift |
-| Campsite return handoff | live lanelet projection `<=0.15 m`, stopped hold `1.20 s` | Return routing starts from the current lane position; exact historical entry XY is used only when the live projection is stale or unavailable |
+| Campsite return handoff | live lanelet projection `<=0.15 m` (latched), or completed lateral exit; stopped hold `1.20 s` | Return routing starts from the current lane position; crab-out never reverses longitudinally to the historical entry XY |
 | Campsite service policy | B1-B10 `turnaround`; B11-B13 `roadside_stop` | B11-B13 cap lateral travel at `0.30 m`, skip every zero-turn, finish `CRAB_OUT`, then use a forward one-way return loop |
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
-| Drop-zone parking handoff | snapped lanelet point `<=0.05 m`, `0.5 s` position hold, then yaw `1.0 s` within tolerance and `<=3 deg/s` | Automatic parking reaches the mission-correlated perpendicular centerline projection before the 90-degree turn and straight reverse |
+| Drop-zone parking handoff | local position `<=0.20 m`, `0.5 s` hold, then yaw `1.0 s` within tolerance and `<=3 deg/s` | Nav2 route tolerance remains `0.10 m`; final reverse XY tolerance remains `0.25 m`. There is no post-yaw XY correction stage |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | Final parking slowdown | reverse last `0.30 m`; AprilTag camera range `0.80 -> 0.40 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
-| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions and accept the next `0.30 m`; side usable stop windows remain `0.10 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |
+| Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions but stop candidates end at the absolute `0.300 m` sensor-face range; side cutoffs remain absolute `0.100 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |
 | Charging mission start | `7.0 s` stopped dwell | A campsite selection is queued while charging; manual, mission, and platform gates stay closed until one station `EXIT` is released |
 | Operator renderer | WebKit | Fullscreen field default; Chromium and `auto` remain explicit alternatives |
 | Operator telemetry | 12-second leased views; 4-11 subscriptions per active view | Seven views now include docking debug/tag/path/charging beside the six RViz replacement surfaces |
@@ -184,6 +197,7 @@ no second hold. This is not physical-road evidence.
 
 | Check | Result | Scope |
 |---|---|---|
+| v2.2.4 shared-station/Recall/battery changes | **SELECTED BUILD/TEST EVIDENCE; FIELD PENDING** | See release notes for per-change results, incomplete full-perception build, and physical parking/departure limits |
 | v2.2.3 radar/docking/metrics hardening | **AMD64 BUILD/TEST PASS** | Side `0.10 m` cost authority separated from raw `0.43 m` echo; exact drop-zone point correction added; B1-B13 metrics rendered; native 144 results and Python 166 tests passed |
 | v2.2.1 campsite/charging/radar handoff | **AMD64 ROS SIM PASS** | B8 handed off at `0.140 m` from live lanelet projection while old anchor remained `0.231 m` away; charging recall held `6.996 s`; FRONT1 `0.300 m` produced cost `95` |
 | v2.2.1 selected build/tests | **BUILD PASS / BASELINE TEST DEBT** | Isolated Release build `5/5`; focused contracts `65/65`; full isolated run reports 6 failing bringup targets from inherited parking-mirror/test drift plus worktree/Pillow environment limits |
@@ -330,13 +344,15 @@ from a workstation-only simulation result.
 
 | Document | Purpose |
 |---|---|
+| [v2.2.5 release notes](docs/V2_2_5_RELEASE_NOTES.md) | Pure parking/path/UI corrections, exact parameter changes, fresh regression results and remaining acceptance limits |
+| [v2.2.4 release notes](docs/V2_2_4_RELEASE_NOTES.md) | Inherited battery-aware shared parking, two-confirmation Recall and UI departure recovery |
 | [v2.2.3 release notes](docs/V2_2_3_RELEASE_NOTES.md) | Radar echo/cost semantics, Site 7 settle diagnosis, deterministic drop-zone parking approach, B1-B13 metrics, tests, and field limits |
 | [v2.2.2 release notes](docs/V2_2_2_RELEASE_NOTES.md) | AprilTag 0.5-second safety stop with a 60-second stopped reacquisition window |
 | [v2.2.1 release notes](docs/V2_2_1_RELEASE_NOTES.md) | Current-pose campsite Return, 7-second charging departure dwell, front radar range policy, tests, and field limits |
 | [v2.2.1 measured safety handoff](docs/assets/module-guides/bringup/test-results/v2-2-1-safety-handoff-20260825/README.md) | B8 live lanelet projection, charging dwell, and FRONT1 0.30 m cost evidence |
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
 | [Historical map-v17 tapered/rounded road simulation](docs/assets/module-guides/control/test-results/tapered-rounded-boundary-road-sim-20260810/README.md) | Raw map-v17 ROS timeline, exact current contour PNG/GIF, metrics, and hashes |
-| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v22 B1-B13, drop-zone, parking-lot geometry, config mirrors, PNG, JSON, and hashes |
+| [Current Park operating coordinates](docs/assets/module-guides/map/test-results/park-operating-points-20260810/README.md) | Active map-v23 configs and explicitly historical map-v22 render evidence |
 | [Runtime parameter reference](docs/RUNTIME_PARAMETER_REFERENCE.md) | Speed, distance, timeout, feature toggle, sensor, localization, parking, boundary, file precedence, and synchronization index |
 | [Current B8 return/docking evidence](docs/assets/module-guides/bringup/test-results/b8-return-docking-20260819/README.md) | Same-anchor B8 JSON, PNG/GIF, active parameter summary, and evidence limits |
 | [v2.1.8 release notes](docs/V2_1_8_RELEASE_NOTES.md) | Worak integration, exact crab, bounded recovery, semantic obstacle safety, occupancy toggle, build, and verification |

@@ -62,3 +62,8 @@ disable/vio_bridge/sdk_installers/*.deb
 # Node.js / frontend build artifacts
 node_modules/
 # HH_260721 - The active UI tree is camrod_ui_robot/assets/frontend; retire legacy runtime paths.
+
+# HH_260909 - Duplicate of the LFS-tracked /util/flexcloud copy (identical md5).
+# The .gitattributes LFS pattern is anchored to /util/flexcloud/, so committing
+# this path would store 105.9 MiB as an ordinary blob and GitHub would reject it.
+/util/map/pointcloud_map/georef_glim_worak_v2_binary.pcd

@@ -37,30 +37,30 @@ struct ActiveCampsiteFixture
 };
 
 constexpr std::array<ActiveCampsiteFixture, 13> kFixtures{{
-  {"camping_site_1", "turnaround", 22.357515191, -6.908337803,
-    -63.251744, 3.931930, 3.931930},
-  {"camping_site_2", "turnaround", 22.454856615, -7.101474235,
-    -63.251706, -3.235030, 3.235030},
-  {"camping_site_3", "turnaround", 19.772336735, -1.222936079,
-    -65.285918, 3.947756, 3.947756},
-  {"camping_site_4", "turnaround", 19.307410106, -0.152900333,
-    -67.428154, -3.118706, 3.118706},
-  {"camping_site_5", "turnaround", 17.382903354, 4.336168303,
-    -66.896141, 3.888036, 3.888036},
-  {"camping_site_6", "turnaround", 16.786389776, 5.715787406,
-    -66.421645, -3.092795, 3.092795},
-  {"camping_site_7", "turnaround", 15.085466253, 9.670478273,
-    -66.942319, 3.867722, 3.867722},
-  {"camping_site_8", "turnaround", 14.147071672, 11.827906846,
-    -66.924479, -3.018049, 3.018049},
-  {"camping_site_9", "turnaround", 12.679983302, 15.667433959,
-    -68.215752, 3.966901, 3.966901},
-  {"camping_site_10", "turnaround", 11.891069361, 17.727651240,
-    -69.184081, -3.063739, 3.063739},
-  {"camping_site_11", "roadside_stop", 10.821530478, 20.516472190,
-    -68.783648, 4.315470, 0.300000},
-  {"camping_site_12", "roadside_stop", 10.103421888, 23.093735129,
-    -78.439719, -3.316560, 0.300000},
+  {"camping_site_1", "turnaround", 22.309332184, -6.812737230,
+    -63.251744, 3.066954, 3.066954},
+  {"camping_site_2", "turnaround", 22.519198502, -7.229135658,
+    -63.251706, -3.357362, 3.357362},
+  {"camping_site_3", "turnaround", 19.741039799, -1.154935688,
+    -65.285918, 3.076225, 3.076225},
+  {"camping_site_4", "turnaround", 19.360276086, -0.280078799,
+    -67.428154, -3.186030, 3.186030},
+  {"camping_site_5", "turnaround", 17.361876481, 4.385455919,
+    -66.896141, 3.015589, 3.015589},
+  {"camping_site_6", "turnaround", 16.841101760, 5.590427557,
+    -66.421645, -3.161220, 3.161220},
+  {"camping_site_7", "turnaround", 15.063966869, 9.720986212,
+    -66.942319, 2.995000, 2.995000},
+  {"camping_site_8", "turnaround", 14.201172274, 11.700919449,
+    -66.924479, -3.086203, 3.086203},
+  {"camping_site_9", "turnaround", 12.617514199, 15.823742471,
+    -68.215752, 3.025654, 3.025654},
+  {"camping_site_10", "turnaround", 11.941036642, 17.596221461,
+    -69.184081, -3.126407, 3.126407},
+  {"camping_site_11", "roadside_stop", 10.655948601, 20.986400232,
+    -72.077900, 3.290625, 0.300000},
+  {"camping_site_12", "roadside_stop", 10.132763548, 22.950288933,
+    -78.439719, -3.357247, 0.300000},
   {"camping_site_13", "roadside_stop", 9.626348588, 27.418616995,
     -91.177942, -9.017805, 0.300000},
 }};
@@ -97,6 +97,34 @@ double poseYaw(const avg_msgs::msg::AvgPoseStamped & pose)
     orientation.x * orientation.y),
     1.0 - 2.0 * (orientation.y * orientation.y +
     orientation.z * orientation.z));
+}
+
+TEST(GoalReissueStampPolicy, KeepsMissionCorrelationAndRefreshesOnlyNav2Stamp)
+{
+  avg_msgs::msg::AvgPoseStamped active_goal;
+  active_goal.header.stamp.sec = 101;
+  active_goal.header.stamp.nanosec = 202U;
+  active_goal.header.frame_id = "map";
+  active_goal.pose.position.x = 3.0;
+  active_goal.pose.position.y = 4.0;
+  active_goal.pose.orientation.w = 1.0;
+
+  builtin_interfaces::msg::Time fresh_nav2_stamp;
+  fresh_nav2_stamp.sec = 303;
+  fresh_nav2_stamp.nanosec = 404U;
+  const auto reissued = makeReissuedGoalCopies(active_goal, fresh_nav2_stamp);
+
+  EXPECT_EQ(reissued.correlation_goal.header.stamp.sec, 101);
+  EXPECT_EQ(reissued.correlation_goal.header.stamp.nanosec, 202U);
+  EXPECT_EQ(reissued.nav2_goal.header.stamp.sec, 303);
+  EXPECT_EQ(reissued.nav2_goal.header.stamp.nanosec, 404U);
+  EXPECT_EQ(active_goal.header.stamp.sec, 101);
+  EXPECT_EQ(active_goal.header.stamp.nanosec, 202U);
+  EXPECT_EQ(reissued.correlation_goal.header.frame_id, active_goal.header.frame_id);
+  EXPECT_DOUBLE_EQ(
+    reissued.nav2_goal.pose.position.x, active_goal.pose.position.x);
+  EXPECT_DOUBLE_EQ(
+    reissued.nav2_goal.pose.position.y, active_goal.pose.position.y);
 }
 
 TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
@@ -184,6 +212,20 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
     const double bounded_offset = std::clamp(std::abs(lateral), 0.20, 7.0);
     const double operational_offset =
       roadside ? std::min(bounded_offset, 0.30) : bounded_offset;
+    // Guest recall is roadside-only for every occupied B1-B13 site.  Its wait
+    // pose is not authored independently: derive it from this exact active-map
+    // snap and move 0.30 m toward the signed site side.
+    const double recall_offset = std::min(bounded_offset, 0.30);
+    const double recall_direction = lateral >= 0.0 ? 1.0 : -1.0;
+    const double recall_wait_x =
+      snapped.pose.position.x - std::sin(yaw) * recall_direction * recall_offset;
+    const double recall_wait_y =
+      snapped.pose.position.y + std::cos(yaw) * recall_direction * recall_offset;
+    std::vector<std::pair<double, double>> site_polygon;
+    for (const auto & corner : site["corners"]) {
+      site_polygon.emplace_back(
+        corner["x"].as<double>(), corner["y"].as<double>());
+    }
 
     std::cout << "CAMPSITE_GEOMETRY B" << index + 1U
               << " service=" << fixture.service_mode
@@ -191,7 +233,9 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
               << " snap_y=" << snapped.pose.position.y
               << " snap_yaw_deg=" << yaw * 180.0 / M_PI
               << " forward_m=" << forward << " lateral_m=" << lateral
-              << " operational_offset_m=" << operational_offset << std::endl;
+              << " operational_offset_m=" << operational_offset
+              << " recall_wait_x=" << recall_wait_x
+              << " recall_wait_y=" << recall_wait_y << std::endl;
     EXPECT_NEAR(snapped.pose.position.x, fixture.snap_x, 0.02);
     EXPECT_NEAR(snapped.pose.position.y, fixture.snap_y, 0.02);
     EXPECT_NEAR(
@@ -203,6 +247,15 @@ TEST(ActiveCampsiteGeometry, LocksProductionSnapYawSignedSideAndServicePolicy)
     EXPECT_NEAR(lateral, fixture.signed_lateral_m, 0.02);
     EXPECT_EQ(lateral >= 0.0, fixture.signed_lateral_m >= 0.0);
     EXPECT_NEAR(operational_offset, fixture.operational_offset_m, 0.02);
+    EXPECT_NEAR(recall_offset, 0.30, 1.0e-9);
+    const double recall_dx = recall_wait_x - snapped.pose.position.x;
+    const double recall_dy = recall_wait_y - snapped.pose.position.y;
+    EXPECT_NEAR(
+      std::cos(yaw) * recall_dx + std::sin(yaw) * recall_dy, 0.0, 1.0e-9);
+    EXPECT_NEAR(
+      -std::sin(yaw) * recall_dx + std::cos(yaw) * recall_dy,
+      recall_direction * 0.30, 1.0e-9);
+    EXPECT_FALSE(pointInPolygon2D(site_polygon, recall_wait_x, recall_wait_y));
   }
 
   executor.remove_node(request_node);

@@ -41,6 +41,12 @@ def _create_gate_node(context):
         "state_topic": LaunchConfiguration("command_enabled_topic"),
         "platform_drive_enable_topic": LaunchConfiguration("platform_drive_enable_topic"),
         "publish_zero_when_blocked": True,
+        # Auto mode's dispatcher is the only authoritative parking phase.
+        "parking_dispatcher_status_topic": (
+            "/parking/status"
+            if LaunchConfiguration("parking_method").perform(context).strip().lower() == "auto"
+            else ""
+        ),
     }
 
     for argument_name in sorted(context.launch_configurations):
@@ -86,6 +92,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("module_namespace", default_value="control"),
+            DeclareLaunchArgument("parking_method", default_value="auto"),
             DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
             DeclareLaunchArgument("cmd_vel_gate_enable", default_value="true"),
             DeclareLaunchArgument("cmd_vel_raw_topic", default_value="/control/cmd_vel_raw"),

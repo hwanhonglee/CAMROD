@@ -13,6 +13,10 @@
     enable_charging_audio: true
     # HH_260813 - Announce the drop-zone docking run and its outcome.
     enable_docking_audio: true
+    # HH_260910 - camrod_ui now plays site_B*/to_campsite/to_dropzone itself
+    # and holds the engage/goal command until playback finishes, so this
+    # node's own reactive cue stays off to avoid announcing twice.
+    enable_reactive_departure_cue: false
 
     # HH_260812 - Music bed runs for the whole trip; speech ducks it.
     enable_bgm: true
@@ -36,9 +40,13 @@
     localization_mode_topic: "/localization/mode"
     control_gate_status_topic: "/control/cmd_vel_safety_gate/status"
     planning_engaged_topic: "/control/planning_engaged"
+    # Phase edges announce clearance even while RETURN_WITH_CARGO is unchanged.
+    camping_site_status_topic: "/control/camping_site_maneuver_controller/status"
     navigate_to_pose_action: "/planning/navigate_to_pose"
     # Only the parking controller selected by the control launch publishes here.
     parking_status_topics:
+      # Auto dispatcher is the sole public status owner in auto mode.
+      - "/parking/status"
       - "/parking/reverse_parking_controller/status"
       - "/parking/apriltag_parking_controller/status"
 

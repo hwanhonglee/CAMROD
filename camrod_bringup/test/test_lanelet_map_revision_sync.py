@@ -18,8 +18,10 @@ RUNTIME_REPORT = (
     / "runtime-capture-20260804"
     / "runtime-visual-capture-20260804.json"
 )
+# HH_260909 - Active map advanced to revision 24: one node retired and the
+# shared parking/docking station yaw retrimmed to -88.2127 deg.
 ACTIVE_MAP_SHA256 = (
-    "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59"
+    "d4a760623fc507881e26db7e2fe352a21ebaf6a3e6a10da262d6144abc107c98"
 )
 
 
@@ -40,13 +42,30 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "22"
+    assert metadata.attrib["map_version"] == "24"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
-    assert len(root.findall("node")) == 1652
-    assert len(root.findall("way")) == 236
+    # Preserve every node in the operator's 1.0.13 snapshot, including nodes
+    # that are not members of a current semantic area.
+    # HH_260909 - Revision 24 retires one node from the 1.0.13 snapshot.
+    assert len(root.findall("node")) == 1661
+    assert len(root.findall("way")) == 237
+
+    # HH_260907 - The new area is shared by parking and docking. The former
+    # drop-zone relation is removed because that space is a vehicle entrance.
+    drops = {
+        relation.attrib["id"]: _tags(relation)
+        for relation in root.findall("relation")
+        if _tags(relation).get("subtype") == "drop_zone"
+    }
+    assert set(drops) == {"7019"}
+    assert drops["7019"]["parking_method"] == "auto"
+    assert root.find("relation[@id='2320']") is None
+    assert root.find("way[@id='2316']") is not None
+    # HH_260909 - Station yaw retrimmed to -88.2127 deg in the active map.
+    assert {tags["yaw_deg"] for tags in drops.values()} == {"-88.2127"}
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

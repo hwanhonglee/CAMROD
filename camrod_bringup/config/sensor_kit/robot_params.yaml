@@ -70,7 +70,9 @@
     # =========================================================================
     gnss:
       # HH_260806 - NavSatFix uses the left antenna, measured 0.45 m left of center.
-      x: 0.0                  # Longitudinal offset remains unchanged [m].
+      # HH_260909 - Longitudinal offset changed 0.0 -> 0.65 m; the previous
+      # "remains unchanged" note no longer applies. TODO: record the source.
+      x: 0.65                  # Longitudinal offset from robot_center_link [m].
       y: 0.45                 # Left antenna offset from robot_center_link (+Y) [m].
       z: 0.0                  # GNSS antenna Z offset from sensor_kit_base_link [m].
       roll: 0.0               # GNSS antenna roll offset [deg].

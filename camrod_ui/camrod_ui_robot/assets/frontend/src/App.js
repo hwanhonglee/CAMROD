@@ -10,8 +10,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import RobotAnimation from './RobotAnimation';
-import TelemetryWorkspace, { TELEMETRY_TABS } from './TelemetryWorkspace';
+import TelemetryWorkspace, {
+  TELEMETRY_TABS,
+  DockingCommandButton,
+  dockingAllowedAtServiceState,
+  parkingPolicyMessage,
+  postDockingRequest,
+} from './TelemetryWorkspace';
 import {
   ServiceEvidenceDashboard,
   ServiceEvidenceSummary,
@@ -73,6 +78,16 @@ const SYSTEM_HEALTH_LABELS = Object.freeze({
   WARNING: 'System warning',
   ERROR: 'System error',
 });
+// HH_260908 - The guest-recall overlays announce the ride TO the guest.
+// Any state outside the en-route phase (arrival, loading wait, return,
+// standby, stop) must drop them so they never cover the mission UI.
+const GUEST_RECALL_ENROUTE_STATES = new Set([
+  SERVICE_STATE.MOVING_TO_SITE,
+  SERVICE_STATE.GUEST_RECALL_SERVICE,
+  SERVICE_STATE.RECALL_TO_SITE_ROAD,
+  SERVICE_STATE.DEPARTING_CHARGER,
+  SERVICE_STATE.DEPARTING_DROP_ZONE,
+]);
 const ARRIVAL_STATES = new Set([
   SERVICE_STATE.SITE_ARRIVED,
   SERVICE_STATE.UNLOAD_WAIT,
@@ -98,13 +113,114 @@ const ACTIVE_MANUAL_PHASES = new Set([
   'DRIVING',
   'SAFETY_STOP',
 ]);
-const CRITICAL_BATTERY_STOP_PERCENT = 20;
+const URGENT_BATTERY_RETURN_PERCENT = 25;
 const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
+
+// HH_260907 - This is presentation only: the controller owns clearance dwell,
+// site re-entry and rotation. B11-B13 retain their existing opposite-side route.
+function recallReturnInstructions(site, finalReady = false) {
+  if (/^B(?:[1-9]|10)$/.test(String(site || ''))) {
+    if (finalReady) return '사이트 안에서 180도 회전을 마치고 정차했습니다. 짐 싣기를 모두 마친 뒤 [짐 싣기 완료 · 복귀]를 눌러주세요. 확인 전에는 출차하지 않습니다.';
+    return '정리를 마친 뒤 버튼을 눌러주세요. 음성 안내 후 사이트 안으로 다시 들어가 180도 회전하므로 주변을 비워주세요. 회전 후 다시 정차하며, 짐 싣기를 마치고 두 번째 완료 버튼을 눌러야 복귀합니다.';
+  }
+  return '짐 적재와 정리를 마친 뒤 버튼을 눌러주세요. 사이트로 다시 들어가지 않고 기존 반대쪽 경로로 복귀합니다. 로봇 주변을 비워주세요.';
+}
+
+function recallCompletionLabel(site, finalReady = false) {
+  return /^B(?:[1-9]|10)$/.test(String(site || ''))
+    ? (finalReady ? '짐 싣기 완료 · 복귀' : '정리 완료 · 사이트 재진입')
+    : '적재 완료 · 복귀';
+}
+
+function missionExecutionFailureMessage(reason) {
+  return reason ? `사이트 동작이 중단되었습니다. 완료·복귀 버튼을 반복해서 누르지 말고 관리자에게 확인을 요청해주세요. 원인: ${reason}` : '';
+}
+
+function recallReturnProgress(site, description) {
+  const parts = String(description || '').split(':');
+  const phase = parts[0] === 'camping_site_maneuver_controller' ? parts[1] : '';
+  if (/^B(?:[1-9]|10)$/.test(String(site || ''))) {
+    const stages = {
+      RECALL_CLEARANCE_WAIT: ['사이트 비움 안내 중', '음성 안내 후 사이트로 다시 진입합니다. 사이트와 로봇 주변을 비워주세요.'],
+      ALIGN_ENTRY_YAW: ['사이트 재진입 준비', '사이트 안으로 들어가기 위해 방향을 맞추고 있습니다.'],
+      CRAB_IN: ['사이트 재진입 중', '전진 복귀를 위해 사이트 안으로 이동하고 있습니다.'],
+      ROTATE_180: ['사이트 안에서 180도 회전 중', '로봇이 회전하고 있습니다. 사이트와 로봇 주변에서 떨어져 주세요.'],
+      RECALL_RETURN_WAIT: ['짐 싣기 완료 확인 대기', '회전을 마치고 정차했습니다. 짐 싣기 완료 버튼을 누르기 전에는 출차하지 않습니다.'],
+      ALIGN_RETRACE_YAW: ['도로 출차 준비', '회전을 마치고 도로로 나갈 방향을 맞추고 있습니다.'],
+      CRAB_OUT: ['사이트에서 도로로 출차 중', '도로로 나온 뒤 대기·충전 장소까지 전진으로 복귀합니다.'],
+    };
+    if (stages[phase]) return { label: stages[phase][0], message: stages[phase][1] };
+  }
+  return {
+    label: '짐을 싣고 복귀 중',
+    message: /^B(?:11|12|13)$/.test(String(site || ''))
+      ? '사이트로 재진입하지 않고 기존 반대쪽 경로로 대기·충전 장소에 복귀 중입니다.'
+      : '이용객의 짐을 싣고 대기·충전 장소로 복귀 중입니다.',
+  };
+}
+
+// Presentation only: a service identity can remain active during a safety
+// hold. Do not describe that retained mission as currently moving. Keep its
+// site/arrival/confirmation context and all command permissions unchanged.
+function serviceMotionNotice(missionPhase, systemHealth) {
+  if (missionPhase === 'SAFETY_STOP') {
+    return { label: '안전 정지', message: '안전 조건으로 주행이 일시 정지되었습니다. 상태를 확인해주세요.' };
+  }
+  if (missionPhase === 'STOPPED') {
+    return { label: '운행 정지', message: '운행이 정지되었습니다.' };
+  }
+  if (missionPhase === 'ERROR' || systemHealth === 'ERROR') {
+    // A diagnostic ERROR alone does not prove zero physical speed.
+    return { label: '시스템 오류', message: '시스템 오류가 있습니다. 현재 주행 상태와 진단 내용을 확인해주세요.' };
+  }
+  return null;
+}
+
+// Guest call notifications are admission information, never modal authority.
+// Once progress/arrival/safety has its own screen, stale notification flags
+// must not cover Stop, loading confirmation, or an error explanation.
+function guestAdmissionNotice({ dispatch, showRecall, noticeSite, missionPhase,
+  serviceStateName, systemHealth, arrivalVisible, arrivedSite, executionError }) {
+  if ((!showRecall && !noticeSite) || !dispatch?.active || dispatch.owner !== 'guest'
+      || !Number.isSafeInteger(dispatch.generation) || dispatch.generation <= 0
+      || !/^B(?:[1-9]|1[0-3])$/.test(String(dispatch.site || ''))
+      || !['delivery', 'recall'].includes(dispatch.intent)
+      || (noticeSite && noticeSite !== dispatch.site)) return '';
+  if (arrivalVisible || arrivedSite || executionError || systemHealth === 'ERROR'
+      || !['READY', 'GOAL_RECEIVED'].includes(missionPhase)
+      || !['DROP_ZONE_WAIT', 'CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName)) return '';
+  return `${dispatch.site} 사이트 호출을 접수했습니다. 출발을 준비합니다.`;
+}
+
+function robotCanCompleteMission(dispatch, site, serviceStateName) {
+  if (!dispatch.active || !site || dispatch.site !== site
+      || !Number.isSafeInteger(dispatch.generation) || dispatch.generation <= 0) return false;
+  if (['operator', 'robot'].includes(dispatch.owner)) return true;
+  // Physical Robot UI may complete the currently admitted Guest recall, but
+  // never acquire its ownership or complete a delivery/other mission phase.
+  return dispatch.owner === 'guest' && dispatch.intent === 'recall'
+    && serviceStateName === 'GUEST_LOADING_WAIT';
+}
+
+// HH_260904 - Re-dock events can arrive after the HTTP command response and
+// can be replayed as a websocket snapshot. Keep terminal states distinct so a
+// false wait flag never implies that CAN recovered (expiry/cancel are false too).
+const REDOCK_STATUS_MESSAGES = Object.freeze({
+  idle: '',
+  waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+  alignment_preparing: '재도킹 정렬을 준비합니다',
+  waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+  can_restored: 'CAN 제어 복구됨 · 재도킹 정렬을 시작합니다',
+  alignment_started: '재도킹 정렬을 시작합니다',
+  expired: '재도킹 요청 시간이 만료되었습니다 · 복귀 버튼을 다시 눌러주세요',
+  cancelled: '재도킹 요청이 취소되었습니다',
+});
 
 const emptyBatteryReturnState = () => ({
   pending: false,
   started: false,
   waitingForUser: false,
+  urgent: false,
 });
 
 const formatMissionBlockMessage = (data) => {
@@ -126,19 +242,25 @@ const formatBatteryReturnMessage = (data) => {
   const prefix = Number.isFinite(battery) && battery >= 0
     ? `배터리 잔량이 ${battery}%입니다.`
     : '배터리 잔량이 낮습니다.';
+  if (data.battery_return_urgent) {
+    return `${prefix} 25% 미만으로 현재 작업을 중단하고 충전 도킹을 위해 즉시 복귀합니다. 로봇 주변을 비워주세요.`;
+  }
   if (data.battery_return_started) {
     return `${prefix} 복귀 요청이 확인되어 충전 구역으로 이동합니다.`;
   }
   if (data.battery_return_waiting_for_user) {
-    return `${prefix} 짐을 모두 내린 뒤 이용 완료 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.`;
+    return `${prefix} 짐 처리를 마친 뒤 이용 완료 버튼을 눌러주세요. 완료 후 충전 도킹을 위해 복귀합니다.`;
   }
   return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.`;
 };
 
 const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   // HH_260724 - Keep the battery policy visible after the modal is dismissed.
-  const battery = Number(batteryPct);
+  const battery = batteryPct == null ? NaN : Number(batteryPct);
   const batteryText = Number.isFinite(battery) && battery >= 0 ? `${battery}%` : '';
+  if (batteryReturnState.urgent) {
+    return { tone: 'error', label: `배터리 부족 · 즉시 복귀 ${batteryText}`.trim() };
+  }
   if (batteryReturnState.started) {
     return { tone: 'warning', label: `Low battery return active ${batteryText}`.trim() };
   }
@@ -151,8 +273,8 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   if (!Number.isFinite(battery) || battery < 0) {
     return { tone: 'warning', label: 'Battery status pending' };
   }
-  if (battery <= CRITICAL_BATTERY_STOP_PERCENT) {
-    return { tone: 'error', label: `Critical battery stop ${battery}%` };
+  if (battery < URGENT_BATTERY_RETURN_PERCENT) {
+    return { tone: 'error', label: `25% 미만 · 긴급 복귀 필요 (${battery}%)` };
   }
   if (battery < MISSION_DISPATCH_MINIMUM_PERCENT) {
     return { tone: 'warning', label: `Mission hold below ${MISSION_DISPATCH_MINIMUM_PERCENT}% (${battery}%)` };
@@ -160,25 +282,80 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   return { tone: 'ok', label: `Mission battery ready ${battery}%` };
 };
 
-// HH_260721 - Reuse one health/service presentation on waiting and destination screens.
-function RuntimeStatus({ systemHealth, missionPhase, batteryPolicy }) {
+const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parkingPolicy) => {
+  const state = String(serviceStateName || '').trim().toUpperCase();
+  const description = String(serviceStateDescription || '').trim().toUpperCase();
+  const selectedMethod = String(parkingPolicy?.parking_selected_method || '').trim().toLowerCase();
+
+  if (state === 'CHARGING') return '충전 중';
+  if (state === 'WAITING_FOR_CHARGING') return '충전 연결 대기 중';
+  if (state === 'DROP_ZONE_WAIT') return 'Parked at drop zone';
+  if (state === 'DROP_ZONE_PARKING') {
+    if (
+      description.includes('DROP_ZONE_MANEUVER_CONTROLLER')
+      || description.includes('PARKING_APPROACH')
+      || description.includes('ALIGN_FOR_PARKING')
+    ) return 'Drop-zone parking in progress';
+    if (selectedMethod === 'apriltag') return '도킹 진행 중';
+    if (selectedMethod === 'reverse') return '주차 진행 중';
+    return 'Drop-zone parking in progress';
+  }
+
+  if (selectedMethod === 'apriltag') return 'Charging docking selected';
+  if (selectedMethod === 'reverse') return 'Non-charging parking selected';
+  return parkingPolicy?.charging_required
+    ? 'Charging docking required'
+    : 'Automatic parking · 35% threshold';
+};
+
+function WaitingRuntimeStatusPanel({
+  systemHealth,
+  missionPhase,
+  batteryPolicy,
+  parkingPolicy,
+  serviceStateName,
+  serviceStateDescription,
+}) {
+  const items = [
+    {
+      key: 'system',
+      label: 'SYSTEM',
+      value: SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING,
+      tone: `health-${systemHealth.toLowerCase()}`,
+    },
+    {
+      key: 'mission',
+      label: 'MISSION',
+      value: MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING,
+      tone: 'mission',
+    },
+    {
+      key: 'parking',
+      label: 'PARKING',
+      value: parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy),
+      tone: 'parking',
+      title: parkingPolicyMessage(parkingPolicy),
+    },
+    {
+      key: 'battery',
+      label: 'BATTERY',
+      value: batteryPolicy?.label || 'Battery status pending',
+      tone: `battery-${batteryPolicy?.tone || 'warning'}`,
+    },
+  ];
+
   return (
-    <div className="ch-runtime-status" aria-live="polite">
-      <span className={`ch-runtime-line health-${systemHealth.toLowerCase()}`}>
-        <span className="ch-runtime-dot" />
-        {SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING}
-      </span>
-      <span className="ch-runtime-line service-state">
-        <span className="ch-runtime-dot" />
-        {MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING}
-      </span>
-      {batteryPolicy && (
-        <span className={`ch-runtime-line battery-policy policy-${batteryPolicy.tone}`}>
-          <span className="ch-runtime-dot" />
-          {batteryPolicy.label}
-        </span>
-      )}
-    </div>
+    <section className="waiting-runtime-panel" aria-label="Robot operating status" aria-live="polite">
+      {items.map(item => (
+        <div key={item.key} className={`waiting-runtime-item ${item.tone}`} title={item.title || item.value}>
+          <span className="waiting-runtime-dot" />
+          <span className="waiting-runtime-copy">
+            <small>{item.label}</small>
+            <strong>{item.value}</strong>
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -252,19 +429,91 @@ function TrailCarousel({ title, images }) {
 }
 
 // ── 진단 모니터 컴포넌트 ──────────────────────────────────────────────────────
-function DiagnosticsMonitor() {
+function DiagnosticsMonitor({
+  redockStatus = null,
+  parkingPolicy = {},
+  serviceStateName = '',
+  engageState = false,
+  engageDisabled = false,
+  onToggleEngage = null,
+  headlightState = false,
+  onToggleHeadlight = null,
+}) {
   const [activeTab, setActiveTab] = useState('system');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
-  // HH_260819 - Return is the sole operator motion command. The backend selects
-  // campsite exit, drop-zone routing, or final parking from authoritative state.
+  // HH_260907 - Return uses SOC-selected parking; the separate Dock button
+  // explicitly requests charging through the same backend motion authority.
   const [motionCommandPending, setMotionCommandPending] = useState('');
   const [motionCommandStatus, setMotionCommandStatus] = useState('');
-  const [steeringRate, setSteeringRate] = useState(0.5);
+  // Display only a value acknowledged by the parameter service. Slider drafts
+  // are not applied values; failed requests must not imply hardware support.
+  const [steeringRate, setSteeringRate] = useState(null);
+  const [steeringDraftRate, setSteeringDraftRate] = useState(null);
   const [steeringTuningAvailable, setSteeringTuningAvailable] = useState(false);
-  const [steeringTuningStatus, setSteeringTuningStatus] = useState('드라이버 연결 확인 중');
+  const [steeringTuningPending, setSteeringTuningPending] = useState(false);
+  const [steeringTuningStatus, setSteeringTuningStatus] = useState('설정 서비스 응답 대기');
   const steeringTuningTimerRef = useRef(null);
+  const steeringTuningRef = useRef({
+    active: false, available: false, pending: false, request: 0, rate: null,
+  });
+
+  const requestSteeringTuning = async (nextRate) => {
+    const current = steeringTuningRef.current;
+    const updating = nextRate !== undefined;
+    const validRate = value => typeof value === 'number'
+      && Number.isFinite(value) && value >= 0.05 && value <= 2.0;
+    // Recheck at dispatch time, not only in the disabled DOM control: a queued
+    // debounce or duplicate event must not POST after availability is lost.
+    if (!current.active || current.pending
+        || (updating && (!current.available || !validRate(nextRate)))) return false;
+    const request = ++current.request;
+    current.pending = true;
+    setSteeringTuningPending(true);
+    setSteeringTuningStatus(updating ? '적용 확인 중…' : '설정 서비스 응답 대기');
+    const isCurrent = () => current.active && current.request === request;
+    try {
+      const response = await fetch(
+        updating
+          ? `/ui/platform_tuning?steering_transition_rate_radps=${encodeURIComponent(nextRate.toFixed(2))}`
+          : '/ui/platform_tuning',
+        updating ? { method: 'POST' } : undefined
+      );
+      const body = await response.json();
+      if (!isCurrent()) return false;
+      const rate = body.steering_transition_rate_radps;
+      if (!response.ok || body.success !== true || body.available !== true || !validRate(rate)) {
+        throw new Error('설정 서비스 응답을 확인할 수 없습니다');
+      }
+      current.rate = rate;
+      current.available = true;
+      setSteeringRate(rate);
+      setSteeringDraftRate(rate);
+      setSteeringTuningAvailable(true);
+      setSteeringTuningStatus(updating ? '적용 확인됨' : '런타임 조절 가능');
+      return true;
+    } catch (error) {
+      if (!isCurrent()) return false;
+      current.available = false;
+      setSteeringTuningAvailable(false);
+      // Retain the last acknowledged rate internally, but hide it while the
+      // service is unavailable; never promote the rejected draft to reality.
+      setSteeringDraftRate(current.rate);
+      setSteeringTuningStatus('설정 서비스 미가용 · 진단 화면을 다시 열어 확인하세요');
+      return false;
+    } finally {
+      if (isCurrent()) {
+        current.pending = false;
+        setSteeringTuningPending(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!redockStatus?.received) return;
+    setMotionCommandStatus(redockStatus.message || '');
+  }, [redockStatus]);
 
   useEffect(() => {
     if (activeTab !== 'system') return undefined;
@@ -281,52 +530,37 @@ function DiagnosticsMonitor() {
   }, [activeTab]);
 
   useEffect(() => {
-    fetch('/ui/platform_tuning')
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok || !body.success) throw new Error(body.message || '설정 조회 실패');
-        setSteeringRate(Number(body.steering_transition_rate_radps));
-        setSteeringTuningAvailable(true);
-        setSteeringTuningStatus('런타임 조절 가능');
-      })
-      .catch(error => {
-        setSteeringTuningAvailable(false);
-        setSteeringTuningStatus(error.message || 'Ranger 드라이버 연결 안 됨');
-      });
+    const current = steeringTuningRef.current;
+    current.active = true;
+    current.available = false;
+    current.pending = false;
+    setSteeringTuningAvailable(false);
+    requestSteeringTuning();
     return () => {
+      current.active = false;
+      ++current.request;
       if (steeringTuningTimerRef.current) {
         clearTimeout(steeringTuningTimerRef.current);
+        steeringTuningTimerRef.current = null;
       }
     };
   }, []);
 
-  const applySteeringRate = (nextRate) => {
-    const clamped = Math.max(0.05, Math.min(2.0, Number(nextRate)));
-    setSteeringTuningStatus('적용 중…');
-    fetch(
-      `/ui/platform_tuning?steering_transition_rate_radps=${encodeURIComponent(clamped.toFixed(2))}`,
-      { method: 'POST' }
-    )
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok || !body.success) throw new Error(body.message || '적용 실패');
-        setSteeringTuningAvailable(true);
-        setSteeringRate(Number(body.steering_transition_rate_radps));
-        setSteeringTuningStatus('즉시 적용됨');
-      })
-      .catch(error => {
-        setSteeringTuningStatus(error.message || '적용 실패');
-      });
-  };
-
   const handleSteeringRateChange = (event) => {
+    const current = steeringTuningRef.current;
+    if (!current.active || !current.available || current.pending) return;
     const nextRate = Number(event.target.value);
-    setSteeringRate(nextRate);
+    if (!Number.isFinite(nextRate) || nextRate < 0.05 || nextRate > 2.0) return;
+    setSteeringDraftRate(nextRate);
+    setSteeringTuningStatus(`변경값 ${nextRate.toFixed(2)} rad/s · 적용 대기`);
     if (steeringTuningTimerRef.current) {
       clearTimeout(steeringTuningTimerRef.current);
     }
     steeringTuningTimerRef.current = setTimeout(
-      () => applySteeringRate(nextRate),
+      () => {
+        steeringTuningTimerRef.current = null;
+        requestSteeringTuning(nextRate);
+      },
       300
     );
   };
@@ -338,7 +572,14 @@ function DiagnosticsMonitor() {
       const response = await fetch('/ui/manual_return', { method: 'POST' });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || '복귀 요청 실패');
-      setMotionCommandStatus('복귀 명령 전송됨');
+      const statusByAction = {
+        parking_alignment: '선택된 주차 방식으로 정렬을 시작합니다',
+        parking_alignment_waiting_for_can: '재도킹 대기 중 · 리모컨을 CAN 모드로 전환하세요',
+        waiting_for_disconnect: '충전 접점 해제 확인 후 자동으로 재도킹합니다',
+        parking_in_progress: '주차가 이미 진행 중입니다',
+        return_in_progress: '복귀가 이미 진행 중입니다',
+      };
+      setMotionCommandStatus(statusByAction[body.action] || '복귀 명령 전송됨');
     } catch (error) {
       setMotionCommandStatus(error.message || '복귀 요청 실패');
     } finally {
@@ -384,17 +625,37 @@ function DiagnosticsMonitor() {
           disabled={Boolean(motionCommandPending)}
           title="현재 서비스 상태와 관계없이 drop zone 복귀를 요청"
         >
-          {motionCommandPending === 'return' ? 'Return 요청 중' : 'Return'}
+          {motionCommandPending === 'return' ? '복귀 요청 중' : '복귀 · 자동 주차'}
         </button>
+        <DockingCommandButton disabled={Boolean(motionCommandPending)} serviceStateName={serviceStateName} />
         <span className="manual-motion-status">{motionCommandStatus || '명령 대기'}</span>
       </div>
+      <p className="manual-motion-status" role="status">{parkingPolicyMessage(parkingPolicy)}</p>
+
+      {/* ── 전조등 컨트롤 패널 ── */}
+      {onToggleHeadlight && (
+        <div className="diag-control-bar light-control-bar">
+          <span className="diag-control-label">Light Control</span>
+          <button
+            type="button"
+            className={`manual-return-btn headlight-command-btn ${headlightState ? 'headlight-on' : ''}`}
+            onClick={onToggleHeadlight}
+            title="전조등을 켜거나 끕니다"
+          >
+            {headlightState ? 'LIGHT OFF' : 'LIGHT ON'}
+          </button>
+          <span className="manual-motion-status" role="status">
+            {headlightState ? '전조등 켜짐' : '전조등 꺼짐'}
+          </span>
+        </div>
+      )}
 
       <div className="steering-tuning-card">
         <div className="steering-tuning-copy">
           <div className="steering-tuning-title">횡↔종 조향 전환 속도</div>
           <div className="steering-tuning-help">
             바퀴 방향이 종방향과 횡방향 사이에서 회전하는 최대 속도입니다.
-            변경값은 재시작 없이 즉시 적용됩니다.
+            설정 서비스 연결 시 재시작 없이 조절할 수 있으며, 아래에는 확인된 적용값을 표시합니다.
           </div>
           <div className={`steering-tuning-status ${steeringTuningAvailable ? 'available' : ''}`}>
             {steeringTuningStatus}
@@ -402,8 +663,8 @@ function DiagnosticsMonitor() {
         </div>
         <div className="steering-tuning-control">
           <div className="steering-tuning-value">
-            <strong>{steeringRate.toFixed(2)}</strong> rad/s
-            <span>{Math.round(steeringRate * 100)}%</span>
+            <strong>{steeringTuningAvailable && steeringRate !== null ? steeringRate.toFixed(2) : '—'}</strong> rad/s
+            <span>{steeringTuningAvailable && steeringRate !== null ? `${Math.round(steeringRate * 100)}%` : '—'}</span>
           </div>
           <input
             className="steering-tuning-slider"
@@ -411,7 +672,8 @@ function DiagnosticsMonitor() {
             min="0.05"
             max="2.0"
             step="0.05"
-            value={steeringRate}
+            value={steeringDraftRate ?? 0.05}
+            disabled={!steeringTuningAvailable || steeringTuningPending}
             onChange={handleSteeringRateChange}
             aria-label="횡 종 조향 전환 속도"
           />
@@ -500,7 +762,15 @@ function DiagnosticsMonitor() {
     </div>
         </>
       ) : (
-        <TelemetryWorkspace activeTab={activeTab} />
+        <TelemetryWorkspace
+          activeTab={activeTab}
+          redockStatus={redockStatus}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          engageState={engageState}
+          engageDisabled={engageDisabled}
+          onToggleEngage={onToggleEngage}
+        />
       )}
     </div>
   );
@@ -695,7 +965,7 @@ const SIDE_BUTTONS = [
         </div>
         <div className="guide-grid">
 
-        {/* ── 1. 목적지 선택 방법 ── */}
+        {/* ── 1. 서비스 선택 방법 ── */}
         <div className="guide-card">
           <div className="guide-card-header" style={{ background: 'linear-gradient(135deg,#2d6e40,#43a047)' }}>
             <svg viewBox="0 0 32 32" fill="none">
@@ -703,14 +973,14 @@ const SIDE_BUTTONS = [
               <circle cx="16" cy="14" r="2.5" fill="#fff"/>
               <path d="M16 21 C10 26 6 29 6 29 L16 27 L26 29 C26 29 22 26 16 21Z" fill="#fff" opacity="0.8"/>
             </svg>
-            <span>목적지 선택 방법</span>
+            <span>서비스 선택 방법</span>
           </div>
           <div className="guide-card-body">
             {[
-              '대기 화면의 목적지 선택을 터치해 제어 패널로 이동합니다.',
-              '원하는 목적지(B1 ~ B12)를 선택합니다.',
+              '대기 화면의 서비스 선택에서 배송 또는 이용객 호출을 선택합니다.',
+              '서비스 안내를 확인한 뒤 원하는 사이트(B1 ~ B13)를 선택합니다.',
               '목적지 이미지와 "이동하시겠습니까?" 를 확인합니다.',
-              '[예] 버튼을 눌러 배송 로봇 출발을 확정합니다.',
+              '[예] 버튼을 누르고 사이트명을 입력해 로봇 출발을 확정합니다.',
             ].map((text, i) => (
               <div key={i} className="guide-step">
                 <span className="guide-step-num" style={{ background: '#2d6e40' }}>{i + 1}</span>
@@ -957,8 +1227,8 @@ function BatteryIcon({ pct }) {
   const fillRatio = pct === null ? 0 : Math.max(0, Math.min(100, pct)) / 100;
   const fillColor =
     pct === null ? '#d0d0d0'
-    : pct <= 15  ? '#e53935'
-    : pct <= 35  ? '#f57c00'
+    : pct < 25  ? '#e53935'
+    : pct < 35  ? '#f57c00'
     : '#2d6e40';
 
   // 내부 채움 가용 너비: x=3.5 ~ x=38.5 → 35px
@@ -992,10 +1262,19 @@ function App() {
 
   const [connected, setConnected] = useState(false);
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
+  const [batteryChargeComplete, setBatteryChargeComplete] = useState(false);
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
   // HH_260721 - Display operational progress independently from diagnostic health.
   const [serviceStateName, setServiceStateName] = useState('PREPARING');
+  const [serviceStateDescription, setServiceStateDescription] = useState('');
+  const [missionExecutionError, setMissionExecutionError] = useState('');
+  const missionExecutionErrorRef = useRef('');
+  const [recallFinalReturnReady, setRecallFinalReturnReady] = useState(false);
+  const recallFinalReturnReadyRef = useRef(false);
+  const [returnRequestPending, setReturnRequestPending] = useState(false);
+  const returnRequestPendingRef = useRef(false);
+  const serviceStateIdRef = useRef(null);
   const [systemHealth, setSystemHealth] = useState('STARTING');
   const [missionPhase, setMissionPhase] = useState('INITIALIZING');
   const [missionSource, setMissionSource] = useState('none');
@@ -1010,11 +1289,43 @@ function App() {
     return 1;
   });
   const [showWaiting, setShowWaiting] = useState(true); // 대기 화면 표시 여부
+  const [showServiceSelection, setShowServiceSelection] = useState(false);
   const wsRef = useRef(null);
+  // Treat every reconnect as a new authority channel. Callbacks from a closed
+  // socket must never roll the current mission back to an older snapshot.
+  const wsMountedRef = useRef(false);
+  const wsGenerationRef = useRef(0);
+  const wsReconnectTimerRef = useRef(null);
   const idleTimerRef = useRef(null);                    // 전체 OFF 시 10초 타이머
+  const chargingStandbyOpenedRef = useRef(false);
+  const chargeCompleteStandbyOpenedRef = useRef(false);
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
   const [selectedSite, setSelectedSite] = useState(null);         // 이미지 프리뷰 대상 사이트
+  // HH_260904 - Delivery enters the campsite; recall stops at the authored
+  // roadside wait pose. Keep the intent explicit through both confirmations.
+  const [destinationIntent, setDestinationIntent] = useState('delivery');
+  const destinationIntentRef = useRef('delivery');
+  // The service menu owns the delivery/recall role. Pin it so an idle
+  // "no mission" snapshot cannot silently flip the role back to delivery.
+  const intentPinnedRef = useRef(false);
+  // The backend owns mission admission. Keep its exact identity so OFF and
+  // Return commands cannot affect a mission accepted after this UI snapshot.
+  const missionDispatchActiveRef = useRef(false);
+  const missionDispatchGenerationRef = useRef(0);
+  const missionDispatchSiteRef = useRef('');
+  const missionDispatchOwnerRef = useRef('');
+  const missionAuthorityRevisionRef = useRef(0);
+  const [missionDispatch, setMissionDispatch] = useState({
+    active: false,
+    generation: 0,
+    site: '',
+    owner: '',
+    intent: '',
+  });
+  const recallRequestEpochRef = useRef(0);
+  const [recallRequestPending, setRecallRequestPending] = useState(false);
+  const [activeRecallSite, setActiveRecallSite] = useState(null);
   const [arrivedSite, setArrivedSite] = useState(null);           // 도착 완료 사이트
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
   const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
@@ -1030,12 +1341,31 @@ function App() {
   const [guestNavigateSite, setGuestNavigateSite] = useState(null); // 게스트 사이트 이동 알림
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
+  const [showDockingConfirm, setShowDockingConfirm] = useState(false);
+  const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
+  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
+  const [serviceDockingPending, setServiceDockingPending] = useState(false);
+  const [serviceDockingStatus, setServiceDockingStatus] = useState('');
+  const serviceDockingPendingRef = useRef(false);
   const [showMoveVerify, setShowMoveVerify] = useState(false);  // 사이트명 입력 확인 팝업
   const [moveVerifyInput, setMoveVerifyInput] = useState('');
   const [moveVerifyError, setMoveVerifyError] = useState(false);
   const [missionBlockMessage, setMissionBlockMessage] = useState('');
   const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
   const [batteryReturnState, setBatteryReturnState] = useState(emptyBatteryReturnState);
+  const batteryReturnStateRef = useRef(emptyBatteryReturnState());
+  const [parkingPolicy, setParkingPolicy] = useState({
+    charging_required: false,
+    parking_policy_mode: 'auto',
+    parking_selected_method: '',
+  });
+  const [redockStatus, setRedockStatus] = useState({
+    pending: false,
+    waitingForCan: false,
+    status: 'idle',
+    message: '',
+    received: false,
+  });
   // HH_260819 - Public field-operation evidence stays lightweight and separate
   // from the administrator-only, high-bandwidth telemetry session.
   const serviceMetrics = useServiceMetricsSummary();
@@ -1124,7 +1454,10 @@ function App() {
   const anyOn = Object.values(states).some(v => v);
 
   // 현재 ON인 사이트 (이동 중인 사이트)
-  const activeSite = SITE_NAMES.find(s => states[s]) || null;
+  const activeStateSite = SITE_NAMES.find(s => states[s]) || null;
+  // The backend mirrors both delivery and recall in the shared site-state
+  // buttons. Keep a typed recall out of the delivery-only presentation path.
+  const activeSite = activeRecallSite ? null : activeStateSite;
   // HH_260730 - A manual mission exists only after a source-aware RViz goal,
   // not merely because the operator has armed engage.
   const manualDriveActive =
@@ -1136,6 +1469,40 @@ function App() {
     && ACTIVE_MANUAL_PHASES.has(missionPhase);
   const displayedReturning =
     isReturning && missionPhase !== 'INITIALIZING';
+  // RETURN_WITH_CARGO is shared by Delivery and Recall. The accepted mission
+  // identity, rather than a generic service-state number, selects UI wording
+  // and determines which client is allowed to send Return.
+  const hasExplicitRecallIntent = Boolean(activeRecallSite);
+  const recallArrivalPresentation =
+    hasExplicitRecallIntent
+    && (
+      serviceStateName === 'GUEST_LOADING_WAIT'
+      || activeRecallSite === arrivedSite
+    );
+  const recallReturnPresentation =
+    hasExplicitRecallIntent
+    && serviceStateName === 'RETURN_WITH_CARGO';
+  const robotOwnsReturn = !missionExecutionError && robotCanCompleteMission(
+    missionDispatch, arrivedSite, serviceStateName
+  );
+  const recallProgress = recallReturnProgress(activeRecallSite, serviceStateDescription);
+  const motionNotice = serviceMotionNotice(missionPhase, systemHealth);
+  const guestAdmissionMessage = guestAdmissionNotice({
+    dispatch: missionDispatch, showRecall: showGuestRecall, noticeSite: guestNavigateSite,
+    missionPhase, serviceStateName, systemHealth,
+    arrivalVisible: showArrivalComplete, arrivedSite, executionError: missionExecutionError,
+  });
+  const guestAdmissionStatus = guestAdmissionMessage ? (
+    <span data-ui="guest-admission-status" role="status" aria-live="polite"
+      style={{ display: 'block', fontSize: '0.85rem', position: 'static', pointerEvents: 'none' }}>
+      {guestAdmissionMessage}
+    </span>
+  ) : null;
+  const guestOwnsReturn =
+    missionDispatch.active
+    && missionDispatch.site === arrivedSite
+    && missionDispatch.generation > 0
+    && missionDispatch.owner === 'guest';
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1154,6 +1521,10 @@ function App() {
   // ── 대기 화면 터치 핸들러 (운영시간 체크) ──────────────────────────────
   const handleWaitingClick = () => {
     if (isWithinOperatingHours()) {
+      // Pin the public chooser immediately, not only after role selection:
+      // idle station heartbeats are status, not navigation commands.
+      intentPinnedRef.current = true;
+      setShowServiceSelection(true);
       setShowWaiting(false);
     } else {
       setOutsideHoursMsg(true);
@@ -1167,12 +1538,18 @@ function App() {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
-    if (!anyOn && !manualDriveActive && !showWaiting && !isReturning) {
+    if (
+      !['WAITING_FOR_CHARGING', 'CHARGING'].includes(serviceStateName)
+      && !anyOn
+      && !manualDriveActive
+      && !showWaiting
+      && !isReturning
+    ) {
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
       }, 10000);
     }
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning, serviceStateName]);
     useEffect(() => {
     if (anyOn || manualDriveActive) {
       // ON이 하나라도 있으면 타이머 해제 & 대기 화면 진입 방지
@@ -1180,7 +1557,11 @@ function App() {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
       }
-    } else if (!showWaiting && !isReturning) {
+    } else if (
+      !['WAITING_FOR_CHARGING', 'CHARGING'].includes(serviceStateName)
+      && !showWaiting
+      && !isReturning
+    ) {
       // 전부 OFF + 복귀 중 아닐 때 → 10초 타이머 시작
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
@@ -1193,7 +1574,78 @@ function App() {
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning, serviceStateName]);
+
+  // 충전 접점 연결을 기다리는 동안 상태 안내를 10초간 유지한 뒤 다음
+  // 이용자가 터치해서 서비스를 선택할 수 있는 공용 대기 화면을 연다.
+  // 활성 임무가 남아 있으면 새 임무가 겹치지 않도록 전환을 보류한다.
+  useEffect(() => {
+    if (serviceStateName !== 'WAITING_FOR_CHARGING') {
+      chargingStandbyOpenedRef.current = false;
+      return undefined;
+    }
+    if (
+      chargingStandbyOpenedRef.current
+      || missionDispatch.active
+      || anyOn
+      || manualDriveActive
+      || isReturning
+      || showWaiting
+      || showServiceSelection
+    ) return undefined;
+
+    const chargingSelectionTimer = setTimeout(() => {
+      chargingStandbyOpenedRef.current = true;
+      setShowServiceSelection(false);
+      setShowWaiting(true);
+    }, 10000);
+    return () => clearTimeout(chargingSelectionTimer);
+  }, [
+    serviceStateName,
+    missionDispatch.active,
+    anyOn,
+    manualDriveActive,
+    isReturning,
+    showWaiting,
+    showServiceSelection,
+  ]);
+
+  // A confirmed full battery gets its own completion presentation before the
+  // kiosk returns to the public "서비스 선택 버튼" standby screen.
+  useEffect(() => {
+    const completedCharging = (
+      serviceStateName === 'CHARGING' && batteryChargeComplete
+    );
+    if (!completedCharging) {
+      chargeCompleteStandbyOpenedRef.current = false;
+      return undefined;
+    }
+    if (
+      chargeCompleteStandbyOpenedRef.current
+      || missionDispatch.active
+      || anyOn
+      || manualDriveActive
+      || isReturning
+      || showWaiting
+      || showServiceSelection
+    ) return undefined;
+
+    const chargeCompleteTimer = setTimeout(() => {
+      chargeCompleteStandbyOpenedRef.current = true;
+      setShowServiceSelection(false);
+      setShowWaiting(true);
+    }, 10000);
+    return () => clearTimeout(chargeCompleteTimer);
+  }, [
+    serviceStateName,
+    batteryChargeComplete,
+    missionDispatch.active,
+    anyOn,
+    manualDriveActive,
+    isReturning,
+    showWaiting,
+    showServiceSelection,
+  ]);
 
   // HJ_260804 - A Guest UI mission can start while the Robot UI is on its idle
   // screen. Expose the return status as soon as that mission starts returning.
@@ -1202,6 +1654,26 @@ function App() {
       setShowWaiting(false);
     }
   }, [isReturning, showWaiting]);
+
+  // Reopening standby ends the visit, so the next visitor starts from the
+  // service menu instead of inheriting the previous role.
+  useEffect(() => {
+    if (showWaiting) intentPinnedRef.current = false;
+  }, [showWaiting]);
+
+  // An accepted or already-running mission must always show the live control
+  // surface instead of the public service chooser.
+  useEffect(() => {
+    if (anyOn || manualDriveActive || isReturning || missionDispatch.active) {
+      setShowServiceSelection(false);
+    }
+  }, [anyOn, manualDriveActive, isReturning, missionDispatch.active]);
+
+  useEffect(() => {
+    if (!showServiceSelection) {
+      setShowDockingConfirm(false);
+    }
+  }, [showServiceSelection]);
 
   // ── 인터넷 신호 강도 감지 (navigator.connection + online/offline) ─────
   useEffect(() => {
@@ -1228,18 +1700,67 @@ function App() {
 
   // ── WebSocket 연결 함수 ─────────────────────────────────────────────────
   const connect = useCallback(() => {
+    if (!wsMountedRef.current) return;
+    if (wsReconnectTimerRef.current !== null) {
+      clearTimeout(wsReconnectTimerRef.current);
+      wsReconnectTimerRef.current = null;
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host = window.location.host || 'localhost:8010';
+    const connectionGeneration = wsGenerationRef.current + 1;
+    wsGenerationRef.current = connectionGeneration;
 
     // FastAPI 백엔드의 WebSocket 엔드포인트에 연결 (same host:port as HTTP)
     const ws = new WebSocket(`${protocol}://${host}/ws`);
+    wsRef.current = ws;
 
     // 연결 성공 시 → 연결 상태 녹색 표시
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) {
+        ws.close();
+        return;
+      }
+      setConnected(true);
+    };
 
     // 서버에서 메시지 수신 시 → 상태 업데이트
     ws.onmessage = (event) => {
+      if (
+        !wsMountedRef.current
+        || wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
       const data = JSON.parse(event.data);
+
+      // Persist failure snapshots across reloads and minimal phase frames.
+      // Only an explicit backend clear may remove the operator-recovery warning.
+      if ('mission_execution_error' in data || data.error === 'campsite_maneuver_failed') {
+        const reason = 'mission_execution_error' in data
+          ? String(data.mission_execution_error || '')
+          : String(data.message || '사이트 제어 오류');
+        missionExecutionErrorRef.current = reason;
+        setMissionExecutionError(reason);
+      }
+      if ('recall_final_return_ready' in data) {
+        const ready = data.recall_final_return_ready === true;
+        if (ready !== recallFinalReturnReadyRef.current) {
+          returnRequestPendingRef.current = false;
+          setReturnRequestPending(false);
+        }
+        recallFinalReturnReadyRef.current = ready;
+        setRecallFinalReturnReady(ready);
+      }
+      if (data.error) {
+        returnRequestPendingRef.current = false;
+        setReturnRequestPending(false);
+        if (['recall_completion_stage_mismatch', 'recall_final_confirmation_required', 'recall_final_return_not_ready'].includes(data.error)) {
+          setMissionBlockMessage('완료 단계가 변경되었습니다. 현재 화면의 안내를 확인한 후 다시 눌러주세요.');
+        }
+      }
 
       if (data.error === 'battery_below_mission_minimum') {
         const blockedBattery = Number(data.battery_percentage);
@@ -1258,18 +1779,173 @@ function App() {
         setMissionBlockMessage(formatMissionBlockMessage(data));
         return;
       }
-
-      if ('battery_return_pending' in data) {
-        if (data.battery_return_pending) {
-          setBatteryReturnState({
-            pending: true,
-            started: Boolean(data.battery_return_started),
-            waitingForUser: Boolean(data.battery_return_waiting_for_user),
-          });
-          setBatteryReturnMessage(formatBatteryReturnMessage(data));
+      if (data.error === 'mission_already_active') {
+        setSelectedSite(null);
+        setShowMoveConfirm(false);
+        setShowMoveVerify(false);
+        setMoveVerifyInput('');
+        setMoveVerifyError(false);
+        setMissionBlockMessage(
+          data.message || '다른 목적지 운행이 이미 진행 중입니다.'
+        );
+      }
+      if (
+        data.error === 'stale_or_unowned_return'
+        || data.error === 'stale_or_unowned_destination_stop'
+        || data.error === 'return_not_at_service_wait'
+      ) {
+        // Restore the authoritative wait state after rejecting an optimistic
+        // command from an older browser snapshot.
+        setIsReturning(false);
+        setMissionBlockMessage(
+          data.message || '현재 운행과 일치하지 않는 이전 요청이 취소되었습니다.'
+        );
+        const waitSite = String(data.return_wait_site || '').trim();
+        const waitOwner = String(data.return_wait_owner || '').trim();
+        if (
+          data.return_wait_active === true
+          && SITE_NAMES.includes(waitSite)
+          && ['operator', 'robot'].includes(waitOwner)
+        ) {
+          setArrivedSite(waitSite);
+          setShowArrivalComplete(true);
         } else {
-          setBatteryReturnState(emptyBatteryReturnState());
-          setBatteryReturnMessage('');
+          setArrivedSite(null);
+          setShowArrivalComplete(false);
+        }
+      }
+
+      if ('charging_required' in data || 'parking_policy_mode' in data || 'parking_selected_method' in data) {
+        setParkingPolicy(previous => ({
+          charging_required: 'charging_required' in data ? Boolean(data.charging_required) : previous.charging_required,
+          parking_policy_mode: data.parking_policy_mode ?? previous.parking_policy_mode,
+          parking_selected_method: data.parking_selected_method ?? previous.parking_selected_method,
+        }));
+      }
+      if ('battery_return_pending' in data || 'battery_return_urgent' in data
+          || 'battery_return_started' in data || 'battery_return_waiting_for_user' in data) {
+        const next = { ...batteryReturnStateRef.current };
+        if ('battery_return_pending' in data) next.pending = Boolean(data.battery_return_pending);
+        if ('battery_return_started' in data) next.started = Boolean(data.battery_return_started);
+        if ('battery_return_waiting_for_user' in data) next.waitingForUser = Boolean(data.battery_return_waiting_for_user);
+        if ('battery_return_urgent' in data) next.urgent = Boolean(data.battery_return_urgent);
+        batteryReturnStateRef.current = next;
+        setBatteryReturnState(next);
+        setBatteryReturnMessage(next.pending || next.urgent ? formatBatteryReturnMessage({
+          ...data,
+          battery_return_started: next.started,
+          battery_return_waiting_for_user: next.waitingForUser,
+          battery_return_urgent: next.urgent,
+        }) : '');
+      }
+
+      // HH_260904 - Preserve asynchronous re-dock progress after the Return
+      // HTTP response. Charger release and CAN handoff can happen later.
+      if (
+        'redock_pending' in data
+        || 'redock_waiting_for_can' in data
+        || 'redock_status' in data
+        || 'redock_message' in data
+      ) {
+        setRedockStatus(previous => {
+          const pending = 'redock_pending' in data
+            ? Boolean(data.redock_pending)
+            : previous.pending;
+          const waitingForCan = 'redock_waiting_for_can' in data
+            ? Boolean(data.redock_waiting_for_can)
+            : previous.waitingForCan;
+          const hasExplicitStatus = 'redock_status' in data;
+          const backendStatus = hasExplicitStatus
+            ? String(data.redock_status || '').trim().toLowerCase()
+            : '';
+          const backendMessage = String(
+            data.redock_message ?? data.message ?? ''
+          ).trim();
+
+          let status = previous.status || 'idle';
+          if (waitingForCan) {
+            status = 'waiting_for_can';
+          } else if (pending) {
+            status = 'waiting_for_disconnect';
+          } else if (hasExplicitStatus) {
+            status = backendStatus || 'idle';
+          } else if (
+            'redock_pending' in data || 'redock_waiting_for_can' in data
+          ) {
+            status = 'idle';
+          }
+
+          let message = '';
+          if (waitingForCan || pending || hasExplicitStatus) {
+            message = Object.prototype.hasOwnProperty.call(
+              REDOCK_STATUS_MESSAGES, status
+            ) ? REDOCK_STATUS_MESSAGES[status] : backendMessage;
+          } else if (backendMessage) {
+            // Compatibility for a backend that sends a terminal message but
+            // no explicit status. Preserve it instead of guessing CAN recovery.
+            message = backendMessage;
+          }
+          return { pending, waitingForCan, status, message, received: true };
+        });
+      }
+
+      // The backend snapshot is the sole mission-admission authority shared
+      // with Guest UI. Apply it before presentation-only site state.
+      if ('mission_dispatch_active' in data) {
+        const dispatchActive = Boolean(data.mission_dispatch_active);
+        const dispatchIntent = String(data.mission_dispatch_intent || '');
+        const dispatchSite = String(data.mission_dispatch_site || '');
+        const dispatchGeneration = dispatchActive
+          ? Number(data.mission_dispatch_generation || 0)
+          : 0;
+        const dispatchOwner = dispatchActive
+          ? String(data.mission_dispatch_owner || '')
+          : '';
+        if (
+          missionDispatchActiveRef.current !== dispatchActive
+          || missionDispatchGenerationRef.current !== dispatchGeneration
+          || missionDispatchSiteRef.current !== (dispatchActive ? dispatchSite : '')
+          || missionDispatchOwnerRef.current !== dispatchOwner
+        ) {
+          missionAuthorityRevisionRef.current += 1;
+        }
+        missionDispatchActiveRef.current = dispatchActive;
+        missionDispatchGenerationRef.current = dispatchGeneration;
+        missionDispatchSiteRef.current = dispatchActive ? dispatchSite : '';
+        missionDispatchOwnerRef.current = dispatchOwner;
+        setMissionDispatch({
+          active: dispatchActive,
+          generation: dispatchGeneration,
+          site: dispatchActive ? dispatchSite : '',
+          owner: dispatchOwner,
+          intent: dispatchActive ? dispatchIntent : '',
+        });
+        if (!dispatchActive || (dispatchOwner === 'guest' && dispatchIntent !== 'recall')) {
+          setShowArrivalComplete(false);
+        }
+        // The guest notifications describe an admitted mission. Once the
+        // backend reports no active identity they are stale regardless of
+        // which service state (if any) accompanied the clear.
+        if (!dispatchActive) {
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        }
+        if (dispatchActive) {
+          intentPinnedRef.current = false;
+          setShowWaiting(false);
+          if (dispatchIntent === 'recall' && SITE_NAMES.includes(dispatchSite)) {
+            destinationIntentRef.current = 'recall';
+            setDestinationIntent('recall');
+            setActiveRecallSite(dispatchSite);
+          } else if (dispatchIntent === 'delivery') {
+            destinationIntentRef.current = 'delivery';
+            setDestinationIntent('delivery');
+            setActiveRecallSite(null);
+          }
+        } else if (!dispatchIntent && !intentPinnedRef.current) {
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
         }
       }
 
@@ -1281,33 +1957,89 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
+      if ('robot_recall_site' in data) {
+        const replayedRecallSite = String(data.robot_recall_site || '');
+        if (SITE_NAMES.includes(replayedRecallSite)) {
+          destinationIntentRef.current = 'recall';
+          setDestinationIntent('recall');
+          setActiveRecallSite(replayedRecallSite);
+          setSelectedSite(null);
+          setShowWaiting(false);
+        } else if (!intentPinnedRef.current) {
+          destinationIntentRef.current = 'delivery';
+          setDestinationIntent('delivery');
+          setActiveRecallSite(null);
+        }
+      }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
         setOccupiedSites(prev => (
           prev.length === data.occupied_sites.length
           && prev.every((site, index) => site === data.occupied_sites[index])
         ) ? prev : data.occupied_sites);
-        setSelectedSite(prev => data.occupied_sites.includes(prev) ? null : prev);
+        // A tent blocks delivery into a campsite, but is the expected target
+        // of a roadside recall. Do not clear a recall selection on occupancy.
+        setSelectedSite(prev => (
+          destinationIntentRef.current === 'delivery'
+          && data.occupied_sites.includes(prev)
+        ) ? null : prev);
       }
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
-        setShowArrivalComplete(true);
+        setShowArrivalComplete(
+          missionDispatchOwnerRef.current !== 'guest'
+          || destinationIntentRef.current === 'recall'
+        );
       }
       // Service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
       if ('service_state' in data) {
         const serviceState = Number(data.service_state);
         const nextStateName = data.service_state_name || SERVICE_STATE_NAME_BY_ID[serviceState];
         if (nextStateName) setServiceStateName(nextStateName);
+        const previousServiceState = serviceStateIdRef.current;
+        serviceStateIdRef.current = serviceState;
+        // Backend also sends minimal {service_state, returning} frames. Those
+        // acknowledge the same state and must not erase its clearance phase.
+        if ('service_state_description' in data) {
+          setServiceStateDescription(String(data.service_state_description || ''));
+        } else if (previousServiceState !== serviceState) {
+          setServiceStateDescription('');
+        }
+        // HH_260908 - Arrival ends the "moving to the guest" announcement:
+        // the loading-wait / return / standby screens own the display now.
+        if (!GUEST_RECALL_ENROUTE_STATES.has(serviceState)) {
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        }
         if (
           serviceState === SERVICE_STATE.DROP_ZONE_WAIT
+          || serviceState === SERVICE_STATE.WAITING_FOR_CHARGING
           || serviceState === SERVICE_STATE.CHARGING
         ) {
           // HH_260721 - Charging remains a stopped standby state with destination selection enabled.
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
-          setShowWaiting(true);
+          // These stationary states are also emitted while an accepted Recall
+          // waits for departure. Do not reopen standby until the backend has
+          // explicitly cleared the mission identity.
+          if (serviceState === SERVICE_STATE.WAITING_FOR_CHARGING) {
+            // Keep the completed docking status visible while the 10-second
+            // standby timer runs. Once it fires, repeated state heartbeats
+            // must not hide the public waiting screen again.
+            if (!chargingStandbyOpenedRef.current) setShowWaiting(false);
+          } else if (serviceState === SERVICE_STATE.CHARGING) {
+            // Keep charging progress/completion visible. After a confirmed
+            // full charge, its own timer opens the public waiting screen.
+            if (!chargeCompleteStandbyOpenedRef.current) setShowWaiting(false);
+          } else if (
+            destinationIntentRef.current !== 'recall'
+            && !missionDispatchActiveRef.current
+            && !intentPinnedRef.current
+          ) {
+            setShowWaiting(true);
+          }
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
         } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
@@ -1325,6 +2057,26 @@ function App() {
           setIsReturning(false);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
+          setActiveRecallSite(null);
+          if (
+            missionDispatchActiveRef.current
+            || missionDispatchGenerationRef.current !== 0
+            || missionDispatchSiteRef.current
+            || missionDispatchOwnerRef.current
+          ) {
+            missionAuthorityRevisionRef.current += 1;
+          }
+          missionDispatchActiveRef.current = false;
+          missionDispatchGenerationRef.current = 0;
+          missionDispatchSiteRef.current = '';
+          missionDispatchOwnerRef.current = '';
+          setMissionDispatch({
+            active: false,
+            generation: 0,
+            site: '',
+            owner: '',
+            intent: '',
+          });
         } else if (MOVING_SERVICE_STATES.has(serviceState)) {
           // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
           setSelectedSite(null);
@@ -1334,7 +2086,11 @@ function App() {
           setMoveVerifyError(false);
         } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
           setArrivedSite(data.site);
-          setShowArrivalComplete(true);
+          setShowArrivalComplete(
+            missionDispatchOwnerRef.current !== 'guest'
+            || (destinationIntentRef.current === 'recall'
+              && serviceState === SERVICE_STATE.GUEST_LOADING_WAIT)
+          );
           setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
           setShowArrivalComplete(false);
@@ -1368,6 +2124,9 @@ function App() {
         const snapshotBattery = Number(data.battery_percentage);
         setBatteryPct(Number.isFinite(snapshotBattery) ? snapshotBattery : null);
       }
+      if ('battery_charge_complete' in data) {
+        setBatteryChargeComplete(Boolean(data.battery_charge_complete));
+      }
       // HH_260708 - Mirror planning engage state broadcast by the backend.
       if ('engage' in data) {
         setEngageState(data.engage);
@@ -1378,22 +2137,49 @@ function App() {
       if ('headlight' in data) {
         setHeadlightState(data.headlight);
       }
+      if (missionExecutionErrorRef.current) setShowArrivalComplete(false);
+      if ('service_state' in data && !ARRIVAL_STATES.has(Number(data.service_state))) {
+        returnRequestPendingRef.current = false;
+        setReturnRequestPending(false);
+      }
     };
 
     // HH_260708 - Reconnect the operator WebSocket after transient disconnects.
     ws.onclose = () => {
+      if (
+        wsGenerationRef.current !== connectionGeneration
+        || wsRef.current !== ws
+      ) return;
+      wsRef.current = null;
       setConnected(false);
-      setTimeout(connect, 2000);
+      returnRequestPendingRef.current = false;
+      setReturnRequestPending(false);
+      if (wsMountedRef.current) {
+        wsReconnectTimerRef.current = setTimeout(() => {
+          wsReconnectTimerRef.current = null;
+          connect();
+        }, 2000);
+      }
     };
 
     ws.onerror = () => ws.close();
-    wsRef.current = ws;
   }, []);
 
   // ── 컴포넌트 마운트/언마운트 시 WebSocket 관리 ──────────────────────────
   useEffect(() => {
+    wsMountedRef.current = true;
     connect();
-    return () => { if (wsRef.current) wsRef.current.close(); };
+    return () => {
+      wsMountedRef.current = false;
+      wsGenerationRef.current += 1;
+      if (wsReconnectTimerRef.current !== null) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = null;
+      }
+      const socket = wsRef.current;
+      wsRef.current = null;
+      if (socket) socket.close();
+    };
   }, [connect]);
 
   useEffect(() => {
@@ -1434,11 +2220,148 @@ function App() {
       .catch(() => {});
   };
 
-  const handleToggle = (site) => {
-    // HH_260723 - Keep confirmed occupied sites out of the dispatch flow.
-    if (occupiedSites.includes(site)) {
+  const selectDestinationIntent = (intent) => {
+    if (intent !== 'delivery' && intent !== 'recall') return;
+    destinationIntentRef.current = intent;
+    setDestinationIntent(intent);
+    setSelectedSite(null);
+    setShowMoveConfirm(false);
+    setShowMoveVerify(false);
+    setMoveVerifyInput('');
+    setMoveVerifyError(false);
+    setMissionBlockMessage('');
+  };
+
+  const activateDestinationService = (intent) => {
+    selectDestinationIntent(intent);
+    intentPinnedRef.current = true;
+    setTogglePage(0);
+    setShowServiceSelection(false);
+  };
+
+  const handleServiceDocking = async () => {
+    if (
+      serviceDockingPendingRef.current
+      || !dockingAllowedAtServiceState(serviceStateName)
+    ) {
       return;
     }
+    setShowDockingConfirm(false);
+    serviceDockingPendingRef.current = true;
+    setServiceDockingPending(true);
+    setServiceDockingStatus('');
+    try {
+      const body = await postDockingRequest();
+      setServiceDockingStatus(body.message || '충전 요청이 접수되었습니다.');
+    } catch (error) {
+      setServiceDockingStatus(error.message || '충전 요청 실패');
+    } finally {
+      serviceDockingPendingRef.current = false;
+      setServiceDockingPending(false);
+    }
+  };
+
+  const requestCampingSiteRecall = async (site) => {
+    const requestEpoch = recallRequestEpochRef.current + 1;
+    recallRequestEpochRef.current = requestEpoch;
+    const authorityRevisionAtRequest = missionAuthorityRevisionRef.current;
+    setRecallRequestPending(true);
+    setMissionBlockMessage('');
+    try {
+      // This dedicated endpoint is intentionally not replaced with
+      // /ui/destination on failure: that would enter the campsite as delivery.
+      const response = await fetch(
+        `/ui/camping_site_recall?site=${encodeURIComponent(site)}&intent=recall`,
+        { method: 'POST' }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.success) {
+        const unavailable = response.status === 404
+          ? '이용객 호출 기능이 아직 백엔드에 연결되지 않았습니다.'
+          : '이용객 호출 요청이 거부되었습니다.';
+        throw new Error(body.message || unavailable);
+      }
+      // Require an intent echo so a miswired ordinary destination endpoint
+      // cannot be presented to the operator as a safe roadside recall.
+      if (body.intent !== 'recall') {
+        throw new Error('백엔드가 호출 전용 응답을 확인하지 않았습니다.');
+      }
+      const admittedGeneration = Number(
+        body.mission_dispatch_generation || 0
+      );
+      const admittedSite = String(
+        body.mission_dispatch_site || ''
+      ).trim();
+      const admittedOwner = String(
+        body.mission_dispatch_owner || ''
+      ).trim();
+      if (
+        body.mission_dispatch_active !== true
+        || admittedSite !== site
+        || admittedOwner !== 'robot'
+        || !Number.isSafeInteger(admittedGeneration)
+        || admittedGeneration <= 0
+      ) {
+        throw new Error('백엔드가 호출 운행 세대를 확정하지 않았습니다.');
+      }
+      const currentAuthorityMatches = Boolean(
+        missionDispatchActiveRef.current
+        && missionDispatchSiteRef.current === admittedSite
+        && missionDispatchOwnerRef.current === admittedOwner
+        && missionDispatchGenerationRef.current === admittedGeneration
+      );
+      if (
+        recallRequestEpochRef.current !== requestEpoch
+        || (
+          missionAuthorityRevisionRef.current !== authorityRevisionAtRequest
+          && !currentAuthorityMatches
+        )
+      ) {
+        throw new Error(
+          '요청 처리 중 운행 권한이 변경되어 이전 호출 응답을 무시했습니다.'
+        );
+      }
+      setActiveRecallSite(site);
+      missionDispatchActiveRef.current = true;
+      missionDispatchSiteRef.current = admittedSite;
+      missionDispatchOwnerRef.current = admittedOwner;
+      missionDispatchGenerationRef.current = admittedGeneration;
+      setMissionDispatch({
+        active: true,
+        generation: admittedGeneration,
+        site: admittedSite,
+        owner: admittedOwner,
+        intent: 'recall',
+      });
+      setArrivedSite(null);
+      setShowArrivalComplete(false);
+      setIsReturning(false);
+      setSelectedSite(null);
+      return true;
+    } catch (error) {
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setMissionBlockMessage(
+          error.message || '이용객 호출 요청을 전송하지 못했습니다.'
+        );
+      }
+      return false;
+    } finally {
+      if (recallRequestEpochRef.current === requestEpoch) {
+        setRecallRequestPending(false);
+      }
+    }
+  };
+
+  const handleToggle = (site) => {
+    // HH_260723 - Occupancy blocks physical campsite entry, not the typed
+    // roadside recall used when a tent is already installed at the site.
+    if (
+      destinationIntent === 'delivery'
+      && occupiedSites.includes(site)
+    ) {
+      return;
+    }
+    if (activeRecallSite || recallRequestPending) return;
     if (states[site]) {
       // 이미 ON → OFF 불가, 아무것도 하지 않음
       return;
@@ -1453,8 +2376,13 @@ function App() {
   };
 
   // ── 프리뷰에서 "Yes" 클릭 → 실제 ON publish ─────────────────────────────
-  const handleConfirmMove = () => {
-    if (selectedSite && !occupiedSites.includes(selectedSite)) {
+  const handleConfirmMove = async () => {
+    if (!selectedSite) return;
+    if (destinationIntent === 'recall') {
+      await requestCampingSiteRecall(selectedSite);
+      return;
+    }
+    if (!occupiedSites.includes(selectedSite)) {
       applyToggle(selectedSite, true);
       setSelectedSite(null);
     }
@@ -1462,19 +2390,39 @@ function App() {
 
   // ── 이동중 "Yes" 클릭 → 운행 정지 (OFF) ─────────────────────────────────
   const handleStopMove = () => {
-    if (activeSite) {
-      applyToggle(activeSite, false);
-    }
+    // Return, docking, and parking can continue after the active-site toggle
+    // has already cleared. Use the authoritative full stop for every visible
+    // service-motion stop button so all motion owners are cancelled together.
+    fetch('/ui/stop', { method: 'POST' }).catch(() => {});
+    setEngageState(false);
   };
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
   const handleArrivalComplete = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ usage_complete: true }));
+    if (missionExecutionErrorRef.current) {
+      setMissionBlockMessage(missionExecutionFailureMessage(missionExecutionErrorRef.current));
+      return;
     }
+    if (returnRequestPendingRef.current) return;
+    if (!robotOwnsReturn) {
+      setMissionBlockMessage('현재 운행의 복귀 권한이 이 화면에 없습니다.');
+      return;
+    }
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setMissionBlockMessage('로봇 연결을 확인하고 다시 눌러주세요.');
+      return;
+    }
+    // Keep site+generation binding for both locally and Guest-admitted recall.
+    // Progress changes only when the controller's service state is received.
+    returnRequestPendingRef.current = true;
+    setReturnRequestPending(true);
+    wsRef.current.send(JSON.stringify({
+      usage_complete: true,
+      site: missionDispatchSiteRef.current,
+      mission_generation: missionDispatchGenerationRef.current,
+      recall_final_return: recallFinalReturnReady,
+    }));
     setShowArrivalComplete(false);
-    setArrivedSite(null);
-    setIsReturning(true);
   };
 
   // ── 실제 토글 적용 & WebSocket 전송 ─────────────────────────────────────
@@ -1490,7 +2438,11 @@ function App() {
       SITE_NAMES.forEach(s => {
         const st = updated[s];
         if (st !== states[s]) {
-          wsRef.current.send(JSON.stringify({ site: s, state: st }));
+          wsRef.current.send(JSON.stringify({
+            site: s,
+            state: st,
+            mission_generation: st ? 0 : missionDispatchGenerationRef.current,
+          }));
         }
       });
     }
@@ -1498,8 +2450,36 @@ function App() {
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  const missionExecutionWarning = missionExecutionError && (
+    <p role="alert" className="mission-block-msg" style={{ color: '#b42318', padding: '1rem', background: '#fff0ee' }}>
+      {missionExecutionFailureMessage(missionExecutionError)}
+    </p>
+  );
+  const missionSelectionLocked = Boolean(
+    anyOn || isReturning || activeRecallSite || recallRequestPending
+  );
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
   const serviceEvidenceModalOpen = activeModal === 'service-evidence';
+  const serviceEvidenceModal = serviceEvidenceModalOpen ? (
+    <div className="modal-overlay">
+      <div
+        className="modal-box service-evidence-modal"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <span className="modal-title">실증 운행 현황</span>
+          <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+        </div>
+        <div className="modal-body">
+          <ServiceEvidenceDashboard
+            summaryData={serviceMetrics.data}
+            summaryLoading={serviceMetrics.loading}
+            summaryError={serviceMetrics.error}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
   const adminEntryZone = (
     <div
       className="diag-secret-zone diag-secret-zone-global"
@@ -1594,7 +2574,18 @@ function App() {
                 <span className="modal-title">{modalData?.title || '진단'}</span>
                 <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
-              <div className="modal-body">{modalData?.content || <DiagnosticsMonitor />}</div>
+              <div className="modal-body">
+                <DiagnosticsMonitor
+                  redockStatus={redockStatus}
+                  parkingPolicy={parkingPolicy}
+                  serviceStateName={serviceStateName}
+                  engageState={engageState}
+                  engageDisabled={isReturning}
+                  onToggleEngage={handleEngage}
+                  headlightState={headlightState}
+                  onToggleHeadlight={handleHeadlight}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -1645,14 +2636,10 @@ function App() {
               <div className="wh-title-block">
                 <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
                 <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+                {guestAdmissionStatus}
               </div>
             </div>
             <div className="wh-right-group">
-              <RuntimeStatus
-                systemHealth={systemHealth}
-                missionPhase={missionPhase}
-                batteryPolicy={currentBatteryPolicy}
-              />
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -1668,8 +2655,18 @@ function App() {
           </div>
         </div>
 
+        <WaitingRuntimeStatusPanel
+          systemHealth={systemHealth}
+          missionPhase={missionPhase}
+          batteryPolicy={currentBatteryPolicy}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          serviceStateDescription={serviceStateDescription}
+        />
+
         {/* ── 하단 콘텐츠 영역: 실증 요약 + 기존 4개 버튼 2×2 ── */}
         <div className="waiting-body">
+          {missionExecutionWarning}
 
           {/* ── 공개 실증 운행 요약: 기존 2×2 서비스 버튼은 그대로 유지 ── */}
           <ServiceEvidenceSummary
@@ -1679,16 +2676,18 @@ function App() {
             onOpen={() => setActiveModal('service-evidence')}
           />
 
-          {/* ── 목적지 선택 ── */}
-          <button className="waiting-grid-btn" onClick={handleWaitingClick}>
-            <span className="waiting-grid-btn-icon">
-              <div style={{ width: '100%', height: '100%' }}>
-                <RobotAnimation />
-              </div>
+          {/* ── 서비스 선택 ── */}
+          <button className="waiting-grid-btn" data-ui="operator-open-destination" onClick={handleWaitingClick}>
+            <span className="waiting-grid-btn-icon waiting-grid-btn-icon-destination">
+              <img
+                src={`${process.env.PUBLIC_URL}/서비스_선택.png`}
+                alt="서비스 선택"
+                className="waiting-grid-btn-icon-img"
+              />
             </span>
             {outsideHoursMsg
               ? <span className="waiting-text outside-hours">현재는 운영시간이 아닙니다.</span>
-              : <span className="waiting-grid-btn-label">목적지 선택</span>
+              : <span className="waiting-grid-btn-label">서비스 선택</span>
             }
           </button>
 
@@ -1713,47 +2712,19 @@ function App() {
         </div>
 
         {/* ── 모달 오버레이 ── */}
-        {activeModal && activeModal !== 'settings' && (modalData || serviceEvidenceModalOpen) && (
+        {serviceEvidenceModal}
+        {activeModal && activeModal !== 'settings' && modalData && (
           <div className="modal-overlay">
-            <div
-              className={`modal-box ${serviceEvidenceModalOpen ? 'service-evidence-modal' : ''}`}
-              onClick={e => e.stopPropagation()}
-            >
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">
-                  {serviceEvidenceModalOpen ? '실증 운행 현황' : modalData.title}
-                </span>
+                <span className="modal-title">{modalData.title}</span>
                 <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
-              <div className="modal-body">
-                {serviceEvidenceModalOpen ? (
-                  <ServiceEvidenceDashboard
-                    summaryData={serviceMetrics.data}
-                    summaryLoading={serviceMetrics.loading}
-                    summaryError={serviceMetrics.error}
-                  />
-                ) : modalData.content}
-              </div>
+              <div className="modal-body">{modalData.content}</div>
             </div>
           </div>
         )}
 
-        {/* HJ_260601: 게스트 호출 알림 팝업 (대기 화면) */}
-        {showGuestRecall && (
-          <div className="guest-recall-overlay">
-            <div className="guest-recall-box">
-              <p className="guest-recall-msg">로봇이 이용객의 위치로 이동 중입니다</p>
-            </div>
-          </div>
-        )}
-        {/* 게스트 사이트 이동 알림 팝업 (대기 화면) */}
-        {guestNavigateSite && (
-          <div className="guest-recall-overlay">
-            <div className="guest-recall-box">
-              <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
-            </div>
-          </div>
-        )}
         {batteryReturnMessage && (
           <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
             <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
@@ -1764,6 +2735,197 @@ function App() {
                   onClick={() => setBatteryReturnMessage('')}
                 >
                   확인
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (showServiceSelection) {
+    const dockingAvailable = dockingAllowedAtServiceState(serviceStateName);
+    return (
+      <div className="main-layout" data-ui="operator-service-selection-screen" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+        {adminEntryZone}
+
+        <div className="control-header">
+          <div className="ch-content">
+            <div className="ch-left">
+              <div className="ch-logo">
+                <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
+              </div>
+              <div className="ch-title-block">
+                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
+                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+              </div>
+            </div>
+            <div className="ch-right">
+              <div className="wh-wifi ch-wifi">
+                <WifiIcon level={signalLevel} />
+                <span className="wh-wifi-label">WIFI</span>
+              </div>
+              <div className="wh-battery ch-wifi">
+                <BatteryIcon pct={batteryPct} />
+                <span className="wh-battery-label">
+                  {batteryPct === null ? '–%' : `${batteryPct}%`}
+                </span>
+              </div>
+              <LiveClock />
+            </div>
+          </div>
+        </div>
+
+        {/* 대기 화면과 같은 운행 상태 배너를 서비스 선택 화면에서도 유지한다. */}
+        <WaitingRuntimeStatusPanel
+          systemHealth={systemHealth}
+          missionPhase={missionPhase}
+          batteryPolicy={currentBatteryPolicy}
+          parkingPolicy={parkingPolicy}
+          serviceStateName={serviceStateName}
+          serviceStateDescription={serviceStateDescription}
+        />
+
+        <main className="service-selection-body">
+          <div className="service-selection-heading">
+            <span>SERVICE MENU</span>
+            <h1>이용할 서비스를 선택해주세요</h1>
+          </div>
+
+          <div className="service-selection-grid">
+            <button
+              type="button"
+              className="service-choice-card service-choice-delivery"
+              data-ui="operator-intent-delivery"
+              onClick={() => setShowDeliveryConfirm(true)}
+            >
+              <span className="service-choice-icon" aria-hidden="true">📦</span>
+              <strong>배달 서비스</strong>
+              <span>선택한 캠핑 사이트 안으로 짐을 배달해드립니다.</span>
+            </button>
+
+            <button
+              type="button"
+              className="service-choice-card service-choice-recall"
+              data-ui="operator-intent-recall"
+              onClick={() => setShowRecallConfirm(true)}
+            >
+              <span className="service-choice-icon" aria-hidden="true">↩</span>
+              <strong>호출 서비스</strong>
+              <span>사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.</span>
+            </button>
+
+            <div className="service-selection-dock-wrap">
+              <button
+                type="button"
+                className="service-choice-card service-choice-docking"
+                data-ui="operator-service-docking"
+                disabled={!dockingAvailable || serviceDockingPending}
+                onClick={() => {
+                  setServiceDockingStatus('');
+                  setShowDockingConfirm(true);
+                }}
+              >
+                {/* HH_260909 - Operators read "도킹" as jargon. The card, its
+                    confirm dialog and its status line now all say 충전; the
+                    data-ui hook and CSS class keep the docking identifier. */}
+                <span className="service-choice-icon" aria-hidden="true">🔒</span>
+                <strong>{serviceDockingPending ? '충전 요청 중' : '충전'}</strong>
+                <span>
+                  {dockingAvailable
+                    ? '대기·충전 장소에서 충전을 시작합니다.'
+                    : '대기·충전 장소에서만 이용할 수 있습니다.'}
+                </span>
+              </button>
+              {serviceDockingStatus && (
+                <span className="manual-motion-status" role="status">
+                  {serviceDockingStatus}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="service-selection-back"
+            onClick={() => {
+              setShowDockingConfirm(false);
+              setShowDeliveryConfirm(false);
+              setShowRecallConfirm(false);
+              setShowServiceSelection(false);
+              setShowWaiting(true);
+            }}
+          >
+            ← 대기 화면으로
+          </button>
+        </main>
+
+        {showDeliveryConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowDeliveryConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                배달 서비스는 사이트 내부로 진입합니다.<br />
+                사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button
+                  className="move-confirm-yes"
+                  data-ui="operator-service-delivery-confirm"
+                  onClick={() => {
+                    setShowDeliveryConfirm(false);
+                    activateDestinationService('delivery');
+                  }}
+                >
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowDeliveryConfirm(false)}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showRecallConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowRecallConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
+                도로 측 대기점으로 이동합니다. 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button
+                  className="move-confirm-yes"
+                  data-ui="operator-service-recall-confirm"
+                  onClick={() => {
+                    setShowRecallConfirm(false);
+                    activateDestinationService('recall');
+                  }}
+                >
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowRecallConfirm(false)}>
+                  아니오
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDockingConfirm && (
+          <div className="move-confirm-overlay" onClick={() => setShowDockingConfirm(false)}>
+            <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg">
+                배터리 잔량과 관계없이 충전을 요청합니다.<br />
+                충전을 진행하시겠습니까?
+              </p>
+              <div className="move-confirm-btns">
+                <button className="move-confirm-yes" data-ui="operator-service-docking-confirm" onClick={handleServiceDocking}>
+                  예
+                </button>
+                <button className="move-confirm-no" onClick={() => setShowDockingConfirm(false)}>
+                  아니오
                 </button>
               </div>
             </div>
@@ -1787,14 +2949,10 @@ function App() {
             <div className="ch-title-block">
               <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
               <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+              {guestAdmissionStatus}
             </div>
           </div>
           <div className="ch-right">
-            <RuntimeStatus
-              systemHealth={systemHealth}
-              missionPhase={missionPhase}
-              batteryPolicy={currentBatteryPolicy}
-            />
             <div className="wh-wifi ch-wifi">
               <WifiIcon level={signalLevel} />
               <span className="wh-wifi-label">WIFI</span>
@@ -1810,12 +2968,27 @@ function App() {
         </div>
       </div>
 
+      {/* 대기·서비스 선택 화면과 같은 운행 상태 배너를 목적지 화면에서도 유지한다. */}
+      <WaitingRuntimeStatusPanel
+        systemHealth={systemHealth}
+        missionPhase={missionPhase}
+        batteryPolicy={currentBatteryPolicy}
+        parkingPolicy={parkingPolicy}
+        serviceStateName={serviceStateName}
+        serviceStateDescription={serviceStateDescription}
+      />
+
+      {/* ── 역할 배너: 서비스 메뉴에서 확정된 배달/리콜을 바디 전체 폭에 표시 ── */}
+      <div className={`mission-role-banner role-${destinationIntent}`}>
+        <strong>{destinationIntent === 'recall' ? '호출 서비스' : '배달 서비스'}</strong>
+      </div>
+
       {/* ── 바디: 프리뷰 + 컨트롤 패널 ── */}
       <div className="control-body">
 
         {/* ── 왼쪽: 사이트 이미지 프리뷰 패널 ── */}
         <div className="preview-panel">
-          {missionPhase === 'INITIALIZING' ? (
+          {missionExecutionError ? missionExecutionWarning : missionPhase === 'INITIALIZING' ? (
             <>
               <span className="preview-placeholder-title">Initialization</span>
               <span className="preview-placeholder">
@@ -1830,9 +3003,19 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{selectedSite}</p>
-              <p className="preview-question">이동하시겠습니까?</p>
+              <p className="preview-question">
+                {destinationIntent === 'recall'
+                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 호출하시겠습니까?'
+                  : '배송을 위해 사이트 내부로 이동하시겠습니까?'}
+              </p>
               <div className="preview-yn-btns">
-                <button className="preview-yes-btn" onClick={() => setShowMoveConfirm(true)}>예</button>
+                <button
+                  className="preview-yes-btn"
+                  onClick={() => setShowMoveConfirm(true)}
+                  disabled={recallRequestPending}
+                >
+                  {recallRequestPending ? '요청 중…' : '예'}
+                </button>
                 <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>아니오</button>
               </div>
             </>
@@ -1844,15 +3027,71 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{arrivedSite}</p>
-              <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
-              <button className="preview-return-btn" onClick={handleArrivalComplete}>
-                복귀
-              </button>
+              <p className="preview-arrived">
+                {recallArrivalPresentation
+                  ? (recallFinalReturnReady ? '사이트 안에서 회전 완료 · 정차 중' : '도로 측 대기점에 도착했습니다.')
+                  : '배송 로봇이 사이트 내부 목적지에 도착했습니다.'}
+              </p>
+              {recallArrivalPresentation && (
+                <p className="preview-question">{recallReturnInstructions(arrivedSite, recallFinalReturnReady)}</p>
+              )}
+              {recallFinalReturnReady && batteryReturnState.urgent && <p role="alert" className="preview-question">배터리가 25% 미만입니다. 안전을 위해 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.</p>}
+              {robotOwnsReturn ? (
+                <button className="preview-return-btn" onClick={handleArrivalComplete} disabled={returnRequestPending}>
+                  {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
+                    ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
+                    /* HH_260909 - Delivery arrival is announced as arrival, not
+                       as receipt of goods. The guest screen uses the same word. */
+                    : '도착 완료 · 복귀'}
+                </button>
+              ) : (
+                <p className="preview-question">
+                  {guestOwnsReturn
+                    ? '이 임무의 완료·복귀는 이용객 화면에서 진행합니다.'
+                    : '현재 임무의 복귀 권한을 확인하고 있습니다.'}
+                </p>
+              )}
+            </>
+          ) : ['CHARGING', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING'].includes(serviceStateName) ? (
+            <>
+              <span className="preview-placeholder-title">
+                {motionNotice?.label || (
+                  serviceStateName === 'CHARGING' && batteryChargeComplete
+                    ? '충전 완료'
+                    : parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy)
+                )}
+              </span>
+              <p className="preview-returning" aria-live="polite">
+                {motionNotice?.message || (serviceStateName === 'CHARGING'
+                  ? (batteryChargeComplete
+                    ? '배터리가 100%로 충전되었습니다.'
+                    : Number.isFinite(Number(batteryPct)) && Number(batteryPct) >= 0
+                      ? `현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.`
+                      : '플랫폼에서 충전 상태가 확인되었습니다.')
+                  : serviceStateName === 'WAITING_FOR_CHARGING'
+                    ? '주차 정렬이 완료되었습니다. 충전 접점 연결을 기다리고 있습니다.'
+                    : '로봇이 드롭존에서 최종 주차 동작을 진행하고 있습니다.')}
+              </p>
+              {(serviceStateName === 'WAITING_FOR_CHARGING'
+                || (serviceStateName === 'CHARGING' && batteryChargeComplete)) && (
+                <p className="preview-service-available">
+                  배달 서비스 및 호출 서비스 이용이 가능합니다.
+                </p>
+              )}
             </>
           ) : displayedReturning ? (
             <>
-              <span className="preview-placeholder-title">Drop Zone</span>
-              <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
+              <span className="preview-placeholder-title">대기·충전 장소</span>
+              {recallReturnPresentation && <p className="preview-site-name">{motionNotice?.label || recallProgress.label}</p>}
+              <p className="preview-returning" aria-live="polite">
+                {motionNotice?.message || (recallReturnPresentation
+                  ? recallProgress.message
+                  : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
+              </p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <div className="preview-yn-btns">
+                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+              </div>
             </>
           ) : activeSite ? (
             <>
@@ -1862,7 +3101,21 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">배송 로봇이 이동중 입니다.</p>
+              <p className="preview-moving">{motionNotice?.message || '배송 로봇이 이동중 입니다.'}</p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <div className="preview-yn-btns">
+                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+              </div>
+            </>
+          ) : activeRecallSite ? (
+            <>
+              <img
+                src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[activeRecallSite]}`}
+                alt={`${activeRecallSite} recall site`}
+                className="preview-image"
+              />
+              <p className="preview-site-name">{activeRecallSite} 호출</p>
+              <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
@@ -1872,7 +3125,7 @@ function App() {
             <>
               <span className="preview-placeholder-title">Manual RViz Goal</span>
               <p className="preview-moving">
-                {MISSION_PHASE_LABELS[missionPhase] || missionPhase}
+                {motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase}
               </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
@@ -1887,20 +3140,28 @@ function App() {
           ) : (
             <>
               <span className="preview-placeholder-title">Camping Site Viewer</span>
-              <span className="preview-placeholder">목적지 선택 버튼을 눌러주세요</span>
+              <span className="preview-placeholder">서비스 선택 버튼을 눌러주세요</span>
             </>
           )}
           <ServiceTripBadge
-            serviceActive={Boolean(activeSite || arrivedSite || displayedReturning)}
+            serviceActive={Boolean(
+              activeSite || activeRecallSite || arrivedSite || displayedReturning
+            )}
             currentService={serviceMetrics.data?.current_service}
             loading={serviceMetrics.loading}
             error={serviceMetrics.error}
+            onOpen={() => setActiveModal('service-evidence')}
           />
         </div>
 
         {/* ── 오른쪽: 컨트롤 패널 ── */}
         <div className="app">
-          <h1>목적지 선택</h1>
+          <h1>{destinationIntent === 'recall' ? '호출 목적지 선택' : '배송 목적지 선택'}</h1>
+          <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
+            {destinationIntent === 'recall'
+              ? '텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
+              : '빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.'}
+          </p>
 
           {/* ── 페이지네이션 래퍼 ── */}
           <div className="toggle-paginator">
@@ -1918,34 +3179,25 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''} ${occupiedSites.includes(site) ? 'occupied' : ''}`}
+                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${missionSelectionLocked && !states[site] ? 'locked' : ''} ${destinationIntent === 'delivery' && occupiedSites.includes(site) ? 'occupied' : ''}`}
                   onClick={() => handleToggle(site)}
-                  disabled={isReturning || occupiedSites.includes(site)}
+                  disabled={
+                    missionSelectionLocked
+                    || (
+                      destinationIntent === 'delivery'
+                      && occupiedSites.includes(site)
+                    )
+                  }
                 >
                   <span className="site-label">{site}</span>
                   {states[site] && <span className="site-on-badge">ON</span>}
-                  {occupiedSites.includes(site) && <span className="site-occupied-badge">사용 중</span>}
+                  {occupiedSites.includes(site) && (
+                    <span className="site-occupied-badge">
+                      {destinationIntent === 'recall' ? '텐트 · 호출 가능' : '사용 중'}
+                    </span>
+                  )}
                 </button>
               ))}
-              {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
-                <button
-                  className={`toggle-card engage-card ${engageState ? 'engage-on' : ''} ${isReturning ? 'locked' : ''}`}
-                  onClick={handleEngage}
-                  disabled={isReturning}
-                >
-                  <span className="site-label">ENGAGE</span>
-                  {engageState && <span className="site-on-badge">ON</span>}
-                </button>
-              )}
-              {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
-                <button
-                  className={`toggle-card engage-card ${headlightState ? 'engage-on' : ''}`}
-                  onClick={handleHeadlight}
-                >
-                  <span className="site-label">LIGHT</span>
-                  {headlightState && <span className="site-on-badge">ON</span>}
-                </button>
-              )}
             </div>
 
             {/* 오른쪽 화살표 */}
@@ -1965,23 +3217,42 @@ function App() {
             ))}
           </div>
 
-          <button className="control-back-btn" onClick={() => setShowWaiting(true)} disabled={!!activeSite || isReturning}>← 뒤로가기</button>
+          <button
+            className="control-back-btn"
+            data-ui="operator-back-to-services"
+            onClick={() => setShowServiceSelection(true)}
+            disabled={Boolean(activeSite || activeRecallSite || isReturning)}
+          >
+            ← 서비스 선택
+          </button>
         </div>
 
       </div>
 
+      {/* 운행 중에도 현재 미션을 중단하지 않고 누적 운행 기록을 조회한다. */}
+      {serviceEvidenceModal}
+
       {/* ── 출발 최종 확인 팝업 ── */}
-      {showArrivalComplete && arrivedSite && (
+          {showArrivalComplete && arrivedSite && robotOwnsReturn && (
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
-              짐을 내려놓은 후,<br /><strong>[이용 완료]</strong> 버튼을 눌러주세요
+              {recallArrivalPresentation ? (
+                <>{recallFinalReturnReady ? '짐 싣기를 모두 마친 후,' : '짐 정리를 마친 후,'}<br /><strong>[{recallCompletionLabel(arrivedSite, recallFinalReturnReady)}]</strong> 버튼을 눌러주세요</>
+              ) : (
+                <>배송 물품을 모두 내린 후,<br /><strong>[도착 완료 · 복귀]</strong> 버튼을 눌러주세요</>
+              )}
             </p>
             <p className="arrival-complete-sub">
-              이용 완료 버튼을 누르면 로봇이 이동합니다.
+              {recallArrivalPresentation
+                ? recallReturnInstructions(arrivedSite, recallFinalReturnReady)
+                : '버튼을 누르면 로봇이 대기·충전 장소로 복귀합니다.'}
             </p>
-            <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              복귀
+            {recallFinalReturnReady && batteryReturnState.urgent && <p role="alert" className="arrival-complete-sub">배터리가 25% 미만이어도 짐 싣기 완료 확인 전에는 자동 출차하지 않습니다.</p>}
+            <button className="arrival-complete-btn" onClick={handleArrivalComplete} disabled={returnRequestPending}>
+              {returnRequestPending ? '완료 요청 중…' : recallArrivalPresentation
+                ? recallCompletionLabel(arrivedSite, recallFinalReturnReady)
+                : '도착 완료 · 복귀'}
             </button>
           </div>
         </div>
@@ -1991,7 +3262,17 @@ function App() {
         <div className="move-confirm-overlay" onClick={() => setShowMoveConfirm(false)}>
           <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
             <p className="move-confirm-msg">
-              로봇이 출발하면 정차할 수 없습니다.<br />이동하시겠습니까?
+              {destinationIntent === 'recall' ? (
+                <>
+                  호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
+                  도로 측 대기점으로 호출하시겠습니까?
+                </>
+              ) : (
+                <>
+                  로봇이 출발하면 정차할 수 없습니다.<br />
+                  배송을 위해 이동하시겠습니까?
+                </>
+              )}
             </p>
             <div className="move-confirm-btns">
               <button
@@ -2022,7 +3303,9 @@ function App() {
         <div className="move-verify-overlay" onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}>
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
-              지금 이동하시는 사이트는<br />
+              {destinationIntent === 'recall'
+                ? '지금 호출할 사이트는'
+                : '지금 배송 이동할 사이트는'}<br />
               <span className="move-verify-site">{selectedSite}</span><br />
               입니다
             </p>
@@ -2120,22 +3403,6 @@ function App() {
         </div>
       )}
 
-      {/* HJ_260601: 게스트 호출 알림 팝업 */}
-      {showGuestRecall && (
-        <div className="guest-recall-overlay">
-          <div className="guest-recall-box">
-            <p className="guest-recall-msg">로봇이 이용객의 위치로 이동 중입니다</p>
-          </div>
-        </div>
-      )}
-      {/* 게스트 사이트 이동 알림 팝업 */}
-      {guestNavigateSite && (
-        <div className="guest-recall-overlay">
-          <div className="guest-recall-box">
-            <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
-          </div>
-        </div>
-      )}
 
     </div>
   );

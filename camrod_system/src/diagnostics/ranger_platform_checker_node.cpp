@@ -42,6 +42,7 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
+#include <camrod_system/battery_diagnostic_status.hpp>
 
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 #include <ranger_msgs/msg/system_state.hpp>
@@ -156,6 +157,9 @@ protected:
     declare_parameter("battery.voltage_error",   41.0);
     declare_parameter("battery.soc_warn",        20.0);
     declare_parameter("battery.soc_error",       10.0);
+    // Low SOC is advisory so the <25% automatic return can reach the charger.
+    // Voltage, temperature, CAN/BMS fault diagnostics retain ERROR severity.
+    declare_parameter("battery.soc_error_enabled", false);
     declare_parameter("battery.temp_warn",       45.0);
     declare_parameter("battery.temp_error",      55.0);
 
@@ -186,6 +190,7 @@ protected:
     batt_volt_error_     = get_parameter("battery.voltage_error").as_double();
     batt_soc_warn_       = get_parameter("battery.soc_warn").as_double();
     batt_soc_error_      = get_parameter("battery.soc_error").as_double();
+    batt_soc_error_enabled_ = get_parameter("battery.soc_error_enabled").as_bool();
     batt_temp_warn_      = get_parameter("battery.temp_warn").as_double();
     batt_temp_error_     = get_parameter("battery.temp_error").as_double();
 
@@ -486,8 +491,9 @@ private:
       static_cast<double>(state_.batt_voltage), batt_volt_warn_, batt_volt_error_);
 
     // SOC 레벨
-    int8_t soc_lvl = check_low(
-      static_cast<double>(state_.batt_percentage), batt_soc_warn_, batt_soc_error_);
+    int8_t soc_lvl = camrod_system::batterySocDiagnosticLevel(
+      check_low(static_cast<double>(state_.batt_percentage), batt_soc_warn_, batt_soc_error_),
+      batt_soc_error_enabled_);
 
     // 온도 레벨
     int8_t temp_lvl = check_high(
@@ -517,6 +523,7 @@ private:
     stat.add("current_A",     std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.1f", static_cast<double>(state_.batt_percentage));
     stat.add("soc_%",         std::string(tmp));
+    stat.add("soc_error_enabled", batt_soc_error_enabled_);
     std::snprintf(tmp, sizeof(tmp), "%.1f", static_cast<double>(state_.batt_temperature));
     stat.add("temperature_C", std::string(tmp));
   }
@@ -717,6 +724,7 @@ private:
   double batt_volt_error_{41.0};
   double batt_soc_warn_{20.0};
   double batt_soc_error_{10.0};
+  bool batt_soc_error_enabled_{false};
   double batt_temp_warn_{45.0};
   double batt_temp_error_{55.0};
 

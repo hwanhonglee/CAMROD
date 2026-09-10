@@ -61,6 +61,11 @@ ament_target_dependencies(reverse_parking_controller_node
 )
 target_link_libraries(reverse_parking_controller_node yaml-cpp)
 
+# Runtime SOC selection has one output owner; individual parking controllers
+# publish only to private topics when this dispatcher is launched.
+add_executable(parking_dispatcher_node src/parking_dispatcher_node.cpp)
+ament_target_dependencies(parking_dispatcher_node rclcpp avg_msgs diagnostic_msgs)
+
 # HH_260721 - Keep drop-zone departure and parking alignment native and explicit.
 add_executable(drop_zone_maneuver_controller_node
   src/drop_zone_maneuver_controller_node.cpp
@@ -117,6 +122,7 @@ install(TARGETS
   cmd_vel_safety_gate_node
   drop_zone_maneuver_controller_node
   reverse_parking_controller_node
+  parking_dispatcher_node
   route_safety_recovery_controller_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -159,6 +165,51 @@ if(BUILD_TESTING)
     test/test_drop_zone_parking_approach.cpp
   )
   target_include_directories(test_drop_zone_parking_approach PRIVATE include)
+
+  # Loading-complete recall must execute the actual B1-B10 controller phases,
+  # preserve B11-B13 roadside return, and remain cancellable while waiting.
+  ament_add_gtest(test_camping_site_recall_return
+    test/test_camping_site_recall_return.cpp
+  )
+  ament_target_dependencies(test_camping_site_recall_return
+    rclcpp action_msgs avg_msgs diagnostic_msgs geometry_msgs nav_msgs
+  )
+  target_link_libraries(test_camping_site_recall_return yaml-cpp)
+  # The fixture includes the real controller for deterministic phase checks.
+  # Avoid expensive Release optimization of this duplicate test translation
+  # unit on the robot; production controller optimization is unchanged.
+  target_compile_options(test_camping_site_recall_return PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>
+  )
+  # This fixture creates publishers to exercise the actual controller. Isolate
+  # DDS from every field-run node even when ctest is invoked without shell env.
+  set_tests_properties(test_camping_site_recall_return PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=187;ROS_LOCALHOST_ONLY=1"
+  )
+  ament_add_gtest(test_parking_selection_policy test/test_parking_selection_policy.cpp)
+  target_include_directories(test_parking_selection_policy PRIVATE include)
+
+  # Real dispatcher callbacks, isolated from field DDS and private controllers.
+  ament_add_gtest(test_parking_dispatcher test/test_parking_dispatcher.cpp)
+  ament_target_dependencies(test_parking_dispatcher rclcpp avg_msgs diagnostic_msgs)
+  target_compile_options(test_parking_dispatcher PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>)
+  set_tests_properties(test_parking_dispatcher PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=189;ROS_LOCALHOST_ONLY=1")
+
+  ament_add_gtest(test_reverse_parking_completion test/test_reverse_parking_completion.cpp)
+  target_include_directories(test_reverse_parking_completion PRIVATE include)
+  ament_add_gtest(test_reverse_parking_controller test/test_reverse_parking_controller.cpp)
+  ament_target_dependencies(test_reverse_parking_controller
+    rclcpp avg_msgs diagnostic_msgs geometry_msgs nav_msgs
+  )
+  target_link_libraries(test_reverse_parking_controller yaml-cpp)
+  target_compile_options(test_reverse_parking_controller PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>
+  )
+  set_tests_properties(test_reverse_parking_controller PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=188;ROS_LOCALHOST_ONLY=1"
+  )
 endif()
 
 ament_package()

@@ -23,6 +23,7 @@
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/parking_speed_profile.hpp"
 #include "camrod_control/reverse_parking_axis.hpp"
+#include "camrod_control/reverse_parking_completion.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -68,9 +69,13 @@ std::string fixed(const double value, const int precision = 3)
 
 class ReverseParkingControllerNode : public rclcpp::Node
 {
+#ifdef CAMROD_CONTROL_REVERSE_PARKING_TEST
+  friend class ReverseParkingControllerTest;
+#endif
 public:
-  ReverseParkingControllerNode()
-  : Node("reverse_parking_controller")
+  explicit ReverseParkingControllerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("reverse_parking_controller", options)
   {
     // HH_260721 - Preserve all v2.0.3 interfaces while enforcing charging completion.
     command_topic_ = declare_parameter<std::string>("command_topic", "/control/cmd_vel_raw");
@@ -115,7 +120,7 @@ public:
     maximum_angular_speed_radps_ = std::abs(
       declare_parameter<double>("maximum_angular_speed_radps", 0.22));
     maximum_reverse_distance_m_ = std::abs(
-      declare_parameter<double>("maximum_reverse_distance_m", 1.5));
+      declare_parameter<double>("maximum_reverse_distance_m", 5.0));
     reverse_timeout_s_ = std::abs(declare_parameter<double>("reverse_timeout_s", 30.0));
     require_station_on_reverse_axis_ = declare_parameter<bool>(
       "require_station_on_reverse_axis", true);
@@ -149,7 +154,16 @@ public:
       [this](const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
         const bool charging_changed = is_charging_ != message->is_charging;
         is_charging_ = message->is_charging;
-        if (charging_changed && phase_ == ReverseParkingPhase::kParked) {
+        if (is_charging_ && phase_ == ReverseParkingPhase::kError) {
+          // Evaluate the authoritative charging level, not only its rising
+          // edge. The confirmed level may have arrived in the callback that
+          // immediately preceded a timer transition to ERROR; the next normal
+          // platform heartbeat must still recover the parked service.
+          publishZero();
+          setPhase(
+            ReverseParkingPhase::kParked,
+            "parking ERROR recovered by authoritative charging contact");
+        } else if (charging_changed && phase_ == ReverseParkingPhase::kParked) {
           // HH_260721 - Keep the parked service state synchronized with live CAN charging feedback.
           publishServiceState("platform charging state changed");
         }
@@ -227,8 +241,18 @@ private:
 
   bool vehiclePoseIsFresh() const
   {
-    return last_vehicle_pose_.has_value() &&
-           (now() - last_vehicle_pose_time_).seconds() <= pose_timeout_s_;
+    if (!last_vehicle_pose_.has_value() ||
+      !camrod_control::poseHasFiniteMotionGeometry(*last_vehicle_pose_)) {
+      return false;
+    }
+    const double age_s = (now() - last_vehicle_pose_time_).seconds();
+    return std::isfinite(age_s) && age_s >= 0.0 && age_s <= pose_timeout_s_;
+  }
+
+  bool stationPoseIsFinite() const
+  {
+    return std::isfinite(station_pose_.x_m) && std::isfinite(station_pose_.y_m) &&
+           std::isfinite(station_pose_.yaw_rad);
   }
 
   std::pair<bool, std::string> startReverseParking(const std::string & source)
@@ -242,6 +266,27 @@ private:
       setError("fresh pose unavailable");
       return {false, "fresh pose unavailable"};
     }
+    if (!stationPoseIsFinite()) {
+      setError("station pose is not finite");
+      return {false, "station pose is not finite"};
+    }
+    const auto initial_goal = camrod_control::checkReverseParkingGoal(
+      last_vehicle_pose_->pose.position.x, last_vehicle_pose_->pose.position.y,
+      station_pose_.x_m, station_pose_.y_m, station_axis_tolerance_m_);
+    initial_station_distance_m_ = initial_goal.xy_error_m;
+    const std::string travel_contract =
+      "initial_station_distance_m=" + fixed(initial_station_distance_m_) +
+      " maximum_reverse_distance_m=" + fixed(maximum_reverse_distance_m_);
+    // The mapped station is about 3.75 m from the road approach. Support that
+    // explicit target within a fixed 5 m envelope; never extend the bound
+    // automatically or start toward a target outside the configured envelope.
+    if (!initial_goal.valid || !std::isfinite(maximum_reverse_distance_m_) ||
+      maximum_reverse_distance_m_ <= 0.0 ||
+      initial_station_distance_m_ > maximum_reverse_distance_m_) {
+      const std::string reason = "station goal exceeds valid reverse travel bound: " + travel_contract;
+      setError(reason);
+      return {false, reason};
+    }
     target_body_yaw_rad_ = selectParkingBodyYaw();
     const double current_yaw = camrod_control::yawFromPose(*last_vehicle_pose_);
     const double yaw_error_deg = std::abs(
@@ -254,7 +299,7 @@ private:
     }
     reverse_start_x_m_ = last_vehicle_pose_->pose.position.x;
     reverse_start_y_m_ = last_vehicle_pose_->pose.position.y;
-    setPhase(ReverseParkingPhase::kReverseApproach, "start=" + source);
+    setPhase(ReverseParkingPhase::kReverseApproach, "start=" + source + " " + travel_contract);
     publishPath();
     return {true, "reverse parking started"};
   }
@@ -262,6 +307,7 @@ private:
   void setPhase(const ReverseParkingPhase phase, const std::string & detail)
   {
     phase_ = phase;
+    phase_detail_ = detail;
     phase_start_time_ = now();
     RCLCPP_INFO(
       get_logger(), "reverse_parking_controller %s: %s",
@@ -387,6 +433,23 @@ private:
   void finishTravel(const std::string & detail)
   {
     publishZero();
+    // A hard travel bound or an unreachable/passed station still stops here.
+    // PARKED requires fresh localization inside the actual station XY disk;
+    // reaching its axial bounding box alone is not completion evidence.
+    // Charger-contact completion remains authoritative elsewhere.
+    if (!vehiclePoseIsFresh()) {
+      setError(detail + "; fresh finite pose unavailable for parking completion");
+      return;
+    }
+    const auto goal = camrod_control::checkReverseParkingGoal(
+      last_vehicle_pose_->pose.position.x, last_vehicle_pose_->pose.position.y,
+      station_pose_.x_m, station_pose_.y_m, station_axis_tolerance_m_);
+    if (!goal.valid || !goal.reached) {
+      setError(detail + "; station goal not reached: xy_error_m=" +
+        fixed(goal.xy_error_m) + " tolerance_m=" + fixed(station_axis_tolerance_m_) +
+        " maximum_reverse_distance_m=" + fixed(maximum_reverse_distance_m_));
+      return;
+    }
     if (complete_without_charging_) {
       setPhase(ReverseParkingPhase::kParked, detail);
       return;
@@ -406,6 +469,17 @@ private:
       setError("pose timeout during reverse parking");
       return;
     }
+    if (!stationPoseIsFinite()) {
+      setError("station pose is not finite during reverse parking");
+      return;
+    }
+    const auto goal = camrod_control::checkReverseParkingGoal(
+      last_vehicle_pose_->pose.position.x, last_vehicle_pose_->pose.position.y,
+      station_pose_.x_m, station_pose_.y_m, station_axis_tolerance_m_);
+    if (!goal.valid) {
+      setError("station XY goal is not finite or has invalid tolerance");
+      return;
+    }
     const double reversed = distanceReversed();
     if (reversed >= maximum_reverse_distance_m_) {
       finishTravel("reverse distance limit reached");
@@ -413,6 +487,13 @@ private:
     }
     if ((now() - phase_start_time_).seconds() >= reverse_timeout_s_) {
       setError("reverse parking timeout");
+      return;
+    }
+    // A new request may begin inside the unchanged station XY disk. Do not
+    // require 5 cm of reverse travel before accepting an already reached goal:
+    // that unnecessary motion can drive a parked robot out of the disk.
+    if (goal.reached) {
+      finishTravel("station XY goal reached");
       return;
     }
     const double station_axis_distance = stationDistanceAlongReverseAxis();
@@ -423,8 +504,19 @@ private:
       return;
     }
     if (reversed > 0.05 && station_axis_distance <= station_axis_tolerance_m_) {
-      finishTravel("station reverse axis reached");
-      return;
+      if (station_axis_distance <= 0.0) {
+        finishTravel("station plane passed without reaching XY goal");
+        return;
+      }
+      if (std::abs(stationLateralError()) >= station_axis_tolerance_m_) {
+        finishTravel("station reverse axis reached with lateral miss outside XY disk");
+        return;
+      }
+      // The axial tolerance bounds a square, while acceptance uses a circle.
+      // For example (axis=.25, lateral=.128) is still .281 m from a .25 m
+      // goal. Continue the existing slow final approach while the station is
+      // ahead and the reverse-axis line intersects the XY disk. Do not cross
+      // the station plane to chase a miss; distance/timeout remain hard bounds.
     }
 
     const double heading_error = camrod_control::normalizeAngle(
@@ -476,7 +568,8 @@ private:
     const uint8_t module_level = phase_ == ReverseParkingPhase::kError ?
       avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::OK;
     const std::string message =
-      "phase=" + phaseName(phase_) + " charging=" + (is_charging_ ? "True" : "False");
+      "phase=" + phaseName(phase_) + " charging=" + (is_charging_ ? "True" : "False") +
+      " detail=" + phase_detail_;
     status_publisher_->publish(
       camrod_control::makeModuleState(
         *this, "parking", module_level, message, phaseName(phase_)));
@@ -492,6 +585,13 @@ private:
       {"phase", phaseName(phase_)},
       {"command_topic", command_topic_},
       {"reverse_distance_m", fixed(distanceReversed())},
+      {"initial_station_distance_m", fixed(initial_station_distance_m_)},
+      {"maximum_reverse_distance_m", fixed(maximum_reverse_distance_m_)},
+      {"station_xy_error_m", last_vehicle_pose_.has_value() ?
+        fixed(camrod_control::checkReverseParkingGoal(
+          last_vehicle_pose_->pose.position.x, last_vehicle_pose_->pose.position.y,
+          station_pose_.x_m, station_pose_.y_m, station_axis_tolerance_m_).xy_error_m) :
+        "unavailable"},
       {"station_axis_distance_m", fixed(stationDistanceAlongReverseAxis())},
       {"slowdown_start_remaining_distance_m",
        fixed(slowdown_start_remaining_distance_m_)},
@@ -521,7 +621,7 @@ private:
   double heading_proportional_gain_{0.8};
   double lateral_proportional_gain_{-0.25};
   double maximum_angular_speed_radps_{0.22};
-  double maximum_reverse_distance_m_{1.5};
+  double maximum_reverse_distance_m_{5.0};
   double reverse_timeout_s_{30.0};
   bool require_station_on_reverse_axis_{true};
   double station_axis_tolerance_m_{0.25};
@@ -535,12 +635,14 @@ private:
 
   camrod_control::DropZoneStationPose station_pose_;
   ReverseParkingPhase phase_{ReverseParkingPhase::kIdle};
+  std::string phase_detail_;
   std::optional<avg_msgs::msg::AvgPoseStamped> last_vehicle_pose_;
   rclcpp::Time last_vehicle_pose_time_{0, 0, RCL_ROS_TIME};
   bool is_charging_{false};
   double target_body_yaw_rad_{0.0};
   double reverse_start_x_m_{0.0};
   double reverse_start_y_m_{0.0};
+  double initial_station_distance_m_{0.0};
   rclcpp::Time phase_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
 
@@ -557,6 +659,7 @@ private:
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
+#ifndef CAMROD_CONTROL_REVERSE_PARKING_TEST
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -564,3 +667,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

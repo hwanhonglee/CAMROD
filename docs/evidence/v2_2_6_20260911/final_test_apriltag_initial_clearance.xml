@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="18" failures="0" disabled="0" errors="0" time="1.066" timestamp="2026-09-11T05:22:07" name="AllTests">
+  <testsuite name="AprilTagInitialClearanceControllerTest" tests="18" failures="0" disabled="0" errors="0" time="1.054" timestamp="2026-09-11T05:22:07">
+    <testcase name="ObservedPoseSelectsClearanceWithoutUsingRetryBudget" status="run" result="completed" time="0.014" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="DisabledProfileKeepsOriginalReversePhase" status="run" result="completed" time="0.008" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="OutOfReverseParkingEnvelopeFailsBeforeReverse" status="run" result="completed" time="0.008" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="ShortStartNeedsNearAlignedHeading" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="StaleWaitingInputsDoNotBeginClearance" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="LostTagDuringForwardFailsInsteadOfBlindMotion" status="run" result="completed" time="0.007" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="LostOdometryDuringForwardFails" status="run" result="completed" time="0.007" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="ChargingPreemptsClearanceImmediately" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="CancelAndNewRequestResetOnlyInitialAttempt" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="ForwardCompletionReacquiresWithoutRepeatingClearance" status="run" result="completed" time="0.012" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="ExistingOdometryStepAndTimeoutBoundsRemainHard" status="run" result="completed" time="0.007" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="BelowCalibratedOpticalDepthCannotAuthorizeClearance" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="ObservedClosePoseFirstTranslationIsStraightForwardOnly" status="run" result="completed" time="0.87" timestamp="2026-09-11T05:22:07" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="AlreadyAlignedPoint377StillLatchesReverseStop" status="run" result="completed" time="0.039" timestamp="2026-09-11T05:22:08" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="InvalidOrNonRearTagCannotStartForwardClearance" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:08" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="GeometryLossDuringInitialForwardStopsImmediately" status="run" result="completed" time="0.038" timestamp="2026-09-11T05:22:08" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="AnnouncementMustFinishBeforeClearance" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:08" classname="AprilTagInitialClearanceControllerTest" />
+    <testcase name="CancelDuringAnnouncementStaysIdle" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:08" classname="AprilTagInitialClearanceControllerTest" />
+  </testsuite>
+</testsuites>

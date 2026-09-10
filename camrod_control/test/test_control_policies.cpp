@@ -23,6 +23,7 @@
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "camrod_sensor_kit/robot_boundary.hpp"
 #include "gtest/gtest.h"
@@ -52,6 +53,63 @@ TEST(BoundedRecoveryAttemptPolicy, TotalTravelAndTimeRemainFinalStops) {
   EXPECT_EQ(
       EvaluateBoundedRecoveryAttempt(limits, 50, 10.0, 0.10, 80.0, 0.50),
       BoundedRecoveryAction::kFinalHold);
+}
+
+TEST(VoiceAnnouncementGate, NeverArmedIsAlwaysReady) {
+  VoiceAnnouncementGate gate;
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
+}
+
+TEST(VoiceAnnouncementGate, ReleasesOnceArmedKeyIsSeenPlayingThenStops) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(true, "navigation.recall_clear_site", 1.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(false, "", 3.0);
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
+}
+
+TEST(VoiceAnnouncementGate, UnrelatedKeyPlayingDoesNotFalselyConfirm) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.onVoiceState(true, "safety.obstacle", 0.5);
+  gate.onVoiceState(false, "", 0.8);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(true, "navigation.recall_clear_site", 1.0);
+  gate.onVoiceState(false, "", 2.0);
+  EXPECT_TRUE(gate.releaseReady());
+}
+
+TEST(VoiceAnnouncementGate, FailsOpenOnTimeoutWhenVoiceNeverConfirms) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.tick(5.9);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.tick(6.0);
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_TRUE(gate.releasedViaTimeout());
+}
+
+TEST(VoiceAnnouncementGate, ResetClearsAnArmedUnconfirmedGateBackToReady) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.reset();
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.armed());
+}
+
+TEST(VoiceAnnouncementGate, ReArmingReplacesAPreviouslyReleasedWait) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.tick(6.0);
+  EXPECT_TRUE(gate.releaseReady());
+  gate.arm("navigation.recall_clear_site", 10.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
 }
 
 double degrees(const double value) { return value * M_PI / 180.0; }
@@ -187,34 +245,34 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
     double operational_offset_m;
     bool roadside;
   };
-  // HH_260824 - Locked against active lanelet2_maps.osm map-v22 and
+  // HH_260908 - Locked against active lanelet2_maps.osm map-v23 and
   // camrod_planning/config/camping_sites.yaml. Signed values catch both a yaw
   // reversal and the reported B6 live-yaw axial skew.
   constexpr std::array<Fixture, 13> fixtures{{
-      {22.357515191, -6.908337803, 25.8687, -5.13869, -63.251744,
-       3.931930, 3.931930, false},
-      {22.454856615, -7.101474235, 19.566, -8.55747, -63.251706,
-       -3.235030, 3.235030, false},
-      {19.772336735, -1.222936079, 23.3585, 0.427582, -65.285918,
-       3.947756, 3.947756, false},
-      {19.307410106, -0.152900333, 16.4276, -1.34999, -67.428154,
-       -3.118706, 3.118706, false},
-      {17.382903354, 4.336168303, 20.9591, 5.86183, -66.896141,
-       3.888036, 3.888036, false},
-      {16.786389776, 5.715787406, 13.9518, 4.47866, -66.421645,
-       -3.092795, 3.092795, false},
-      {15.085466253, 9.670478273, 18.6442, 11.1853, -66.942319,
-       3.867722, 3.867722, false},
-      {14.147071672, 11.827906846, 11.3705, 10.645, -66.924479,
-       -3.018049, 3.018049, false},
-      {12.679983302, 15.667433959, 16.3636, 17.1396, -68.215752,
-       3.966901, 3.966901, false},
-      {11.891069361, 17.727651240, 9.02731, 16.6389, -69.184081,
-       -3.063739, 3.063739, false},
-      {10.821530478, 20.516472190, 14.8445, 22.0782, -68.783648,
-       4.315470, 0.300000, true},
-      {10.103421888, 23.093735129, 6.85414, 22.4291, -78.439719,
-       -3.316560, 0.300000, true},
+      {22.309332184, -6.812737230, 25.0481, -5.43239, -63.251744,
+       3.066954, 3.066954, false},
+      {22.519198502, -7.229135658, 19.5211, -8.74019, -63.251706,
+       -3.357362, 3.357362, false},
+      {19.741039799, -1.154935688, 22.5355, 0.131204, -65.285918,
+       3.076225, 3.076225, false},
+      {19.360276086, -0.280078799, 16.4183, -1.50301, -67.428154,
+       -3.186030, 3.186030, false},
+      {17.361876481, 4.385455919, 20.1356, 5.56877, -66.896141,
+       3.015589, 3.015589, false},
+      {16.841101760, 5.590427557, 13.9438, 4.32593, -66.421645,
+       -3.161220, 3.161220, false},
+      {15.063966869, 9.720986212, 17.8197, 10.8940, -66.942319,
+       2.995000, 2.995000, false},
+      {14.201172274, 11.700919449, 11.3619, 10.4913, -66.924479,
+       -3.086203, 3.086203, false},
+      {12.617514199, 15.823742471, 15.4271, 16.9466, -68.215752,
+       3.025654, 3.025654, false},
+      {11.941036642, 17.596221461, 9.0187, 16.4852, -69.184081,
+       -3.126407, 3.126407, false},
+      {10.655948601, 20.986400232, 13.7869, 21.9990, -72.077900,
+       3.290625, 0.300000, true},
+      {10.132763548, 22.950288933, 6.84362, 22.2775, -78.439719,
+       -3.357247, 0.300000, true},
       {9.626348588, 27.418616995, 0.610449, 27.604, -91.177942,
        -9.017805, 0.300000, true},
   }};
@@ -248,6 +306,22 @@ TEST(MotionGeometry, AllActiveCampsitesUseAuthoredYawAndSignedCrabSide) {
     const double operational_offset =
         fixture.roadside ? std::min(clamped_offset, 0.30) : clamped_offset;
     EXPECT_NEAR(operational_offset, fixture.operational_offset_m, 0.02);
+
+    // RECALL_TO_SITE always adopts the roadside policy, including B1-B10.
+    // The signed side still comes from active map/site geometry, but occupied
+    // tents can never make the recall target deeper than 0.30 m from the snap.
+    const double recall_wait_offset = std::min(clamped_offset, 0.30);
+    EXPECT_NEAR(recall_wait_offset, 0.30, 1.0e-9);
+    const auto recall_wait_target = lateralTargetFromAnchor(
+        fixture.snap_x, fixture.snap_y, selected.yaw_rad, direction,
+        recall_wait_offset);
+    avg_msgs::msg::AvgPoseStamped recall_wait;
+    recall_wait.pose.position.x = recall_wait_target.first;
+    recall_wait.pose.position.y = recall_wait_target.second;
+    const auto recall_relative =
+        relativeXyAtHeading(snap, recall_wait, selected.yaw_rad);
+    EXPECT_NEAR(recall_relative.first, 0.0, 1.0e-9);
+    EXPECT_NEAR(recall_relative.second, direction * 0.30, 1.0e-9);
 
     const auto operational_target = lateralTargetFromAnchor(
         fixture.snap_x, fixture.snap_y, selected.yaw_rad, direction,
@@ -381,6 +455,18 @@ TEST(MotionGeometry, CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame) {
   live_lanelet.pose.position.x = std::numeric_limits<double>::quiet_NaN();
   EXPECT_FALSE(campsiteLiveLaneletReturnHandoffEligible(
       current, live_lanelet, 0.1, 2.0, 0.15));
+}
+
+TEST(MotionGeometry,
+     CampsiteCrabReturnStartsRouteAfterLateralExitWithoutHistoricalXY) {
+  // HH_260904 - The former longitudinal stage could reverse roughly 1.6 m to
+  // the entry snap. It is now only the route-ready state after wheel settle.
+  EXPECT_FALSE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kLateral));
+  EXPECT_FALSE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kSteeringSettle));
+  EXPECT_TRUE(campsiteCrabReturnReadyForRoute(
+      CampsiteCrabReturnStage::kLongitudinal));
 }
 
 TEST(MotionGeometry,
@@ -724,9 +810,61 @@ TEST(CmdVelGatePolicy, RequiresEngageOperatorArmAndHealthyCan) {
   EXPECT_TRUE(policy.enabled(10.0, false, false));
 }
 
-TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc) {
+TEST(CmdVelGatePolicy, LowSocDefaultAllowsReturnButKeepsIndependentSafetyStops) {
+  CmdVelGatePolicy policy;
+  policy.setMissionEngage(true);
+  policy.setPlatformDriveEnable(true);
+  PlatformSafetyState platform;
+  platform.received = true;
+  platform.received_sec = 10.0;
+  platform.control_mode = 1;
+
+  // The <25% return must not be stranded at the former inclusive 20% stop.
+  for (const double percentage : {0.249, 0.20, 0.19, 0.05}) {
+    platform.battery_percentage = percentage;
+    policy.setPlatformState(platform);
+    EXPECT_TRUE(policy.enabled(10.0, false, false));
+  }
+
+  policy.setEstopSource("planning", true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setEstopSource("planning", false);
+  policy.setCostState(true, 0.0);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setCostState(false, 0.0);
+  policy.setDrTimeout(true);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  policy.setDrTimeout(false);
+  EXPECT_FALSE(policy.enabled(10.6, false, false));
+  EXPECT_FALSE(policy.enabled(10.0, true, false));
+
+  // Battery fault/warning CAN bits are hardware evidence, not the removed
+  // SOC-only threshold. They and unrelated CAN faults still prohibit motion.
+  for (const uint16_t error_code : {0x0001, 0x0002, 0x0100}) {
+    platform.error_code = error_code;
+    policy.setPlatformState(platform);
+    EXPECT_FALSE(policy.enabled(10.0, false, false));
+    EXPECT_FALSE(policy.enabled(10.0, true, true));
+  }
+  platform.error_code = 0;
+  platform.control_mode = 0;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.control_mode = 1;
+  platform.vehicle_state = 1;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(10.0, false, false));
+  platform.vehicle_state = 0;
+  policy.setPlatformState(platform);
+  EXPECT_TRUE(policy.enabled(10.0, false, false));
+}
+
+TEST(CmdVelGatePolicy, ExplicitCriticalSocOptInKeepsItsInclusiveThreshold) {
   CmdVelGatePolicyConfig config;
   config.require_platform_drive_enable = false;
+  // This optional policy remains available, but it is no longer the default
+  // that governs automatic low-battery returns in the deployment profile.
+  config.critical_battery_stop_enabled = true;
   CmdVelGatePolicy policy(config);
   policy.setManualEngage(true);
   PlatformSafetyState platform;
@@ -1854,6 +1992,62 @@ TEST(CommandSourceArbiter, NormalNav2CommandsNeverCreateAnArtificialHandoff) {
   EXPECT_EQ(arbiter.evaluate(true, 10.02), CommandSourceDecision::kAllow);
 }
 
+TEST(CommandSourceArbiter, RecallClearanceRetainsOwnershipThroughSiteReentry) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("", "WAIT_RETURN", "", 1.0);
+  const auto clearance =
+      arbiter.setManeuverPhases("", "RECALL_CLEARANCE_WAIT", "", 2.0);
+  EXPECT_FALSE(clearance.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 10.0), CommandSourceDecision::kAllow);
+  const auto entry =
+      arbiter.setManeuverPhases("", "ALIGN_ENTRY_YAW", "", 10.1);
+  EXPECT_FALSE(entry.maneuver_started);
+  EXPECT_FALSE(entry.maneuver_finished);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 10.1), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("", "IDLE", "", 11.0);
+  EXPECT_EQ(arbiter.evaluate(true, 11.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, ParkingOwnerTransferRequiresStationaryExclusiveHandoff) {
+  CommandSourceArbiter arbiter;
+  const auto started = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_PARKING_OWNER", 1.0);
+  EXPECT_TRUE(started.parking_started);
+  EXPECT_TRUE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 1.0), CommandSourceDecision::kIgnore);
+  EXPECT_EQ(arbiter.evaluate(false, 1.0), CommandSourceDecision::kAllow);
+  const auto selected = arbiter.setManeuverPhases(
+      "IDLE", "IDLE", "WAITING_FOR_TAG", 2.0);
+  EXPECT_FALSE(selected.maneuver_finished);
+  EXPECT_FALSE(arbiter.parkingStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 2.0), CommandSourceDecision::kIgnore);
+  arbiter.setManeuverPhases("IDLE", "IDLE", "IDLE", 3.0);
+  EXPECT_EQ(arbiter.evaluate(true, 3.1), CommandSourceDecision::kHoldZero);
+}
+
+TEST(CommandSourceArbiter, RecallAfterTurnCannotMoveUntilFinalReturnConfirmation) {
+  CommandSourceArbiter arbiter;
+  arbiter.setManeuverPhases("IDLE", "ROTATE_180", "IDLE", 1.0);
+  const auto waiting = arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "IDLE", 2.0);
+  EXPECT_FALSE(waiting.maneuver_finished);
+  EXPECT_TRUE(arbiter.campsiteActive());
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  EXPECT_EQ(arbiter.evaluate(true, 30.0), CommandSourceDecision::kIgnore);
+  // Even a simultaneous low-battery parking-owner request cannot remove the
+  // campsite stationary latch consumed before all gate yaw/motion overrides.
+  arbiter.setManeuverPhases(
+      "IDLE", "RECALL_RETURN_WAIT", "WAITING_FOR_PARKING_OWNER", 31.0);
+  EXPECT_TRUE(arbiter.campsiteStationary());
+  arbiter.setManeuverPhases("IDLE", "CRAB_OUT", "IDLE", 32.0);
+  EXPECT_FALSE(arbiter.campsiteStationary());
+  EXPECT_TRUE(arbiter.campsiteActive());
+}
+
 TEST(CommandSourceArbiter, ParkingOwnsRawCommandUntilControllerReturnsIdle) {
   CommandSourceArbiter arbiter;
   // HH_260807 - Parking is a third explicit owner. Nav2 must not interleave a
@@ -1928,7 +2122,7 @@ TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
   EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
 }
 
-TEST(MotionCostStop, DropZoneExitBypassesRoadLaneletButNeverLiveObstacle) {
+TEST(MotionCostStop, DropZoneApproachAndExitBypassRoadLaneletButNeverLiveObstacle) {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
@@ -1936,25 +2130,33 @@ TEST(MotionCostStop, DropZoneExitBypassesRoadLaneletButNeverLiveObstacle) {
   const auto boundary_cost = makeGrid({{0.65, -0.45, 100}});
 
   config.require_dynamic_source = true;
-  // HH_260807 - The charger is outside the road lanelet. Only explicit exit
-  // phases may cross it, and the same ordinary command must remain fail-closed.
+  // HH_260904 - The charger is outside the road lanelet. Only explicit
+  // approach/exit phases may cross it, and ordinary motion remains fail-closed.
   auto ordinary_stop = makeMotionCostStop(config);
   ordinary_stop.setMergedGrid(boundary_cost, 0.0);
   ordinary_stop.setLaneletGrid(boundary_cost, 0.0);
   EXPECT_TRUE(ordinary_stop.evaluate(command(0.2), 0.0).lanelet_violation);
 
-  for (const auto &phase : config.drop_zone_lanelet_bypass_phases) {
+  const std::set<std::string> expected_phases{
+      "exit_straight", "align_exit_yaw", "position_parking_point",
+      "align_parking_yaw"};
+  EXPECT_EQ(config.drop_zone_lanelet_bypass_phases, expected_phases);
+  EXPECT_EQ(config.drop_zone_static_bypass_phases, expected_phases);
+
+  for (const auto &phase : expected_phases) {
     SCOPED_TRACE(phase);
     auto cost_stop = makeMotionCostStop(config);
     cost_stop.setManeuverPhases(phase, "");
     cost_stop.setMergedGrid(boundary_cost, 0.0);
     cost_stop.setLaneletGrid(boundary_cost, 0.0);
-    EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+    const bool yaw_phase = phase.find("align_") == 0U;
+    const auto phase_command = yaw_phase ? command(0.0, 0.0, 0.2) : command(0.2);
+    EXPECT_FALSE(cost_stop.evaluate(phase_command, 0.0).blocked);
 
     const auto front_obstacle = makeGrid({{0.4, 0.0, 100}});
     cost_stop.setMergedGrid(front_obstacle, 0.1);
     cost_stop.setSourceGrid("radar", front_obstacle, 0.1);
-    const auto obstacle_decision = cost_stop.evaluate(command(0.2), 0.1);
+    const auto obstacle_decision = cost_stop.evaluate(phase_command, 0.1);
     EXPECT_TRUE(obstacle_decision.blocked);
     EXPECT_TRUE(obstacle_decision.dynamic_obstacle) << obstacle_decision.reason;
   }

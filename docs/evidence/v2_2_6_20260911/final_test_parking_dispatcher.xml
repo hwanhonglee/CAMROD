@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="17" failures="0" disabled="0" errors="0" time="0.117" timestamp="2026-09-11T05:22:06" name="AllTests">
+  <testsuite name="ParkingDispatcherTest" tests="17" failures="0" disabled="0" errors="0" time="0.103" timestamp="2026-09-11T05:22:06">
+    <testcase name="EveryInitialSocAndUnknownStartsReverse" status="run" result="completed" time="0.011" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="InitialForceDockAlsoReversesBeforeApril" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="LowSocNeedsActualReverseParkAndNewOwnershipAcknowledgements" status="run" result="completed" time="0.004" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="ReverseServiceBeforeStatusCannotFinishLowBatteryMission" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="ThirtyFiveAndAboveRemainNonChargingParkedUntilExplicitDock" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="OrdinaryReturnDoesNotReusePreviousParkedProof" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="StaleReverseProofCannotSkipReverseForExplicitDock" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="PreStartOldParkedHeartbeatIsRejected" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="ImmediateCompletionBeforeStartAckIsAppliedOnlyAfterAck" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="BusyExplicitDockLatchesButDoesNotChangeMovingOwner" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="CancelInvalidatesProofForcedIntentAndLateOutputs" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="ReverseErrorNeverTriggersDock" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="FreshChargingContactStopsAutomaticDockHandoff" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="UnsafeOrStalePlatformDoesNotPermitSecondStageMotion" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="UnknownSocRequiresDockButNeverSkipsReverse" status="run" result="completed" time="0.005" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="StaleSelectedStatusStillFailsInsteadOfHandoff" status="run" result="completed" time="0.006" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+    <testcase name="NonOwnerAndLateReverseCannotOverwriteAprilPhase" status="run" result="completed" time="0.008" timestamp="2026-09-11T05:22:06" classname="ParkingDispatcherTest" />
+  </testsuite>
+</testsuites>

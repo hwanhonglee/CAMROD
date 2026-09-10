@@ -11,6 +11,7 @@ from typing import Dict, Optional, Set
 import rclpy
 import yaml
 from action_msgs.msg import GoalStatus, GoalStatusArray
+from builtin_interfaces.msg import Time as RosTime
 from avg_msgs.msg import (
     AvgServiceState,
     AvgBool,
@@ -353,6 +354,10 @@ class PlanningStateMachineNode(Node):
         self.recall_requested = False
         self.recall_target_key: str = ""
         self.recall_site_name: str = ""
+        # Preserve the typed UI request stamp only while its auto-goal is
+        # waiting to be published.  This completes the exact correlation chain
+        # request -> auto goal -> GoalSnapper output after a backend restart.
+        self.recall_correlation_stamp: Optional[RosTime] = None
         self.last_recalled_mission_key: str = ""
 
         self.prev_state_level: Optional[int] = None
@@ -911,11 +916,15 @@ class PlanningStateMachineNode(Node):
             return self._return_keypoint()
         return self.keypoints.get(key_name)
 
-    def _publish_drop_zone_goal_raw_for_keypoint(self, keypoint: Keypoint) -> None:
+    def _publish_drop_zone_goal_raw_for_keypoint(
+        self, keypoint: Keypoint, stamp: Optional[RosTime] = None
+    ) -> None:
         if self.pub_drop_zone_goal_raw is None:
             return
         msg = AvgPoseStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.stamp = (
+            stamp if stamp is not None else self.get_clock().now().to_msg()
+        )
         msg.header.frame_id = keypoint.frame_id
         msg.pose.position.x = keypoint.x
         msg.pose.position.y = keypoint.y
@@ -952,18 +961,29 @@ class PlanningStateMachineNode(Node):
         return self.return_mission_key
 
     def _resolve_recall_target_key(self, site_name: str) -> str:
-        site_name = site_name.strip()
-        if site_name:
-            road_key = f"{site_name}_road"
-            if road_key in self.keypoints:
-                return road_key
-            if site_name in self.keypoints:
-                return site_name
-        fallback = self._default_site_key()
-        road_fallback = f"{fallback}_road"
-        if road_fallback in self.keypoints:
-            return road_fallback
-        return fallback
+        # Keep the semantic campsite key through the snapped route arrival.
+        # The campsite controller uses the actual GoalSnapper lanelet pose and
+        # the authored site geometry to form a signed, 0.30 m roadside wait
+        # pose. A pre-authored *_road point would lose the campsite mission key
+        # and either stop on the centerline or accidentally use stale geometry.
+        normalized = site_name.strip()
+        upper = normalized.upper()
+        if upper.startswith("B") and upper[1:].isdigit():
+            normalized = f"{self.site_mission_key_prefix}{int(upper[1:])}"
+        if normalized in self.keypoints and self._is_site_key(normalized):
+            return normalized
+        return self._default_site_key()
+
+    def _goal_update_belongs_to_active_recall(self, mission_key: str) -> bool:
+        # GoalSnapper responds asynchronously after _on_camping_site_recall has
+        # selected scenario 3. Preserve that intent across the snapped-goal
+        # echo; otherwise every recall silently becomes DELIVERY_TO_SITE and
+        # the campsite controller attempts the normal occupied-site maneuver.
+        return (
+            self.scenario_id == self.SCENARIO_RECALL_TO_SITE
+            and bool(mission_key)
+            and mission_key == self.recall_target_key
+        )
 
     def _set_scenario(self, scenario_id: int, reason: str) -> None:
         scenario_id = int(scenario_id)
@@ -1035,6 +1055,13 @@ class PlanningStateMachineNode(Node):
             # the camping-site controller starts from GOAL_REACHED plus the mission key.
             matched_mission_key = self.active_mission_key
 
+        active_recall_goal = (
+            not manual_navigation
+            and self._goal_update_belongs_to_active_recall(matched_mission_key)
+        )
+        if active_recall_goal:
+            goal_source = f"auto_snapper:recall:{matched_mission_key}"
+
         self.active_goal = msg
         self.active_goal_source = goal_source
         self.active_mission_key = matched_mission_key
@@ -1048,6 +1075,8 @@ class PlanningStateMachineNode(Node):
 
         if manual_navigation:
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_navigation")
+        elif active_recall_goal:
+            self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "regulated_recall_goal")
         elif self._is_site_key(self.active_mission_key):
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "regulated_site_goal")
         elif self.active_mission_key == self.return_mission_key:
@@ -1130,6 +1159,9 @@ class PlanningStateMachineNode(Node):
             "drop_zone_maneuver_controller",
             "reverse_parking_controller",
             "apriltag_parking_controller",
+            # SOC-aware auto parking owns the stationary controller handoff;
+            # subsequent selected-controller service states retain their source.
+            "parking_dispatcher",
         }:
             return
 
@@ -1252,11 +1284,23 @@ class PlanningStateMachineNode(Node):
         self.recall_site_name = site_name
         self.last_recalled_mission_key = site_name or self.last_recalled_mission_key
         self.recall_requested = True
+        request_stamp = RosTime()
+        request_stamp.sec = int(msg.header.stamp.sec)
+        request_stamp.nanosec = int(msg.header.stamp.nanosec)
+        self.recall_correlation_stamp = request_stamp
+        # Latch recall before publishing into GoalSnapper. A multi-threaded
+        # executor may deliver the snapped-goal echo immediately; setting this
+        # afterwards creates a race where _on_goal classifies it as DELIVERY.
+        self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_topic")
 
-        if self._publish_auto_goal(target_key, f"recall:{site_name or 'unspecified'}", force=True):
+        if self._publish_auto_goal(
+            target_key,
+            f"recall:{site_name or 'unspecified'}",
+            force=True,
+            correlation_stamp=self.recall_correlation_stamp,
+        ):
             self.recall_requested = False
             self.warn_goal_sent = False
-            self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_topic")
 
     def _on_scenario_command(self, msg: PlanningScenario) -> None:
         requested = int(msg.scenario_id)
@@ -1281,8 +1325,15 @@ class PlanningStateMachineNode(Node):
         if requested == self.SCENARIO_RECALL_TO_SITE:
             site_name = self.last_recalled_mission_key or self._default_site_key()
             target_key = self._resolve_recall_target_key(site_name)
+            self.recall_target_key = target_key
+            self.recall_requested = True
+            # Scenario commands have no typed UI request whose stamp could
+            # authorize a UI-side campsite route anchor.
+            self.recall_correlation_stamp = None
+            self._set_scenario(
+                self.SCENARIO_RECALL_TO_SITE, "scenario_command"
+            )
             if self._publish_auto_goal(target_key, f"scenario:3:{site_name}", force=True):
-                self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "scenario_command")
                 self.return_requested = False
                 self.recall_requested = False
             return
@@ -1318,7 +1369,13 @@ class PlanningStateMachineNode(Node):
             return self._ok_level
         return max(self.module_levels.values())
 
-    def _publish_auto_goal(self, key_name: str, source: str, force: bool = False) -> bool:
+    def _publish_auto_goal(
+        self,
+        key_name: str,
+        source: str,
+        force: bool = False,
+        correlation_stamp: Optional[RosTime] = None,
+    ) -> bool:
         if key_name == self.return_mission_key:
             # HH_260721 - A campsite maneuver moves outside the lanelet planner.
             # Wait for centerline snapping to reflect the completed crab exit
@@ -1337,7 +1394,23 @@ class PlanningStateMachineNode(Node):
             return False
 
         msg = AvgPoseStamped()
-        msg.header.stamp = now.to_msg()
+        # HH_260907 - Typed campsite recall carries a UI-generated correlation
+        # stamp. Preserve a well-formed, non-zero value through the internal
+        # auto-goal boundary so GoalSnapper's output can be tied to the exact UI
+        # mission. External/legacy requests with a missing or invalid stamp keep
+        # the historical local-now behavior.
+        stamp_sec = int(getattr(correlation_stamp, "sec", 0))
+        stamp_nanosec = int(getattr(correlation_stamp, "nanosec", 0))
+        if (
+            correlation_stamp is not None
+            and stamp_sec >= 0
+            and 0 <= stamp_nanosec < 1_000_000_000
+            and (stamp_sec > 0 or stamp_nanosec > 0)
+        ):
+            msg.header.stamp.sec = stamp_sec
+            msg.header.stamp.nanosec = stamp_nanosec
+        else:
+            msg.header.stamp = now.to_msg()
         msg.header.frame_id = kp.frame_id
         msg.pose.position.x = kp.x
         msg.pose.position.y = kp.y
@@ -1358,7 +1431,9 @@ class PlanningStateMachineNode(Node):
         self._pending_mission_key_time = now
         self.pub_auto_goal_snapper.publish(msg)
         if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
-            self._publish_drop_zone_goal_raw_for_keypoint(kp)
+            # The raw semantic goal and its first snapped route goal are one
+            # correlated drop-zone request; publish the exact same stamp.
+            self._publish_drop_zone_goal_raw_for_keypoint(kp, msg.header.stamp)
         self.get_logger().info(
             "published regulated auto-goal through goal_snapper: "
             f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
@@ -1651,10 +1726,14 @@ class PlanningStateMachineNode(Node):
             estop = self.auto_estop_on_error
         elif self.recall_requested:
             self.state = "RECALLED"
-            if self._publish_auto_goal(self.recall_target_key, self.active_goal_source):
+            self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_retry")
+            if self._publish_auto_goal(
+                self.recall_target_key,
+                self.active_goal_source,
+                correlation_stamp=self.recall_correlation_stamp,
+            ):
                 self.recall_requested = False
                 self.warn_goal_sent = False
-                self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_retry")
         elif self.return_requested:
             self.state = "RETURNING"
             if self._publish_auto_goal(self.return_mission_key, "return_request"):

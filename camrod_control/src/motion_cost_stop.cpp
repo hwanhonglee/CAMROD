@@ -1610,7 +1610,8 @@ std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(
 
 bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command) const
 {
-  if (config_.campsite_static_bypass_phases.count(campsite_phase_) > 0U ||
+  if (config_.drop_zone_static_bypass_phases.count(drop_zone_phase_) > 0U ||
+    config_.campsite_static_bypass_phases.count(campsite_phase_) > 0U ||
     config_.parking_static_bypass_phases.count(parking_phase_) > 0U)
   {
     return true;

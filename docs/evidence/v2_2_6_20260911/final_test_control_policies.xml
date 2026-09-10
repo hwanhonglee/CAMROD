@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="159" failures="0" disabled="0" errors="0" time="0.006" timestamp="2026-09-11T05:22:06" name="AllTests">
+  <testsuite name="AckermannTurnRadiusConstraint" tests="5" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="DisabledProfileIsExactIdentity" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="AckermannTurnRadiusConstraint" />
+    <testcase name="FinalScaledNavArcStaysInsideAcceptedEnvelope" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="AckermannTurnRadiusConstraint" />
+    <testcase name="UsesFinalLateralDeadbandAndPreservesExplicitModes" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="AckermannTurnRadiusConstraint" />
+    <testcase name="NudgesOnlyBoundaryArcsAndPreservesReverseSigns" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="AckermannTurnRadiusConstraint" />
+    <testcase name="ActiveProfileRejectsNonfinitePlanarInput" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="AckermannTurnRadiusConstraint" />
+  </testsuite>
+  <testsuite name="BoundedRecoveryAttemptPolicy" tests="7" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="RetriesAttemptWithoutRemovingTotalEnvelope" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="TotalTravelAndTimeRemainFinalStops" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="YawEnvelopeAllowsOnlyCorrectionTowardAttemptStart" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="DevelopBehaviorRemainsTheDefault" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="TunedBehaviorRequiresExplicitOptIn" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="ExactZeroPausesAttemptAndEpisodeClocks" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+    <testcase name="ZeroAlsoPausesAnActiveRetryDwell" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryAttemptPolicy" />
+  </testsuite>
+  <testsuite name="PathRelativeRouteRecovery" tests="20" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="SharedPolicyIsDisabledByDefault" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="NearestSegmentUsesCamrodSignedCteConvention" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="EndpointGapDoesNotInflateSignedLateralCte" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="V14PrunedEndpointKeepsAlongTrackGapOutOfCte" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="SelectsWorldInwardCrabOnRotatedPath" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="B12FullRouteNormalIsTheExactEvaluatedAndSelectedCommand" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="ExactCommandLatchIsFreshStageBoundedAndRetainsOnlyOnePrevious" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="B12CrabThenHeadingUsesExactForwardRightYawWithoutIncreasingCte" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="ExactCenterAllowsOnlyZeroCteRateHeadingTranslation" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="AdaptiveInwardCrabProbeTargetsCenterWithoutWeakeningOtherStages" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="AdaptiveProbeIsSymmetricAcrossCteSign" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="CentersWithFiveAndEightCentimeterHysteresis" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="CentersLaterallyBeforeAligningYaw" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="DoesNotFallBackWhenInwardCandidateIsBlocked" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="PlanningLimitedCrabUsesClearNonOutwardCorrectSignReverseYaw" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="PlanningLimitedYawFallbackKeepsEveryUnsafeAlternativeFailClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="ProjectionLimitedZeroRequiresVerifiedCteProgressAndAlignedHeading" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="DynamicOrPhysicalBlockCannotArmProjectionLimitedHandoff" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="CteRegressionRevokesInwardMotion" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+    <testcase name="RejectsInvalidDegenerateAndRemoteEvidence" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="PathRelativeRouteRecovery" />
+  </testsuite>
+  <testsuite name="BoundedRecoveryCandidatePolicy" tests="2" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="ExactGateZeroIsAValidFailClosedHold" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryCandidatePolicy" />
+    <testcase name="MotionLimitsRemainFailClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="BoundedRecoveryCandidatePolicy" />
+  </testsuite>
+  <testsuite name="VoiceAnnouncementGate" tests="6" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="NeverArmedIsAlwaysReady" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+    <testcase name="ReleasesOnceArmedKeyIsSeenPlayingThenStops" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+    <testcase name="UnrelatedKeyPlayingDoesNotFalselyConfirm" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+    <testcase name="FailsOpenOnTimeoutWhenVoiceNeverConfirms" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+    <testcase name="ResetClearsAnArmedUnconfirmedGateBackToReady" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+    <testcase name="ReArmingReplacesAPreviouslyReleasedWait" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="VoiceAnnouncementGate" />
+  </testsuite>
+  <testsuite name="YawAlignmentSettling" tests="2" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="RequiresFreshStableSamplesBeforeTranslationHandoff" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="YawAlignmentSettling" />
+    <testcase name="LeavingToleranceRestartsTheContinuousHold" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="YawAlignmentSettling" />
+  </testsuite>
+  <testsuite name="MotionGeometry" tests="19" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="BodyTranslationTowardTargetCorrectsBothAxesAtBoundedSpeed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteReturnUsesPureCrabBeforeStraightDriftCorrection" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="RestartedTurnaroundUsesCurrentHeadingAndSameMapAnchor" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="AutomaticCampsiteEntryUsesLaneletYawButRestartUsesLiveYaw" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="AllActiveCampsitesUseAuthoredYawAndSignedCrabSide" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteMotionPoseRejectsInvalidPositionAndQuaternion" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="B6RestartRequiresRealFreshFiniteSnapAnchor" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="AutomaticCrabEntryAlignmentHasBoundedTimeoutOnly" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteLiveLaneletHandoffIgnoresLongitudinalEntryOffset" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteLiveLaneletHandoffFailsClosedOnStaleOrWrongFrame" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteCrabReturnStartsRouteAfterLateralExitWithoutHistoricalXY" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteReturnLatchesLateralSettleLongitudinalWithoutModeChatter" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="B1RotationEntryCenteringRemovesMeasuredNavHandoffResidualByAxis" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="B1EntryAnchorPrecenteringRunsLongitudinalSettleLateralInFixedFrame" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="B1EntryAnchorPrecenteringLatchFailsClosedWithoutModeChatter" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteReturnCannotCompleteBeforeSteeringSettles" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteReturnRejectsNonFiniteInputsWithoutAdvancingStage" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="CampsiteWheelSettleCoversDeployedNinetyDegreeTransition" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+    <testcase name="RoadsideCrabExitCanReachFourCentimeterRadialToleranceAfterLatch" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionGeometry" />
+  </testsuite>
+  <testsuite name="RobotBoundaryGeometry" tests="1" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="TaperedRoundedBodyAndOffsetPreserveMeasuredExtents" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RobotBoundaryGeometry" />
+  </testsuite>
+  <testsuite name="MotionCostStop" tests="55" failures="0" disabled="0" errors="0" time="0.006" timestamp="2026-09-11T05:22:06">
+    <testcase name="TaperedFrontExcludesOldRectangleCornerButKeepsBodyHardStop" status="run" result="completed" time="0.002" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RoundedPlanningFallbackUsesTheSameTaperedOffset" status="run" result="completed" time="0.002" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ForwardThresholdAndBelowThreshold" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="UnknownDynamicCellsNeverBecomeObstacleCost" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="CrabAndReverseUseTravelDirection" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryUsesIndependentLaneletGridAge" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryBoundsReverseYawRate" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryRejectsPhysicalContactAlongYawArc" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryProbeFailsClosedOnStalePoseEvidence" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="OppositeRecoveryRequiresProjectedFullFootprintClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="CrabRecoveryMovesAwayFromSideBoundaryOnly" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PhysicalBodyContactAllowsOnlyMonotonicProjectedClearEscape" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PhysicalContactEscapeStillRequiresPlanningFootprintEndpointClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PhysicalContactEscapeKeepsDynamicObstacleAuthoritative" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PlanningMarginContactStillAllowsProjectedCrabRecovery" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PlanningMarginIgnoresLethalCellWhoseCenterIsOutside" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PhysicalBodyKeepsFailClosedEdgeCellContact" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryCommandFailsClosedWithoutFreshLaneletGrid" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RouteRecoveryCommandFailsClosedWithoutMatchingFrames" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="OppositeRecoveryStillStopsForDynamicObstacle" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RotationStopsOnlyOnLiveDynamicSource" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="StationaryCommandDoesNotCreateRotationLatch" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LaneletRotationPolicyChecksCurrentCellWhenDisabled" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LaneletFootprintBlocksWhenCenterLinkCellIsClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LaneletFootprintAllowsSoftBoundaryButBlocksOffLane" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LocalPlanningBoundaryOverridesFallbackWithoutPoseTimingDependency" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="MeasuredBodyBoundaryStopsOnOffLaneCost" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsAllowed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ExplicitCampsiteOverlayBypassesLaneletButKeepsDynamicStop" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="DropZoneApproachAndExitBypassRoadLaneletButNeverLiveObstacle" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="PureLateralAndReverseStaticBypassStillCheckLaneletFootprint" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ManeuverBypassStillSkipsLegacyLaneletChecks" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ClearAvoidancePathPassesAndBlockedPathStops" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ClassifiedFusionStopsOnlyWithinTwoMeterRouteHorizon" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ForwardUsesNarrowBodySideCheckButManeuverKeepsWideProtection" status="run" result="completed" time="0.001" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="DynamicLatchNeedsContinuousClearWindow" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LatchedFrontObstacleIgnoresZeroAndChangedDirectionCommands" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="StaleTriggerSourceCannotProveLatchClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="FreshTriggerSourceClearReleasesLatchAndStartsHold" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="OptInMergedLatchIgnoresUnrelatedStaticCostAfterTriggerSourceClears" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="DevelopParityKeepsHistoricalMergedLatchProbeByDefault" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="MergedAttributionAllowlistKeepsFusionInsideClassifiedDirectHorizon" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="TriggerPathSnapshotSurvivesReplanWhileLatched" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ZeroStampedOrReplayedClearGridCannotReleaseLatch" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RotationLatchKeepsTriggerGeometryAfterDynamicRetune" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="MissingAndStaleMergedGridFailClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LaneletPathAllowsNearbyBoundaryButStopsPathCost" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ReverseParkingIgnoresDisabledLaneletDirectionButStopsDynamicObstacle" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ParkingPhaseBypassesRoadLaneletButNeverLiveObstacle" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ManeuverPhaseBypassesStaticButNotDynamicCost" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="RotatedGridOriginSamplingIsCorrect" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="LargeSubthresholdClusterIsUnavoidable" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+    <testcase name="ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="MotionCostStop" />
+  </testsuite>
+  <testsuite name="CmdVelGatePolicy" tests="5" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="RequiresEngageOperatorArmAndHealthyCan" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CmdVelGatePolicy" />
+    <testcase name="LowSocDefaultAllowsReturnButKeepsIndependentSafetyStops" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CmdVelGatePolicy" />
+    <testcase name="ExplicitCriticalSocOptInKeepsItsInclusiveThreshold" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CmdVelGatePolicy" />
+    <testcase name="SeparatesNormalStandbyFromWarningAndErrorHolds" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CmdVelGatePolicy" />
+    <testcase name="BlocksCanFaultStaleStatusChargingAndCriticalSoc" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CmdVelGatePolicy" />
+  </testsuite>
+  <testsuite name="ChargingMissionOverride" tests="1" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="AcceptsOnlyFreshCampsiteRequestDuringCharging" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="ChargingMissionOverride" />
+  </testsuite>
+  <testsuite name="DropZoneChargingDepartureAuthorization" tests="3" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="AcceptsOnlyExactHealthyExitPhases" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="DropZoneChargingDepartureAuthorization" />
+    <testcase name="HeartbeatAndSourceStampExpire" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="DropZoneChargingDepartureAuthorization" />
+    <testcase name="InvalidConfigurationFailsClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="DropZoneChargingDepartureAuthorization" />
+  </testsuite>
+  <testsuite name="ManualChargingDepartureAuthorization" tests="3" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="DefaultIsDisabledAndOptInExpiresExactly" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="ManualChargingDepartureAuthorization" />
+    <testcase name="EveryOwnershipAndSafetyConditionFailsClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="ManualChargingDepartureAuthorization" />
+    <testcase name="InvalidTimeoutFailsClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="ManualChargingDepartureAuthorization" />
+  </testsuite>
+  <testsuite name="RouteSafetyRecovery" tests="7" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="PreservesTriggerDirectionUntilContinuousClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="AdmitsOppositeAndOrthogonalProjectedCandidates" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="LatchesRapidRecontactAfterConfiguredAutomaticRelease" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="AllowsAutomaticRecoveryAgainAfterRecontactWindow" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="RotationViolationAdmitsTranslationForProjectedCheck" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="ResetsRegionalBudgetOnlyAfterSignedForwardProgress" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+    <testcase name="StartsContinuousClearOnlyAfterCenteredZeroHandoff" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteSafetyRecovery" />
+  </testsuite>
+  <testsuite name="RouteRecoveryCandidate" tests="9" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="SelectsUniqueClearCrabSide" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="FallsBackToReverseWhenBothCrabSidesAreBlocked" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="RotationOnlyTriggerStillProducesProjectedEscape" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="StopsWhenNoProjectedStageIsClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="SwitchesFromReverseToUniqueClearCrab" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="SwitchesFromReverseToUniqueProjectedYaw" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="UsesRppTurnSignWhenBothProjectedYawArcsAreClear" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="KeepsStraightReverseWithoutYawPreference" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+    <testcase name="RepositionsWhenActiveCrabBecomesBlocked" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="RouteRecoveryCandidate" />
+  </testsuite>
+  <testsuite name="CommandSourceArbiter" tests="14" failures="0" disabled="0" errors="0" time="0" timestamp="2026-09-11T05:22:06">
+    <testcase name="ManeuverOwnsCommandUntilStationaryReleaseCompletes" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="OutboundLaneAlignmentRetainsCampsiteOwnership" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="NormalNav2CommandsNeverCreateAnArtificialHandoff" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="DedicatedManualInputIsOptInAndRequiresManualOnlyEngage" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="FirstManualTwistLatchesAndBlocksNavAndGeneralRaw" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="OnlyManualInputBypassesRouteHeadingOverride" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="MissionTakeoverAndManualDisengageResetOwnership" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="StaleManualOwnerKeepsCompetingSourcesFailClosed" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="ExplicitManeuverAlwaysHasHighestPriority" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="ParkingOwnsRawCommandUntilControllerReturnsIdle" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="ExactDropZonePointOwnsCommandBeforeYawAlignment" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="RecallClearanceRetainsOwnershipThroughSiteReentry" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="ParkingOwnerTransferRequiresStationaryExclusiveHandoff" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+    <testcase name="RecallAfterTurnCannotMoveUntilFinalReturnConfirmation" status="run" result="completed" time="0" timestamp="2026-09-11T05:22:06" classname="CommandSourceArbiter" />
+  </testsuite>
+</testsuites>

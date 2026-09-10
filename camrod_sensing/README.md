@@ -7,6 +7,8 @@ boundaries while keeping hardware measurements field-pending. -->
 points and document the measured front-radar acceptance windows separately. -->
 <!-- HH_260825 - Extend only FRONT1/FRONT2 to a 0.30 m usable near-field stop
 window while retaining route/path clipping and side/rear 0.10 m policy. -->
+<!-- HH_260904 - Replace that body-relative extension with an absolute 0.300 m
+sensor-face cutoff; restore range level 1 and a 0.50 m software ceiling. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -130,9 +132,9 @@ accuracy.
 | Active channels | FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2; REAR is quarantined |
 | Serial | CH9344 USB ports, `115200` baud |
 | Hardware beam | angle level `4` on all channels (widest; approximately 65 deg horizontal / 80 deg vertical) |
-| Hardware range level | FRONT1/FRONT2 level 2; remaining channels level 1 |
-| Software observation maximum | front `0.55 m`; remaining channels `0.50 m` |
-| Radar stop windows | FRONT1 `(0.220, 0.520] m`, FRONT2 `(0.117, 0.417] m`; side/rear retain 0.10 m usable windows |
+| Hardware range level | Level 1 on all channels |
+| Software observation maximum | `0.50 m` on all channels; stop authority is narrower |
+| Radar stop windows | FRONT1/FRONT2 use an absolute `0.30 m` sensor-face cutoff; side and rear use the original absolute `0.10 m` cutoff; REAR is disabled because its chassis echo fills that window |
 | Front spatial gate | active lanelet mask plus the `1.27 m` local-path corridor in `cmd_vel_safety_gate` |
 | Automatic startup learning | disabled in field-driving profile |
 | Fixed-return filter | measured front/rear body envelopes plus named side-return bands |
@@ -144,9 +146,9 @@ not painted into `/sensing/cost_grid/radar` unless it is inside that channel's
 configured stop window and survives fixed-return and route clipping. The
 operator UI therefore labels an ordinary finite sample `ECHO` and uses the
 authoritative `/sensing/radar/obstacle_evidence` output for the red `COST`
-state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR remains
-disabled; its configured `0.206 m` scalar cutoff is its measured body-return
-upper edge (`0.106 m`) plus the same `0.10 m` usable window.
+state. LEFT1/2 and RIGHT1/2 remain absolute `0.10 m` candidates. REAR also
+retains the original absolute `0.10 m` cutoff, but remains disabled because its
+measured `0.020..0.106 m` chassis return occupies the complete stop window.
 
 ![Radar raw ECHO versus authoritative COST UI fixture](../docs/assets/module-guides/ui/test-results/v2-2-3-radar-service-metrics-20260904/radar-echo-cost-telemetry.png)
 

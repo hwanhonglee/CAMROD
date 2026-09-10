@@ -28,7 +28,7 @@ from avg_msgs.msg import (
     SystemStatus,
 )
 
-from voice_event_policy import VoiceEvent, VoiceEventPolicy
+from voice_event_policy import VoiceEvent, VoiceEventPolicy, parking_status_identity
 
 
 class VoiceEventAdapterNode(Node):
@@ -72,14 +72,20 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter(
             'planning_engaged_topic',
             '/control/planning_engaged')
+        # Recall clearance has its own phase although the service-state ID
+        # stays RETURN_WITH_CARGO. Subscribe to the owning controller directly.
+        self.declare_parameter(
+            'camping_site_status_topic',
+            '/control/camping_site_maneuver_controller/status')
         self.declare_parameter(
             'navigate_to_pose_action',
             '/planning/navigate_to_pose')
-        # HH_260813 - Only the selected parking controller publishes, so both
-        # candidates can be subscribed unconditionally.
+        # Auto mode publishes only /parking/status; both controller outputs are
+        # private. Legacy modes still publish exactly one of the old topics.
         self.declare_parameter(
             'parking_status_topics',
-            ['/parking/reverse_parking_controller/status',
+            ['/parking/status',
+             '/parking/reverse_parking_controller/status',
              '/parking/apriltag_parking_controller/status'])
         self.declare_parameter(
             'readiness_required_modules',
@@ -91,6 +97,12 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter('readiness_check_period_s', 0.5)
         self.declare_parameter('max_ready_localization_mode', 0)
         self.declare_parameter('return_mission_key', 'drop_zone')
+        # HH_260910 - camrod_ui now plays site_B*/to_campsite/to_dropzone
+        # itself and holds the engage/goal command until playback finishes.
+        # Keep this node's own reactive departure cue off by default so the
+        # trip is not announced twice; flip it on only if camrod_ui's gate is
+        # disabled and the old reactive-only behavior is wanted back.
+        self.declare_parameter('enable_reactive_departure_cue', False)
 
         p = self.get_parameter
         self._en_nav = p('enable_nav_audio').value
@@ -116,6 +128,7 @@ class VoiceEventAdapterNode(Node):
         localization_mode_topic = str(p('localization_mode_topic').value)
         control_gate_status_topic = str(p('control_gate_status_topic').value)
         planning_engaged_topic = str(p('planning_engaged_topic').value)
+        camping_site_status_topic = str(p('camping_site_status_topic').value)
         navigate_to_pose_action = str(p('navigate_to_pose_action').value)
         parking_status_topics = [
             str(topic).strip()
@@ -144,11 +157,14 @@ class VoiceEventAdapterNode(Node):
         self._bat_full_fired = False
         self._bat_full_elapsed = 0.0
 
+        self._en_reactive_departure_cue = bool(
+            p('enable_reactive_departure_cue').value)
         self._policy = VoiceEventPolicy(
             required_modules,
             return_mission_key=str(p('return_mission_key').value),
             max_ready_localization_mode=int(
                 p('max_ready_localization_mode').value),
+            announce_departure=self._en_reactive_departure_cue,
         )
 
         # 발행: voice_announcer/say → /voice/voice_announcer/say
@@ -186,9 +202,14 @@ class VoiceEventAdapterNode(Node):
         self.create_subscription(
             AvgBool, planning_engaged_topic,
             self._on_planning_engaged, latched_qos)
+        self.create_subscription(
+            ModuleState, camping_site_status_topic,
+            self._on_camping_site_status, 10)
         for topic in parking_status_topics:
             self.create_subscription(
-                ModuleState, topic, self._on_parking_status, 10)
+                ModuleState, topic,
+                lambda msg, source_topic=topic: self._on_parking_status(msg, source_topic),
+                10)
 
         # 시작 음성 (딜레이 후 1회)
         self._startup_timer = self.create_timer(
@@ -209,6 +230,7 @@ class VoiceEventAdapterNode(Node):
             f'battery={self._en_battery}, charging={self._en_charging}, '
             f'docking={self._en_docking}, bgm={self._en_bgm}, '
             f'announce={self._en_travel_announce}@{self._announce_period:.0f}s, '
+            f'reactive_departure_cue={self._en_reactive_departure_cue}, '
             f'readiness_modules={",".join(required_modules)}, '
             f'tf={self._readiness_map_frame}<-{self._readiness_base_frame})')
 
@@ -325,11 +347,17 @@ class VoiceEventAdapterNode(Node):
     def _on_planning_engaged(self, msg: AvgBool):
         self._emit_policy_events(self._policy.update_engaged(bool(msg.data)))
 
-    def _on_parking_status(self, msg: ModuleState):
+    def _on_parking_status(self, msg: ModuleState, source_topic: str = ""):
         if not self._en_docking:
             return
+        method, attempt, owner = parking_status_identity(
+            msg.message, msg.module_name, source_topic)
+        self._emit_policy_events(self._policy.update_docking(
+            msg.operating_state, parking_method=method, attempt=attempt, source=owner))
+
+    def _on_camping_site_status(self, msg: ModuleState):
         self._emit_policy_events(
-            self._policy.update_docking(msg.operating_state))
+            self._policy.update_campsite_maneuver(msg.operating_state))
 
     def _on_platform_status(self, msg: AvgPlatformStatus):
         self._on_estop(bool(msg.estop))

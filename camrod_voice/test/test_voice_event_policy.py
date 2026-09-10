@@ -1,5 +1,8 @@
 from pathlib import Path
 import sys
+import wave
+
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -42,8 +45,9 @@ def degraded_modules():
     return module_snapshots(values)
 
 
-def make_ready_policy(*, announce_startup=True):
-    policy = VoiceEventPolicy(REQUIRED_MODULES)
+def make_ready_policy(*, announce_startup=True, announce_departure=True):
+    policy = VoiceEventPolicy(
+        REQUIRED_MODULES, announce_departure=announce_departure)
     events = []
     if announce_startup:
         events.extend(policy.announce_startup())
@@ -70,6 +74,107 @@ def make_ready_policy(*, announce_startup=True):
     events.extend(policy.update_platform(estop=False, error_code=0))
     events.extend(policy.update_engaged(False))
     return policy, events
+
+
+def test_recall_clearance_announces_once_while_stationary_without_idle_ready():
+    policy = VoiceEventPolicy(REQUIRED_MODULES)
+    policy.announce_startup()
+
+    events = policy.update_campsite_maneuver("RECALL_CLEARANCE_WAIT")
+
+    assert event_keys(events) == ["navigation.recall_clear_site"]
+    assert events[0].priority == 2
+    assert events[0].interrupt
+    assert not policy.engaged
+    assert not policy.ready_announced
+    # Controller heartbeat and independent sensor inputs must not restart the
+    # warning while the same RETURN_WITH_CARGO maneuver is still paused.
+    assert policy.update_campsite_maneuver("RECALL_CLEARANCE_WAIT") == []
+    assert policy.update_tf(True) == []
+    assert policy.update_campsite_maneuver("CRAB_IN") == []
+    assert policy.update_campsite_maneuver("ROTATE_180") == []
+
+
+def test_recall_clearance_received_before_startup_is_not_lost():
+    policy = VoiceEventPolicy(REQUIRED_MODULES)
+
+    assert policy.update_campsite_maneuver("RECALL_CLEARANCE_WAIT") == []
+    assert event_keys(policy.announce_startup()) == [
+        "system.startup", "navigation.recall_clear_site",
+    ]
+    assert policy.update_campsite_maneuver("RECALL_CLEARANCE_WAIT") == []
+
+
+def test_recall_return_audio_waits_for_turnaround_and_forward_exit():
+    policy, _ = make_ready_policy()
+    assert event_keys(policy.update_campsite_maneuver(
+        "RECALL_CLEARANCE_WAIT")) == ["navigation.recall_clear_site"]
+    # Even if planning publishes the return goal early, site clearing has
+    # precedence until the maneuver controller hands off at DONE.
+    policy.update_planning(
+        state="RETURNING",
+        scenario="RETURN_WITH_CARGO",
+        active_mission_key="drop_zone",
+        active_goal_source="return",
+        return_requested=False,
+    )
+    assert policy.update_engaged(True) == []
+    assert policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none") == []
+    for phase in ("RECALL_CLEARANCE_WAIT", "CRAB_IN", "ROTATE_180", "CRAB_OUT"):
+        assert policy.update_campsite_maneuver(phase) == []
+        assert not policy.travel_active
+        assert policy.travel_announce_events() == []
+    assert event_keys(policy.update_campsite_maneuver("DONE")) == [
+        "navigation.to_dropzone",
+    ]
+    assert policy.travel_active
+    assert policy.update_campsite_maneuver("DONE") == []
+
+
+@pytest.mark.parametrize("terminal_phase", ["IDLE", "ERROR", "DONE"])
+def test_recall_clearance_can_announce_again_after_cancel_error_or_completion(
+    terminal_phase,
+):
+    policy = VoiceEventPolicy(REQUIRED_MODULES)
+    policy.announce_startup()
+    policy.update_campsite_maneuver("RECALL_CLEARANCE_WAIT")
+
+    policy.update_campsite_maneuver(terminal_phase)
+
+    assert event_keys(policy.update_campsite_maneuver(
+        "RECALL_CLEARANCE_WAIT")) == ["navigation.recall_clear_site"]
+
+
+def test_opposite_exit_sites_keep_existing_return_audio_without_clearance():
+    policy, _ = make_ready_policy()
+    # B11–B13 and ordinary delivery returns do not use the clearance phase.
+    for phase in ("WAIT_RETURN", "CRAB_OUT", "ALIGN_RETURN_ROUTE_YAW"):
+        assert policy.update_campsite_maneuver(phase) == []
+    policy.update_planning(
+        state="RETURNING",
+        scenario="RETURN_WITH_CARGO",
+        active_mission_key="drop_zone",
+        active_goal_source="return",
+        return_requested=False,
+    )
+    policy.update_engaged(True)
+
+    assert event_keys(policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none")) == [
+            "navigation.to_dropzone",
+    ]
+
+
+def test_recall_clearance_clip_fits_stationary_warning_window():
+    resource = (Path(__file__).resolve().parents[1] / "resource" / "audio" /
+                "ko-KR" / "navigation" / "recall_clear_site.wav")
+    with wave.open(str(resource), "rb") as clip:
+        assert clip.getnchannels() == 1
+        assert clip.getsampwidth() == 2
+        assert clip.getframerate() == 24000
+        # Leave dispatch margin within the controller's 8-second pause.
+        assert 1.0 < clip.getnframes() / clip.getframerate() < 7.0
 
 
 def test_startup_wait_state_never_announces_return_or_ready_early():
@@ -414,6 +519,42 @@ def test_music_bed_waits_for_departure_and_ends_with_the_trip():
     assert policy.travel_announce_events() == []
 
 
+def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
+    """camrod_ui now speaks site_B*/to_campsite/to_dropzone itself and holds
+    the command until playback finishes; this node's own departure cue must
+    stay muted so the trip is not announced twice, while the BGM and the
+    periodic reminders it still owns keep working exactly as before."""
+    policy, _ = make_ready_policy(announce_departure=False)
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert not policy.travel_active
+
+    departure = policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(departure) == []
+    assert policy.travel_active
+    assert event_keys(policy.travel_announce_events()) == [
+        "system.announce1",
+        "system.announce2",
+    ]
+
+    policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert not policy.travel_active
+
+
 def test_transient_recovery_state_does_not_replay_the_departure_cue():
     policy, _ = make_ready_policy()
     policy.update_engaged(True)
@@ -461,22 +602,39 @@ def test_transient_recovery_state_does_not_replay_the_departure_cue():
     assert not policy.travel_active
 
 
+def docking_update(policy, phase, **kwargs):
+    """Legacy AprilTag statuses identify their implementation independently."""
+    return policy.update_docking(
+        phase, parking_method="apriltag", source="legacy:apriltag", **kwargs)
+
+
 def test_docking_announces_start_then_one_outcome():
     policy, _ = make_ready_policy()
 
-    assert policy.update_docking("IDLE") == []
-    assert event_keys(policy.update_docking("REVERSE_APPROACH")) == [
+    assert docking_update(policy, "IDLE") == []
+    assert event_keys(docking_update(policy, "WAITING_FOR_TAG")) == [
         "docking.started",
     ]
     # Waiting for charger contact is still the same docking run.
-    assert policy.update_docking("WAIT_FOR_CHARGING") == []
-    assert event_keys(policy.update_docking("PARKED")) == ["docking.succeeded"]
-    assert policy.update_docking("PARKED") == []
+    assert docking_update(policy, "WAITING_FOR_CHARGING") == []
+    assert event_keys(docking_update(policy, "PARKED")) == ["docking.succeeded"]
+    assert docking_update(policy, "PARKED") == []
 
-    assert event_keys(policy.update_docking("REVERSE_APPROACH")) == [
+    assert event_keys(docking_update(policy, "WAITING_FOR_TAG")) == [
         "docking.started",
     ]
-    assert event_keys(policy.update_docking("ERROR")) == ["docking.failed"]
+    assert event_keys(docking_update(policy, "ERROR")) == ["docking.failed"]
+
+
+def test_auto_parking_owner_handoff_and_selected_controller_share_one_voice_run():
+    policy, _ = make_ready_policy()
+    assert event_keys(docking_update(policy, "WAITING_FOR_PARKING_OWNER")) == [
+        "docking.started",
+    ]
+    assert docking_update(policy, "WAITING_FOR_PARKING_OWNER") == []
+    assert docking_update(policy, "WAITING_FOR_TAG") == []
+    assert docking_update(policy, "TAG_GUIDED_REVERSE") == []
+    assert event_keys(docking_update(policy, "PARKED")) == ["docking.succeeded"]
 
 
 def test_apriltag_docking_phases_remain_one_run_before_system_ready():
@@ -484,25 +642,25 @@ def test_apriltag_docking_phases_remain_one_run_before_system_ready():
     assert event_keys(policy.announce_startup()) == ["system.startup"]
     assert not policy.ready_announced
 
-    assert policy.update_docking("IDLE") == []
-    assert event_keys(policy.update_docking("WAITING_FOR_TAG")) == [
+    assert docking_update(policy, "IDLE") == []
+    assert event_keys(docking_update(policy, "WAITING_FOR_TAG")) == [
         "docking.started",
     ]
-    assert policy.update_docking("TAG_GUIDED_REVERSE") == []
-    assert policy.update_docking("FINAL_YAW_ALIGNMENT") == []
-    assert policy.update_docking("WAITING_FOR_CHARGING") == []
-    assert event_keys(policy.update_docking("PARKED")) == [
+    assert docking_update(policy, "TAG_GUIDED_REVERSE") == []
+    assert docking_update(policy, "FINAL_YAW_ALIGNMENT") == []
+    assert docking_update(policy, "WAITING_FOR_CHARGING") == []
+    assert event_keys(docking_update(policy, "PARKED")) == [
         "docking.succeeded",
     ]
 
     # Charger current may already be confirmed during final yaw, in which case
     # the controller goes directly to PARKED without the waiting phase.
-    assert event_keys(policy.update_docking("WAITING_FOR_TAG")) == [
+    assert event_keys(docking_update(policy, "WAITING_FOR_TAG")) == [
         "docking.started",
     ]
-    assert policy.update_docking("TAG_GUIDED_REVERSE") == []
-    assert policy.update_docking("FINAL_YAW_ALIGNMENT") == []
-    assert event_keys(policy.update_docking("PARKED")) == [
+    assert docking_update(policy, "TAG_GUIDED_REVERSE") == []
+    assert docking_update(policy, "FINAL_YAW_ALIGNMENT") == []
+    assert event_keys(docking_update(policy, "PARKED")) == [
         "docking.succeeded",
     ]
 
@@ -510,8 +668,8 @@ def test_apriltag_docking_phases_remain_one_run_before_system_ready():
 def test_docking_outcome_without_a_started_run_stays_silent():
     policy, _ = make_ready_policy()
 
-    assert policy.update_docking("PARKED") == []
-    assert policy.update_docking("ERROR") == []
+    assert docking_update(policy, "PARKED") == []
+    assert docking_update(policy, "ERROR") == []
 
 
 def test_blocked_route_keeps_a_standing_explanation_available():

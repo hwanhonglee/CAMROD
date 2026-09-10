@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAMROD UI Simulator</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">CAMROD TEST RUNTIME</p>
+      <h1>UI Simulator</h1>
+    </div>
+    <div class="connection"><span id="connection-dot"></span><span id="connection">연결 중</span></div>
+  </header>
+
+  <main>
+    <section class="panel hero">
+      <div class="status-title">
+        <div>
+          <span class="label">Service state</span>
+          <strong id="service-state">—</strong>
+        </div>
+        <div class="scenario-badge" id="scenario">—</div>
+      </div>
+      <div class="metrics">
+        <div><span>Planning</span><b id="planning-state">—</b></div>
+        <div><span>Gate</span><b id="gate-state">—</b></div>
+        <div><span>Battery</span><b id="battery-value">—</b></div>
+        <div><span>Pose</span><b id="pose-value">—</b></div>
+        <div><span>Progress</span><b id="progress-value">—</b></div>
+        <div><span>Active site</span><b id="site-value">—</b></div>
+        <div><span>Workflow</span><b id="workflow-value">—</b></div>
+        <div><span>Phase</span><b id="phase-value">—</b></div>
+      </div>
+      <div class="progress"><div id="progress-bar"></div></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading"><h2>재생 제어</h2><span>UI 명령에 반응하는 가상 시간</span></div>
+      <div class="button-row">
+        <button data-mode="manual">Manual</button>
+        <button data-mode="closed_loop">Closed loop</button>
+        <button id="pause">Pause</button>
+        <button id="reset" class="accent">Reset / Ready</button>
+      </div>
+      <div class="speed-row">
+        <span>속도</span>
+        <button data-speed="0.5">0.5×</button>
+        <button data-speed="1">1×</button>
+        <button data-speed="2">2×</button>
+        <button data-speed="5">5×</button>
+      </div>
+    </section>
+
+    <section class="panel workflow-panel">
+      <div class="section-heading">
+        <div>
+          <h2>서비스 흐름 테스트</h2>
+          <span>사이트를 선택하고 각 단계를 눌러 Robot/Guest UI 변화를 확인하세요.</span>
+        </div>
+        <label class="site-picker">
+          <span>테스트 사이트</span>
+          <select id="workflow-site" aria-label="테스트 사이트"></select>
+        </label>
+      </div>
+
+      <div class="workflow-grid">
+        <article class="workflow-card" data-workflow-card="delivery">
+          <div class="workflow-card-title">
+            <div><span class="workflow-kind">DELIVERY</span><h3>일반 사이트 서비스</h3></div>
+            <b>Robot UI 중심</b>
+          </div>
+          <div class="workflow-steps">
+            <button data-workflow="delivery" data-phase="move_to_site"><small>01</small>사이트 이동</button>
+            <button data-workflow="delivery" data-phase="site_arrived"><small>02</small>사이트 도착</button>
+            <button data-workflow="delivery" data-phase="return_to_drop_zone"><small>03</small>드랍존 복귀</button>
+            <button data-workflow="delivery" data-phase="drop_zone_return_complete"><small>04</small>복귀 완료</button>
+            <button data-workflow="delivery" data-phase="docking_start"><small>05</small>도킹 시작</button>
+            <button data-workflow="delivery" data-phase="docking_complete"><small>06</small>도킹 완료</button>
+          </div>
+        </article>
+
+        <article class="workflow-card recall" data-workflow-card="recall">
+          <div class="workflow-card-title">
+            <div><span class="workflow-kind">RECALL</span><h3>리콜 서비스</h3></div>
+            <b>Guest UI 중심</b>
+          </div>
+          <div class="workflow-steps">
+            <button data-workflow="recall" data-phase="move_to_site"><small>01</small>사이트 이동</button>
+            <button data-workflow="recall" data-phase="site_arrived"><small>02</small>사이트 도착</button>
+            <button data-workflow="recall" data-phase="return_to_drop_zone"><small>03</small>드랍존 복귀</button>
+            <button data-workflow="recall" data-phase="drop_zone_return_complete"><small>04</small>복귀 완료</button>
+            <button data-workflow="recall" data-phase="docking_start"><small>05</small>도킹 시작</button>
+            <button data-workflow="recall" data-phase="docking_complete"><small>06</small>도킹 완료</button>
+          </div>
+        </article>
+      </div>
+      <p id="workflow-message" class="workflow-message">원하는 단계부터 직접 시작할 수 있습니다.</p>
+    </section>
+
+    <div class="columns">
+      <section class="panel">
+        <div class="section-heading"><h2>실시간 입력</h2><span>Robot/Guest UI에 즉시 반영</span></div>
+        <label class="range-label">
+          <span>배터리</span><output id="battery-output">80%</output>
+          <input id="battery" type="range" min="0" max="100" value="80">
+        </label>
+        <div class="toggle-grid">
+          <button data-toggle="charging">Charging</button>
+          <button data-toggle="estop" class="danger">E-stop</button>
+          <button data-toggle="safety_hold" class="danger">Safety hold</button>
+          <button data-toggle="system_error" class="danger">System error</button>
+        </div>
+        <div class="button-row compact">
+          <button data-scenario="localization_lost">Localization lost</button>
+          <button data-scenario="clear_faults">Clear faults</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>상태 주입</h2><span>서비스 흐름을 원하는 지점으로 이동</span></div>
+        <div class="scenario-grid">
+          <button data-scenario="ready">Ready</button>
+          <button data-scenario="low_battery">Battery 34%</button>
+          <button data-scenario="urgent_battery">Battery 24%</button>
+          <button data-scenario="charging">Charging</button>
+          <button data-signal="drop_zone_exit_complete">Exit complete</button>
+          <button data-signal="arrive">Arrive</button>
+          <button data-scenario="loading_wait">Unload wait</button>
+          <button data-signal="return">Return</button>
+          <button data-scenario="returned_drop_zone">At drop zone</button>
+          <button data-signal="parking_complete">Parking complete</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel log-panel">
+      <div class="section-heading"><h2>UI command stream</h2><span>실제 camrod_ui가 발행한 ROS 명령</span></div>
+      <div id="events" class="events"></div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="http://127.0.0.1:8010" target="_blank">Robot UI ↗</a>
+    <a href="http://127.0.0.1:8012" target="_blank">Guest UI ↗</a>
+    <span>SIMULATION ONLY · 실제 차량과 분리된 ROS_DOMAIN_ID를 사용하세요.</span>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>

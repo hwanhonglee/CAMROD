@@ -31,10 +31,12 @@
 #include "avg_msgs/msg/planning_scenario.hpp"
 #include "avg_msgs/msg/planning_state.hpp"
 #include "avg_msgs/msg/ui_destination_command.hpp"
+#include "avg_msgs/msg/voice_state.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
@@ -52,6 +54,11 @@ enum class CampingSiteManeuverPhase {
   kRotate180,
   kUnloadWait,
   kWaitReturn,
+  // First confirmation allows site repositioning; announce clearance before
+  // B1-B10 re-enter and turn. Actual loading confirmation is a separate step.
+  kRecallClearanceWait,
+  // B1-B10 wait after turning until the user confirms that loading is done.
+  kRecallReturnWait,
   kAlignRetraceYaw,
   // HH_260721 - Rotate at the lanelet snap pose after leaving a constrained
   // roadside stop.
@@ -95,6 +102,10 @@ std::string phaseName(const CampingSiteManeuverPhase phase) {
     return "UNLOAD_WAIT";
   case CampingSiteManeuverPhase::kWaitReturn:
     return "WAIT_RETURN";
+  case CampingSiteManeuverPhase::kRecallClearanceWait:
+    return "RECALL_CLEARANCE_WAIT";
+  case CampingSiteManeuverPhase::kRecallReturnWait:
+    return "RECALL_RETURN_WAIT";
   case CampingSiteManeuverPhase::kAlignRetraceYaw:
     return "ALIGN_RETRACE_YAW";
   case CampingSiteManeuverPhase::kAlignReturnRouteYaw:
@@ -194,6 +205,8 @@ public:
     // bays. Keep their lateral reach and speed independently constrained.
     roadside_maximum_lateral_offset_m_ = std::abs(
         declare_parameter<double>("roadside_max_lateral_offset_m", 0.30));
+    recall_wait_lateral_offset_m_ = std::abs(
+        declare_parameter<double>("recall_wait_lateral_offset_m", 0.30));
     default_lateral_direction_ =
         declare_parameter<std::string>("default_lateral_direction", "left");
     crab_speed_mps_ =
@@ -309,6 +322,22 @@ public:
     reverse_entry_debug_period_s_ =
         declare_parameter<double>("reverse_entry_debug_period_s", 1.0);
     unload_wait_s_ = declare_parameter<double>("unload_wait_s", 5.0);
+    recall_clearance_wait_s_ = std::max(
+        0.0, declare_parameter<double>("recall_clearance_wait_s", 8.0));
+    // HH_260910 - recall_clearance_wait_s_ above already exists to give the
+    // spoken clearance warning room to play; this closes the gap for a cue
+    // that overruns it instead of shortening the wait when the cue finishes
+    // early. Fail-open (timeout) rather than block indefinitely if
+    // camrod_voice is not running at all (e.g. bench/sim launch profiles).
+    enable_recall_clearance_voice_gate_ = declare_parameter<bool>(
+        "enable_recall_clearance_voice_gate", true);
+    recall_clearance_voice_key_ = declare_parameter<std::string>(
+        "recall_clearance_voice_key", "navigation.recall_clear_site");
+    voice_state_topic_ = declare_parameter<std::string>(
+        "voice_state_topic", "/voice/voice_announcer/state");
+    recall_clearance_voice_timeout_s_ = std::max(
+        0.0,
+        declare_parameter<double>("recall_clearance_voice_timeout_s", 6.0));
     auto_return_after_unload_wait_ =
         declare_parameter<bool>("auto_return_after_unload_wait", false);
     reset_wait_return_on_site_goal_ =
@@ -449,6 +478,15 @@ public:
                     message->occupied_mission_keys.end());
               });
     }
+    if (enable_recall_clearance_voice_gate_) {
+      voice_state_subscription_ = create_subscription<avg_msgs::msg::VoiceState>(
+          voice_state_topic_, 10,
+          [this](const avg_msgs::msg::VoiceState::SharedPtr message) {
+            recall_clearance_voice_gate_.onVoiceState(
+                message->state == avg_msgs::msg::VoiceState::STATE_PLAYING,
+                message->current_key, now().seconds());
+          });
+    }
     operation_service_ = create_service<avg_msgs::srv::RequestMotionOperation>(
         "/control/camping_site_maneuver_controller/request_operation",
         [this](const std::shared_ptr<
@@ -481,6 +519,8 @@ public:
   }
 
 private:
+  friend class CampingSiteManeuverControllerTest;
+
   bool isActivePhase() const {
     return phase_ != CampingSiteManeuverPhase::kIdle &&
            phase_ != CampingSiteManeuverPhase::kDone &&
@@ -494,6 +534,8 @@ private:
            phase_ == CampingSiteManeuverPhase::kRotate180 ||
            phase_ == CampingSiteManeuverPhase::kUnloadWait ||
            phase_ == CampingSiteManeuverPhase::kWaitReturn ||
+           phase_ == CampingSiteManeuverPhase::kRecallClearanceWait ||
+           phase_ == CampingSiteManeuverPhase::kRecallReturnWait ||
            phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
            phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
@@ -521,6 +563,14 @@ private:
   bool isSiteOccupied(const std::string &mission_key) const {
     return enable_campsite_occupancy_guard_ && !mission_key.empty() &&
            occupied_mission_keys_.count(mission_key) > 0U;
+  }
+
+  bool occupiedSiteBlocksCurrentMission(const std::string &mission_key) const {
+    // Initial recall may approach an occupied site only to its bounded road
+    // shoulder. Loading-complete B1-B10 re-entry restores the opt-in occupancy
+    // guard; the UI confirmation does not erase perceived tents/obstacles.
+    return (!active_recall_wait_mission_ || recall_turnaround_return_active_) &&
+           isSiteOccupied(mission_key);
   }
 
   avg_msgs::msg::AvgPoseStamped makePose(const std::string &frame_id,
@@ -731,7 +781,7 @@ private:
           std::abs(relative.second), minimum_lateral_offset_m_,
           maximum_lateral_offset_m_);
       const double operational_offset =
-          std::min(bounded_offset, roadside_maximum_lateral_offset_m_);
+          std::min(bounded_offset, activeRoadsideMaximumOffsetM());
       if (!std::isfinite(operational_offset) || operational_offset <= 0.0) {
         return std::nullopt;
       }
@@ -794,7 +844,7 @@ private:
   }
 
   bool adoptWaitReturnState(const std::string &key, const std::string &source) {
-    if (isSiteOccupied(key)) {
+    if (occupiedSiteBlocksCurrentMission(key)) {
       RCLCPP_WARN(
           get_logger(),
           "camping_site_maneuver_controller adopt blocked: occupied site %s",
@@ -832,7 +882,8 @@ private:
       return false;
     }
     *adopted_site_goal = stampPoseNow(*adopted_site_goal);
-    const CampsiteServiceMode adopted_service_mode = serviceModeForKey(key);
+    const CampsiteServiceMode adopted_service_mode = active_recall_wait_mission_
+        ? CampsiteServiceMode::kRoadsideStop : serviceModeForKey(key);
     const std::optional<RoadsideOperationalGeometry> roadside_geometry =
         adopted_service_mode == CampsiteServiceMode::kRoadsideStop
             ? resolveRoadsideOperationalGeometry(*adopted_site_goal)
@@ -968,6 +1019,8 @@ private:
     const double effective_speed =
         std::max(0.01, activeCrabSpeedMps() * crab_timeout_speed_scale_);
     crab_duration_s_ = offset > 0.0 ? offset / effective_speed : 0.0;
+    battery_urgent_return_source_.clear();
+    recall_final_return_requested_ = false;
     return_requested_ = false;
     return_published_ = false;
     return_acknowledged_ = false;
@@ -1002,6 +1055,11 @@ private:
     return active_service_mode_ == CampsiteServiceMode::kRoadsideStop
                ? roadside_crab_speed_mps_
                : crab_speed_mps_;
+  }
+
+  double activeRoadsideMaximumOffsetM() const {
+    return active_recall_wait_mission_ ? recall_wait_lateral_offset_m_
+                                       : roadside_maximum_lateral_offset_m_;
   }
 
   void ensureGoalPairForAutoStart(const std::string &key) {
@@ -1107,7 +1165,14 @@ private:
     std::string automatic_key;
     const std::string mission_key = message.active_mission_key;
     if (mission_key.rfind(site_mission_key_prefix_, 0) == 0) {
-      if (isSiteOccupied(mission_key)) {
+      // Latch the occupancy exception only after this state proves that a
+      // concrete campsite owns the RECALL scenario.  A malformed/stale
+      // RECALL state for any other key must never make a later manual START
+      // bypass the normal occupied-site guard.
+      active_recall_wait_mission_ =
+          message.scenario_id ==
+          avg_msgs::msg::PlanningScenario::RECALL_TO_SITE;
+      if (occupiedSiteBlocksCurrentMission(mission_key)) {
         publishZero();
         setPhase(CampingSiteManeuverPhase::kError,
                  "occupied campsite auto-entry blocked: " + mission_key);
@@ -1115,6 +1180,12 @@ private:
         return;
       }
       ensureGoalPairForAutoStart(mission_key);
+      if (active_recall_wait_mission_) {
+        // Recall is a roadside pickup for every B1-B13 site. Reuse the signed
+        // snap-to-site geometry proven for B11-B13 and cap travel at
+        // recall_wait_lateral_offset_m (0.30 m in the deployed profile).
+        active_service_mode_ = CampsiteServiceMode::kRoadsideStop;
+      }
       automatic_key = mission_key;
     } else {
       // HH_260727 - A stale site/route pose pair is not mission authority.
@@ -1158,6 +1229,13 @@ private:
     }
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
       publishZero();
+      battery_urgent_return_source_.clear();
+      recall_final_return_requested_ = false;
+      active_recall_wait_mission_ = false;
+      recall_turnaround_return_active_ = false;
+      return_requested_ = false;
+      return_published_ = false;
+      return_acknowledged_ = false;
       setPhase(CampingSiteManeuverPhase::kIdle, "cancel=" + source);
       return {true, "camping-site maneuver cancelled"};
     }
@@ -1210,7 +1288,7 @@ private:
     double lateral_offset = requested_lateral_offset;
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
       lateral_offset =
-          std::min(lateral_offset, roadside_maximum_lateral_offset_m_);
+          std::min(lateral_offset, activeRoadsideMaximumOffsetM());
       if (lateral_offset + 1.0e-6 < requested_lateral_offset) {
         source_name += "_roadside_cap";
       }
@@ -1295,7 +1373,10 @@ private:
         phase_ != CampingSiteManeuverPhase::kError) {
       return {false, "site maneuver already active: " + phaseName(phase_)};
     }
-    if (isSiteOccupied(site_goal_key_)) {
+    recall_turnaround_return_active_ = false;
+    battery_urgent_return_source_.clear();
+    recall_final_return_requested_ = false;
+    if (occupiedSiteBlocksCurrentMission(site_goal_key_)) {
       publishZero();
       setPhase(CampingSiteManeuverPhase::kError,
                "occupied campsite entry blocked: " + site_goal_key_);
@@ -1307,7 +1388,9 @@ private:
     }
     // HH_260721 - A direct/manual goal remains a normal turnaround unless a
     // mission key selects otherwise.
-    active_service_mode_ = serviceModeForKey(site_goal_key_);
+    active_service_mode_ = active_recall_wait_mission_
+                               ? CampsiteServiceMode::kRoadsideStop
+                               : serviceModeForKey(site_goal_key_);
     const double current_yaw = camrod_control::yawFromPose(*last_pose_);
     bool already_at_site = false;
     if (site_goal_.has_value()) {
@@ -1525,18 +1608,244 @@ private:
   }
 
   std::pair<bool, std::string> requestReturn(const std::string &source) {
+    if (sourceHasToken(source, "recall_final_return")) {
+      if (!active_recall_wait_mission_ || !recall_turnaround_return_active_ ||
+          phase_ == CampingSiteManeuverPhase::kIdle ||
+          phase_ == CampingSiteManeuverPhase::kError) {
+        return {false, "recall final return has no active turned recall"};
+      }
+      if (recall_final_return_requested_) {
+        return {true, "recall final return already accepted: " + phaseName(phase_)};
+      }
+      if (phase_ != CampingSiteManeuverPhase::kRecallReturnWait) {
+        return {false, "recall final return requires post-turn loading wait"};
+      }
+      recall_final_return_requested_ = true;
+      return_requested_ = true;
+      publishZero();
+      if (poseIsFresh()) {
+        beginReturnExit("return=" + source + "; final loading confirmation accepted");
+      } else {
+        publishServiceState("final loading confirmation accepted; waiting for fresh pose");
+        publishStatus(true);
+      }
+      return {true, "recall final loading confirmation accepted"};
+    }
+    if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
+      // A delayed/repeated first click and even urgent low SOC cannot move a
+      // robot while the user may be loading it after the 180-degree turn.
+      publishZero();
+      return {false, "recall loading in progress; explicit recall_final_return required"};
+    }
+    if (isBatteryUrgentReturnSource(source)) {
+      return requestBatteryUrgentReturn(source);
+    }
+    if (active_recall_wait_mission_) {
+      // Initial site-clearance confirmation cannot be queued before roadside
+      // arrival. Duplicate first clicks never authorize the later loading exit.
+      if (return_requested_ &&
+          phase_ != CampingSiteManeuverPhase::kIdle &&
+          phase_ != CampingSiteManeuverPhase::kError) {
+        return {true, "recall return already accepted: " + phaseName(phase_)};
+      }
+      if (phase_ != CampingSiteManeuverPhase::kUnloadWait &&
+          phase_ != CampingSiteManeuverPhase::kWaitReturn) {
+        return {false, "recall is not waiting for loading completion: " +
+                           phaseName(phase_)};
+      }
+      const auto site_index = siteIndexFromText(site_goal_key_);
+      const bool needs_turnaround = site_index.has_value() &&
+          *site_index >= 1 && *site_index <= 10 &&
+          serviceModeForKey(site_goal_key_) == CampsiteServiceMode::kTurnaround;
+      if (needs_turnaround) {
+        const auto prepared = prepareRecallTurnaroundEntry();
+        if (!prepared.first) {
+          // Topic operations have no response channel. Publish an explicit
+          // failure so a UI that latched the accepted click cannot stay stuck.
+          setError(prepared.second);
+          return prepared;
+        }
+        return_requested_ = true;
+        recall_final_return_requested_ = false;
+        recall_turnaround_return_active_ = true;
+        publishZero();
+        setPhase(CampingSiteManeuverPhase::kRecallClearanceWait,
+                 "return=" + source + " site=" + site_goal_key_ +
+                     "; site repositioning requested; please clear the campsite; "
+                     "stationary announcement wait=" +
+                     fixed(recall_clearance_wait_s_, 1) + "s");
+        return {true, "recall site repositioning accepted; waiting for campsite clearance"};
+      }
+      return_requested_ = true;
+      if (!poseIsFresh()) {
+        // B11-B13 still need no site-clearance/turnaround stage. Accept the
+        // loading-complete action but remain stationary until localization
+        // recovers, so a one-shot UI command is not silently discarded.
+        publishZero();
+        setPhase(CampingSiteManeuverPhase::kWaitReturn,
+                 "return=" + source + "; loading complete; waiting for fresh "
+                 "pose before roadside exit");
+        return {true, "roadside return accepted; waiting for fresh pose"};
+      }
+      beginReturnExit("return=" + source + "; recall loading complete");
+      return {true, "roadside recall return started"};
+    }
     if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       return_requested_ = true;
       beginReturnExit("return=" + source);
       return {true, "site maneuver return started"};
     }
     if (phase_ == CampingSiteManeuverPhase::kIdle ||
-        phase_ == CampingSiteManeuverPhase::kDone) {
+        phase_ == CampingSiteManeuverPhase::kDone ||
+        phase_ == CampingSiteManeuverPhase::kError) {
       return {false,
               "site maneuver is not waiting for return: " + phaseName(phase_)};
     }
     return_requested_ = true;
     return {true, "return request latched during " + phaseName(phase_)};
+  }
+
+  static bool sourceHasToken(const std::string &source, const std::string &expected) {
+    // Intent markers are complete ':'-delimited tokens, never substrings.
+    // A delayed first click cannot masquerade as final loading confirmation.
+    std::istringstream components(source);
+    std::string token;
+    while (std::getline(components, token, ':')) {
+      if (token == expected) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool isBatteryUrgentReturnSource(const std::string &source) {
+    return sourceHasToken(source, "battery_urgent_return");
+  }
+
+  bool batteryUrgentUsesForwardLoop() const {
+    const auto index = siteIndexFromText(site_goal_key_);
+    return index.has_value() && *index >= 11 && *index <= 13;
+  }
+
+  std::pair<bool, std::string>
+  requestBatteryUrgentReturn(const std::string &source) {
+    if (!battery_urgent_return_source_.empty() &&
+        phase_ != CampingSiteManeuverPhase::kIdle &&
+        phase_ != CampingSiteManeuverPhase::kError) {
+      return {true, "battery urgent return already accepted: " + phaseName(phase_)};
+    }
+    if (!isActivePhase()) {
+      return {false, "no active campsite maneuver for battery urgent return: " +
+                         phaseName(phase_)};
+    }
+    publishZero();
+    battery_urgent_return_source_ = source;
+    if (!poseIsFresh() || !std::isfinite(start_yaw_) ||
+        !std::isfinite(return_anchor_x_) || !std::isfinite(return_anchor_y_)) {
+      setError("battery_urgent_return requires fresh finite exit geometry");
+      return {false, "battery urgent return exit geometry unavailable"};
+    }
+
+    // Stop incomplete entry/rotation/loading now. Never finish the site entry
+    // or interpret this low-SOC request as permission for recall re-entry.
+    return_requested_ = true;
+    recall_turnaround_return_active_ = false;
+    return_published_ = false;
+    return_acknowledged_ = false;
+    entry_yaw_alignment_for_crab_ = false;
+    pending_crab_motion_.reset();
+    pending_crab_start_source_.clear();
+    battery_urgent_lane_yaw_ = start_yaw_;
+    if (route_goal_.has_value() &&
+        camrod_control::poseHasFiniteMotionGeometry(*route_goal_)) {
+      battery_urgent_lane_yaw_ = camrod_control::yawFromPose(*route_goal_);
+    }
+    if (phase_ == CampingSiteManeuverPhase::kCrabOut ||
+        phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
+        phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw) {
+      // A safe exit already owns motion. Do not restart its timers or undo
+      // steering settle because repeated battery telemetry also requests return.
+      publishStatus(true);
+      return {true, "battery urgent return joined active campsite exit"};
+    }
+
+    const double current_yaw = camrod_control::yawFromPose(*last_pose_);
+    const double opposite_yaw =
+        camrod_control::normalizeAngle(battery_urgent_lane_yaw_ + M_PI);
+    target_yaw_ = battery_urgent_lane_yaw_;
+    if (!batteryUrgentUsesForwardLoop() &&
+        std::abs(camrod_control::normalizeAngle(opposite_yaw - current_yaw)) <
+            std::abs(camrod_control::normalizeAngle(target_yaw_ - current_yaw))) {
+      target_yaw_ = opposite_yaw;
+    }
+    // Only yaw is settled here. CRAB_OUT releases from the live lanelet or
+    // lateral-ready pose and never drives back to the historical entry XY.
+    setPhase(CampingSiteManeuverPhase::kAlignRetraceYaw,
+             "return=" + source + "; interrupt current site task; align nearest "
+             "lane heading before lateral exit without site re-entry");
+    return {true, "battery urgent return accepted; safe site exit first"};
+  }
+
+  bool alignBatteryUrgentReturnAtCurrentRoadPose(const std::string &detail) {
+    if (battery_urgent_return_source_.empty() || batteryUrgentUsesForwardLoop()) {
+      return false;
+    }
+    publishZero();
+    target_yaw_ = camrod_control::normalizeAngle(battery_urgent_lane_yaw_ + M_PI);
+    setPhase(CampingSiteManeuverPhase::kAlignReturnRouteYaw,
+             detail + "; battery urgent return; align reversed route heading "
+             "at current road pose");
+    return true;
+  }
+
+  std::pair<bool, std::string> prepareRecallTurnaroundEntry() {
+    const auto configured_goal = camping_site_goals_.find(site_goal_key_);
+    if (configured_goal == camping_site_goals_.end() ||
+        !camrod_control::poseHasFinitePlanarPosition(configured_goal->second) ||
+        !route_goal_.has_value() ||
+        !camrod_control::poseHasFiniteMotionGeometry(*route_goal_) ||
+        !std::isfinite(start_yaw_) || !std::isfinite(return_anchor_x_) ||
+        !std::isfinite(return_anchor_y_)) {
+      return {false, "finite configured campsite/immutable lanelet anchor "
+                     "unavailable for recall turnaround"};
+    }
+    if (configured_goal->second.header.frame_id != route_goal_->header.frame_id) {
+      return {false, "campsite and lanelet anchor frames differ"};
+    }
+    // Loading may take minutes: use the already captured lane anchor and the
+    // configured site, never a newly projected anchor or an expired goal pair.
+    const double dx = configured_goal->second.pose.position.x - return_anchor_x_;
+    const double dy = configured_goal->second.pose.position.y - return_anchor_y_;
+    const double forward = std::cos(start_yaw_) * dx + std::sin(start_yaw_) * dy;
+    const double lateral = -std::sin(start_yaw_) * dx + std::cos(start_yaw_) * dy;
+    if (!std::isfinite(forward) || !std::isfinite(lateral) ||
+        std::abs(forward) > maximum_forward_residual_m_ ||
+        std::abs(lateral) < minimum_lateral_offset_m_ ||
+        std::abs(lateral) > maximum_lateral_offset_m_) {
+      return {false, "configured campsite is outside bounded recall "
+                     "turnaround entry geometry"};
+    }
+    site_goal_ = configured_goal->second;
+    pending_crab_motion_ = std::make_tuple(
+        std::abs(lateral), lateral >= 0.0 ? 1.0 : -1.0,
+        std::string("goal_pair"), forward);
+    pending_crab_start_source_ = "recall_loading_complete:" + site_goal_key_;
+    return {true, "recall turnaround entry geometry captured"};
+  }
+
+  void beginRecallTurnaroundEntry() {
+    active_service_mode_ = CampsiteServiceMode::kTurnaround;
+    const auto configured = configureCrabEntryGeometry(
+        pending_crab_start_source_, start_yaw_, *pending_crab_motion_);
+    if (!configured.first) {
+      return;
+    }
+    // Reuse the normal crab/180-degree path, but preserve the original return
+    // anchor and the accepted site-clearance request through this second entry.
+    entry_yaw_alignment_for_crab_ = true;
+    target_yaw_ = start_yaw_;
+    setPhase(CampingSiteManeuverPhase::kAlignEntryYaw,
+             "recall campsite clearance complete; " + configured.second);
   }
 
   void beginReturnExit(const std::string &reason) {
@@ -1547,7 +1856,8 @@ private:
       target_yaw_ = start_yaw_;
       setPhase(CampingSiteManeuverPhase::kCrabOut,
                reason + "; roadside exit before forward return loop");
-    } else if (site_entry_mode_ == "reverse") {
+    } else if (site_entry_mode_ == "reverse" &&
+               !recall_turnaround_return_active_) {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
       // HH_260721 - Verify retrace yaw without undoing the site's required
@@ -1732,16 +2042,7 @@ private:
   // false means stationary steering-settle hold, true means route-ready.
   std::optional<bool> observeLiveLaneletReturnHandoff() {
     const auto distance_m = liveLaneletReturnDistance();
-    if (!distance_m.has_value()) {
-      if (return_lanelet_handoff_candidate_) {
-        RCLCPP_WARN(
-            get_logger(),
-            "live lanelet return handoff lost before hold completed; "
-            "resuming exact-anchor fallback");
-      }
-      return_lanelet_handoff_candidate_ = false;
-      return_lanelet_handoff_start_time_ =
-          rclcpp::Time(0, 0, RCL_ROS_TIME);
+    if (!distance_m.has_value() && !return_lanelet_handoff_candidate_) {
       return std::nullopt;
     }
 
@@ -1756,6 +2057,16 @@ private:
           last_pose_->pose.position.x, last_pose_->pose.position.y,
           lanelet_pose_->pose.position.x, lanelet_pose_->pose.position.y,
           distanceTo(return_anchor_x_, return_anchor_y_));
+    } else if (!distance_m.has_value()) {
+      // HH_260904 - Crossing the boundary once proves that the lateral exit
+      // reached the live lane. Keep the robot stopped through the rest of the
+      // steering-settle hold even if GNSS noise moves the next sample a few
+      // centimetres outside the threshold. Releasing this latch used to restart
+      // the historical-anchor controller and command a long reverse.
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "live lanelet return handoff sample moved outside threshold; "
+          "keeping route-ready latch and stationary hold");
     }
     publishZero();
     return (now() - return_lanelet_handoff_start_time_).seconds() + 1.0e-9 >=
@@ -1775,6 +2086,9 @@ private:
         fixed(lanelet_distance_m) + "m original_anchor_error=" +
         fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m";
     publishZero();
+    if (alignBatteryUrgentReturnAtCurrentRoadPose(detail)) {
+      return;
+    }
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
       setPhase(CampingSiteManeuverPhase::kDone,
                detail + "; forward return loop requested");
@@ -1798,6 +2112,18 @@ private:
       entry_yaw_alignment_for_crab_ = false;
       pending_crab_start_source_.clear();
       pending_crab_motion_.reset();
+      recall_clearance_voice_gate_.reset();
+    }
+    // HH_260910 - Arm on entry so the timeout deadline starts with the wait
+    // itself, not with whenever the cue happens to be requested/received.
+    if (phase_ == CampingSiteManeuverPhase::kRecallClearanceWait) {
+      if (enable_recall_clearance_voice_gate_) {
+        recall_clearance_voice_gate_.arm(
+            recall_clearance_voice_key_, now().seconds(),
+            recall_clearance_wait_s_ + recall_clearance_voice_timeout_s_);
+      } else {
+        recall_clearance_voice_gate_.reset();
+      }
     }
     if (phase_ == CampingSiteManeuverPhase::kReverseOut &&
         last_pose_.has_value()) {
@@ -1840,21 +2166,43 @@ private:
 
   void publishServiceState(const std::string &detail) const {
     avg_msgs::msg::AvgServiceState message;
-    if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw ||
+    if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
+      message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
+      message.state_name = "GUEST_LOADING_WAIT";
+    } else if (recall_turnaround_return_active_ && isSiteInternalPhase()) {
+      // Re-entry is part of an accepted return, not a second delivery/pickup.
+      message.state = avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO;
+      message.state_name = "RETURN_WITH_CARGO";
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw ||
         phase_ == CampingSiteManeuverPhase::kReverseIn ||
         phase_ == CampingSiteManeuverPhase::kCrabIn ||
         phase_ == CampingSiteManeuverPhase::kRotate180) {
-      message.state = avg_msgs::msg::AvgServiceState::SITE_ENTRY;
-      message.state_name = "SITE_ENTRY";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::RECALL_TO_SITE_ROAD;
+        message.state_name = "RECALL_TO_SITE_ROAD";
+      } else {
+        message.state = avg_msgs::msg::AvgServiceState::SITE_ENTRY;
+        message.state_name = "SITE_ENTRY";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait) {
-      message.state = avg_msgs::msg::AvgServiceState::UNLOAD_WAIT;
-      message.state_name = "UNLOAD_WAIT";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
+        message.state_name = "GUEST_LOADING_WAIT";
+      } else {
+        message.state = avg_msgs::msg::AvgServiceState::UNLOAD_WAIT;
+        message.state_name = "UNLOAD_WAIT";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       // HH_260721 - Distinguish unloading dwell from the operator
       // return-request wait.
-      message.state =
-          avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST;
-      message.state_name = "WAITING_FOR_RETURN_REQUEST";
+      if (active_recall_wait_mission_) {
+        message.state = avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT;
+        message.state_name = "GUEST_LOADING_WAIT";
+      } else {
+        message.state =
+            avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST;
+        message.state_name = "WAITING_FOR_RETURN_REQUEST";
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
                phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
                phase_ == CampingSiteManeuverPhase::kReverseOut ||
@@ -1867,6 +2215,9 @@ private:
     }
     message.description =
         "camping_site_maneuver_controller:" + phaseName(phase_) + ":" + detail;
+    if (!battery_urgent_return_source_.empty()) {
+      message.description += "; return_source=" + battery_urgent_return_source_;
+    }
     service_state_publisher_->publish(message);
   }
 
@@ -1915,13 +2266,11 @@ private:
           body_longitudinal_error, body_lateral_error);
     }
     avg_msgs::msg::AvgTwist command;
-    // HH_260824 - If the robot is already inside the radial tolerance, consume
-    // the full settle transition but do not issue a one-tick longitudinal
-    // impulse. The next timer tick completes from the latched stage.
-    if (!camrod_control::campsiteCrabReturnMayComplete(
-            velocity.stage,
-            distanceTo(return_anchor_x_, return_anchor_y_),
-            return_position_tolerance_m_)) {
+    // HH_260904 - The longitudinal state is now a route-ready latch, not a
+    // command phase. Consume the settle transition without issuing even one
+    // tick of reverse toward the historical entry XY; the next timer tick
+    // publishes the return route from the current pose.
+    if (!camrod_control::campsiteCrabReturnReadyForRoute(velocity.stage)) {
       command.linear.x = velocity.linear_x_mps;
       command.linear.y = velocity.linear_y_mps;
     }
@@ -2071,6 +2420,18 @@ private:
     return false;
   }
 
+  std::string returnRequestSource(const std::string &reason) const {
+    if (battery_urgent_return_source_.empty()) {
+      return "camping_site_maneuver_controller:" + reason;
+    }
+    // The planner selects B11–B13's legal one-way route from roadside_forward.
+    // B1–B10 urgent recalls began in roadside mode but must not inherit that
+    // marker after aligning to the reversed route at their current road pose.
+    return "camping_site_maneuver_controller:" + battery_urgent_return_source_ +
+           (batteryUrgentUsesForwardLoop() ? ":battery_urgent_roadside_forward"
+                                          : ":battery_urgent_current_road_pose");
+  }
+
   void publishReturnRequest(const std::string &reason) {
     if (!request_return_to_drop_zone_on_done_ || return_acknowledged_) {
       return;
@@ -2084,7 +2445,7 @@ private:
     avg_msgs::msg::PlanningRecallRequest message;
     message.header.stamp = current_time;
     message.site_name = site_goal_key_;
-    message.source = "camping_site_maneuver_controller:" + reason;
+    message.source = returnRequestSource(reason);
     return_request_publisher_->publish(message);
     return_published_ = true;
     last_return_request_publish_time_ = current_time;
@@ -2094,6 +2455,7 @@ private:
 
   void onTimer() {
     const double elapsed = (now() - phase_start_time_).seconds();
+    recall_clearance_voice_gate_.tick(now().seconds());
     requestNav2CancelForSitePhase(false);
     // HH_260824 - Never let yawFromPose's legacy numeric fallback turn a zero,
     // NaN, or otherwise invalid localization quaternion into a real command.
@@ -2102,6 +2464,13 @@ private:
       setError("fresh finite motion pose unavailable during " +
                phaseName(phase_));
       publishStatus(false);
+      return;
+    }
+    if (!battery_urgent_return_source_.empty() &&
+        (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
+         phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw) &&
+        elapsed > crab_return_timeout_s_) {
+      setError("battery urgent return yaw alignment timeout");
       return;
     }
     if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw &&
@@ -2171,13 +2540,23 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kRotate180) {
       if (publishRotate()) {
-        setPhase(CampingSiteManeuverPhase::kUnloadWait,
-                 "robot yaw rotated 180deg");
+        if (recall_turnaround_return_active_) {
+          publishZero();
+          return_requested_ = false;
+          recall_final_return_requested_ = false;
+          setPhase(CampingSiteManeuverPhase::kRecallReturnWait,
+                   "recall turnaround complete; remain stopped for loading; "
+                   "second recall_final_return confirmation required");
+        } else {
+          setPhase(CampingSiteManeuverPhase::kUnloadWait,
+                   "robot yaw rotated 180deg");
+        }
       }
     } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait) {
       publishZero();
       if (elapsed >= unload_wait_s_) {
-        if (auto_return_after_unload_wait_ || return_requested_) {
+        if ((!active_recall_wait_mission_ && auto_return_after_unload_wait_) ||
+            return_requested_) {
           beginReturnExit("unload wait complete");
         } else {
           setPhase(CampingSiteManeuverPhase::kWaitReturn,
@@ -2186,6 +2565,37 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       publishZero();
+      if (active_recall_wait_mission_ && return_requested_ && poseIsFresh()) {
+        beginReturnExit("recall loading already complete; fresh pose recovered");
+      }
+    } else if (phase_ == CampingSiteManeuverPhase::kRecallClearanceWait) {
+      publishZero();
+      // The spoken clearance delay is never permission to enter an occupied
+      // site. Keep the configured occupancy guard and fresh-pose gate active;
+      // the normal final velocity gate still checks live obstacles throughout.
+      // HH_260910 - recall_clearance_wait_s_ remains the floor unchanged; the
+      // voice gate only ever extends the wait past it, never shortens it, and
+      // fails open on its own timeout (see arm() above) so a voice pipeline
+      // that is not running at all cannot stall this phase.
+      if (elapsed >= recall_clearance_wait_s_ && poseIsFresh() &&
+          !occupiedSiteBlocksCurrentMission(site_goal_key_) &&
+          pending_crab_motion_.has_value() &&
+          recall_clearance_voice_gate_.releaseReady()) {
+        if (recall_clearance_voice_gate_.releasedViaTimeout()) {
+          RCLCPP_WARN(get_logger(),
+                       "recall clearance voice cue '%s' never confirmed "
+                       "finished within timeout; entering site anyway",
+                       recall_clearance_voice_gate_.key().c_str());
+        }
+        beginRecallTurnaroundEntry();
+      }
+    } else if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
+      publishZero();
+      // No timer, urgent battery request, or remembered first approval can
+      // bypass this loading boundary. Fresh pose is required after approval.
+      if (recall_final_return_requested_ && poseIsFresh()) {
+        beginReturnExit("recall_final_return confirmed; fresh pose recovered");
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw) {
       if (publishRotate()) {
         setPhase(CampingSiteManeuverPhase::kCrabOut,
@@ -2227,29 +2637,31 @@ private:
         finishReturnAtLiveLaneletHandoff();
       } else if (live_handoff.has_value()) {
         // Stationary hold is published by observeLiveLaneletReturnHandoff().
-      } else if (camrod_control::campsiteCrabReturnMayComplete(
-              crab_return_sequencer_.stage(), return_error,
-              return_position_tolerance_m_)) {
+      } else if (camrod_control::campsiteCrabReturnReadyForRoute(
+                     crab_return_sequencer_.stage())) {
         publishZero();
-        if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-          // HH_260819 - B11-B13 cannot safely zero-turn inside the current
-          // narrow mapped lane. Preserve arrival heading, request the legal
-          // forward loop, and resume ordinary body/footprint checks at DONE.
+        if (alignBatteryUrgentReturnAtCurrentRoadPose(
+                "lateral exit complete; historical_anchor_error=" +
+                fixed(return_error) + "m")) {
+          // The next phase rotates in place; it must not publish a route yet.
+        } else if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+          // HH_260904 - Preserve the arrival heading and request the legal
+          // forward loop after lateral exit and steering settle. Never drive
+          // longitudinally to the historical entry XY.
           setPhase(CampingSiteManeuverPhase::kDone,
-                   "live lanelet pose unavailable; roadside exact-anchor "
-                   "fallback reached; forward return loop requested");
-          publishReturnRequest("done_roadside_forward_exact_anchor_fallback");
+                   "roadside exit complete at current pose; forward return "
+                   "loop requested; historical_anchor_error=" +
+                       fixed(return_error) + "m");
+          publishReturnRequest("done_roadside_forward_current_pose");
         } else {
-          setPhase(
-              CampingSiteManeuverPhase::kDone,
-              "live lanelet pose unavailable; exact-anchor fallback=" +
-                  return_anchor_source_ +
-                  " error=" +
-                  fixed(distanceTo(return_anchor_x_, return_anchor_y_)) + "m");
-          publishReturnRequest("done_exact_anchor_fallback");
+          setPhase(CampingSiteManeuverPhase::kDone,
+                   "lateral exit and steering settle complete at current "
+                   "pose; historical_anchor_error=" +
+                       fixed(return_error) + "m");
+          publishReturnRequest("done_current_pose_after_lateral_exit");
         }
       } else if (elapsed > crab_return_timeout_s_) {
-        setError("crab return timeout before reaching live lanelet or fallback anchor");
+        setError("crab return timeout before completing lateral road exit");
       } else {
         publishCrabReturnToAnchor();
       }
@@ -2278,12 +2690,29 @@ private:
                                      : avg_msgs::msg::ModuleState::OK;
     const std::string message =
         "phase=" + phaseName(phase_) +
+        " site=" + site_goal_key_ +
         " service_mode=" + serviceModeName(active_service_mode_) +
+        " recall_turnaround_return=" +
+        (recall_turnaround_return_active_ ? "True" : "False") +
+        " battery_urgent_return=" +
+        (battery_urgent_return_source_.empty() ? "False" : "True") +
+        " return_source=" + battery_urgent_return_source_ +
         " crab_speed_mps=" + fixed(activeCrabSpeedMps()) +
         " return_published=" + (return_published_ ? "True" : "False") +
         " return_ack=" + (return_acknowledged_ ? "True" : "False");
     status_publisher_->publish(camrod_control::makeModuleState(
         *this, "control", module_level, message, phaseName(phase_)));
+    if (phase_ == CampingSiteManeuverPhase::kRecallClearanceWait) {
+      publishServiceState(
+          "site=" + site_goal_key_ + " clearance_wait_s=" +
+          fixed(recall_clearance_wait_s_, 1) + " occupied=" +
+          (occupiedSiteBlocksCurrentMission(site_goal_key_) ? "true" : "false") +
+          " fresh_pose=" + (poseIsFresh() ? "true" : "false"));
+    } else if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
+      publishServiceState(
+          "site=" + site_goal_key_ + "; stopped for loading; final_return_confirmed=" +
+          (recall_final_return_requested_ ? "true" : "false"));
+    }
     const uint8_t diagnostic_level =
         module_level == avg_msgs::msg::ModuleState::ERROR
             ? diagnostic_msgs::msg::DiagnosticStatus::ERROR
@@ -2346,6 +2775,7 @@ private:
   double minimum_lateral_offset_m_{0.2};
   double maximum_lateral_offset_m_{7.0};
   double roadside_maximum_lateral_offset_m_{0.30};
+  double recall_wait_lateral_offset_m_{0.30};
   std::string default_lateral_direction_{"left"};
   double crab_speed_mps_{0.18};
   double roadside_crab_speed_mps_{0.20};
@@ -2384,6 +2814,14 @@ private:
   double reverse_entry_lateral_tolerance_m_{0.35};
   double reverse_entry_debug_period_s_{1.0};
   double unload_wait_s_{5.0};
+  double recall_clearance_wait_s_{8.0};
+  bool enable_recall_clearance_voice_gate_{true};
+  std::string recall_clearance_voice_key_{"navigation.recall_clear_site"};
+  std::string voice_state_topic_{"/voice/voice_announcer/state"};
+  double recall_clearance_voice_timeout_s_{6.0};
+  camrod_control::VoiceAnnouncementGate recall_clearance_voice_gate_;
+  rclcpp::Subscription<avg_msgs::msg::VoiceState>::SharedPtr
+      voice_state_subscription_;
   bool auto_return_after_unload_wait_{false};
   bool reset_wait_return_on_site_goal_{true};
   bool request_return_to_drop_zone_on_done_{true};
@@ -2404,6 +2842,14 @@ private:
 
   CampingSiteManeuverPhase phase_{CampingSiteManeuverPhase::kIdle};
   CampsiteServiceMode active_service_mode_{CampsiteServiceMode::kTurnaround};
+  // True only for planning scenario RECALL_TO_SITE. It turns every campsite
+  // into a bounded roadside pickup without weakening normal delivery
+  // occupancy protection.
+  bool active_recall_wait_mission_{false};
+  bool recall_turnaround_return_active_{false};
+  bool recall_final_return_requested_{false};
+  std::string battery_urgent_return_source_;
+  double battery_urgent_lane_yaw_{0.0};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> site_goal_;
   std::optional<avg_msgs::msg::AvgPoseStamped> route_goal_;
@@ -2493,9 +2939,11 @@ private:
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
+#ifndef CAMROD_CONTROL_CAMPING_SITE_TEST
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<CampingSiteManeuverControllerNode>());
   rclcpp::shutdown();
   return 0;
 }
+#endif
