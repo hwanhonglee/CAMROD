@@ -31,10 +31,12 @@
 #include "avg_msgs/msg/planning_scenario.hpp"
 #include "avg_msgs/msg/planning_state.hpp"
 #include "avg_msgs/msg/ui_destination_command.hpp"
+#include "avg_msgs/msg/voice_state.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
 #include "camrod_control/control_diagnostics.hpp"
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
@@ -322,6 +324,20 @@ public:
     unload_wait_s_ = declare_parameter<double>("unload_wait_s", 5.0);
     recall_clearance_wait_s_ = std::max(
         0.0, declare_parameter<double>("recall_clearance_wait_s", 8.0));
+    // HH_260910 - recall_clearance_wait_s_ above already exists to give the
+    // spoken clearance warning room to play; this closes the gap for a cue
+    // that overruns it instead of shortening the wait when the cue finishes
+    // early. Fail-open (timeout) rather than block indefinitely if
+    // camrod_voice is not running at all (e.g. bench/sim launch profiles).
+    enable_recall_clearance_voice_gate_ = declare_parameter<bool>(
+        "enable_recall_clearance_voice_gate", true);
+    recall_clearance_voice_key_ = declare_parameter<std::string>(
+        "recall_clearance_voice_key", "navigation.recall_clear_site");
+    voice_state_topic_ = declare_parameter<std::string>(
+        "voice_state_topic", "/voice/voice_announcer/state");
+    recall_clearance_voice_timeout_s_ = std::max(
+        0.0,
+        declare_parameter<double>("recall_clearance_voice_timeout_s", 6.0));
     auto_return_after_unload_wait_ =
         declare_parameter<bool>("auto_return_after_unload_wait", false);
     reset_wait_return_on_site_goal_ =
@@ -461,6 +477,15 @@ public:
                     message->occupied_mission_keys.begin(),
                     message->occupied_mission_keys.end());
               });
+    }
+    if (enable_recall_clearance_voice_gate_) {
+      voice_state_subscription_ = create_subscription<avg_msgs::msg::VoiceState>(
+          voice_state_topic_, 10,
+          [this](const avg_msgs::msg::VoiceState::SharedPtr message) {
+            recall_clearance_voice_gate_.onVoiceState(
+                message->state == avg_msgs::msg::VoiceState::STATE_PLAYING,
+                message->current_key, now().seconds());
+          });
     }
     operation_service_ = create_service<avg_msgs::srv::RequestMotionOperation>(
         "/control/camping_site_maneuver_controller/request_operation",
@@ -2087,6 +2112,18 @@ private:
       entry_yaw_alignment_for_crab_ = false;
       pending_crab_start_source_.clear();
       pending_crab_motion_.reset();
+      recall_clearance_voice_gate_.reset();
+    }
+    // HH_260910 - Arm on entry so the timeout deadline starts with the wait
+    // itself, not with whenever the cue happens to be requested/received.
+    if (phase_ == CampingSiteManeuverPhase::kRecallClearanceWait) {
+      if (enable_recall_clearance_voice_gate_) {
+        recall_clearance_voice_gate_.arm(
+            recall_clearance_voice_key_, now().seconds(),
+            recall_clearance_wait_s_ + recall_clearance_voice_timeout_s_);
+      } else {
+        recall_clearance_voice_gate_.reset();
+      }
     }
     if (phase_ == CampingSiteManeuverPhase::kReverseOut &&
         last_pose_.has_value()) {
@@ -2418,6 +2455,7 @@ private:
 
   void onTimer() {
     const double elapsed = (now() - phase_start_time_).seconds();
+    recall_clearance_voice_gate_.tick(now().seconds());
     requestNav2CancelForSitePhase(false);
     // HH_260824 - Never let yawFromPose's legacy numeric fallback turn a zero,
     // NaN, or otherwise invalid localization quaternion into a real command.
@@ -2535,9 +2573,20 @@ private:
       // The spoken clearance delay is never permission to enter an occupied
       // site. Keep the configured occupancy guard and fresh-pose gate active;
       // the normal final velocity gate still checks live obstacles throughout.
+      // HH_260910 - recall_clearance_wait_s_ remains the floor unchanged; the
+      // voice gate only ever extends the wait past it, never shortens it, and
+      // fails open on its own timeout (see arm() above) so a voice pipeline
+      // that is not running at all cannot stall this phase.
       if (elapsed >= recall_clearance_wait_s_ && poseIsFresh() &&
           !occupiedSiteBlocksCurrentMission(site_goal_key_) &&
-          pending_crab_motion_.has_value()) {
+          pending_crab_motion_.has_value() &&
+          recall_clearance_voice_gate_.releaseReady()) {
+        if (recall_clearance_voice_gate_.releasedViaTimeout()) {
+          RCLCPP_WARN(get_logger(),
+                       "recall clearance voice cue '%s' never confirmed "
+                       "finished within timeout; entering site anyway",
+                       recall_clearance_voice_gate_.key().c_str());
+        }
         beginRecallTurnaroundEntry();
       }
     } else if (phase_ == CampingSiteManeuverPhase::kRecallReturnWait) {
@@ -2766,6 +2815,13 @@ private:
   double reverse_entry_debug_period_s_{1.0};
   double unload_wait_s_{5.0};
   double recall_clearance_wait_s_{8.0};
+  bool enable_recall_clearance_voice_gate_{true};
+  std::string recall_clearance_voice_key_{"navigation.recall_clear_site"};
+  std::string voice_state_topic_{"/voice/voice_announcer/state"};
+  double recall_clearance_voice_timeout_s_{6.0};
+  camrod_control::VoiceAnnouncementGate recall_clearance_voice_gate_;
+  rclcpp::Subscription<avg_msgs::msg::VoiceState>::SharedPtr
+      voice_state_subscription_;
   bool auto_return_after_unload_wait_{false};
   bool reset_wait_return_on_site_goal_{true};
   bool request_return_to_drop_zone_on_done_{true};

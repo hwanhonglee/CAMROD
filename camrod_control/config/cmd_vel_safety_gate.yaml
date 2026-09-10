@@ -57,6 +57,15 @@
     dr_timeout_topic: "/localization/dr_timeout"
     allow_on_start: false
     publish_zero_when_blocked: true
+    # HH_260910 - When an obstacle hold clears, hold zero a little longer for
+    # the "thank you for stepping aside" cue to finish instead of resuming
+    # while it plays. Only ever extends the existing sensor hold; fails open
+    # after this many seconds if camrod_voice never confirms playback (e.g.
+    # not launched at all in a bench/sim profile).
+    enable_resume_after_hold_voice_gate: true
+    resume_after_hold_voice_key: "safety.thankyou"
+    resume_after_hold_voice_timeout_s: 3.0
+    voice_state_topic: "/voice/voice_announcer/state"
 
     # =========================================================================
     # Localization recovery hold

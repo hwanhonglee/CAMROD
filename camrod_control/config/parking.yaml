@@ -138,6 +138,15 @@
     tag_timeout_s: 0.5
     odometry_timeout_s: 0.5
     tag_wait_timeout_s: 60.0
+    # HH_260910 - A tag already in view can be found within one control tick,
+    # before the docking.started cue (fired on entering WAITING_FOR_TAG)
+    # finishes playing. Hold for confirmed playback before the actual
+    # reverse; fails open after this many seconds if camrod_voice never
+    # confirms (e.g. not launched at all in a bench/sim profile).
+    enable_docking_started_voice_gate: true
+    docking_started_voice_key: "docking.started"
+    docking_started_voice_timeout_s: 4.0
+    voice_state_topic: "/voice/voice_announcer/state"
     retry_forward_distance_m: 1.0
     maximum_retries: 5
 

@@ -19,7 +19,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 import rclpy
 import yaml
@@ -27,6 +27,7 @@ from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from avg_msgs.msg import (
+    AudioRequest,
     AvgAprilTagPose,
     AvgServiceState,
     AvgBool,
@@ -47,6 +48,7 @@ from avg_msgs.msg import (
     PlanningState,
     SystemStatus,
     UiDestinationCommand,
+    VoiceState,
 )
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 # HH_260721 - Keep only the FastAPI symbols used by the runtime backend.
@@ -82,6 +84,7 @@ from camrod_ui.service_metrics import (
     default_service_metrics_path,
 )
 from camrod_ui.ui_state_policy import UiStatePolicy
+from camrod_ui.voice_departure_gate import VoiceDepartureGate
 
 # HH_260721 - Keep symbolic service names stable across ROS, REST, and WebSocket clients.
 SERVICE_STATE_NAMES = {
@@ -1009,6 +1012,32 @@ class UiBackendNode(Node):
                 "/control/cmd_vel_safety_gate/status",
             ).value
         )
+        # HH_260910 - Hold a site/return dispatch until its voice cue finishes
+        # playing instead of commanding motion the instant it starts. Emergency
+        # stop is untouched: it is never routed through this gate.
+        self.voice_say_topic = str(
+            self.declare_parameter(
+                "voice_say_topic", "/voice/voice_announcer/say"
+            ).value
+        )
+        self.voice_state_topic = str(
+            self.declare_parameter(
+                "voice_state_topic", "/voice/voice_announcer/state"
+            ).value
+        )
+        self.enable_voice_departure_gate = bool(
+            self.declare_parameter("enable_voice_departure_gate", True).value
+        )
+        # Fail-open: a stuck/crashed voice pipeline must never strand a
+        # mission behind a departure cue that will never confirm.
+        self.voice_departure_gate_timeout_s = max(
+            0.5,
+            float(
+                self.declare_parameter(
+                    "voice_departure_gate_timeout_s", 12.0
+                ).value
+            ),
+        )
         # HH_260810 - Operator telemetry remains dormant until the authenticated
         # diagnostics modal sends a heartbeat. This avoids permanent camera and
         # point-cloud subscribers on the production Jetson.
@@ -1369,6 +1398,12 @@ class UiBackendNode(Node):
             self._on_control_gate_status,
             state_qos,
         )
+        self.sub_voice_state = self.create_subscription(
+            VoiceState,
+            self.voice_state_topic,
+            self._on_voice_state,
+            10,
+        )
         self.sub_platform_status = self.create_subscription(
             AvgPlatformStatus,
             self.platform_status_topic,
@@ -1492,6 +1527,9 @@ class UiBackendNode(Node):
             PoseStamped, self.manual_goal_pose_topic, 10
         )
         self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
+        self.pub_voice_say = self.create_publisher(
+            AudioRequest, self.voice_say_topic, 10
+        )
         # HH_260727 - Runtime tuning uses the standard ROS parameter services, so the UI
         # changes the driver immediately without restarting the platform.
         self.get_ranger_parameters_client = self.create_client(
@@ -1531,6 +1569,12 @@ class UiBackendNode(Node):
         )
         self._startup_fail_closed_timer = self.create_timer(
             0.5, self._reassert_startup_fail_closed
+        )
+        # HH_260910 - Fail-open timeout check for the voice departure gate;
+        # VoiceState samples themselves arrive through sub_voice_state.
+        self._voice_gate = VoiceDepartureGate()
+        self._voice_gate_timer = self.create_timer(
+            0.5, self._on_voice_gate_timer
         )
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -1846,6 +1890,86 @@ class UiBackendNode(Node):
 
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    # ── Voice departure gate ────────────────────────────────────────────────
+    # HH_260910 - Site and return dispatches used to fire the instant they
+    # were accepted, while the matching voice cue only followed later and
+    # reactively — so motion and speech started together. These three helpers
+    # make the mission-dispatch call sites publish their departure cue first
+    # and hold the actual engage/goal/return command until voice_announcer
+    # confirms it finished playing (see VoiceDepartureGate). Emergency stop is
+    # never routed through this gate; it stays immediate, as before.
+
+    def _on_voice_state(self, msg: VoiceState) -> None:
+        gate = getattr(self, "_voice_gate", None)
+        if gate is None:
+            return
+        gate.on_voice_state(
+            playing=(int(msg.state) == VoiceState.STATE_PLAYING),
+            current_key=str(msg.current_key),
+            now_s=self._now_s(),
+        )
+
+    def _on_voice_gate_timer(self) -> None:
+        gate = getattr(self, "_voice_gate", None)
+        if gate is not None:
+            gate.tick(self._now_s())
+
+    def _publish_voice_say(self, key: str) -> None:
+        req = AudioRequest()
+        req.key = key
+        req.priority = 1
+        req.interrupt = False
+        req.locale = ""
+        self.pub_voice_say.publish(req)
+
+    def _dispatch_after_voice(
+        self,
+        keys: Sequence[str],
+        on_complete: Callable[[], None],
+        *,
+        label: str,
+    ) -> None:
+        """Publish `keys` in order and defer `on_complete` until the last one
+        finishes playing (or the fail-open timeout elapses).
+
+        `on_complete` runs immediately — the exact previous, synchronous
+        behavior — when the gate is disabled, or when `self` is a lighter
+        test double with no `_voice_gate` (unit tests exercising this method
+        directly need not know anything about voice gating).
+        """
+        gate = getattr(self, "_voice_gate", None)
+        if gate is None or not getattr(self, "enable_voice_departure_gate", True):
+            on_complete()
+            return
+        published = gate.start(
+            keys,
+            on_complete,
+            now_s=self._now_s(),
+            label=label,
+            timeout_s=getattr(
+                self,
+                "voice_departure_gate_timeout_s",
+                VoiceDepartureGate.DEFAULT_TIMEOUT_S,
+            ),
+            on_timeout=lambda lbl: self.get_logger().warn(
+                f"voice departure gate timed out waiting for '{lbl}' "
+                "announcement to finish; dispatching the command anyway"
+            ),
+        )
+        for key in published:
+            self._publish_voice_say(key)
+
+    def _site_departure_voice_keys(self, site: str) -> tuple[str, ...]:
+        # "Site selected" then "moving to campsite", e.g. B4 -> site_B4.wav
+        # then to_campsite.wav. A site outside the authored B1..B13 set (no
+        # matching site_B*.wav) just skips straight to the generic cue.
+        site = str(site).strip()
+        keys = []
+        if site in self.site_names:
+            keys.append(f"navigation.site_{site}")
+        keys.append("navigation.to_campsite")
+        return tuple(keys)
 
     @staticmethod
     def _new_telemetry_snapshot() -> Dict[str, Any]:
@@ -3508,11 +3632,16 @@ class UiBackendNode(Node):
                 # deliberately rejects return progress without this identity.
                 self._return_requested_generation = generation
                 self._urgent_return_generation = generation
-                if getattr(self, "publish_mission_engage_from_destination", False):
-                    self._publish_mission_engage(True, source=urgent_source)
-                else:
-                    self._publish_platform_drive_enable(True, source=urgent_source)
-                self._publish_camping_site_maneuver_controller_return(source=urgent_source)
+
+                def _open_drive_gate(urgent_source: str = urgent_source) -> None:
+                    if getattr(self, "publish_mission_engage_from_destination", False):
+                        self._publish_mission_engage(True, source=urgent_source)
+                    else:
+                        self._publish_platform_drive_enable(True, source=urgent_source)
+
+                self._publish_camping_site_maneuver_controller_return(
+                    source=urgent_source, before_release=_open_drive_gate
+                )
             elif state in road_states:
                 self._return_requested_generation = generation
                 self._urgent_return_generation = generation
@@ -4173,36 +4302,46 @@ class UiBackendNode(Node):
             )
             self._drop_zone_exit_waiting_for_fresh_status = True
 
-        # HH_260825 - Open authorization only after the dwell has expired, then
-        # start the departure owner. Dynamic radar/fusion cost checks stay active
-        # in EXIT_STRAIGHT and ALIGN_EXIT_YAW; only static lanelet cost is bypassed.
-        if getattr(self, "publish_engage_from_destination", False):
-            self._publish_engage(True, source=f"{source}:site_departure")
-        if getattr(self, "publish_mission_engage_from_destination", False):
-            self._publish_mission_engage(
-                True, source=f"{source}:site_departure"
+        # HH_260910 - Announce the selected site first and hold the EXIT
+        # motion/engage until playback finishes, so the robot does not start
+        # rolling out of the bay while camrod_voice is still speaking.
+        def _release() -> None:
+            # HH_260825 - Open authorization only after the dwell has expired, then
+            # start the departure owner. Dynamic radar/fusion cost checks stay active
+            # in EXIT_STRAIGHT and ALIGN_EXIT_YAW; only static lanelet cost is bypassed.
+            if getattr(self, "publish_engage_from_destination", False):
+                self._publish_engage(True, source=f"{source}:site_departure")
+            if getattr(self, "publish_mission_engage_from_destination", False):
+                self._publish_mission_engage(
+                    True, source=f"{source}:site_departure"
+                )
+            if not resumed_active_departure:
+                self._publish_drop_zone_operation(
+                    MotionOperation.EXIT, source=f"{source}:site_departure"
+                )
+            departure_state = (
+                AvgServiceState.DEPARTING_CHARGER
+                if bool(getattr(self, "_charging_departure_from_charger", False))
+                or bool(getattr(self, "_latest_platform_is_charging", False))
+                else AvgServiceState.DEPARTING_DROP_ZONE
             )
-        if not resumed_active_departure:
-            self._publish_drop_zone_operation(
-                MotionOperation.EXIT, source=f"{source}:site_departure"
+            self._schedule_broadcast(
+                {
+                    "departure_delay_active": False,
+                    "departure_delay_seconds": 0.0,
+                }
             )
-        departure_state = (
-            AvgServiceState.DEPARTING_CHARGER
-            if bool(getattr(self, "_charging_departure_from_charger", False))
-            or bool(getattr(self, "_latest_platform_is_charging", False))
-            else AvgServiceState.DEPARTING_DROP_ZONE
-        )
-        self._schedule_broadcast(
-            {
-                "departure_delay_active": False,
-                "departure_delay_seconds": 0.0,
-            }
-        )
-        self._publish_service_state(
-            departure_state, source=f"{source}:drop_zone_departure"
-        )
-        self.get_logger().info(
-            f"drop-zone departure released after safety dwell: source={source}"
+            self._publish_service_state(
+                departure_state, source=f"{source}:drop_zone_departure"
+            )
+            self.get_logger().info(
+                f"drop-zone departure released after safety dwell: source={source}"
+            )
+
+        self._dispatch_after_voice(
+            self._site_departure_voice_keys(pending[0]),
+            _release,
+            label=f"drop_zone_departure:{pending[0]}",
         )
         return True
 
@@ -4882,15 +5021,33 @@ class UiBackendNode(Node):
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
-    def _publish_camping_site_maneuver_controller_return(self, source: str) -> None:
-        # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
-        msg = MotionOperation()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.operation = MotionOperation.RETURN
-        msg.source = source
-        self.pub_camping_site_maneuver_controller_operation.publish(msg)
-        self.get_logger().info(
-            f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
+    def _publish_camping_site_maneuver_controller_return(
+        self, source: str, *, before_release: Optional[Callable[[], None]] = None
+    ) -> None:
+        # HH_260910 - Every RETURN trigger (button, recall, urgent battery,
+        # service-state auto-return) funnels through here, so gating this one
+        # spot covers all of them: announce the return, then hold the RETURN
+        # motion command until the cue finishes playing. A caller that also
+        # needs to open engage/drive-enable right before the RETURN op passes
+        # `before_release` so that opens after the same announcement too,
+        # instead of racing ahead of it.
+        def _release() -> None:
+            if before_release is not None:
+                before_release()
+            # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+            msg = MotionOperation()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.operation = MotionOperation.RETURN
+            msg.source = source
+            self.pub_camping_site_maneuver_controller_operation.publish(msg)
+            self.get_logger().info(
+                f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
+            )
+
+        self._dispatch_after_voice(
+            ("navigation.to_dropzone",),
+            _release,
+            label=f"return_to_drop_zone:{source}",
         )
 
     def _on_ui_camping_site_operation_request(self, msg: MotionOperation) -> None:
@@ -5051,11 +5208,16 @@ class UiBackendNode(Node):
                 # or parking progress; the service bridge rejects stale generations.
                 self._return_requested_generation = active_generation
                 final_source = f"{source}:recall_final_return:site={active_site}:g={active_generation}"
-                if getattr(self, "publish_mission_engage_from_destination", False):
-                    self._publish_mission_engage(True, source=final_source)
-                else:
-                    self._publish_platform_drive_enable(True, source=final_source)
-                self._publish_camping_site_maneuver_controller_return(source=final_source)
+
+                def _open_drive_gate(final_source: str = final_source) -> None:
+                    if getattr(self, "publish_mission_engage_from_destination", False):
+                        self._publish_mission_engage(True, source=final_source)
+                    else:
+                        self._publish_platform_drive_enable(True, source=final_source)
+
+                self._publish_camping_site_maneuver_controller_return(
+                    source=final_source, before_release=_open_drive_gate
+                )
                 return {"success": True, "site": active_site,
                         "mission_generation": active_generation, "transition": "recall_final_return"}
             if final_wait:
@@ -5227,14 +5389,17 @@ class UiBackendNode(Node):
             # clearance/turnaround sequence. Its first phase is stationary and
             # announced; it alone publishes progress and the eventual route.
             # Reopen the drive gate explicitly, because arrival closed it.
-            if getattr(self, "publish_mission_engage_from_destination", False):
-                self._publish_mission_engage(True, source=f"{source}:recall_complete")
-            else:
-                self._publish_platform_drive_enable(
-                    True, source=f"{source}:recall_complete"
-                )
+            def _open_drive_gate(source: str = source) -> None:
+                if getattr(self, "publish_mission_engage_from_destination", False):
+                    self._publish_mission_engage(True, source=f"{source}:recall_complete")
+                else:
+                    self._publish_platform_drive_enable(
+                        True, source=f"{source}:recall_complete"
+                    )
+
             self._publish_camping_site_maneuver_controller_return(
-                source=f"{source}:recall_loading_complete"
+                source=f"{source}:recall_loading_complete",
+                before_release=_open_drive_gate,
             )
             return "recall_loading_complete"
 
@@ -6070,28 +6235,38 @@ class UiBackendNode(Node):
             self, recall, canonical_key
         )
 
-        # Match normal destination authorization, but publish only the typed
-        # recall request.  No UI-owned mission-key/site-pose pair may race the
-        # planning state machine into DELIVERY_TO_SITE.
-        if getattr(self, "publish_engage_from_destination", False):
-            self._publish_engage(True, source=f"{source}:recall_start")
-        self._publish_service_state(
-            AvgServiceState.RECALL_TO_SITE_ROAD,
-            source=f"{source}:recall_start",
-        )
-        if getattr(self, "publish_mission_engage_from_destination", False):
-            self._publish_mission_engage(
-                True, source=f"{source}:recall_resume"
+        # HH_260910 - Announce before releasing engage/the recall request so
+        # the robot does not start rolling toward the roadside pose while
+        # still speaking.
+        def _release() -> None:
+            # Match normal destination authorization, but publish only the typed
+            # recall request.  No UI-owned mission-key/site-pose pair may race the
+            # planning state machine into DELIVERY_TO_SITE.
+            if getattr(self, "publish_engage_from_destination", False):
+                self._publish_engage(True, source=f"{source}:recall_start")
+            self._publish_service_state(
+                AvgServiceState.RECALL_TO_SITE_ROAD,
+                source=f"{source}:recall_start",
             )
-        else:
-            self._publish_platform_drive_enable(
-                True, source=f"{source}:recall_resume"
+            if getattr(self, "publish_mission_engage_from_destination", False):
+                self._publish_mission_engage(
+                    True, source=f"{source}:recall_resume"
+                )
+            else:
+                self._publish_platform_drive_enable(
+                    True, source=f"{source}:recall_resume"
+                )
+            self.pub_planning_camping_site_recall.publish(recall)
+            self.get_logger().info(
+                "planning camping-site recall "
+                f"({source}) site={canonical_key} -> "
+                f"{self.planning_camping_site_recall_topic}"
             )
-        self.pub_planning_camping_site_recall.publish(recall)
-        self.get_logger().info(
-            "planning camping-site recall "
-            f"({source}) site={canonical_key} -> "
-            f"{self.planning_camping_site_recall_topic}"
+
+        self._dispatch_after_voice(
+            ("navigation.to_campsite",),
+            _release,
+            label=f"guest_recall:{canonical_key}",
         )
         return True
 
@@ -7123,22 +7298,42 @@ class UiBackendNode(Node):
                 ),
             }
 
-        if self.publish_engage_from_destination:
-            self._publish_engage(True, source=f"{source}:destination")
-        if self.publish_mission_engage_from_destination:
-            self._publish_mission_engage(True, source=f"{source}:destination")
-        self._publish_service_state(AvgServiceState.MOVING_TO_SITE, source=f"{source}:start")
-        goal_result = self._publish_goal_for_site(site=site, source=source)
+        # HH_260910 - Announce the selected site before releasing engage/the
+        # goal so the robot does not start moving while still speaking. When
+        # the gate is disabled (or `self` is a test double with none), this
+        # dispatches synchronously exactly as before, so `goal_result` is
+        # already populated by the time it is read below; a real deferred
+        # dispatch instead reports the "pending voice" defaults, since the
+        # true result is not known until the cue finishes playing.
+        goal_result: Dict[str, Any] = {}
+
+        def _release() -> None:
+            if self.publish_engage_from_destination:
+                self._publish_engage(True, source=f"{source}:destination")
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(True, source=f"{source}:destination")
+            self._publish_service_state(
+                AvgServiceState.MOVING_TO_SITE, source=f"{source}:start"
+            )
+            goal_result.update(self._publish_goal_for_site(site=site, source=source))
+
+        self._dispatch_after_voice(
+            self._site_departure_voice_keys(site),
+            _release,
+            label=f"site_departure:{site}",
+        )
         return {
             "site": site,
             "run": True,
-            "mission_key": goal_result.get("mission_key", ""),
+            "mission_key": goal_result.get("mission_key", mission_key),
             "goal_pose_published": bool(goal_result.get("goal_pose_published", False)),
             "recall_request_published": False,
             "mission_generation": generation,
             "owner": UiBackendNode._destination_request_owner(source),
             "intent": UiBackendNode._destination_request_intent(source),
-            "message": str(goal_result.get("message", "ok")),
+            "message": goal_result.get(
+                "message", "site goal accepted, pending voice announcement"
+            ),
         }
 
     def _is_recent_direct_destination_echo(self, site: str, run: bool, source: str) -> bool:
