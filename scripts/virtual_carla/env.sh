@@ -379,6 +379,15 @@ virtual_carla_source_ros() {
     # shellcheck disable=SC1090
     source "${camrod_setup}"
   fi
+  # HH_260911 - Restore the approved host-local SDL dependency after reset.
+  # Do not silently skip the updated voice adapter while reusing an old install.
+  local voice_root="${RANGER_CARLA_ROOT}/.work/deps/sdl2-mixer/usr"
+  local voice_lib="${voice_root}/lib/$(uname -m)-linux-gnu"
+  if [[ -f "${voice_lib}/pkgconfig/SDL2_mixer.pc" ]]; then
+    export PKG_CONFIG_PATH="${voice_lib}/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    export CPLUS_INCLUDE_PATH="${voice_root}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+    export LD_LIBRARY_PATH="${voice_lib}:${voice_root}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+  fi
   [[ "${restore_nounset}" -eq 1 ]] && set -u
 
   export ROS_DOMAIN_ID RMW_IMPLEMENTATION CAMROD_EXTRA_PREFIX_ROOTS

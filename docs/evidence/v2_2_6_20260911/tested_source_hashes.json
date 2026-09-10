@@ -1,0 +1,25 @@
+{
+  "annotation": "HH_260911 - Executable source hashes; comments and reports are not runtime completion evidence.",
+  "sha256": {
+    "develop": {
+      "camrod_ui/runtime/python/camrod_ui/ui_backend_node.py": "d72bab1167600bd115b62c186b6d8dc66c59237abda16857d65d563f04acea18",
+      "camrod_ui/runtime/python/camrod_ui/voice_departure_gate.py": "e12847ba4af8aa28e75af281b59bee40deef654f6eca3fe5ad9e0c159cdc20fb",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/App.js": "671ee915871d7b38b4a2aec0d5fa05af4b570287ef1f57c799b4fbd954912c04",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/TelemetryWorkspace.js": "c966ef2af3453b8687fa8c9c911c79e65c89403180a35be376370dcdd32b1798",
+      "camrod_control/src/apriltag_parking_controller_node.cpp": "cac6ad8a85b8bf9ffe5359f3903ca363f6910e0c2b26227d9d057a1c589ead38",
+      "camrod_control/src/camping_site_maneuver_controller_node.cpp": "1f16f98e1ebac5d0c3deaf69500ea1e8c0082c94dec3ce36511ccab493085cc9",
+      "camrod_control/src/cmd_vel_safety_gate_node.cpp": "f72c590bd975b1d6d375a0e80a4f851ab143b43083cada9531bfd3351aaf96b8",
+      "camrod_voice/src/voice_event_adapter_node.py": "70a12cbecc6ccfece3d7ae6db87b9a85d2b1f9edb00e5c50a9fefd8bea8b6ebd"
+    },
+    "virtual_carla": {
+      "camrod_ui/runtime/python/camrod_ui/ui_backend_node.py": "4a6c94c666dae135eae1c1f84ce7e4aef1316a3212c5b1d74acadb84b4cd2df9",
+      "camrod_ui/runtime/python/camrod_ui/voice_departure_gate.py": "e12847ba4af8aa28e75af281b59bee40deef654f6eca3fe5ad9e0c159cdc20fb",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/App.js": "70b4a595306f097c2a87a2c1b727e351bdf43f46fe19c311328667806ddfd016",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/TelemetryWorkspace.js": "47db74e46fd33676ed1d4a57bbf917ebb3444fd5c73cd527df8bf77ba0ad7782",
+      "camrod_control/src/apriltag_parking_controller_node.cpp": "f51452ab90ece47c3657f1338666f72dd08bbec37bd535b647932576f89f88f3",
+      "camrod_control/src/camping_site_maneuver_controller_node.cpp": "c2a5aa8705c563f5c5c3f217c58d011df9bd5343381fd0310741700903134191",
+      "camrod_control/src/cmd_vel_safety_gate_node.cpp": "3e0c777fccfbc55dd0117c3b1097b6ea4662b1d2b180bdd33433c95314096371",
+      "camrod_voice/src/voice_event_adapter_node.py": "70a12cbecc6ccfece3d7ae6db87b9a85d2b1f9edb00e5c50a9fefd8bea8b6ebd"
+    }
+  }
+}

@@ -33,12 +33,14 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <avg_msgs/msg/avg_service_state.hpp>
 #include <avg_msgs/msg/module_state.hpp>
+#include <avg_msgs/msg/voice_state.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
 
 #include "camrod_control/parking_speed_profile.hpp"
 #include "camrod_control/apriltag_parking_retry.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 
 #include <tf2_ros/buffer.h>
@@ -147,6 +149,18 @@ public:
     tag_timeout_s_ = declare_parameter<double>("tag_timeout_s", 0.5);
     odometry_timeout_s_ = std::abs(declare_parameter<double>("odometry_timeout_s", 0.5));
     tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 60.0);
+    // HH_260910 - A tag already in view can be recognized within one control
+    // tick, well before the "docking.started" cue (fired on entering
+    // WAITING_FOR_TAG) finishes playing. Hold here for confirmed playback, or
+    // this short fail-open timeout, before starting the actual reverse.
+    enable_docking_started_voice_gate_ = declare_parameter<bool>(
+      "enable_docking_started_voice_gate", true);
+    docking_started_voice_key_ = declare_parameter<std::string>(
+      "docking_started_voice_key", "docking.started");
+    docking_started_voice_timeout_s_ = std::abs(
+      declare_parameter<double>("docking_started_voice_timeout_s", 4.0));
+    voice_state_topic_ = declare_parameter<std::string>(
+      "voice_state_topic", "/voice/voice_announcer/state");
     enable_bounded_lateral_retry_ = declare_parameter<bool>(
       "enable_bounded_lateral_retry", false);
     initial_clearance_config_ = {
@@ -278,6 +292,16 @@ public:
       std::bind(
         &AprilTagParkingControllerNode::operationService, this,
         std::placeholders::_1, std::placeholders::_2));
+
+    if (enable_docking_started_voice_gate_) {
+      voice_state_subscription_ = create_subscription<avg_msgs::msg::VoiceState>(
+        voice_state_topic_, 10,
+        [this](const avg_msgs::msg::VoiceState::SharedPtr message) {
+          docking_started_voice_gate_.onVoiceState(
+            message->state == avg_msgs::msg::VoiceState::STATE_PLAYING,
+            message->current_key, now().seconds());
+        });
+    }
 
     const auto period = std::chrono::duration<double>(1.0 / control_rate_hz_);
     control_timer_ = create_wall_timer(
@@ -526,6 +550,7 @@ private:
   // HH_260720 - Run the explicit AprilTag parking state machine.
   void controlLoop()
   {
+    docking_started_voice_gate_.tick(now().seconds());
     const auto current_time = now();
     const bool odometry_is_fresh = odometryIsFresh(current_time);
     const bool tag_fresh = axis_valid_ && tag_camera_distance_valid_ &&
@@ -585,6 +610,20 @@ private:
             return;
           }
           if (tag_fresh) {
+            if (!docking_started_voice_gate_.releaseReady()) {
+              // HH_260910 - Tag already found, but docking.started has not
+              // been confirmed finished playing yet; hold here (still zero)
+              // instead of beginning the reverse under the announcement.
+              publishStop();
+              publishStatus();
+              return;
+            }
+            if (docking_started_voice_gate_.releasedViaTimeout()) {
+              RCLCPP_WARN(
+                get_logger(),
+                "docking.started cue never confirmed finished within "
+                "timeout; beginning tag-guided reverse anyway");
+            }
             const auto clearance = camrod_control::aprilTagInitialClearanceDecision(
               initial_clearance_config_, initial_clearance_evaluated_, tag_fresh,
               odometry_is_fresh, charging_detected_, tag_camera_distance_m_,
@@ -1073,6 +1112,14 @@ private:
         stateName(state_), stateName(s));
       state_ = s;
       state_enter_time_ = now();
+      if (s == State::WAITING_FOR_TAG && enable_docking_started_voice_gate_) {
+        // HH_260910 - Armed the moment docking.started is expected to fire
+        // (the parking-status ModuleState this entry produces is what
+        // camrod_voice reacts to), not when a tag happens to be found.
+        docking_started_voice_gate_.arm(
+          docking_started_voice_key_, now().seconds(),
+          docking_started_voice_timeout_s_);
+      }
       publishServiceState(true);
       publishStatus(true);
     }
@@ -1276,6 +1323,16 @@ private:
   rclcpp::Time last_odometry_time_{0, 0, RCL_ROS_TIME};
   camrod_control::YawAlignmentSettling yaw_alignment_settling_;
   bool yaw_alignment_settled_logged_{false};
+
+  // HH_260910 - Hold WAITING_FOR_TAG -> TAG_GUIDED_REVERSE for the
+  // docking.started cue to finish (or its fail-open timeout).
+  bool enable_docking_started_voice_gate_{true};
+  std::string docking_started_voice_key_{"docking.started"};
+  double docking_started_voice_timeout_s_{4.0};
+  std::string voice_state_topic_{"/voice/voice_announcer/state"};
+  camrod_control::VoiceAnnouncementGate docking_started_voice_gate_;
+  rclcpp::Subscription<avg_msgs::msg::VoiceState>::SharedPtr
+    voice_state_subscription_;
 
   bool charging_detected_{false};
 

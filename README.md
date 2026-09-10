@@ -35,15 +35,23 @@ exact drop-zone parking-point correction, and B1-B13 service metrics. -->
 shared station geometry and UI departure recovery; field acceptance is separate. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current release baseline: **`v2.2.5`**.
+zero-turn Ranger platform. Current release baseline: **`v2.2.6`**.
+
+<!-- HH_260911 - Current bounded validation supersedes no historical evidence. -->
+[v2.2.6 changes](docs/V2_2_6_RELEASE_NOTES.md) and
+[executed validation](docs/V2_2_6_VALIDATION.md) describe station recovery,
+voice cancellation, local build scope, and remaining field/endurance work.
+
+The v2.2.5 notes and results below are retained as historical evidence.
 
 [v2.2.5 release notes](docs/V2_2_5_RELEASE_NOTES.md) distinguish pure control,
 planning and UI fixes from inherited features and remaining integration/field
 acceptance. The version tag is not a claim that every campsite or docking cycle passed.
 
-**This `virtual/carla` branch:** [2026-09-08 request-by-request results and actual PNG/GIF](docs/VIRTUAL_CARLA_V2_2_5_VERIFICATION.md).
-Latest validated runtime: one B1 Guest round trip/reverse park passed; optional
-Dock failed; remaining current-version scenarios are unverified. Historical
+**Historical v2.2.5 `virtual/carla` checkpoint:** [2026-09-08 request-by-request results and actual PNG/GIF](docs/VIRTUAL_CARLA_V2_2_5_VERIFICATION.md).
+At that v2.2.5 checkpoint, one B1 Guest round trip/reverse park passed and
+optional Dock failed. Current v2.2.6 station/retry results are recorded above;
+B1-B13 endurance has not been repeated for v2.2.6. Historical
 full-site evidence below does not override this current status.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/guide/full-stack-mission-contract.png)

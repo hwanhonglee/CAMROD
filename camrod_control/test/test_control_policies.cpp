@@ -26,6 +26,7 @@
 #include "camrod_control/path_relative_route_recovery.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
+#include "camrod_control/voice_announcement_gate.hpp"
 #include "camrod_control/yaw_alignment_settling.hpp"
 #include "camrod_sensor_kit/robot_boundary.hpp"
 #include "gtest/gtest.h"
@@ -284,7 +285,66 @@ TEST(BoundedRecoveryAttemptPolicy, ZeroAlsoPausesAnActiveRetryDwell) {
   clock.reset();
   EXPECT_NEAR(clock.episodeElapsed(90.0, 0.0), 90.0, 1.0e-9);
 }
+TEST(VoiceAnnouncementGate, NeverArmedIsAlwaysReady) {
+  VoiceAnnouncementGate gate;
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
+}
 
+TEST(VoiceAnnouncementGate, ReleasesOnceArmedKeyIsSeenPlayingThenStops) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(true, "navigation.recall_clear_site", 1.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(false, "", 3.0);
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
+}
+
+TEST(VoiceAnnouncementGate, UnrelatedKeyPlayingDoesNotFalselyConfirm) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.onVoiceState(true, "safety.obstacle", 0.5);
+  gate.onVoiceState(false, "", 0.8);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.onVoiceState(true, "navigation.recall_clear_site", 1.0);
+  gate.onVoiceState(false, "", 2.0);
+  EXPECT_TRUE(gate.releaseReady());
+}
+
+TEST(VoiceAnnouncementGate, FailsOpenOnTimeoutWhenVoiceNeverConfirms) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.tick(5.9);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.tick(6.0);
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_TRUE(gate.releasedViaTimeout());
+}
+
+TEST(VoiceAnnouncementGate, ResetClearsAnArmedUnconfirmedGateBackToReady) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  gate.reset();
+  EXPECT_TRUE(gate.releaseReady());
+  EXPECT_FALSE(gate.armed());
+}
+
+TEST(VoiceAnnouncementGate, ReArmingReplacesAPreviouslyReleasedWait) {
+  VoiceAnnouncementGate gate;
+  gate.arm("navigation.recall_clear_site", 0.0, 6.0);
+  gate.tick(6.0);
+  EXPECT_TRUE(gate.releaseReady());
+  gate.arm("navigation.recall_clear_site", 10.0, 6.0);
+  EXPECT_FALSE(gate.releaseReady());
+  EXPECT_FALSE(gate.releasedViaTimeout());
+}
+
+
+
+// HH_260911 - Reuse the earlier degrees helper; do not redefine it after import.
 avg_msgs::msg::AvgPoseStamped makeMotionPose(const double x, const double y,
                                              const double yaw_degrees) {
   avg_msgs::msg::AvgPoseStamped pose;

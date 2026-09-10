@@ -29,6 +29,8 @@
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
     # HH_260723 - Block entry into a campsite confirmed occupied by perception.
     campsite_occupancy_topic: "/perception/camping_sites/occupancy"
+    # HH_260910 - Voice completion gate for the recall clearance wait below.
+    voice_state_topic: "/voice/voice_announcer/state"
     # HH_260818 - Keep the current tent-at-destination workflow by default.
     # Set true to mark confirmed semantic tent sites unavailable before entry.
     enable_campsite_occupancy_guard: false
@@ -60,6 +62,14 @@
     # launch files may explicitly leave the site first and follow the inverted
     # shortest route in reverse without turning in the constrained corridor.
     roadside_reverse_return_enable: false
+    # HH_260910 - The wait above is a floor, not a ceiling: entry now also
+    # waits for voice_announcer to confirm recall_clearance_voice_key finished
+    # playing, in case it ever runs long. Fails open after this many extra
+    # seconds past recall_clearance_wait_s if camrod_voice never confirms
+    # (e.g. not launched at all in a bench/sim profile).
+    enable_recall_clearance_voice_gate: true
+    recall_clearance_voice_key: "navigation.recall_clear_site"
+    recall_clearance_voice_timeout_s: 6.0
     # HH_260813 - Planning latches GOAL_REACHED at 0.35 m from whichever of the
     # lanelet snap or the raw pose is closer; stay wider than that so the entry
     # handoff is never rejected for an arrival planning already accepted.

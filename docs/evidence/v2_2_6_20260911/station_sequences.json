@@ -1,0 +1,1076 @@
+{
+  "annotation": "HH_260911 - Actual CARLA-backed observations; fault injection is explicit.",
+  "source_worktree_head_at_run": "44ad5bdba87c5bd625c1baa869b0ccc840143c54",
+  "source_was_modified": true,
+  "common_baseline": "914c3ed1d64f75ae3893e754f39078193421691f",
+  "traces": {
+    "baseline_direct_dock": {
+      "raw_sha256": "f6ea696d45883b74898b8529fac4986e2e5389085605c94e92e6200515e4dd2b",
+      "events": [
+        {
+          "time": 1789065204.500014
+        },
+        {
+          "time": 1789065204.50581,
+          "action": "dock",
+          "http_status": 409,
+          "reply": {
+            "success": false,
+            "error": "docking_requires_drop_zone",
+            "message": "Return to the drop zone before requesting docking"
+          }
+        },
+        {
+          "elapsed_s": 0.009,
+          "service_state_name": "OPERATOR_STOPPED",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "idle",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE"
+            }
+          ]
+        }
+      ]
+    },
+    "baseline_station_park": {
+      "raw_sha256": "241f40da72ae89c8c2ed60e6d4af76a693b1ef780e06f194e0905152f8b921c0",
+      "events": [
+        {
+          "time": 1789065298.4947822
+        },
+        {
+          "time": 1789065298.506054,
+          "action": "manual_return",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "message": "parking_alignment",
+            "action": "parking_alignment",
+            "service_state": 10
+          }
+        },
+        {
+          "elapsed_s": 0.014,
+          "service_state_name": "OPERATOR_STOPPED",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.017,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.024,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=WAITING_FOR_PARKING_OWNER"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.026,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 2,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=ERROR error=phase=ERROR charging=False detail=station is behind the reverse axis; check drop-zone yaw"
+            }
+          ]
+        }
+      ]
+    },
+    "baseline_dock_after_park_failure": {
+      "raw_sha256": "e3a28b5b0f66d5f63a5360a9bbcfe54cac52ae31b71b9a7c01924ba7cbc35b66",
+      "events": [
+        {
+          "time": 1789065407.6459172
+        },
+        {
+          "time": 1789065407.6512444,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "docking_requested",
+            "message": "Explicit charging docking requested",
+            "parking_requested_final_method": "apriltag"
+          }
+        },
+        {
+          "elapsed_s": 0.01,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 2,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=5 phase=ERROR error=phase=ERROR charging=False detail=station is behind the reverse axis; check drop-zone yaw"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.013,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=REVERSE_APPROACH"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 2.016,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 2,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=ERROR error=phase=ERROR charging=False detail=station is behind the reverse axis; check drop-zone yaw"
+            }
+          ]
+        }
+      ]
+    },
+    "revised_direct_dock": {
+      "raw_sha256": "21c13cbeabe07ea6eb291eb1b8d3ccee709bca4d88fad10d716ae40fc17da160",
+      "events": [
+        {
+          "time": 1789069409.1853375
+        },
+        {
+          "time": 1789069409.2045662,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "docking_requested",
+            "transition": "parking_alignment",
+            "message": "Explicit charging docking requested",
+            "parking_requested_final_method": "apriltag"
+          }
+        },
+        {
+          "elapsed_s": 0.022,
+          "service_state_name": "OPERATOR_STOPPED",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.025,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 2.028,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.032,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=5 phase=REVERSE_APPROACH"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.035,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=WAITING_FOR_TAG"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 6.042,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=FINAL_YAW_ALIGNMENT"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.045,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=WAITING_FOR_CHARGING"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 18.079,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    },
+    "revised_dock_duplicate": {
+      "raw_sha256": "79ae6453e28e9f603940fc3375910f1cdd3a97ee551040eae2ad85a28e3f2678",
+      "events": [
+        {
+          "time": 1789069785.7463586
+        },
+        {
+          "time": 1789069785.7501564,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "already_charging"
+          }
+        },
+        {
+          "elapsed_s": 0.005,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    },
+    "revised_return_while_charging": {
+      "raw_sha256": "5f71118187f989ab7c0af1b5b9ac0b6ea025c1a5f2a3c7d04b3da8996be693f0",
+      "events": [
+        {
+          "time": 1789069788.8168232
+        },
+        {
+          "time": 1789069788.8223329,
+          "action": "manual_return",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "message": "waiting_for_disconnect",
+            "action": "waiting_for_disconnect",
+            "service_state": 13
+          }
+        },
+        {
+          "elapsed_s": 0.01,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "waiting_for_disconnect",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 10.046,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "expired",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    },
+    "final_direct_dock": {
+      "raw_sha256": "954781a5539d8bb77e604d5a91b4a55dbb0311a6726b2c8c61e5038120bc7537",
+      "events": [
+        {
+          "time": 1789070155.601408
+        },
+        {
+          "time": 1789070155.6128442,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "docking_requested",
+            "transition": "parking_alignment",
+            "message": "Explicit charging docking requested",
+            "parking_requested_final_method": "apriltag"
+          }
+        },
+        {
+          "elapsed_s": 0.015,
+          "service_state_name": "OPERATOR_STOPPED",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.018,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 2.021,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=4 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.024,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=5 phase=WAITING_FOR_PARKING_OWNER"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.027,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=WAITING_FOR_TAG"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 6.033,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=FINAL_YAW_ALIGNMENT"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.036,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=WAITING_FOR_CHARGING"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 17.081,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=WAITING_FOR_CHARGING"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 18.084,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    },
+    "actual_departure_clearance": {
+      "raw_sha256": "9d969b1b7f626d2dcd6e0f2d41df191c21e82f7ce3296ee67aa31d79020ea803",
+      "events": [
+        {
+          "time": 1789070331.071918
+        },
+        {
+          "time": 1789070331.0863733,
+          "request": {
+            "success": true,
+            "destination": {
+              "site": "B1",
+              "run": true
+            },
+            "dispatch": {
+              "site": "B1",
+              "run": true,
+              "mission_key": "camping_site_1",
+              "goal_pose_published": false,
+              "recall_request_published": false,
+              "mission_generation": 1789070103178001,
+              "owner": "operator",
+              "intent": "delivery",
+              "message": "site goal pending 7.0 s charging safety dwell, then drop-zone exit"
+            }
+          }
+        },
+        {
+          "elapsed_s": 0.018,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.046,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=6 phase=PARKED"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 8.05,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=7 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 11.063,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=7 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 14.073,
+          "service_state_name": "DEPARTING_CHARGER",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=7 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 15.076,
+          "service_state_name": "DEPARTING_DROP_ZONE",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=7 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "time": 1789070349.166254,
+          "stop": {
+            "success": true,
+            "message": "stop command published"
+          },
+          "charger_clearance_observed": true
+        }
+      ]
+    },
+    "final_park_after_departure_stop": {
+      "raw_sha256": "954c80a8eed006128267cdafb969d85e19e778b6c581a55954cbde7a80093db7",
+      "events": [
+        {
+          "time": 1789070540.1976688
+        },
+        {
+          "time": 1789070540.207046,
+          "action": "manual_return",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "message": "parking_alignment",
+            "action": "parking_alignment",
+            "service_state": 10
+          }
+        },
+        {
+          "elapsed_s": 0.012,
+          "service_state_name": "OPERATOR_STOPPED",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=8 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.015,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=9 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.022,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=9 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.025,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=10 phase=REVERSE_APPROACH"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 7.036,
+          "service_state_name": "DROP_ZONE_WAIT",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=10 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    },
+    "final_injected_tag_timeout": {
+      "raw_sha256": "5d8cd719943bc541dae84910d0da706a9e2bdb13d048d0fef056d938aca23b1b",
+      "events": [
+        {
+          "time": 1789070742.0796602
+        },
+        {
+          "time": 1789070742.0917907,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "docking_requested",
+            "transition": "parking_alignment",
+            "message": "Explicit charging docking requested",
+            "parking_requested_final_method": "apriltag"
+          }
+        },
+        {
+          "elapsed_s": 0.015,
+          "service_state_name": "DROP_ZONE_WAIT",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=false forced=false attempt=10 phase=PARKED"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.02,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=11 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 2.023,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=12 phase=WAITING_FOR_PARKING_OWNER"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.026,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=13 phase=WAITING_FOR_PARKING_OWNER"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.028,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=13 phase=WAITING_FOR_TAG"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 64.225,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 2,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=13 phase=ERROR error=phase=ERROR tag_distance_m=-1.000 axis_distance_m=1.335 lateral_m=0.043 heading_rad=0.035 remaining_tag_m=-1.000 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=false initial_clearance_active=false"
+            }
+          ]
+        }
+      ]
+    },
+    "final_retry_after_tag_failure": {
+      "raw_sha256": "9df85d443ab1a1399c2a05914a676b6b7f8ceefa117b4abbc420f2e821715ea9",
+      "events": [
+        {
+          "time": 1789071027.9327807
+        },
+        {
+          "time": 1789071027.9405396,
+          "action": "dock",
+          "http_status": 200,
+          "reply": {
+            "success": true,
+            "action": "docking_requested",
+            "transition": "parking_alignment",
+            "message": "Explicit charging docking requested",
+            "parking_requested_final_method": "apriltag"
+          }
+        },
+        {
+          "elapsed_s": 0.01,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_preparing",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 2,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=13 phase=ERROR error=phase=ERROR tag_distance_m=0.719 axis_distance_m=1.335 lateral_m=0.043 heading_rad=0.035 remaining_tag_m=0.319 configured_stop_tag_m=0.400 stop_reason=none stop_trigger_tag_m=-1.000 retry=0 retry_forward_started=false retry_forward_progress_m=0.000 retry_path_m=0.000 retry_elapsed_s=0.00 charging=false initial_clearance_evaluated=false initial_clearance_active=false"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 1.016,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=14 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 2.018,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "reverse",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=14 phase=IDLE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 3.023,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=reverse battery_percent=80.000000 charging_required=true forced=true attempt=15 phase=WAITING_FOR_PARKING_OWNER"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 4.026,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=WAITING_FOR_TAG"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 5.029,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=RETRY_FORWARD_EXIT"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 12.05,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=WAITING_FOR_TAG"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 16.061,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=TAG_GUIDED_REVERSE"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 27.097,
+          "service_state_name": "DROP_ZONE_PARKING",
+          "engaged": true,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=FINAL_YAW_ALIGNMENT"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 28.1,
+          "service_state_name": "WAITING_FOR_CHARGING",
+          "engaged": false,
+          "platform_is_charging": false,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=WAITING_FOR_CHARGING"
+            }
+          ]
+        },
+        {
+          "elapsed_s": 40.141,
+          "service_state_name": "CHARGING",
+          "engaged": false,
+          "platform_is_charging": true,
+          "redock_status": "alignment_started",
+          "parking_selected_method": "apriltag",
+          "parking": [
+            {
+              "name": "parking",
+              "level": 0,
+              "message": "parking_method=apriltag battery_percent=80.000000 charging_required=true forced=true attempt=16 phase=PARKED"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

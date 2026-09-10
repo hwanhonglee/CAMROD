@@ -6,6 +6,7 @@ conversion boundaries, so stopping it cannot destroy a shared CARLA world.
 """
 
 import os
+from camrod_carla_adapter.runtime_sensor_mount import materialize_sensor_mount
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -169,6 +170,15 @@ def generate_launch_description():
         "CAMROD_CARLA_PERCEPTION_FILE",
         default=perception_carla_config,
     )
+
+    # HH_260911 - Match CARLA's real GNSS mount while retaining field defaults.
+    spawn_config = os.environ.get("RANGER_SPAWN_FILE", "").strip()
+    if spawn_config:
+        input_adapter_config, launch_defaults = materialize_sensor_mount(
+            input_adapter_config,
+            os.path.join(bringup_share, "config", "sensor_kit", "robot_params.yaml"),
+            launch_defaults, spawn_config,
+            os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"))
 
     declarations = [
         DeclareLaunchArgument(

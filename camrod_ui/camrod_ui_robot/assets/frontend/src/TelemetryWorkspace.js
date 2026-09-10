@@ -10,7 +10,9 @@ export const TELEMETRY_TABS = [
   { id: 'trajectory', label: '주행 궤적' },
   { id: 'perception', label: '지도 · 인지' },
   { id: 'safety', label: '안전 · 제어' },
-  { id: 'docking', label: '도킹 · 주차' },
+  // HH_260909 - Same 도킹 -> 충전 wording as the operator service card; the
+  // tab id, /ui/dock route and DockingRequestButton names are unchanged.
+  { id: 'docking', label: '충전 · 주차' },
 ];
 
 const EMPTY_TELEMETRY = {
@@ -58,21 +60,22 @@ const finite = value => typeof value === 'number' && Number.isFinite(value);
 export async function postDockingRequest(request = fetch) {
   const response = await request('/ui/dock', { method: 'POST' });
   const body = await response.json();
-  if (!response.ok || !body.success) throw new Error(body.message || '도킹 요청 실패');
+  if (!response.ok || !body.success) throw new Error(body.message || '충전 요청 실패');
   return body;
 }
 
 export function parkingPolicyMessage(policy = {}) {
   if (policy.parking_selected_method === 'apriltag') return '';
   if (policy.parking_selected_method === 'reverse') return '일반 후진 주차 선택됨 · 충전하지 않음';
-  if (policy.charging_required === true) return '충전 필요 · 복귀 후 충전 도킹';
-  return '자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전 도킹';
+  if (policy.charging_required === true) return '충전 필요 · 복귀 후 충전';
+  return '자동 주차 · 35% 이상 일반 후진 주차 / 35% 미만 충전';
 }
 
 // This is a station action, not a campsite Return shortcut. Backend rechecks
 // the authoritative station state before granting any docking motion.
 export function dockingAllowedAtServiceState(serviceStateName) {
-  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
+  // HH_260911 - A stopped robot may request Dock; backend requires fresh station geometry.
+  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING', 'OPERATOR_STOPPED']
     .includes(serviceStateName);
 }
 
@@ -83,15 +86,15 @@ export function DockingCommandButton({ className = 'manual-return-btn', disabled
   const stationAllowed = dockingAllowedAtServiceState(serviceStateName);
   const requestDocking = async () => {
     if (pendingRef.current || disabled || !stationAllowed) return;
-    if (!window.confirm('배터리 잔량과 관계없이 충전 도킹을 요청합니다. 진행하시겠습니까?')) return;
+    if (!window.confirm('배터리 잔량과 관계없이 충전을 요청합니다. 진행하시겠습니까?')) return;
     pendingRef.current = true;
     setPending(true);
     setStatus('');
     try {
       const body = await postDockingRequest();
-      setStatus(body.message || '충전 도킹 요청이 접수되었습니다.');
+      setStatus(body.message || '충전 요청이 접수되었습니다.');
     } catch (error) {
-      setStatus(error.message || '도킹 요청 실패');
+      setStatus(error.message || '충전 요청 실패');
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -99,8 +102,8 @@ export function DockingCommandButton({ className = 'manual-return-btn', disabled
   };
   return <>
     <button type="button" className={className} onClick={requestDocking} disabled={disabled || pending || !stationAllowed}
-      title={stationAllowed ? '자동 주차 정책과 별도로 충전 도킹 요청' : '도킹은 drop_zone 정차·주차 상태에서만 가능합니다'}>
-      {pending ? '도킹 요청 중' : '도킹'}
+      title={stationAllowed ? '자동 주차 정책과 별도로 충전 요청' : '충전은 drop_zone 정차·주차 상태에서만 가능합니다'}>
+      {pending ? '충전 요청 중' : '충전'}
     </button>
     {status && <span className="manual-motion-status" role="status">{status}</span>}
   </>;

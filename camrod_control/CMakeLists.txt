@@ -200,9 +200,7 @@ if(BUILD_TESTING)
   set_tests_properties(test_parking_dispatcher PROPERTIES
     ENVIRONMENT "ROS_DOMAIN_ID=189;ROS_LOCALHOST_ONLY=1")
 
-  ament_add_gtest(test_reverse_parking_completion
-    test/test_reverse_parking_completion.cpp
-  )
+  ament_add_gtest(test_reverse_parking_completion test/test_reverse_parking_completion.cpp)
   target_include_directories(test_reverse_parking_completion PRIVATE include)
 
   ament_add_gtest(test_reverse_parking_controller

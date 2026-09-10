@@ -1,0 +1,15 @@
+ui_simulator:
+  ros__parameters:
+    mode: closed_loop
+    initial_scenario: ready
+    speed_scale: 1.0
+    publish_rate_hz: 10.0
+    route_duration_s: 12.0
+    maneuver_duration_s: 2.0
+    control_host: 127.0.0.1
+    control_port: 8020
+    # Reset/Ready releases the backend's active mission first; the launch
+    # file overrides this with the real ui_port.  Empty disables the hook.
+    backend_stop_url: http://127.0.0.1:8010/ui/stop
+    backend_stop_timeout_s: 2.0
+    allow_default_ros_domain: false

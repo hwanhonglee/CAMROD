@@ -1603,6 +1603,8 @@ class UiBackendStopTest(unittest.TestCase):
         backend._now_s = lambda: 99.0
         backend._lock = threading.Lock()
         backend._state = SimpleNamespace(battery_percentage=-1)
+        # HH_260911 - Charging edges now broadcast even without a SOC sample.
+        backend._schedule_broadcast = mock.Mock()
         message = AvgPlatformStatus()
         message.is_charging = True
         message.battery_state_available = False
@@ -4765,9 +4767,7 @@ class UiBackendStopTest(unittest.TestCase):
             "a bounded service-state burst must survive dispatch-lock delay",
         )
 
-    def test_robot_completes_guest_recall_once_without_early_planning(
-        self,
-    ) -> None:
+    def test_robot_completes_guest_recall_once_without_early_planning(self) -> None:
         events = []
         backend = self._mission_authority_backend(
             _active_mission_source="guest:dispatch:r=current",
@@ -4780,8 +4780,14 @@ class UiBackendStopTest(unittest.TestCase):
             _publish_mission_engage=lambda enabled, source: events.append(
                 ("engage", enabled)
             ),
-            _publish_camping_site_maneuver_controller_return=lambda source: (
-                events.append(("controller_return", source))
+            # HH_260910 - The real method now opens engage/drive-enable via
+            # `before_release` right before the RETURN publish, both gated
+            # behind the same voice cue; simulate that same ordering here.
+            _publish_camping_site_maneuver_controller_return=(
+                lambda source, before_release=None: (
+                    before_release() if before_release else None,
+                    events.append(("controller_return", source)),
+                )
             ),
             _publish_service_state=lambda *args, **kwargs: self.fail(
                 "controller must publish the actual recall return phase"
@@ -4789,53 +4795,36 @@ class UiBackendStopTest(unittest.TestCase):
             _schedule_broadcast=lambda payload: None,
         )
         first = UiBackendNode.request_owned_return_to_drop_zone(
-            backend,
-            "B1",
-            41,
-            source="robot_ui:usage_complete",
+            backend, "B1", 41, source="robot_ui:usage_complete",
             allowed_owners={"operator", "robot"},
         )
         second = UiBackendNode.request_owned_return_to_drop_zone(
-            backend,
-            "B1",
-            41,
-            source="robot_ui:usage_complete",
+            backend, "B1", 41, source="robot_ui:usage_complete",
             allowed_owners={"operator", "robot"},
         )
         self.assertTrue(first["success"])
         self.assertEqual(first["transition"], "recall_loading_complete")
         self.assertEqual(second["transition"], "return_already_accepted")
-        self.assertEqual(
-            [event[0] for event in events],
-            ["engage", "controller_return"],
-        )
+        self.assertEqual([event[0] for event in events], ["engage", "controller_return"])
         self.assertEqual(events[0], ("engage", True))
-        self.assertEqual(
-            backend._active_mission_source,
-            "guest:dispatch:r=current",
-        )
+        self.assertEqual(backend._active_mission_source, "guest:dispatch:r=current")
 
         # Profiles with mission-engage publication disabled still need the
         # same platform drive-enable handoff before the controller can exit.
         events.clear()
         backend._return_requested_generation = 0
         backend.publish_mission_engage_from_destination = False
-        backend._publish_platform_drive_enable = (
-            lambda enabled, source: events.append(("drive_enable", enabled))
+        backend._publish_platform_drive_enable = lambda enabled, source: events.append(
+            ("drive_enable", enabled)
         )
         result = UiBackendNode.request_owned_return_to_drop_zone(
-            backend,
-            "B1",
-            41,
-            source="robot_ui:usage_complete",
+            backend, "B1", 41, source="robot_ui:usage_complete",
             allowed_owners={"operator", "robot"},
         )
         self.assertTrue(result["success"])
-        self.assertEqual(
-            [event[0] for event in events],
-            ["drive_enable", "controller_return"],
-        )
+        self.assertEqual([event[0] for event in events], ["drive_enable", "controller_return"])
         self.assertEqual(events[0], ("drive_enable", True))
+
 
     def test_recall_final_return_latches_return_ownership(self) -> None:
         # HH_260908 - Without this latch the service-state bridge drops every
@@ -4858,8 +4847,14 @@ class UiBackendStopTest(unittest.TestCase):
             _publish_mission_engage=lambda enabled, source: events.append(
                 ("engage", enabled)
             ),
-            _publish_camping_site_maneuver_controller_return=lambda source: (
-                events.append(("controller_return", source))
+            # HH_260910 - The real method now opens engage/drive-enable via
+            # `before_release` right before the RETURN publish, both gated
+            # behind the same voice cue; simulate that same ordering here.
+            _publish_camping_site_maneuver_controller_return=(
+                lambda source, before_release=None: (
+                    before_release() if before_release else None,
+                    events.append(("controller_return", source)),
+                )
             ),
             _schedule_broadcast=lambda payload: None,
         )
@@ -4877,6 +4872,7 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(
             [event[0] for event in events], ["engage", "controller_return"]
         )
+
 
     def test_robot_guest_completion_rejects_wrong_site_generation_and_early_return(
         self,

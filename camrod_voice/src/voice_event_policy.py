@@ -137,6 +137,7 @@ class VoiceEventPolicy:
         *,
         return_mission_key: str = "drop_zone",
         max_ready_localization_mode: int = NORMAL_LOCALIZATION_MODE,
+        announce_departure: bool = True,
     ) -> None:
         self.required_modules = tuple(
             dict.fromkeys(
@@ -149,6 +150,12 @@ class VoiceEventPolicy:
             str(return_mission_key).strip() or "drop_zone"
         )
         self.max_ready_localization_mode = int(max_ready_localization_mode)
+        # HH_260910 - camrod_ui now announces site_B*/to_campsite/to_dropzone
+        # itself and holds the engage/goal command until playback finishes, so
+        # motion no longer starts alongside speech. Keep this reactive cue off
+        # by default to avoid saying the departure twice; trip bookkeeping
+        # (BGM, periodic reminders) below is unaffected either way.
+        self.announce_departure = bool(announce_departure)
 
         self.system_received = False
         self.system_modules: dict[str, ModuleSnapshot] = {}
@@ -607,18 +614,21 @@ class VoiceEventPolicy:
         identity = self._trip_identity
         if identity is None:
             return None
-        key = self._DEPARTURE_KEYS.get(identity[0], "")
-        if not key:
-            return None
 
-        # The trip identity is stable for the whole route, so the cue survives
-        # the planning-state churn that used to replay it every few seconds.
+        # The trip identity is stable for the whole route, so this survives
+        # the planning-state churn that used to replay the cue every few
+        # seconds. `_departed_trips` drives the BGM and periodic reminders
+        # below and must be recorded on every departure, including one whose
+        # spoken cue camrod_ui already announced ahead of the command.
         signature = (self._engage_epoch, identity)
         if signature in self._announced_motion_signatures:
             return None
         self._announced_motion_signatures.add(signature)
         self._departed_trips.add(identity)
-        return VoiceEvent(key, priority=1)
+        if not self.announce_departure:
+            return None
+        key = self._DEPARTURE_KEYS.get(identity[0], "")
+        return VoiceEvent(key, priority=1) if key else None
 
     def _arrival_event(self) -> Optional[VoiceEvent]:
         if (

@@ -465,6 +465,19 @@ body {
   color: #1565c0;
 }
 
+.preview-service-available {
+  margin: 0;
+  padding: 0.7rem 1.1rem;
+  border: 2px solid #2d6e40;
+  border-radius: 12px;
+  background: #edf8f1;
+  color: #1e5c33;
+  font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* ── 대기 화면 ───────────────────────────────────────────────────────────── */
 .waiting-screen {
   position: fixed;

@@ -60,10 +60,18 @@ protected:
     node_->tag_observed_base_x_m_ = -.61933 - node_->tag_camera_optical_depth_m_;
     node_->last_tag_time_ = node_->now();
   }
-  bool start()
+  // HH_260911 - Geometry tests acknowledge speech without disabling its gate.
+  bool start(bool confirm_voice = true)
   {
     std::string detail;
-    return node_->startParking("isolated_unit_test", detail);
+    const bool accepted = node_->startParking("isolated_unit_test", detail);
+    if (accepted && confirm_voice) voiceReady();
+    return accepted;
+  }
+  void voiceReady()
+  {
+    node_->docking_started_voice_gate_.onVoiceState(true, "docking.started", node_->now().seconds());
+    node_->docking_started_voice_gate_.onVoiceState(false, "", node_->now().seconds());
   }
   void tick() {node_->controlLoop();}
   State state() {return node_->state_;}
@@ -171,7 +179,8 @@ TEST_F(AprilTagInitialClearanceControllerTest, ForwardCompletionReacquiresWithou
   for (int i = 1; i <= 16; ++i) {fresh(i * .05, -.166, 0., .741 + i * .05); tick();}
   EXPECT_EQ(state(), State::WAITING_FOR_TAG);
   EXPECT_FALSE(active()); EXPECT_TRUE(evaluated()); EXPECT_EQ(retries(), 0);
-  fresh(0., -.166, 0., .741); tick();
+  // HH_260911 - Confirm reacquisition speech before checking reverse geometry.
+  voiceReady(); fresh(0., -.166, 0., .741); tick();
   EXPECT_EQ(state(), State::TAG_GUIDED_REVERSE);
   EXPECT_FALSE(active()); EXPECT_EQ(retries(), 0);
 }
@@ -248,4 +257,24 @@ TEST_F(AprilTagInitialClearanceControllerTest, GeometryLossDuringInitialForwardS
   ASSERT_FALSE(commands_.empty());
   EXPECT_DOUBLE_EQ(commands_.back().linear.x, 0.);
   EXPECT_DOUBLE_EQ(commands_.back().angular.z, 0.);
+}
+
+// HH_260911 - Prove clearance cannot start before the real announcement gate releases.
+TEST_F(AprilTagInitialClearanceControllerTest, AnnouncementMustFinishBeforeClearance)
+{
+  ASSERT_TRUE(start(false)); fresh(); tick();
+  EXPECT_EQ(state(), State::WAITING_FOR_TAG);
+  EXPECT_FALSE(active());
+  voiceReady(); fresh(); tick();
+  EXPECT_EQ(state(), State::RETRY_FORWARD_EXIT);
+  EXPECT_TRUE(active());
+}
+
+// HH_260911 - Late playback completion cannot restart a cancelled docking attempt.
+TEST_F(AprilTagInitialClearanceControllerTest, CancelDuringAnnouncementStaysIdle)
+{
+  ASSERT_TRUE(start(false)); fresh(); tick();
+  cancel(); voiceReady(); fresh(); tick();
+  EXPECT_EQ(state(), State::IDLE);
+  EXPECT_FALSE(active());
 }

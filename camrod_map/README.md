@@ -81,7 +81,7 @@ OSM `local_x`/`local_y` are not substituted for this lat/lon/alt projection.
 
 | Runtime area | Relation | Center x/y (m) | Yaw | `parking_method` |
 |---|---|---|---|---|
-| Shared parking and docking | `7019` | `-11.3585, 40.0901` | `-82.2127°` | `auto` |
+| Shared parking and docking | `7019` | `-11.3585, 40.0901` | `-88.2127°` | `auto` |
 
 Former drop-zone relation `2320` is removed: that space is used for vehicle
 entry and must not remain a parking/return target. Its underlying way `2316`

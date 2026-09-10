@@ -279,9 +279,10 @@
     .site-btn:active { transform: scale(0.94); }
     .site-btn.selected {
       border-color: #2d6e40;
-      background: #f0fdf4;
-      color: #1b4332;
-      box-shadow: 0 0 0 2px rgba(45,110,64,0.2);
+      background: linear-gradient(135deg, #43a047 0%, #2d6e40 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(45,110,64,0.35), 0 0 0 2px rgba(45,110,64,0.2);
+      font-weight: 800;
     }
     .site-btn:disabled {
       opacity: 0.4;
@@ -1057,10 +1058,8 @@
         ? (recallFinalReturnReady ? '짐 싣기 완료 확인 대기' : '이용객 호출 도착')
         : '배송 도착';
       stateLbl.textContent = isRecallArrival
-        ? (recallFinalReturnReady
-          ? '사이트 안에서 180도 회전을 마치고 정차했습니다'
-          : '로봇이 사이트 도로 측 대기점에서 정리를 기다리고 있습니다')
-        : '로봇이 배송지에서 물품 수령을 기다리고 있습니다';
+        ? (recallFinalReturnReady ? '사이트 안에서 180도 회전을 마치고 정차했습니다' : '로봇이 사이트 도로 측 대기점에서 정리를 기다리고 있습니다')
+        : '로봇이 배송지에 도착해 짐 내리기를 기다리고 있습니다';
       siteCard.style.display = 'none';
       completeCard.style.display = isGuestOwnedRecallArrival ? 'block' : 'none';
       if (isGuestOwnedRecallArrival) {
@@ -1070,9 +1069,11 @@
           ? '완료 요청 중…'
           : recallCompletionLabel(lastDestSite, recallFinalReturnReady);
       } else {
-        completeTitle.textContent = '배송 물품 수령 완료';
+        // HH_260909 - Match the robot screen: delivery completion is phrased as
+        // arrival rather than receipt of goods.
+        completeTitle.textContent = '배송 물품 도착 완료';
         completeHelp.textContent = '배송 물품을 모두 내린 뒤 복귀 버튼을 눌러주세요.';
-        completeAction.textContent = '수령 완료 · 로봇 복귀';
+        completeAction.textContent = '도착 완료 · 로봇 복귀';
       }
       banner.classList.add('show', 'info-arrived');
       banner.textContent = isGuestOwnedRecallArrival
@@ -1172,6 +1173,7 @@
       btn.className = 'site-btn';
       btn.textContent = site;
       btn.dataset.site = site;
+      btn.setAttribute('aria-pressed', 'false');
       btn.onclick = () => selectSite(site);
       grid.appendChild(btn);
     });
@@ -1181,7 +1183,9 @@
     if (!isDispatchReady()) return;
     selectedSite = site;
     document.querySelectorAll('.site-btn').forEach(b => {
-      b.classList.toggle('selected', b.dataset.site === site);
+      const isSelected = b.dataset.site === site;
+      b.classList.toggle('selected', isSelected);
+      b.setAttribute('aria-pressed', String(isSelected));
     });
     document.getElementById('navigateBtn').disabled = false;
     document.getElementById('navigateBtn').textContent = site + ' 도로 대기점으로 호출';
@@ -1197,12 +1201,14 @@
         currentPhase === 'idle'
         || currentPhase === 'waiting_for_charging'
         || currentPhase === 'charging'
-      );
+    );
     document.querySelectorAll('.site-btn').forEach(b => {
       b.disabled = !(enabled || (retryEnabled && b.dataset.site === lastDestSite));
-      b.classList.toggle(
-        'selected', retryEnabled && b.dataset.site === lastDestSite
-      );
+      const isSelected = retryEnabled
+        ? b.dataset.site === lastDestSite
+        : enabled && b.dataset.site === selectedSite;
+      b.classList.toggle('selected', isSelected);
+      b.setAttribute('aria-pressed', String(isSelected));
     });
     if (retryEnabled) {
       selectedSite = lastDestSite;

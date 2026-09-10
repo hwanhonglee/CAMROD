@@ -45,8 +45,9 @@ def degraded_modules():
     return module_snapshots(values)
 
 
-def make_ready_policy(*, announce_startup=True):
-    policy = VoiceEventPolicy(REQUIRED_MODULES)
+def make_ready_policy(*, announce_startup=True, announce_departure=True):
+    policy = VoiceEventPolicy(
+        REQUIRED_MODULES, announce_departure=announce_departure)
     events = []
     if announce_startup:
         events.extend(policy.announce_startup())
@@ -516,6 +517,42 @@ def test_music_bed_waits_for_departure_and_ends_with_the_trip():
     )
     assert not policy.travel_active
     assert policy.travel_announce_events() == []
+
+
+def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
+    """camrod_ui now speaks site_B*/to_campsite/to_dropzone itself and holds
+    the command until playback finishes; this node's own departure cue must
+    stay muted so the trip is not announced twice, while the BGM and the
+    periodic reminders it still owns keep working exactly as before."""
+    policy, _ = make_ready_policy(announce_departure=False)
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    assert not policy.travel_active
+
+    departure = policy.update_planning(
+        state="RUNNING",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(departure) == []
+    assert policy.travel_active
+    assert event_keys(policy.travel_announce_events()) == [
+        "system.announce1",
+        "system.announce2",
+    ]
+
+    policy.update_planning(
+        state="GOAL_REACHED",
+        scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_2",
+        active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert not policy.travel_active
 
 
 def test_transient_recovery_state_does_not_replay_the_departure_cue():

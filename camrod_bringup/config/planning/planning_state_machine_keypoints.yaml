@@ -7,10 +7,12 @@ keypoints:
     x: -11.3585
     y: 40.0901
     z: 0
-    yaw_deg: -82.2127
+    # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.
+    yaw_deg: -88.2127
   garage:
     frame_id: "map"
     x: -11.3585
     y: 40.0901
     z: 0
-    yaw_deg: -82.2127
+    # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.
+    yaw_deg: -88.2127

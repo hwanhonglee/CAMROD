@@ -39,7 +39,7 @@
     station_yaw_represents_reverse_axis: true
     automatically_select_reverse_approach_yaw: false
 
-    start_yaw_tolerance_deg: 7.5
+    start_yaw_tolerance_deg: 2.5
     # HH_260807 - Preserve 40% of the 2.0 km/h cruise reference after the gate.
     reverse_speed_mps: 0.444444
     # HH_260818 - From 0.30 m remaining, ramp to this final raw speed.
@@ -142,6 +142,15 @@
     # ERROR for excessive lateral offset.  A simulator profile may opt into a
     # bounded stop-align-forward-reacquire retry without relaxing that stop.
     enable_bounded_lateral_retry: false
+    # HH_260910 - A tag already in view can be found within one control tick,
+    # before the docking.started cue (fired on entering WAITING_FOR_TAG)
+    # finishes playing. Hold for confirmed playback before the actual
+    # reverse; fails open after this many seconds if camrod_voice never
+    # confirms (e.g. not launched at all in a bench/sim profile).
+    enable_docking_started_voice_gate: true
+    docking_started_voice_key: "docking.started"
+    docking_started_voice_timeout_s: 4.0
+    voice_state_topic: "/voice/voice_announcer/state"
     retry_forward_distance_m: 1.0
     retry_forward_speed_mps: 0.10
     retry_forward_timeout_s: 25.0

@@ -12,7 +12,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
 
 from avg_msgs.msg import AvgBool, AvgPlatformStatus, AvgServiceState, ModuleState, MotionOperation  # noqa: E402
-from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required  # noqa: E402
+from camrod_ui.battery_policy import (  # noqa: E402
+    battery_charge_complete,
+    battery_policy_snapshot,
+    urgent_return_required,
+)
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
@@ -131,16 +135,59 @@ def test_platform_soc_callback_uses_float32_percentage_boundary(fraction, expect
         expected >= 35)
 
 
-def test_unavailable_platform_soc_preserves_existing_early_return_contract():
+def test_unavailable_platform_soc_revokes_previous_admission():
     node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
     node._runtime_policy = mock.Mock()
     node._update_runtime_state = lambda update: update()
     node._update_low_battery_return_policy = mock.Mock()
-    UiBackendNode._on_platform_status(
-        node, AvgPlatformStatus(control_mode=1, battery_state_available=False))
-    assert node._state.battery_percentage == 80
-    node._schedule_broadcast.assert_not_called()
-    node._update_low_battery_return_policy.assert_not_called()
+    with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+        UiBackendNode._on_platform_status(
+            node, AvgPlatformStatus(control_mode=1, battery_state_available=False))
+    assert node._state.battery_percentage == -1
+    node._update_low_battery_return_policy.assert_called_once_with(-1, source="platform_status")
+    assert node._schedule_broadcast.call_args.args[0]["battery"] == -1
+    assert UiBackendNode._mission_dispatch_battery_block(node, "B4") is not None
+
+
+@pytest.mark.parametrize(
+    "soc,charging,status,previous,expected",
+    [
+        (99, True, 1, False, False),
+        (100, True, 1, False, True),
+        (99, False, 4, False, True),
+        (99, True, 1, True, True),
+        (100, False, 3, True, False),
+    ],
+)
+def test_charge_completion_prefers_bms_full_and_latches_during_charge(
+    soc, charging, status, previous, expected
+):
+    assert battery_charge_complete(
+        soc,
+        charging=charging,
+        power_supply_status=status,
+        previously_complete=previous,
+    ) is expected
+
+
+def test_platform_full_status_is_forwarded_as_charge_complete():
+    node = backend(soc=99, state=AvgServiceState.CHARGING, phase="IDLE")
+    node._runtime_policy = mock.Mock()
+    node._update_runtime_state = lambda update: update()
+    node._update_low_battery_return_policy = mock.Mock()
+    message = AvgPlatformStatus(
+        control_mode=1,
+        battery_state_available=True,
+        battery_percentage=1.0,
+        battery_power_supply_status=4,
+        is_charging=False,
+    )
+    with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+        UiBackendNode._on_platform_status(node, message)
+    payload = node._schedule_broadcast.call_args.args[0]
+    assert payload["battery"] == 100
+    assert payload["battery_charge_complete"] is True
+    assert payload["battery_power_supply_status"] == 4
 
 
 @pytest.mark.parametrize("soc", [None, -1, 101, float("nan"), float("inf"), "invalid"])
@@ -271,17 +318,20 @@ def test_urgent_battery_does_not_move_post_turn_robot_while_user_is_loading():
 @pytest.mark.parametrize("mode", ["auto", "apriltag"])
 @pytest.mark.parametrize("observed_method", ["", "reverse", "apriltag"])
 def test_explicit_dock_ack_requests_final_method_without_claiming_controller(mode, observed_method):
-    node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
+    node = station_backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
     node.parking_method = mode
     node._parking_selected_method = observed_method
-    result = UiBackendNode.request_manual_dock(node)
+    # HH_260911 - Explicit Dock must enter the reset/alignment transaction.
+    with mock.patch.object(UiBackendNode, "_request_return_to_drop_zone_serialized", return_value="parking_alignment") as handoff:
+        result = UiBackendNode.request_manual_dock(node)
+    handoff.assert_called_once_with(node, source="http:manual_dock:force_docking")
     assert result["success"]
     assert result["action"] == "docking_requested"
+    assert result["message"] == "Explicit charging docking requested"
     assert result["parking_requested_final_method"] == "apriltag"
     assert "parking_selected_method" not in result
     assert node._parking_selected_method == observed_method
-    node._publish_parking_operation.assert_called_once_with(
-        MotionOperation.START, source="http:manual_dock:force_docking")
+    node._publish_parking_operation.assert_not_called()
     node._request_nav2_cancel.assert_not_called()
     node._schedule_manual_return_transition.assert_not_called()
 
@@ -291,13 +341,13 @@ def test_explicit_dock_ack_requests_final_method_without_claiming_controller(mod
     AvgServiceState.MOVING_TO_SITE, AvgServiceState.RETURN_WITH_CARGO,
 ])
 def test_explicit_dock_cannot_start_away_from_dropzone(state):
-    node = backend(state=state)
+    node = station_backend(state=state)
     assert UiBackendNode.request_manual_dock(node)["error"] == "docking_requires_drop_zone"
     node._publish_parking_operation.assert_not_called()
 
 
 def test_explicit_dock_is_idempotent_while_charging_and_protects_active_parking():
-    node = backend(state=AvgServiceState.CHARGING)
+    node = station_backend(state=AvgServiceState.CHARGING)
     node._latest_platform_is_charging = True
     assert UiBackendNode.request_manual_dock(node)["action"] == "already_charging"
     node._publish_parking_operation.assert_not_called()
@@ -364,3 +414,19 @@ def test_early_final_button_is_rejected_at_initial_roadside_wait():
     )
     assert result["error"] == "recall_final_return_not_ready"
     node._publish_camping_site_maneuver_controller_return.assert_not_called()
+
+
+def station_backend(**kwargs):
+    # HH_260911 - Station requests need explicit fresh geometry and no live mission.
+    node = backend(**kwargs)
+    node._active_mission_site = ""
+    node._active_mission_source = ""
+    node._active_mission_generation = 0
+    node._return_requested_generation = 0
+    node._drop_zone_polygons = [[(-1.0,-1.0), (1.0,-1.0), (1.0,1.0), (-1.0,1.0)]]
+    node._latest_arrival_pose = SimpleNamespace(
+        header=SimpleNamespace(frame_id="map", stamp=SimpleNamespace(sec=100, nanosec=0)),
+        pose=SimpleNamespace(position=SimpleNamespace(x=0.0,y=0.0)))
+    node._latest_arrival_pose_time_s = 100.0
+    node.site_arrival_pose_timeout_s = 2.0
+    return node
