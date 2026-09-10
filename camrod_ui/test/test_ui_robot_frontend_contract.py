@@ -64,17 +64,26 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("if (isReturning && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
 
-    def test_parking_and_charging_lifecycle_has_distinct_english_labels(self) -> None:
+    def test_parking_and_charging_lifecycle_has_distinct_labels(self) -> None:
         for label in (
-            "Charging",
-            "Waiting for charging connection",
-            "Parking in progress",
-            "Docking in progress",
+            "충전 중",
+            "충전 연결 대기 중",
+            "주차 진행 중",
+            "도킹 진행 중",
             "Drop-zone parking in progress",
             "Parked at drop zone",
         ):
             self.assertIn(label, self.source)
         self.assertIn("parkingLifecycleStatus(", self.source)
+        self.assertIn("배달 서비스 및 호출 서비스 이용이 가능합니다.", self.source)
+        self.assertIn(
+            "주차 정렬이 완료되었습니다. 충전 접점 연결을 기다리고 있습니다.",
+            self.source,
+        )
+        self.assertIn('className="preview-service-available"', self.source)
+        self.assertIn("충전 완료", self.source)
+        self.assertIn("배터리가 100%로 충전되었습니다.", self.source)
+        self.assertIn("setBatteryChargeComplete", self.source)
         self.assertIn("serviceStateName={serviceStateName}", self.source)
         self.assertIn("serviceStateDescription={serviceStateDescription}", self.source)
         self.assertIn("tone: 'parking',", self.source)
@@ -84,6 +93,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertNotIn("ch-runtime", self.source)
 
         css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".preview-service-available", css_source)
         self.assertIn(
             ".waiting-runtime-item.parking .waiting-runtime-dot",
             css_source,
@@ -108,6 +118,41 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "grid-template-columns: repeat(4, minmax(0, 1fr));",
             css_source,
         )
+
+    def test_charging_connection_wait_returns_to_idle_prompt_after_ten_seconds(self) -> None:
+        self.assertIn("const chargingStandbyOpenedRef = useRef(false);", self.source)
+        timer_start = self.source.index(
+            "// 충전 접점 연결을 기다리는 동안 상태 안내를 10초간 유지한 뒤"
+        )
+        timer_end = self.source.index("// HJ_260804", timer_start)
+        timer = self.source[timer_start:timer_end]
+        for expected in (
+            "serviceStateName !== 'WAITING_FOR_CHARGING'",
+            "missionDispatch.active",
+            "chargingStandbyOpenedRef.current = true;",
+            "setShowServiceSelection(false);",
+            "setShowWaiting(true);",
+            "}, 10000);",
+        ):
+            self.assertIn(expected, timer)
+        self.assertIn("서비스 선택 버튼을 눌러주세요", self.source)
+
+    def test_completed_charge_returns_to_idle_prompt_after_ten_seconds(self) -> None:
+        self.assertIn("const chargeCompleteStandbyOpenedRef = useRef(false);", self.source)
+        timer_start = self.source.index(
+            "// A confirmed full battery gets its own completion presentation"
+        )
+        timer_end = self.source.index("// HJ_260804", timer_start)
+        timer = self.source[timer_start:timer_end]
+        for expected in (
+            "serviceStateName === 'CHARGING' && batteryChargeComplete",
+            "missionDispatch.active",
+            "chargeCompleteStandbyOpenedRef.current = true;",
+            "setShowServiceSelection(false);",
+            "setShowWaiting(true);",
+            "}, 10000);",
+        ):
+            self.assertIn(expected, timer)
 
     def test_destination_entry_opens_three_block_service_menu(self) -> None:
         handler_start = self.source.index("const handleWaitingClick = () => {")
@@ -317,6 +362,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
                             (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
             block = self.source[self.source.index(first):self.source.index(last)]
             self.assertIn("motionNotice?.message ||", block)
+        self.assertIn("{activeRecallSite} 호출", self.source)
         self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
         self.assertNotIn('className="guest-recall-overlay"', self.source)
         arrival = self.source[self.source.index(") : arrivedSite ? ("):

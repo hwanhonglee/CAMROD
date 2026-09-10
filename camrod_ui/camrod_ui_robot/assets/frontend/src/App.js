@@ -287,8 +287,8 @@ const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parki
   const description = String(serviceStateDescription || '').trim().toUpperCase();
   const selectedMethod = String(parkingPolicy?.parking_selected_method || '').trim().toLowerCase();
 
-  if (state === 'CHARGING') return 'Charging';
-  if (state === 'WAITING_FOR_CHARGING') return 'Waiting for charging connection';
+  if (state === 'CHARGING') return '충전 중';
+  if (state === 'WAITING_FOR_CHARGING') return '충전 연결 대기 중';
   if (state === 'DROP_ZONE_WAIT') return 'Parked at drop zone';
   if (state === 'DROP_ZONE_PARKING') {
     if (
@@ -296,8 +296,8 @@ const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parki
       || description.includes('PARKING_APPROACH')
       || description.includes('ALIGN_FOR_PARKING')
     ) return 'Drop-zone parking in progress';
-    if (selectedMethod === 'apriltag') return 'Docking in progress';
-    if (selectedMethod === 'reverse') return 'Parking in progress';
+    if (selectedMethod === 'apriltag') return '도킹 진행 중';
+    if (selectedMethod === 'reverse') return '주차 진행 중';
     return 'Drop-zone parking in progress';
   }
 
@@ -1262,6 +1262,7 @@ function App() {
 
   const [connected, setConnected] = useState(false);
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
+  const [batteryChargeComplete, setBatteryChargeComplete] = useState(false);
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
   // HH_260721 - Display operational progress independently from diagnostic health.
@@ -1296,6 +1297,8 @@ function App() {
   const wsGenerationRef = useRef(0);
   const wsReconnectTimerRef = useRef(null);
   const idleTimerRef = useRef(null);                    // 전체 OFF 시 10초 타이머
+  const chargingStandbyOpenedRef = useRef(false);
+  const chargeCompleteStandbyOpenedRef = useRef(false);
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
   const [selectedSite, setSelectedSite] = useState(null);         // 이미지 프리뷰 대상 사이트
@@ -1535,12 +1538,18 @@ function App() {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
-    if (!anyOn && !manualDriveActive && !showWaiting && !isReturning) {
+    if (
+      !['WAITING_FOR_CHARGING', 'CHARGING'].includes(serviceStateName)
+      && !anyOn
+      && !manualDriveActive
+      && !showWaiting
+      && !isReturning
+    ) {
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
       }, 10000);
     }
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning, serviceStateName]);
     useEffect(() => {
     if (anyOn || manualDriveActive) {
       // ON이 하나라도 있으면 타이머 해제 & 대기 화면 진입 방지
@@ -1548,7 +1557,11 @@ function App() {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
       }
-    } else if (!showWaiting && !isReturning) {
+    } else if (
+      !['WAITING_FOR_CHARGING', 'CHARGING'].includes(serviceStateName)
+      && !showWaiting
+      && !isReturning
+    ) {
       // 전부 OFF + 복귀 중 아닐 때 → 10초 타이머 시작
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
@@ -1561,7 +1574,78 @@ function App() {
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning, serviceStateName]);
+
+  // 충전 접점 연결을 기다리는 동안 상태 안내를 10초간 유지한 뒤 다음
+  // 이용자가 터치해서 서비스를 선택할 수 있는 공용 대기 화면을 연다.
+  // 활성 임무가 남아 있으면 새 임무가 겹치지 않도록 전환을 보류한다.
+  useEffect(() => {
+    if (serviceStateName !== 'WAITING_FOR_CHARGING') {
+      chargingStandbyOpenedRef.current = false;
+      return undefined;
+    }
+    if (
+      chargingStandbyOpenedRef.current
+      || missionDispatch.active
+      || anyOn
+      || manualDriveActive
+      || isReturning
+      || showWaiting
+      || showServiceSelection
+    ) return undefined;
+
+    const chargingSelectionTimer = setTimeout(() => {
+      chargingStandbyOpenedRef.current = true;
+      setShowServiceSelection(false);
+      setShowWaiting(true);
+    }, 10000);
+    return () => clearTimeout(chargingSelectionTimer);
+  }, [
+    serviceStateName,
+    missionDispatch.active,
+    anyOn,
+    manualDriveActive,
+    isReturning,
+    showWaiting,
+    showServiceSelection,
+  ]);
+
+  // A confirmed full battery gets its own completion presentation before the
+  // kiosk returns to the public "서비스 선택 버튼" standby screen.
+  useEffect(() => {
+    const completedCharging = (
+      serviceStateName === 'CHARGING' && batteryChargeComplete
+    );
+    if (!completedCharging) {
+      chargeCompleteStandbyOpenedRef.current = false;
+      return undefined;
+    }
+    if (
+      chargeCompleteStandbyOpenedRef.current
+      || missionDispatch.active
+      || anyOn
+      || manualDriveActive
+      || isReturning
+      || showWaiting
+      || showServiceSelection
+    ) return undefined;
+
+    const chargeCompleteTimer = setTimeout(() => {
+      chargeCompleteStandbyOpenedRef.current = true;
+      setShowServiceSelection(false);
+      setShowWaiting(true);
+    }, 10000);
+    return () => clearTimeout(chargeCompleteTimer);
+  }, [
+    serviceStateName,
+    batteryChargeComplete,
+    missionDispatch.active,
+    anyOn,
+    manualDriveActive,
+    isReturning,
+    showWaiting,
+    showServiceSelection,
+  ]);
 
   // HJ_260804 - A Guest UI mission can start while the Robot UI is on its idle
   // screen. Expose the return status as soon as that mission starts returning.
@@ -1940,7 +2024,16 @@ function App() {
           // These stationary states are also emitted while an accepted Recall
           // waits for departure. Do not reopen standby until the backend has
           // explicitly cleared the mission identity.
-          if (
+          if (serviceState === SERVICE_STATE.WAITING_FOR_CHARGING) {
+            // Keep the completed docking status visible while the 10-second
+            // standby timer runs. Once it fires, repeated state heartbeats
+            // must not hide the public waiting screen again.
+            if (!chargingStandbyOpenedRef.current) setShowWaiting(false);
+          } else if (serviceState === SERVICE_STATE.CHARGING) {
+            // Keep charging progress/completion visible. After a confirmed
+            // full charge, its own timer opens the public waiting screen.
+            if (!chargeCompleteStandbyOpenedRef.current) setShowWaiting(false);
+          } else if (
             destinationIntentRef.current !== 'recall'
             && !missionDispatchActiveRef.current
             && !intentPinnedRef.current
@@ -2030,6 +2123,9 @@ function App() {
       } else if ('battery_percentage' in data) {
         const snapshotBattery = Number(data.battery_percentage);
         setBatteryPct(Number.isFinite(snapshotBattery) ? snapshotBattery : null);
+      }
+      if ('battery_charge_complete' in data) {
+        setBatteryChargeComplete(Boolean(data.battery_charge_complete));
       }
       // HH_260708 - Mirror planning engage state broadcast by the backend.
       if ('engage' in data) {
@@ -2959,15 +3055,29 @@ function App() {
           ) : ['CHARGING', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING'].includes(serviceStateName) ? (
             <>
               <span className="preview-placeholder-title">
-                {motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy)}
+                {motionNotice?.label || (
+                  serviceStateName === 'CHARGING' && batteryChargeComplete
+                    ? '충전 완료'
+                    : parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy)
+                )}
               </span>
               <p className="preview-returning" aria-live="polite">
                 {motionNotice?.message || (serviceStateName === 'CHARGING'
-                  ? 'Charging is confirmed by the platform.'
+                  ? (batteryChargeComplete
+                    ? '배터리가 100%로 충전되었습니다.'
+                    : Number.isFinite(Number(batteryPct)) && Number(batteryPct) >= 0
+                      ? `현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.`
+                      : '플랫폼에서 충전 상태가 확인되었습니다.')
                   : serviceStateName === 'WAITING_FOR_CHARGING'
-                    ? 'Docking alignment is complete. Waiting for charger contact.'
-                    : 'The robot is completing its final parking maneuver at the drop zone.')}
+                    ? '주차 정렬이 완료되었습니다. 충전 접점 연결을 기다리고 있습니다.'
+                    : '로봇이 드롭존에서 최종 주차 동작을 진행하고 있습니다.')}
               </p>
+              {(serviceStateName === 'WAITING_FOR_CHARGING'
+                || (serviceStateName === 'CHARGING' && batteryChargeComplete)) && (
+                <p className="preview-service-available">
+                  배달 서비스 및 호출 서비스 이용이 가능합니다.
+                </p>
+              )}
             </>
           ) : displayedReturning ? (
             <>
@@ -3004,7 +3114,7 @@ function App() {
                 alt={`${activeRecallSite} recall site`}
                 className="preview-image"
               />
-              <p className="preview-site-name">{activeRecallSite} Recall</p>
+              <p className="preview-site-name">{activeRecallSite} 호출</p>
               <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">

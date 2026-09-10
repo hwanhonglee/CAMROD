@@ -8,6 +8,9 @@ ignoring chassis faults, E-stop, localization, or obstacle checks.
 import math
 
 
+POWER_SUPPLY_STATUS_FULL = 4
+
+
 def battery_policy_snapshot(
     percentage, *, mission_minimum=35.0, urgent_threshold=25.0,
     urgent_latched=False, parking_method="auto", selected_method="",
@@ -38,3 +41,24 @@ def urgent_return_required(percentage, *, urgent_threshold=25.0):
     except (TypeError, ValueError):
         return False
     return math.isfinite(soc) and 0.0 <= soc < urgent_threshold
+
+
+def battery_charge_complete(
+    percentage,
+    *,
+    charging=False,
+    power_supply_status=0,
+    previously_complete=False,
+):
+    """Return a stable UI completion signal for the current charge session."""
+    if int(power_supply_status) == POWER_SUPPLY_STATUS_FULL:
+        return True
+    if not charging:
+        return False
+    if previously_complete:
+        return True
+    try:
+        soc = float(percentage)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(soc) and soc >= 100.0

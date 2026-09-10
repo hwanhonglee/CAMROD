@@ -72,7 +72,11 @@ from visualization_msgs.msg import Marker, MarkerArray
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
-from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required
+from camrod_ui.battery_policy import (
+    battery_charge_complete,
+    battery_policy_snapshot,
+    urgent_return_required,
+)
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
@@ -565,6 +569,7 @@ class ApiState:
         default_factory=lambda: {"site": "", "run": False}
     )
     battery_percentage: int = -1
+    battery_charge_complete: bool = False
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
     occupied_sites: List[str] = field(default_factory=list)
 
@@ -1180,6 +1185,7 @@ class UiBackendNode(Node):
         self._site_route_anchors: Dict[str, PoseStamped] = {}
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
         self._latest_platform_is_charging = False
+        self._latest_platform_power_supply_status = 0
         self._latest_platform_control_mode = -1
         self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
@@ -3881,6 +3887,7 @@ class UiBackendNode(Node):
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
         control_mode = int(msg.control_mode)
         charging = bool(msg.is_charging)
+        power_supply_status = int(msg.battery_power_supply_status)
         self._latest_platform_status_time_s = self._now_s()
         self._latest_platform_motion_ready = (
             control_mode == 1 and not bool(msg.estop)
@@ -3902,6 +3909,7 @@ class UiBackendNode(Node):
             )
             self._latest_platform_control_mode = control_mode
             self._latest_platform_is_charging = charging
+            self._latest_platform_power_supply_status = power_supply_status
             charging_changed = charging != previous_charging
             can_resume_redock = (
                 control_mode == 1
@@ -3950,6 +3958,7 @@ class UiBackendNode(Node):
         elif (
             charging_changed
             and not charging
+            and power_supply_status != 4
             and self._latest_service_state == int(AvgServiceState.CHARGING)
         ):
             # HH_260721 - Return to uncharged standby only when no departure state replaced charging.
@@ -3991,8 +4000,25 @@ class UiBackendNode(Node):
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
-        if battery_changed:
-            self._schedule_broadcast({"battery": pct, **UiBackendNode._battery_parking_policy_snapshot(self)})
+            previous_charge_complete = bool(
+                getattr(self._state, "battery_charge_complete", False)
+            )
+            charge_complete = battery_charge_complete(
+                pct,
+                charging=charging,
+                power_supply_status=power_supply_status,
+                previously_complete=previous_charge_complete,
+            )
+            charge_complete_changed = charge_complete != previous_charge_complete
+            self._state.battery_charge_complete = charge_complete
+        if battery_changed or charge_complete_changed or charging_changed:
+            self._schedule_broadcast({
+                "battery": pct,
+                "battery_charge_complete": charge_complete,
+                "platform_is_charging": charging,
+                "battery_power_supply_status": power_supply_status,
+                **UiBackendNode._battery_parking_policy_snapshot(self),
+            })
         self._update_low_battery_return_policy(pct, source="platform_status")
         if battery_changed:
             UiBackendNode._publish_destination_dispatch_status(
@@ -7168,6 +7194,15 @@ class UiBackendNode(Node):
                 "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                "battery_charge_complete": bool(
+                    getattr(self._state, "battery_charge_complete", False)
+                ),
+                "platform_is_charging": bool(
+                    getattr(self, "_latest_platform_is_charging", False)
+                ),
+                "battery_power_supply_status": int(
+                    getattr(self, "_latest_platform_power_supply_status", 0)
+                ),
                 # HH_260724 - Initial UI snapshots carry the active battery policy state,
                 # not only edge-triggered websocket updates.
                 "battery_return_pending": self._low_battery_return_pending,

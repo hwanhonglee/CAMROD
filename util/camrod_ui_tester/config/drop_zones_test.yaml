@@ -1,0 +1,14 @@
+drop_zones:
+  - id: ui_test_station
+    type: drop_zone
+    frame_id: map
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    yaw_deg: 0.0
+    parking_method: auto
+    corners:
+      - {x: -2.0, y: -2.0, z: 0.0}
+      - {x:  2.0, y: -2.0, z: 0.0}
+      - {x:  2.0, y:  2.0, z: 0.0}
+      - {x: -2.0, y:  2.0, z: 0.0}

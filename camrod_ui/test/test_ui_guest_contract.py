@@ -1155,6 +1155,27 @@ class GuestUiContractTest(unittest.TestCase):
             self.assertNotIn(generic_phase_branch, html)
         self.assertNotIn("The robot is returning to the drop zone.", html)
 
+    def test_guest_selected_site_stays_visibly_green_across_status_updates(self) -> None:
+        html = (
+            Path(__file__).resolve().parents[1]
+            / "camrod_ui_guest"
+            / "assets"
+            / "guest_frontend"
+            / "index.html"
+        ).read_text(encoding="utf-8")
+
+        selected_style = html[
+            html.index(".site-btn.selected {"):
+            html.index(".site-btn:disabled", html.index(".site-btn.selected {"))
+        ]
+        self.assertIn("#43a047", selected_style)
+        self.assertIn("#2d6e40", selected_style)
+        self.assertIn("color: #ffffff", selected_style)
+        self.assertIn("font-weight: 800", selected_style)
+        self.assertIn("btn.setAttribute('aria-pressed', 'false');", html)
+        self.assertIn(": enabled && b.dataset.site === selectedSite;", html)
+        self.assertIn("b.setAttribute('aria-pressed', String(isSelected));", html)
+
     def test_guest_frontend_requires_explicit_request_intent_for_recall_copy(self) -> None:
         package_root = Path(__file__).resolve().parents[1]
         html = (
