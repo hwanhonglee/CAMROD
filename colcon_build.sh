@@ -366,6 +366,11 @@ if [[ -d "src/camrod_voice" ]] && ! pkg-config --exists SDL2_mixer 2>/dev/null; 
 fi
 
 BASE_PATHS=("src" "${EXTERNAL_BASES[@]}")
+# camrod_ui_tester intentionally lives below util/COLCON_IGNORE. Add only this
+# package as an explicit discovery root while keeping the rest of util ignored.
+if [[ -f "${SRC_ROOT}/util/camrod_ui_tester/package.xml" ]]; then
+  BASE_PATHS+=("src/util/camrod_ui_tester")
+fi
 BUILD_SKIP_ARGS=()
 if [[ ${#BUILD_SKIP_PACKAGES[@]} -gt 0 ]]; then
   BUILD_SKIP_ARGS=(--packages-skip "${BUILD_SKIP_PACKAGES[@]}")

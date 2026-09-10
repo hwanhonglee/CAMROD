@@ -12,7 +12,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
 
 from avg_msgs.msg import AvgBool, AvgPlatformStatus, AvgServiceState, ModuleState, MotionOperation  # noqa: E402
-from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required  # noqa: E402
+from camrod_ui.battery_policy import (  # noqa: E402
+    battery_charge_complete,
+    battery_policy_snapshot,
+    urgent_return_required,
+)
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
@@ -143,6 +147,47 @@ def test_unavailable_platform_soc_revokes_previous_admission():
     node._update_low_battery_return_policy.assert_called_once_with(-1, source="platform_status")
     assert node._schedule_broadcast.call_args.args[0]["battery"] == -1
     assert UiBackendNode._mission_dispatch_battery_block(node, "B4") is not None
+
+
+@pytest.mark.parametrize(
+    "soc,charging,status,previous,expected",
+    [
+        (99, True, 1, False, False),
+        (100, True, 1, False, True),
+        (99, False, 4, False, True),
+        (99, True, 1, True, True),
+        (100, False, 3, True, False),
+    ],
+)
+def test_charge_completion_prefers_bms_full_and_latches_during_charge(
+    soc, charging, status, previous, expected
+):
+    assert battery_charge_complete(
+        soc,
+        charging=charging,
+        power_supply_status=status,
+        previously_complete=previous,
+    ) is expected
+
+
+def test_platform_full_status_is_forwarded_as_charge_complete():
+    node = backend(soc=99, state=AvgServiceState.CHARGING, phase="IDLE")
+    node._runtime_policy = mock.Mock()
+    node._update_runtime_state = lambda update: update()
+    node._update_low_battery_return_policy = mock.Mock()
+    message = AvgPlatformStatus(
+        control_mode=1,
+        battery_state_available=True,
+        battery_percentage=1.0,
+        battery_power_supply_status=4,
+        is_charging=False,
+    )
+    with mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+        UiBackendNode._on_platform_status(node, message)
+    payload = node._schedule_broadcast.call_args.args[0]
+    assert payload["battery"] == 100
+    assert payload["battery_charge_complete"] is True
+    assert payload["battery_power_supply_status"] == 4
 
 
 @pytest.mark.parametrize("soc", [None, -1, 101, float("nan"), float("inf"), "invalid"])

@@ -1,0 +1,14 @@
+camping_sites:
+  - {id: ui_test_b1,  type: camping_site_1,  frame_id: map, x: 10.0, y:  0.0, z: 0.0, yaw_deg:   0.0, service_mode: turnaround}
+  - {id: ui_test_b2,  type: camping_site_2,  frame_id: map, x: 11.0, y:  4.0, z: 0.0, yaw_deg:  20.0, service_mode: turnaround}
+  - {id: ui_test_b3,  type: camping_site_3,  frame_id: map, x: 10.0, y:  8.0, z: 0.0, yaw_deg:  45.0, service_mode: turnaround}
+  - {id: ui_test_b4,  type: camping_site_4,  frame_id: map, x:  6.0, y: 11.0, z: 0.0, yaw_deg:  70.0, service_mode: turnaround}
+  - {id: ui_test_b5,  type: camping_site_5,  frame_id: map, x:  1.0, y: 12.0, z: 0.0, yaw_deg:  90.0, service_mode: turnaround}
+  - {id: ui_test_b6,  type: camping_site_6,  frame_id: map, x: -4.0, y: 11.0, z: 0.0, yaw_deg: 115.0, service_mode: turnaround}
+  - {id: ui_test_b7,  type: camping_site_7,  frame_id: map, x: -9.0, y:  8.0, z: 0.0, yaw_deg: 145.0, service_mode: turnaround}
+  - {id: ui_test_b8,  type: camping_site_8,  frame_id: map, x: -11.0, y: 3.0, z: 0.0, yaw_deg: 170.0, service_mode: turnaround}
+  - {id: ui_test_b9,  type: camping_site_9,  frame_id: map, x: -10.0, y: -3.0, z: 0.0, yaw_deg: -165.0, service_mode: turnaround}
+  - {id: ui_test_b10, type: camping_site_10, frame_id: map, x: -7.0, y: -8.0, z: 0.0, yaw_deg: -135.0, service_mode: turnaround}
+  - {id: ui_test_b11, type: camping_site_11, frame_id: map, x: -2.0, y: -11.0, z: 0.0, yaw_deg: -100.0, service_mode: roadside_stop}
+  - {id: ui_test_b12, type: camping_site_12, frame_id: map, x:  4.0, y: -10.0, z: 0.0, yaw_deg: -65.0, service_mode: roadside_stop}
+  - {id: ui_test_b13, type: camping_site_13, frame_id: map, x:  9.0, y: -6.0, z: 0.0, yaw_deg: -35.0, service_mode: roadside_stop}

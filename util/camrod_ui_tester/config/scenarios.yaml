@@ -1,0 +1,23 @@
+scenarios:
+  ready:
+    base: ready
+  low_battery:
+    base: low_battery
+  urgent_battery:
+    base: urgent_battery
+  charging:
+    base: charging
+  safety_hold:
+    base: safety_hold
+  estop:
+    base: estop
+  localization_lost:
+    base: localization_lost
+  clear_faults:
+    base: clear_faults
+  slow_battery_finish_current:
+    base: ready
+    state:
+      battery_percent: 30
+      service_state: UNLOAD_WAIT
+      planning_state: GOAL_REACHED
