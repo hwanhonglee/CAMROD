@@ -41,7 +41,15 @@
     "onClick={handleManualStop}>예</button>": "onClick={handleManualStop}>운행 중지</button>",
     "복귀 요청이 확인되어 충전 구역으로 이동합니다.": "복귀 요청이 확인되어 대기·충전 장소로 이동합니다.",
     "짐 처리를 마친 뒤 이용 완료 버튼을 눌러주세요. 완료 후 충전 도킹을 위해 복귀합니다.": "짐 처리를 마친 뒤 완료·복귀 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.",
-    "미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.": "미만이면 새 임무를 받지 않고, 현재 임무 완료 후 대기·충전 장소 복귀를 기다립니다."
+    "미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.": "미만이면 새 임무를 받지 않고, 현재 임무 완료 후 대기·충전 장소 복귀를 기다립니다.",
+    "label: 'SYSTEM'": "label: '시스템'",
+    "label: 'MISSION'": "label: '운행 상태'",
+    "label: 'PARKING'": "label: '주차·충전'",
+    "label: 'BATTERY'": "label: '배터리'",
+    "'Charging docking selected'": "'충전 도킹 선택됨'",
+    "'Non-charging parking selected'": "'일반 후진 주차 선택됨'",
+    "'Charging docking required'": "'충전 도킹 필요'",
+    "'Automatic parking · 35% threshold'": "'자동 주차 · 배터리 35% 기준'"
   },
   "TelemetryWorkspace.js": {
     "${label} live ROS camera": "${label} 실시간 ROS 영상",

@@ -302,13 +302,14 @@ const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parki
     return '대기·충전 장소에서 주차 진행 중';
   }
 
-  if (selectedMethod === 'apriltag') return 'Charging docking selected';
-  if (selectedMethod === 'reverse') return 'Non-charging parking selected';
+  if (selectedMethod === 'apriltag') return '충전 도킹 선택됨';
+  if (selectedMethod === 'reverse') return '일반 후진 주차 선택됨';
   return parkingPolicy?.charging_required
-    ? 'Charging docking required'
-    : 'Automatic parking · 35% threshold';
+    ? '충전 도킹 필요'
+    : '자동 주차 · 배터리 35% 기준';
 };
 
+// HH_260911 - Keep public standby headings and policy summaries in Korean.
 function WaitingRuntimeStatusPanel({
   systemHealth,
   missionPhase,
@@ -320,26 +321,26 @@ function WaitingRuntimeStatusPanel({
   const items = [
     {
       key: 'system',
-      label: 'SYSTEM',
+      label: '시스템',
       value: SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING,
       tone: `health-${systemHealth.toLowerCase()}`,
     },
     {
       key: 'mission',
-      label: 'MISSION',
+      label: '운행 상태',
       value: MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING,
       tone: 'mission',
     },
     {
       key: 'parking',
-      label: 'PARKING',
+      label: '주차·충전',
       value: parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy),
       tone: 'parking',
       title: parkingPolicyMessage(parkingPolicy),
     },
     {
       key: 'battery',
-      label: 'BATTERY',
+      label: '배터리',
       value: batteryPolicy?.label || '배터리 상태 확인 중',
       tone: `battery-${batteryPolicy?.tone || 'warning'}`,
     },

@@ -1,0 +1,20 @@
+{
+  "develop": {
+    "main_bundle": "static/js/main.00489a7a.js",
+    "sha256": "3e3bc295989b9e51fcc5b0a0c285b3c1afb8524aeb3c33bff1fb9c82fea88284",
+    "source_install_identical": true,
+    "frontend_source_sha256": {
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/App.js": "d871666c0f85d4af20526d4249d7002eb4c6bfc26b9209d09fa48c97054c7544",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/TelemetryWorkspace.js": "b871559f24ea93bc6af2ed63a04be10dba990f24b8e7544194a9a2dbdfe12f7c"
+    }
+  },
+  "virtual_carla": {
+    "main_bundle": "static/js/main.6626164d.js",
+    "sha256": "1d9aad417298b29983b5f0ffbc4fcedaf0101bf6e13283ac3e62f398ccef0f96",
+    "source_install_identical": true,
+    "frontend_source_sha256": {
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/App.js": "965b71e95438a942d408afc471ea736a32a69e422ba8f0c079ad26fa962683f6",
+      "camrod_ui/camrod_ui_robot/assets/frontend/src/TelemetryWorkspace.js": "f0e5dd9025ee73376d1d750075cbd332161f1029f2106cb1d282cca520fcd2f8"
+    }
+  }
+}

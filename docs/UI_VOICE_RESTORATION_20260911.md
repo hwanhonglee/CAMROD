@@ -28,8 +28,8 @@ implementation. Earlier uncommitted map/calibration work remains outside it.
   locate the dlopen-loaded component, without manual library-path injection.
 
 ## Verification
-- Actual develop UI + voice test directories: 612 passed, no failures.
-- Actual virtual/carla UI + voice test directories: 727 passed, no failures.
+- Actual develop UI + voice test directories: 620 passed, no failures.
+- Actual virtual/carla UI + voice test directories: 735 passed, no failures.
 - Both actual frontend source trees completed npm production builds. Fresh
   Chrome rendered waiting/service-selection screens without JavaScript errors.
   These browser checks had NO robot backend and did not demonstrate driving.
@@ -59,3 +59,5 @@ with these commits.
 contains source backups, full test/build/playback logs, rendered screenshots,
 asset provenance and preservation checks. Compact machine-readable results
 are committed under `docs/evidence/ui_voice_restore_20260911/`.
+
+Final browser review also localized the four standby headings and four fallback parking summaries.
