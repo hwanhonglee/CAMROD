@@ -64,7 +64,11 @@ controller_server:
       # selected 1.1 m as the balance between 1.0 m tracking error and 1.2 m
       # steering variation. Keep the 2.0 m cap; HH_260806 later synchronized
       # the real pose and controller loops at 20 Hz.
-      lookahead_dist: 3.5
+      # HH_260911 - Deployed preview shortened 3.5 -> 2.0 m. With
+      # use_velocity_scaled_lookahead_dist enabled this fixed value is only the
+      # unscaled fallback, but it is now consistent with the 2.0 m the 2 km/h
+      # cruise reference actually produces (1.111111 m/s x 1.8 s).
+      lookahead_dist: 2.0 # 3.5
       # HJ_0812 - A lateral re-entry overshoot fix raised this to 1.8 m: a 1.1 m
       # preview is shorter than the 1.59 m footprint length, so an off-path
       # start commanded a 1.2-2.0 m return arc.
@@ -73,8 +77,15 @@ controller_server:
       # Re-entry overshoot can return until the steering trim itself is fixed.
       # Velocity scaling still clamps here (0.556 m/s x 1.8 s = 1.0 m), so this
       # minimum is the effective preview.
-      min_lookahead_dist: 1.5
-      max_lookahead_dist: 3.5
+      # HH_260911 - Scaled preview window narrowed 1.5-3.5 -> 1.0-2.5 m after
+      # the 2026-09-11 Worak run. The old 1.5 m floor clamped every slow
+      # approach to a preview longer than the speed asked for, so the low-speed
+      # drop-zone and campsite legs cut their corners; the 2.5 m ceiling keeps
+      # the cruise preview from re-expanding past the validated 2.0 m.
+      # nav2_base.yaml RotationShim carries the same window - the shim wraps
+      # this same RPP plugin, so the two must not drift apart.
+      min_lookahead_dist: 1.0 # 1.5
+      max_lookahead_dist: 2.5 # 3.5
       lookahead_time: 1.8
       # Final default after the command gate: 0.20 rad/s.
       rotate_to_heading_angular_vel: 0.35

@@ -196,7 +196,10 @@
     # HH_260907 - Mirror the physical -92 deg input-adapter correction so the
     # simulation still exercises the raw dual-GNSS heading contract.
     # HH_260909 - Must cancel gnss_heading_yaw_offset_deg (-91.0) exactly.
-    gnss_heading_raw_yaw_bias_deg: 91.0
+    # HH_260911 - Follow the input-adapter retrim to -93.0 deg. This value is
+    # the exact negation of gnss_heading_yaw_offset_deg, so simulation keeps
+    # exercising the raw dual-GNSS heading contract instead of bypassing it.
+    gnss_heading_raw_yaw_bias_deg: 93.0
 
     # =========================================================================
     # 12. NAVIGATION MODE AND INITIAL POSE

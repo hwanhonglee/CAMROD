@@ -75,18 +75,22 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         package_profile = package["controller_server"]["ros__parameters"][plugin]
         deployed_profile = deployed["controller_server"]["ros__parameters"][plugin]
 
-        # HH_260818 - worak-test intentionally deploys the long scaled preview
-        # while retaining a fixed package profile for the pending field A/B.
+        # HH_260818 - worak-test intentionally deploys the scaled preview while
+        # retaining a fixed package profile for the pending field A/B.
         assert {key: package_profile[key] for key in preview_keys} == {
             "lookahead_dist": 1.2,
             "min_lookahead_dist": 1.1,
             "max_lookahead_dist": 2.0,
             "use_velocity_scaled_lookahead_dist": False,
         }
+        # HH_260911 - The deployed preview was shortened to 2.0 m fixed and a
+        # 1.0-2.5 m scaled window. Both deployed profiles are asserted with one
+        # expectation on purpose: RotationShim wraps the same RPP plugin, so
+        # nav2_base.yaml and nav2_vehicle.yaml must carry the same preview.
         assert {key: deployed_profile[key] for key in preview_keys} == {
-            "lookahead_dist": 3.5,
-            "min_lookahead_dist": 1.5,
-            "max_lookahead_dist": 3.5,
+            "lookahead_dist": 2.0,
+            "min_lookahead_dist": 1.0,
+            "max_lookahead_dist": 2.5,
             "use_velocity_scaled_lookahead_dist": True,
         }
         for key in preview_keys:

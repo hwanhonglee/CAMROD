@@ -90,8 +90,8 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Straight cruise | `2.000 km/h` (`0.555556 m/s` final) | Raw RPP `1.111111 m/s` passes through the retained `0.5` command gate |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
 | Classified fusion stop | route-front `2.0 m`, detection age `<=0.50 s` | Only current YOLO-class-associated camera-LiDAR points stop the active path; unknown/raw LiDAR points do not |
-| Active Lanelet map | `map_version=24`, SHA `d4a76062...107c98` | Current worak-derived OSM; historical map-v22/v23 evidence does not validate this revision |
-| RPP preview A/B | bringup velocity-scaled `1.5-3.5 m`; package fixed `1.2 m` | Deliberate `worak-test` field A/B divergence; do not treat package YAML as the deployed mirror yet |
+| Active Lanelet map | `map_version=27`, SHA `57cd044c...91fbb` | Current worak-derived OSM; historical map-v22/v23/v24 evidence does not validate this revision |
+| RPP preview A/B | bringup velocity-scaled `1.0-2.5 m`; package fixed `1.2 m` | Deliberate `worak-test` field A/B divergence; do not treat package YAML as the deployed mirror yet |
 | Recovery attempt | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | One projected crab/reverse/reverse-yaw stage |
 | Recovery episode | up to `50` attempts, `1.50 m`, `90 s`, `0.5 s` retry pause | Fresh candidates are retried; the first attempt no longer creates a permanent hold |
 | Recovery retry guard | `50 releases/contact region`, reset after `0.75 m` forward progress | At budget, same-direction Nav2 resume stays blocked; projected inward escape and all hard safety checks remain active |

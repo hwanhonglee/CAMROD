@@ -51,9 +51,9 @@ not replace the surveyed-width acceptance required for the user-authored map.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=24` (current worak-derived geometry and operating metadata) |
-| Active SHA-256 | `2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7` |
-| Source XML primitives | 55 lanelet relations, 14 areas, 1,662 nodes, 237 ways |
+| Active source revision | `map_version=27` (current worak-derived geometry and operating metadata) |
+| Active SHA-256 | `57cd044cb714f3f4c899868b5287c6c435e14395422e4f75eb66fd8eaa091fbb` |
+| Source XML primitives | 55 lanelet relations, 14 areas, 1,660 nodes, 237 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -77,13 +77,13 @@ maintenance remains a separate user decision.
 
 ![Historical map-v22 semantic operating coordinates](../docs/assets/module-guides/map/test-results/park-operating-points-20260810/park-operating-points.png)
 
-The current map-v23 coordinates come from `area_export.launch.py` and its
+The current map-v27 coordinates come from `area_export.launch.py` and its
 existing `area_exporter_node`, using the shared `LocalCartesianProjector`.
 OSM `local_x`/`local_y` are not substituted for this lat/lon/alt projection.
 
 | Runtime area | Relation | Center x/y (m) | Yaw | `parking_method` |
 |---|---|---|---|---|
-| Shared parking and docking | `7019` | `-11.3585, 40.0901` | `-88.2127°` | `auto` |
+| Shared parking and docking | `7019` | `-11.3585, 40.0901` | `-82.2127°` | `auto` |
 
 Former drop-zone relation `2320` is removed: that space is used for vehicle
 entry and must not remain a parking/return target. Its underlying way `2316`
