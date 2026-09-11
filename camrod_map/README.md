@@ -20,6 +20,8 @@ planning cost grids, and RViz visualization.
 
 ![Lanelet map and cost grids](../docs/assets/module-guides/map/guide/lanelet-map-and-cost-grids.png)
 
+<!-- HH_260911 - Current revision labels do not relabel historical validation evidence. -->
+
 ## Actual Simulation Runtime
 
 ![Live lanelet map](../docs/assets/module-guides/map/evidence/runtime-capture-20260804/runtime-lanelet-map-20260804.png)
@@ -49,7 +51,7 @@ not replace the surveyed-width acceptance required for the user-authored map.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=23` (user geometry plus explicit operating metadata) |
+| Active source revision | `map_version=24` (current worak-derived geometry and operating metadata) |
 | Active SHA-256 | `2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7` |
 | Source XML primitives | 55 lanelet relations, 14 areas, 1,662 nodes, 237 ways |
 | Projector | `local_cartesian` |
