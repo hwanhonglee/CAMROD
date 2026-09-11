@@ -1,0 +1,14 @@
+[
+  {
+    "branch": "develop",
+    "rendered": true,
+    "javascript_errors": [],
+    "backend": "not connected; no robot command"
+  },
+  {
+    "branch": "virtual_carla",
+    "rendered": true,
+    "javascript_errors": [],
+    "backend": "not connected; no robot command"
+  }
+]

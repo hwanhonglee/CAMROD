@@ -1,3 +1,4 @@
+// HH_260911 - Restore shared Korean presentation without importing CARLA control logic.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ManualDrivePanel from './ManualDrivePanel';
 
@@ -60,6 +61,17 @@ const finite = value => typeof value === 'number' && Number.isFinite(value);
 export async function postDockingRequest(request = fetch) {
   const response = await request('/ui/dock', { method: 'POST' });
   const body = await response.json();
+  // HH_260911 - Backend protocol codes stay stable; operator-facing text is Korean.
+  const messages = {
+    docking_requested: '충전 요청이 접수되었습니다. 실제 충전 상태를 확인해주세요.',
+    already_charging: '이미 충전 중입니다.',
+    docking_unavailable: '현재 실행 설정에서는 충전 도킹을 사용할 수 없습니다.',
+    docking_requires_drop_zone: '운행을 마치거나 정지한 뒤 대기·충전 장소에서 다시 요청해주세요.',
+    parking_in_progress: '주차 또는 충전 동작이 진행 중입니다. 완료를 기다리거나 정지 후 다시 요청해주세요.',
+    backend_startup_recovery: '시스템 초기화 중입니다. 준비가 끝난 뒤 다시 요청해주세요.',
+  };
+  const code = body.success ? body.action : body.error;
+  if (messages[code]) body.message = messages[code];
   if (!response.ok || !body.success) throw new Error(body.message || '충전 요청 실패');
   return body;
 }
@@ -1048,7 +1060,7 @@ function SafetyView({ telemetry, engageState = false, engageDisabled = false, on
       )}
       <div className="telemetry-safety-layout">
         <section className="telemetry-section">
-          <SectionHeader title="Motion owners" meta={mission.service_state_name || 'service state unavailable'} />
+          <SectionHeader title="Motion owners" meta={mission.service_state_name || '서비스 상태 미수신'} />
           <div className="controller-status-list">
             {controllerOrder.map(name => {
               const status = controllers[name] || {};
@@ -1056,7 +1068,7 @@ function SafetyView({ telemetry, engageState = false, engageDisabled = false, on
                 <div key={name} className="controller-status-row">
                   <span className={`controller-level controller-level-${levelClass(status.level)}`} />
                   <strong>{controllerLabel[name]}</strong>
-                  <b>{status.operating_state || 'NO DATA'}</b>
+                  <b>{status.operating_state || '데이터 없음'}</b>
                   <em>{status.message || '-'}</em>
                 </div>
               );

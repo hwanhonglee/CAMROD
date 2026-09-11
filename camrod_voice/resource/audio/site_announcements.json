@@ -1,0 +1,136 @@
+{
+  "annotation": "HH_260911 - Newly synthesized missing site-name clips; existing recordings are preserved.",
+  "runtime_network_required": false,
+  "clips": [
+    {
+      "key": "navigation.site_B1",
+      "file": "ko-KR/navigation/site_B1.wav",
+      "text": "비 일 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.208,
+      "sha256": "0b5ac7d30327910b1be1f14b8bd9cd2109d08e7339f654949a015d57c90a40f8"
+    },
+    {
+      "key": "navigation.site_B2",
+      "file": "ko-KR/navigation/site_B2.wav",
+      "text": "비 이 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.184,
+      "sha256": "c61b0d78dcddd919a5140b85055e2219a129a531e4ab1ac88cecd6e906ab65db"
+    },
+    {
+      "key": "navigation.site_B3",
+      "file": "ko-KR/navigation/site_B3.wav",
+      "text": "비 삼 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.304,
+      "sha256": "aad8ff200cba0e2793356624d53fb25a49abc0ffd8196b0e95374fe23f8fec74"
+    },
+    {
+      "key": "navigation.site_B4",
+      "file": "ko-KR/navigation/site_B4.wav",
+      "text": "비 사 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.28,
+      "sha256": "8527ab5dfa5fc66e1ac2daf284d7fc1d738b510d8c09d701b427d2263ba887f6"
+    },
+    {
+      "key": "navigation.site_B5",
+      "file": "ko-KR/navigation/site_B5.wav",
+      "text": "비 오 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.232,
+      "sha256": "539a6e2f8ece1c6a9081a74551b8cd4fc982c61b2aa4597d554cf63aa5ed12c0"
+    },
+    {
+      "key": "navigation.site_B6",
+      "file": "ko-KR/navigation/site_B6.wav",
+      "text": "비 육 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.232,
+      "sha256": "519b4a9e2d684f3ab5d80c5ce691330650996e2cf690b930124a885a5bc4ec9f"
+    },
+    {
+      "key": "navigation.site_B7",
+      "file": "ko-KR/navigation/site_B7.wav",
+      "text": "비 칠 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.256,
+      "sha256": "b101eaee6f1c97a0bed3341f0569b3d16da7f5c77ea013d6a773c0a29b1fe830"
+    },
+    {
+      "key": "navigation.site_B8",
+      "file": "ko-KR/navigation/site_B8.wav",
+      "text": "비 팔 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.232,
+      "sha256": "605b9070d1b06cbf5575e8f6efcd534f833da780d22a87da79b5102567cc47b1"
+    },
+    {
+      "key": "navigation.site_B9",
+      "file": "ko-KR/navigation/site_B9.wav",
+      "text": "비 구 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.232,
+      "sha256": "5f8f31f7368922d3f11c1365380353c2efc63afbcaf4f12b80d68171fa45381a"
+    },
+    {
+      "key": "navigation.site_B10",
+      "file": "ko-KR/navigation/site_B10.wav",
+      "text": "비 십 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.208,
+      "sha256": "efe2280b5850315de8262a2af167583f0acfee4f2f95c545253e324e682a8c76"
+    },
+    {
+      "key": "navigation.site_B11",
+      "file": "ko-KR/navigation/site_B11.wav",
+      "text": "비 십일 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.352,
+      "sha256": "ea3b6b33ba0ef1ba863d0f8e5e8cbb63692aba4bd9fef13d7bbf64fa28b1c4b8"
+    },
+    {
+      "key": "navigation.site_B12",
+      "file": "ko-KR/navigation/site_B12.wav",
+      "text": "비 십이 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.328,
+      "sha256": "623b4ef7b0dab221636566e1e22c42bee028eaeba00a6c23f6c7939290b94b8c"
+    },
+    {
+      "key": "navigation.site_B13",
+      "file": "ko-KR/navigation/site_B13.wav",
+      "text": "비 십삼 사이트입니다.",
+      "voice": "ko-KR-SunHiNeural",
+      "rate": "+10%",
+      "generator": "edge-tts 7.2.8",
+      "seconds": 2.472,
+      "sha256": "1a13a45218313b6959aaeadc99b004b6ec853fcfeda990f29bcddd45c827b027"
+    }
+  ]
+}

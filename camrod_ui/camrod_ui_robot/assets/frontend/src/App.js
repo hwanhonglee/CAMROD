@@ -1,3 +1,4 @@
+// HH_260911 - Restore shared Korean presentation without importing CARLA control logic.
 /**
  * App.js — 로봇 사이트별 토글 컨트롤 메인 컴포넌트
  *
@@ -290,16 +291,16 @@ const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parki
 
   if (state === 'CHARGING') return '충전 중';
   if (state === 'WAITING_FOR_CHARGING') return '충전 연결 대기 중';
-  if (state === 'DROP_ZONE_WAIT') return 'Parked at drop zone';
+  if (state === 'DROP_ZONE_WAIT') return '대기·충전 장소 주차 완료';
   if (state === 'DROP_ZONE_PARKING') {
     if (
       description.includes('DROP_ZONE_MANEUVER_CONTROLLER')
       || description.includes('PARKING_APPROACH')
       || description.includes('ALIGN_FOR_PARKING')
-    ) return 'Drop-zone parking in progress';
+    ) return '대기·충전 장소에서 주차 진행 중';
     if (selectedMethod === 'apriltag') return '도킹 진행 중';
     if (selectedMethod === 'reverse') return '주차 진행 중';
-    return 'Drop-zone parking in progress';
+    return '대기·충전 장소에서 주차 진행 중';
   }
 
   if (selectedMethod === 'apriltag') return 'Charging docking selected';
@@ -340,7 +341,7 @@ function WaitingRuntimeStatusPanel({
     {
       key: 'battery',
       label: 'BATTERY',
-      value: batteryPolicy?.label || 'Battery status pending',
+      value: batteryPolicy?.label || '배터리 상태 확인 중',
       tone: `battery-${batteryPolicy?.tone || 'warning'}`,
     },
   ];
@@ -691,7 +692,7 @@ function DiagnosticsMonitor({
       {/* ── 왼쪽: 트리 패널 ── */}
       <div className="diag-tree">
         <div className="diag-tree-header">
-          Device groups
+          장치 그룹
           <span className="diag-count">{items.length}개 항목</span>
         </div>
         {groups.map(g => {
@@ -1823,11 +1824,14 @@ function App() {
           setShowArrivalComplete(false);
         }
       }
+      // HH_260911 - Preserve retry feedback without sending any movement command.
       if (data.departure_failed && data.mission_retryable) {
         const retrySite = String(data.mission_retry_site || '선택 사이트');
         const retryOwner = String(data.mission_retry_owner || '');
         setMissionBlockMessage(
-          data.message || `${retrySite} 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.`
+          (!data.message || data.message === 'Drop-zone exit failed; select the destination again to retry')
+            ? `${retrySite} 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.`
+            : data.message
         );
         if (retryOwner !== 'guest') {
           const cleared = {};
@@ -3199,7 +3203,7 @@ function App() {
               />
               <p className="preview-site-name">{activeRecallSite} 호출</p>
               <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>

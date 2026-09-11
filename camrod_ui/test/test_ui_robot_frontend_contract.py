@@ -1,3 +1,4 @@
+# HH_260911 - Korean copy changes must not remove lifecycle and safety assertions.
 """Source-level regression checks for critical Robot UI operator flows."""
 
 from pathlib import Path
@@ -74,8 +75,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "충전 연결 대기 중",
             "주차 진행 중",
             "도킹 진행 중",
-            "Drop-zone parking in progress",
-            "Parked at drop zone",
+            "대기·충전 장소에서 주차 진행 중",
+            "대기·충전 장소 주차 완료",
         ):
             self.assertIn(label, self.source)
         self.assertIn("parkingLifecycleStatus(", self.source)
