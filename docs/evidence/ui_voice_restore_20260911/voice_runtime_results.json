@@ -1,0 +1,96 @@
+{
+  "environment": "actual ROS voice executable, SDL dummy, domain 189, localhost only",
+  "physical_speaker_verified": false,
+  "results": [
+    {
+      "key": "navigation.site_B1",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.457
+    },
+    {
+      "key": "navigation.site_B2",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.213
+    },
+    {
+      "key": "navigation.site_B3",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.313
+    },
+    {
+      "key": "navigation.site_B4",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.312
+    },
+    {
+      "key": "navigation.site_B5",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.26
+    },
+    {
+      "key": "navigation.site_B6",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.271
+    },
+    {
+      "key": "navigation.site_B7",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.273
+    },
+    {
+      "key": "navigation.site_B8",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.272
+    },
+    {
+      "key": "navigation.site_B9",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.272
+    },
+    {
+      "key": "navigation.site_B10",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.222
+    },
+    {
+      "key": "navigation.site_B11",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.361
+    },
+    {
+      "key": "navigation.site_B12",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.375
+    },
+    {
+      "key": "navigation.site_B13",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 2.523
+    },
+    {
+      "key": "navigation.recall_clear_site",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 5.88
+    },
+    {
+      "key": "navigation.to_campsite",
+      "playing_seen": true,
+      "idle_after_playback": true,
+      "elapsed_s": 5.881
+    }
+  ]
+}

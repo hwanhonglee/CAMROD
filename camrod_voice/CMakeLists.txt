@@ -106,4 +106,7 @@ if(BUILD_TESTING)
   )
 endif()
 
+# HH_260911 - Export the dlopen-loaded component so local_setup includes its lib path.
+ament_export_libraries(${PROJECT_NAME}_component)
+
 ament_package()

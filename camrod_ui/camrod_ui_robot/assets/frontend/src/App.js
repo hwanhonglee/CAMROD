@@ -1,8 +1,9 @@
+// HH_260911 - Restore shared Korean presentation without importing CARLA control logic.
 /**
  * App.js — 로봇 사이트별 토글 컨트롤 메인 컴포넌트
  *
  * 역할:
- *   1. B1~B12 사이트별 토글 버튼 12개를 그리드로 렌더링
+ *   1. B1~B13 사이트별 목적지 버튼을 페이지 단위로 렌더링
  *   2. WebSocket으로 FastAPI 백엔드와 실시간 통신
  *   3. 버튼 클릭 시 {"site": "B1", "state": true}를 백엔드에 전송
  *   4. 백엔드에서 받은 상태로 각 버튼 UI 동기화
@@ -62,21 +63,21 @@ const SERVICE_STATE_NAME_BY_ID = Object.freeze(
 );
 // HH_260730 - Manual RViz and regulated UI goals share one runtime vocabulary.
 const MISSION_PHASE_LABELS = Object.freeze({
-  INITIALIZING: 'Initialization',
-  READY: 'Ready',
-  GOAL_RECEIVED: 'Goal received',
-  PATH_PREPARING: 'Preparing path',
-  DRIVING: 'Driving',
-  SAFETY_STOP: 'Safety stop',
-  ARRIVED: 'Arrived',
-  STOPPED: 'Stopped',
+  INITIALIZING: '초기화 중',
+  READY: '운행 준비 완료',
+  GOAL_RECEIVED: '목표 수신',
+  PATH_PREPARING: '경로 준비 중',
+  DRIVING: '주행 중',
+  SAFETY_STOP: '안전 정지',
+  ARRIVED: '도착',
+  STOPPED: '운행 정지',
 });
 const SYSTEM_HEALTH_LABELS = Object.freeze({
-  // HH_260721 - Keep health labels English and independent from service progress.
-  STARTING: 'System starting',
-  OK: 'System normal',
-  WARNING: 'System warning',
-  ERROR: 'System error',
+  // HH_260911 - Keep health independent from progress; display both in Korean.
+  STARTING: '시스템 시작 중',
+  OK: '시스템 정상',
+  WARNING: '시스템 경고',
+  ERROR: '시스템 오류',
 });
 // HH_260908 - The guest-recall overlays announce the ride TO the guest.
 // Any state outside the en-route phase (arrival, loading wait, return,
@@ -246,12 +247,12 @@ const formatBatteryReturnMessage = (data) => {
     return `${prefix} 25% 미만으로 현재 작업을 중단하고 충전 도킹을 위해 즉시 복귀합니다. 로봇 주변을 비워주세요.`;
   }
   if (data.battery_return_started) {
-    return `${prefix} 복귀 요청이 확인되어 충전 구역으로 이동합니다.`;
+    return `${prefix} 복귀 요청이 확인되어 대기·충전 장소로 이동합니다.`;
   }
   if (data.battery_return_waiting_for_user) {
-    return `${prefix} 짐 처리를 마친 뒤 이용 완료 버튼을 눌러주세요. 완료 후 충전 도킹을 위해 복귀합니다.`;
+    return `${prefix} 짐 처리를 마친 뒤 완료·복귀 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.`;
   }
-  return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.`;
+  return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 대기·충전 장소 복귀를 기다립니다.`;
 };
 
 const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
@@ -262,24 +263,24 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
     return { tone: 'error', label: `배터리 부족 · 즉시 복귀 ${batteryText}`.trim() };
   }
   if (batteryReturnState.started) {
-    return { tone: 'warning', label: `Low battery return active ${batteryText}`.trim() };
+    return { tone: 'warning', label: `저전력 자동 복귀 중 ${batteryText}`.trim() };
   }
   if (batteryReturnState.waitingForUser) {
-    return { tone: 'warning', label: `Waiting for user return ${batteryText}`.trim() };
+    return { tone: 'warning', label: `이용 완료·복귀 요청 대기 ${batteryText}`.trim() };
   }
   if (batteryReturnState.pending) {
-    return { tone: 'warning', label: `Finish mission then return ${batteryText}`.trim() };
+    return { tone: 'warning', label: `현재 임무 완료 후 복귀 ${batteryText}`.trim() };
   }
   if (!Number.isFinite(battery) || battery < 0) {
-    return { tone: 'warning', label: 'Battery status pending' };
+    return { tone: 'warning', label: '배터리 상태 확인 중' };
   }
   if (battery < URGENT_BATTERY_RETURN_PERCENT) {
     return { tone: 'error', label: `25% 미만 · 긴급 복귀 필요 (${battery}%)` };
   }
   if (battery < MISSION_DISPATCH_MINIMUM_PERCENT) {
-    return { tone: 'warning', label: `Mission hold below ${MISSION_DISPATCH_MINIMUM_PERCENT}% (${battery}%)` };
+    return { tone: 'warning', label: `임무 보류 · ${MISSION_DISPATCH_MINIMUM_PERCENT}% 미만 (${battery}%)` };
   }
-  return { tone: 'ok', label: `Mission battery ready ${battery}%` };
+  return { tone: 'ok', label: `임무 배터리 준비 완료 ${battery}%` };
 };
 
 const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parkingPolicy) => {
@@ -289,16 +290,16 @@ const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parki
 
   if (state === 'CHARGING') return '충전 중';
   if (state === 'WAITING_FOR_CHARGING') return '충전 연결 대기 중';
-  if (state === 'DROP_ZONE_WAIT') return 'Parked at drop zone';
+  if (state === 'DROP_ZONE_WAIT') return '대기·충전 장소 주차 완료';
   if (state === 'DROP_ZONE_PARKING') {
     if (
       description.includes('DROP_ZONE_MANEUVER_CONTROLLER')
       || description.includes('PARKING_APPROACH')
       || description.includes('ALIGN_FOR_PARKING')
-    ) return 'Drop-zone parking in progress';
+    ) return '대기·충전 장소에서 주차 진행 중';
     if (selectedMethod === 'apriltag') return '도킹 진행 중';
     if (selectedMethod === 'reverse') return '주차 진행 중';
-    return 'Drop-zone parking in progress';
+    return '대기·충전 장소에서 주차 진행 중';
   }
 
   if (selectedMethod === 'apriltag') return 'Charging docking selected';
@@ -339,7 +340,7 @@ function WaitingRuntimeStatusPanel({
     {
       key: 'battery',
       label: 'BATTERY',
-      value: batteryPolicy?.label || 'Battery status pending',
+      value: batteryPolicy?.label || '배터리 상태 확인 중',
       tone: `battery-${batteryPolicy?.tone || 'warning'}`,
     },
   ];
@@ -600,7 +601,7 @@ function DiagnosticsMonitor({
 
   return (
     <div className="diag-monitor-wrap">
-      <nav className="diag-tab-bar" aria-label="Operator diagnostics views">
+      <nav className="diag-tab-bar" aria-label="관리자 진단 화면">
         {[{ id: 'system', label: '시스템' }, ...TELEMETRY_TABS].map(tab => (
           <button
             key={tab.id}
@@ -617,7 +618,7 @@ function DiagnosticsMonitor({
         <>
       {/* ── 상단 컨트롤 바 ── */}
       <div className="diag-control-bar">
-        <span className="diag-control-label">Manual Motion</span>
+        <span className="diag-control-label">수동 운행</span>
         <button
           type="button"
           className="manual-return-btn"
@@ -625,7 +626,7 @@ function DiagnosticsMonitor({
           disabled={Boolean(motionCommandPending)}
           title="현재 서비스 상태와 관계없이 drop zone 복귀를 요청"
         >
-          {motionCommandPending === 'return' ? '복귀 요청 중' : '복귀 · 자동 주차'}
+          {motionCommandPending === 'return' ? '복귀 요청 중' : '복귀'}
         </button>
         <DockingCommandButton disabled={Boolean(motionCommandPending)} serviceStateName={serviceStateName} />
         <span className="manual-motion-status">{motionCommandStatus || '명령 대기'}</span>
@@ -689,8 +690,8 @@ function DiagnosticsMonitor({
       {/* ── 왼쪽: 트리 패널 ── */}
       <div className="diag-tree">
         <div className="diag-tree-header">
-          Device groups
-          <span className="diag-count">{items.length} items</span>
+          장치 그룹
+          <span className="diag-count">{items.length}개 항목</span>
         </div>
         {groups.map(g => {
           const lvl = g.lvls[0];
@@ -1005,7 +1006,7 @@ const SIDE_BUTTONS = [
               '배송 로봇 이동 중에는 경로 접근을 최소화해 주세요.',
               '경로 위의 장애물은 미리 치워 주세요.',
               '어린이·반려동물이 배송 로봇 주변에 가까이 가지 않도록 주의해주세요.',
-              '로봇이 이동중에 목적지 변경은 불가능하니 신중히 선택해 주세요.',
+              '로봇이 이동 중일 때는 목적지를 변경할 수 없으니 신중히 선택해 주세요.',
             ].map((text, i) => (
               <div key={i} className="guide-bullet">
                 <span className="guide-bullet-dot" style={{ color: '#e65100' }}>⚠</span>
@@ -1027,7 +1028,7 @@ const SIDE_BUTTONS = [
           <div className="guide-card-body">
             {[
               '배송 로봇 이동 중 왼쪽 프리뷰 패널 하단을 확인합니다.',
-              '"운행을 정지하시겠습니까?" 아래의 [예] 버튼을 누릅니다.',
+              '[운행 중지] 버튼을 누릅니다.',
               '배송 로봇이 즉시 운행을 멈추고 목적지 ON 상태가 해제됩니다.',
             ].map((text, i) => (
               <div key={i} className="guide-step">
@@ -1812,6 +1813,29 @@ function App() {
         } else {
           setArrivedSite(null);
           setShowArrivalComplete(false);
+        }
+      }
+
+      // HH_260911 - Preserve retry feedback without sending any movement command.
+      if (data.departure_failed && data.mission_retryable) {
+        const retrySite = String(data.mission_retry_site || '선택 사이트');
+        const retryOwner = String(data.mission_retry_owner || '');
+        setMissionBlockMessage(
+          (!data.message || data.message === 'Drop-zone exit failed; select the destination again to retry')
+            ? `${retrySite} 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.`
+            : data.message
+        );
+        if (retryOwner !== 'guest') {
+          const cleared = {};
+          SITE_NAMES.forEach(site => { cleared[site] = false; });
+          setStates(cleared);
+          setSelectedSite(null);
+          setActiveRecallSite(null);
+          setShowMoveConfirm(false);
+          setShowMoveVerify(false);
+          setMoveVerifyInput('');
+          setMoveVerifyError(false);
+          missionDispatchActiveRef.current = false;
         }
       }
 
@@ -2990,7 +3014,7 @@ function App() {
         <div className="preview-panel">
           {missionExecutionError ? missionExecutionWarning : missionPhase === 'INITIALIZING' ? (
             <>
-              <span className="preview-placeholder-title">Initialization</span>
+              <span className="preview-placeholder-title">초기화 중</span>
               <span className="preview-placeholder">
                 센서, 위치, 지도 및 주행 시스템을 확인하고 있습니다
               </span>
@@ -3005,7 +3029,7 @@ function App() {
               <p className="preview-site-name">{selectedSite}</p>
               <p className="preview-question">
                 {destinationIntent === 'recall'
-                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 호출하시겠습니까?'
+                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 로봇을 호출하시겠습니까?'
                   : '배송을 위해 사이트 내부로 이동하시겠습니까?'}
               </p>
               <div className="preview-yn-btns">
@@ -3088,9 +3112,9 @@ function App() {
                   ? recallProgress.message
                   : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
               </p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>
             </>
           ) : activeSite ? (
@@ -3101,10 +3125,10 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">{motionNotice?.message || '배송 로봇이 이동중 입니다.'}</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-moving">{motionNotice?.message || '배송을 위해 사이트 내부로 이동 중입니다.'}</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>
             </>
           ) : activeRecallSite ? (
@@ -3116,30 +3140,30 @@ function App() {
               />
               <p className="preview-site-name">{activeRecallSite} 호출</p>
               <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>운행 중지</button>
               </div>
             </>
           ) : manualDriveActive ? (
             <>
-              <span className="preview-placeholder-title">Manual RViz Goal</span>
+              <span className="preview-placeholder-title">수동 RViz 목표</span>
               <p className="preview-moving">
                 {motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase}
               </p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className="preview-question">필요하면 아래 버튼으로 운행을 중지할 수 있습니다.</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleManualStop}>예</button>
+                <button className="preview-stop-btn" onClick={handleManualStop}>운행 중지</button>
               </div>
             </>
           ) : serviceStateName === 'OPERATOR_STOPPED' ? (
             <>
-              <span className="preview-placeholder-title">Operator Stopped</span>
+              <span className="preview-placeholder-title">관리자 운행 정지</span>
               <p className="preview-returning">운행이 정지되었습니다.</p>
             </>
           ) : (
             <>
-              <span className="preview-placeholder-title">Camping Site Viewer</span>
+              <span className="preview-placeholder-title">캠핑 사이트 선택</span>
               <span className="preview-placeholder">서비스 선택 버튼을 눌러주세요</span>
             </>
           )}
@@ -3159,7 +3183,7 @@ function App() {
           <h1>{destinationIntent === 'recall' ? '호출 목적지 선택' : '배송 목적지 선택'}</h1>
           <p className="preview-question" style={{ margin: 0, fontSize: '0.9rem' }}>
             {destinationIntent === 'recall'
-              ? '텐트가 있는 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
+              ? '텐트가 설치된 사이트를 선택하면 내부 진입 없이 도로 측 대기점으로 이동합니다.'
               : '빈 사이트를 선택하면 배송을 위해 사이트 내부로 진입합니다.'}
           </p>
 
@@ -3269,8 +3293,8 @@ function App() {
                 </>
               ) : (
                 <>
-                  로봇이 출발하면 정차할 수 없습니다.<br />
-                  배송을 위해 이동하시겠습니까?
+                  로봇이 사이트 내부까지 배송 운행을 시작합니다.<br />
+                  계속하시겠습니까?
                 </>
               )}
             </p>
@@ -3313,7 +3337,7 @@ function App() {
             {moveVerifyError && (
               <div className="move-verify-error-box">
                 <span className="move-verify-wrong">"{moveVerifyInput}"</span>
-                <span className="move-verify-error-msg">로 이동하시는게 맞으십니까?</span>
+                <span className="move-verify-error-msg">로 이동하는 것이 맞습니까?</span>
                 <p className="move-verify-retry">숫자를 다시 입력해주세요</p>
               </div>
             )}

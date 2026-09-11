@@ -42,9 +42,9 @@ batteryReturnStateRef.current = emptyBatteryReturnState();
 serviceStateIdRef.current = SERVICE_STATE.CHARGING;
 """ + handler + handlers + r"""
 const send = frame => ws.onmessage({data:JSON.stringify(frame)});
-const idle = () => send({mission_dispatch_active:false,mission_dispatch_generation:0,
+const idle = (serviceState=SERVICE_STATE.CHARGING) => send({mission_dispatch_active:false,mission_dispatch_generation:0,
   mission_dispatch_site:'',mission_dispatch_owner:'',mission_dispatch_intent:'',
-  robot_recall_site:'',service_state:SERVICE_STATE.CHARGING});
+  robot_recall_site:'',service_state:serviceState});
 """ + script
     result = subprocess.run(["node"], input=body, text=True, capture_output=True, timeout=10)
     assert result.returncode == 0, result.stderr
@@ -87,22 +87,41 @@ console.log(JSON.stringify({role:uiState.setDestinationIntent,
 
 
 def test_unpinned_completed_visit_returns_to_default_standby():
+    # HH_260911 - Ordinary parked standby is immediate; charging retains its notice.
     result = replay(r"""
 handleWaitingClick(); activateDestinationService('recall');
 intentPinnedRef.current = false;
-idle();
+idle(SERVICE_STATE.DROP_ZONE_WAIT);
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,role:uiState.setDestinationIntent}));
 """)
     assert result == {"waiting": True, "role": "delivery"}
 
 
 def test_new_parking_preview_retains_stop_and_error_copy_priority():
+    # HH_260911 - Execute the actual complete-charge expression, not an obsolete substring.
     start = SOURCE.index(") : ['CHARGING'")
     block = SOURCE[start:SOURCE.index(") : displayedReturning", start)]
-    assert "motionNotice?.label || parkingLifecycleStatus(" in block
+    expression=block[block.index('{motionNotice?.label'):block.index('</span>')].strip()[1:-1]
+    script = "const result=[];\n"
+    for phase,health,complete in [('STOPPED','OK',True),('SAFETY_STOP','OK',True),('READY','ERROR',True),('READY','OK',True),('READY','OK',False)]:
+        script += "{ const serviceStateName='CHARGING'; const serviceStateDescription=''; const parkingPolicy={};"
+        script += f"const batteryChargeComplete={json.dumps(complete)};const motionNotice=serviceMotionNotice({json.dumps(phase)},{json.dumps(health)});"
+        script += f"result.push({expression});}}\n"
+    script += "console.log(JSON.stringify(result));"
+    assert replay(script)==['운행 정지','안전 정지','시스템 오류','충전 완료','충전 중']
     assert "motionNotice?.message || (serviceStateName" in block
     assert 'className="guest-recall-overlay"' not in SOURCE
     assert 'onClick={handleManualStop}' in SOURCE
+
+
+@pytest.mark.parametrize('state',['CHARGING','WAITING_FOR_CHARGING'])
+def test_charging_notice_is_not_erased_by_idle_heartbeat(state):
+    # HH_260911 - Preserve the previously added delayed standby presentation.
+    result=replay("handleWaitingClick(); activateDestinationService('recall'); intentPinnedRef.current=false;"
+                  +f"idle(SERVICE_STATE.{state});"
+                  +"console.log(JSON.stringify({waiting:uiState.setShowWaiting,role:uiState.setDestinationIntent}));")
+    assert result=={'waiting':False,'role':'delivery'}
+
 
 
 def test_service_controls_have_distinct_real_pointer_targets():
@@ -110,3 +129,15 @@ def test_service_controls_have_distinct_real_pointer_targets():
                  "operator-service-delivery-confirm", "operator-service-recall-confirm",
                  "operator-service-docking-confirm"):
         assert SOURCE.count(f'data-ui="{hook}"') == 1
+
+
+@pytest.mark.parametrize("owner",["operator","guest"])
+def test_restored_departure_failure_notice_preserves_guest_authority(owner):
+    # HH_260911 - Replay the actual UI handler; never publish a robot command.
+    result=replay("handleWaitingClick(); activateDestinationService('delivery');"
+       +"send({mission_dispatch_active:true,mission_dispatch_generation:42,mission_dispatch_site:'B1',mission_dispatch_owner:"
+       +json.dumps(owner)+",mission_dispatch_intent:'delivery',states:{B1:true}});"
+       +"send({departure_failed:true,mission_retryable:true,mission_retry_site:'B1',mission_retry_owner:"
+       +json.dumps(owner)+",message:'Drop-zone exit failed; select the destination again to retry'});"
+       +"console.log(JSON.stringify({notice:uiState.setMissionBlockMessage,active:missionDispatchActiveRef.current}));")
+    assert result=={'notice':'B1 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.','active':owner=='guest'}

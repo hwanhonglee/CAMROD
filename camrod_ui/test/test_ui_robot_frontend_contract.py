@@ -1,3 +1,4 @@
+# HH_260911 - Korean copy changes must not remove lifecycle and safety assertions.
 """Source-level regression checks for critical Robot UI operator flows."""
 
 from pathlib import Path
@@ -70,8 +71,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "충전 연결 대기 중",
             "주차 진행 중",
             "도킹 진행 중",
-            "Drop-zone parking in progress",
-            "Parked at drop zone",
+            "대기·충전 장소에서 주차 진행 중",
+            "대기·충전 장소 주차 완료",
         ):
             self.assertIn(label, self.source)
         self.assertIn("parkingLifecycleStatus(", self.source)
@@ -309,7 +310,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source.index(") : displayedReturning ? (") :
             self.source.index(") : activeSite ? (")
         ]
-        self.assertIn("운행을 정지하시겠습니까?", returning_preview)
+        self.assertIn("필요하면 아래 버튼으로 운행을 중지할 수 있습니다.", returning_preview)
         self.assertIn("onClick={handleStopMove}", returning_preview)
 
         returning_states = self.source[
@@ -810,7 +811,7 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
 """
         result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
         output = json.loads(result.stdout)
-        self.assertIn("pending", output["robot"][0]["label"])
+        self.assertIn("상태 확인 중", output["robot"][0]["label"])
         for index in (1, 2):
             self.assertIn("긴급 복귀", output["robot"][index]["label"])
             self.assertIn("25% 미만", output["guest"][index])
@@ -1000,8 +1001,8 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
     def test_docking_view_shows_exact_lanelet_parking_approach(self) -> None:
         for token in (
             "drop_zone_parking",
-            "Lanelet parking point",
-            "Exact lanelet point",
+            "Lanelet 주차 지점",
+            "정확한 Lanelet 지점",
             "docking-path-approach",
         ):
             self.assertIn(token, self.telemetry_source)
