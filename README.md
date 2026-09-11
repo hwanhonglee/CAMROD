@@ -74,13 +74,15 @@ paths. This is not a generated diagram or a real-robot field claim.
 
 ## Current Values
 
+<!-- HH_260911 - Distinguish current checkout configuration from historical evidence and CARLA mount overrides. -->
+
 <!-- HH_260809 - Record the shared tapered-front, rounded-corner boundary
 contract used by visualization, Nav2, and the final command safety gate. -->
 
 | Item | Active value | Meaning |
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
-| GNSS position reference | left antenna `(0,+0.45,0) m` | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most `0.5 s` without making GNSS yaw valid |
+| GNSS position reference | field configuration `(+0.65,+0.45,0) m`; CARLA uses its spawn-defined mount | Fresh dual-GNSS yaw rotates the lever arm; a GNSS-anchored EKF yaw delta may bridge at most `0.5 s` without making GNSS yaw valid |
 | GNSS receiver cadence | `10 Hz` (`100 ms` epoch) | The canonical YAML configures the rover on launch; moving-base RTCM/link/heading acceptance remains a separate physical test |
 | Localization pose cadence | `20 Hz` | EKF predicts between GNSS corrections; this is not a claim that GNSS itself publishes at 20 Hz |
 | Physical body boundary | `1.39160 x 1.07000 m` bounding extents | Tapered front (`0.12 m` side inset over `0.12 m` depth), six rounded corners (`R0.05 m`); cost-100 overlap stops ordinary motion |
@@ -106,7 +108,7 @@ contract used by visualization, Nav2, and the final command safety gate. -->
 | Tent occupancy admission | guard default `false` | One bringup toggle enables UI/control pre-entry blocking; an already committed site maneuver is not interrupted |
 | Campsite yaw completion | `0.8 s` continuously within tolerance and `<= 3 deg/s` | Crab/forward translation cannot begin from a single transient yaw sample |
 | Drop-zone parking handoff | local position `<=0.20 m`, `0.5 s` hold, then yaw `1.0 s` within tolerance and `<=3 deg/s` | Nav2 route tolerance remains `0.10 m`; final reverse XY tolerance remains `0.25 m`. There is no post-yaw XY correction stage |
-| Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
+| Parking methods | `auto`, `reverse`, `apriltag` | Exactly one final parking controller is selected |
 | Final parking slowdown | reverse last `0.30 m`; AprilTag camera range `0.80 -> 0.40 m` | Linear ramp to `0.138889 m/s` raw; charging CAN immediately commands zero |
 | LiDAR processing | raw/filtered target `10 Hz`; classified fusion raster default `ON` | `/sensing/cost_grid/lidar` is a legacy topic name for camera-LiDAR semantic points; direct raw-LiDAR cost remains `OFF` |
 | Radar profile | FRONT1/2 + four side channels `ON`; REAR quarantined | FRONT1/2 retain body exclusions but stop candidates end at the absolute `0.300 m` sensor-face range; side cutoffs remain absolute `0.100 m`; UI `ECHO` is raw range while only post-filter `COST` can stop motion |

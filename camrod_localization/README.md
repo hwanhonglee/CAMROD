@@ -36,12 +36,14 @@ a physical 5 Hz moving-base acceptance result.
 
 ## Profiles
 
+<!-- HH_260911 - Report configured receiver cadence and field lever arm; CARLA calibration remains adapter-owned. -->
+
 | Item | Field | Simulation |
 |---|---:|---:|
 | EKF frequency | `20 Hz` | `20 Hz` |
-| GNSS correction cadence | configured `5 Hz` | fake input `10 Hz` |
+| GNSS correction cadence | configured `10 Hz` | fake input `10 Hz` |
 | Base frame | `robot_center_link` | `robot_center_link` |
-| GNSS raw position | left antenna `(0,+0.45,0) m` | Same modeled source |
+| GNSS raw position | field antenna `(+0.65,+0.45,0) m` | Deterministic fixture or CARLA spawn calibration; inspect the selected profile |
 | GNSS published position | heading-corrected `robot_center_link` | Same correction path |
 | Mode | 2D | 2D |
 | TF | EKF publishes `odom -> robot_center_link` | Same |

@@ -109,22 +109,42 @@ apt_install_pkgs() {
   return 1
 }
 
+# HH_260911 - Bind setup/build to this checkout; isolate sibling worktree outputs.
 resolve_ws_root() {
-  local probe="$1"
-  while [[ "${probe}" != "/" ]]; do
-    if [[ -d "${probe}/src/camrod_bringup" ]]; then echo "${probe}"; return 0; fi
-    probe="$(dirname "${probe}")"
-  done
-  return 1
+  local source_root="$1" output_root
+  if [[ -n "${CAMROD_BUILD_ROOT:-}" ]]; then
+    output_root="$(readlink -m "${CAMROD_BUILD_ROOT}")"
+  elif [[ "$(basename "${source_root}")" == src ]]; then
+    output_root="$(dirname "${source_root}")"
+  else
+    output_root="$(dirname "${source_root}")/.camrod-build/$(basename "${source_root}")"
+  fi
+  case "${output_root}/" in
+    "${source_root}/"*) echo "ERROR: build outputs must stay outside the source checkout" >&2; return 1 ;;
+  esac
+  if [[ -d "${output_root}/src/camrod_bringup" ]] &&
+     [[ "$(readlink -f "${output_root}/src")" != "${source_root}" ]]; then
+    echo "ERROR: build root belongs to another source checkout: ${output_root}" >&2
+    return 1
+  fi
+  printf '%s
+' "${output_root}"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-WS_ROOT="$(resolve_ws_root "${SCRIPT_DIR}" || resolve_ws_root "$(pwd)" || true)"
-if [[ -z "${WS_ROOT}" ]]; then
-  echo "[setup_camrod] ERROR: cannot find workspace root (expected <ws>/src/camrod_bringup)" >&2
-  exit 1
+SRC_ROOT="${SCRIPT_DIR}"
+[[ -d "${SRC_ROOT}/camrod_bringup" ]] || { echo "ERROR: missing CAMROD source at ${SRC_ROOT}" >&2; exit 1; }
+WS_ROOT="$(resolve_ws_root "${SRC_ROOT}")" || exit 1
+if [[ "${1:-}" == --print-paths ]]; then
+  printf 'SRC_ROOT=%s
+WS_ROOT=%s
+BUILD_BASE=%s/build
+INSTALL_BASE=%s/install
+LOG_BASE=%s/log
+'     "${SRC_ROOT}" "${WS_ROOT}" "${WS_ROOT}" "${WS_ROOT}" "${WS_ROOT}"
+  exit 0
 fi
-SRC_ROOT="${WS_ROOT}/src"
+
 
 UPDATE=0
 DO_ROSDEP=1

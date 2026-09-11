@@ -48,6 +48,14 @@
 
 set -euo pipefail
 
+# HH_260911 - Help must exit before cleanup, npm, or any package installation.
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  printf '%s
+'     'Usage: ./colcon_build.sh [--print-paths] [colcon build arguments...]'     'Build the checkout containing this script, regardless of the current directory.'     'CAMROD_BUILD_ROOT overrides isolated build/install/log output locations.'     'Use colcon build --help for package selectors and CMake options.'
+  exit 0
+fi
+
+
 log() { echo "[colcon_build] $*"; }
 
 _has_explicit_cmake_build_type() {
@@ -114,22 +122,42 @@ _prepare_colcon_build_args() {
   COLCON_BUILD_TYPE_SOURCE="default-release"
 }
 
+# HH_260911 - Bind setup/build to this checkout; isolate sibling worktree outputs.
 resolve_ws_root() {
-  local probe="$1"
-  while [[ "${probe}" != "/" ]]; do
-    if [[ -d "${probe}/src/camrod_bringup" ]]; then echo "${probe}"; return 0; fi
-    probe="$(dirname "${probe}")"
-  done
-  return 1
+  local source_root="$1" output_root
+  if [[ -n "${CAMROD_BUILD_ROOT:-}" ]]; then
+    output_root="$(readlink -m "${CAMROD_BUILD_ROOT}")"
+  elif [[ "$(basename "${source_root}")" == src ]]; then
+    output_root="$(dirname "${source_root}")"
+  else
+    output_root="$(dirname "${source_root}")/.camrod-build/$(basename "${source_root}")"
+  fi
+  case "${output_root}/" in
+    "${source_root}/"*) echo "ERROR: build outputs must stay outside the source checkout" >&2; return 1 ;;
+  esac
+  if [[ -d "${output_root}/src/camrod_bringup" ]] &&
+     [[ "$(readlink -f "${output_root}/src")" != "${source_root}" ]]; then
+    echo "ERROR: build root belongs to another source checkout: ${output_root}" >&2
+    return 1
+  fi
+  printf '%s
+' "${output_root}"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-WS_ROOT="$(resolve_ws_root "${SCRIPT_DIR}" || resolve_ws_root "$(pwd)" || true)"
-if [[ -z "${WS_ROOT}" ]]; then
-  echo "[colcon_build] ERROR: cannot find workspace root (expected <ws>/src/camrod_bringup)" >&2
-  exit 1
+SRC_ROOT="${SCRIPT_DIR}"
+[[ -d "${SRC_ROOT}/camrod_bringup" ]] || { echo "ERROR: missing CAMROD source at ${SRC_ROOT}" >&2; exit 1; }
+WS_ROOT="$(resolve_ws_root "${SRC_ROOT}")" || exit 1
+if [[ "${1:-}" == --print-paths ]]; then
+  printf 'SRC_ROOT=%s
+WS_ROOT=%s
+BUILD_BASE=%s/build
+INSTALL_BASE=%s/install
+LOG_BASE=%s/log
+'     "${SRC_ROOT}" "${WS_ROOT}" "${WS_ROOT}" "${WS_ROOT}" "${WS_ROOT}"
+  exit 0
 fi
-SRC_ROOT="${WS_ROOT}/src"
+
 
 mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
 cd "${WS_ROOT}"
@@ -585,8 +613,8 @@ _reject_legacy_ground_segmentation_package
 # HH_260428: Collect all external/ base directories for colcon --base-paths.
 # Excludes .git internals, build/install/log artifacts, and disabled packages.
 mapfile -t EXTERNAL_BASES < <(
-  cd "${WS_ROOT}" && find src -type d -name external \
-    -not -path 'src/todo/*' \
+  cd "${WS_ROOT}" && find "${SRC_ROOT}" -type d -name external \
+    -not -path "${SRC_ROOT}/todo/*" \
     -not -path '*/.git/*' \
     -not -path '*/build/*' \
     -not -path '*/install/*' \
@@ -600,16 +628,16 @@ BUILD_SKIP_PACKAGES=()
 # optional voice stack has not been provisioned yet. setup_camrod.sh installs
 # libsdl2-mixer-dev; until then camrod_voice cannot configure because SDL2_mixer
 # is a required pkg-config dependency.
-if [[ -d "src/camrod_voice" ]] && ! pkg-config --exists SDL2_mixer 2>/dev/null; then
+if [[ -d "${SRC_ROOT}/camrod_voice" ]] && ! pkg-config --exists SDL2_mixer 2>/dev/null; then
   BUILD_SKIP_PACKAGES+=(camrod_voice)
   log "skip camrod_voice (missing SDL2_mixer; install libsdl2-mixer-dev via setup_camrod.sh)"
 fi
 
-BASE_PATHS=("src" "${EXTERNAL_BASES[@]}")
+BASE_PATHS=("${SRC_ROOT}" "${EXTERNAL_BASES[@]}")
 # camrod_ui_tester intentionally lives below util/COLCON_IGNORE. Add only this
 # package as an explicit discovery root while keeping the rest of util ignored.
 if [[ -f "${SRC_ROOT}/util/camrod_ui_tester/package.xml" ]]; then
-  BASE_PATHS+=("src/util/camrod_ui_tester")
+  BASE_PATHS+=("${SRC_ROOT}/util/camrod_ui_tester")
 fi
 BUILD_SKIP_ARGS=()
 if [[ ${#BUILD_SKIP_PACKAGES[@]} -gt 0 ]]; then
