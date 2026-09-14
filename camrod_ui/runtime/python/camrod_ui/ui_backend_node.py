@@ -16,6 +16,7 @@ import os
 import struct
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -3676,6 +3677,14 @@ class UiBackendNode(Node):
         matching_site = bool(active_site and fields.get("site") in {
             active_site, self._resolve_mission_key_for_site(active_site),
         })
+        if phase_changed and matching_site and phase != "ERROR":
+            state = getattr(self, "_latest_service_state", None)
+            # Phase status cannot independently complete/interrupt a record.
+            if state is not None and int(state) not in {0, 12, 13, 16}:
+                UiBackendNode._observe_service_metrics(
+                    self, int(state), SERVICE_STATE_NAMES.get(int(state), ""),
+                    f"camping_site_maneuver_controller:{phase}:status",
+                )
         if phase == "ERROR" and matching_site:
             self._mission_execution_error = str(msg.message) or "campsite controller ERROR"
             self._schedule_broadcast({"error": "campsite_maneuver_failed", **UiBackendNode._battery_parking_policy_snapshot(self)})
@@ -4368,6 +4377,20 @@ class UiBackendNode(Node):
         self._charging_departure_from_charger = False
         if already_safe:
             return
+        # A failed departure returning to a safe station state is an
+        # interrupted attempt, not a completed delivery/recall.
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is not None:
+            interrupted = metrics.interrupt_service(
+                f"drop_zone_exit_failed:{source}", now_s=time.time()
+            )
+            if interrupted:
+                # Motion ownership intentionally retains its generation for a
+                # same-site retry. Accounting must nevertheless create a NEW
+                # attempt instead of deduplicating the now-closed request ID.
+                self._service_metrics_retry_serial = int(
+                    getattr(self, "_service_metrics_retry_serial", 0)
+                ) + 1
         if getattr(self, "publish_mission_engage_from_destination", False):
             self._publish_mission_engage(False, source=source)
         self._schedule_broadcast({
@@ -4704,14 +4727,10 @@ class UiBackendNode(Node):
             self._state.service_state = state
             self._state.service_state_name = state_name
             self._state.service_state_description = description
-        if state_changed:
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.observe_service_state(
-                    state,
-                    state_name,
-                    now_s=time.time(),
-                )
+        if (state_changed or visible_changed) and not road_handoff_ready:
+            UiBackendNode._observe_service_metrics(
+                self, state, state_name, description
+            )
         if visible_changed:
             # HH_260721 - Every client receives explicit operational state, not a health warning surrogate.
             self._schedule_broadcast({
@@ -4870,6 +4889,78 @@ class UiBackendNode(Node):
             source=f"service_state:{state_name}",
         )
 
+    def _start_service_metrics(
+        self, site: str, mission_key: str, source: str, generation: int
+    ) -> None:
+        """Attach the admitted request identity; never derive intent from state 15."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        session = getattr(self, "_service_metrics_session_id", "")
+        if not session:
+            session = uuid.uuid4().hex
+            self._service_metrics_session_id = session
+        started = metrics.start_service(
+            site, mission_key=mission_key, source=source,
+            intent=UiBackendNode._destination_request_intent(source),
+            request_id=(
+                f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}"
+                f":mission:{generation}"
+            ), now_s=time.time(),
+        )
+        if started:
+            self._service_metrics_return_generation = -1
+
+    def _ensure_return_service_metrics(self, source: str) -> None:
+        """Record an admitted standalone return, never a rejected UI request."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None or metrics.has_active_service:
+            return
+        site = str(getattr(self, "_active_mission_site", "")).strip() or "DROP_ZONE"
+        metrics.start_service(
+            site, source=source, intent="return",
+            request_id=f"return:{uuid.uuid4().hex}", now_s=time.time(),
+        )
+
+    def _observe_service_metrics(
+        self, state: int, state_name: str, description: str = ""
+    ) -> None:
+        """Observe accounting only; do not alter any ROS motion authorization."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        if int(state) == int(AvgServiceState.DROP_ZONE_WAIT) and (
+            str(state_name).strip().upper() == "ROAD_HANDOFF_READY"
+        ):
+            # This acknowledgement shares state 0 with real parking completion.
+            # Ignoring it preserves both the active record and velocity anchor.
+            return
+        phase = str(state_name).strip()
+        prefix = "camping_site_maneuver_controller:"
+        if str(description).startswith(prefix):
+            phase = str(description)[len(prefix):].split(":", 1)[0].strip() or phase
+        generation = int(getattr(self, "_active_mission_generation", 0))
+        if int(state) == int(AvgServiceState.RETURNING_TO_DROP_ZONE):
+            self._service_metrics_return_generation = generation
+        leg_kind = ""
+        if int(state) == int(AvgServiceState.RETURN_WITH_CARGO):
+            is_recall = UiBackendNode._is_guest_recall_source(
+                str(getattr(self, "_active_mission_source", ""))
+            )
+            final_return = (
+                (generation > 0 and int(getattr(
+                    self, "_recall_final_return_generation", 0
+                )) == generation)
+                or int(getattr(self, "_service_metrics_return_generation", -1)) == generation
+                or "return_source=battery" in str(description)
+            )
+            # Recall clearance/reorientation also uses state 9 before the
+            # user's final return confirmation. It is still the recall leg.
+            leg_kind = "recall" if is_recall and not final_return else "return"
+        metrics.observe_service_state(
+            int(state), state_name, now_s=time.time(), phase=phase, leg_kind=leg_kind
+        )
+
     def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
         # localization should be handled in the frontend display layer.
@@ -4897,13 +4988,9 @@ class UiBackendNode(Node):
         msg.state = state
         msg.state_name = SERVICE_STATE_NAMES.get(state, f"UNKNOWN_{state}")
         msg.description = desc_map.get(state, f"unknown state {state}")
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.observe_service_state(
-                int(state),
-                msg.state_name,
-                now_s=time.time(),
-            )
+        UiBackendNode._observe_service_metrics(
+            self, int(state), msg.state_name, msg.description
+        )
         # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
         self._latest_service_state = int(state)
         self.pub_service_state.publish(msg)
@@ -5044,6 +5131,7 @@ class UiBackendNode(Node):
             if before_release is not None:
                 before_release()
             # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+            UiBackendNode._ensure_return_service_metrics(self, source)
             msg = MotionOperation()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.operation = MotionOperation.RETURN
@@ -6030,6 +6118,7 @@ class UiBackendNode(Node):
 
     def _publish_planning_return_request(self, source: str) -> None:
         """Publish one fresh drop-zone route after old Nav2 ownership has ended."""
+        UiBackendNode._ensure_return_service_metrics(self, source)
         recall = PlanningRecallRequest()
         recall.header.stamp = self.get_clock().now().to_msg()
         recall.site_name = self._active_mission_site
@@ -7173,14 +7262,9 @@ class UiBackendNode(Node):
             generation = UiBackendNode._claim_active_mission(
                 self, site, source
             )
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.start_service(
-                    site,
-                    mission_key=mission_key,
-                    source=source,
-                    now_s=time.time(),
-                )
+            UiBackendNode._start_service_metrics(
+                self, site, mission_key, source, generation
+            )
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -7241,14 +7325,9 @@ class UiBackendNode(Node):
         # HJ_260804 - Only accepted/adopted destinations become the fallback
         # arrival identity. A battery-rejected request must not replace it.
         generation = UiBackendNode._claim_active_mission(self, site, source)
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.start_service(
-                site,
-                mission_key=mission_key,
-                source=source,
-                now_s=time.time(),
-            )
+        UiBackendNode._start_service_metrics(
+            self, site, mission_key, source, generation
+        )
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
