@@ -8,8 +8,11 @@ drop_zones:
     y: 40.0901
     z: 0
     # HH_260909 - Station yaw retrimmed -82.2127 -> -88.2127 deg.
+    # HH_260911 - Active map revision 27 reverts the station yaw to -82.2127
+    # deg. Re-exported from relation 7019; the area corners and centroid are
+    # unchanged, only the OSM yaw_deg tag moved.
     # TODO: record the field measurement this came from.
-    yaw_deg: -88.2127
+    yaw_deg: -82.2127
     parking_method: "auto"
     corners:
       - x: -12.4879

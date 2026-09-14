@@ -61,8 +61,13 @@
     # HH_260907 - Preserve the operator's deployment yaw trim, -90 -> -92 deg.
     # This rotates heading; it does not replace the antenna lever-arm offset.
     # HH_260909 - Heading yaw offset retrimmed -92.0 -> -91.0 deg.
+    # HH_260911 - Heading yaw offset retrimmed -91.0 -> -93.0 deg. This is an
+    # operator deployment trim taken during the 2026-09-11 Worak run, not a new
+    # antenna survey: it rotates the dual-antenna heading only and still does
+    # not replace the lever-arm offset. The simulation counterpart
+    # gnss_heading_raw_yaw_bias_deg must stay the exact negation (+93.0).
     # TODO: record the measurement this came from.
-    gnss_heading_yaw_offset_deg: -91.0 # -90.0
+    gnss_heading_yaw_offset_deg: -93.0 # -90.0
     gnss_heading_covariance_floor_deg: 1.0
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0

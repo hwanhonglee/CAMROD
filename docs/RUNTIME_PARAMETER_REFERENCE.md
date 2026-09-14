@@ -92,10 +92,10 @@ lateral commands at least `0.10 m/s`, well outside the deadband.
 
 | Parameter | Package / bringup | Meaning |
 |---|---:|---|
-| `lookahead_dist` | `1.2 / 3.5 m` | Fixed package study value / deployed fallback value |
+| `lookahead_dist` | `1.2 / 2.0 m` | Fixed package study value / deployed fallback value |
 | `use_velocity_scaled_lookahead_dist` | `false / true` | Intentional A/B difference |
-| `min_lookahead_dist` | `1.1 / 1.5 m` | Minimum preview |
-| `max_lookahead_dist` | `2.0 / 3.5 m` | Maximum preview |
+| `min_lookahead_dist` | `1.1 / 1.0 m` | Minimum preview |
+| `max_lookahead_dist` | `2.0 / 2.5 m` | Maximum preview |
 | `rotate_to_heading_angular_vel` | `0.35 rad/s` | Manual RotationShim heading speed |
 | `max_angular_accel` | `0.8 rad/s^2` | Controller angular acceleration cap |
 
