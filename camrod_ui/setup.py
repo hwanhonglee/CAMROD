@@ -30,6 +30,8 @@ setup(
         (f"share/{package_name}/launch", [
             "camrod_ui_robot/launch/ui.launch.py",
             "camrod_ui_guest/launch/ui_guest.launch.py",
+            # HH_260915 - Recorder can also run without either UI process.
+            "camrod_ui_robot/launch/mission_recorder.launch.py",
         ]),
         *_collect_data_files("camrod_ui_robot/assets/frontend/build", f"share/{package_name}/camrod_ui_robot/assets/frontend/build"),
         *_collect_data_files("camrod_ui_guest/assets/guest_frontend", f"share/{package_name}/camrod_ui_guest/assets/guest_frontend"),
@@ -44,6 +46,7 @@ setup(
         "console_scripts": [
             "ui_backend_node = camrod_ui.ui_backend_node:main",
             "ui_guest_node = camrod_ui.ui_guest_node:main",
+            "mission_recorder_node = camrod_ui.mission_recorder_node:main",
             # HH_260727 - Native lightweight shell for the operator web UI.
             "camrod_ui_window = camrod_ui.operator_ui_window:main",
         ],

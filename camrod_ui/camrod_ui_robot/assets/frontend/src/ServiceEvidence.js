@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './ServiceEvidence.css';
+import MissionRecords from './MissionRecords';
 
 const SUMMARY_ENDPOINT = '/api/service-metrics/summary';
 const HISTORY_ENDPOINT = '/api/service-metrics?days=30';
@@ -696,6 +697,8 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
         <EvidenceKpi label="전체 이동 거리" value={lifetimeDistance || fallback} record={data?.lifetime || null} showTotalKm />
         <EvidenceKpi label="전체 완료 서비스" value={lifetimeCount || fallback} />
       </section>
+
+      <MissionRecords />
 
       <section className="evidence-panel evidence-current-panel">
         <div className="evidence-panel-heading">

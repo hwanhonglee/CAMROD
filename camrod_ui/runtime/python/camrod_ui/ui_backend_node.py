@@ -84,6 +84,10 @@ from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
 )
+from camrod_ui.mission_recording_bridge import (
+    MissionRecordingEmitter, default_mission_records_path,
+    load_mission_recording_snapshot,
+)
 from camrod_ui.ui_state_policy import UiStatePolicy
 from camrod_ui.voice_departure_gate import VoiceDepartureGate
 
@@ -615,6 +619,28 @@ class UiBackendNode(Node):
                 str(default_service_metrics_path()),
             ).value
         )
+        # HH_260915 - A separate continuously running recorder owns detailed
+        # mission/CAN files. The UI only emits accepted lifecycle events and
+        # reads its snapshot; this never changes the legacy metrics DB path.
+        self.mission_records_root = str(self.declare_parameter(
+            "mission_records_root", str(default_mission_records_path())
+        ).value)
+        self.mission_recording_event_topic = str(self.declare_parameter(
+            "mission_recording_event_topic", "/ui/mission_recording/events"
+        ).value)
+        recording_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST, depth=100,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.pub_mission_recording_event = self.create_publisher(
+            String, self.mission_recording_event_topic, recording_qos
+        )
+        def publish_recording_event(payload):
+            message = String()
+            message.data = payload
+            self.pub_mission_recording_event.publish(message)
+        self._mission_recording = MissionRecordingEmitter(publish_recording_event)
         self.service_metrics_timezone = str(
             self.declare_parameter(
                 "service_metrics_timezone", "Asia/Seoul"
@@ -4377,6 +4403,11 @@ class UiBackendNode(Node):
         self._charging_departure_from_charger = False
         if already_safe:
             return
+        # HH_260915 - Preserve the failed attempt inside its recording mission;
+        # the existing safe-state and command cancellation behavior is unchanged.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(f"drop_zone_exit_failed:{source}")
         # A failed departure returning to a safe station state is an
         # interrupted attempt, not a completed delivery/recall.
         metrics = getattr(self, "_service_metrics", None)
@@ -4910,9 +4941,25 @@ class UiBackendNode(Node):
         )
         if started:
             self._service_metrics_return_generation = -1
+            # HH_260915 - Accounting ID is distinct from the controller's
+            # authority. A retry keeps the recording mission, but adds attempt.
+            recorder = getattr(self, "_mission_recording", None)
+            if recorder is not None:
+                recorder.start(site, UiBackendNode._destination_request_intent(source),
+                               generation, f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}:mission:{generation}", source)
 
     def _ensure_return_service_metrics(self, source: str) -> None:
         """Record an admitted standalone return, never a rejected UI request."""
+        # HH_260915 - Observe the already-approved operation, not an HTTP click.
+        # The first recall RETURN can be a site reorientation, not final return.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            generation = int(getattr(self, "_active_mission_generation", 0))
+            recall = UiBackendNode._is_guest_recall_source(str(getattr(self, "_active_mission_source", "")))
+            final_return = (not recall or generation <= 0 or
+                            int(getattr(self, "_recall_final_return_generation", 0)) == generation or
+                            "battery" in str(source))
+            recorder.request_return(source, final_return=final_return)
         metrics = getattr(self, "_service_metrics", None)
         if metrics is None or metrics.has_active_service:
             return
@@ -4960,6 +5007,9 @@ class UiBackendNode(Node):
         metrics.observe_service_state(
             int(state), state_name, now_s=time.time(), phase=phase, leg_kind=leg_kind
         )
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.phase(state, state_name, description, leg_kind)
 
     def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
@@ -6607,6 +6657,11 @@ class UiBackendNode(Node):
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        # HH_260915 - Observation only. Keep the journal's envelope for RC
+        # recovery/return, but do NOT retain controller permission or resume it.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(source)
         UiBackendNode._cancel_voice_dispatch(self, "_stop_active_service_serialized")
         self._battery_return_urgent = False
         self._urgent_return_after_departure = False
@@ -8167,6 +8222,16 @@ class UiBackendNode(Node):
                     recent_limit=recent_limit,
                 )
             )
+
+        # HH_260915 - Read-only, bounded export from an independent recorder.
+        # This does not start recording on a browser lease or sum it into v2.
+        @app.get("/api/mission-records")
+        def get_mission_records(limit: int = 100) -> JSONResponse:
+            data, status = load_mission_recording_snapshot(
+                node.mission_records_root, limit=limit,
+                emitter_error=getattr(getattr(node, "_mission_recording", None), "error", ""),
+            )
+            return JSONResponse(data, status_code=status)
 
         # HH_260810 - The browser renews this lease only while the administrator
         # telemetry modal is open. The ROS timer owns subscription creation and
