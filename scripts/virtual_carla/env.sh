@@ -53,6 +53,7 @@ _virtual_carla_config_names=(
   CAMROD_CARLA_YOLO_MODEL_PATH
   CAMROD_CARLA_YOLO_DEVICE
   CAMROD_CARLA_YOLO_WORKSPACE_MIB
+  CAMROD_CARLA_MISSION_RECORDS_ROOT
   CAMROD_DEVELOP_LANELET_MAP
   CAMROD_WORAKSAN_TUNED_LANELET_MAP
   CAMROD_LANELET_MAP
@@ -105,6 +106,11 @@ for _virtual_carla_name in "${!_virtual_carla_explicit_values[@]}"; do
 done
 
 export RANGER_WORK_ROOT="${RANGER_WORK_ROOT:-${RANGER_CARLA_ROOT:+${RANGER_CARLA_ROOT}/.work}}"
+# HH_260921 - New mission journals from this virtual plant must never default
+# to the real robot's journal or be labelled real. Do not repoint XDG_STATE_HOME:
+# the legacy service_metrics database and other user state retain their paths.
+export CAMROD_CARLA_MISSION_RECORDS_ROOT="${CAMROD_CARLA_MISSION_RECORDS_ROOT:-${RANGER_WORK_ROOT:+${RANGER_WORK_ROOT}/camrod/mission_records}}"
+export CAMROD_RECORDING_ENVIRONMENT=simulation
 export CAMROD_CARLA_YOLO_MODEL_PATH="${CAMROD_CARLA_YOLO_MODEL_PATH:-${RANGER_WORK_ROOT:+${RANGER_WORK_ROOT}/camrod/model_cache/yolov9mit/v1.0.0/v9-s.vec2box.sim.fp16.engine}}"
 export CAMROD_CARLA_YOLO_DEVICE="${CAMROD_CARLA_YOLO_DEVICE:-0}"
 export CAMROD_CARLA_YOLO_WORKSPACE_MIB="${CAMROD_CARLA_YOLO_WORKSPACE_MIB:-2048}"

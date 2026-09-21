@@ -16,6 +16,7 @@ import os
 import struct
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,6 +91,10 @@ from camrod_ui.manual_drive_policy import (
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
+)
+from camrod_ui.mission_recording_bridge import (
+    MissionRecordingEmitter, default_mission_records_path,
+    load_mission_recording_snapshot,
 )
 from camrod_ui.ui_state_policy import UiStatePolicy
 from camrod_ui.voice_departure_gate import VoiceDepartureGate
@@ -678,6 +683,28 @@ class UiBackendNode(Node):
                 str(default_service_metrics_path()),
             ).value
         )
+        # HH_260915 - A separate continuously running recorder owns detailed
+        # mission/CAN files. The UI only emits accepted lifecycle events and
+        # reads its snapshot; this never changes the legacy metrics DB path.
+        self.mission_records_root = str(self.declare_parameter(
+            "mission_records_root", str(default_mission_records_path())
+        ).value)
+        self.mission_recording_event_topic = str(self.declare_parameter(
+            "mission_recording_event_topic", "/ui/mission_recording/events"
+        ).value)
+        recording_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST, depth=100,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.pub_mission_recording_event = self.create_publisher(
+            String, self.mission_recording_event_topic, recording_qos
+        )
+        def publish_recording_event(payload):
+            message = String()
+            message.data = payload
+            self.pub_mission_recording_event.publish(message)
+        self._mission_recording = MissionRecordingEmitter(publish_recording_event)
         self.service_metrics_timezone = str(
             self.declare_parameter(
                 "service_metrics_timezone", "Asia/Seoul"
@@ -4734,6 +4761,14 @@ class UiBackendNode(Node):
         matching_site = bool(active_site and fields.get("site") in {
             active_site, self._resolve_mission_key_for_site(active_site),
         })
+        if phase_changed and matching_site and phase != "ERROR":
+            state = getattr(self, "_latest_service_state", None)
+            # Phase status cannot independently complete/interrupt a record.
+            if state is not None and int(state) not in {0, 12, 13, 16}:
+                UiBackendNode._observe_service_metrics(
+                    self, int(state), SERVICE_STATE_NAMES.get(int(state), ""),
+                    f"camping_site_maneuver_controller:{phase}:status",
+                )
         if phase == "ERROR" and matching_site:
             self._mission_execution_error = str(msg.message) or "campsite controller ERROR"
             self._schedule_broadcast({"error": "campsite_maneuver_failed", **UiBackendNode._battery_parking_policy_snapshot(self)})
@@ -5537,6 +5572,25 @@ class UiBackendNode(Node):
         self._charging_departure_from_charger = False
         if already_safe:
             return
+        # HH_260915 - Preserve the failed attempt inside its recording mission;
+        # the existing safe-state and command cancellation behavior is unchanged.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(f"drop_zone_exit_failed:{source}")
+        # A failed departure returning to a safe station state is an
+        # interrupted attempt, not a completed delivery/recall.
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is not None:
+            interrupted = metrics.interrupt_service(
+                f"drop_zone_exit_failed:{source}", now_s=time.time()
+            )
+            if interrupted:
+                # Motion ownership intentionally retains its generation for a
+                # same-site retry. Accounting must nevertheless create a NEW
+                # attempt instead of deduplicating the now-closed request ID.
+                self._service_metrics_retry_serial = int(
+                    getattr(self, "_service_metrics_retry_serial", 0)
+                ) + 1
         if getattr(self, "publish_mission_engage_from_destination", False):
             self._publish_mission_engage(False, source=source)
         active_site, active_source, active_generation, _ = (
@@ -6250,14 +6304,10 @@ class UiBackendNode(Node):
             self._state.service_state = state
             self._state.service_state_name = state_name
             self._state.service_state_description = description
-        if state_changed:
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.observe_service_state(
-                    state,
-                    state_name,
-                    now_s=time.time(),
-                )
+        if (state_changed or visible_changed) and not road_handoff_ready:
+            UiBackendNode._observe_service_metrics(
+                self, state, state_name, description
+            )
         if visible_changed:
             self.get_logger().info(
                 f"Service state received: {state_name}({state}) ({description})"
@@ -6477,6 +6527,97 @@ class UiBackendNode(Node):
             source=f"service_state:{state_name}",
         )
 
+    def _start_service_metrics(
+        self, site: str, mission_key: str, source: str, generation: int
+    ) -> None:
+        """Attach the admitted request identity; never derive intent from state 15."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        session = getattr(self, "_service_metrics_session_id", "")
+        if not session:
+            session = uuid.uuid4().hex
+            self._service_metrics_session_id = session
+        started = metrics.start_service(
+            site, mission_key=mission_key, source=source,
+            intent=UiBackendNode._destination_request_intent(source),
+            request_id=(
+                f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}"
+                f":mission:{generation}"
+            ), now_s=time.time(),
+        )
+        if started:
+            self._service_metrics_return_generation = -1
+            # HH_260915 - Accounting ID is distinct from the controller's
+            # authority. A retry keeps the recording mission, but adds attempt.
+            recorder = getattr(self, "_mission_recording", None)
+            if recorder is not None:
+                recorder.start(site, UiBackendNode._destination_request_intent(source),
+                               generation, f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}:mission:{generation}", source)
+
+    def _ensure_return_service_metrics(self, source: str) -> None:
+        """Record an admitted standalone return, never a rejected UI request."""
+        # HH_260915 - Observe the already-approved operation, not an HTTP click.
+        # The first recall RETURN can be a site reorientation, not final return.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            generation = int(getattr(self, "_active_mission_generation", 0))
+            recall = UiBackendNode._is_guest_recall_source(str(getattr(self, "_active_mission_source", "")))
+            final_return = (not recall or generation <= 0 or
+                            int(getattr(self, "_recall_final_return_generation", 0)) == generation or
+                            "battery" in str(source))
+            recorder.request_return(source, final_return=final_return)
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None or metrics.has_active_service:
+            return
+        site = str(getattr(self, "_active_mission_site", "")).strip() or "DROP_ZONE"
+        metrics.start_service(
+            site, source=source, intent="return",
+            request_id=f"return:{uuid.uuid4().hex}", now_s=time.time(),
+        )
+
+    def _observe_service_metrics(
+        self, state: int, state_name: str, description: str = ""
+    ) -> None:
+        """Observe accounting only; do not alter any ROS motion authorization."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        if int(state) == int(AvgServiceState.DROP_ZONE_WAIT) and (
+            str(state_name).strip().upper() == "ROAD_HANDOFF_READY"
+        ):
+            # This acknowledgement shares state 0 with real parking completion.
+            # Ignoring it preserves both the active record and velocity anchor.
+            return
+        phase = str(state_name).strip()
+        prefix = "camping_site_maneuver_controller:"
+        if str(description).startswith(prefix):
+            phase = str(description)[len(prefix):].split(":", 1)[0].strip() or phase
+        generation = int(getattr(self, "_active_mission_generation", 0))
+        if int(state) == int(AvgServiceState.RETURNING_TO_DROP_ZONE):
+            self._service_metrics_return_generation = generation
+        leg_kind = ""
+        if int(state) == int(AvgServiceState.RETURN_WITH_CARGO):
+            is_recall = UiBackendNode._is_guest_recall_source(
+                str(getattr(self, "_active_mission_source", ""))
+            )
+            final_return = (
+                (generation > 0 and int(getattr(
+                    self, "_recall_final_return_generation", 0
+                )) == generation)
+                or int(getattr(self, "_service_metrics_return_generation", -1)) == generation
+                or "return_source=battery" in str(description)
+            )
+            # Recall clearance/reorientation also uses state 9 before the
+            # user's final return confirmation. It is still the recall leg.
+            leg_kind = "recall" if is_recall and not final_return else "return"
+        metrics.observe_service_state(
+            int(state), state_name, now_s=time.time(), phase=phase, leg_kind=leg_kind
+        )
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.phase(state, state_name, description, leg_kind)
+
     def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
         # localization should be handled in the frontend display layer.
@@ -6514,13 +6655,9 @@ class UiBackendNode(Node):
         msg.description = UiBackendNode._encode_service_state_echo(
             self, public_description, generation
         )
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.observe_service_state(
-                int(state),
-                msg.state_name,
-                now_s=time.time(),
-            )
+        UiBackendNode._observe_service_metrics(
+            self, int(state), msg.state_name, public_description
+        )
         # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
         self._latest_service_state = int(state)
         self.pub_service_state.publish(msg)
@@ -6729,6 +6866,7 @@ class UiBackendNode(Node):
             if before_release is not None:
                 before_release()
             # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+            UiBackendNode._ensure_return_service_metrics(self, source)
             msg = MotionOperation()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.operation = MotionOperation.RETURN
@@ -7677,6 +7815,7 @@ class UiBackendNode(Node):
 
     def _publish_planning_return_request(self, source: str) -> None:
         """Publish one fresh drop-zone route after old Nav2 ownership has ended."""
+        UiBackendNode._ensure_return_service_metrics(self, source)
         recall = PlanningRecallRequest()
         recall.header.stamp = self.get_clock().now().to_msg()
         recall.site_name = self._active_mission_site
@@ -8346,6 +8485,11 @@ class UiBackendNode(Node):
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        # HH_260915 - Observation only. Keep the journal's envelope for RC
+        # recovery/return, but do NOT retain controller permission or resume it.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(source)
         UiBackendNode._cancel_voice_dispatch(self, "_stop_active_service_serialized")
         UiBackendNode._advance_command_epoch(self)
         UiBackendNode._clear_generation_zero_authority(self)
@@ -8973,14 +9117,9 @@ class UiBackendNode(Node):
             generation = UiBackendNode._claim_active_mission(
                 self, site, source
             )
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.start_service(
-                    site,
-                    mission_key=mission_key,
-                    source=source,
-                    now_s=time.time(),
-                )
+            UiBackendNode._start_service_metrics(
+                self, site, mission_key, source, generation
+            )
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -9041,14 +9180,9 @@ class UiBackendNode(Node):
         # HJ_260804 - Only accepted/adopted destinations become the fallback
         # arrival identity. A battery-rejected request must not replace it.
         generation = UiBackendNode._claim_active_mission(self, site, source)
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.start_service(
-                site,
-                mission_key=mission_key,
-                source=source,
-                now_s=time.time(),
-            )
+        UiBackendNode._start_service_metrics(
+            self, site, mission_key, source, generation
+        )
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
@@ -10479,6 +10613,16 @@ class UiBackendNode(Node):
                     recent_limit=recent_limit,
                 )
             )
+
+        # HH_260915 - Read-only, bounded export from an independent recorder.
+        # This does not start recording on a browser lease or sum it into v2.
+        @app.get("/api/mission-records")
+        def get_mission_records(limit: int = 100) -> JSONResponse:
+            data, status = load_mission_recording_snapshot(
+                node.mission_records_root, limit=limit,
+                emitter_error=getattr(getattr(node, "_mission_recording", None), "error", ""),
+            )
+            return JSONResponse(data, status_code=status)
 
         # HH_260810 - The browser renews this lease only while the administrator
         # telemetry modal is open. The ROS timer owns subscription creation and

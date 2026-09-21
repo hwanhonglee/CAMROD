@@ -1,0 +1,102 @@
+/* HH_260915 - Read-only mission journal styles; no driving or legacy KPI rules. */
+.mission-records { margin: 1rem 0; padding: 1.25rem; border: 1px solid #cad9d0; border-radius: 12px; background: #f5f8f6; color: #213d30; font-size: .95rem; }
+.mission-records h3,.mission-records h4,.mission-records h5 { margin: .4rem 0; }
+.mission-records p { line-height: 1.6; }
+.mission-records-heading,.mission-records-status { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.mission-records-heading p { margin: .4rem 0; color: #50695b; }
+.mission-records button,.mission-records select { font: inherit; border: 1px solid #779d88; border-radius: 6px; padding: .6rem .85rem; background: #fff; color: #274e38; cursor: pointer; }
+.mission-records button:focus-visible,.mission-records select:focus-visible { outline: 3px solid #60977c; outline-offset: 2px; }
+.mission-records-heading>button { white-space: nowrap; }
+.mission-records-status { border-top: 1px solid #d9e4dd; margin-top: .8rem; padding-top: .8rem; }
+.mission-records-status>div { display: grid; gap: .35rem; }
+.mission-records-status span,.mission-records-note { color: #52695a; font-size: .8rem; }
+.mission-records-path,.mission-records-files code { overflow-wrap: anywhere; }
+.mission-records-warning { padding: .65rem .9rem; border: 1px solid #d8b572; border-radius: 6px; background: #fff5dd; color: #704512; }
+.mission-records-totals,.mission-records-detail { border: 1px solid #d6e2da; border-radius: 8px; padding: .8rem; margin: 1rem 0; background: #fff; }
+.mission-records-distances { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .6rem; margin: .5rem 0; }
+.mission-records-distances>div { padding: .6rem; border-radius: 6px; background: #eef4f0; }
+.mission-records-distances dt { color: #546c5b; font-size: .78rem; }
+.mission-records-distances dd { margin: .25rem 0 0; font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mission-records-distances small { display: block; font-size: .75rem; font-weight: 500; }
+.mission-records-filters { display: flex; align-items: center; flex-wrap: wrap; gap: .8rem; margin: 1rem 0; }
+.mission-records-filters label { display: flex; align-items: center; gap: .4rem; }
+.mission-records-filters>span { color: #637367; font-size: .75rem; }
+.mission-records-table-wrap { overflow: auto; max-height: 18rem; border: 1px solid #d6e2da; border-radius: 8px; }
+.mission-records-table { width: 100%; border-collapse: collapse; background: #fff; font-size: .8rem; }
+.mission-records-table caption { text-align: left; font-weight: 700; padding: .4rem; }
+.mission-records-table th,.mission-records-table td { padding: .65rem; text-align: left; border-bottom: 1px solid #dce6df; white-space: nowrap; }
+.mission-records-table th { background: #e6f0e9; }
+.mission-records-table .selected { background: #eff7f1; }
+.mission-records-table td button { text-align: left; white-space: normal; min-width: 12rem; max-width: 22rem; overflow-wrap: anywhere; }
+.mission-records-facts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .7rem; }
+.mission-records-facts dt,.mission-records-files dt { font-weight: 700; }
+.mission-records-facts dd,.mission-records-files dd { margin: .25rem 0; }
+.mission-records-events { list-style: none; padding: .2rem .3rem .2rem 1rem; max-height: 34rem; overflow: auto; }
+.mission-records-events li { position: relative; padding: .75rem 1rem; margin: 0 0 .5rem; border-left: 3px solid #b2c9bc; border-bottom: 1px solid #e1e8e3; background: #f7faf8; border-radius: 0 6px 6px 0; }
+.mission-records-events li::before { content: ''; position: absolute; top: 1rem; left: -.42rem; width: .65rem; height: .65rem; background: #698b78; border-radius: 50%; }
+.mission-records-events li[data-event-kind="stopped"],.mission-records-events li[data-event-kind="stop_reason_changed"] { background: #fff6e8; border-left-color: #b96d15; }
+.mission-records-events li[data-event-kind="mode_changed"] { background: #eff4fd; border-left-color: #3269ba; }
+.mission-records-events li[data-event-kind="completed"],.mission-records-events li[data-event-kind="resumed"] { border-left-color: #238261; }
+.mission-records-events li>* { display: block; margin-bottom: .2rem; overflow-wrap: anywhere; }
+.mission-records-events time { color: #64796c; font-size: .75rem; }
+.mission-records-files { font-size: .78rem; }
+.mission-records-files>div { padding: .35rem 0; }
+.mission-records-files code { display: block; margin-top: .4rem; padding: .5rem; background: #eef3f0; border-radius: 4px; }
+.mission-records-sites { margin-top: 1rem; padding: .7rem; border-top: 1px solid #d7e3da; }
+.mission-records-sites summary { cursor: pointer; font-weight: 700; }
+/* HH_260915 - Visual hierarchy: measured totals > observed journey > exceptions > raw evidence. */
+.mission-records-headline { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: .8rem; margin: 1rem 0; }
+.mission-records-headline>div { padding: 1rem 1.15rem; background: #edf5f0; border: 1px solid #d8e6dd; border-radius: 8px; }
+.mission-records-headline>div:first-child { background: #e5f1e9; border-color: #91b39e; }
+.mission-records-headline span,.mission-records-headline>div>small { display: block; color: #4d6558; }
+.mission-records-headline strong { display: block; margin: .35rem 0; font-size: clamp(1.35rem,2.4vw,2.1rem); font-variant-numeric: tabular-nums; color: #173e2a; }
+.mission-records-headline strong small { font-size: .95rem; font-weight: 500; }
+.mission-records-distance-visual { padding: .6rem 0; }
+.mission-records-distance-bar { display: flex; height: 1.15rem; border-radius: 6px; overflow: hidden; background: #e6eae8; }
+.mission-records-distance-bar>span { flex-shrink: 0; }
+.mission-records .distance-auto { background: #25825b; }
+.mission-records .distance-manual { background: #346fc5; }
+.mission-records .distance-unknown { background: #8a748f; }
+.mission-records-distance-legend { display: flex; flex-wrap: wrap; gap: .75rem 1.7rem; margin-top: .7rem; }
+.mission-records-distance-legend>span { display: flex; gap: .4rem; align-items: center; }
+.mission-records-distance-legend i { width: .75rem; height: .75rem; border-radius: 2px; }
+.mission-records-number-details,.mission-records-storage { font-size: .85rem; }
+.mission-records summary { cursor: pointer; padding: .4rem 0; }
+.mission-records-detail { padding: 1.25rem; }
+.mission-records-detail-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.mission-records-detail-heading h4 { font-size: 1.55rem; }
+.mission-records-detail-heading p { margin: .3rem 0; }
+.mission-records-eyebrow { display: block; color: #62776a; font-size: .85rem; font-weight: 600; }
+.mission-records-result { display: inline-block; white-space: nowrap; padding: .45rem .8rem; background: #e9edf2; border: 1px solid #bfccd5; border-radius: 20px; font-weight: 700; }
+.mission-records-result.result-completed { color: #17613c; background: #e4f3e9; border-color: #91bda1; }
+.mission-records-result.result-paused,.mission-records-result.result-interrupted { color: #825111; background: #fff1d9; border-color: #d9b275; }
+.mission-records-journey { margin: 1.3rem 0; padding: 1rem 0; border-top: 1px solid #dbe6df; border-bottom: 1px solid #dbe6df; }
+.mission-records-journey h5,.mission-records-timeline-heading h5 { font-size: 1.08rem; }
+.mission-records-journey ol { display: flex; gap: .7rem; list-style: none; padding: 0; overflow-x: auto; margin-bottom: .3rem; }
+.mission-records-journey li { position: relative; flex: 1 0 8rem; padding: .9rem; border: 1px solid #c8dace; border-radius: 7px; background: #f1f7f3; }
+.mission-records-stage-number { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 50%; background: #d5e6db; margin-right: .4rem; font-size: .8rem; }
+.mission-records-journey li small { display: block; color: #62776a; font-size: .72rem; margin-top: .5rem; }
+.mission-records-stop-summary { display: grid; grid-template-columns: .85fr .85fr 1.6fr; gap: .8rem; margin: 1.2rem 0; }
+.mission-records-stop-summary>div { border: 1px solid #dfd5c5; border-radius: 7px; background: #fffaf2; padding: 1rem; }
+.mission-records-stop-summary>div:nth-child(2) { background: #f2f6ff; border-color: #d1ddef; }
+.mission-records-stop-summary strong { display: block; margin: .35rem 0; font-size: 1.5rem; }
+.mission-records-stop-summary strong small { font-size: .9rem; font-weight: 500; }
+.mission-records-stop-summary p { margin: .4rem 0; font-size: .8rem; }
+.mission-records-reasons ul { margin: .5rem 0; padding-left: 1.2rem; font-weight: 700; line-height: 1.6; }
+.mission-records-reasons>small { color: #79684c; font-size: .75rem; }
+.mission-records-timeline-heading { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-top: 1.4rem; }
+.mission-records-timeline-heading label { font-size: .85rem; }
+.mission-records-event-reason { font-weight: 600; }
+.mission-records-events details { font-size: .8rem; color: #52695a; }
+.mission-records-events details dd { margin: .2rem 0 .6rem; overflow-wrap: anywhere; }
+.mission-records-technical { margin-top: 1rem; padding: .6rem 1rem; background: #f1f5f3; border: 1px solid #d4dfd8; border-radius: 6px; }
+.mission-records-technical>summary { font-weight: 700; }
+.mission-records-technical p { font-size: .9rem; }
+@media(max-width:700px) {
+  .mission-records-heading,.mission-records-status { flex-direction: column; }
+  .mission-records-distances,.mission-records-facts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mission-records-headline,.mission-records-stop-summary { grid-template-columns: 1fr; }
+  .mission-records-detail { padding: .75rem; }
+  .mission-records-detail-heading h4 { font-size: 1.2rem; }
+  .mission-records-timeline-heading { align-items: flex-start; flex-direction: column; }
+}

@@ -1,4 +1,6 @@
 import os
+import socket
+from pathlib import Path
 
 from ament_index_python.packages import (
     PackageNotFoundError,
@@ -88,6 +90,32 @@ def generate_launch_description():
     default_frontend_dir = _resolve_default_frontend_dir()
     default_camping_sites_yaml = _resolve_default_camping_sites_yaml()
     default_drop_zones_yaml = _resolve_default_drop_zones_yaml()
+
+    # HH_260915 - This node is independent of the browser/telemetry lease and
+    # owns a NEW journal, never the previous service_metrics.sqlite3 database.
+    state_root = os.environ.get('XDG_STATE_HOME', '').strip()
+    records_root = str((Path(state_root) if state_root else Path.home() / '.local/state') / 'camrod/mission_records')
+    recorder_arguments = [
+        DeclareLaunchArgument('enable_mission_recorder', default_value='true'),
+        DeclareLaunchArgument('mission_records_root', default_value=records_root),
+        DeclareLaunchArgument('mission_recorder_robot_id', default_value=socket.gethostname()),
+        DeclareLaunchArgument('mission_recorder_environment', default_value=os.environ.get('CAMROD_RECORDING_ENVIRONMENT', 'real')),
+        DeclareLaunchArgument('mission_recorder_raw_can_interface', default_value=''),
+        DeclareLaunchArgument('mission_recorder_quota_bytes', default_value='268435456'),
+    ]
+    mission_recorder = Node(
+        package='camrod_ui', executable='mission_recorder_node',
+        name='mission_recorder', output='screen',
+        condition=IfCondition(LaunchConfiguration('enable_mission_recorder')),
+        parameters=[{
+            'storage_root': LaunchConfiguration('mission_records_root'),
+            'robot_id': LaunchConfiguration('mission_recorder_robot_id'),
+            'environment': LaunchConfiguration('mission_recorder_environment'),
+            'platform_status_topic': LaunchConfiguration('platform_status_topic'),
+            'raw_can_interface': LaunchConfiguration('mission_recorder_raw_can_interface'),
+            'quota_bytes': ParameterValue(LaunchConfiguration('mission_recorder_quota_bytes'), value_type=int),
+        }],
+    )
 
     enable_ui_backend_arg = DeclareLaunchArgument(
         'enable_ui_backend',
@@ -397,6 +425,7 @@ def generate_launch_description():
         parameters=[{
             'host': LaunchConfiguration('ui_host'),
             'port': LaunchConfiguration('ui_port'),
+            'mission_records_root': LaunchConfiguration('mission_records_root'),
             'frontend_dir': LaunchConfiguration('frontend_dir'),
             'enable_operator_telemetry': ParameterValue(
                 LaunchConfiguration('enable_operator_telemetry'),
@@ -612,6 +641,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        *recorder_arguments,
         enable_ui_backend_arg,
         ui_host_arg,
         ui_port_arg,
@@ -663,6 +693,7 @@ def generate_launch_description():
         low_battery_return_threshold_percent_arg,
         urgent_battery_return_threshold_percent_arg,
         ui_backend,
+        mission_recorder,
         guest_ui,
         operator_ui_window,
     ])

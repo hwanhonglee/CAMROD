@@ -1,5 +1,9 @@
 # camrod_ui
 
+<!-- HH_260915 - Separate persistent trip/CAN journal, preserving legacy metrics. -->
+왕복 미션·자율/수동·정지 사유·CAN 상세 기록의 기준과 실행 방법:
+[mission_recording.md](docs/mission_recording.md).
+
 <!-- HH_260807 - Make the documented renderer match the WebKit field default
 while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->

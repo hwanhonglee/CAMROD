@@ -609,8 +609,9 @@ export CARLA_RENDER_MODE=onscreen
 ```
 
 이 wrapper가 선택하는 map은
-`Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v15`이며 map-profile ID는
-`woraksan-camrod-site-geometry-v15`다.
+`Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone`이며 map-profile ID는
+`woraksan-camrod-site-geometry-v224`다. 실제 선택값의 기준은
+`scripts/virtual_carla/map_profiles.sh`다.
 원본 Woraksan map, 일반 `run.sh camrod` 기본 map, develop launch 기본값은 바꾸지 않는다.
 다른 `CARLA_UE_MAP`, `CARLA_TOWN` 또는 map-profile 값이 이미 export돼 있으면 서로
 섞어 실행하지 않고 즉시 실패한다. `doctor`는 선택한 `.umap` 존재 여부뿐 아니라
@@ -629,10 +630,28 @@ noncanonical `CAMROD_VIRTUAL_CARLA_ENTRYPOINT` override는 출력 생성과 moti
 fail-closed로 거부한다. 별도 profile 검증은 이 current-v27 증거 runner가 아닌 해당
 profile 전용 절차를 사용한다.
 
-직전 v13, v12 또는 그 이전 v11 증빙을 재현해야 할 때만 모든 terminal에서 해당 legacy
+<!-- HH_260921 - Publishing the runtime source is not publishing private map
+     variants or evidence-bound historical builders. Keep this prerequisite
+     explicit instead of silently falling back to a different scene. -->
+**다른 장비에서의 맵 준비 범위:** Ranger 저장소의 Git LFS 파일
+`assets/maps/woraksan-v1.0.3-content.tar.zst`는 원본
+`Woraksan_v1_0_3_parking_lot_hegiht_fit` 맵을 제공한다. 위에서 선택하는
+`v224_dropzone` 레벨과 그 수정된 참조 mesh/material·OpenDRIVE/Nav/TM 자료는
+이 원본 archive에 포함된 것으로 간주하면 안 된다. 같은 사이트 시험을 재현하려면
+해당 custom level과 참조 자산·sidecar 전체가 준비된 CARLA source project를 별도로
+제공해야 한다. `.umap` 하나만 복사해서는 충분하지 않다. 현재 런타임 명령은 맵을
+새로 만들거나 과거 `.work/evidence` 기반 Blender/Unreal 실험 스크립트를 실행하지
+않는다. 이번 소스 공개만으로 원본 맵이 custom map으로 자동 변환되거나 B1-B13
+주행 검증까지 완료되는 것은 아니다. 필요한 자산이 없으면 `doctor`/`server`의
+오류를 해결해야 하며, 검증을 우회하거나 다른 맵을 같은 이름으로 취급하지 않는다.
+
+직전 v15, v13, v12 또는 그 이전 v11 증빙을 재현해야 할 때만 모든 terminal에서 해당 legacy
 profile을 명시한다. 각 선택은 정확히 같은 version의 UE map/town 쌍만 허용한다.
 
 ```bash
+export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v15
+./scripts/virtual_carla/site_access.sh commands
+
 export CAMROD_CARLA_MAP_PROFILE=woraksan-camrod-site-geometry-v13
 ./scripts/virtual_carla/site_access.sh commands
 

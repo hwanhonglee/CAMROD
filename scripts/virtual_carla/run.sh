@@ -174,6 +174,7 @@ camrod_command() {
     "launch_sensor_relay:=${CAMROD_LAUNCH_SENSOR_RELAY}"
     "compressed_image_max_rate_hz:=${CAMROD_CARLA_COMPRESSED_IMAGE_MAX_RATE_HZ}"
     "raw_image_max_rate_hz:=${CAMROD_CARLA_RAW_IMAGE_MAX_RATE_HZ}"
+    "mission_records_root:=${CAMROD_CARLA_MISSION_RECORDS_ROOT}"
     enable_plugin_api:=true
     enable_api_ui:=true
     "enable_operator_ui_window:=${CAMROD_ENABLE_OPERATOR_WINDOW}"
@@ -1307,6 +1308,9 @@ case "${subcommand}" in
       "${CAMROD_CARLA_YOLO_DEVICE}"
     printf 'export CAMROD_CARLA_YOLO_WORKSPACE_MIB=%q\n' \
       "${CAMROD_CARLA_YOLO_WORKSPACE_MIB}"
+    printf 'export CAMROD_CARLA_MISSION_RECORDS_ROOT=%q\n' \
+      "${CAMROD_CARLA_MISSION_RECORDS_ROOT}"
+    printf 'export CAMROD_RECORDING_ENVIRONMENT=simulation\n'
     printf 'export CARLA_RENDER_MODE=%q\n\n' "${CARLA_RENDER_MODE}"
     printf 'export CARLA_RENDER_MAX_FPS=%q\n' "${CARLA_RENDER_MAX_FPS}"
     printf 'export CAMROD_CARLA_STEP_PACING=%q\n' \

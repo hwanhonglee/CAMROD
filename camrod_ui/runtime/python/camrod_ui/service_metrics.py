@@ -8,6 +8,7 @@ failure from affecting motion control.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sqlite3
@@ -20,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SERVICE_METRICS_SCHEMA_VERSION = 1
+SERVICE_METRICS_SCHEMA_VERSION = 2
 
 
 def default_service_metrics_path() -> Path:
@@ -49,6 +50,7 @@ class ServiceMetricsTracker:
     COMPLETION_STATES = frozenset({0, 12, 13})
     INTERRUPT_STATES = frozenset({16})
     CANONICAL_CAMPSITES = tuple(f"B{index}" for index in range(1, 14))
+    LEG_KINDS = ("delivery", "recall", "return", "unknown")
 
     def __init__(
         self,
@@ -90,6 +92,7 @@ class ServiceMetricsTracker:
         self._records: List[Dict[str, Any]] = []
         self._active: Optional[Dict[str, Any]] = None
         self._previous_velocity_sample: Optional[tuple[float, float]] = None
+        self._previous_velocity_kind: Optional[str] = None
 
         self._open_store()
 
@@ -103,6 +106,12 @@ class ServiceMetricsTracker:
     def persistence_error(self) -> str:
         return self._persistence_error
 
+    @property
+    def has_active_service(self) -> bool:
+        """Cheap observational query; never adopt a mission from a heartbeat."""
+        with self._lock:
+            return self._active is not None
+
     def _open_store(self) -> None:
         if self.database_path is None:
             return
@@ -114,8 +123,11 @@ class ServiceMetricsTracker:
                 check_same_thread=False,
             )
             connection.row_factory = sqlite3.Row
+            if connection.execute("PRAGMA user_version").fetchone()[0] > SERVICE_METRICS_SCHEMA_VERSION:
+                raise sqlite3.DatabaseError("service metrics database schema is newer than this tracker")
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=NORMAL")
+            connection.execute("BEGIN")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS service_runs (
@@ -134,6 +146,20 @@ class ServiceMetricsTracker:
                 )
                 """
             )
+            # Additive migration only: old rows, dates, results and their raw
+            # total distance remain untouched. Missing historical leg evidence
+            # is classified as unknown at read time, never guessed from source.
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(service_runs)")}
+            for name, declaration in (
+                ("intent", "TEXT NOT NULL DEFAULT ''"),
+                ("request_id", "TEXT NOT NULL DEFAULT ''"),
+                ("phase", "TEXT NOT NULL DEFAULT ''"),
+                ("segments_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("interruption_reason", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE service_runs ADD COLUMN {name} {declaration}")
+            connection.execute("PRAGMA user_version=2")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS service_runs_date_idx "
                 "ON service_runs(service_date DESC)"
@@ -173,9 +199,9 @@ class ServiceMetricsTracker:
                     pass
             self._connection = None
 
-    @staticmethod
-    def _row_to_record(row: sqlite3.Row) -> Dict[str, Any]:
-        return {
+    @classmethod
+    def _row_to_record(cls, row: sqlite3.Row) -> Dict[str, Any]:
+        record = {
             "id": str(row["id"]),
             "service_date": str(row["service_date"]),
             "site": str(row["site"]),
@@ -192,7 +218,42 @@ class ServiceMetricsTracker:
             ),
             "last_state_name": str(row["last_state_name"]),
             "updated_at": float(row["updated_at"]),
+            "intent": cls._normalize_kind(row["intent"]),
+            "request_id": str(row["request_id"]),
+            "phase": str(row["phase"]) or "LEGACY_UNCLASSIFIED",
+            "interruption_reason": str(row["interruption_reason"]),
         }
+        try:
+            segments = json.loads(row["segments_json"])
+            valid = isinstance(segments, list) and bool(segments)
+            valid = valid and all(
+                isinstance(segment, dict)
+                and {"kind", "phase", "distance_m", "moving_s", "waiting_s",
+                     "started_at", "ended_at", "timing_complete"}.issubset(segment)
+                and segment.get("kind") in cls.LEG_KINDS
+                and isinstance(segment.get("phase"), str)
+                and cls._nonnegative_finite(segment.get("distance_m"))
+                and cls._nonnegative_finite(segment.get("started_at"))
+                and (segment.get("ended_at") is None or cls._nonnegative_finite(segment["ended_at"]))
+                and isinstance(segment.get("timing_complete"), bool)
+                and all(value is None or cls._nonnegative_finite(value)
+                        for value in (segment.get("moving_s"), segment.get("waiting_s")))
+                for segment in segments
+            )
+            valid = valid and math.isclose(
+                sum(segment["distance_m"] for segment in segments), record["distance_m"],
+                rel_tol=1e-10, abs_tol=1e-8,
+            )
+        except (TypeError, ValueError, KeyError):
+            valid = False
+        record["segments"] = segments if valid else [{
+            "kind": "unknown", "phase": "LEGACY_UNCLASSIFIED",
+            "distance_m": record["distance_m"], "moving_s": None, "waiting_s": None,
+            "started_at": record["started_at"],
+            "ended_at": record["ended_at"] or record["updated_at"],
+            "timing_complete": False,
+        }]
+        return record
 
     def _persist_record(self, record: Dict[str, Any], *, commit: bool = True) -> None:
         connection = self._connection
@@ -204,8 +265,9 @@ class ServiceMetricsTracker:
                 INSERT INTO service_runs (
                     id, service_date, site, mission_key, source, started_at,
                     ended_at, result, distance_m, last_state, last_state_name,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    updated_at, intent, request_id, phase, segments_json,
+                    interruption_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     service_date=excluded.service_date,
                     site=excluded.site,
@@ -217,7 +279,12 @@ class ServiceMetricsTracker:
                     distance_m=excluded.distance_m,
                     last_state=excluded.last_state,
                     last_state_name=excluded.last_state_name,
-                    updated_at=excluded.updated_at
+                    updated_at=excluded.updated_at,
+                    intent=excluded.intent,
+                    request_id=excluded.request_id,
+                    phase=excluded.phase,
+                    segments_json=excluded.segments_json,
+                    interruption_reason=excluded.interruption_reason
                 """,
                 (
                     record["id"],
@@ -232,6 +299,11 @@ class ServiceMetricsTracker:
                     record["last_state"],
                     record["last_state_name"],
                     record["updated_at"],
+                    record["intent"],
+                    record["request_id"],
+                    record["phase"],
+                    json.dumps(record["segments"], separators=(",", ":"), allow_nan=False),
+                    record["interruption_reason"],
                 ),
             )
             if commit:
@@ -251,14 +323,25 @@ class ServiceMetricsTracker:
         *,
         mission_key: str = "",
         source: str = "",
+        intent: str = "",
+        request_id: str = "",
         now_s: Optional[float] = None,
     ) -> bool:
-        """Start one accepted service, coalescing retries for the same site."""
+        """Start one accepted request; legacy callers retain same-site coalescing.
+
+        A supplied request_id is the idempotency key, including after restart
+        or completion. A new ID at the same site starts a distinct attempt.
+        """
         now = self._valid_now(now_s)
         normalized_site = str(site).strip() or "미지정"
+        normalized_id = str(request_id).strip()
         with self._lock:
+            if normalized_id and any(
+                record["request_id"] == normalized_id for record in self._records
+            ):
+                return False
             if self._active is not None:
-                if self._active["site"] == normalized_site:
+                if not normalized_id and self._active["site"] == normalized_site:
                     if mission_key and not self._active["mission_key"]:
                         self._active["mission_key"] = str(mission_key)
                     if source and not self._active["source"]:
@@ -275,6 +358,11 @@ class ServiceMetricsTracker:
                 "site": normalized_site,
                 "mission_key": str(mission_key).strip(),
                 "source": str(source).strip(),
+                "intent": self._normalize_kind(intent),
+                "request_id": normalized_id,
+                "phase": "ACCEPTED",
+                "segments": [],
+                "interruption_reason": "",
                 "started_at": now,
                 "ended_at": None,
                 "result": self.ACTIVE_RESULT,
@@ -286,6 +374,8 @@ class ServiceMetricsTracker:
             self._records.append(record)
             self._active = record
             self._previous_velocity_sample = None
+            self._previous_velocity_kind = None
+            self._set_segment(record["intent"], "ACCEPTED", now)
             self._last_checkpoint_monotonic = self._monotonic_fn()
             self._persist_record(record)
             return True
@@ -296,6 +386,8 @@ class ServiceMetricsTracker:
         state_name: str = "",
         *,
         now_s: Optional[float] = None,
+        phase: str = "",
+        leg_kind: str = "",
     ) -> bool:
         """Apply an operational state transition; return True when a run ends."""
         now = self._valid_now(now_s)
@@ -308,16 +400,46 @@ class ServiceMetricsTracker:
                 str(state_name).strip() or f"STATE_{state_value}"
             )
             self._active["updated_at"] = now
+            self._active["phase"] = str(phase).strip() or self._active["last_state_name"]
+            handoff = state_value == 0 and str(state_name).strip().upper() == "ROAD_HANDOFF_READY"
+            if handoff:
+                # Same numeric state as parked, but this is an outbound road
+                # handoff, not completed service. Preserve the integration
+                # anchor and leg even when status precedes exit_complete Bool.
+                self._persist_record(self._active)
+                return False
             if state_value in self.COMPLETION_STATES:
                 self._finish_active(self.COMPLETED_RESULT, now)
                 return True
             if state_value in self.INTERRUPT_STATES:
                 self._finish_active(self.INTERRUPTED_RESULT, now)
                 return True
+            operational_phase = str(phase).strip() or self._active["last_state_name"]
+            kind = self._kind_for_state(state_value, leg_kind)
+            self._set_segment(kind, operational_phase, now)
             # Service-state transitions are low frequency and valuable recovery
             # evidence even when the robot is stationary at a site.
             self._persist_record(self._active)
             return False
+
+    def interrupt_service(
+        self, reason: str, *, now_s: Optional[float] = None,
+        request_id: Optional[str] = None,
+    ) -> bool:
+        """Close a failed/cancelled attempt without inventing a robot state.
+
+        When an identity is supplied, an old failure cannot interrupt a newer
+        request. Repeated interruption calls are harmless and return False.
+        """
+        now = self._valid_now(now_s)
+        with self._lock:
+            if self._active is None:
+                return False
+            if request_id is not None and str(request_id).strip() != self._active["request_id"]:
+                return False
+            self._active["interruption_reason"] = str(reason).strip()
+            self._finish_active(self.INTERRUPTED_RESULT, now)
+            return True
 
     def _finish_active(self, result: str, now: float) -> None:
         record = self._active
@@ -326,9 +448,13 @@ class ServiceMetricsTracker:
         record["result"] = result
         record["ended_at"] = max(float(record["started_at"]), now)
         record["updated_at"] = record["ended_at"]
+        for segment in record["segments"]:
+            if segment.get("ended_at") is None:
+                segment["ended_at"] = max(segment["started_at"], record["ended_at"])
         self._persist_record(record)
         self._active = None
         self._previous_velocity_sample = None
+        self._previous_velocity_kind = None
 
     # --------------------------------------------------------------- distance
 
@@ -344,17 +470,32 @@ class ServiceMetricsTracker:
             vy = float(vy_mps)
             sample_time = float(sample_time_s)
         except (TypeError, ValueError):
+            with self._lock:
+                self._previous_velocity_sample = None
+                self._previous_velocity_kind = None
+                if self._active is not None:
+                    self._current_segment()["timing_complete"] = False
             return 0.0
         if not all(math.isfinite(value) for value in (vx, vy, sample_time)):
+            with self._lock:
+                self._previous_velocity_sample = None
+                self._previous_velocity_kind = None
+                if self._active is not None:
+                    self._current_segment()["timing_complete"] = False
             return 0.0
 
         speed = math.hypot(vx, vy)
         with self._lock:
             if self._active is None:
                 self._previous_velocity_sample = None
+                self._previous_velocity_kind = None
                 return 0.0
+            segment = self._current_segment()
+            kind = segment["kind"]
             if speed > self.maximum_speed_mps:
-                self._previous_velocity_sample = (sample_time, 0.0)
+                self._previous_velocity_sample = None
+                self._previous_velocity_kind = None
+                segment["timing_complete"] = False
                 return 0.0
             if speed < self.minimum_speed_mps:
                 speed = 0.0
@@ -362,6 +503,7 @@ class ServiceMetricsTracker:
             previous = self._previous_velocity_sample
             if previous is None:
                 self._previous_velocity_sample = (sample_time, speed)
+                self._previous_velocity_kind = kind
                 return 0.0
             previous_time, previous_speed = previous
             delta_s = sample_time - previous_time
@@ -369,14 +511,29 @@ class ServiceMetricsTracker:
                 return 0.0
             if delta_s < 0.0 or delta_s > self.maximum_sample_gap_s:
                 self._previous_velocity_sample = (sample_time, speed)
+                self._previous_velocity_kind = kind
+                segment["timing_complete"] = False
                 return 0.0
             self._previous_velocity_sample = (sample_time, speed)
 
             added_m = 0.5 * (previous_speed + speed) * delta_s
-            if not math.isfinite(added_m) or added_m <= 0.0:
+            if not math.isfinite(added_m) or added_m < 0.0:
                 return 0.0
+            if self._previous_velocity_kind != kind:
+                # State callbacks use wall time; velocities can use ROS/sim
+                # time. Do not pretend those clocks define an exact split of
+                # this crossing interval. Preserve its entire distance/time
+                # once as unknown. Same-kind phase changes need no such split.
+                now = self._valid_now(None)
+                segment = self._new_segment("unknown", "LEG_TRANSITION_UNRESOLVED", now)
+                segment["ended_at"] = now
+                self._active["segments"].append(segment)
+            self._previous_velocity_kind = kind
+            segment["distance_m"] += added_m
+            timing_key = "moving_s" if previous_speed > 0.0 or speed > 0.0 else "waiting_s"
+            segment[timing_key] += delta_s
             self._active["distance_m"] += added_m
-            self._active["updated_at"] = self._now_fn()
+            self._active["updated_at"] = self._valid_now(None)
 
             checkpoint_now = self._monotonic_fn()
             if (
@@ -412,6 +569,7 @@ class ServiceMetricsTracker:
                     },
                 )
                 group["distance_m"] += max(0.0, float(record["distance_m"]))
+                group.setdefault("records", []).append(record)
                 group["service_attempt_count"] += 1
                 if record["result"] == self.COMPLETED_RESULT:
                     group["completed_service_count"] += 1
@@ -446,6 +604,9 @@ class ServiceMetricsTracker:
                 "service_attempt_count": len(records),
                 "operating_day_count": len(groups),
             }
+            for group in groups.values():
+                group.update(self._aggregate_leg_metrics(group.pop("records")))
+            lifetime.update(self._aggregate_leg_metrics(records))
 
             today_local = datetime.fromtimestamp(now, timezone.utc).astimezone(
                 self._timezone
@@ -471,11 +632,32 @@ class ServiceMetricsTracker:
                 key=lambda record: record["ended_at"] or record["started_at"],
                 reverse=True,
             )[:recent_limit]
+            # This is a subset already included in lifetime distance, not an
+            # extra total. Count a legacy-bearing record once even when it has
+            # several historical segments or has resumed with new observed legs.
+            # New LEG_TRANSITION_UNRESOLVED intervals are deliberately excluded.
+            historical_segments = [
+                [segment for segment in record["segments"]
+                 if segment["phase"] == "LEGACY_UNCLASSIFIED"]
+                for record in records
+            ]
+            historical_distance_m = sum(
+                segment["distance_m"]
+                for segments in historical_segments for segment in segments
+            )
 
             return {
                 "schema_version": SERVICE_METRICS_SCHEMA_VERSION,
+                "date_basis": "service_start_date",
+                "timing_basis": "valid_velocity_intervals",
                 "timezone": self.timezone_name,
                 "generated_at": self._iso_timestamp(now),
+                "historical_unclassified": {
+                    "record_count": sum(bool(segments) for segments in historical_segments),
+                    "distance_m": round(historical_distance_m, 2),
+                    "distance_km": round(historical_distance_m / 1000.0, 3),
+                    "included_in_lifetime_total": True,
+                },
                 "current_service": (
                     self._format_record(active, now=now) if active else None
                 ),
@@ -531,6 +713,104 @@ class ServiceMetricsTracker:
 
     # ---------------------------------------------------------------- helpers
 
+    @classmethod
+    def _normalize_kind(cls, value: Any) -> str:
+        normalized = str(value).strip().lower()
+        return normalized if normalized in cls.LEG_KINDS else "unknown"
+
+    @staticmethod
+    def _nonnegative_finite(value: Any) -> bool:
+        return isinstance(value, (float, int)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0.0
+
+    def _kind_for_state(self, state: int, override: str) -> str:
+        if str(override).strip():
+            return self._normalize_kind(override)
+        if state == 5 and self._active["intent"] == "recall":
+            return "recall"
+        if state in {1, 5}:
+            return "delivery"
+        if state == 7:
+            return "recall"
+        if state in {3, 9, 10}:
+            return "return"
+        if state in {14, 15}:
+            return self._active["intent"]
+        # Waiting does not start a different distance bucket. In particular,
+        # recall loading/rotation phases may be supplied explicitly by backend.
+        return self._current_segment()["kind"]
+
+    @staticmethod
+    def _new_segment(kind: str, phase: str, now: float) -> Dict[str, Any]:
+        return {
+            "kind": kind, "phase": phase, "distance_m": 0.0,
+            "moving_s": 0.0, "waiting_s": 0.0,
+            "started_at": now, "ended_at": None, "timing_complete": True,
+        }
+
+    def _set_segment(self, kind: str, phase: str, now: float) -> None:
+        record = self._active
+        for segment in reversed(record["segments"]):
+            if segment.get("ended_at") is None:
+                if segment["kind"] == kind and segment["phase"] == phase:
+                    record["phase"] = phase
+                    return
+                segment["ended_at"] = max(segment["started_at"], now)
+                break
+        record["segments"].append(self._new_segment(kind, phase, now))
+        record["phase"] = phase
+
+    def _current_segment(self) -> Dict[str, Any]:
+        record = self._active
+        for segment in reversed(record["segments"]):
+            if segment.get("ended_at") is None:
+                return segment
+        # A recovered legacy active row has only historical unknown evidence;
+        # start a fresh observed interval rather than deriving old leg/time data.
+        self._set_segment(record["intent"], record["phase"], self._valid_now(None))
+        return record["segments"][-1]
+
+    @classmethod
+    def _aggregate_leg_metrics(cls, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+        breakdown = {kind: 0.0 for kind in cls.LEG_KINDS}
+        moving, waiting = [], []
+        complete = True
+        for record in records:
+            for segment in record["segments"]:
+                breakdown[segment["kind"]] += segment["distance_m"]
+                if segment.get("moving_s") is not None:
+                    moving.append(segment["moving_s"])
+                if segment.get("waiting_s") is not None:
+                    waiting.append(segment["waiting_s"])
+                complete = complete and bool(segment.get("timing_complete", False))
+        return {
+            "distance_breakdown_m": breakdown,
+            "moving_s": sum(moving) if moving else None,
+            "waiting_s": sum(waiting) if waiting else None,
+            "timing_complete": complete and bool(moving or waiting),
+            "timing_basis": "valid_velocity_intervals",
+        }
+
+    @classmethod
+    def _rounded_breakdown(cls, raw: Dict[str, float], total: float) -> Dict[str, float]:
+        # Largest-remainder rounding keeps the displayed 0.01m buckets equal
+        # to displayed total without changing any stored full-precision value.
+        scaled = {kind: max(0.0, float(raw.get(kind, 0.0))) * 100.0 for kind in cls.LEG_KINDS}
+        cents = {kind: math.floor(scaled[kind]) for kind in cls.LEG_KINDS}
+        remainder = int(round(round(total, 2) * 100.0)) - sum(cents.values())
+        order = sorted(cls.LEG_KINDS, key=lambda kind: scaled[kind] - cents[kind], reverse=True)
+        for index in range(max(0, remainder)):
+            cents[order[index % len(order)]] += 1
+        return {kind: cents[kind] / 100.0 for kind in cls.LEG_KINDS}
+
+    @classmethod
+    def _formatted_leg_metrics(cls, records: List[Dict[str, Any]], total: float) -> Dict[str, Any]:
+        metrics = cls._aggregate_leg_metrics(records)
+        metrics["distance_breakdown_m"] = cls._rounded_breakdown(metrics["distance_breakdown_m"], total)
+        for key in ("moving_s", "waiting_s"):
+            if metrics[key] is not None:
+                metrics[key] = round(metrics[key], 3)
+        return metrics
+
     def _format_record(
         self, record: Dict[str, Any], *, now: float
     ) -> Dict[str, Any]:
@@ -543,6 +823,10 @@ class ServiceMetricsTracker:
             "site": record["site"],
             "mission_key": record["mission_key"],
             "source": record["source"],
+            "intent": record["intent"],
+            "request_id": record["request_id"],
+            "phase": record["phase"],
+            "interruption_reason": record["interruption_reason"] or None,
             "status": record["result"],
             "result": record["result"],
             "started_at": self._iso_timestamp(record["started_at"]),
@@ -554,6 +838,15 @@ class ServiceMetricsTracker:
             "duration_s": max(0, round(duration_end - record["started_at"])),
             "state": record["last_state"],
             "state_name": record["last_state_name"],
+            **self._formatted_leg_metrics([record], distance_m),
+            "segments": [{
+                **segment,
+                "distance_m": round(segment["distance_m"], 6),
+                "moving_s": None if segment["moving_s"] is None else round(segment["moving_s"], 3),
+                "waiting_s": None if segment["waiting_s"] is None else round(segment["waiting_s"], 3),
+                "started_at": self._iso_timestamp(segment["started_at"]),
+                "ended_at": None if segment.get("ended_at") is None else self._iso_timestamp(segment["ended_at"]),
+            } for segment in record["segments"]],
         }
 
     @classmethod
@@ -654,6 +947,8 @@ class ServiceMetricsTracker:
 
             summaries.append({
                 "site": site,
+                "distance_m": round(sum(record["distance_m"] for record in site_records), 2),
+                **self._formatted_leg_metrics(site_records, sum(record["distance_m"] for record in site_records)),
                 "service_attempt_count": len(site_records),
                 "completed_service_count": len(completed),
                 "interrupted_service_count": len(interrupted),
@@ -684,12 +979,19 @@ class ServiceMetricsTracker:
             })
         return summaries
 
-    @staticmethod
-    def _format_totals(totals: Dict[str, Any]) -> Dict[str, Any]:
+    @classmethod
+    def _format_totals(cls, totals: Dict[str, Any]) -> Dict[str, Any]:
         formatted = dict(totals)
         distance_m = max(0.0, float(formatted.get("distance_m", 0.0)))
         formatted["distance_m"] = round(distance_m, 2)
         formatted["distance_km"] = round(distance_m / 1000.0, 3)
+        raw = formatted.get("distance_breakdown_m", {"unknown": distance_m})
+        formatted["distance_breakdown_m"] = cls._rounded_breakdown(raw, distance_m)
+        for key in ("moving_s", "waiting_s"):
+            value = formatted.get(key)
+            formatted[key] = None if value is None else round(value, 3)
+        formatted.setdefault("timing_complete", False)
+        formatted["timing_basis"] = "valid_velocity_intervals"
         return formatted
 
     def _valid_now(self, candidate: Optional[float]) -> float:

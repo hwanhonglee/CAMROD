@@ -10,7 +10,9 @@ from camrod_carla_adapter.runtime_sensor_mount import materialize_sensor_mount
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument, IncludeLaunchDescription, SetLaunchConfiguration,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -45,6 +47,19 @@ def _include(path, arguments, condition=None):
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(path), **kwargs
     )
+
+
+def _mission_records_root():
+    """Resolve a virtual-only journal even when launched without run.sh."""
+    configured = _environment_path("CAMROD_CARLA_MISSION_RECORDS_ROOT")
+    if configured:
+        return configured
+    work_root = _environment_path("RANGER_WORK_ROOT", ".work")
+    if work_root:
+        return os.path.join(work_root, "camrod", "mission_records")
+    # Direct launch without a Ranger anchor still must not use the production
+    # ~/.local/state/camrod/mission_records fallback. This creates no directory.
+    return os.path.expanduser("~/.local/state/camrod_carla/mission_records")
 
 
 def generate_launch_description():
@@ -181,6 +196,11 @@ def generate_launch_description():
             os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"))
 
     declarations = [
+        DeclareLaunchArgument(
+            "mission_records_root",
+            default_value=_mission_records_root(),
+            description="Dedicated CARLA mission journal, shared by recorder and UI",
+        ),
         DeclareLaunchArgument(
             "role_name",
             default_value=os.environ.get("CARLA_ROLE_NAME", "ego_vehicle"),
@@ -886,6 +906,11 @@ def generate_launch_description():
     ]
 
     actions = [
+        # HH_260921 - Applies to direct, normal, tuned and site-geometry launch.
+        # Production ui.launch.py already shares mission_records_root between
+        # its recorder and backend. Pin the label in this inherited launch
+        # context rather than changing production code or global sim clocks.
+        SetLaunchConfiguration("mission_recorder_environment", "simulation"),
         _include(
             controller_launch,
             {
