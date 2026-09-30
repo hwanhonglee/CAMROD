@@ -1,5 +1,10 @@
 # CAMROD `virtual/carla` 환경·빌드·실행 가이드
 
+**최신 확인(2026-09-30):** develop/tag v2.2.9 병합, 새 드롭존 7144 소환,
+스냅샷 격리와 실제 Ranger 연동 결과·PNG/GIF·이 PC 실행 명령은
+[v2.2.9 갱신 검증 보고서](virtual_carla_v2_2_9_validation_20260930.md)를 먼저 본다.
+아래 과거 전체 사이트 승인 자료는 새 버전의 전체 시나리오 합격을 의미하지 않는다.
+
 이 문서는 독립 Ranger/CARLA 자산 저장소에서 만든 4륜 조향 로봇을 CARLA에
 올리고, CAMROD `virtual/carla` 브랜치의 알고리즘·production UI와 연결하는
 재현 가능한 절차를 설명한다.

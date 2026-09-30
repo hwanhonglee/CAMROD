@@ -1,0 +1,60 @@
+{
+  "baseline": "fe6f7815fc13eee1b482bee9e5d2b3badddec9a0",
+  "tag": "v2.2.9",
+  "unit_tests_passed": 642,
+  "source_tests_passed": 145,
+  "control_ctest_executables_passed": 8,
+  "departure": {
+    "outcome": "moved_more_than_5m_then_operator_stop",
+    "elapsed_s": 51.626,
+    "displacement_m": 5.244433124581874,
+    "sampled_path_length_m": 6.801783871084797,
+    "full_site_completed": false
+  },
+  "road_manual": [
+    {
+      "name": "straight",
+      "distance_m": 0.27412826159816556,
+      "yaw_delta_deg": -0.2279367446899414,
+      "motion_observed": true
+    },
+    {
+      "name": "reverse",
+      "distance_m": 0.2667804110367848,
+      "yaw_delta_deg": -0.053526878356933594,
+      "motion_observed": true
+    },
+    {
+      "name": "crab_left",
+      "distance_m": 0.20034702048250108,
+      "yaw_delta_deg": -0.04797554016113281,
+      "motion_observed": true
+    },
+    {
+      "name": "crab_right",
+      "distance_m": 0.19132779561535906,
+      "yaw_delta_deg": 0.096832275390625,
+      "motion_observed": true
+    },
+    {
+      "name": "zero_left",
+      "distance_m": 0.013747462701439762,
+      "yaw_delta_deg": -8.535820007324219,
+      "motion_observed": true
+    },
+    {
+      "name": "zero_right",
+      "distance_m": 0.017164807400550094,
+      "yaw_delta_deg": 8.253195762634277,
+      "motion_observed": true
+    }
+  ],
+  "dropzone_manual": {
+    "motion_observed": false,
+    "reason": "lanelet_physical_body_cost hold",
+    "source": "dropzone_manual_blocked.json"
+  },
+  "all_site_return_recall_docking_validated": false,
+  "map_or_torque_modified": false,
+  "nas_offload_enabled": false
+}

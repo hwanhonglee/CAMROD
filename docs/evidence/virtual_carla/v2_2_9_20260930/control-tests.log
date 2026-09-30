@@ -1,0 +1,25 @@
+Internal ctest changing into directory: /home/hong/camrod_ws/build/camrod_control
+Test project /home/hong/camrod_ws/build/camrod_control
+    Start  1: test_control_policies
+1/8 Test  #1: test_control_policies ...............   Passed    0.09 sec
+    Start  2: test_reverse_parking_axis
+2/8 Test  #2: test_reverse_parking_axis ...........   Passed    0.10 sec
+    Start  3: test_drop_zone_exit_target_policy
+3/8 Test  #3: test_drop_zone_exit_target_policy ...   Passed    0.08 sec
+    Start  4: test_drop_zone_parking_approach
+4/8 Test  #4: test_drop_zone_parking_approach .....   Passed    0.08 sec
+    Start  5: test_camping_site_recall_return
+5/8 Test  #5: test_camping_site_recall_return .....   Passed    0.38 sec
+    Start  8: test_reverse_parking_completion
+6/8 Test  #8: test_reverse_parking_completion .....   Passed    0.09 sec
+    Start  9: test_reverse_parking_controller
+7/8 Test  #9: test_reverse_parking_controller .....   Passed    6.06 sec
+    Start 10: test_apriltag_initial_clearance
+8/8 Test #10: test_apriltag_initial_clearance .....   Passed    1.17 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Label Time Summary:
+gtest    =   8.06 sec*proc (8 tests)
+
+Total Test time (real) =   8.07 sec

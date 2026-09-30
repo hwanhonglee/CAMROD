@@ -641,8 +641,8 @@ def test_full_launch_defaults_carla_route_heading_to_production_profile():
         ).read_text(encoding="utf-8")
     )["bringup"]
 
-    assert '"CAMROD_CARLA_ROUTE_HEADING_ERROR_ENTER_DEG", "75.0"' in full_launch
-    assert '"CAMROD_CARLA_ROUTE_HEADING_LOOKAHEAD_M", "2.0"' in full_launch
+    assert '"CAMROD_CARLA_ROUTE_HEADING_ERROR_ENTER_DEG", "135.0"' in full_launch
+    assert '"CAMROD_CARLA_ROUTE_HEADING_LOOKAHEAD_M", "1.2"' in full_launch
     assert (
         '"control_cmd_vel_gate_route_heading_lookahead_m": ('
         in full_launch
@@ -655,19 +655,19 @@ def test_full_launch_defaults_carla_route_heading_to_production_profile():
         production_defaults["control"][
             "cmd_vel_gate_route_heading_error_enter_deg"
         ]
-        == 75.0
+        == 135.0
     )
     assert (
         production_defaults["control"][
             "cmd_vel_gate_route_heading_error_exit_deg"
         ]
-        == 5.0
+        == 25.0
     )
     assert (
         production_defaults["control"][
             "cmd_vel_gate_route_heading_lookahead_m"
         ]
-        == 2.0
+        == 1.2
     )
 
 

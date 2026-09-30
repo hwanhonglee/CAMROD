@@ -23,6 +23,10 @@ def replay(script):
     handler = SOURCE[start:SOURCE.index("// HH_260708 - Reconnect the operator WebSocket", start)]
     start = SOURCE.index("const handleWaitingClick = () => {")
     handlers = SOURCE[start:SOURCE.index("\n  };", start) + len("\n  };")]
+    # HH_260930 - v2.2.9 puts the safety poster before the service chooser.
+    # Replay the real confirmation instead of assuming a single-click entry.
+    start = SOURCE.index("const handleServiceSafetyConfirm = () => {")
+    handlers += SOURCE[start:SOURCE.index("\n  };", start) + len("\n  };")]
     start = SOURCE.index("const selectDestinationIntent = (intent) => {")
     handlers += SOURCE[start:SOURCE.index("const handleServiceDocking =", start)]
     setters = sorted(set(re.findall(r"\b(set[A-Z]\w*)\(", handler + handlers)))
@@ -53,7 +57,7 @@ const idle = () => send({mission_dispatch_active:false,mission_dispatch_generati
 
 def test_station_heartbeat_does_not_close_open_service_chooser():
     result = replay(r"""
-handleWaitingClick(); idle(); idle();
+handleWaitingClick(); handleServiceSafetyConfirm(); idle(); idle();
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,
   menu:uiState.setShowServiceSelection,pinned:intentPinnedRef.current}));
 """)
@@ -62,7 +66,7 @@ console.log(JSON.stringify({waiting:uiState.setShowWaiting,
 
 @pytest.mark.parametrize("intent", ["delivery", "recall"])
 def test_idle_identity_and_recall_replay_preserve_confirmed_service_role(intent):
-    result = replay("handleWaitingClick(); activateDestinationService(" + json.dumps(intent) + r""");
+    result = replay("handleWaitingClick(); handleServiceSafetyConfirm(); activateDestinationService(" + json.dumps(intent) + r""");
 idle(); idle(); idle();
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,
   menu:uiState.setShowServiceSelection,role:uiState.setDestinationIntent,

@@ -1,4 +1,4 @@
-"""HH_260921 - CARLA journals stay separate from real robot operation data."""
+"""CARLA compatibility paths and v2.2.9 snapshots stay separate from field data."""
 
 import importlib.util
 import json
@@ -8,7 +8,8 @@ import subprocess
 
 import pytest
 from launch import LaunchContext, LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetLaunchConfiguration
+from launch.actions import DeclareLaunchArgument, SetLaunchConfiguration, SetEnvironmentVariable
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,7 +56,7 @@ def test_direct_launch_resolves_dedicated_journal(
     assert os.environ["XDG_STATE_HOME"] == "/production-state"
 
 
-def test_full_launch_pins_simulation_and_both_ui_nodes_share_root(
+def test_full_launch_isolates_v229_snapshots_without_retired_recorder(
         monkeypatch, isolated_environment):
     full = _module(FULL)
     monkeypatch.setenv("RANGER_WORK_ROOT", "/virtual-work")
@@ -64,7 +65,7 @@ def test_full_launch_pins_simulation_and_both_ui_nodes_share_root(
     context = LaunchContext()
     context.launch_configurations["mission_recorder_environment"] = "real"
     for action in full.generate_launch_description().entities:
-        if isinstance(action, (DeclareLaunchArgument, SetLaunchConfiguration)):
+        if isinstance(action, (DeclareLaunchArgument, SetLaunchConfiguration, SetEnvironmentVariable)):
             action.execute(context)
     expected_root = "/virtual-work/camrod/mission_records"
     assert (
@@ -87,12 +88,17 @@ def test_full_launch_pins_simulation_and_both_ui_nodes_share_root(
         if isinstance(action, DeclareLaunchArgument):
             action.execute(context)
     nodes = {node["executable"]: node for node in captured}
-    recorder = nodes["mission_recorder_node"]["parameters"][0]
+    # Develop v2.2.9 retired the journal node; do not resurrect it in CARLA.
+    assert "mission_recorder_node" not in nodes
     backend = nodes["ui_backend_node"]["parameters"][0]
-    assert recorder["environment"].perform(context) == "simulation"
-    assert recorder["storage_root"].perform(context) == expected_root
-    assert backend["mission_records_root"].perform(context) == expected_root
-    assert os.environ["XDG_STATE_HOME"] == "/production-state"
+    assert backend["snapshot_output_directory"].perform(context) == "/virtual-work/camrod/snapshots"
+    params = yaml.safe_load(Path(context.launch_configurations["snapshot_param_file"]).read_text())
+    config = params["/**"]["ros__parameters"]
+    assert config["offload"]["enabled"] is False
+    assert config["auto_trigger"]["output_directory"] == "/virtual-work/camrod/snapshots"
+    assert context.environment["XDG_STATE_HOME"] == "/virtual-work/camrod"
+    # LaunchContext applies environment actions to launched child processes.
+    assert os.environ["XDG_STATE_HOME"] == "/virtual-work/camrod"
 
 
 @pytest.mark.parametrize("filename", (

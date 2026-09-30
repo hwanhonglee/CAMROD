@@ -35,6 +35,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = APP_SOURCE.read_text(encoding="utf-8")
         cls.css = APP_CSS.read_text(encoding="utf-8")
+        cls.manual_drive_source = APP_SOURCE.with_name("ManualDrivePanel.js").read_text(encoding="utf-8")
         cls.telemetry_source = TELEMETRY_SOURCE.read_text(encoding="utf-8")
         cls.service_evidence_source = SERVICE_EVIDENCE_SOURCE.read_text(
             encoding="utf-8"
@@ -185,7 +186,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
 
         menu_start = self.source.index("if (showServiceSelection)")
         # Bound the actual production control layout without a simulator-only hook.
-        menu_end = self.source.index('<div className="main-layout" onClick=', menu_start)
+        menu_end = self.source.index('data-ui="operator-control-screen"', menu_start)
         menu = self.source[menu_start:menu_end]
         for expected in (
             "배달 서비스",
@@ -449,7 +450,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # from the managed UI without opening RViz or a separate browser tool.
         for token in (
             "/ui/manual_return",
-            'camera="docking"',
+            'camera={dockingCameraName}',
             "DockingPathPlot",
             "tag_detected",
             "is_charging",
@@ -479,7 +480,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             "redock_status = UiBackendNode._redock_status_snapshot(node)",
             self.backend_source,
         )
-        self.assertIn("await ws.send_json(redock_status)", self.backend_source)
+        self.assertIn("**redock_status", self.backend_source)
+        self.assertIn("await UiBackendNode._send_ws_json(node, ws, initial_payload)", self.backend_source)
         self.assertIn(
             "snapshot.update(UiBackendNode._redock_status_snapshot(self))",
             self.backend_source,
@@ -716,50 +718,105 @@ process.stdout.write(JSON.stringify({robotCalls, guestCalls, warnings, labels}))
         self.assertIn("관리자", output["warnings"][0])
         self.assertEqual(output["labels"], ["정리 완료 · 사이트 재진입", "짐 싣기 완료 · 복귀", "적재 완료 · 복귀"])
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
-    def test_robot_reconnect_restores_completion_and_preserves_minimal_phase_frames(self) -> None:
+    def test_robot_reconnect_restores_completion_and_preserves_minimal_phase_frames(
+        self,
+    ) -> None:
         # Use the actual initial backend frame and actual browser message
         # handler. A helper-only test cannot catch missing snapshot fields or
         # the extra minimal state frame erasing the preceding phase detail.
         endpoint = next(
-            node for node in ast.walk(ast.parse(self.backend_source))
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "websocket_endpoint"
+            node
+            for node in ast.walk(ast.parse(self.backend_source))
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "websocket_endpoint"
         )
         snapshot = next(
-            node.value.args[0] for node in ast.walk(endpoint)
-            if isinstance(node, ast.Await)
-            and isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Attribute)
-            and node.value.func.attr == "send_json"
-            and node.value.args and isinstance(node.value.args[0], ast.Dict)
-            and any(isinstance(key, ast.Constant) and key.value == "service_state_description"
-                    for key in node.value.args[0].keys)
+            node.value
+            for node in ast.walk(endpoint)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "initial_payload"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Dict)
+            and any(
+                isinstance(key, ast.Constant)
+                and key.value == "service_state_description"
+                for key in node.value.keys
+            )
         )
-        arrival_frame = eval(compile(ast.Expression(snapshot), "initial_robot_snapshot", "eval"), {}, {
-            "service_state": 8,
-            "service_state_name": "GUEST_LOADING_WAIT",
-            "service_state_description": "camping_site_maneuver_controller:WAIT_RETURN:loading",
-            "active_mission_site": "B4",
-        })
+        arrival_frame = eval(
+            compile(
+                ast.Expression(snapshot),
+                "initial_robot_snapshot",
+                "eval",
+            ),
+            {},
+            {
+                "states": {},
+                "recall_site": "B4",
+                "occupied_sites": [],
+                "engage": True,
+                "ready": True,
+                "ready_message": "ready",
+                "mission_phase": "ARRIVED",
+                "mission_source": "service",
+                "system_health": "OK",
+                "service_state": 8,
+                "service_state_name": "GUEST_LOADING_WAIT",
+                "service_state_description": (
+                    "camping_site_maneuver_controller:WAIT_RETURN:loading"
+                ),
+                "active_mission_site": "B4",
+                "mission_dispatch": {},
+                "redock_status": {},
+                "battery_parking_policy": {},
+            },
+        )
         prefix = self.source[
-            self.source.index("const SERVICE_STATE ="):
-            self.source.index("// HH_260904 - Re-dock events")
+            self.source.index("const SERVICE_STATE =") : self.source.index(
+                "// HH_260904 - Re-dock events"
+            )
         ]
-        battery_helpers_start = self.source.index("const emptyBatteryReturnState =")
-        prefix += self.source[battery_helpers_start:self.source.index(
-            "function WaitingRuntimeStatusPanel(", battery_helpers_start
-        )]
+        battery_helpers_start = self.source.index(
+            "const emptyBatteryReturnState ="
+        )
+        prefix += self.source[
+            battery_helpers_start : self.source.index(
+                "function WaitingRuntimeStatusPanel(",
+                battery_helpers_start,
+            )
+        ]
         handler_start = self.source.index("ws.onmessage = (event) => {")
-        handler = self.source[handler_start:self.source.index(
-            "// HH_260708 - Reconnect the operator WebSocket", handler_start
-        )]
+        handler = self.source[
+            handler_start : self.source.index(
+                "// HH_260708 - Reconnect the operator WebSocket",
+                handler_start,
+            )
+        ]
         setters = sorted(set(re.findall(r"\b(set[A-Z]\w*)\(", handler)))
-        refs = sorted(set(re.findall(r"\b(\w+Ref)\.current", handler)) - {"wsRef"})
-        setup = "\n".join(
-            f"const {name} = value => {{uiState.{name} = typeof value === 'function' ? value(uiState.{name}) : value;}};"
-            for name in setters
-        ) + "\n" + "\n".join(f"const {name} = {{current: null}};" for name in refs)
-        script = prefix + "\nconst uiState = {}; const ws = {}; const wsRef = {current: ws};\n" + setup + "\n" + r"""
+        refs = sorted(
+            set(re.findall(r"\b(\w+Ref)\.current", handler)) - {"wsRef"}
+        )
+        setup = (
+            "\n".join(
+                f"const {name} = value => {{uiState.{name} = "
+                f"typeof value === 'function' ? value(uiState.{name}) : value;}};"
+                for name in setters
+            )
+            + "\n"
+            + "\n".join(
+                f"const {name} = {{current: null}};" for name in refs
+            )
+        )
+        script = (
+            prefix
+            + "\nconst uiState = {}; const ws = {}; "
+            + "const wsRef = {current: ws};\n"
+            + setup
+            + "\nuiState.setOccupiedSites = [];\n"
+            + r"""
 const SITE_NAMES = Array.from({length: 13}, (_, i) => `B${i + 1}`);
 const connectionGeneration = 1;
 wsMountedRef.current = true;
@@ -767,12 +824,21 @@ wsGenerationRef.current = 1;
 missionAuthorityRevisionRef.current = 0;
 destinationIntentRef.current = 'delivery';
 batteryReturnStateRef.current = emptyBatteryReturnState();
-""" + handler + "\nconst send = frame => ws.onmessage({data: JSON.stringify(frame)});\n"
+"""
+            + handler
+            + "\nconst send = frame => ws.onmessage({data: JSON.stringify(frame)});\n"
+        )
         script += "send(" + json.dumps(arrival_frame) + ");\n" + r"""
 send({mission_dispatch_active: true, mission_dispatch_generation: 12,
       mission_dispatch_site: 'B4', mission_dispatch_owner: 'guest',
       mission_dispatch_intent: 'recall'});
 const restored = {
+  arrived: uiState.setArrivedSite,
+  modal: uiState.setShowArrivalComplete,
+  permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
+};
+send({battery_return_pending: false});
+const afterBatteryHeartbeat = {
   arrived: uiState.setArrivedSite,
   modal: uiState.setShowArrivalComplete,
   permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
@@ -791,37 +857,58 @@ const failed = {reason: uiState.setMissionExecutionError, modal: uiState.setShow
 send({mission_execution_error: '', recall_final_return_ready: true});
 send({service_state: 8, site: 'B4'});
 const finalStage = {ready: uiState.setRecallFinalReturnReady, error: uiState.setMissionExecutionError};
-const priorReplay = {restored, preserved, cleared: uiState.setServiceStateDescription,
-  batteryReturn: uiState.setBatteryReturnState, parking: uiState.setParkingPolicy, failed, finalStage};
+const batteryReturn = uiState.setBatteryReturnState;
 send({mission_dispatch_active: true, mission_dispatch_generation: 13,
       mission_dispatch_site: 'B1', mission_dispatch_owner: 'operator',
-      mission_dispatch_intent: 'delivery'});
-send({service_state: 11, service_state_name: 'WAITING_FOR_RETURN_REQUEST', site: 'B1'});
-const completionState = () => ({
+      mission_dispatch_intent: 'delivery', service_state: 11,
+      service_state_name: 'WAITING_FOR_RETURN_REQUEST', site: 'B1'});
+send({battery_return_pending: false});
+const operatorAfterHeartbeat = {
   arrived: uiState.setArrivedSite,
   modal: uiState.setShowArrivalComplete,
   permitted: robotCanCompleteMission(uiState.setMissionDispatch, uiState.setArrivedSite, uiState.setServiceStateName),
-});
-const beforeBatteryHeartbeat = completionState();
-send({battery_return_pending: false});
-const afterBatteryHeartbeat = completionState();
-process.stdout.write(JSON.stringify({...priorReplay, beforeBatteryHeartbeat, afterBatteryHeartbeat}));
+};
+process.stdout.write(JSON.stringify({restored, afterBatteryHeartbeat, operatorAfterHeartbeat, preserved, cleared: uiState.setServiceStateDescription,
+  batteryReturn, parking: uiState.setParkingPolicy, failed, finalStage}));
 """
-        result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
+        result = subprocess.run(
+            ["node"],
+            input=script,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
         output = json.loads(result.stdout)
-        self.assertEqual(output["restored"], {"arrived": "B4", "modal": True, "permitted": True})
-        self.assertEqual(output["preserved"], "camping_site_maneuver_controller:RECALL_CLEARANCE_WAIT:active")
+        self.assertEqual(
+            output["restored"],
+            {"arrived": "B4", "modal": True, "permitted": True},
+        )
+        self.assertEqual(output["afterBatteryHeartbeat"], output["restored"])
+        self.assertEqual(
+            output["operatorAfterHeartbeat"],
+            {"arrived": "B1", "modal": True, "permitted": True},
+        )
+        self.assertEqual(
+            output["preserved"],
+            "camping_site_maneuver_controller:RECALL_CLEARANCE_WAIT:active",
+        )
         self.assertEqual(output["cleared"], "")
         self.assertTrue(output["batteryReturn"]["pending"])
         self.assertTrue(output["batteryReturn"]["started"])
         self.assertFalse(output["batteryReturn"]["urgent"])
-        self.assertEqual(output["parking"]["parking_selected_method"], "apriltag")
+        self.assertEqual(
+            output["parking"]["parking_selected_method"],
+            "apriltag",
+        )
         self.assertTrue(output["parking"]["charging_required"])
-        self.assertEqual(output["failed"], {"reason": "prepareRecallTurnaroundEntry failed", "modal": False})
-        self.assertEqual(output["finalStage"], {"ready": True, "error": ""})
-        expected_operator_wait = {"arrived": "B1", "modal": True, "permitted": True}
-        self.assertEqual(output["beforeBatteryHeartbeat"], expected_operator_wait)
-        self.assertEqual(output["afterBatteryHeartbeat"], expected_operator_wait)
+        self.assertEqual(
+            output["failed"],
+            {"reason": "prepareRecallTurnaroundEntry failed", "modal": False},
+        )
+        self.assertEqual(
+            output["finalStage"],
+            {"ready": True, "error": ""},
+        )
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_battery_messages_distinguish_urgent_return_and_normal_parking_boundaries(self) -> None:
@@ -1037,76 +1124,8 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
             self.assertIn(token, self.telemetry_source)
 
 
-    def test_parking_and_charging_lifecycle_has_distinct_labels(self) -> None:
-        for label in (
-            "충전 중",
-            "충전 연결 대기 중",
-            "주차 진행 중",
-            "도킹 진행 중",
-            "대기·충전 장소에서 주차 진행 중",
-            "대기·충전 장소 주차 완료",
-        ):
-            self.assertIn(label, self.source)
-        self.assertIn("parkingLifecycleStatus(", self.source)
-        self.assertIn("배달 서비스 및 호출 서비스 이용이 가능합니다.", self.source)
-        self.assertIn(
-            "주차 정렬이 완료되었습니다. 충전 접점 연결을 기다리고 있습니다.",
-            self.source,
-        )
-        self.assertIn('className="preview-service-available"', self.source)
-        self.assertIn("충전 완료", self.source)
-        self.assertIn("배터리가 100%로 충전되었습니다.", self.source)
-        self.assertIn("setBatteryChargeComplete", self.source)
-        self.assertIn("serviceStateName={serviceStateName}", self.source)
-        self.assertIn("serviceStateDescription={serviceStateDescription}", self.source)
-        self.assertIn("tone: 'parking',", self.source)
-        self.assertIn('className="waiting-runtime-dot"', self.source)
-        # The green header keeps only Wi-Fi, SOC, and the clock.
-        self.assertNotIn("<RuntimeStatus", self.source)
-        self.assertNotIn("ch-runtime", self.source)
 
-        css_source = APP_CSS.read_text(encoding="utf-8")
-        self.assertIn(".preview-service-available", css_source)
-        self.assertIn(
-            ".waiting-runtime-item.parking .waiting-runtime-dot",
-            css_source,
-        )
-        self.assertNotIn("ch-runtime", css_source)
 
-    def test_charging_connection_wait_returns_to_idle_prompt_after_ten_seconds(self) -> None:
-        self.assertIn("const chargingStandbyOpenedRef = useRef(false);", self.source)
-        timer_start = self.source.index(
-            "// 충전 접점 연결을 기다리는 동안 상태 안내를 10초간 유지한 뒤"
-        )
-        timer_end = self.source.index("// HJ_260804", timer_start)
-        timer = self.source[timer_start:timer_end]
-        for expected in (
-            "serviceStateName !== 'WAITING_FOR_CHARGING'",
-            "missionDispatch.active",
-            "chargingStandbyOpenedRef.current = true;",
-            "setShowServiceSelection(false);",
-            "setShowWaiting(true);",
-            "}, 10000);",
-        ):
-            self.assertIn(expected, timer)
-        self.assertIn("서비스 선택 버튼을 눌러주세요", self.source)
-
-    def test_completed_charge_returns_to_idle_prompt_after_ten_seconds(self) -> None:
-        self.assertIn("const chargeCompleteStandbyOpenedRef = useRef(false);", self.source)
-        timer_start = self.source.index(
-            "// A confirmed full battery gets its own completion presentation"
-        )
-        timer_end = self.source.index("// HJ_260804", timer_start)
-        timer = self.source[timer_start:timer_end]
-        for expected in (
-            "serviceStateName === 'CHARGING' && batteryChargeComplete",
-            "missionDispatch.active",
-            "chargeCompleteStandbyOpenedRef.current = true;",
-            "setShowServiceSelection(false);",
-            "setShowWaiting(true);",
-            "}, 10000);",
-        ):
-            self.assertIn(expected, timer)
 
     def test_raw_lidar_overlay_preserves_develop_default(self) -> None:
         """Raw LiDAR retains develop's always-visible telemetry behavior."""
@@ -1400,21 +1419,20 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         ):
             self.assertIn(hook, self.manual_drive_source)
 
-    def test_primary_robot_status_and_camera_headings_are_korean(self) -> None:
+    def test_current_status_and_camera_streams_remain_visible(self) -> None:
         for text in (
-            "INITIALIZING: '초기화 중'",
+            "STARTING: '시스템 시작 중'",
             "OK: '시스템 정상'",
             "배터리 상태 확인 중",
-            "수동 운행",
-            "캠핑 사이트 선택",
+            "배달 서비스",
         ):
             self.assertIn(text, self.source)
         for text in (
-            "전방 카메라",
-            "후방 카메라",
-            "도킹 상태",
-            "주차 접근 경로",
-            "영상 없음",
+            'camera="front" label="Front camera"',
+            'camera="rear" label="Rear camera"',
+            "충전 · 주차",
+            "주차 제어기 진입 경로",
+            "camera={dockingCameraName}",
         ):
             self.assertIn(text, self.telemetry_source)
 

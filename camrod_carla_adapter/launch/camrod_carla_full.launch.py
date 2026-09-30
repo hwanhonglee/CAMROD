@@ -12,6 +12,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription, SetLaunchConfiguration,
+    SetEnvironmentVariable,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -51,7 +52,11 @@ def _include(path, arguments, condition=None):
 
 
 def _mission_records_root():
-    """Resolve a virtual-only journal even when launched without run.sh."""
+    """Resolve the legacy path anchor for simulation state and snapshots.
+
+    v2.2.9 no longer launches the mission journal node. Keep the existing
+    environment/launch argument compatible with saved operator commands.
+    """
     configured = _environment_path("CAMROD_CARLA_MISSION_RECORDS_ROOT")
     if configured:
         return configured
@@ -70,7 +75,7 @@ def generate_launch_description():
     )
     bringup_share = get_package_share_directory("camrod_bringup")
     # HH_260930 - Reuse v2.2.9 snapshot topics, but never send simulation bags
-    # to the field NAS or write to the robot's /home/nvidia storage directory.
+    # to the field NAS or write to the robot's production storage directory.
     simulation_snapshot_directory = os.path.join(
         os.path.dirname(_mission_records_root()), "snapshots"
     )
@@ -371,7 +376,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_route_heading_error_enter_deg",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROUTE_HEADING_ERROR_ENTER_DEG", "75.0"
+                "CAMROD_CARLA_ROUTE_HEADING_ERROR_ENTER_DEG", "135.0"
             ),
             description=(
                 "Route-heading zero-turn threshold; defaults to the CAMROD "
@@ -381,7 +386,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "carla_route_heading_lookahead_m",
             default_value=os.environ.get(
-                "CAMROD_CARLA_ROUTE_HEADING_LOOKAHEAD_M", "2.0"
+                "CAMROD_CARLA_ROUTE_HEADING_LOOKAHEAD_M", "1.2"
             ),
             description=(
                 "Route-heading preview distance; defaults to the CAMROD "
@@ -922,12 +927,13 @@ def generate_launch_description():
     ]
 
     actions = [
+        # Child processes get a simulation-only SQLite/state root too. Merely
+        # isolating the now-retired mission journal does not protect metrics.
+        SetEnvironmentVariable("XDG_STATE_HOME", os.path.dirname(_mission_records_root())),
         SetLaunchConfiguration("snapshot_param_file", simulation_snapshot_params),
         SetLaunchConfiguration("snapshot_output_directory", simulation_snapshot_directory),
-        # HH_260921 - Applies to direct, normal, tuned and site-geometry launch.
-        # Production ui.launch.py already shares mission_records_root between
-        # its recorder and backend. Pin the label in this inherited launch
-        # context rather than changing production code or global sim clocks.
+        # Keep the legacy label for external launch consumers. v2.2.9 removed
+        # the recorder; the state/snapshot boundaries above do the isolation.
         SetLaunchConfiguration("mission_recorder_environment", "simulation"),
         _include(
             controller_launch,
@@ -1366,13 +1372,11 @@ def generate_launch_description():
                         "carla_route_safety_allow_corrective_yaw_beyond_limit"
                     )
                 ),
-                # HH_260829 - The visible v16 A/B run proved that the prior
-                # CARLA-only 2.75 m / 45 degree override freshly armed an
-                # unnecessary ZERO_TURN at the B10 hairpin.  The production
-                # 2.0 m / 75 degree profile crossed that point with no
-                # ZERO_TURN or collision, so CARLA now defaults to the same
-                # controller geometry. Environment overrides remain available
-                # for explicit experiments without changing production files.
+                # HH_260930 - Match v2.2.9's 1.2 m / 135 degree entry guard.
+                # The historical 2.0 m / 75 degree CARLA default silently
+                # defeated current develop cornering updates. Exit hysteresis
+                # remains the production 25 degrees; explicit experiment
+                # environment overrides remain available.
                 "control_cmd_vel_gate_route_heading_lookahead_m": (
                     LaunchConfiguration(
                         "carla_route_heading_lookahead_m"
