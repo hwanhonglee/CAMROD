@@ -91,7 +91,8 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
             "min_lookahead_dist": 1.2,
             "max_lookahead_dist": 3.5,
             "use_velocity_scaled_lookahead_dist": True,
-            "regulated_linear_scaling_min_radius": 4.0,
+            # HH_260930 - Corner trigger returned to 3.0 m for corner speed.
+            "regulated_linear_scaling_min_radius": 3.0,
         }
         for key in preview_keys:
             deployed_profile[key] = package_profile[key]

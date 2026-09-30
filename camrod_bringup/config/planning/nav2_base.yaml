@@ -430,7 +430,8 @@ controller_server:
       use_regulated_linear_velocity_scaling: True
       # HJ_0812 - SHARED_TRACKING_KEYS keeps these identical to the direct RPP
       # profile in nav2_vehicle.yaml.
-      regulated_linear_scaling_min_radius: 4.0
+      # HH_260930 - Back to 3.0 m with the direct RPP profile (corner speed).
+      regulated_linear_scaling_min_radius: 3.0
       regulated_linear_scaling_min_speed: 0.333333
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6

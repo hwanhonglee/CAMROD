@@ -119,7 +119,11 @@ controller_server:
       # HH_260928 - Slow earlier through lane corners so the steering has
       # distance to settle before the outer shoulder reaches the boundary:
       # a 2.0 m arc now runs at 50% instead of 67% of cruise.
-      regulated_linear_scaling_min_radius: 4.0
+      # HH_260930 - Corners crawled at ~0.8-1.0 km/h (map-v26 right turn onto
+      # the campsite road is a ~1.6 m arc). The 1.2 m preview above is what
+      # fixed the shoulder contact, so return the trigger to 3.0 m: a 1.6 m
+      # arc runs at 53% (was 40%) and a 2.0 m arc at 67% (was 50%) of cruise.
+      regulated_linear_scaling_min_radius: 3.0
       # HH_260807 - Preserve the 50% curve-floor ratio: 1.00 km/h final.
       # HJ_0812 - A 50% floor leaves almost no regulation range once the
       # trigger radius widens. 30% of cruise is 0.60 km/h after the 0.5 gate.

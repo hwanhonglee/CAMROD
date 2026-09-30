@@ -273,11 +273,14 @@ def test_missing_or_invalid_yaml_is_fail_closed(backend, tmp_path):
     assert UiBackendNode._load_drop_zone_polygons(backend, str(path)) == []
 
 
-def test_current_bringup_polygon_contains_both_reported_station_poses(backend):
+def test_current_bringup_polygon_contains_the_active_station_pose(backend):
+    # HH_260930 - The station moved from area 7019 to 7144 in map-v26, so the
+    # poses reported inside 7019 no longer apply; check the 7144 center and a
+    # point near each long edge instead.
     path = Path(__file__).resolve().parents[2] / "camrod_bringup/config/map/drop_zones.yaml"
     backend._drop_zone_polygons = UiBackendNode._load_drop_zone_polygons(backend, str(path))
     assert len(backend._drop_zone_polygons) == 1
-    for x, y in [(-10.690, 41.396), (-11.39, 38.85)]:
+    for x, y in [(-8.47366, 40.391), (-9.40, 40.30), (-7.50, 40.45)]:
         backend._latest_arrival_pose.pose.position.x = x
         backend._latest_arrival_pose.pose.position.y = y
         assert UiBackendNode._station_departure_origin(backend) == (True, "inside_drop_zone")

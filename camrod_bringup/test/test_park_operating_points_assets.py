@@ -19,7 +19,11 @@ import yaml
 
 SRC_ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_MAP = SRC_ROOT / "lanelet2_maps.osm"
-MAP_SHA256 = "2c96514fa788e46ab5061a0ebc130a732557045d0baa3b67bb9f9dbcb132fef7"
+# HH_260930 - Active map advanced to map-v26 (copy_park_v1.0.16).
+MAP_SHA256 = "cf5490cbf2067b4ce7dc703f80e75095366cacd364097cbad431131e7b435c8d"
+# HH_260930 - map-v26 keeps area 7019 authored but only 7144 is exported as
+# the active parking/docking station.
+INACTIVE_DROP_ZONE_AREAS = {7019}
 HISTORICAL_MAP_SHA256 = "8fa13157b8e956559ad29b1bf49b4357ec6d252b0259debfb40a946b29f24e59"
 RENDERER = (
     SRC_ROOT
@@ -80,10 +84,10 @@ def test_current_area_export_configs_are_synchronized() -> None:
     sites = yaml.safe_load(SITE_FILES[0].read_text())["camping_sites"]
     assert len(drops) == 1
     assert [(drop["id"], drop["parking_method"]) for drop in drops] == [
-        ("dz_area_7019", "auto"),
+        ("dz_area_7144", "auto"),
     ]
-    assert drops[0]["x"] == -11.3585
-    assert drops[0]["y"] == 40.0901
+    assert drops[0]["x"] == -8.47366
+    assert drops[0]["y"] == 40.391
     # HH_260909 - Station yaw retrimmed to -88.2127 deg.
     assert drops[0]["yaw_deg"] == -88.2127
     assert [site["type"] for site in sites] == [
@@ -91,7 +95,7 @@ def test_current_area_export_configs_are_synchronized() -> None:
     ]
     assert [site["service_mode"] for site in sites[:10]] == ["turnaround"] * 10
     assert [site["service_mode"] for site in sites[10:]] == ["roadside_stop"] * 3
-    assert sites[0]["x"] == 25.0481
+    assert sites[0]["x"] == 24.835
     assert sites[12]["x"] == 0.610449
 
 
@@ -188,7 +192,10 @@ def test_active_semantic_geometry_uses_the_shared_local_cartesian_projector() ->
         for path, key in ((DROP_FILES[0], "drop_zones"), (SITE_FILES[0], "camping_sites"))
         for item in yaml.safe_load(path.read_text())[key]
     }
-    for area in lanelet_map.areaLayer:
+    active_areas = [
+        area for area in lanelet_map.areaLayer if area.id not in INACTIVE_DROP_ZONE_AREAS
+    ]
+    for area in active_areas:
         record = exported[f"dz_area_{area.id}"]
         corners = []
         for line in area.outerBound:
@@ -220,28 +227,21 @@ def test_active_semantic_geometry_uses_the_shared_local_cartesian_projector() ->
             # 90 degrees. Explicit map metadata must retain operating heading.
             assert record["yaw_deg"] == float(area.attributes["yaw_deg"])
             assert record["service_mode"] == str(area.attributes["service_mode"])
-    assert len(exported) == len(lanelet_map.areaLayer) == 14
+    assert len(exported) == len(active_areas) == 14
+    assert len(lanelet_map.areaLayer) == 15
 
 
 def test_active_map_changes_only_approved_metadata_and_retired_zone_relation() -> None:
-    """Retire relation 2320, retaining all user-authored way/node geometry."""
+    """The active map is the operator's latest snapshot; 2320 stays retired."""
     import xml.etree.ElementTree as ET
 
+    # HH_260930 - map-v26 intentionally edits lane geometry, so bind the
+    # active map to the operator-authored v1.0.16 snapshot instead of v1.0.13.
     active = ET.parse(ACTIVE_MAP).getroot()
-    snapshot = ET.parse(SRC_ROOT / "lanelet2_maps_(copy_park_v1.0.13).osm").getroot()
-    retired = snapshot.find("relation[@id='2320']")
-    assert retired is not None
+    snapshot = ET.parse(SRC_ROOT / "lanelet2_maps_(copy_park_v1.0.16).osm").getroot()
     assert active.find("relation[@id='2320']") is None
-    snapshot.remove(retired)
-    for relation in active.findall("relation"):
-        for tag in list(relation.findall("tag")):
-            if tag.attrib["k"] in ("parking_method", "service_mode"):
-                relation.remove(tag)
-            elif tag.attrib["k"] == "yaw_deg" and any(
-                t.attrib == {"k": "subtype", "v": f"camping_site_{index}"}
-                for t in relation.findall("tag") for index in range(1, 14)
-            ):
-                relation.remove(tag)
+    assert snapshot.find("relation[@id='2320']") is None
+
     # ElementTree retains tag-tail whitespace, so compare element structure
     # and attributes, not incidental serialization indentation.
     def structure(element):
@@ -251,7 +251,7 @@ def test_active_map_changes_only_approved_metadata_and_retired_zone_relation() -
 
 
 def test_keypoints_share_the_single_current_parking_and_docking_area() -> None:
-    """Both return aliases use area 7019, never the retired vehicle entrance."""
+    """Both return aliases use area 7144, never the retired vehicle entrance."""
     paths = [
         SRC_ROOT / "camrod_planning/config/planning_state_machine_keypoints.yaml",
         SRC_ROOT / "camrod_bringup/config/planning/planning_state_machine_keypoints.yaml",
@@ -259,7 +259,7 @@ def test_keypoints_share_the_single_current_parking_and_docking_area() -> None:
     assert paths[0].read_bytes() == paths[1].read_bytes()
     keypoints = yaml.safe_load(paths[0].read_text())["keypoints"]
     drops = yaml.safe_load(DROP_FILES[0].read_text())["drop_zones"]
-    assert len(drops) == 1 and drops[0]["id"] == "dz_area_7019"
+    assert len(drops) == 1 and drops[0]["id"] == "dz_area_7144"
     assert set(keypoints) == {"drop_zone", "garage"}
     for key in ("drop_zone", "garage"):
         assert keypoints[key]["frame_id"] == "map"

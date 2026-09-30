@@ -96,7 +96,7 @@ lateral commands at least `0.10 m/s`, well outside the deadband.
 | `use_velocity_scaled_lookahead_dist` | `false / true` | Intentional A/B difference |
 | `min_lookahead_dist` | `1.1 / 1.2 m` | Minimum preview (effective at cruise) |
 | `max_lookahead_dist` | `2.0 / 3.5 m` | Maximum preview |
-| `regulated_linear_scaling_min_radius` | `3.0 / 4.0 m` | Curve slowdown trigger radius |
+| `regulated_linear_scaling_min_radius` | `3.0 / 3.0 m` | Curve slowdown trigger radius |
 | `rotate_to_heading_angular_vel` | `0.35 rad/s` | Manual RotationShim heading speed |
 | `max_angular_accel` | `0.8 rad/s^2` | Controller angular acceleration cap |
 

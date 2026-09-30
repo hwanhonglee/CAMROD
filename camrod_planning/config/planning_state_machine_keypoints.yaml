@@ -1,18 +1,19 @@
 # Map-frame keypoints for the planning state machine.
 # HH_260907 - Active map v23 has one shared parking/docking area (7019).
+# HH_260930 - map-v26 moves the active parking/docking station to area 7144.
 # Former area 2320 is vehicle-entry space and must not remain a return target.
 keypoints:
   drop_zone:
     frame_id: "map"
-    x: -11.3585
-    y: 40.0901
+    x: -8.47366
+    y: 40.391
     z: 0
     # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.
     yaw_deg: -88.2127
   garage:
     frame_id: "map"
-    x: -11.3585
-    y: 40.0901
+    x: -8.47366
+    y: 40.391
     z: 0
     # HH_260909 - Follows the drop_zone station yaw retrimmed to -88.2127 deg.
     yaw_deg: -88.2127
