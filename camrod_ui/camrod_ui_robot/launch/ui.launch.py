@@ -1,6 +1,4 @@
 import os
-import socket
-from pathlib import Path
 
 from ament_index_python.packages import (
     PackageNotFoundError,
@@ -77,32 +75,6 @@ def generate_launch_description():
     default_frontend_dir = _resolve_default_frontend_dir()
     default_camping_sites_yaml = _resolve_default_camping_sites_yaml()
     default_drop_zones_yaml = _resolve_default_drop_zones_yaml()
-
-    # HH_260915 - This node is independent of the browser/telemetry lease and
-    # owns a NEW journal, never the previous service_metrics.sqlite3 database.
-    state_root = os.environ.get('XDG_STATE_HOME', '').strip()
-    records_root = str((Path(state_root) if state_root else Path.home() / '.local/state') / 'camrod/mission_records')
-    recorder_arguments = [
-        DeclareLaunchArgument('enable_mission_recorder', default_value='true'),
-        DeclareLaunchArgument('mission_records_root', default_value=records_root),
-        DeclareLaunchArgument('mission_recorder_robot_id', default_value=socket.gethostname()),
-        DeclareLaunchArgument('mission_recorder_environment', default_value=os.environ.get('CAMROD_RECORDING_ENVIRONMENT', 'real')),
-        DeclareLaunchArgument('mission_recorder_raw_can_interface', default_value=''),
-        DeclareLaunchArgument('mission_recorder_quota_bytes', default_value='268435456'),
-    ]
-    mission_recorder = Node(
-        package='camrod_ui', executable='mission_recorder_node',
-        name='mission_recorder', output='screen',
-        condition=IfCondition(LaunchConfiguration('enable_mission_recorder')),
-        parameters=[{
-            'storage_root': LaunchConfiguration('mission_records_root'),
-            'robot_id': LaunchConfiguration('mission_recorder_robot_id'),
-            'environment': LaunchConfiguration('mission_recorder_environment'),
-            'platform_status_topic': LaunchConfiguration('platform_status_topic'),
-            'raw_can_interface': LaunchConfiguration('mission_recorder_raw_can_interface'),
-            'quota_bytes': ParameterValue(LaunchConfiguration('mission_recorder_quota_bytes'), value_type=int),
-        }],
-    )
 
     enable_ui_backend_arg = DeclareLaunchArgument(
         'enable_ui_backend',
@@ -185,6 +157,31 @@ def generate_launch_description():
         'frontend_dir',
         default_value=default_frontend_dir,
         description='Static frontend directory for UI backend',
+    )
+    snapshot_output_directory_arg = DeclareLaunchArgument(
+        'snapshot_output_directory',
+        default_value='/home/nvidia/storage/camrod',
+        description='Server-owned directory for administrator snapshot bags',
+    )
+    snapshot_request_timeout_s_arg = DeclareLaunchArgument(
+        'snapshot_request_timeout_s',
+        default_value='120.0',
+        description='Maximum UI wait for a snapshot bag write',
+    )
+    snapshot_minimum_free_space_mb_arg = DeclareLaunchArgument(
+        'snapshot_minimum_free_space_mb',
+        default_value='5120',
+        description='Absolute minimum free disk space preserved by snapshot writes',
+    )
+    snapshot_minimum_free_space_ratio_arg = DeclareLaunchArgument(
+        'snapshot_minimum_free_space_ratio',
+        default_value='0.10',
+        description='Filesystem fraction preserved by snapshot writes',
+    )
+    snapshot_size_safety_factor_arg = DeclareLaunchArgument(
+        'snapshot_size_safety_factor',
+        default_value='1.30',
+        description='Serialized-buffer to on-disk snapshot size safety factor',
     )
     camping_sites_yaml_arg = DeclareLaunchArgument(
         'camping_sites_yaml',
@@ -324,8 +321,26 @@ def generate_launch_description():
         parameters=[{
             'host': LaunchConfiguration('ui_host'),
             'port': LaunchConfiguration('ui_port'),
-            'mission_records_root': LaunchConfiguration('mission_records_root'),
             'frontend_dir': LaunchConfiguration('frontend_dir'),
+            'snapshot_output_directory': LaunchConfiguration(
+                'snapshot_output_directory'
+            ),
+            'snapshot_request_timeout_s': ParameterValue(
+                LaunchConfiguration('snapshot_request_timeout_s'),
+                value_type=float,
+            ),
+            'snapshot_minimum_free_space_mb': ParameterValue(
+                LaunchConfiguration('snapshot_minimum_free_space_mb'),
+                value_type=int,
+            ),
+            'snapshot_minimum_free_space_ratio': ParameterValue(
+                LaunchConfiguration('snapshot_minimum_free_space_ratio'),
+                value_type=float,
+            ),
+            'snapshot_size_safety_factor': ParameterValue(
+                LaunchConfiguration('snapshot_size_safety_factor'),
+                value_type=float,
+            ),
             'enable_operator_telemetry': ParameterValue(
                 LaunchConfiguration('enable_operator_telemetry'),
                 value_type=bool,
@@ -489,7 +504,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        *recorder_arguments,
         enable_ui_backend_arg,
         ui_host_arg,
         ui_port_arg,
@@ -505,6 +519,11 @@ def generate_launch_description():
         operator_ui_window_height_arg,
         operator_ui_window_fullscreen_arg,
         frontend_dir_arg,
+        snapshot_output_directory_arg,
+        snapshot_request_timeout_s_arg,
+        snapshot_minimum_free_space_mb_arg,
+        snapshot_minimum_free_space_ratio_arg,
+        snapshot_size_safety_factor_arg,
         camping_sites_yaml_arg,
         drop_zones_yaml_arg,
         enable_campsite_occupancy_guard_arg,
@@ -530,7 +549,6 @@ def generate_launch_description():
         low_battery_return_threshold_percent_arg,
         urgent_battery_return_threshold_percent_arg,
         ui_backend,
-        mission_recorder,
         guest_ui,
         operator_ui_window,
     ])

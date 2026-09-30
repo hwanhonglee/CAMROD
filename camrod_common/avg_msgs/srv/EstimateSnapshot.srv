@@ -1,0 +1,17 @@
+# Estimate the serialized size of a buffered snapshot without writing it.
+# If topics is empty, all buffered topics are included.
+TopicDetails[] topics
+builtin_interfaces/Time start_time
+builtin_interfaces/Time stop_time
+uint64 max_bytes                  # 0 disables automatic latest-window fitting
+
+---
+
+bool success
+uint64 requested_bytes           # Requested window before max_bytes fitting
+uint64 selected_bytes            # Window that would actually be written
+uint64 message_count
+builtin_interfaces/Time actual_start_time
+builtin_interfaces/Time newest_time
+bool truncated
+string message

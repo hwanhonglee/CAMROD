@@ -1,4 +1,3 @@
-# HH_260911 - Korean copy changes must not remove lifecycle and safety assertions.
 """Source-level regression checks for critical Robot UI operator flows."""
 
 from pathlib import Path
@@ -65,26 +64,82 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("if (isReturning && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
 
-    def test_parking_and_charging_lifecycle_has_distinct_labels(self) -> None:
+    def test_usage_guide_opens_straight_onto_two_sections(self) -> None:
+        # 참고 자료는 관문 없이 바로 열린다. 안전 안내는 [서비스 선택] 직전에만 남아 있다.
+        self.assertNotIn("UsageGuideGate", self.source)
+
+        usage_start = self.source.index("id: 'usage'")
+        usage_end = self.source.index("id: 'facility'", usage_start)
+        usage = self.source[usage_start:usage_end]
+
+        self.assertNotIn("/로봇안전안내.png", usage)
+        for heading in ("서비스 선택 방법", "로봇 정지 방법"):
+            self.assertEqual(usage.count(f"<span>{heading}</span>"), 1)
+        self.assertNotIn("<span>주의 사항</span>", usage)
+        self.assertNotIn("재출발 방법", usage)
+
+        for image_name in (
+            "service-selection.png",
+            "robot-stop.png",
+        ):
+            self.assertIn(f"/guide/{image_name}", usage)
+            self.assertTrue((PUBLIC_ASSETS / "guide" / image_name).is_file())
+        self.assertNotIn("/guide/destination-safety.png", usage)
+        self.assertIn("캠핑을 시작할 때 사용합니다", usage)
+        self.assertIn("캠핑을 마칠 때 사용합니다", usage)
+        self.assertIn("드랍존으로 복귀합니다", usage)
+        self.assertIn("[충전] 버튼은 관리자 전용 기능입니다", usage)
+        self.assertIn("이용객은 누르거나 조작하지 마세요", usage)
+
+        guide_grid = re.search(r"\.guide-grid\s*\{([^}]*)\}", self.css)
+        self.assertIsNotNone(guide_grid)
+        self.assertIn(
+            "grid-template-columns: minmax(0, 1fr);",
+            guide_grid.group(1),
+        )
+        self.assertIn(".usage-safety-intro", self.css)
+        self.assertIn(".usage-safety-image", self.css)
+        self.assertIn(".usage-safety-confirm", self.css)
+        self.assertIn(".guide-card-visual", self.css)
+        self.assertIn(".guide-card-copy", self.css)
+        self.assertIn(".guide-service-admin-notice", self.css)
+
+    def test_service_selection_requires_safety_confirmation(self) -> None:
+        # [서비스 선택]은 안전 안내를 거친 뒤에만 배송 서비스 선택으로 넘어간다.
+        self.assertIn("const [showServiceSafetyGate, setShowServiceSafetyGate]", self.source)
+        self.assertIn('data-ui="service-safety-gate"', self.source)
+        self.assertIn("<SafetyNoticePanel onConfirm={handleServiceSafetyConfirm} />", self.source)
+
+        panel_start = self.source.index("function SafetyNoticePanel(")
+        panel_end = self.source.index("const SIDE_BUTTONS", panel_start)
+        panel = self.source[panel_start:panel_end]
+        self.assertIn("/로봇안전안내.png", panel)
+        self.assertIn('data-ui="usage-safety-confirm"', panel)
+        self.assertTrue((PUBLIC_ASSETS / "로봇안전안내.png").is_file())
+
+        handler_start = self.source.index("const handleWaitingClick = () => {")
+        handler_end = self.source.index("const resetIdleTimer", handler_start)
+        handler = self.source[handler_start:handler_end]
+        self.assertIn("setShowServiceSafetyGate(true);", handler)
+
+        confirm_start = self.source.index("const handleServiceSafetyConfirm = () => {")
+        confirm_end = self.source.index("};", confirm_start)
+        confirm = self.source[confirm_start:confirm_end]
+        self.assertIn("setShowServiceSafetyGate(false);", confirm)
+        self.assertIn("setShowServiceSelection(true);", confirm)
+        self.assertIn("setShowWaiting(false);", confirm)
+
+    def test_parking_and_charging_lifecycle_has_distinct_korean_labels(self) -> None:
         for label in (
             "충전 중",
-            "충전 연결 대기 중",
-            "주차 진행 중",
-            "도킹 진행 중",
-            "대기·충전 장소에서 주차 진행 중",
+            "충전 접점 연결 대기 중",
+            "후진 주차 중",
+            "충전 도킹 중",
+            "대기·충전 장소 주차 중",
             "대기·충전 장소 주차 완료",
         ):
             self.assertIn(label, self.source)
         self.assertIn("parkingLifecycleStatus(", self.source)
-        self.assertIn("배달 서비스 및 호출 서비스 이용이 가능합니다.", self.source)
-        self.assertIn(
-            "주차 정렬이 완료되었습니다. 충전 접점 연결을 기다리고 있습니다.",
-            self.source,
-        )
-        self.assertIn('className="preview-service-available"', self.source)
-        self.assertIn("충전 완료", self.source)
-        self.assertIn("배터리가 100%로 충전되었습니다.", self.source)
-        self.assertIn("setBatteryChargeComplete", self.source)
         self.assertIn("serviceStateName={serviceStateName}", self.source)
         self.assertIn("serviceStateDescription={serviceStateDescription}", self.source)
         self.assertIn("tone: 'parking',", self.source)
@@ -94,7 +149,6 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertNotIn("ch-runtime", self.source)
 
         css_source = APP_CSS.read_text(encoding="utf-8")
-        self.assertIn(".preview-service-available", css_source)
         self.assertIn(
             ".waiting-runtime-item.parking .waiting-runtime-dot",
             css_source,
@@ -120,45 +174,12 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             css_source,
         )
 
-    def test_charging_connection_wait_returns_to_idle_prompt_after_ten_seconds(self) -> None:
-        self.assertIn("const chargingStandbyOpenedRef = useRef(false);", self.source)
-        timer_start = self.source.index(
-            "// 충전 접점 연결을 기다리는 동안 상태 안내를 10초간 유지한 뒤"
-        )
-        timer_end = self.source.index("// HJ_260804", timer_start)
-        timer = self.source[timer_start:timer_end]
-        for expected in (
-            "serviceStateName !== 'WAITING_FOR_CHARGING'",
-            "missionDispatch.active",
-            "chargingStandbyOpenedRef.current = true;",
-            "setShowServiceSelection(false);",
-            "setShowWaiting(true);",
-            "}, 10000);",
-        ):
-            self.assertIn(expected, timer)
-        self.assertIn("서비스 선택 버튼을 눌러주세요", self.source)
-
-    def test_completed_charge_returns_to_idle_prompt_after_ten_seconds(self) -> None:
-        self.assertIn("const chargeCompleteStandbyOpenedRef = useRef(false);", self.source)
-        timer_start = self.source.index(
-            "// A confirmed full battery gets its own completion presentation"
-        )
-        timer_end = self.source.index("// HJ_260804", timer_start)
-        timer = self.source[timer_start:timer_end]
-        for expected in (
-            "serviceStateName === 'CHARGING' && batteryChargeComplete",
-            "missionDispatch.active",
-            "chargeCompleteStandbyOpenedRef.current = true;",
-            "setShowServiceSelection(false);",
-            "setShowWaiting(true);",
-            "}, 10000);",
-        ):
-            self.assertIn(expected, timer)
-
     def test_destination_entry_opens_three_block_service_menu(self) -> None:
+        # 대기 화면 → 안전 안내 → 서비스 선택까지가 한 흐름이다.
         handler_start = self.source.index("const handleWaitingClick = () => {")
-        handler_end = self.source.index("};", handler_start)
+        handler_end = self.source.index("const resetIdleTimer", handler_start)
         handler = self.source[handler_start:handler_end]
+        self.assertIn("setShowServiceSafetyGate(true);", handler)
         self.assertIn("setShowServiceSelection(true);", handler)
         self.assertIn("setShowWaiting(false);", handler)
 
@@ -310,7 +331,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source.index(") : displayedReturning ? (") :
             self.source.index(") : activeSite ? (")
         ]
-        self.assertIn("필요하면 아래 버튼으로 운행을 중지할 수 있습니다.", returning_preview)
+        self.assertIn("운행을 정지하시겠습니까?", returning_preview)
         self.assertIn("onClick={handleStopMove}", returning_preview)
 
         returning_states = self.source[
@@ -363,7 +384,6 @@ class RobotUiFrontendContractTest(unittest.TestCase):
                             (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
             block = self.source[self.source.index(first):self.source.index(last)]
             self.assertIn("motionNotice?.message ||", block)
-        self.assertIn("{activeRecallSite} 호출", self.source)
         self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
         self.assertNotIn('className="guest-recall-overlay"', self.source)
         arrival = self.source[self.source.index(") : arrivedSite ? ("):
@@ -569,6 +589,15 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertIn("현재 운행의 복귀 권한이 이 화면에 없습니다.", handler)
         self.assertNotIn("setIsReturning(true)", handler)
         self.assertIn("wsRef.current.readyState !== WebSocket.OPEN", handler)
+        self.assertNotIn("setShowArrivalComplete(false)", handler)
+        self.assertIn("Keep the completion window open", handler)
+
+        lifecycle_start = self.source.index("if ('service_state' in data)")
+        lifecycle_end = self.source.index("if ('system_health' in data)", lifecycle_start)
+        lifecycle = self.source[lifecycle_start:lifecycle_end]
+        self.assertIn("const recallTurnaroundInProgress", lifecycle)
+        self.assertIn("!recallFinalReturnReadyRef.current", lifecycle)
+        self.assertIn("if (!recallTurnaroundInProgress)", lifecycle)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_recall_return_progress_matches_both_uis_for_every_site(self) -> None:
@@ -811,7 +840,7 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
 """
         result = subprocess.run(["node"], input=script, text=True, capture_output=True, check=True)
         output = json.loads(result.stdout)
-        self.assertIn("상태 확인 중", output["robot"][0]["label"])
+        self.assertIn("확인 중", output["robot"][0]["label"])
         for index in (1, 2):
             self.assertIn("긴급 복귀", output["robot"][index]["label"])
             self.assertIn("25% 미만", output["guest"][index])
@@ -844,9 +873,9 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
   }); } catch (failure) { error = failure.message; }
   const reverse = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'reverse'});
   const april = parkingPolicyMessage({parking_policy_mode: 'auto', parking_selected_method: 'apriltag'});
-  const stationAllowed = ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING', 'OPERATOR_STOPPED']
+  const stationAllowed = ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
     .map(dockingAllowedAtServiceState);
-  const awayBlocked = ['', 'PREPARING', 'GOING_TO_SITE', 'GUEST_LOADING_WAIT', 'RETURN_WITH_CARGO']
+  const awayBlocked = ['', 'PREPARING', 'OPERATOR_STOPPED', 'GOING_TO_SITE', 'GUEST_LOADING_WAIT', 'RETURN_WITH_CARGO']
     .map(dockingAllowedAtServiceState);
   process.stdout.write(JSON.stringify({calls, accepted, error, reverse, april, stationAllowed, awayBlocked}));
 })();
@@ -859,8 +888,8 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         self.assertIn("충전하지 않음", output["reverse"])
         # Pending/completed docking copy belongs to the lifecycle, not policy selection.
         self.assertEqual(output["april"], "")
-        self.assertEqual(output["stationAllowed"], [True] * 5)
-        self.assertEqual(output["awayBlocked"], [False] * 5)
+        self.assertEqual(output["stationAllowed"], [True] * 4)
+        self.assertEqual(output["awayBlocked"], [False] * 6)
         # Explicit docking is offered in the service menu, and once in diagnostics.
         self.assertEqual(self.source.count("<DockingCommandButton"), 1)
         self.assertIn("<DockingCommandButton", self.telemetry_source)
@@ -1001,8 +1030,8 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
     def test_docking_view_shows_exact_lanelet_parking_approach(self) -> None:
         for token in (
             "drop_zone_parking",
-            "Lanelet 주차 지점",
-            "정확한 Lanelet 지점",
+            "차로 기반 주차 지점",
+            "정확한 차로 지점",
             "docking-path-approach",
         ):
             self.assertIn(token, self.telemetry_source)

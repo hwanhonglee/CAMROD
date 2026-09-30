@@ -567,7 +567,16 @@ class LocalPathTerminalRetentionTest(unittest.TestCase):
         parameters = canonical["/planning/local_path_extractor"]["ros__parameters"]
         goal = yaml.safe_load((self.package / "config/nav2_base.yaml").read_text())
         nav2_tolerance = goal["controller_server"]["ros__parameters"]["goal_checker"]["xy_goal_tolerance"]
-        self.assertEqual(nav2_tolerance, 0.10)
+        # The v27 field profile hands off at 0.20 m to avoid a terminal spin.
+        # The extractor must still retain its tighter, independent 0.05 m band.
+        self.assertEqual(nav2_tolerance, 0.20)
+        nav2_mirror = yaml.safe_load(
+            (self.package.parent / "camrod_bringup/config/planning/nav2_base.yaml").read_text()
+        )
+        self.assertEqual(
+            goal["controller_server"]["ros__parameters"]["goal_checker"],
+            nav2_mirror["controller_server"]["ros__parameters"]["goal_checker"],
+        )
         self.assertEqual(parameters["goal_reached_distance_m"], 0.05)
         self.assertLess(parameters["goal_reached_distance_m"], nav2_tolerance)
         for flag in ("stop_after_goal_reached", "publish_empty_on_invalid", "clear_local_path_on_route_change"):
@@ -580,7 +589,7 @@ class LocalPathTerminalRetentionTest(unittest.TestCase):
             with self.subTest(spacing=spacing):
                 self.publish_route(spacing=spacing)
                 # The closest route point is the last one, but the robot is
-                # still 0.14 m laterally outside the 0.10 m Nav2 goal radius.
+                # still 0.14 m laterally outside the extractor's 0.05 m band.
                 counts = self.observe_pose(10.0, y=0.14)
                 self.assertTrue(all(count >= 12 for count in counts), f"spacing={spacing}: {counts}")
 

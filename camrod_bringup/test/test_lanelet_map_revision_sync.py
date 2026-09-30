@@ -20,12 +20,10 @@ RUNTIME_REPORT = (
 )
 # HH_260909 - Active map advanced to revision 24: one node retired and the
 # shared parking/docking station yaw retrimmed to -88.2127 deg.
-# HH_260911 - Active map advanced to revision 27: the lanelet 2744 right-turn
-# geometry was retightened (centerline way 6998 drops node 6996 and its
-# remaining nodes and boundary nodes move in), and the station yaw returns to
-# -82.2127 deg.
+# HH_260930 - Active map advanced to revision 26 (copy_park_v1.0.16): lane
+# geometry edited and a second drop-zone area 7144 authored beside 7019.
 ACTIVE_MAP_SHA256 = (
-    "57cd044cb714f3f4c899868b5287c6c435e14395422e4f75eb66fd8eaa091fbb"
+    "cf5490cbf2067b4ce7dc703f80e75095366cacd364097cbad431131e7b435c8d"
 )
 
 
@@ -46,18 +44,16 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "27"
+    assert metadata.attrib["map_version"] == "26"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
-    assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
-    assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
+    assert sum(tags.get("type") == "lanelet" for tags in relations) == 54
+    assert sum(tags.get("type") == "multipolygon" for tags in relations) == 15
     # Preserve every node in the operator's 1.0.13 snapshot, including nodes
     # that are not members of a current semantic area.
     # HH_260909 - Revision 24 retires one node from the 1.0.13 snapshot.
-    # HH_260911 - Revision 27 retires node 6996 from the lanelet 2744
-    # centerline as well.
-    assert len(root.findall("node")) == 1660
-    assert len(root.findall("way")) == 237
+    assert len(root.findall("node")) == 1644
+    assert len(root.findall("way")) == 235
 
     # HH_260907 - The new area is shared by parking and docking. The former
     # drop-zone relation is removed because that space is a vehicle entrance.
@@ -66,13 +62,12 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
         for relation in root.findall("relation")
         if _tags(relation).get("subtype") == "drop_zone"
     }
-    assert set(drops) == {"7019"}
-    assert drops["7019"]["parking_method"] == "auto"
+    assert set(drops) == {"7019", "7144"}
+    assert {tags["parking_method"] for tags in drops.values()} == {"auto"}
     assert root.find("relation[@id='2320']") is None
     assert root.find("way[@id='2316']") is not None
     # HH_260909 - Station yaw retrimmed to -88.2127 deg in the active map.
-    # HH_260911 - Revision 27 returns the station yaw to -82.2127 deg.
-    assert {tags["yaw_deg"] for tags in drops.values()} == {"-82.2127"}
+    assert {tags["yaw_deg"] for tags in drops.values()} == {"-88.2127"}
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:

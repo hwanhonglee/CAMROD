@@ -69,7 +69,9 @@
     width: 1920
     height: 1080
     # HH_260630 - Rear compressed is monitoring-only; rate-limit CPU JPEG cost.
-    compressed_publish_rate_hz: 2.0
+    # HH_260928 - Snapshot is the only always-on subscriber. Keep fault-video
+    # context while cutting the 1920x1080 CPU JPEG work to one frame per 2 s.
+    compressed_publish_rate_hz: 0.5
     publish_compressed_without_subscribers: false
 
     # HH_260601 - replaced camera_info_url with inline calibration parameters.

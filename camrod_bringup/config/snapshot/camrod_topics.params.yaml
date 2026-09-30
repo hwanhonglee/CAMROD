@@ -1,0 +1,427 @@
+/**:
+  ros__parameters:
+    # Buffer the last 5 minutes before a snapshot is triggered.
+    default_duration_limit: 300.0
+    # Split one 5-minute snapshot into database files of at most 60 seconds.
+    bagfile_split_duration_s: 60
+    # Per-topic memory cap in MB (safety guard on top of the duration limit).
+    default_memory_limit: 100.0
+    # Store at most one message per 0.2 s (5 Hz) per topic.
+    # Set to 0.0 (here or per topic with "interval") to store every message.
+    default_min_interval: 0.2
+
+    # --- offload finished bags to shared storage ---
+    # HH_260921 - Both the trigger service and an automatic capture end in the
+    # same write path, so an operator snapshot and an auto-trigger snapshot are
+    # transferred alike. The transfer runs on its own thread: the service
+    # response returns as soon as the bag is on local disk, and a slow link
+    # never delays the next capture.
+    #
+    # Requires key-based SSH: the transfer runs with BatchMode=yes and will
+    # never prompt. Install the key first, e.g.
+    #   ssh-copy-id -p 8008 admin@220.90.18.50
+    offload:
+      enabled: true
+      host: "220.90.18.50"
+      port: 8008
+      user: "admin"
+      remote_directory: "/volume1/home/admin/camrod/storage"
+      # Pin the robot service key so unattended offload does not depend on an
+      # interactive desktop SSH agent.
+      identity_file: "/home/nvidia/.ssh/id_ed25519"
+      # true makes this a move. A failed transfer never removes anything, so
+      # the local bag survives as the only copy until it is delivered.
+      remove_local_after_transfer: true
+      connect_timeout_s: 10
+      transfer_timeout_s: 1800
+      retries: 2
+      retry_delay_s: 30
+
+    # --- automatic evidence capture ---
+    # HH_260921 - The snapshotter stays domain-agnostic: it matches the typed
+    # operating_state/level fields of a status topic and knows nothing about
+    # what produced them, so the policy lives here rather than in C++. Rules
+    # never parse the free-text status message, whose format may change.
+    auto_trigger:
+      enabled: true
+      output_directory: "/home/nvidia/storage/camrod"
+      filename_prefix: "autosnapshot"
+      # 0.0 follows default_duration_limit. A write pauses recording and clears
+      # every buffer afterwards, so a second capture inside one buffer length
+      # would record almost nothing - exactly what a fault cascade produces.
+      cooldown_s: 0.0
+      # Second, independent startup guard. require_healthy_first below is the
+      # primary one; this only covers a graph that flaps through a healthy
+      # window while it is still coming up.
+      startup_grace_s: 90.0
+      # 0.0 writes the whole buffer.
+      lookback_s: 0.0
+      # Mirrors the operator UI storage policy so an automatic bag leaves the
+      # same filesystem reserve a manual one does.
+      minimum_free_space_mb: 5120
+      minimum_free_space_ratio: 0.10
+      size_safety_factor: 1.30
+      # Rule order is priority: only one capture is taken per cooldown window,
+      # and the first rule in this list that has tripped wins it.
+      rules:
+        - "system_error"
+        - "gate_fault_hold"
+        # HH_260928 - Disable automatic snapshots for lanelet contact/recovery.
+        # Manual snapshots and the system/platform fault rules remain active.
+        # - "route_boundary_repeat_contact"
+      rule:
+        # A brief ERROR is a dropped heartbeat; a sustained one is a fault.
+        system_error:
+          topic: "/system/status"
+          kind: "system_status"
+          on_system_not_ok: true
+          min_level: 2
+          hold_s: 10.0
+          # Boot ordering reaches ERROR before it reaches OK, so a startup
+          # fault is excluded by the shape of the transition rather than by
+          # guessing how long boot takes: the rule cannot fire until the
+          # system has reported healthy for 15 s at least once.
+          require_healthy_first: true
+          require_healthy_s: 15.0
+        # FAULT_HOLD means estop, an abnormal vehicle_state or a platform
+        # error - hardware faults, not ordinary holds - so one is already
+        # worth a bag and this rule does not count. It also sits above
+        # ROUTE_SAFETY_HOLD in the gate's own state chain, so it covers a
+        # lanelet contact that coincides with a platform fault and would
+        # otherwise be reported as FAULT_HOLD and missed by the rule below.
+        gate_fault_hold:
+          topic: "/control/cmd_vel_safety_gate/status"
+          kind: "module_state"
+          operating_states: ["FAULT_HOLD"]
+          hold_s: 2.0
+          # Deliberately unscoped: a platform fault inside a campsite or at
+          # the charger matters just as much as one on the road.
+          require_healthy_first: true
+          require_healthy_s: 5.0
+
+        # The former route_boundary_repeat_contact rule is intentionally
+        # commented out above so ROUTE_SAFETY_HOLD never triggers a snapshot.
+
+    topics: [
+      # --- system / service health ---
+      "/rosout",
+      "/system/status",
+      "/system/diagnostics_agg",
+      "/service/state",
+      # --- localization ---
+      "/localization/pose_with_covariance",
+      "/localization/odometry",
+      "/localization/status",
+      "/localization/mode",
+      "/localization/confidence",
+      "/localization/dr_timeout",
+      # --- sensing: GNSS / IMU ---
+      "/sensing/gnss/pose_with_covariance",
+      "/sensing/gnss/ublox_gps_node/fix",
+      "/sensing/imu/data",
+      "/sensing/imu/status",
+      # --- sensing: camera ---
+      "/sensing/camera/econ_front/camera_info",
+      "/sensing/camera/econ_front/image_rect/compressed",
+      "/sensing/camera/econ_rear/camera_info",
+      "/sensing/camera/econ_rear/image_raw/compressed",
+      # --- sensing: LiDAR / radar ---
+      "/sensing/lidar/status",
+      "/sensing/lidar/points_filtered",
+      "/sensing/radar/status",
+      "/sensing/radar/obstacle_evidence",
+      "/sensing/radar/front1/range",
+      "/sensing/radar/front2/range",
+      "/sensing/radar/left1/range",
+      "/sensing/radar/left2/range",
+      "/sensing/radar/right1/range",
+      "/sensing/radar/right2/range",
+      "/sensing/radar/rear/range",
+      "/sensing/cost_grid/lidar",
+      "/sensing/cost_grid/radar",
+      # --- perception ---
+      "/perception/camera/detections_2d",
+      "/perception/obstacles",
+      "/perception/camera_lidar/detections_3d",
+      "/perception/apriltag_parking_detector/tag_detected",
+      "/perception/apriltag_parking_detector/tag_pose",
+      # --- planning / mission ---
+      "/planning/state_machine/state",
+      "/planning/state_machine/scenario_id",
+      "/planning/state_machine/mission_source",
+      "/planning/mission_key",
+      "/planning/engage",
+      "/planning/mission_engage",
+      "/planning/site_goal_pose_ros",
+      "/planning/goal_pose_snapped",
+      "/planning/goal_source",
+      "/planning/global_path_avg",
+      "/planning/local_path",
+      "/planning/tracking_error",
+      "/planning/obstacle_replan/status",
+      "/planning/cost_grid/inflation",
+      "/ui/selected_destination",
+      # --- campsite entry controller ---
+      "/control/camping_site_maneuver_controller/adopt",
+      "/control/camping_site_maneuver_controller/operation",
+      "/control/camping_site_maneuver_controller/status",
+      "/control/camping_site_maneuver_controller/path_ros",
+      # --- velocity command / safety gate ---
+      "/control/nav2_cmd_vel_ros",
+      "/control/cmd_vel_raw",
+      "/control/cmd_vel",
+      "/control/cmd_vel_ros",
+      "/control/cmd_vel_safety_gate/status",
+      "/control/command_enabled",
+      "/control/planning_engaged",
+      # --- platform / robot state ---
+      "/platform/drive_enable",
+      "/platform/status",
+      "/platform/status/odometry",
+      "/platform/status/velocity",
+      "/platform/status/wheel",
+      "/platform/steering_transition_state",
+      "/motion_state",
+      "/actuator_state",
+      "/battery_state",
+      "/system_state",
+      # --- transforms ---
+      "/tf",
+      "/tf_static"
+    ]
+
+    topic_details:
+      # State/event topics are not throttled so brief transitions are retained.
+      /rosout:
+        type: "rcl_interfaces/msg/Log"
+        interval: 0.0
+      /system/status:
+        type: "avg_msgs/msg/SystemStatus"
+        interval: 0.0
+      /system/diagnostics_agg:
+        type: "diagnostic_msgs/msg/DiagnosticArray"
+        interval: 0.0
+      /service/state:
+        type: "avg_msgs/msg/AvgServiceState"
+        interval: 0.0
+
+      /localization/pose_with_covariance:
+        type: "avg_msgs/msg/AvgPoseWithCovarianceStamped"
+        interval: 0.1
+      /localization/odometry:
+        type: "avg_msgs/msg/AvgOdometry"
+        interval: 0.1
+      /localization/status:
+        type: "avg_msgs/msg/AvgLocalizationStatus"
+        interval: 0.0
+      /localization/mode:
+        type: "avg_msgs/msg/AvgLocalizationMode"
+        interval: 0.0
+      /localization/confidence:
+        type: "avg_msgs/msg/AvgFloat32"
+      /localization/dr_timeout:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+
+      /sensing/gnss/pose_with_covariance:
+        type: "avg_msgs/msg/AvgPoseWithCovarianceStamped"
+      /sensing/gnss/ublox_gps_node/fix:
+        type: "sensor_msgs/msg/NavSatFix"
+      /sensing/imu/data:
+        type: "avg_msgs/msg/AvgImu"
+      /sensing/imu/status:
+        type: "avg_msgs/msg/AvgSensingImu"
+        interval: 0.0
+
+      /sensing/camera/econ_front/camera_info:
+        type: "sensor_msgs/msg/CameraInfo"
+      /sensing/camera/econ_front/image_rect/compressed:
+        type: "sensor_msgs/msg/CompressedImage"
+        # Keep two minutes at up to 2 Hz; memory remains the final guard.
+        duration: 120.0
+        memory: 150.0
+        interval: 0.5
+      /sensing/camera/econ_rear/camera_info:
+        type: "sensor_msgs/msg/CameraInfo"
+      /sensing/camera/econ_rear/image_raw/compressed:
+        type: "sensor_msgs/msg/CompressedImage"
+        duration: 120.0
+        memory: 150.0
+        interval: 0.5
+
+      /sensing/lidar/status:
+        type: "avg_msgs/msg/AvgSensingLidar"
+        interval: 0.0
+      /sensing/lidar/points_filtered:
+        type: "sensor_msgs/msg/PointCloud2"
+        duration: 60.0
+        memory: 100.0
+        interval: 1.0
+      /sensing/radar/status:
+        type: "avg_msgs/msg/AvgSensingRadar"
+        interval: 0.0
+      /sensing/radar/obstacle_evidence:
+        type: "avg_msgs/msg/AvgString"
+        interval: 0.0
+      /sensing/radar/front1/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/front2/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/left1/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/left2/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/right1/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/right2/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/radar/rear/range:
+        type: "avg_msgs/msg/AvgRange"
+        interval: 0.1
+      /sensing/cost_grid/lidar:
+        type: "avg_msgs/msg/AvgOccupancyGrid"
+        interval: 0.5
+      /sensing/cost_grid/radar:
+        type: "avg_msgs/msg/AvgOccupancyGrid"
+        interval: 0.5
+
+      /perception/camera/detections_2d:
+        type: "vision_msgs/msg/Detection2DArray"
+      /perception/obstacles:
+        type: "sensor_msgs/msg/PointCloud2"
+        duration: 60.0
+        memory: 100.0
+        interval: 1.0
+      /perception/camera_lidar/detections_3d:
+        type: "vision_msgs/msg/Detection3DArray"
+      /perception/apriltag_parking_detector/tag_detected:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+      /perception/apriltag_parking_detector/tag_pose:
+        type: "avg_msgs/msg/AvgAprilTagPose"
+
+      /planning/state_machine/state:
+        type: "avg_msgs/msg/PlanningState"
+        interval: 0.0
+      /planning/state_machine/scenario_id:
+        type: "avg_msgs/msg/PlanningScenario"
+        interval: 0.0
+      /planning/state_machine/mission_source:
+        type: "avg_msgs/msg/PlanningMissionKey"
+        interval: 0.0
+      /planning/mission_key:
+        type: "avg_msgs/msg/PlanningMissionKey"
+        interval: 0.0
+      /planning/engage:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+      /planning/mission_engage:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+      /planning/site_goal_pose_ros:
+        type: "geometry_msgs/msg/PoseStamped"
+        interval: 0.0
+      /planning/goal_pose_snapped:
+        type: "avg_msgs/msg/AvgPoseStamped"
+        interval: 0.0
+      /planning/goal_source:
+        type: "std_msgs/msg/String"
+        interval: 0.0
+      /planning/global_path_avg:
+        type: "avg_msgs/msg/AvgPath"
+        interval: 0.5
+      /planning/local_path:
+        type: "avg_msgs/msg/AvgPath"
+        interval: 0.5
+      /planning/tracking_error:
+        type: "avg_msgs/msg/AvgTrackingError"
+      /planning/obstacle_replan/status:
+        type: "avg_msgs/msg/AvgString"
+        interval: 0.0
+      /planning/cost_grid/inflation:
+        type: "avg_msgs/msg/AvgOccupancyGrid"
+        interval: 0.5
+      /ui/selected_destination:
+        type: "avg_msgs/msg/UiDestinationCommand"
+        interval: 0.0
+
+      /control/camping_site_maneuver_controller/adopt:
+        type: "avg_msgs/msg/UiDestinationCommand"
+        interval: 0.0
+      /control/camping_site_maneuver_controller/operation:
+        type: "avg_msgs/msg/MotionOperation"
+        interval: 0.0
+      /control/camping_site_maneuver_controller/status:
+        type: "avg_msgs/msg/ModuleState"
+        interval: 0.0
+      /control/camping_site_maneuver_controller/path_ros:
+        type: "nav_msgs/msg/Path"
+        interval: 0.5
+
+      # Preserve each command boundary to distinguish planner, maneuver, gate,
+      # and Ranger-input failures.
+      /control/nav2_cmd_vel_ros:
+        type: "geometry_msgs/msg/Twist"
+        interval: 0.05
+      /control/cmd_vel_raw:
+        type: "avg_msgs/msg/AvgTwist"
+        interval: 0.05
+      /control/cmd_vel:
+        type: "avg_msgs/msg/AvgTwist"
+        interval: 0.05
+      /control/cmd_vel_ros:
+        type: "geometry_msgs/msg/Twist"
+        interval: 0.05
+      /control/cmd_vel_safety_gate/status:
+        type: "avg_msgs/msg/ModuleState"
+        interval: 0.0
+      /control/command_enabled:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+      /control/planning_engaged:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+
+      /platform/drive_enable:
+        type: "avg_msgs/msg/AvgBool"
+        interval: 0.0
+      /platform/status:
+        type: "avg_msgs/msg/AvgPlatformStatus"
+        interval: 0.0
+      /platform/status/odometry:
+        type: "avg_msgs/msg/AvgOdometry"
+        interval: 0.1
+      /platform/status/velocity:
+        type: "avg_msgs/msg/AvgTwistStamped"
+        interval: 0.1
+      /platform/status/wheel:
+        type: "avg_msgs/msg/AvgTwistStamped"
+        interval: 0.1
+      /platform/steering_transition_state:
+        type: "ranger_msgs/msg/SteeringTransitionState"
+        interval: 0.0
+      /motion_state:
+        type: "ranger_msgs/msg/MotionState"
+        interval: 0.1
+      /actuator_state:
+        type: "ranger_msgs/msg/ActuatorStateArray"
+        interval: 0.1
+      /battery_state:
+        type: "sensor_msgs/msg/BatteryState"
+      /system_state:
+        type: "ranger_msgs/msg/SystemState"
+        interval: 0.0
+
+      /tf:
+        type: "tf2_msgs/msg/TFMessage"
+        # Do not throttle tf; dropped transforms break replay.
+        interval: 0.0
+      /tf_static:
+        type: "tf2_msgs/msg/TFMessage"
+        interval: 0.0

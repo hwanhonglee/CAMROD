@@ -13,10 +13,11 @@ import io
 import json
 import math
 import os
+import re
+import shutil
 import struct
 import threading
 import time
-import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,12 +49,14 @@ from avg_msgs.msg import (
     PlanningRecallRequest,
     PlanningState,
     SystemStatus,
+    TopicDetails,
     UiDestinationCommand,
     VoiceState,
 )
+from avg_msgs.srv import ConfigureSnapshotTopics, EstimateSnapshot, TriggerSnapshot
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 # HH_260721 - Keep only the FastAPI symbols used by the runtime backend.
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from geometry_msgs.msg import PoseStamped
@@ -62,6 +65,7 @@ from nav2_msgs.action import NavigateToPose
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.action import ActionClient
+from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -75,18 +79,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
-from camrod_ui.battery_policy import (
-    battery_charge_complete,
-    battery_policy_snapshot,
-    urgent_return_required,
-)
+from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
-)
-from camrod_ui.mission_recording_bridge import (
-    MissionRecordingEmitter, default_mission_records_path,
-    load_mission_recording_snapshot,
 )
 from camrod_ui.ui_state_policy import UiStatePolicy
 from camrod_ui.voice_departure_gate import VoiceDepartureGate
@@ -577,7 +573,6 @@ class ApiState:
         default_factory=lambda: {"site": "", "run": False}
     )
     battery_percentage: int = -1
-    battery_charge_complete: bool = False
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
     occupied_sites: List[str] = field(default_factory=list)
 
@@ -619,28 +614,6 @@ class UiBackendNode(Node):
                 str(default_service_metrics_path()),
             ).value
         )
-        # HH_260915 - A separate continuously running recorder owns detailed
-        # mission/CAN files. The UI only emits accepted lifecycle events and
-        # reads its snapshot; this never changes the legacy metrics DB path.
-        self.mission_records_root = str(self.declare_parameter(
-            "mission_records_root", str(default_mission_records_path())
-        ).value)
-        self.mission_recording_event_topic = str(self.declare_parameter(
-            "mission_recording_event_topic", "/ui/mission_recording/events"
-        ).value)
-        recording_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST, depth=100,
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-        )
-        self.pub_mission_recording_event = self.create_publisher(
-            String, self.mission_recording_event_topic, recording_qos
-        )
-        def publish_recording_event(payload):
-            message = String()
-            message.data = payload
-            self.pub_mission_recording_event.publish(message)
-        self._mission_recording = MissionRecordingEmitter(publish_recording_event)
         self.service_metrics_timezone = str(
             self.declare_parameter(
                 "service_metrics_timezone", "Asia/Seoul"
@@ -722,6 +695,72 @@ class UiBackendNode(Node):
         self.ranger_base_node_name = str(
             self.declare_parameter("ranger_base_node_name", "/ranger_base_node").value
         ).rstrip("/")
+        self.snapshot_service_name = str(
+            self.declare_parameter(
+                "snapshot_service_name", "/trigger_snapshot"
+            ).value
+        )
+        self.snapshot_configure_service_name = str(
+            self.declare_parameter(
+                "snapshot_configure_service_name", "/configure_snapshot_topics"
+            ).value
+        )
+        self.snapshot_estimate_service_name = str(
+            self.declare_parameter(
+                "snapshot_estimate_service_name", "/estimate_snapshot"
+            ).value
+        )
+        self.snapshot_output_directory = Path(
+            os.path.expanduser(
+                str(
+                    self.declare_parameter(
+                        "snapshot_output_directory",
+                        "/home/nvidia/storage/camrod",
+                    ).value
+                )
+            )
+        ).resolve()
+        self.snapshot_request_timeout_s = max(
+            5.0,
+            min(
+                600.0,
+                float(
+                    self.declare_parameter(
+                        "snapshot_request_timeout_s", 120.0
+                    ).value
+                ),
+            ),
+        )
+        self.snapshot_minimum_free_space_mb = max(
+            0,
+            int(
+                self.declare_parameter(
+                    "snapshot_minimum_free_space_mb", 5120
+                ).value
+            ),
+        )
+        self.snapshot_minimum_free_space_ratio = max(
+            0.0,
+            min(
+                0.9,
+                float(
+                    self.declare_parameter(
+                        "snapshot_minimum_free_space_ratio", 0.10
+                    ).value
+                ),
+            ),
+        )
+        self.snapshot_size_safety_factor = max(
+            1.0,
+            min(
+                3.0,
+                float(
+                    self.declare_parameter(
+                        "snapshot_size_safety_factor", 1.30
+                    ).value
+                ),
+            ),
+        )
         self.steering_transition_parameter = str(
             self.declare_parameter(
                 "steering_transition_parameter",
@@ -1039,9 +1078,6 @@ class UiBackendNode(Node):
                 "/control/cmd_vel_safety_gate/status",
             ).value
         )
-        # HH_260910 - Hold a site/return dispatch until its voice cue finishes
-        # playing instead of commanding motion the instant it starts. Emergency
-        # stop is untouched: it is never routed through this gate.
         self.voice_say_topic = str(
             self.declare_parameter(
                 "voice_say_topic", "/voice/voice_announcer/say"
@@ -1055,8 +1091,6 @@ class UiBackendNode(Node):
         self.enable_voice_departure_gate = bool(
             self.declare_parameter("enable_voice_departure_gate", True).value
         )
-        # Fail-open: a stuck/crashed voice pipeline must never strand a
-        # mission behind a departure cue that will never confirm.
         self.voice_departure_gate_timeout_s = max(
             0.5,
             float(
@@ -1241,7 +1275,6 @@ class UiBackendNode(Node):
         self._site_route_anchors: Dict[str, PoseStamped] = {}
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
         self._latest_platform_is_charging = False
-        self._latest_platform_power_supply_status = 0
         self._latest_platform_control_mode = -1
         self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
@@ -1345,6 +1378,9 @@ class UiBackendNode(Node):
         self._uvicorn_server: Optional[uvicorn.Server] = None
         self._server_thread: Optional[threading.Thread] = None
         self._server_stop_requested = threading.Event()
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_write_pending = False
+        self._snapshot_last_result: Dict[str, Any] = {}
 
         # Subscriptions.
         self.sub_destination = self.create_subscription(
@@ -1565,6 +1601,15 @@ class UiBackendNode(Node):
         self.set_ranger_parameters_client = self.create_client(
             SetParameters, f"{self.ranger_base_node_name}/set_parameters"
         )
+        self.snapshot_client = self.create_client(
+            TriggerSnapshot, self.snapshot_service_name
+        )
+        self.snapshot_configure_client = self.create_client(
+            ConfigureSnapshotTopics, self.snapshot_configure_service_name
+        )
+        self.snapshot_estimate_client = self.create_client(
+            EstimateSnapshot, self.snapshot_estimate_service_name
+        )
         # HH_260724 - UI cancel/stop must cancel the active Nav2 actions, not only close engage.
         self.nav2_cancel_clients = [
             self.create_client(CancelGoal, topic) for topic in self.nav2_cancel_action_topics
@@ -1597,8 +1642,6 @@ class UiBackendNode(Node):
         self._startup_fail_closed_timer = self.create_timer(
             0.5, self._reassert_startup_fail_closed
         )
-        # HH_260910 - Fail-open timeout check for the voice departure gate;
-        # VoiceState samples themselves arrive through sub_voice_state.
         self._voice_gate = VoiceDepartureGate()
         self._voice_gate_timer = self.create_timer(
             0.5, self._on_voice_gate_timer
@@ -1919,87 +1962,99 @@ class UiBackendNode(Node):
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
-    # ── Voice departure gate ────────────────────────────────────────────────
-    # HH_260910 - Site and return dispatches used to fire the instant they
-    # were accepted, while the matching voice cue only followed later and
-    # reactively — so motion and speech started together. These three helpers
-    # make the mission-dispatch call sites publish their departure cue first
-    # and hold the actual engage/goal/return command until voice_announcer
-    # confirms it finished playing (see VoiceDepartureGate). Emergency stop is
-    # never routed through this gate; it stays immediate, as before.
-
-
-
     def _on_voice_gate_timer(self) -> None:
         gate = getattr(self, "_voice_gate", None)
         if gate is not None:
             gate.tick(self._now_s())
 
     def _publish_voice_say(self, key: str) -> None:
-        req = AudioRequest()
-        req.key = key
-        req.priority = 1
-        req.interrupt = False
-        req.locale = ""
-        self.pub_voice_say.publish(req)
+        request = AudioRequest()
+        request.key = key
+        request.priority = 1
+        request.interrupt = False
+        request.locale = ""
+        self.pub_voice_say.publish(request)
 
-    # HH_260911 - Use the same dispatch helper for real nodes and test doubles.
     def _cancel_voice_dispatch(self, reason: str) -> None:
-        # HH_260911 - Invalidate delayed movement on Stop, shutdown and mission reset.
-        self._voice_dispatch_epoch = int(getattr(self, "_voice_dispatch_epoch", 0)) + 1
+        del reason
+        self._voice_dispatch_epoch = int(
+            getattr(self, "_voice_dispatch_epoch", 0)
+        ) + 1
         gate = getattr(self, "_voice_gate", None)
         if gate is not None:
             gate.cancel()
 
     def _voice_dispatch_identity(self) -> tuple:
-        return (int(getattr(self, "_voice_dispatch_epoch", 0)),
-                str(getattr(self, "_active_mission_site", "")),
-                str(getattr(self, "_active_mission_source", "")),
-                int(getattr(self, "_active_mission_generation", 0)),
-                int(getattr(self, "_command_epoch", 0)))
+        return (
+            int(getattr(self, "_voice_dispatch_epoch", 0)),
+            str(getattr(self, "_active_mission_site", "")),
+            str(getattr(self, "_active_mission_source", "")),
+            int(getattr(self, "_active_mission_generation", 0)),
+            int(getattr(self, "_command_epoch", 0)),
+        )
 
-    def _dispatch_after_voice(self, keys: Sequence[str], on_complete: Callable[[], None],
-                              *, label: str) -> None:
-        # HH_260911 - Recheck the exact owner under the same lock as Stop/admission.
+    def _dispatch_after_voice(
+        self,
+        keys: Sequence[str],
+        on_complete: Callable[[], None],
+        *,
+        label: str,
+    ) -> None:
         gate = getattr(self, "_voice_gate", None)
         if gate is None or not getattr(self, "enable_voice_departure_gate", True):
             on_complete()
             return
         expected = UiBackendNode._voice_dispatch_identity(self)
-        def release_if_current():
-            def checked():
+
+        def release_if_current() -> None:
+            def checked() -> None:
                 if expected != UiBackendNode._voice_dispatch_identity(self):
-                    self.get_logger().warn(f"discarded stale voice dispatch: {label}")
+                    self.get_logger().warn(
+                        f"discarded stale voice dispatch: {label}"
+                    )
                     return
                 on_complete()
+
             lock = getattr(self, "_destination_dispatch_lock", None)
             if lock is None:
                 checked()
             else:
                 with lock:
                     checked()
-        published = gate.start(keys, release_if_current, now_s=self._now_s(), label=label,
-            timeout_s=getattr(self, "voice_departure_gate_timeout_s", VoiceDepartureGate.DEFAULT_TIMEOUT_S),
+
+        published = gate.start(
+            keys,
+            release_if_current,
+            now_s=self._now_s(),
+            label=label,
+            timeout_s=getattr(
+                self,
+                "voice_departure_gate_timeout_s",
+                VoiceDepartureGate.DEFAULT_TIMEOUT_S,
+            ),
             on_timeout=lambda value: self.get_logger().warn(
-                f"voice departure timeout for '{value}'; rechecking current ownership"))
+                f"voice departure timeout for '{value}'; rechecking current ownership"
+            ),
+        )
         for key in published:
             self._publish_voice_say(key)
 
     def _on_voice_state(self, msg: VoiceState) -> None:
-        # HH_260911 - A queued/error audio sample is not playback completion.
         gate = getattr(self, "_voice_gate", None)
-        if gate is None or int(msg.state) not in {VoiceState.STATE_PLAYING, VoiceState.STATE_IDLE}:
+        if gate is None or int(msg.state) not in {
+            VoiceState.STATE_PLAYING,
+            VoiceState.STATE_IDLE,
+        }:
             return
-        gate.on_voice_state(playing=(int(msg.state) == VoiceState.STATE_PLAYING),
-                            current_key=str(msg.current_key), now_s=self._now_s())
+        gate.on_voice_state(
+            playing=int(msg.state) == VoiceState.STATE_PLAYING,
+            current_key=str(msg.current_key),
+            now_s=self._now_s(),
+        )
 
     def _site_departure_voice_keys(self, site: str) -> tuple[str, ...]:
-        # "Site selected" then "moving to campsite", e.g. B4 -> site_B4.wav
-        # then to_campsite.wav. A site outside the authored B1..B13 set (no
-        # matching site_B*.wav) just skips straight to the generic cue.
         site = str(site).strip()
         keys = []
-        # HH_260911 - A missing optional site catalogue uses only the generic cue.
         if site in getattr(self, "site_names", ()):
             keys.append(f"navigation.site_{site}")
         keys.append("navigation.to_campsite")
@@ -3666,16 +3721,11 @@ class UiBackendNode(Node):
                 # deliberately rejects return progress without this identity.
                 self._return_requested_generation = generation
                 self._urgent_return_generation = generation
-
-                def _open_drive_gate(urgent_source: str = urgent_source) -> None:
-                    if getattr(self, "publish_mission_engage_from_destination", False):
-                        self._publish_mission_engage(True, source=urgent_source)
-                    else:
-                        self._publish_platform_drive_enable(True, source=urgent_source)
-
-                self._publish_camping_site_maneuver_controller_return(
-                    source=urgent_source, before_release=_open_drive_gate
-                )
+                if getattr(self, "publish_mission_engage_from_destination", False):
+                    self._publish_mission_engage(True, source=urgent_source)
+                else:
+                    self._publish_platform_drive_enable(True, source=urgent_source)
+                self._publish_camping_site_maneuver_controller_return(source=urgent_source)
             elif state in road_states:
                 self._return_requested_generation = generation
                 self._urgent_return_generation = generation
@@ -3703,14 +3753,6 @@ class UiBackendNode(Node):
         matching_site = bool(active_site and fields.get("site") in {
             active_site, self._resolve_mission_key_for_site(active_site),
         })
-        if phase_changed and matching_site and phase != "ERROR":
-            state = getattr(self, "_latest_service_state", None)
-            # Phase status cannot independently complete/interrupt a record.
-            if state is not None and int(state) not in {0, 12, 13, 16}:
-                UiBackendNode._observe_service_metrics(
-                    self, int(state), SERVICE_STATE_NAMES.get(int(state), ""),
-                    f"camping_site_maneuver_controller:{phase}:status",
-                )
         if phase == "ERROR" and matching_site:
             self._mission_execution_error = str(msg.message) or "campsite controller ERROR"
             self._schedule_broadcast({"error": "campsite_maneuver_failed", **UiBackendNode._battery_parking_policy_snapshot(self)})
@@ -4058,7 +4100,6 @@ class UiBackendNode(Node):
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
         control_mode = int(msg.control_mode)
         charging = bool(msg.is_charging)
-        power_supply_status = int(msg.battery_power_supply_status)
         self._latest_platform_status_time_s = self._now_s()
         self._latest_platform_motion_ready = (
             control_mode == 1 and not bool(msg.estop)
@@ -4080,7 +4121,6 @@ class UiBackendNode(Node):
             )
             self._latest_platform_control_mode = control_mode
             self._latest_platform_is_charging = charging
-            self._latest_platform_power_supply_status = power_supply_status
             charging_changed = charging != previous_charging
             can_resume_redock = (
                 control_mode == 1
@@ -4129,7 +4169,6 @@ class UiBackendNode(Node):
         elif (
             charging_changed
             and not charging
-            and power_supply_status != 4
             and self._latest_service_state == int(AvgServiceState.CHARGING)
         ):
             # HH_260721 - Return to uncharged standby only when no departure state replaced charging.
@@ -4171,25 +4210,8 @@ class UiBackendNode(Node):
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
-            previous_charge_complete = bool(
-                getattr(self._state, "battery_charge_complete", False)
-            )
-            charge_complete = battery_charge_complete(
-                pct,
-                charging=charging,
-                power_supply_status=power_supply_status,
-                previously_complete=previous_charge_complete,
-            )
-            charge_complete_changed = charge_complete != previous_charge_complete
-            self._state.battery_charge_complete = charge_complete
-        if battery_changed or charge_complete_changed or charging_changed:
-            self._schedule_broadcast({
-                "battery": pct,
-                "battery_charge_complete": charge_complete,
-                "platform_is_charging": charging,
-                "battery_power_supply_status": power_supply_status,
-                **UiBackendNode._battery_parking_policy_snapshot(self),
-            })
+        if battery_changed:
+            self._schedule_broadcast({"battery": pct, **UiBackendNode._battery_parking_policy_snapshot(self)})
         self._update_low_battery_return_policy(pct, source="platform_status")
         if battery_changed:
             UiBackendNode._publish_destination_dispatch_status(
@@ -4344,13 +4366,9 @@ class UiBackendNode(Node):
             )
             self._drop_zone_exit_waiting_for_fresh_status = True
 
-        # HH_260910 - Announce the selected site first and hold the EXIT
-        # motion/engage until playback finishes, so the robot does not start
-        # rolling out of the bay while camrod_voice is still speaking.
-        def _release() -> None:
-            # HH_260825 - Open authorization only after the dwell has expired, then
-            # start the departure owner. Dynamic radar/fusion cost checks stay active
-            # in EXIT_STRAIGHT and ALIGN_EXIT_YAW; only static lanelet cost is bypassed.
+        def release() -> None:
+            # Authorization and the EXIT owner open only after the selected-site
+            # and departure announcements have completed.
             if getattr(self, "publish_engage_from_destination", False):
                 self._publish_engage(True, source=f"{source}:site_departure")
             if getattr(self, "publish_mission_engage_from_destination", False):
@@ -4377,12 +4395,13 @@ class UiBackendNode(Node):
                 departure_state, source=f"{source}:drop_zone_departure"
             )
             self.get_logger().info(
-                f"drop-zone departure released after safety dwell: source={source}"
+                f"drop-zone departure released after announcement: source={source}"
             )
 
-        UiBackendNode._dispatch_after_voice(self,
+        UiBackendNode._dispatch_after_voice(
+            self,
             UiBackendNode._site_departure_voice_keys(self, pending[0]),
-            _release,
+            release,
             label=f"drop_zone_departure:{pending[0]}",
         )
         return True
@@ -4403,25 +4422,6 @@ class UiBackendNode(Node):
         self._charging_departure_from_charger = False
         if already_safe:
             return
-        # HH_260915 - Preserve the failed attempt inside its recording mission;
-        # the existing safe-state and command cancellation behavior is unchanged.
-        recorder = getattr(self, "_mission_recording", None)
-        if recorder is not None:
-            recorder.stop(f"drop_zone_exit_failed:{source}")
-        # A failed departure returning to a safe station state is an
-        # interrupted attempt, not a completed delivery/recall.
-        metrics = getattr(self, "_service_metrics", None)
-        if metrics is not None:
-            interrupted = metrics.interrupt_service(
-                f"drop_zone_exit_failed:{source}", now_s=time.time()
-            )
-            if interrupted:
-                # Motion ownership intentionally retains its generation for a
-                # same-site retry. Accounting must nevertheless create a NEW
-                # attempt instead of deduplicating the now-closed request ID.
-                self._service_metrics_retry_serial = int(
-                    getattr(self, "_service_metrics_retry_serial", 0)
-                ) + 1
         if getattr(self, "publish_mission_engage_from_destination", False):
             self._publish_mission_engage(False, source=source)
         self._schedule_broadcast({
@@ -4431,8 +4431,6 @@ class UiBackendNode(Node):
         self._publish_service_state(safe_state, source=source)
 
     def _on_drop_zone_maneuver_status(self, msg: ModuleState) -> None:
-        # HH_260911 - Keep controller activity separate from retained service state.
-        self._latest_drop_zone_maneuver_phase = str(msg.operating_state).strip().upper()
         operating_state = str(msg.operating_state).strip()
         if operating_state in {"EXIT_STRAIGHT", "ALIGN_EXIT_YAW"}:
             if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
@@ -4758,10 +4756,14 @@ class UiBackendNode(Node):
             self._state.service_state = state
             self._state.service_state_name = state_name
             self._state.service_state_description = description
-        if (state_changed or visible_changed) and not road_handoff_ready:
-            UiBackendNode._observe_service_metrics(
-                self, state, state_name, description
-            )
+        if state_changed:
+            service_metrics = getattr(self, "_service_metrics", None)
+            if service_metrics is not None:
+                service_metrics.observe_service_state(
+                    state,
+                    state_name,
+                    now_s=time.time(),
+                )
         if visible_changed:
             # HH_260721 - Every client receives explicit operational state, not a health warning surrogate.
             self._schedule_broadcast({
@@ -4920,97 +4922,6 @@ class UiBackendNode(Node):
             source=f"service_state:{state_name}",
         )
 
-    def _start_service_metrics(
-        self, site: str, mission_key: str, source: str, generation: int
-    ) -> None:
-        """Attach the admitted request identity; never derive intent from state 15."""
-        metrics = getattr(self, "_service_metrics", None)
-        if metrics is None:
-            return
-        session = getattr(self, "_service_metrics_session_id", "")
-        if not session:
-            session = uuid.uuid4().hex
-            self._service_metrics_session_id = session
-        started = metrics.start_service(
-            site, mission_key=mission_key, source=source,
-            intent=UiBackendNode._destination_request_intent(source),
-            request_id=(
-                f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}"
-                f":mission:{generation}"
-            ), now_s=time.time(),
-        )
-        if started:
-            self._service_metrics_return_generation = -1
-            # HH_260915 - Accounting ID is distinct from the controller's
-            # authority. A retry keeps the recording mission, but adds attempt.
-            recorder = getattr(self, "_mission_recording", None)
-            if recorder is not None:
-                recorder.start(site, UiBackendNode._destination_request_intent(source),
-                               generation, f"{session}:attempt:{int(getattr(self, '_service_metrics_retry_serial', 0))}:mission:{generation}", source)
-
-    def _ensure_return_service_metrics(self, source: str) -> None:
-        """Record an admitted standalone return, never a rejected UI request."""
-        # HH_260915 - Observe the already-approved operation, not an HTTP click.
-        # The first recall RETURN can be a site reorientation, not final return.
-        recorder = getattr(self, "_mission_recording", None)
-        if recorder is not None:
-            generation = int(getattr(self, "_active_mission_generation", 0))
-            recall = UiBackendNode._is_guest_recall_source(str(getattr(self, "_active_mission_source", "")))
-            final_return = (not recall or generation <= 0 or
-                            int(getattr(self, "_recall_final_return_generation", 0)) == generation or
-                            "battery" in str(source))
-            recorder.request_return(source, final_return=final_return)
-        metrics = getattr(self, "_service_metrics", None)
-        if metrics is None or metrics.has_active_service:
-            return
-        site = str(getattr(self, "_active_mission_site", "")).strip() or "DROP_ZONE"
-        metrics.start_service(
-            site, source=source, intent="return",
-            request_id=f"return:{uuid.uuid4().hex}", now_s=time.time(),
-        )
-
-    def _observe_service_metrics(
-        self, state: int, state_name: str, description: str = ""
-    ) -> None:
-        """Observe accounting only; do not alter any ROS motion authorization."""
-        metrics = getattr(self, "_service_metrics", None)
-        if metrics is None:
-            return
-        if int(state) == int(AvgServiceState.DROP_ZONE_WAIT) and (
-            str(state_name).strip().upper() == "ROAD_HANDOFF_READY"
-        ):
-            # This acknowledgement shares state 0 with real parking completion.
-            # Ignoring it preserves both the active record and velocity anchor.
-            return
-        phase = str(state_name).strip()
-        prefix = "camping_site_maneuver_controller:"
-        if str(description).startswith(prefix):
-            phase = str(description)[len(prefix):].split(":", 1)[0].strip() or phase
-        generation = int(getattr(self, "_active_mission_generation", 0))
-        if int(state) == int(AvgServiceState.RETURNING_TO_DROP_ZONE):
-            self._service_metrics_return_generation = generation
-        leg_kind = ""
-        if int(state) == int(AvgServiceState.RETURN_WITH_CARGO):
-            is_recall = UiBackendNode._is_guest_recall_source(
-                str(getattr(self, "_active_mission_source", ""))
-            )
-            final_return = (
-                (generation > 0 and int(getattr(
-                    self, "_recall_final_return_generation", 0
-                )) == generation)
-                or int(getattr(self, "_service_metrics_return_generation", -1)) == generation
-                or "return_source=battery" in str(description)
-            )
-            # Recall clearance/reorientation also uses state 9 before the
-            # user's final return confirmation. It is still the recall leg.
-            leg_kind = "recall" if is_recall and not final_return else "return"
-        metrics.observe_service_state(
-            int(state), state_name, now_s=time.time(), phase=phase, leg_kind=leg_kind
-        )
-        recorder = getattr(self, "_mission_recording", None)
-        if recorder is not None:
-            recorder.phase(state, state_name, description, leg_kind)
-
     def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
         # localization should be handled in the frontend display layer.
@@ -5038,9 +4949,13 @@ class UiBackendNode(Node):
         msg.state = state
         msg.state_name = SERVICE_STATE_NAMES.get(state, f"UNKNOWN_{state}")
         msg.description = desc_map.get(state, f"unknown state {state}")
-        UiBackendNode._observe_service_metrics(
-            self, int(state), msg.state_name, msg.description
-        )
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.observe_service_state(
+                int(state),
+                msg.state_name,
+                now_s=time.time(),
+            )
         # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
         self._latest_service_state = int(state)
         self.pub_service_state.publish(msg)
@@ -5167,34 +5082,15 @@ class UiBackendNode(Node):
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
-    def _publish_camping_site_maneuver_controller_return(
-        self, source: str, *, before_release: Optional[Callable[[], None]] = None
-    ) -> None:
-        # HH_260910 - Every RETURN trigger (button, recall, urgent battery,
-        # service-state auto-return) funnels through here, so gating this one
-        # spot covers all of them: announce the return, then hold the RETURN
-        # motion command until the cue finishes playing. A caller that also
-        # needs to open engage/drive-enable right before the RETURN op passes
-        # `before_release` so that opens after the same announcement too,
-        # instead of racing ahead of it.
-        def _release() -> None:
-            if before_release is not None:
-                before_release()
-            # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
-            UiBackendNode._ensure_return_service_metrics(self, source)
-            msg = MotionOperation()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.operation = MotionOperation.RETURN
-            msg.source = source
-            self.pub_camping_site_maneuver_controller_operation.publish(msg)
-            self.get_logger().info(
-                f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
-            )
-
-        UiBackendNode._dispatch_after_voice(self,
-            ("navigation.to_dropzone",),
-            _release,
-            label=f"return_to_drop_zone:{source}",
+    def _publish_camping_site_maneuver_controller_return(self, source: str) -> None:
+        # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = MotionOperation.RETURN
+        msg.source = source
+        self.pub_camping_site_maneuver_controller_operation.publish(msg)
+        self.get_logger().info(
+            f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
         )
 
     def _on_ui_camping_site_operation_request(self, msg: MotionOperation) -> None:
@@ -5355,16 +5251,11 @@ class UiBackendNode(Node):
                 # or parking progress; the service bridge rejects stale generations.
                 self._return_requested_generation = active_generation
                 final_source = f"{source}:recall_final_return:site={active_site}:g={active_generation}"
-
-                def _open_drive_gate(final_source: str = final_source) -> None:
-                    if getattr(self, "publish_mission_engage_from_destination", False):
-                        self._publish_mission_engage(True, source=final_source)
-                    else:
-                        self._publish_platform_drive_enable(True, source=final_source)
-
-                self._publish_camping_site_maneuver_controller_return(
-                    source=final_source, before_release=_open_drive_gate
-                )
+                if getattr(self, "publish_mission_engage_from_destination", False):
+                    self._publish_mission_engage(True, source=final_source)
+                else:
+                    self._publish_platform_drive_enable(True, source=final_source)
+                self._publish_camping_site_maneuver_controller_return(source=final_source)
                 return {"success": True, "site": active_site,
                         "mission_generation": active_generation, "transition": "recall_final_return"}
             if final_wait:
@@ -5434,9 +5325,6 @@ class UiBackendNode(Node):
                 "return request rejected during backend startup recovery"
             )
             return "backend_startup_recovery"
-        # HH_260911 - A repeated Return must not restart a live parking owner.
-        if UiBackendNode._station_operation_busy(self):
-            return "parking_in_progress"
         if getattr(self, "_latest_campsite_phase", "") == "RECALL_RETURN_WAIT":
             return "recall_final_confirmation_required"
         active_site, _, active_generation, _ = (
@@ -5477,9 +5365,6 @@ class UiBackendNode(Node):
         )
         parking_context = (
             self._latest_service_state in stationary_parking_states
-            # HH_260911 - Recover stopped station requests from fresh geometry.
-            or (self._latest_service_state == int(AvgServiceState.OPERATOR_STOPPED)
-                and UiBackendNode._station_departure_origin(self)[0] is True)
             or retryable_drop_zone_parking
         )
         if parking_context and not self._latest_platform_is_charging:
@@ -5542,17 +5427,14 @@ class UiBackendNode(Node):
             # clearance/turnaround sequence. Its first phase is stationary and
             # announced; it alone publishes progress and the eventual route.
             # Reopen the drive gate explicitly, because arrival closed it.
-            def _open_drive_gate(source: str = source) -> None:
-                if getattr(self, "publish_mission_engage_from_destination", False):
-                    self._publish_mission_engage(True, source=f"{source}:recall_complete")
-                else:
-                    self._publish_platform_drive_enable(
-                        True, source=f"{source}:recall_complete"
-                    )
-
+            if getattr(self, "publish_mission_engage_from_destination", False):
+                self._publish_mission_engage(True, source=f"{source}:recall_complete")
+            else:
+                self._publish_platform_drive_enable(
+                    True, source=f"{source}:recall_complete"
+                )
             self._publish_camping_site_maneuver_controller_return(
-                source=f"{source}:recall_loading_complete",
-                before_release=_open_drive_gate,
+                source=f"{source}:recall_loading_complete"
             )
             return "recall_loading_complete"
 
@@ -6168,7 +6050,6 @@ class UiBackendNode(Node):
 
     def _publish_planning_return_request(self, source: str) -> None:
         """Publish one fresh drop-zone route after old Nav2 ownership has ended."""
-        UiBackendNode._ensure_return_service_metrics(self, source)
         recall = PlanningRecallRequest()
         recall.header.stamp = self.get_clock().now().to_msg()
         recall.site_name = self._active_mission_site
@@ -6338,6 +6219,7 @@ class UiBackendNode(Node):
 
     def _clear_active_mission_identity(self) -> None:
         UiBackendNode._cancel_voice_dispatch(self, "_clear_active_mission_identity")
+
         def clear() -> None:
             self._battery_return_urgent = False
             self._urgent_return_after_departure = False
@@ -6390,38 +6272,28 @@ class UiBackendNode(Node):
             self, recall, canonical_key
         )
 
-        # HH_260910 - Announce before releasing engage/the recall request so
-        # the robot does not start rolling toward the roadside pose while
-        # still speaking.
-        def _release() -> None:
-            # Match normal destination authorization, but publish only the typed
-            # recall request.  No UI-owned mission-key/site-pose pair may race the
-            # planning state machine into DELIVERY_TO_SITE.
-            if getattr(self, "publish_engage_from_destination", False):
-                self._publish_engage(True, source=f"{source}:recall_start")
-            self._publish_service_state(
-                AvgServiceState.RECALL_TO_SITE_ROAD,
-                source=f"{source}:recall_start",
+        # Match normal destination authorization, but publish only the typed
+        # recall request.  No UI-owned mission-key/site-pose pair may race the
+        # planning state machine into DELIVERY_TO_SITE.
+        if getattr(self, "publish_engage_from_destination", False):
+            self._publish_engage(True, source=f"{source}:recall_start")
+        self._publish_service_state(
+            AvgServiceState.RECALL_TO_SITE_ROAD,
+            source=f"{source}:recall_start",
+        )
+        if getattr(self, "publish_mission_engage_from_destination", False):
+            self._publish_mission_engage(
+                True, source=f"{source}:recall_resume"
             )
-            if getattr(self, "publish_mission_engage_from_destination", False):
-                self._publish_mission_engage(
-                    True, source=f"{source}:recall_resume"
-                )
-            else:
-                self._publish_platform_drive_enable(
-                    True, source=f"{source}:recall_resume"
-                )
-            self.pub_planning_camping_site_recall.publish(recall)
-            self.get_logger().info(
-                "planning camping-site recall "
-                f"({source}) site={canonical_key} -> "
-                f"{self.planning_camping_site_recall_topic}"
+        else:
+            self._publish_platform_drive_enable(
+                True, source=f"{source}:recall_resume"
             )
-
-        UiBackendNode._dispatch_after_voice(self,
-            ("navigation.to_campsite",),
-            _release,
-            label=f"guest_recall:{canonical_key}",
+        self.pub_planning_camping_site_recall.publish(recall)
+        self.get_logger().info(
+            "planning camping-site recall "
+            f"({source}) site={canonical_key} -> "
+            f"{self.planning_camping_site_recall_topic}"
         )
         return True
 
@@ -6503,22 +6375,13 @@ class UiBackendNode(Node):
             "service_state": int(service_state),
         }
 
-    def _station_operation_busy(self) -> bool:
-        # HH_260911 - Terminal failures are retryable; active owners are not restarted.
-        states = getattr(self, "_parking_controller_operating_states", {})
-        owner = {"auto": "auto", "apriltag": "apriltag_parking", "reverse": "reverse_parking"}.get(getattr(self, "parking_method", "reverse"), "reverse_parking")
-        phase = str(states.get(owner, "")).strip().upper()
-        dz_phase = str(getattr(self, "_latest_drop_zone_maneuver_phase", "")).upper()
-        terminal = {"", "IDLE", "PARKED", "ERROR", "CANCELLED"}
-        if phase not in terminal:
-            return True
-        if dz_phase in {"PARKING_APPROACH", "ALIGN_PARKING_YAW"}:
-            return True
-        return bool(getattr(self, "_parking_rearm_transition_pending", False)
-                    or getattr(self, "_parking_rearm_waiting_for_can", False))
-
     def request_manual_dock(self) -> Dict[str, Any]:
-        # HH_260911 - Dock uses the same cancel/re-arm/alignment authority as Return.
+        """Request explicit charging, distinct from SOC-selected Return/park.
+
+        A successful response acknowledges the request, not physical docking
+        completion. Controller progress and actual charger feedback remain
+        separate authoritative observations.
+        """
         with self._destination_dispatch_lock:
             startup = UiBackendNode._startup_recovery_block(self)
             if startup:
@@ -6526,32 +6389,26 @@ class UiBackendNode(Node):
             if getattr(self, "parking_method", "reverse") not in {"auto", "apriltag"}:
                 return {"success": False, "error": "docking_unavailable",
                         "message": "AprilTag docking is not enabled in this launch"}
+            state = getattr(self, "_latest_service_state", None)
+            if state not in {
+                int(AvgServiceState.DROP_ZONE_WAIT), int(AvgServiceState.CHARGING),
+                int(AvgServiceState.WAITING_FOR_CHARGING), int(AvgServiceState.DROP_ZONE_PARKING),
+            } or getattr(self, "_drop_zone_exit_active", False):
+                return {"success": False, "error": "docking_requires_drop_zone",
+                        "message": "Return to the drop zone before requesting docking"}
             if getattr(self, "_latest_platform_is_charging", False):
                 return {"success": True, "action": "already_charging"}
-            inside, reason = UiBackendNode._station_departure_origin(self)
-            if inside is not True:
-                return {"success": False, "error": "docking_requires_drop_zone",
-                        "message": "A fresh pose inside the authored drop zone is required",
-                        "reason": reason}
-            state = getattr(self, "_latest_service_state", None)
-            station_states = {int(AvgServiceState.DROP_ZONE_WAIT), int(AvgServiceState.CHARGING),
-                              int(AvgServiceState.WAITING_FOR_CHARGING), int(AvgServiceState.DROP_ZONE_PARKING),
-                              int(AvgServiceState.OPERATOR_STOPPED)}
-            site, _, generation, returned = UiBackendNode._active_mission_identity(self)
-            if (state not in station_states or getattr(self, "_drop_zone_exit_active", False)
-                    or (site and generation > 0 and returned != generation)):
-                return {"success": False, "error": "docking_requires_drop_zone",
-                        "message": "Finish or stop the active mission before docking"}
-            if UiBackendNode._station_operation_busy(self):
+            selected = "auto" if self.parking_method == "auto" else "apriltag_parking"
+            phase = getattr(self, "_parking_controller_operating_states", {}).get(selected, "")
+            if state == int(AvgServiceState.DROP_ZONE_PARKING) and phase not in {"ERROR", "IDLE", "PARKED"}:
                 return {"success": False, "error": "parking_in_progress",
-                        "message": "Wait for the current attempt or stop it before retrying"}
-            # Preserve force_docking through alignment to the existing dispatcher.
-            action = UiBackendNode._request_return_to_drop_zone_serialized(
-                self, source="http:manual_dock:force_docking")
-            if action not in {"parking_alignment", "parking_alignment_waiting_for_can"}:
-                return {"success": False, "error": action,
-                        "message": "Docking handoff was not accepted"}
-            return {"success": True, "action": "docking_requested", "transition": action,
+                        "message": "Wait for the current parking attempt or cancel it first"}
+            # The dispatcher owns cancellation/ACKs and any reverse alignment
+            # before charging docking. This ACK describes the requested final
+            # method, not the controller selected by a later parking status.
+            source = "http:manual_dock:force_docking"
+            self._publish_parking_operation(MotionOperation.START, source=source)
+            return {"success": True, "action": "docking_requested",
                     "message": "Explicit charging docking requested",
                     "parking_requested_final_method": "apriltag"}
 
@@ -6657,11 +6514,6 @@ class UiBackendNode(Node):
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
-        # HH_260915 - Observation only. Keep the journal's envelope for RC
-        # recovery/return, but do NOT retain controller permission or resume it.
-        recorder = getattr(self, "_mission_recording", None)
-        if recorder is not None:
-            recorder.stop(source)
         UiBackendNode._cancel_voice_dispatch(self, "_stop_active_service_serialized")
         self._battery_return_urgent = False
         self._urgent_return_after_departure = False
@@ -7317,9 +7169,14 @@ class UiBackendNode(Node):
             generation = UiBackendNode._claim_active_mission(
                 self, site, source
             )
-            UiBackendNode._start_service_metrics(
-                self, site, mission_key, source, generation
-            )
+            service_metrics = getattr(self, "_service_metrics", None)
+            if service_metrics is not None:
+                service_metrics.start_service(
+                    site,
+                    mission_key=mission_key,
+                    source=source,
+                    now_s=time.time(),
+                )
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -7380,9 +7237,14 @@ class UiBackendNode(Node):
         # HJ_260804 - Only accepted/adopted destinations become the fallback
         # arrival identity. A battery-rejected request must not replace it.
         generation = UiBackendNode._claim_active_mission(self, site, source)
-        UiBackendNode._start_service_metrics(
-            self, site, mission_key, source, generation
-        )
+        service_metrics = getattr(self, "_service_metrics", None)
+        if service_metrics is not None:
+            service_metrics.start_service(
+                site,
+                mission_key=mission_key,
+                source=source,
+                now_s=time.time(),
+            )
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
@@ -7464,16 +7326,9 @@ class UiBackendNode(Node):
                 ),
             }
 
-        # HH_260910 - Announce the selected site before releasing engage/the
-        # goal so the robot does not start moving while still speaking. When
-        # the gate is disabled (or `self` is a test double with none), this
-        # dispatches synchronously exactly as before, so `goal_result` is
-        # already populated by the time it is read below; a real deferred
-        # dispatch instead reports the "pending voice" defaults, since the
-        # true result is not known until the cue finishes playing.
         goal_result: Dict[str, Any] = {}
 
-        def _release() -> None:
+        def release() -> None:
             if self.publish_engage_from_destination:
                 self._publish_engage(True, source=f"{source}:destination")
             if self.publish_mission_engage_from_destination:
@@ -7483,9 +7338,10 @@ class UiBackendNode(Node):
             )
             goal_result.update(self._publish_goal_for_site(site=site, source=source))
 
-        UiBackendNode._dispatch_after_voice(self,
+        UiBackendNode._dispatch_after_voice(
+            self,
             UiBackendNode._site_departure_voice_keys(self, site),
-            _release,
+            release,
             label=f"site_departure:{site}",
         )
         return {
@@ -7497,8 +7353,10 @@ class UiBackendNode(Node):
             "mission_generation": generation,
             "owner": UiBackendNode._destination_request_owner(source),
             "intent": UiBackendNode._destination_request_intent(source),
-            "message": goal_result.get(
-                "message", "site goal accepted, pending voice announcement"
+            "message": str(
+                goal_result.get(
+                    "message", "site goal accepted, pending voice announcement"
+                )
             ),
         }
 
@@ -7555,15 +7413,6 @@ class UiBackendNode(Node):
                 "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
-                "battery_charge_complete": bool(
-                    getattr(self._state, "battery_charge_complete", False)
-                ),
-                "platform_is_charging": bool(
-                    getattr(self, "_latest_platform_is_charging", False)
-                ),
-                "battery_power_supply_status": int(
-                    getattr(self, "_latest_platform_power_supply_status", 0)
-                ),
                 # HH_260724 - Initial UI snapshots carry the active battery policy state,
                 # not only edge-triggered websocket updates.
                 "battery_return_pending": self._low_battery_return_pending,
@@ -7867,13 +7716,574 @@ class UiBackendNode(Node):
             **UiBackendNode._mission_dispatch_snapshot(self),
         }
 
-    async def _await_ros_future(self, future: Any, timeout_s: float = 1.5) -> Any:
+    async def _await_ros_future(
+        self, future: Any, timeout_s: float = 1.5, operation: str = "ROS service"
+    ) -> Any:
         deadline = asyncio.get_running_loop().time() + timeout_s
         while not future.done():
             if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError("ROS parameter service timed out")
+                raise TimeoutError(f"{operation} timed out")
             await asyncio.sleep(0.02)
         return future.result()
+
+    @staticmethod
+    def _normalize_snapshot_topics(
+        values: Any, max_topics: int = 32
+    ) -> tuple[List[str], List[str]]:
+        if values is None:
+            return [], []
+        if not isinstance(values, list):
+            return [], ["topics must be a JSON array"]
+        normalized: List[str] = []
+        rejected: List[str] = []
+        for value in values[:max_topics + 1]:
+            name = str(value).strip()
+            if name and not name.startswith("/"):
+                name = "/" + name
+            if (
+                not name
+                or len(name) > 256
+                or re.fullmatch(r"/[A-Za-z0-9_/]+", name) is None
+            ):
+                rejected.append(name or str(value))
+                continue
+            if name not in normalized:
+                normalized.append(name)
+        if len(values) > max_topics:
+            rejected.append(
+                f"at most {max_topics} topics may be included per request"
+            )
+        return normalized[:max_topics], rejected
+
+    @staticmethod
+    def _snapshot_topic_payload(messages: Any) -> List[Dict[str, str]]:
+        return [
+            {"name": str(message.name), "type": str(message.type)}
+            for message in messages
+        ]
+
+    def _snapshot_graph_topic_payload(self) -> List[Dict[str, Any]]:
+        """Return every topic currently visible in the ROS graph for the UI."""
+        try:
+            graph_topics = self.get_topic_names_and_types()
+            # rclpy returns ``List[Tuple[str, List[str]]]``. Accept a mapping as
+            # well so the helper remains usable with simple test doubles.
+            topic_pairs = (
+                graph_topics.items()
+                if isinstance(graph_topics, dict)
+                else graph_topics
+            )
+            return [
+                {
+                    "name": str(name),
+                    "type": str(types[0]) if len(types) == 1 else ", ".join(types),
+                    "selectable": len(types) == 1,
+                }
+                for name, types in sorted(topic_pairs, key=lambda item: item[0])
+            ]
+        except Exception:  # noqa: BLE001 - graph discovery is best effort
+            return []
+
+    def _snapshot_disk_usage(
+        self, output_directory: Optional[Path] = None
+    ) -> Optional[Any]:
+        probe = output_directory or self.snapshot_output_directory
+        while not probe.exists() and probe != probe.parent:
+            probe = probe.parent
+        try:
+            return shutil.disk_usage(probe)
+        except OSError:
+            return None
+
+    def _snapshot_disk_free_mb(
+        self, output_directory: Optional[Path] = None
+    ) -> Optional[int]:
+        usage = self._snapshot_disk_usage(output_directory)
+        return None if usage is None else int(usage.free // 1_000_000)
+
+    def _snapshot_storage_budget(
+        self, output_directory: Optional[Path] = None
+    ) -> Dict[str, int]:
+        usage = self._snapshot_disk_usage(output_directory)
+        if usage is None:
+            return {
+                "total_bytes": 0,
+                "free_bytes": 0,
+                "reserve_bytes": 0,
+                "writable_bytes": 0,
+                "serialized_budget_bytes": 0,
+            }
+        reserve_bytes = max(
+            self.snapshot_minimum_free_space_mb * 1_000_000,
+            int(usage.total * self.snapshot_minimum_free_space_ratio),
+        )
+        writable_bytes = max(0, usage.free - reserve_bytes)
+        return {
+            "total_bytes": int(usage.total),
+            "free_bytes": int(usage.free),
+            "reserve_bytes": int(reserve_bytes),
+            "writable_bytes": int(writable_bytes),
+            "serialized_budget_bytes": int(
+                writable_bytes / self.snapshot_size_safety_factor
+            ),
+        }
+
+    def _snapshot_output_path(self, value: Any) -> Path:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return self.snapshot_output_directory
+        if len(raw_value) > 1024 or "\x00" in raw_value:
+            raise ValueError("invalid snapshot output directory")
+
+        expanded = Path(os.path.expanduser(raw_value))
+        if not expanded.is_absolute():
+            raise ValueError(
+                "snapshot output directory must be an absolute path or start with ~"
+            )
+        output_directory = expanded.resolve()
+        if output_directory.exists() and not output_directory.is_dir():
+            raise ValueError("snapshot output directory is not a directory")
+        return output_directory
+
+    @staticmethod
+    def _snapshot_lookback_seconds(value: Any) -> Optional[float]:
+        if value is None or str(value).strip() == "":
+            return None
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("snapshot lookback must be a number of seconds") from exc
+        if not math.isfinite(seconds) or seconds <= 0.0 or seconds > 300.0:
+            raise ValueError("snapshot lookback must be between 1 and 300 seconds")
+        return seconds
+
+    def _snapshot_local_state(self) -> Dict[str, Any]:
+        with self._snapshot_lock:
+            pending = bool(self._snapshot_write_pending)
+            last_result = dict(self._snapshot_last_result)
+        storage = self._snapshot_storage_budget()
+        return {
+            "pending": pending,
+            "last_result": last_result,
+            "output_directory": str(self.snapshot_output_directory),
+            "free_space_mb": int(storage["free_bytes"] // 1_000_000),
+            "minimum_free_space_mb": self.snapshot_minimum_free_space_mb,
+            "reserve_space_mb": int(storage["reserve_bytes"] // 1_000_000),
+            "writable_space_mb": int(storage["writable_bytes"] // 1_000_000),
+            "size_safety_factor": self.snapshot_size_safety_factor,
+        }
+
+    async def get_snapshot_status(self) -> Dict[str, Any]:
+        local = self._snapshot_local_state()
+        available_topics = self._snapshot_graph_topic_payload()
+        trigger_available = self.snapshot_client.service_is_ready()
+        configure_available = self.snapshot_configure_client.service_is_ready()
+        if not configure_available:
+            return {
+                "success": True,
+                "available": trigger_available,
+                "configure_available": False,
+                "recording": False,
+                "writing": local["pending"],
+                "active_topics": [],
+                "dynamic_topics": [],
+                "available_topics": available_topics,
+                "message": "snapshot topic service is unavailable",
+                **local,
+            }
+
+        request = ConfigureSnapshotTopics.Request()
+        try:
+            response = await self._await_ros_future(
+                self.snapshot_configure_client.call_async(request),
+                timeout_s=3.0,
+                operation="snapshot status service",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "success": False,
+                "available": trigger_available,
+                "configure_available": True,
+                "recording": False,
+                "writing": local["pending"],
+                "active_topics": [],
+                "dynamic_topics": [],
+                "available_topics": available_topics,
+                "message": str(exc),
+                **local,
+            }
+        return {
+            "success": bool(response.success),
+            "available": trigger_available,
+            "configure_available": True,
+            "recording": bool(response.recording),
+            "writing": bool(response.writing) or local["pending"],
+            "active_topics": self._snapshot_topic_payload(response.active_topics),
+            "dynamic_topics": self._snapshot_topic_payload(response.dynamic_topics),
+            "available_topics": available_topics,
+            "rejected_topics": list(response.rejected_topics),
+            "message": str(response.message),
+            **local,
+        }
+
+    async def configure_snapshot_topics(
+        self, add_topics: Any = None, remove_topics: Any = None
+    ) -> Dict[str, Any]:
+        add, add_rejected = self._normalize_snapshot_topics(add_topics)
+        remove, remove_rejected = self._normalize_snapshot_topics(remove_topics)
+        invalid = add_rejected + remove_rejected
+        if invalid:
+            return {
+                "success": False,
+                "available": self.snapshot_configure_client.service_is_ready(),
+                "rejected_topics": invalid,
+                "message": "invalid snapshot topic request",
+            }
+        if not add and not remove:
+            return {
+                "success": False,
+                "available": self.snapshot_configure_client.service_is_ready(),
+                "rejected_topics": [],
+                "message": "at least one topic is required",
+            }
+        if not self.snapshot_configure_client.service_is_ready():
+            return {
+                "success": False,
+                "available": False,
+                "rejected_topics": add + remove,
+                "message": "snapshot topic service is unavailable",
+            }
+
+        request = ConfigureSnapshotTopics.Request()
+        request.add_topics = add
+        request.remove_topics = remove
+        try:
+            response = await self._await_ros_future(
+                self.snapshot_configure_client.call_async(request),
+                timeout_s=5.0,
+                operation="snapshot topic service",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "success": False,
+                "available": False,
+                "rejected_topics": add + remove,
+                "message": str(exc),
+            }
+        return {
+            "success": bool(response.success),
+            "available": True,
+            "recording": bool(response.recording),
+            "writing": bool(response.writing),
+            "active_topics": self._snapshot_topic_payload(response.active_topics),
+            "dynamic_topics": self._snapshot_topic_payload(response.dynamic_topics),
+            "rejected_topics": list(response.rejected_topics),
+            "message": str(response.message),
+        }
+
+    def _finish_timed_out_snapshot(self, future: Any, output_path: Path) -> None:
+        try:
+            response = future.result()
+            result = {
+                "success": bool(response.success),
+                "path": str(output_path),
+                "message": str(response.message),
+                "completed_at": time.time(),
+            }
+        except Exception as exc:  # noqa: BLE001
+            result = {
+                "success": False,
+                "path": str(output_path),
+                "message": str(exc),
+                "completed_at": time.time(),
+            }
+        with self._snapshot_lock:
+            self._snapshot_write_pending = False
+            self._snapshot_last_result = result
+
+    @staticmethod
+    def _snapshot_stamp_seconds(stamp: Any) -> float:
+        return float(stamp.sec) + float(stamp.nanosec) * 1e-9
+
+    async def estimate_snapshot(
+        self,
+        selected_topics: Any = None,
+        output_directory: Any = None,
+        lookback_seconds: Any = None,
+        auto_fit: Any = True,
+    ) -> Dict[str, Any]:
+        if not self.snapshot_estimate_client.service_is_ready():
+            return {
+                "success": False,
+                "available": False,
+                "message": "snapshot estimate service is unavailable",
+            }
+
+        try:
+            selected_output_directory = self._snapshot_output_path(output_directory)
+            normalized_lookback = self._snapshot_lookback_seconds(lookback_seconds)
+        except ValueError as exc:
+            return {"success": False, "available": True, "message": str(exc)}
+
+        normalized_topics, rejected = self._normalize_snapshot_topics(
+            selected_topics, max_topics=1024
+        )
+        if rejected:
+            return {
+                "success": False,
+                "available": True,
+                "rejected_topics": rejected,
+                "message": "invalid selected snapshot topics",
+            }
+
+        status = await self.get_snapshot_status()
+        active_by_name = {
+            item["name"]: item["type"]
+            for item in status.get("active_topics", [])
+        }
+        if not normalized_topics:
+            normalized_topics = sorted(active_by_name)
+        missing = [name for name in normalized_topics if name not in active_by_name]
+        if missing:
+            return {
+                "success": False,
+                "available": True,
+                "rejected_topics": missing,
+                "message": "selected topics are not being buffered",
+            }
+
+        storage = self._snapshot_storage_budget(selected_output_directory)
+        if storage["total_bytes"] <= 0:
+            return {
+                "success": False,
+                "available": True,
+                "message": "snapshot output filesystem capacity is unavailable",
+            }
+        if storage["writable_bytes"] <= 0:
+            return {
+                "success": False,
+                "available": True,
+                "insufficient_storage": True,
+                "message": "filesystem safety reserve leaves no writable snapshot space",
+                **storage,
+            }
+
+        request = EstimateSnapshot.Request()
+        request.topics = [
+            TopicDetails(name=name, type=active_by_name[name])
+            for name in normalized_topics
+        ]
+        if normalized_lookback is not None:
+            request.start_time = (
+                self.get_clock().now() - Duration(seconds=normalized_lookback)
+            ).to_msg()
+        automatic = bool(auto_fit)
+        request.max_bytes = (
+            storage["serialized_budget_bytes"] if automatic else 0
+        )
+        try:
+            response = await self._await_ros_future(
+                self.snapshot_estimate_client.call_async(request),
+                timeout_s=5.0,
+                operation="snapshot estimate service",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "success": False,
+                "available": False,
+                "message": str(exc),
+            }
+
+        requested_disk_bytes = int(
+            math.ceil(response.requested_bytes * self.snapshot_size_safety_factor)
+        )
+        selected_disk_bytes = int(
+            math.ceil(response.selected_bytes * self.snapshot_size_safety_factor)
+        )
+        actual_start = self._snapshot_stamp_seconds(response.actual_start_time)
+        newest = self._snapshot_stamp_seconds(response.newest_time)
+        return {
+            "success": bool(response.success),
+            "available": True,
+            "auto_fit": automatic,
+            "requested_bytes": int(response.requested_bytes),
+            "selected_bytes": int(response.selected_bytes),
+            "requested_disk_bytes": requested_disk_bytes,
+            "selected_disk_bytes": selected_disk_bytes,
+            "message_count": int(response.message_count),
+            "actual_lookback_seconds": max(0.0, newest - actual_start),
+            "truncated": bool(response.truncated),
+            "fits_without_truncation": requested_disk_bytes <= storage["writable_bytes"],
+            "projected_free_bytes": max(
+                0, storage["free_bytes"] - selected_disk_bytes
+            ),
+            "message": str(response.message),
+            **storage,
+        }
+
+    async def trigger_snapshot(
+        self,
+        label: Any = "",
+        selected_topics: Any = None,
+        output_directory: Any = None,
+        lookback_seconds: Any = None,
+        auto_fit: Any = True,
+    ) -> Dict[str, Any]:
+        if not self.snapshot_client.service_is_ready():
+            return {
+                "success": False,
+                "available": False,
+                "message": "snapshot service is unavailable",
+            }
+        with self._snapshot_lock:
+            if self._snapshot_write_pending:
+                return {
+                    "success": False,
+                    "available": True,
+                    "busy": True,
+                    "message": "a snapshot write is already in progress",
+                }
+            self._snapshot_write_pending = True
+
+        output_path: Optional[Path] = None
+        future = None
+        try:
+            selected_output_directory = self._snapshot_output_path(output_directory)
+            selected_output_directory.mkdir(parents=True, exist_ok=True)
+
+            # Topic configuration mutations stay deliberately small, but a
+            # snapshot selection commonly contains the complete 74-topic base
+            # profile. Allow the UI to submit that explicit selection.
+            normalized_topics, rejected = self._normalize_snapshot_topics(
+                selected_topics, max_topics=1024
+            )
+            if rejected:
+                return {
+                    "success": False,
+                    "available": True,
+                    "rejected_topics": rejected,
+                    "message": "invalid selected snapshot topics",
+                }
+
+            normalized_lookback = self._snapshot_lookback_seconds(lookback_seconds)
+
+            active_by_name: Dict[str, str] = {}
+            if normalized_topics:
+                status = await self.get_snapshot_status()
+                active_by_name = {
+                    item["name"]: item["type"]
+                    for item in status.get("active_topics", [])
+                }
+                missing = [name for name in normalized_topics if name not in active_by_name]
+                if missing:
+                    return {
+                        "success": False,
+                        "available": True,
+                        "rejected_topics": missing,
+                        "message": "selected topics are not being buffered",
+                    }
+
+            estimate = await self.estimate_snapshot(
+                selected_topics=normalized_topics,
+                output_directory=str(selected_output_directory),
+                lookback_seconds=normalized_lookback,
+                auto_fit=auto_fit,
+            )
+            if not estimate.get("success", False):
+                return estimate
+            if (
+                not bool(auto_fit)
+                and not estimate.get("fits_without_truncation", False)
+            ):
+                return {
+                    **estimate,
+                    "success": False,
+                    "insufficient_storage": True,
+                    "message": (
+                        "requested snapshot would cross the filesystem safety reserve; "
+                        "enable automatic fitting or shorten the lookback"
+                    ),
+                }
+
+            safe_label = re.sub(
+                r"[^0-9A-Za-z가-힣_-]+", "_", str(label).strip()
+            ).strip("_")[:48]
+            stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+            suffix = f"_{safe_label}" if safe_label else ""
+            output_path = selected_output_directory / f"snapshot_{stamp}{suffix}.bag"
+            collision = 1
+            while output_path.exists():
+                output_path = selected_output_directory / (
+                    f"snapshot_{stamp}{suffix}_{collision}.bag"
+                )
+                collision += 1
+
+            request = TriggerSnapshot.Request()
+            request.filename = str(output_path)
+            request.topics = [
+                TopicDetails(name=name, type=active_by_name[name])
+                for name in normalized_topics
+            ]
+            if normalized_lookback is not None:
+                request.start_time = (
+                    self.get_clock().now() - Duration(seconds=normalized_lookback)
+                ).to_msg()
+            request.max_bytes = (
+                int(estimate["serialized_budget_bytes"])
+                if bool(auto_fit)
+                else 0
+            )
+            request.minimum_free_bytes = int(estimate["reserve_bytes"])
+            future = self.snapshot_client.call_async(request)
+            try:
+                response = await self._await_ros_future(
+                    future,
+                    timeout_s=self.snapshot_request_timeout_s,
+                    operation="snapshot write service",
+                )
+            except TimeoutError as exc:
+                future.add_done_callback(
+                    lambda completed: self._finish_timed_out_snapshot(
+                        completed, output_path
+                    )
+                )
+                return {
+                    "success": False,
+                    "available": True,
+                    "busy": True,
+                    "path": str(output_path),
+                    "message": str(exc) + "; write may still be running",
+                }
+
+            result = {
+                "success": bool(response.success),
+                "available": True,
+                "path": str(output_path),
+                "message": str(response.message),
+                "completed_at": time.time(),
+                "requested_bytes": int(response.requested_bytes),
+                "selected_bytes": int(response.selected_bytes),
+                "message_count": int(response.message_count),
+                "truncated": bool(response.truncated),
+                "actual_lookback_seconds": estimate.get(
+                    "actual_lookback_seconds", normalized_lookback
+                ),
+                "reserve_bytes": int(estimate["reserve_bytes"]),
+            }
+            with self._snapshot_lock:
+                self._snapshot_last_result = dict(result)
+            return result
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "success": False,
+                "available": self.snapshot_client.service_is_ready(),
+                "path": str(output_path) if output_path else "",
+                "message": str(exc),
+            }
+        finally:
+            if future is None or future.done():
+                with self._snapshot_lock:
+                    self._snapshot_write_pending = False
 
     async def get_platform_tuning(self) -> Dict[str, Any]:
         if not self.get_ranger_parameters_client.service_is_ready():
@@ -8206,6 +8616,91 @@ class UiBackendNode(Node):
                 diags = list(node._state.diagnostics)
             return JSONResponse({"status": diags})
 
+        @app.get("/api/admin/snapshot/status")
+        async def get_snapshot_status() -> JSONResponse:
+            result = await node.get_snapshot_status()
+            return JSONResponse(result, status_code=200)
+
+        @app.post("/api/admin/snapshot/topics")
+        async def add_snapshot_topics(request: Request) -> JSONResponse:
+            try:
+                payload = await request.json()
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            result = await node.configure_snapshot_topics(
+                add_topics=payload.get("topics")
+            )
+            status = 200 if result.get("success") else (
+                503 if not result.get("available", False) else 400
+            )
+            return JSONResponse(result, status_code=status)
+
+        @app.delete("/api/admin/snapshot/topics")
+        async def remove_snapshot_topics(request: Request) -> JSONResponse:
+            try:
+                payload = await request.json()
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            result = await node.configure_snapshot_topics(
+                remove_topics=payload.get("topics")
+            )
+            status = 200 if result.get("success") else (
+                503 if not result.get("available", False) else 400
+            )
+            return JSONResponse(result, status_code=status)
+
+        @app.post("/api/admin/snapshot/estimate")
+        async def estimate_snapshot(request: Request) -> JSONResponse:
+            try:
+                payload = await request.json()
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            result = await node.estimate_snapshot(
+                selected_topics=payload.get("topics"),
+                output_directory=payload.get("output_directory"),
+                lookback_seconds=payload.get("lookback_seconds"),
+                auto_fit=payload.get("auto_fit", True),
+            )
+            status = 200 if result.get("success") else (
+                507 if result.get("insufficient_storage") else (
+                    503 if not result.get("available", False) else 400
+                )
+            )
+            return JSONResponse(result, status_code=status)
+
+        @app.post("/api/admin/snapshot")
+        async def post_snapshot(request: Request) -> JSONResponse:
+            try:
+                payload = await request.json()
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            result = await node.trigger_snapshot(
+                label=payload.get("label", ""),
+                selected_topics=payload.get("topics"),
+                output_directory=payload.get("output_directory"),
+                lookback_seconds=payload.get("lookback_seconds"),
+                auto_fit=payload.get("auto_fit", True),
+            )
+            if result.get("success"):
+                status = 200
+            elif result.get("busy"):
+                status = 409
+            elif result.get("insufficient_storage"):
+                status = 507
+            elif not result.get("available", False):
+                status = 503
+            else:
+                status = 400
+            return JSONResponse(result, status_code=status)
+
         # HH_260819 - A compact endpoint keeps the always-visible KPI strip
         # inexpensive; history is fetched only while its evidence modal is open.
         @app.get("/api/service-metrics/summary")
@@ -8222,16 +8717,6 @@ class UiBackendNode(Node):
                     recent_limit=recent_limit,
                 )
             )
-
-        # HH_260915 - Read-only, bounded export from an independent recorder.
-        # This does not start recording on a browser lease or sum it into v2.
-        @app.get("/api/mission-records")
-        def get_mission_records(limit: int = 100) -> JSONResponse:
-            data, status = load_mission_recording_snapshot(
-                node.mission_records_root, limit=limit,
-                emitter_error=getattr(getattr(node, "_mission_recording", None), "error", ""),
-            )
-            return JSONResponse(data, status_code=status)
 
         # HH_260810 - The browser renews this lease only while the administrator
         # telemetry modal is open. The ROS timer owns subscription creation and

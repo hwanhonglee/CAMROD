@@ -344,14 +344,8 @@ class UiBackendStopTest(unittest.TestCase):
             _publish_mission_engage=lambda enabled, source: events.append(
                 ("engage", enabled)
             ),
-            # HH_260910 - The real method now opens engage/drive-enable via
-            # `before_release` right before the RETURN publish, both gated
-            # behind the same voice cue; simulate that same ordering here.
-            _publish_camping_site_maneuver_controller_return=(
-                lambda source, before_release=None: (
-                    before_release() if before_release else None,
-                    events.append(("controller_return", source)),
-                )
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
             ),
             _publish_service_state=lambda *args, **kwargs: self.fail(
                 "controller must publish the actual recall return phase"
@@ -410,14 +404,8 @@ class UiBackendStopTest(unittest.TestCase):
             _publish_mission_engage=lambda enabled, source: events.append(
                 ("engage", enabled)
             ),
-            # HH_260910 - The real method now opens engage/drive-enable via
-            # `before_release` right before the RETURN publish, both gated
-            # behind the same voice cue; simulate that same ordering here.
-            _publish_camping_site_maneuver_controller_return=(
-                lambda source, before_release=None: (
-                    before_release() if before_release else None,
-                    events.append(("controller_return", source)),
-                )
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
             ),
             _schedule_broadcast=lambda payload: None,
         )
@@ -1493,8 +1481,6 @@ class UiBackendStopTest(unittest.TestCase):
         backend._now_s = lambda: 99.0
         backend._lock = threading.Lock()
         backend._state = SimpleNamespace(battery_percentage=-1)
-        # HH_260911 - Charging edges now broadcast even without a SOC sample.
-        backend._schedule_broadcast = mock.Mock()
         message = AvgPlatformStatus()
         message.is_charging = True
         message.battery_state_available = False

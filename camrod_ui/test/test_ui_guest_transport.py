@@ -284,7 +284,8 @@ class OperatorWindowTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("window.set_deletable(False)", window_text)
         self.assertIn("HardwareAccelerationPolicy.ALWAYS", window_text)
-        self.assertIn('"set_enable_smooth_scrolling": True', window_text)
+        # Kiosk scrolling follows the touch directly; WebKit's easing lags behind it.
+        self.assertIn('"set_enable_smooth_scrolling": False', window_text)
         self.assertIn('"set_enable_webgl": False', window_text)
         self.assertIn('if hasattr(context, "clear_cache")', window_text)
         self.assertIn("context.clear_cache()", window_text)

@@ -410,19 +410,15 @@ controller_server:
       # Every SHARED_TRACKING_KEYS entry now matches the direct RPP profile in
       # nav2_vehicle.yaml so mission and clicked-yaw goals hold the same
       # cross-track offset instead of two different ones.
-      # HH_260911 - Follow the nav2_vehicle.yaml RPP preview retune, 3.5 -> 2.0
-      # m fixed and 1.5-3.5 -> 1.0-2.5 m scaled. RotationShim delegates to the
-      # same RPP plugin, so leaving this at the long preview would silently
-      # give manual clicked-yaw goals a different corner-cutting behavior than
-      # mission goals - exactly the split HJ_260812 removed.
-      lookahead_dist: 2.0 # 3.5
+      lookahead_dist: 3.5
       # HJ_260812 - Track the direct RPP preview, now back at 1.1 m to cut the
       # straight-line right bias. See nav2_vehicle.yaml for the trade-off.
-      min_lookahead_dist: 1.0 # 1.5
-      max_lookahead_dist: 2.5 # 3.5
+      # HH_260928 - Match the direct RPP low-speed preview so manual goals
+      # correct corner-entry yaw before the outer shoulder reaches lane cost.
+      min_lookahead_dist: 1.2
+      max_lookahead_dist: 3.5
       lookahead_time: 1.8
-      # Keep the manual child preview fixed; min/max are retained for explicit
-      # future velocity-scaled tests but are inactive in production.
+      # Use the same velocity-scaled preview as the direct RPP profile.
       use_velocity_scaled_lookahead_dist: True
       use_interpolation: True
       allow_reversing: False
@@ -434,6 +430,7 @@ controller_server:
       use_regulated_linear_velocity_scaling: True
       # HJ_0812 - SHARED_TRACKING_KEYS keeps these identical to the direct RPP
       # profile in nav2_vehicle.yaml.
+      # HH_260930 - Back to 3.0 m with the direct RPP profile (corner speed).
       regulated_linear_scaling_min_radius: 3.0
       regulated_linear_scaling_min_speed: 0.333333
       use_cost_regulated_linear_velocity_scaling: True

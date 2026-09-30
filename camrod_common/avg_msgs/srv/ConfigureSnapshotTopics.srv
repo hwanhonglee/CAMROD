@@ -1,0 +1,14 @@
+# Runtime-only topic changes for camrod_snapshot. Added topics begin buffering
+# when this request is accepted; data from before that instant is unavailable.
+string[] add_topics
+string[] remove_topics
+
+---
+
+bool success
+bool recording
+bool writing
+TopicDetails[] active_topics
+TopicDetails[] dynamic_topics
+string[] rejected_topics
+string message

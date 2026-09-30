@@ -57,6 +57,7 @@
   <exec_depend>camrod_platform</exec_depend>
   <exec_depend>camrod_system</exec_depend>
   <exec_depend>camrod_ui</exec_depend>
+  <exec_depend>camrod_snapshot</exec_depend>
   <exec_depend>robot_localization</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
