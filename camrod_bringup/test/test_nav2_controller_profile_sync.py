@@ -61,6 +61,8 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         "min_lookahead_dist",
         "max_lookahead_dist",
         "use_velocity_scaled_lookahead_dist",
+        # HH_260928 - Full bringup also slows earlier through lane corners.
+        "regulated_linear_scaling_min_radius",
     }
     for filename, plugin in (
         ("nav2_base.yaml", "RotationShim"),
@@ -75,23 +77,22 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         package_profile = package["controller_server"]["ros__parameters"][plugin]
         deployed_profile = deployed["controller_server"]["ros__parameters"][plugin]
 
-        # HH_260818 - worak-test intentionally deploys the scaled preview while
-        # retaining a fixed package profile for the pending field A/B.
+        # HH_260818 - worak-test intentionally deploys the long scaled preview
+        # while retaining a fixed package profile for the pending field A/B.
         assert {key: package_profile[key] for key in preview_keys} == {
             "lookahead_dist": 1.2,
             "min_lookahead_dist": 1.1,
             "max_lookahead_dist": 2.0,
             "use_velocity_scaled_lookahead_dist": False,
+            "regulated_linear_scaling_min_radius": 3.0,
         }
-        # HH_260911 - The deployed preview was shortened to 2.0 m fixed and a
-        # 1.0-2.5 m scaled window. Both deployed profiles are asserted with one
-        # expectation on purpose: RotationShim wraps the same RPP plugin, so
-        # nav2_base.yaml and nav2_vehicle.yaml must carry the same preview.
         assert {key: deployed_profile[key] for key in preview_keys} == {
-            "lookahead_dist": 2.0,
-            "min_lookahead_dist": 1.0,
-            "max_lookahead_dist": 2.5,
+            "lookahead_dist": 3.5,
+            "min_lookahead_dist": 1.2,
+            "max_lookahead_dist": 3.5,
             "use_velocity_scaled_lookahead_dist": True,
+            # HH_260930 - Corner trigger returned to 3.0 m for corner speed.
+            "regulated_linear_scaling_min_radius": 3.0,
         }
         for key in preview_keys:
             deployed_profile[key] = package_profile[key]
@@ -788,7 +789,7 @@ def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> N
     assert base["RotationShim"]["angular_dist_threshold"] == 0.785398
     assert base["RotationShim"]["angular_disengage_threshold"] == 0.0872665
     assert gate["enable_route_heading_alignment"] is True
-    assert gate["route_heading_error_enter_deg"] == 105.0
+    assert gate["route_heading_error_enter_deg"] == 135.0
     assert gate["route_heading_error_exit_deg"] == 25.0
     assert gate["route_heading_lookahead_m"] == 1.2
     assert gate["route_heading_max_linear_x"] == 0.0

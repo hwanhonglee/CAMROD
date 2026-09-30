@@ -350,10 +350,13 @@
     # full turn as heading error, so the gate zeroed linear.x and the platform
     # fell into MOTION_MODE_SPINNING at the corner vertex. The stationary spin
     # then pushed the body off the lane and triggered a crab recovery before
-    # Dual-Ackermann resumed. A 1.2 m chord plus a 105/25 deg band keeps this
-    # guard for genuine gross start misalignment only.
+    # Dual-Ackermann resumed. A 1.2 m chord plus a wide hysteresis band keeps
+    # this guard for genuine gross start misalignment only.
     route_heading_lookahead_m: 1.2
-    route_heading_error_enter_deg: 105.0
+    # HH_260928 - 105 deg still admitted sharp lane corners under pose/path
+    # jitter. Reserve stationary alignment for near-opposite starts and let
+    # RPP continuously steer through ordinary corners.
+    route_heading_error_enter_deg: 135.0
     # HH_260806 - A gross start alignment must finish before forward motion;
     # ordinary curve tracking stays with continuous RPP control.
     # HH_260909 - Release to RPP once the gross error is gone; the previous

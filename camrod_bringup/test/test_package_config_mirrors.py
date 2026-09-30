@@ -32,6 +32,9 @@ INTENTIONAL_DEPLOYMENT_OVERRIDES = {
     ("planning", Path("nav2_base.yaml")),
     ("planning", Path("nav2_vehicle.yaml")),
     ("platform", Path("ranger_driver.yaml")),
+    # HH_260928 - Full bringup keeps the rear monitoring JPEG at 0.5 Hz to
+    # preserve CPU for Nav2; the standalone sensing package retains 2 Hz.
+    ("sensing", Path("camera/camera_params.yaml")),
 }
 
 
@@ -73,6 +76,27 @@ def test_all_package_config_files_have_byte_identical_bringup_mirrors() -> None:
             assert (package_root / relative).is_file(), (
                 f"bringup-only mirrored config: {label}/{relative}"
             )
+
+
+def test_rear_camera_deployment_override_only_changes_monitoring_jpeg_rate() -> None:
+    """Keep the CPU-saving full-bringup camera A/B limited to one parameter."""
+    relative = Path("camera/camera_params.yaml")
+    package = yaml.safe_load(
+        (SRC_ROOT / "camrod_sensing/config" / relative).read_text(encoding="utf-8")
+    )
+    deployed = yaml.safe_load(
+        (SRC_ROOT / "camrod_bringup/config/sensing" / relative).read_text(
+            encoding="utf-8"
+        )
+    )
+    node = "/sensing/camera/econ_rear/camera_rear_publisher"
+    package_rate = package[node]["ros__parameters"]["compressed_publish_rate_hz"]
+    deployed_rate = deployed[node]["ros__parameters"]["compressed_publish_rate_hz"]
+    assert package_rate == 2.0
+    assert deployed_rate == 0.5
+
+    deployed[node]["ros__parameters"]["compressed_publish_rate_hz"] = package_rate
+    assert deployed == package
 
 
 def test_current_parking_reference_follows_canonical_yaml() -> None:

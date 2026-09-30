@@ -5,18 +5,7 @@
 set -euo pipefail
 
 FRONTEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../camrod_ui_robot/assets/frontend" && pwd)"
-# HH_260911 - Share checkout/output resolution with the actual build entrypoint.
-SOURCE_ROOT="$(realpath "$FRONTEND_DIR/../../../..")"
-RESOLVED_PATHS="$("$SOURCE_ROOT/colcon_build.sh" --print-paths)"
-WS_ROOT=""
-while IFS='=' read -r key value; do
-  if [[ "$key" == WS_ROOT ]]; then WS_ROOT="$value"; fi
-done <<< "$RESOLVED_PATHS"
-[[ "$WS_ROOT" == /* ]] || { echo "Invalid CAMROD output root" >&2; exit 1; }
-if [[ "${1:-}" == --print-paths ]]; then
-  printf 'SOURCE_ROOT=%s\nWS_ROOT=%s\n' "$SOURCE_ROOT" "$WS_ROOT"
-  exit 0
-fi
+WS_ROOT="$(realpath "$FRONTEND_DIR/../../../../..")"
 
 SRC="$FRONTEND_DIR/build"
 COLCON="$WS_ROOT/build/camrod_ui/camrod_ui_robot/assets/frontend/build"

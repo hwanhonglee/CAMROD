@@ -465,19 +465,6 @@ body {
   color: #1565c0;
 }
 
-.preview-service-available {
-  margin: 0;
-  padding: 0.7rem 1.1rem;
-  border: 2px solid #2d6e40;
-  border-radius: 12px;
-  background: #edf8f1;
-  color: #1e5c33;
-  font-size: clamp(1.1rem, 1.8vw, 1.5rem);
-  font-weight: 900;
-  line-height: 1.35;
-  text-align: center;
-}
-
 /* ── 대기 화면 ───────────────────────────────────────────────────────────── */
 .waiting-screen {
   position: fixed;
@@ -1980,9 +1967,54 @@ internal narrow-screen scroller prevents the chart from widening the page. */
 }
 
 /* ── 이용 방법 가이드 카드 레이아웃 ─────────────────────────────────────── */
+/* 안전 안내 포스터는 세로형이므로 모달 폭을 이미지 폭에 맞춰 좁힌다. */
+.modal-box:has(.usage-safety-intro) {
+  width: clamp(22rem, calc(64vh - 6rem), 90vw);
+}
+
+.usage-safety-intro {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.usage-safety-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: calc(90vh - 12.5rem);
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+}
+
+.usage-safety-confirm {
+  flex: 0 0 auto;
+  min-width: 16rem;
+  padding: 0.8rem 2rem;
+  border: none;
+  border-radius: 12px;
+  background: #2d6e40;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.usage-safety-confirm:hover {
+  background: #235832;
+}
+
+.usage-safety-confirm:active {
+  transform: scale(0.98);
+}
+
 .guide-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.2rem;
 }
 
@@ -2018,10 +2050,112 @@ internal narrow-screen scroller prevents the chart from widening the page. */
 .guide-card-body {
   padding: 1rem 1.2rem;
   background: #fafafa;
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 1.25rem;
+  flex: 1;
+}
+
+.guide-card-visual {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #d8dfda;
+  border-radius: 12px;
+  background: #edf2ee;
+}
+
+.guide-card-visual img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  object-position: center;
+}
+
+.guide-card-visual figcaption {
+  padding: 0.45rem 0.7rem;
+  color: #526057;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.guide-card-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  flex: 1;
+}
+
+.guide-service-definition {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #d7e2da;
+  border-left: 5px solid #2d6e40;
+  border-radius: 10px;
+  background: #f4f9f5;
+}
+
+.guide-service-definition > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.3rem;
+}
+
+.guide-service-definition strong {
+  color: #204c2d;
+  font-size: 1.12rem;
+}
+
+.guide-service-definition > div > span {
+  flex-shrink: 0;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #2d6e40;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.guide-service-definition p {
+  margin: 0;
+  color: #38443c;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.guide-service-recall {
+  border-left-color: #9a5a12;
+  background: #fff8ed;
+}
+
+.guide-service-recall > div > span {
+  background: #b66a16;
+}
+
+.guide-service-admin-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #efc2c0;
+  border-radius: 10px;
+  background: #fff3f2;
+  color: #75251f;
+}
+
+.guide-service-admin-notice > span {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+}
+
+.guide-service-admin-notice p {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.45;
 }
 
 .guide-step {
@@ -2073,6 +2207,12 @@ internal narrow-screen scroller prevents the chart from widening the page. */
   letter-spacing: 0.02em;
   border: 2px dashed #ddd;
   border-radius: 12px;
+}
+
+@media (max-width: 820px) {
+  .guide-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .modal-map-placeholder {
@@ -3081,6 +3221,343 @@ h1 {
 }
 
 /* ── 진단 모니터 (DiagnosticsMonitor) ───────────────────────────────────── */
+.snapshot-control-card {
+  margin: 14px 0;
+  padding: 18px;
+  border: 1px solid #d9e3dc;
+  border-radius: 14px;
+  background: #f8fbf9;
+  color: #24342a;
+}
+
+.snapshot-tab-view {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  background: #e8ece9;
+}
+
+.snapshot-tab-view .snapshot-control-card {
+  margin: 0;
+}
+
+.snapshot-control-heading,
+.snapshot-summary-row,
+.snapshot-directory-row,
+.snapshot-lookback-row,
+.snapshot-save-row,
+.snapshot-last-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.snapshot-control-heading { justify-content: space-between; }
+.snapshot-control-title { font-size: 1.05rem; font-weight: 750; }
+.snapshot-control-help,
+.snapshot-field-label,
+.snapshot-status-message { color: #607067; font-size: 0.86rem; }
+
+.snapshot-state {
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.snapshot-state.ready { background: #daf1df; color: #236239; }
+.snapshot-state.busy { background: #fff0c8; color: #775613; }
+.snapshot-state.offline { background: #f8dddd; color: #8a2e2e; }
+
+.snapshot-summary-row {
+  flex-wrap: wrap;
+  margin: 14px 0;
+  font-size: 0.84rem;
+}
+
+.snapshot-summary-row span {
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: #edf3ef;
+}
+
+.snapshot-field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 650;
+}
+
+.snapshot-topic-filter,
+.snapshot-directory-row input,
+.snapshot-lookback-row input,
+.snapshot-save-row input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #bfcfc4;
+  border-radius: 9px;
+  background: #fff;
+  color: #203026;
+  font: inherit;
+}
+
+.snapshot-topic-picker-actions button,
+.snapshot-directory-row button,
+.snapshot-save-row button {
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.snapshot-directory-row button,
+.snapshot-save-row button {
+  padding: 9px 15px;
+  background: #2f6f45;
+  color: #fff;
+}
+
+.snapshot-topic-picker-actions button:disabled,
+.snapshot-topic-switch:disabled,
+.snapshot-directory-row button:disabled,
+.snapshot-save-row button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.snapshot-topic-picker {
+  padding: 12px;
+  border: 1px solid #d3dfd7;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.snapshot-topic-picker-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.snapshot-topic-picker-heading .snapshot-field-label { margin-bottom: 2px; }
+.snapshot-topic-picker-heading small { color: #6d786f; font-size: 0.76rem; }
+
+.snapshot-topic-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.snapshot-topic-picker-actions button {
+  padding: 7px 10px;
+  background: #e4eee7;
+  color: #36513f;
+  font-size: 0.76rem;
+}
+
+.snapshot-topic-filter {
+  margin-top: 11px;
+  padding: 9px 11px;
+}
+
+.snapshot-topic-list {
+  max-height: min(48vh, 480px);
+  margin-top: 9px;
+  overflow-y: auto;
+  border: 1px solid #e1e8e3;
+  border-radius: 9px;
+}
+
+.snapshot-topic-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #edf1ee;
+  background: #fff;
+}
+
+.snapshot-topic-row:last-child { border-bottom: 0; }
+.snapshot-topic-row.selected { background: #f3f9f5; }
+
+.snapshot-topic-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #aebbb2;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.snapshot-topic-switch[aria-checked="true"] { background: #2f7a49; }
+.snapshot-topic-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(28, 52, 36, 0.28);
+  transition: transform 0.15s ease;
+}
+.snapshot-topic-switch[aria-checked="true"] .snapshot-topic-switch-knob {
+  transform: translateX(16px);
+}
+
+.snapshot-topic-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snapshot-topic-identity code {
+  overflow-wrap: anywhere;
+  color: #26382c;
+  font-size: 0.78rem;
+}
+.snapshot-topic-identity small {
+  overflow-wrap: anywhere;
+  color: #758179;
+  font-size: 0.68rem;
+}
+
+.snapshot-topic-buffer-state {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.snapshot-topic-buffer-state.active { background: #daeee0; color: #28613a; }
+.snapshot-topic-buffer-state.inactive { background: #edf0ee; color: #667169; }
+.snapshot-topic-empty { padding: 24px 12px; color: #748078; text-align: center; font-size: 0.8rem; }
+
+.snapshot-directory-row,
+.snapshot-lookback-row,
+.snapshot-save-row {
+  display: grid;
+  grid-template-columns: auto minmax(130px, 1fr) auto auto;
+  margin-top: 15px;
+}
+
+.snapshot-directory-row label,
+.snapshot-lookback-row label,
+.snapshot-save-row label { font-size: 0.84rem; font-weight: 650; }
+.snapshot-directory-row input,
+.snapshot-lookback-row input,
+.snapshot-save-row input { padding: 9px 11px; }
+.snapshot-directory-row button.reset-directory { background: #66756b; }
+.snapshot-directory-row small,
+.snapshot-lookback-row small,
+.snapshot-save-row small {
+  grid-column: 2 / -1;
+  color: #6d786f;
+  font-size: 0.76rem;
+}
+.snapshot-lookback-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #526158;
+  font-size: 0.84rem;
+}
+.snapshot-lookback-input input { max-width: 130px; }
+
+.snapshot-capacity-card {
+  margin-top: 15px;
+  padding: 12px;
+  border: 1px solid #d3dfd7;
+  border-radius: 11px;
+  background: #f5f8f6;
+}
+.snapshot-capacity-card.adjusted { border-color: #dfb45d; background: #fffaf0; }
+.snapshot-capacity-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.snapshot-capacity-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.snapshot-capacity-heading strong { font-size: 0.86rem; }
+.snapshot-capacity-heading small { color: #6d786f; font-size: 0.74rem; }
+.snapshot-auto-fit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #31563e;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.snapshot-auto-fit-toggle input { width: 17px; height: 17px; accent-color: #2f7a49; }
+.snapshot-capacity-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 11px;
+}
+.snapshot-capacity-metrics span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #fff;
+  color: #69756d;
+  font-size: 0.7rem;
+}
+.snapshot-capacity-metrics strong { color: #26382c; font-size: 0.86rem; }
+.snapshot-capacity-loading,
+.snapshot-capacity-warning {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #6d5a28;
+  background: #fff0c8;
+  font-size: 0.76rem;
+}
+.snapshot-capacity-loading { color: #607067; background: #edf3ef; }
+.snapshot-capacity-warning.danger { color: #842f2f; background: #f8dddd; }
+
+.snapshot-save-row button.confirm { background: #b65d22; }
+.snapshot-save-row button.cancel { background: #78837b; }
+
+.snapshot-status-message { min-height: 1.3em; margin-top: 10px; }
+
+.snapshot-last-result {
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #edf5ef;
+  font-size: 0.78rem;
+}
+
+.snapshot-last-result.failure { background: #f8e5e3; }
+.snapshot-last-result code { overflow-wrap: anywhere; }
+.snapshot-last-result time { margin-left: auto; color: #6d786f; }
+
+@media (max-width: 760px) {
+  .snapshot-directory-row,
+  .snapshot-lookback-row,
+  .snapshot-save-row { grid-template-columns: 1fr; }
+  .snapshot-directory-row button,
+  .snapshot-save-row button { min-height: 44px; }
+  .snapshot-directory-row small,
+  .snapshot-lookback-row small,
+  .snapshot-save-row small { grid-column: 1; }
+  .snapshot-topic-picker-heading { flex-direction: column; }
+  .snapshot-topic-picker-actions { justify-content: flex-start; }
+  .snapshot-capacity-heading { flex-direction: column; }
+  .snapshot-capacity-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .diag-monitor {
   display: flex;
   flex: 1;
@@ -4581,10 +5058,8 @@ h1 {
   flex-shrink: 0;
 }
 
-/* 전조등 전용 컨트롤 패널: Manual Motion 바와 같은 문법을 쓰되 상단 경계로 구분한다. */
-.light-control-bar {
-  border-top: 1px solid #2d6a4f;
-}
+/* 전조등 전용 컨트롤 패널: Manual Motion 바 바로 아래에 붙고,
+ * Manual Motion 바의 border-bottom 한 줄로만 구분한다. */
 
 .diag-control-label {
   font-family: 'Consolas', 'Menlo', monospace;

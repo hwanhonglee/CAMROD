@@ -392,7 +392,7 @@ the active cruise this means it evaluates `0.555556 m/s`, not the unscaled
 
 | Historical map-v14 measured rerun | Historical translation-only decision policy |
 |---|---|
-| ![Map v14 recovery contact sheet](../docs/assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-contact-sheet.png) | ![Recovery policy](../docs/assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-policy.png) |
+| ![Map v14 recovery contact sheet](../docs/assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery-contact-sheet.png) | ![Recovery policy](../docs/assets/module-guides/control/test-results/automatic-recovery-v2.1.3/automatic-owner-policy.png) |
 
 ![Map-v14 reverse, retry latch, and crab recovery](../docs/assets/module-guides/control/test-results/map-v14-boundary-recovery/map-v14-boundary-recovery.gif)
 

@@ -128,11 +128,15 @@ set(msg_files
   "msg/AvgSystemMsgs.msg"
   "msg/AudioRequest.msg"     # HH_260615: voice announcer — key-based WAV playback request
   "msg/VoiceState.msg"       # HH_260615: voice announcer — current playback state
+  "msg/TopicDetails.msg"     # 260914: camrod_snapshot — topic name/type pair for snapshot service
 )
 
 set(srv_files
   "srv/RequestGoalByKey.srv"
   "srv/RequestMotionOperation.srv" # HH_260720 - Typed control-operation request service.
+  "srv/ConfigureSnapshotTopics.srv" # 260914: runtime snapshot topic add/remove/status.
+  "srv/EstimateSnapshot.srv" # 260921: estimate/adapt snapshot size before writing.
+  "srv/TriggerSnapshot.srv" # 260914: camrod_snapshot — trigger buffered-bag snapshot write
 )
 
 set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")

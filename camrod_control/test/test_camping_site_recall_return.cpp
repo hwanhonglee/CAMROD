@@ -76,6 +76,15 @@ protected:
   void tick() { node_->onTimer(); }
   void elapsed(const double seconds) {
     node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(seconds);
+    // The voice timeout uses absolute time, independently of phase_start_time_.
+    // Advance its clock by the same simulated interval without disabling it.
+    node_->recall_clearance_voice_gate_.tick(node_->now().seconds() + seconds);
+  }
+  void completeClearanceVoice() {
+    node_->recall_clearance_voice_gate_.onVoiceState(
+        true, node_->recall_clearance_voice_key_, node_->now().seconds());
+    node_->recall_clearance_voice_gate_.onVoiceState(
+        false, "", node_->now().seconds());
   }
   void setCrabReturnTimeout(const double seconds) {
     node_->crab_return_timeout_s_ = seconds;
@@ -132,6 +141,7 @@ protected:
     EXPECT_DOUBLE_EQ(node_->return_anchor_y_, 20.0);
   }
   void completeClearance() {
+    completeClearanceVoice();
     elapsed(8.1);
     setAlongSite(0.30);
     tick();
@@ -204,6 +214,31 @@ protected:
   const double entry_yaw_{-M_PI / 3.0};
   std::string key_;
 };
+
+TEST_F(CampingSiteManeuverControllerTest, FinishedVoiceCannotShortenClearanceFloor) {
+  startRecall(1);
+  ASSERT_TRUE(returnRequest().first);
+  completeClearanceVoice();
+  elapsed(7.9);
+  setAlongSite(0.30);
+  tick();
+  EXPECT_EQ(phase(), Phase::kRecallClearanceWait);
+  elapsed(8.1);
+  tick();
+  EXPECT_EQ(phase(), Phase::kAlignEntryYaw);
+}
+
+TEST_F(CampingSiteManeuverControllerTest, MissingVoiceWaitsForItsOwnTimeout) {
+  startRecall(1);
+  ASSERT_TRUE(returnRequest().first);
+  elapsed(8.1);
+  setAlongSite(0.30);
+  tick();
+  EXPECT_EQ(phase(), Phase::kRecallClearanceWait);
+  elapsed(14.1);
+  tick();
+  EXPECT_EQ(phase(), Phase::kAlignEntryYaw);
+}
 
 TEST_F(CampingSiteManeuverControllerTest, B1ThroughB10TurnInsideSiteThenReturnFromCurrentLanePose) {
   for (int site = 1; site <= 10; ++site) {

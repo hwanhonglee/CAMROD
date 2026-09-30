@@ -1,4 +1,3 @@
-// HH_260911 - Restore shared Korean presentation without importing CARLA control logic.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ManualDrivePanel from './ManualDrivePanel';
 
@@ -61,17 +60,6 @@ const finite = value => typeof value === 'number' && Number.isFinite(value);
 export async function postDockingRequest(request = fetch) {
   const response = await request('/ui/dock', { method: 'POST' });
   const body = await response.json();
-  // HH_260911 - Backend protocol codes stay stable; operator-facing text is Korean.
-  const messages = {
-    docking_requested: '충전 요청이 접수되었습니다. 실제 충전 상태를 확인해주세요.',
-    already_charging: '이미 충전 중입니다.',
-    docking_unavailable: '현재 실행 설정에서는 충전 도킹을 사용할 수 없습니다.',
-    docking_requires_drop_zone: '운행을 마치거나 정지한 뒤 대기·충전 장소에서 다시 요청해주세요.',
-    parking_in_progress: '주차 또는 충전 동작이 진행 중입니다. 완료를 기다리거나 정지 후 다시 요청해주세요.',
-    backend_startup_recovery: '시스템 초기화 중입니다. 준비가 끝난 뒤 다시 요청해주세요.',
-  };
-  const code = body.success ? body.action : body.error;
-  if (messages[code]) body.message = messages[code];
   if (!response.ok || !body.success) throw new Error(body.message || '충전 요청 실패');
   return body;
 }
@@ -86,8 +74,7 @@ export function parkingPolicyMessage(policy = {}) {
 // This is a station action, not a campsite Return shortcut. Backend rechecks
 // the authoritative station state before granting any docking motion.
 export function dockingAllowedAtServiceState(serviceStateName) {
-  // HH_260911 - A stopped robot may request Dock; backend requires fresh station geometry.
-  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING', 'OPERATOR_STOPPED']
+  return ['DROP_ZONE_WAIT', 'WAITING_FOR_CHARGING', 'CHARGING', 'DROP_ZONE_PARKING']
     .includes(serviceStateName);
 }
 
@@ -114,7 +101,7 @@ export function DockingCommandButton({ className = 'manual-return-btn', disabled
   };
   return <>
     <button type="button" className={className} onClick={requestDocking} disabled={disabled || pending || !stationAllowed}
-      title={stationAllowed ? '자동 주차 정책과 별도로 충전 요청' : '충전은 drop_zone 정차·주차 상태에서만 가능합니다'}>
+      title={stationAllowed ? '자동 주차 정책과 별도로 충전 요청' : '충전은 대기·충전 장소에 정차하거나 주차 중일 때만 가능합니다'}>
       {pending ? '충전 요청 중' : '충전'}
     </button>
     {status && <span className="manual-motion-status" role="status">{status}</span>}
@@ -472,12 +459,12 @@ function CameraFeed({ telemetry, camera, label }) {
         {canDisplay ? (
           <img
             src={`/api/camera/${camera}?frame=${data.sequence}`}
-            alt={`${label} 실시간 ROS 영상`}
+            alt={`${label} live ROS camera`}
             onError={() => setLoadFailed(true)}
           />
         ) : (
           <div className="camera-empty">
-            <strong>영상 없음</strong>
+            <strong>NO FRAME</strong>
             <span>{camera === 'front'
               ? '/sensing/camera/econ_front/image_rect/compressed'
               : (camera === 'docking'
@@ -487,12 +474,12 @@ function CameraFeed({ telemetry, camera, label }) {
         )}
       </div>
       <div className="camera-metadata">
-        <span>프레임 <b>{data.frame_id || '-'}</b></span>
-        <span>형식 <b>{data.format || '-'}</b></span>
-        <span>출처 <b>{data.source || '-'}</b></span>
-        <span>센서 목표 주기 <b>10 Hz</b></span>
-        <span>데이터 크기 <b>{finite(data.bytes) ? `${(data.bytes / 1024).toFixed(1)} KiB` : '-'}</b></span>
-        <span>수신 경과 <b>{finite(source.age) ? `${source.age.toFixed(2)} s` : '-'}</b></span>
+        <span>Frame <b>{data.frame_id || '-'}</b></span>
+        <span>Format <b>{data.format || '-'}</b></span>
+        <span>Source <b>{data.source || '-'}</b></span>
+        <span>Sensor target <b>10 Hz</b></span>
+        <span>Payload <b>{finite(data.bytes) ? `${(data.bytes / 1024).toFixed(1)} KiB` : '-'}</b></span>
+        <span>Age <b>{finite(source.age) ? `${source.age.toFixed(2)} s` : '-'}</b></span>
       </div>
     </section>
   );
@@ -502,12 +489,12 @@ function CameraView({ telemetry }) {
   return (
     <div className="telemetry-view telemetry-camera-view">
       <div className="telemetry-source-row">
-        <SourcePill telemetry={telemetry} source="camera.front" label="전방 · 목표 10 Hz" staleAfter={3} />
-        <SourcePill telemetry={telemetry} source="camera.rear" label="후방 · 목표 10 Hz" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.front" label="Front · target 10 Hz" staleAfter={3} />
+        <SourcePill telemetry={telemetry} source="camera.rear" label="Rear · target 10 Hz" staleAfter={3} />
       </div>
       <div className="camera-grid">
-        <CameraFeed telemetry={telemetry} camera="front" label="전방 카메라" />
-        <CameraFeed telemetry={telemetry} camera="rear" label="후방 카메라" />
+        <CameraFeed telemetry={telemetry} camera="front" label="Front camera" />
+        <CameraFeed telemetry={telemetry} camera="rear" label="Rear camera" />
       </div>
     </div>
   );
@@ -1060,7 +1047,7 @@ function SafetyView({ telemetry, engageState = false, engageDisabled = false, on
       )}
       <div className="telemetry-safety-layout">
         <section className="telemetry-section">
-          <SectionHeader title="Motion owners" meta={mission.service_state_name || '서비스 상태 미수신'} />
+          <SectionHeader title="Motion owners" meta={mission.service_state_name || 'service state unavailable'} />
           <div className="controller-status-list">
             {controllerOrder.map(name => {
               const status = controllers[name] || {};
@@ -1068,7 +1055,7 @@ function SafetyView({ telemetry, engageState = false, engageDisabled = false, on
                 <div key={name} className="controller-status-row">
                   <span className={`controller-level controller-level-${levelClass(status.level)}`} />
                   <strong>{controllerLabel[name]}</strong>
-                  <b>{status.operating_state || '데이터 없음'}</b>
+                  <b>{status.operating_state || 'NO DATA'}</b>
                   <em>{status.message || '-'}</em>
                 </div>
               );
@@ -1114,7 +1101,7 @@ function DockingPathPlot({ telemetry }) {
   if (all.length < 2) {
     return (
       <div className="docking-path-empty">
-        <strong>NO PARKING PATH</strong>
+        <strong>주차 경로 없음</strong>
         <span>주차 컨트롤러 경로 토픽 대기 중</span>
       </div>
     );
@@ -1139,7 +1126,7 @@ function DockingPathPlot({ telemetry }) {
     ? tagGuided : (reverse.length > 0 ? reverse : approach);
   const [targetX, targetY] = toScreen(lastPath[lastPath.length - 1]);
   return (
-    <svg className="docking-path-plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Parking controller approach trajectories">
+    <svg className="docking-path-plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="주차 제어기 진입 경로">
       <defs>
         <pattern id="dockingGrid" width="38" height="38" patternUnits="userSpaceOnUse">
           <path d="M 38 0 L 0 0 0 38" className="docking-grid-line" />
@@ -1242,13 +1229,13 @@ function DockingView({ telemetry, redockStatus = null, parkingPolicy = {}, servi
       <div className="docking-layout">
         <CameraFeed telemetry={telemetry} camera={dockingCameraName} label={dockingCameraLabel} />
         <section className="telemetry-section docking-status-section">
-          <SectionHeader title="도킹 상태" meta={mission.service_state_name || '서비스 상태 미수신'} />
+          <SectionHeader title="도킹 상태" meta={mission.service_state_name || '서비스 상태 정보 없음'} />
           <div className="docking-state-banner">
             <div className={docking.tag_detected ? 'detected' : 'missing'}>
-              <span>태그</span><strong>{docking.tag_detected ? '감지됨' : '감지 안 됨'}</strong>
+              <span>태그</span><strong>{docking.tag_detected ? '감지됨' : '감지되지 않음'}</strong>
             </div>
             <div className={docking.is_charging ? 'charging' : 'idle'}>
-              <span>충전</span><strong>{docking.is_charging ? '연결됨 · 정지' : '연결 안 됨'}</strong>
+              <span>충전</span><strong>{docking.is_charging ? '충전 중 · 정차' : '충전 안 함'}</strong>
             </div>
           </div>
           <div className="telemetry-metric-grid telemetry-metric-grid-3">
@@ -1256,20 +1243,20 @@ function DockingView({ telemetry, redockStatus = null, parkingPolicy = {}, servi
             <Metric label="카메라 X" value={numberText(tag.x_m, 3)} unit="m" />
             <Metric label="카메라 Y" value={numberText(tag.y_m, 3)} unit="m" />
             <Metric label="카메라 Z" value={numberText(tag.z_m, 3)} unit="m" />
-            <Metric label="태그 Yaw" value={numberText(tag.yaw_deg, 1)} unit="°" />
+            <Metric label="태그 방향" value={numberText(tag.yaw_deg, 1)} unit="°" />
             <Metric label="배터리" value={numberText(docking.battery_percentage, 1)} unit="%" />
           </div>
           <div className="docking-controller-list">
-            <div><span>Lanelet 주차 지점</span><strong>{dropZone.operating_state || '데이터 없음'}</strong><em>{dropZone.message || '-'}</em></div>
-            <div><span>AprilTag 도킹</span><strong>{april.operating_state || '데이터 없음'}</strong><em>{april.message || '-'}</em></div>
+            <div><span>차로 기반 주차 지점</span><strong>{dropZone.operating_state || '데이터 없음'}</strong><em>{dropZone.message || '-'}</em></div>
+            <div><span>충전 도킹</span><strong>{april.operating_state || '데이터 없음'}</strong><em>{april.message || '-'}</em></div>
             <div><span>후진 주차</span><strong>{reverse.operating_state || '데이터 없음'}</strong><em>{reverse.message || '-'}</em></div>
           </div>
         </section>
         <section className="telemetry-section docking-path-section">
-          <SectionHeader title="주차 접근 경로" meta="제어기 출력" />
+          <SectionHeader title="주차 진입 경로" meta="제어기 출력" />
           <DockingPathPlot telemetry={telemetry} />
           <div className="telemetry-legend-row">
-            <span><i className="legend-docking-approach" />정확한 Lanelet 지점</span>
+            <span><i className="legend-docking-approach" />정확한 차로 지점</span>
             <span><i className="legend-docking-reverse" />후진 주차</span>
             <span><i className="legend-docking-tag" />AprilTag 도킹</span>
             <span><i className="legend-docking-target" />목표</span>

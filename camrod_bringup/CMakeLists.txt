@@ -122,6 +122,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # Snapshot topic ownership stays in bringup so symlink-install deployments
+  # consume config edits without recompiling camrod_snapshot.
+  ament_add_pytest_test(
+    test_snapshot_config_contract
+    test/test_snapshot_config_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260729 - Keep non-radar hardware dummy heartbeat diagnostics explicit
   # and byte-synchronized between package and deployment checker profiles.
   ament_add_pytest_test(

@@ -351,6 +351,120 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertFalse(status["accepted"])
         self.assertEqual(status["active_generation"], 41)
 
+    def test_robot_completes_guest_recall_once_without_early_planning(self) -> None:
+        events = []
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _latest_platform_is_charging=False,
+            site_names=["B1", "B2"],
+            publish_mission_engage_from_destination=True,
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("engage", enabled)
+            ),
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
+            ),
+            _publish_service_state=lambda *args, **kwargs: self.fail(
+                "controller must publish the actual recall return phase"
+            ),
+            _schedule_broadcast=lambda payload: None,
+        )
+        first = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        second = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        self.assertTrue(first["success"])
+        self.assertEqual(first["transition"], "recall_loading_complete")
+        self.assertEqual(second["transition"], "return_already_accepted")
+        self.assertEqual([event[0] for event in events], ["engage", "controller_return"])
+        self.assertEqual(events[0], ("engage", True))
+        self.assertEqual(backend._active_mission_source, "guest:dispatch:r=current")
+
+        # Profiles with mission-engage publication disabled still need the
+        # same platform drive-enable handoff before the controller can exit.
+        events.clear()
+        backend._return_requested_generation = 0
+        backend.publish_mission_engage_from_destination = False
+        backend._publish_platform_drive_enable = lambda enabled, source: events.append(
+            ("drive_enable", enabled)
+        )
+        result = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual([event[0] for event in events], ["drive_enable", "controller_return"])
+        self.assertEqual(events[0], ("drive_enable", True))
+
+    def test_recall_final_return_latches_return_ownership(self) -> None:
+        # HH_260908 - Without this latch the service-state bridge drops every
+        # RETURN_WITH_CARGO/DROP_ZONE_PARKING/standby frame after the final
+        # loading confirmation as "uncorrelated", so neither UI ever sees the
+        # cargo return and the mission identity never clears.
+        events = []
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _latest_campsite_phase="RECALL_RETURN_WAIT",
+            _latest_campsite_site="B1",
+            _latest_campsite_status_time_s=99.5,
+            _now_s=lambda: 100.0,
+            _recall_final_return_generation=0,
+            _mission_execution_error="",
+            publish_mission_engage_from_destination=True,
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("engage", enabled)
+            ),
+            _publish_camping_site_maneuver_controller_return=lambda source: (
+                events.append(("controller_return", source))
+            ),
+            _schedule_broadcast=lambda payload: None,
+        )
+
+        result = UiBackendNode.request_owned_return_to_drop_zone(
+            backend, "B1", 41, source="robot_ui:usage_complete",
+            allowed_owners={"operator", "robot"},
+            recall_final_return=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["transition"], "recall_final_return")
+        self.assertEqual(backend._recall_final_return_generation, 41)
+        self.assertEqual(backend._return_requested_generation, 41)
+        self.assertEqual(
+            [event[0] for event in events], ["engage", "controller_return"]
+        )
+
+    def test_robot_guest_completion_rejects_wrong_site_generation_and_early_return(self) -> None:
+        for site, generation, state, source in (
+            ("B2", 41, AvgServiceState.GUEST_LOADING_WAIT, "robot_ui:usage_complete"),
+            ("B1", 40, AvgServiceState.GUEST_LOADING_WAIT, "robot_ui:usage_complete"),
+            ("B1", 41, AvgServiceState.RECALL_TO_SITE_ROAD, "robot_ui:usage_complete"),
+            ("B1", 41, AvgServiceState.GUEST_LOADING_WAIT, "http_ui_destination"),
+        ):
+            with self.subTest(site=site, generation=generation, state=state, source=source):
+                backend = self._mission_authority_backend(
+                    _active_mission_source="guest:dispatch:r=current",
+                    _active_mission_owner="guest",
+                    _active_mission_intent="recall",
+                    _latest_service_state=int(state),
+                )
+                result = UiBackendNode.request_owned_return_to_drop_zone(
+                    backend, site, generation, source=source,
+                    allowed_owners={"operator", "robot"},
+                )
+                self.assertFalse(result["success"])
+                self.assertEqual(backend._return_requested_generation, 0)
+
     def test_same_return_state_phase_changes_reach_guest_authority_stream(self) -> None:
         backend = self._mission_authority_backend(
             _active_mission_source="guest:dispatch:r=current",
@@ -1603,8 +1717,6 @@ class UiBackendStopTest(unittest.TestCase):
         backend._now_s = lambda: 99.0
         backend._lock = threading.Lock()
         backend._state = SimpleNamespace(battery_percentage=-1)
-        # HH_260911 - Charging edges now broadcast even without a SOC sample.
-        backend._schedule_broadcast = mock.Mock()
         message = AvgPlatformStatus()
         message.is_charging = True
         message.battery_state_available = False

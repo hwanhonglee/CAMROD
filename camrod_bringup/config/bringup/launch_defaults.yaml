@@ -46,6 +46,9 @@ bringup:
     sim_publish_dummy_lidar_cost_grid: true
     # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
     sim_platform_status_enable: false
+    # Start the rolling rosbag buffer before the rest of the runtime so startup
+    # faults are available from the administrator Snapshot control.
+    enable_snapshot: true
     # HH_260810 - The managed operator UI now provides live map, paths,
     # footprints, perception, and confirmed manual Goal Pose. Keep RViz opt-in.
     rviz: false
@@ -59,6 +62,16 @@ bringup:
     dds_shared_memory_roudi_config: middleware/iceoryx_roudi.toml
     dds_shared_memory_roudi_executable: /opt/ros/humble/bin/iox-roudi
     dds_shared_memory_roudi_log_level: warning
+
+  # Snapshot topics are owned by camrod_bringup so source YAML edits are used
+  # immediately through config_root; a rebuild is not required after install.
+  snapshot:
+    param_file: snapshot/camrod_topics.params.yaml
+    output_directory: /home/nvidia/storage/camrod
+    request_timeout_s: 120.0
+    minimum_free_space_mb: 5120
+    minimum_free_space_ratio: 0.10
+    size_safety_factor: 1.30
 
   # =========================================================================
   # 2. LOCALIZATION
@@ -584,10 +597,13 @@ bringup:
     # full turn as heading error, so the gate zeroed linear.x and the platform
     # fell into MOTION_MODE_SPINNING at the corner vertex. The stationary spin
     # then pushed the body off the lane and triggered a crab recovery before
-    # Dual-Ackermann resumed. A 1.2 m chord plus a 105/25 deg band keeps this
-    # guard for genuine gross start misalignment only.
+    # Dual-Ackermann resumed. A 1.2 m chord plus a wide hysteresis band keeps
+    # this guard for genuine gross start misalignment only.
     cmd_vel_gate_route_heading_lookahead_m: 1.2
-    cmd_vel_gate_route_heading_error_enter_deg: 105.0
+    # HH_260928 - 105 deg still admitted sharp lane corners under pose/path
+    # jitter. Reserve stationary alignment for near-opposite starts and let
+    # RPP continuously steer through ordinary corners.
+    cmd_vel_gate_route_heading_error_enter_deg: 135.0
     # HH_260909 - 75->5 deg hysteresis held the stationary spin to near-perfect
     # alignment. 25 deg releases to RPP once the gross error is gone.
     cmd_vel_gate_route_heading_error_exit_deg: 25.0

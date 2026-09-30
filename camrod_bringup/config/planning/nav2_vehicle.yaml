@@ -64,11 +64,7 @@ controller_server:
       # selected 1.1 m as the balance between 1.0 m tracking error and 1.2 m
       # steering variation. Keep the 2.0 m cap; HH_260806 later synchronized
       # the real pose and controller loops at 20 Hz.
-      # HH_260911 - Deployed preview shortened 3.5 -> 2.0 m. With
-      # use_velocity_scaled_lookahead_dist enabled this fixed value is only the
-      # unscaled fallback, but it is now consistent with the 2.0 m the 2 km/h
-      # cruise reference actually produces (1.111111 m/s x 1.8 s).
-      lookahead_dist: 2.0 # 3.5
+      lookahead_dist: 3.5
       # HJ_0812 - A lateral re-entry overshoot fix raised this to 1.8 m: a 1.1 m
       # preview is shorter than the 1.59 m footprint length, so an off-path
       # start commanded a 1.2-2.0 m return arc.
@@ -77,15 +73,15 @@ controller_server:
       # Re-entry overshoot can return until the steering trim itself is fixed.
       # Velocity scaling still clamps here (0.556 m/s x 1.8 s = 1.0 m), so this
       # minimum is the effective preview.
-      # HH_260911 - Scaled preview window narrowed 1.5-3.5 -> 1.0-2.5 m after
-      # the 2026-09-11 Worak run. The old 1.5 m floor clamped every slow
-      # approach to a preview longer than the speed asked for, so the low-speed
-      # drop-zone and campsite legs cut their corners; the 2.5 m ceiling keeps
-      # the cruise preview from re-expanding past the validated 2.0 m.
-      # nav2_base.yaml RotationShim carries the same window - the shim wraps
-      # this same RPP plugin, so the two must not drift apart.
-      min_lookahead_dist: 1.0 # 1.5
-      max_lookahead_dist: 2.5 # 3.5
+      # HH_260928 - Field logs with a 1.6 m preview repeatedly put the outer
+      # front shoulder onto cost 100 while yaw lagged through lane corners,
+      # which armed the crab recovery. Shorten the effective low-speed preview
+      # so RPP converges its heading before the shoulder reaches the boundary.
+      # HH_260928 - 1.4 m still let corner yaw lag long enough for the lane
+      # boundary to arm the crab recovery. 1.2 m stays above the 1.1 m preview
+      # that produced lateral re-entry overshoot.
+      min_lookahead_dist: 1.2
+      max_lookahead_dist: 3.5
       lookahead_time: 1.8
       # Final default after the command gate: 0.20 rad/s.
       rotate_to_heading_angular_vel: 0.35
@@ -120,6 +116,13 @@ controller_server:
       # HJ_0812 - A 0.9 m trigger radius never fired on ordinary curves nor on
       # the 1.2-2.0 m lateral re-entry arc, leaving curve regulation inert.
       # 3.0 m covers both cases.
+      # HH_260928 - Slow earlier through lane corners so the steering has
+      # distance to settle before the outer shoulder reaches the boundary:
+      # a 2.0 m arc now runs at 50% instead of 67% of cruise.
+      # HH_260930 - Corners crawled at ~0.8-1.0 km/h (map-v26 right turn onto
+      # the campsite road is a ~1.6 m arc). The 1.2 m preview above is what
+      # fixed the shoulder contact, so return the trigger to 3.0 m: a 1.6 m
+      # arc runs at 53% (was 40%) and a 2.0 m arc at 67% (was 50%) of cruise.
       regulated_linear_scaling_min_radius: 3.0
       # HH_260807 - Preserve the 50% curve-floor ratio: 1.00 km/h final.
       # HJ_0812 - A 50% floor leaves almost no regulation range once the

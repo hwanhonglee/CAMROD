@@ -886,6 +886,49 @@ def generate_launch_description():
             ),
             'Let fake sensors publish a deterministic free LiDAR cost grid',
         ),
+        (
+            'enable_snapshot',
+            cfg_get(launch_cfg, 'runtime/enable_snapshot', True),
+            'Enable the rolling camrod_snapshot buffer',
+        ),
+        (
+            'snapshot_param_file',
+            bringup_cfg(cfg_get(
+                launch_cfg,
+                'snapshot/param_file',
+                'snapshot/camrod_topics.params.yaml',
+            )),
+            'Snapshotter topic and buffer parameter YAML',
+        ),
+        (
+            'snapshot_output_directory',
+            cfg_get(
+                launch_cfg,
+                'snapshot/output_directory',
+                '/home/nvidia/storage/camrod',
+            ),
+            'Server-owned directory for Robot UI snapshot bags',
+        ),
+        (
+            'snapshot_request_timeout_s',
+            cfg_get(launch_cfg, 'snapshot/request_timeout_s', 120.0),
+            'Robot UI timeout for a snapshot write request',
+        ),
+        (
+            'snapshot_minimum_free_space_mb',
+            cfg_get(launch_cfg, 'snapshot/minimum_free_space_mb', 5120),
+            'Absolute minimum free disk space preserved by snapshot writes',
+        ),
+        (
+            'snapshot_minimum_free_space_ratio',
+            cfg_get(launch_cfg, 'snapshot/minimum_free_space_ratio', 0.10),
+            'Filesystem fraction preserved by snapshot writes',
+        ),
+        (
+            'snapshot_size_safety_factor',
+            cfg_get(launch_cfg, 'snapshot/size_safety_factor', 1.30),
+            'Serialized-buffer to on-disk snapshot size safety factor',
+        ),
         # HH_260721 - Let charging tests opt into the hardware gate contract in simulation.
         (
             'sim_platform_status_enable',
@@ -3478,9 +3521,24 @@ def generate_launch_description():
         'parking_operation_topic': '/parking/operation',
         'arrival_pose_topic': '/localization/pose',
         'platform_status_topic': '/platform/status',
+        'snapshot_output_directory': lc['snapshot_output_directory'],
+        'snapshot_request_timeout_s': lc['snapshot_request_timeout_s'],
+        'snapshot_minimum_free_space_mb': lc['snapshot_minimum_free_space_mb'],
+        'snapshot_minimum_free_space_ratio': lc['snapshot_minimum_free_space_ratio'],
+        'snapshot_size_safety_factor': lc['snapshot_size_safety_factor'],
+    }
+
+    snapshot_args = {
+        'params_file': lc['snapshot_param_file'],
     }
 
     module_specs = [
+        (
+            'camrod_snapshot',
+            'camrod_snapshot.launch.py',
+            snapshot_args,
+            IfCondition(lc['enable_snapshot']),
+        ),
         ('camrod_platform', 'platform.launch.py', platform_args, None),
         ('camrod_map', 'map.launch.py', map_args, None),
         (

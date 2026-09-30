@@ -4,29 +4,29 @@ camping_sites:
   - id: "dz_area_1353"
     type: "camping_site_1"
     source: "area"
-    x: 25.0481
-    y: -5.43239
+    x: 24.835
+    y: -4.87389
     z: 0
     yaw_deg: 23.7451
     service_mode: "turnaround"
     corners:
-      - x: 27.8137
-        y: -6.95625
+      - x: 27.3525
+        y: -5.96306
         z: 0
-      - x: 24.5625
-        y: -8.68603
+      - x: 24.0359
+        y: -7.39992
         z: 0
-      - x: 22.2576
-        y: -3.84142
+      - x: 22.3207
+        y: -3.8
         z: 0
-      - x: 25.5954
-        y: -2.23989
+      - x: 25.6217
+        y: -2.33562
         z: 0
   - id: "dz_area_1281"
     type: "camping_site_2"
     source: "area"
-    x: 19.5211
-    y: -8.74019
+    x: 19.1748
+    y: -7.79849
     z: 0
     yaw_deg: -66.1577
     service_mode: "turnaround"
@@ -37,17 +37,17 @@ camping_sites:
       - x: 19.8793
         y: -4.62543
         z: 0
-      - x: 22.8403
-        y: -11.3257
+      - x: 22.1245
+        y: -9.3698
         z: 0
-      - x: 19.1006
-        y: -12.7915
+      - x: 18.4654
+        y: -10.9801
         z: 0
   - id: "dz_area_1341"
     type: "camping_site_3"
     source: "area"
-    x: 22.5355
-    y: 0.131204
+    x: 22.5064
+    y: 0.150633
     z: 0
     yaw_deg: -66.2705
     service_mode: "turnaround"
@@ -55,11 +55,11 @@ camping_sites:
       - x: 25.2976
         y: -1.61314
         z: 0
-      - x: 21.9403
-        y: -3.18876
+      - x: 21.8809
+        y: -3.12253
         z: 0
-      - x: 19.7778
-        y: 1.89835
+      - x: 19.7135
+        y: 1.88765
         z: 0
       - x: 23.128
         y: 3.44006
@@ -67,23 +67,23 @@ camping_sites:
   - id: "dz_area_1272"
     type: "camping_site_4"
     source: "area"
-    x: 16.4183
-    y: -1.50301
+    x: 16.3537
+    y: -1.41168
     z: 0
     yaw_deg: -67.9122
     service_mode: "turnaround"
     corners:
-      - x: 13.3914
-        y: 0.599537
+      - x: 13.3218
+        y: 0.518204
         z: 0
-      - x: 17.1022
-        y: 2.18306
+      - x: 17.0325
+        y: 2.10173
         z: 0
-      - x: 19.4574
-        y: -3.62073
+      - x: 19.3977
+        y: -3.35743
         z: 0
-      - x: 15.7082
-        y: -5.16754
+      - x: 15.6485
+        y: -4.90424
         z: 0
   - id: "dz_area_1329"
     type: "camping_site_5"
@@ -151,44 +151,44 @@ camping_sites:
   - id: "dz_area_1254"
     type: "camping_site_8"
     source: "area"
-    x: 11.3619
-    y: 10.4913
+    x: 11.3359
+    y: 10.5292
     z: 0
     yaw_deg: 111.259
     service_mode: "turnaround"
     corners:
-      - x: 8.51146
-        y: 12.3268
+      - x: 8.47495
+        y: 12.3608
         z: 0
-      - x: 12.2077
-        y: 13.8098
+      - x: 12.1712
+        y: 13.8438
         z: 0
-      - x: 14.2478
-        y: 8.70044
+      - x: 14.2322
+        y: 8.74225
         z: 0
-      - x: 10.4676
-        y: 7.16983
+      - x: 10.452
+        y: 7.21165
         z: 0
   - id: "dz_area_1305"
     type: "camping_site_9"
     source: "area"
-    x: 15.4271
-    y: 16.9466
+    x: 15.2328
+    y: 17.2718
     z: 0
     yaw_deg: -169.793
     service_mode: "turnaround"
     corners:
-      - x: 18.0925
-        y: 14.8944
+      - x: 17.8791
+        y: 15.4706
         z: 0
-      - x: 14.3985
-        y: 14.2748
+      - x: 14.185
+        y: 14.8511
         z: 0
-      - x: 12.7786
-        y: 19.0187
+      - x: 12.6038
+        y: 19.092
         z: 0
-      - x: 16.4365
-        y: 19.6167
+      - x: 16.2616
+        y: 19.6901
         z: 0
   - id: "dz_area_1245"
     type: "camping_site_10"
@@ -214,44 +214,44 @@ camping_sites:
   - id: "dz_area_1293"
     type: "camping_site_11"
     source: "area"
-    x: 13.7869
-    y: 21.999
+    x: 13.8602
+    y: 21.7749
     z: 0
     yaw_deg: 5.68406
     service_mode: "roadside_stop"
     corners:
-      - x: 16.0616
-        y: 20.2677
+      - x: 16.2694
+        y: 20.5722
         z: 0
       - x: 12.6512
         y: 19.5665
         z: 0
-      - x: 11.3613
-        y: 23.8177
+      - x: 11.4788
+        y: 22.9716
         z: 0
-      - x: 15.2088
-        y: 24.2286
+      - x: 15.0187
+        y: 24.0047
         z: 0
   - id: "dz_area_1233"
     type: "camping_site_12"
     source: "area"
-    x: 6.84362
-    y: 22.2775
+    x: 6.99916
+    y: 22.2947
     z: 0
     yaw_deg: -69.3089
     service_mode: "roadside_stop"
     corners:
-      - x: 4.0471
-        y: 23.7067
+      - x: 4.60722
+        y: 23.7781
         z: 0
-      - x: 7.82799
-        y: 25.4249
+      - x: 8.32149
+        y: 25.3126
         z: 0
-      - x: 9.59579
-        y: 20.7444
+      - x: 9.38891
+        y: 20.8304
         z: 0
-      - x: 5.89723
-        y: 19.1736
+      - x: 5.69035
+        y: 19.2596
         z: 0
   - id: "dz_area_1219"
     type: "camping_site_13"

@@ -16,6 +16,7 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
+from nav2_common.launch import RewrittenYaml
 
 
 DEVELOP_CAMPSITE_BYPASS_PHASES = (
@@ -68,6 +69,21 @@ def generate_launch_description():
         "carla_extended_ackermann_control"
     )
     bringup_share = get_package_share_directory("camrod_bringup")
+    # HH_260930 - Reuse v2.2.9 snapshot topics, but never send simulation bags
+    # to the field NAS or write to the robot's /home/nvidia storage directory.
+    simulation_snapshot_directory = os.path.join(
+        os.path.dirname(_mission_records_root()), "snapshots"
+    )
+    simulation_snapshot_params = RewrittenYaml(
+        source_file=os.path.join(
+            bringup_share, "config", "snapshot", "camrod_topics.params.yaml"
+        ),
+        param_rewrites={
+            "/**.ros__parameters.offload.enabled": "false",
+            "/**.ros__parameters.auto_trigger.output_directory": simulation_snapshot_directory,
+        },
+        convert_types=True,
+    )
     control_share = get_package_share_directory("camrod_control")
     localization_share = get_package_share_directory("camrod_localization")
     perception_share = get_package_share_directory("camrod_perception")
@@ -906,6 +922,8 @@ def generate_launch_description():
     ]
 
     actions = [
+        SetLaunchConfiguration("snapshot_param_file", simulation_snapshot_params),
+        SetLaunchConfiguration("snapshot_output_directory", simulation_snapshot_directory),
         # HH_260921 - Applies to direct, normal, tuned and site-geometry launch.
         # Production ui.launch.py already shares mission_records_root between
         # its recorder and backend. Pin the label in this inherited launch

@@ -1,9 +1,5 @@
 # camrod_ui
 
-<!-- HH_260915 - Separate persistent trip/CAN journal, preserving legacy metrics. -->
-왕복 미션·자율/수동·정지 사유·CAN 상세 기록의 기준과 실행 방법:
-[mission_recording.md](docs/mission_recording.md).
-
 <!-- HH_260807 - Make the documented renderer match the WebKit field default
 while retaining the tested Chromium and auto alternatives. -->
 <!-- HH_260807 - Preserve charger-departure authorization and deduplicate destination commands. -->
@@ -455,6 +451,10 @@ accepted the next campsite without duplicating the destination or motion owner.
 | `GET /ui/state` | Full UI state snapshot |
 | `GET /ui/destination` | Current/valid destinations |
 | `GET /ui/diagnostics` | Aggregated diagnostic detail |
+| `GET /api/admin/snapshot/status` | Snapshot service, buffering, active/discovered-topic, disk, and last-write state |
+| `POST /api/admin/snapshot/topics` | Add currently published ROS topics to the in-memory snapshot buffer |
+| `DELETE /api/admin/snapshot/topics` | Remove runtime-added topics; YAML base topics remain fixed |
+| `POST /api/admin/snapshot` | Write the selected active buffers (all when `topics` is omitted/empty) to the requested robot/server directory (`output_directory`), or the configured default when omitted |
 | `GET /api/service-metrics/summary` | Current/latest, today, all-time, and B1-B13 average/latest/current summaries without history arrays |
 | `GET /api/service-metrics?days=30&recent_limit=50` | Date totals, recent services, and the same B1-B13 quantitative comparison |
 | `POST /api/telemetry/session?active=true|false&view=<name>` | Acquire/release one bounded live-view lease |

@@ -281,13 +281,17 @@ def _run_webkit(args: argparse.Namespace) -> int:
         window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         web_view = WebKit2.WebView()
         settings = web_view.get_settings()
-        # HH_260805 - Keep GPU compositing active for the kiosk and enable
-        # smooth touch scrolling. WebGL stays off because this UI does not use it.
+        # HH_260805 - Keep GPU compositing active for the kiosk. WebGL stays off
+        # because this UI does not use it.
+        # HJ_260922 - Smooth scrolling is off: WebKitGTK animates every scroll
+        # step over a fixed easing period, so long modals such as the usage
+        # guide drift on after the touch ends. Kiosk scrolling must track the
+        # finger, not glide.
         setting_values = {
             "set_enable_developer_extras": False,
             "set_enable_write_console_messages_to_stdout": False,
             "set_enable_page_cache": True,
-            "set_enable_smooth_scrolling": True,
+            "set_enable_smooth_scrolling": False,
             "set_enable_webgl": False,
         }
         for setter_name, value in setting_values.items():
