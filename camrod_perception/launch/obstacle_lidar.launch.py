@@ -9,6 +9,8 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # HH_260407 - Expose the LiDAR obstacle node as a standalone, toggleable
+    # launch using the shared perception parameter file.
     default_param = os.path.join(
         get_package_share_directory('camrod_perception'),
         'config',

@@ -62,7 +62,7 @@
       z: 0.756                # IMU mount Z offset from sensor_kit_base_link [m].
       roll: 0.0               # IMU mount roll offset [deg].
       pitch: 0.0              # IMU mount pitch offset [deg].
-      # HH_260413: Align IMU frame to robot_center_link heading (mount calibration).
+      # HH_260413 - Align IMU frame to robot_center_link heading (mount calibration).
       yaw: 0.0                # IMU mount yaw offset [deg].
 
     # =========================================================================
@@ -94,7 +94,7 @@
     # =========================================================================
     # 6. CAMERA MOUNT POSES (FRONT + REAR)
     # =========================================================================
-    # HH_260528: Dual econ camera mount poses (front + rear), mirroring radar nested structure.
+    # HH_260528 - Dual econ camera mount poses (front + rear), mirroring radar nested structure.
     # Measured from sensor_kit_base_link (coincident with robot_center_link).
     # Body → optical frame rotation is handled inside econ_camera_link xacro macro (RPY=-π/2,0,-π/2).
     camera:

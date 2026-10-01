@@ -1,11 +1,11 @@
-# 260708: Exterior light control (headlight relay + WS2815 turn indicators).
+# HH_260708 - Exterior light control (headlight relay + WS2815 turn indicators).
 # Decision rules and serial protocol: docs/lights-design-doc.html
 /platform/light_controller:
   ros__parameters:
     # ---- Inputs ----
     # HH_260720 - Hardware e-stop is carried by the generated platform status.
     platform_status_topic: "/platform/status"
-    # State machine mirrors ERROR_STOP onto this soft-estop topic (HH_260701),
+    # HH_260701 - The state machine mirrors ERROR_STOP onto this soft-estop topic,
     # so hazard covers both hardware estop and planning ERROR_STOP.
     estop_state_machine_topic: "/planning/state_machine/estop"
     headlight_command_topic: "/platform/headlight/command"

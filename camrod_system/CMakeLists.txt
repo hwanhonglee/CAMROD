@@ -6,7 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
-# HH_260326: system package unifies robot_diagnostics checkers into camrod_system.
+# HH_260326 - system package unifies robot_diagnostics checkers into camrod_system.
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
@@ -29,7 +29,7 @@ else()
   set(CAMROD_SYSTEM_YAML_LIB yaml-cpp)
 endif()
 
-# HH_260326: ranger_msgs is optional; build platform checker only when available.
+# HH_260326 - ranger_msgs is optional; build platform checker only when available.
 find_package(ranger_msgs QUIET)
 
 set(CAMROD_SYSTEM_COMMON_DEPS
@@ -58,7 +58,7 @@ function(camrod_system_add_checker target source_file)
     DESTINATION lib/${PROJECT_NAME})
 endfunction()
 
-# HH_260326: migrated checker executables (former robot_diagnostics_* packages).
+# HH_260326 - migrated checker executables (former robot_diagnostics_* packages).
 camrod_system_add_checker(hw_checker_node src/diagnostics/hw_checker_node.cpp)
 target_link_libraries(hw_checker_node stdc++fs)
 camrod_system_add_checker(gpu_checker_node src/diagnostics/gpu_checker_node.cpp)
@@ -87,7 +87,7 @@ camrod_system_add_checker(planning_lifecycle_checker_node src/diagnostics/planni
 camrod_system_add_checker(planning_costmap_checker_node src/diagnostics/planning_costmap_checker_node.cpp)
 camrod_system_add_checker(planning_nav_status_checker_node src/diagnostics/planning_nav_status_checker_node.cpp)
 camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_path_checker_node.cpp)
-# HH_260617: Validate semantic planning state before parking/control progression.
+# HH_260617 - Validate semantic planning state before parking/control progression.
 camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
 
 # HH_260805 - Keep component libraries and standalone executables for every
@@ -180,7 +180,7 @@ rclcpp_components_register_nodes(
   "camrod_system::PlanningStateChecker"
 )
 
-# HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
+# HH_260727 - Exercise Nav2 goal UUID/state abort deduplication without starting
 # the full navigation stack.
 if(BUILD_TESTING)
   # Low SOC may request charger return without hiding real battery faults.

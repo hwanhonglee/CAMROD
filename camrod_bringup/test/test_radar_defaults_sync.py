@@ -34,7 +34,7 @@ _SENSOR_NAMES = [
 
 _EXPECTED_DRIVER_ARRAYS = {
     "sensor_names": _SENSOR_NAMES,
-    # HH_260818: FRONT1/2 remain active; preserve the worak-test channel-7
+    # HH_260818 - FRONT1/2 remain active; preserve the worak-test channel-7
     # quarantine until rear hardware is accepted in a supervised field test.
     "sensor_enabled": [True, True, True, True, True, True, False],
     "hardware_angle_levels": [4] * 7,

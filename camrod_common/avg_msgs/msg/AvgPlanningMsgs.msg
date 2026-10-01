@@ -1,3 +1,4 @@
+# HH_260311 - Bundle planning goals, trajectories, and route status for diagnostics.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

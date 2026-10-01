@@ -18,21 +18,25 @@ def _parameters(path: Path) -> dict:
     ]["ros__parameters"]
 
 
+# HH_260819 - Tie the docking stop to camera range and a settled final yaw.
 def test_camera_range_thresholds_are_exact() -> None:
     """The runtime threshold must use the same camera norm shown by the UI."""
     package = CONTROL / "config/parking.yaml"
     parameters = _parameters(package)
     assert parameters["slowdown_start_tag_distance_m"] == 0.80
+    # HH_260824 - Stop translation at the revised 0.40 m camera threshold.
     assert parameters["translation_stop_tag_distance_m"] == 0.40
     assert parameters["minimum_approach_turn_radius_m"] == 0.85
     assert parameters["final_yaw_angular_speed_radps"] == 0.20
     assert parameters["final_yaw_settle_hold_s"] == 0.8
     assert parameters["final_yaw_settle_max_rate_degps"] == 3.0
+    # HH_260826 - Stop on a stale tag while allowing a full minute to reacquire.
     assert parameters["tag_timeout_s"] == 0.5
     assert parameters["tag_wait_timeout_s"] == 60.0
     assert parameters["odometry_timeout_s"] == 0.5
 
 
+# HH_260826 - Keep tag loss recoverable without allowing blind reverse motion.
 def test_tag_reacquisition_wait_is_one_minute_with_immediate_safe_stop() -> None:
     """A stale tag stops quickly but remains recoverable for one minute."""
     for config in (
@@ -55,6 +59,7 @@ def test_tag_reacquisition_wait_is_one_minute_with_immediate_safe_stop() -> None
     assert "fail();" in waiting_block
 
 
+# HH_260824 - Keep deployed parking parameters identical to package defaults.
 def test_parking_parameter_mirrors_are_exact() -> None:
     """Full bringup mirrors the package-owned runtime file byte for byte."""
     package = CONTROL / "config/parking.yaml"
@@ -62,11 +67,13 @@ def test_parking_parameter_mirrors_are_exact() -> None:
     assert package.read_bytes() == deployment.read_bytes()
 
 
+# HH_260819 - Never resume blind translation after the camera-range stop.
 def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
     """No post-0.40 m phase may restore blind insertion or retry motion."""
     source = NODE.read_text(encoding="utf-8")
     assert "tag_camera_distance_m_ <= translation_stop_tag_distance_m_" in source
     assert "transitionTo(State::FINAL_YAW_ALIGNMENT)" in source
+    # HH_260824 - Record why translation stopped at the revised range.
     assert 'translation_stop_reason_ = "tag_range"' in source
     assert "translation_stop_trigger_tag_distance_m_ = tag_camera_distance_m_" in source
     assert "case State::FINAL_REVERSE_INSERTION" not in source
@@ -93,6 +100,7 @@ def test_translation_latches_off_before_yaw_and_charging_wait() -> None:
     assert "command.angular" not in waiting_block
 
 
+# HH_260819 - Refuse tag-guided motion when vehicle odometry is stale.
 def test_fresh_odometry_gates_tag_capture_and_every_motion_entry() -> None:
     """No tag-guided reverse or yaw command may use a stale vehicle pose."""
     source = NODE.read_text(encoding="utf-8")
@@ -142,6 +150,7 @@ def test_fresh_odometry_gates_tag_capture_and_every_motion_entry() -> None:
     assert "command.angular" not in reverse_stale
 
 
+# HH_260819 - Replay parked service state so a restarted UI can recover it.
 def test_recoverable_service_state_repeats_on_status_heartbeat() -> None:
     """A restarted UI recovers parked state without relying on a transition edge."""
     source = NODE.read_text(encoding="utf-8")
@@ -162,6 +171,7 @@ def test_recoverable_service_state_repeats_on_status_heartbeat() -> None:
     assert "publishServiceState(true);" in source.split("void transitionTo", 1)[1]
 
 
+# HH_260819 - Authoritative charging contact must stop docking motion first.
 def test_charging_preempts_every_active_motion_phase() -> None:
     """Normalized charging must publish zero before the state-specific commands."""
     source = NODE.read_text(encoding="utf-8")
@@ -171,13 +181,16 @@ def test_charging_preempts_every_active_motion_phase() -> None:
     guard = source[preemption:state_switch]
     assert "publishStop();" in guard
     assert "transitionTo(State::PARKED);" in guard
+    # HH_260824 - Preserve the charging cause in the translation-stop evidence.
     assert 'translation_stop_reason_ = "charging"' in guard
+    # HH_260911 - A late charge clears a prior parking timeout error.
     assert "state_ != State::ERROR" not in guard
     assert "parking ERROR recovered by authoritative charging contact" in guard
     assert 'case State::WAITING_FOR_CHARGING: return "WAITING_FOR_CHARGING";' in source
     assert 'message.state_name = "WAITING_FOR_CHARGING";' in source
 
 
+# HH_260911 - Recover either controller from timeout when charging arrives late.
 def test_late_charging_contact_recovers_both_parking_controllers() -> None:
     """A timeout ERROR must clear when authoritative charger current returns."""
     apriltag = NODE.read_text(encoding="utf-8")
@@ -198,6 +211,7 @@ def test_late_charging_contact_recovers_both_parking_controllers() -> None:
     assert "parking ERROR recovered by authoritative charging contact" in reverse
 
 
+# HH_260911 - Keep physical waiting-for-charge state visible despite health ERROR.
 def test_reverse_charge_timeout_retains_terminal_wait_service_state() -> None:
     """Health ERROR must not erase the physical parked/waiting service evidence."""
     reverse = REVERSE_NODE.read_text(encoding="utf-8")
@@ -215,6 +229,7 @@ def test_reverse_charge_timeout_retains_terminal_wait_service_state() -> None:
     assert "else {\n      return;\n    }" in publish_service_state
 
 
+# HH_260819 - Keep command ownership and obstacle checks through stopped phases.
 def test_safety_gate_owns_new_stopped_phases_without_dynamic_bypass() -> None:
     """The phases retain command ownership; rotation obstacle checks stay enabled."""
     gate_source = (CONTROL / "src/cmd_vel_safety_gate_node.cpp").read_text(

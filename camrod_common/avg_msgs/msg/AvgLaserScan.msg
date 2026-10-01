@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned planar laser scan contract for module-to-module transport.
 avg_msgs/AvgHeader header
 float32 angle_min
 float32 angle_max

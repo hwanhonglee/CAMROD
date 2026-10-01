@@ -134,7 +134,7 @@ def generate_launch_description():
     )
     publish_rate_arg = DeclareLaunchArgument(
         'publish_rate_hz',
-        # HH_260618: Match fake sensor launch override with YAML default to reduce sim topic load.
+        # HH_260618 - Match fake sensor launch override with YAML default to reduce sim topic load.
         default_value='10.0',
         description='Fake sensor publish rate (Hz)',
     )
@@ -232,7 +232,7 @@ def generate_launch_description():
         cmd=[
             'bash',
             '-lc',
-            # HH_260618: Match both ROS node token and script name, then
+            # HH_260618 - Match both ROS node token and script name, then
             # escalate after a short grace period so standalone sim reruns do
             # not leave fake_sensor_publisher consuming CPU.
             '_pids=""; '

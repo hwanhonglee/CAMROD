@@ -79,6 +79,7 @@ class _FakeServerThread:
         self.alive = False
 
 
+# HH_260805 - Protect Guest WebSocket ordering and shutdown across ROS and HTTP threads.
 class GuestTransportTest(unittest.IsolatedAsyncioTestCase):
     async def test_concurrent_json_writes_are_serialized(self) -> None:
         transport = _GuestTransport()
@@ -145,6 +146,7 @@ class GuestTransportTest(unittest.IsolatedAsyncioTestCase):
 
 class OperatorWindowTest(unittest.TestCase):
 
+    # HH_260904 - Detect a new frontend build without accepting a cached kiosk response.
     def test_frontend_revision_hash_bypasses_http_cache(self) -> None:
         body = b"<html><script src='/static/js/main.1234.js'></script></html>"
         response = MagicMock()
@@ -186,6 +188,7 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertTrue(_build_parser().parse_args([]).fullscreen)
         self.assertFalse(_build_parser().parse_args(["--no-fullscreen"]).fullscreen)
 
+    # HH_260807 - Keep WebKit the default while allowing a Chromium override.
     def test_webkit_engine_is_default_with_explicit_chromium_override(self) -> None:
         parser = _build_parser()
         self.assertEqual(parser.parse_args([]).engine, "webkit")
@@ -284,7 +287,7 @@ class OperatorWindowTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("window.set_deletable(False)", window_text)
         self.assertIn("HardwareAccelerationPolicy.ALWAYS", window_text)
-        # Kiosk scrolling follows the touch directly; WebKit's easing lags behind it.
+        # HH_260922 - Disable WebKit easing so kiosk scrolling follows touch directly.
         self.assertIn('"set_enable_smooth_scrolling": False', window_text)
         self.assertIn('"set_enable_webgl": False', window_text)
         self.assertIn('if hasattr(context, "clear_cache")', window_text)
@@ -302,6 +305,7 @@ class OperatorWindowTest(unittest.TestCase):
             / "guest_frontend"
             / "index.html"
         ).read_text(encoding="utf-8")
+        # HH_260904 - Keep Wi-Fi feedback and heartbeat wiring in the shipped guest page.
         self.assertIn('class="wh-wifi" id="wifiBadge"', guest_html)
         self.assertIn("if (badge) badge.style.opacity", guest_html)
         self.assertIn("{ action: 'heartbeat' }", guest_html)
@@ -318,6 +322,7 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn('if action == "heartbeat":', guest_backend)
         self.assertIn("if idle_cycles >= 3:", guest_backend)
         self.assertIn("await asyncio.to_thread", guest_backend)
+        # HH_260904 - Bypass browser cache after a guest frontend update.
         self.assertIn(
             '"Cache-Control": "no-store, no-cache, must-revalidate"',
             guest_backend,
@@ -325,6 +330,7 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn("str(html_real), headers=no_store_headers", guest_backend)
 
 
+# HH_260805 - Keep ROS-touching endpoint work off the Guest server event loop.
 class BackendEndpointContractTest(unittest.TestCase):
 
     def test_ros_touching_rest_handlers_run_off_the_event_loop(self) -> None:

@@ -89,7 +89,7 @@ class GoalToleranceProbe(Node):
         if self._goal is None or self._pose is None:
             return
 
-        # HH_260617: Use a coordinate-specific name; mission keys are handled
+        # HH_260617 - Use a coordinate-specific name; mission keys are handled
         # separately by the planning state machine.
         goal_xy_signature = (round(self._goal[0], 2), round(self._goal[1], 2))
         if goal_xy_signature in self._recorded_goals:

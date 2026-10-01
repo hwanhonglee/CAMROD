@@ -1,4 +1,4 @@
-# HH_260311-00:00 Robot info definition migrated from sensor_kit-local message.
+# HH_260311 - Robot info definition migrated from sensor_kit-local message.
 avg_msgs/AvgRobotSpecifications robot_specifications
 avg_msgs/AvgSensorPose imu
 avg_msgs/AvgSensorPose gnss

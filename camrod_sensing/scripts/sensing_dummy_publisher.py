@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Publish explicit low-rate placeholders for deliberately disabled sensors."""
 
+# HH_260729 - Preserve topic shapes without letting disabled hardware look healthy.
+
 # Every output topic is absolute so this node can run below any launch
 # namespace without changing the public sensing contract. Publishers are
 # created only for groups whose ``publish_*`` parameter is true; this is the

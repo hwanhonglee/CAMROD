@@ -1,3 +1,4 @@
+// HH_260907 - Travel limits and axial alignment cannot substitute for a finite XY goal check.
 #include <limits>
 
 #include "camrod_control/reverse_parking_completion.hpp"

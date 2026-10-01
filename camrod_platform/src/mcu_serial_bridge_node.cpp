@@ -1,4 +1,4 @@
-// 260708 - Serial bridge between light_controller and the Arduino Nano light MCU.
+// HH_260708 - Serial bridge between light_controller and the Arduino Nano light MCU.
 // Wire protocol (115200 8N1, newline-terminated JSON, docs/lights-design-doc.html):
 //   PC -> MCU @ tx_rate_hz : {"h":0|1,"i":"O"|"L"|"R"|"H","q":<seq>}
 //   MCU -> PC @ ~1 Hz      : {"a":<last seq>,"h":0|1,"i":"...","e":<error code>}
@@ -34,6 +34,7 @@ public:
       "lights_command_topic", "/platform/lights/command");
     lights_status_topic_ = declare_parameter<std::string>(
       "lights_status_topic", "/platform/lights/status");
+    // HH_260727 - Pin the field light MCU to its verified FTDI by-id port.
     serial_port_ = declare_parameter<std::string>(
       "serial_port",
       "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG003YCF-if00-port0");

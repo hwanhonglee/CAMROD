@@ -15,6 +15,7 @@ def _parameters(path: Path) -> dict:
     ]
 
 
+# HH_260819 - Keep the 1.5 s dock-current fast path separate from the 10 s global filter.
 def test_charging_fast_path_is_narrow_and_mirrored() -> None:
     files = (
         SRC_ROOT / "camrod_platform/config/ranger_driver.yaml",
@@ -33,6 +34,7 @@ def test_charging_fast_path_is_narrow_and_mirrored() -> None:
         "charging_fast_confirm_s": 1.5,
         "charging_fast_status_ttl_s": 1.5,
         "charging_sample_max_gap_s": 1.0,
+        # HH_260911 - Preserve false-assertion grace through the package/bringup mirror.
         "charging_assertion_false_grace_s": 0.75,
     }
     for profile in profiles:

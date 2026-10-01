@@ -5,6 +5,7 @@
 
 #include "camrod_localization/navsat_fix_validation.hpp"
 
+// HH_260729 - Reject disabled GNSS no-fix heartbeats and invalid geodetic coordinates.
 namespace
 {
 

@@ -19,7 +19,7 @@ inline void raise_camera_diagnostic(
   int8_t candidate_level,
   const std::string & candidate_message)
 {
-  // Preserve the first (higher-priority) reason when two checks have the same
+  // HH_260729 - Preserve the first (higher-priority) reason when two checks have the same
   // severity. In particular, a matching encoding must never rename FPS WARN.
   if (candidate_level > status.level) {
     status.level = candidate_level;

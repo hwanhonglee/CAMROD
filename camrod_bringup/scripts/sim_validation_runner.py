@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260630: Deterministic sim validation for planning, cmd gates, and fake obstacle sources.
+# HH_260630 - Deterministic sim validation for planning, cmd gates, and fake obstacle sources.
 
 from __future__ import annotations
 
@@ -1008,7 +1008,7 @@ class SimValidationRunner(Node):
         # rear=0.15 m. The former 1.0/0.6/0.4 m values cannot be painted by the
         # current near-field radar profile and made the test exercise no hit.
         radar_offsets = {"front": 0.20, "left": 0.09, "right": 0.09, "rear": 0.15}
-        # HH_260630: Keep LiDAR-only fake obstacles clearly outside ego-clear
+        # HH_260630 - Keep LiDAR-only fake obstacles clearly outside ego-clear
         # while staying inside the side/rear lookahead corridors.
         lidar_offsets = {"front": 1.0, "left": 0.95, "right": 0.95, "rear": 0.95}
         directions = ["front", "left", "right", "rear"]
@@ -1149,7 +1149,7 @@ class SimValidationRunner(Node):
         self.publish_engage(False)
         self.publish_mission_engage(False)
         self.cancel_all_actions()
-        # HH_260630: Probe goal_snapper through its auxiliary input so the
+        # HH_260630 - Probe goal_snapper through its auxiliary input so the
         # preparation step does not look like a user/UI camping goal to
         # camping_site_maneuver_controller or the state-machine raw-goal listener.
         self.publish_prepare_goal_pose(goal_pose)
@@ -1173,7 +1173,7 @@ class SimValidationRunner(Node):
         start.header.stamp = self.get_clock().now().to_msg()
         start.header.frame_id = route_goal.header.frame_id or "map"
         offset_m = max(0.0, abs(self.camping_start_offset_m))
-        # HH_260630: Keep the camping end-to-end test deterministic by starting
+        # HH_260630 - Keep the camping end-to-end test deterministic by starting
         # at the snapped lanelet entry instead of from wherever a previous sim
         # run left the fake vehicle; nonzero offsets can land on the opposite
         # directed lanelet and turn a handoff test into a full route test.
@@ -1247,7 +1247,7 @@ class SimValidationRunner(Node):
     def load_camping_goal(self, mission_key: str) -> RosPoseStamped | None:
         site = self.load_camping_site_config(mission_key)
         if site is not None:
-            # HH_260630: Sim UI validation mirrors ui_backend_node behavior:
+            # HH_260630 - Sim UI validation mirrors ui_backend_node behavior:
             # publish semantic mission_key first, then its operational goal pose.
             # HH_260721 - Prefer a roadside service pose for map-annotated inaccessible sites.
             pose = RosPoseStamped()
@@ -1684,7 +1684,7 @@ class SimValidationRunner(Node):
             )
             return
 
-        # HH_260630: prepare_camping_start_pose intentionally disarms planning
+        # HH_260630 - prepare_camping_start_pose intentionally disarms planning
         # while it probes the snapped route and seeds /initialpose. Re-arm both
         # gates before mirroring the UI mission_key + goal publish sequence.
         self.cancel_parking_maneuvers()

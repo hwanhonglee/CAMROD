@@ -16,6 +16,7 @@ const formatBytes = value => {
 };
 
 async function requestJson(url, options) {
+  // HH_260918 - Surface snapshot API failures with the server's own explanation.
   const response = await fetch(url, options);
   let body = {};
   try {
@@ -32,6 +33,7 @@ async function requestJson(url, options) {
 }
 
 export default function SnapshotControl() {
+  // HH_260918 - Keep ROS bag buffering and the explicit write action separate in the UI.
   const [status, setStatus] = useState({
     available: false,
     recording: false,
@@ -62,6 +64,7 @@ export default function SnapshotControl() {
       const body = await requestJson('/api/admin/snapshot/status');
       setStatus(body);
       const activeNames = (body.active_topics || []).map(item => item.name);
+      // HH_260922 - Keep operator choices while selecting newly buffered topics by default.
       const activeSet = new Set(activeNames);
       setSelectedTopics(current => {
         if (!selectionInitialized.current) {
@@ -89,6 +92,7 @@ export default function SnapshotControl() {
     }
   }, []);
 
+  // HH_260918 - Poll service state so recording and write progress remain visible.
   useEffect(() => {
     let mounted = true;
     const run = async quiet => {
@@ -108,6 +112,7 @@ export default function SnapshotControl() {
   );
   const selectedTopicNames = useMemo(() => new Set(selectedTopics), [selectedTopics]);
   const allTopics = useMemo(() => {
+    // HH_260922 - Show discoverable topics alongside those already being buffered.
     const topics = new Map();
     (status.available_topics || []).forEach(topic => topics.set(topic.name, topic));
     (status.active_topics || []).forEach(topic => topics.set(topic.name, {
@@ -130,6 +135,7 @@ export default function SnapshotControl() {
     && numericLookback >= 1
     && numericLookback <= 300;
 
+  // HH_260922 - Estimate the disk budget before enabling a snapshot write.
   useEffect(() => {
     if (!status.available || !selectedTopics.length || !lookbackValid || busy) {
       setEstimate(null);
@@ -177,6 +183,7 @@ export default function SnapshotControl() {
   ]);
 
   const toggleTopic = async topic => {
+    // HH_260922 - Start buffering only when an unbuffered topic is first selected.
     if (topicPending || busy || topic.selectable === false) return;
     setConfirmWrite(false);
     if (selectedTopicNames.has(topic.name)) {
@@ -220,6 +227,7 @@ export default function SnapshotControl() {
   };
 
   const writeSnapshot = async () => {
+    // HH_260922 - Require a valid estimate and confirmation before consuming disk space.
     if (!lookbackValid) {
       setMessage('저장 범위는 1초에서 300초 사이로 입력해 주세요.');
       return;

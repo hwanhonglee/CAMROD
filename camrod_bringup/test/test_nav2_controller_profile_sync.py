@@ -54,6 +54,7 @@ def _final_kph(raw_mps: float, gate_scale: float) -> float:
     return raw_mps * gate_scale * 3.6
 
 
+# HH_260818 - Isolate the field A/B difference to RPP preview geometry.
 def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> None:
     """Keep the field A/B difference explicit and limited to preview geometry."""
     preview_keys = {
@@ -99,6 +100,7 @@ def test_package_and_bringup_nav2_profiles_keep_only_the_preview_ab_split() -> N
         assert deployed == package
 
 
+# HH_260908 - Hand off from Nav2 to local parking at the field-tuned goal limit.
 def test_route_handoff_uses_field_tuned_goal_checker_before_local_parking() -> None:
     """Nav2 hands off at 0.20 m; local parking then owns final alignment."""
     package = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
@@ -115,6 +117,7 @@ def test_route_handoff_uses_field_tuned_goal_checker_before_local_parking() -> N
         assert profile["manual_goal_checker"]["xy_goal_tolerance"] == 0.25
 
 
+# HH_260908 - Allow center-frame turn displacement during local drop-zone approach.
 def test_drop_zone_local_approach_allows_center_reference_turn_displacement() -> None:
     """The package and deployed mirrors retain the field-tuned 0.20 m handoff."""
     package = _node_parameters(
@@ -130,6 +133,7 @@ def test_drop_zone_local_approach_allows_center_reference_turn_displacement() ->
     assert deployed["parking_approach_position_tolerance_m"] == 0.20
 
 
+# HH_260807 - Match the real controller period to the 20 Hz EKF prediction.
 def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
     """Keep localization prediction and path-control periods synchronized."""
     controller = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
@@ -171,6 +175,7 @@ def test_real_controller_matches_twenty_hz_ekf_prediction() -> None:
     assert checker["hz_error_ratio"] == 0.70
 
 
+# HH_260807 - Do not fault on expected path clears during service handoffs.
 def test_local_path_diagnostic_ignores_service_owned_motion_handoffs() -> None:
     """An expected Nav2 path clear must not flash SYSTEM ERROR in a maneuver."""
     package_path = (
@@ -224,6 +229,7 @@ def test_local_path_diagnostic_ignores_service_owned_motion_handoffs() -> None:
     assert "path point count transition grace" in source
 
 
+# HH_260807 - Keep the path-extraction and safety chain on a 50 ms clock.
 def test_local_path_chain_matches_twenty_hz_pose_control_clock() -> None:
     """Keep safety-path and tracking feedback on the 50 ms control period."""
     package_path = PLANNING_CONFIG / "local_path_extractor.yaml"
@@ -262,6 +268,7 @@ def test_local_path_chain_matches_twenty_hz_pose_control_clock() -> None:
     assert 'declare_parameter("expected_hz",         20.0)' in checker_source
 
 
+# HH_260805 - Delay route replanning while retaining immediate command stops.
 def test_obstacle_fallback_requires_twenty_seconds_on_a_wide_lane() -> None:
     """Delay planner preemption without weakening immediate command stopping."""
     filename = "obstacle_replan_monitor.yaml"
@@ -292,6 +299,7 @@ def test_obstacle_fallback_requires_twenty_seconds_on_a_wide_lane() -> None:
     assert "obstacle_replan_expect_safe_hold" in runner_source
 
 
+# HH_260805 - Load only planners reachable from the production policy.
 def test_production_loads_only_policy_reachable_planners() -> None:
     """Keep dormant planner implementations available without constructing them."""
     for profile in ("production.yaml", "all.yaml"):
@@ -325,6 +333,7 @@ def test_production_loads_only_policy_reachable_planners() -> None:
         assert planner_id in definitions
 
 
+# HH_260805 - Keep optional controllers installed but inactive by default.
 def test_production_loads_only_policy_reachable_controllers() -> None:
     """Keep optional controller implementations without constructing them."""
     profile_dir = PLANNING_CONFIG / "nav2_controller_profiles"
@@ -350,6 +359,7 @@ def test_production_loads_only_policy_reachable_controllers() -> None:
         assert controller_id in definitions
 
 
+# HH_260805 - Select low-overhead profiles and orderly Nav2 shutdown.
 def test_launch_defaults_select_production_load_profiles_and_graceful_shutdown() -> None:
     """Bringup must select low-overhead profiles and avoid shutdown pkill races."""
     defaults = yaml.safe_load(
@@ -377,6 +387,7 @@ def test_launch_defaults_select_production_load_profiles_and_graceful_shutdown()
     assert "nav2_controller_profiles', 'production.yaml" in launch_text
 
 
+# HH_260805 - Break callback ownership cycles during lifecycle cleanup.
 def test_progress_checker_releases_parent_callbacks_during_lifecycle_cleanup() -> None:
     """Prevent a node/plugin ownership cycle from surviving rcl shutdown."""
     progress_source = (
@@ -398,6 +409,7 @@ def test_progress_checker_releases_parent_callbacks_during_lifecycle_cleanup() -
     assert "progress_checker_.reset();" in cleanup
 
 
+# HH_260818 - Keep the package's manual shim on the fixed A/B RPP side.
 def test_package_manual_rotation_shim_matches_the_fixed_rpp_profile() -> None:
     """Keep the package's manual and mission controllers on one fixed A/B profile."""
     base = _parameters(PLANNING_CONFIG / "nav2_base.yaml")
@@ -420,6 +432,7 @@ def test_package_manual_rotation_shim_matches_the_fixed_rpp_profile() -> None:
     assert manual_rpp["use_velocity_scaled_lookahead_dist"] is False
 
 
+# HH_260730 - Exclude RPP settings ignored by the bundled implementation.
 def test_rpp_profile_contains_only_effective_limit_names() -> None:
     """Prevent reintroducing RPP keys ignored by the bundled implementation."""
     rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
@@ -435,6 +448,7 @@ def test_rpp_profile_contains_only_effective_limit_names() -> None:
         assert ignored_key not in rpp
 
 
+# HH_260818 - Preserve the fixed two-kph package profile for field comparison.
 def test_package_two_kph_rpp_keeps_the_fixed_ab_preview() -> None:
     """The package side of the pending A/B must remain fixed and reproducible."""
     rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
@@ -447,6 +461,7 @@ def test_package_two_kph_rpp_keeps_the_fixed_ab_preview() -> None:
     assert rpp["max_lookahead_dist"] == 2.0
 
 
+# HH_260807 - Scale service speeds from two kph but retain slow recovery motion.
 def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
     """Scale service motion from 2 km/h while keeping recovery deliberately slow."""
     for filename in ("control.yaml", "parking.yaml", "yaw_alignment_zones.yaml"):
@@ -545,6 +560,7 @@ def test_two_kph_operational_speed_ratios_and_safety_exception() -> None:
     )
 
 
+# HH_260807 - Make simulated constant-speed fallback match deployed cruise.
 def test_fake_constant_speed_fallback_matches_two_kph_cruise() -> None:
     """Standalone and YAML simulation fallbacks must model the final command."""
     fake_config = yaml.safe_load(
@@ -564,6 +580,7 @@ def test_fake_constant_speed_fallback_matches_two_kph_cruise() -> None:
     assert 'declare_parameter("speed_mps", 0.555556)' in fake_publisher
 
 
+# HH_260807 - Project collisions from the final scaled command actually sent.
 def test_safety_gate_evaluates_the_final_scaled_command() -> None:
     """Keep collision projection and publication on the same final command."""
     source = (
@@ -578,6 +595,7 @@ def test_safety_gate_evaluates_the_final_scaled_command() -> None:
     assert "publishCommand(evaluated_command);" in source
 
 
+# HH_260818 - Stop directly on classified fusion without raw LiDAR cost enabled.
 def test_classified_fusion_is_a_direct_two_meter_stop_source() -> None:
     """Classified fusion stops directly without enabling raw LiDAR cost."""
     gate = yaml.safe_load(
@@ -605,6 +623,7 @@ def test_classified_fusion_is_a_direct_two_meter_stop_source() -> None:
     assert '"cost_stop_dynamic_source_labels", "radar,fusion"' in source
 
 
+# HH_260824 - Return through latched crab, wheel settle and longitudinal stages.
 def test_campsite_return_uses_latched_axis_stages_at_route_goal_anchor() -> None:
     """Crab, settle the wheels once, then correct longitudinal drift."""
     source = (
@@ -690,6 +709,7 @@ def test_campsite_return_uses_latched_axis_stages_at_route_goal_anchor() -> None
     assert campsite["return_steering_settle_s"] >= ninety_to_ready_s
 
 
+# HH_260818 - Give UI admission and maneuver start one opt-in occupancy guard.
 def test_campsite_occupancy_guard_is_one_opt_in_policy() -> None:
     """UI admission and maneuver start must use one disabled-by-default flag."""
     defaults = yaml.safe_load(
@@ -728,6 +748,7 @@ def test_campsite_occupancy_guard_is_one_opt_in_policy() -> None:
         assert "enable_campsite_occupancy_guard" in source
 
 
+# HH_260818 - Settle Ranger steering mode before campsite translation.
 def test_ranger_mode_change_settles_before_campsite_translation() -> None:
     """Keep the deployed 20% Ackermann floor out of DA/parallel transitions."""
     bringup = yaml.safe_load(
@@ -764,6 +785,7 @@ def test_ranger_mode_change_settles_before_campsite_translation() -> None:
     assert "translational_mode_initialized_ = false;" in driver_source
 
 
+# HH_260807 - Separate gross start turns from normal curved-path tracking.
 def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> None:
     """Finish a gross start turn without making normal RPP curves stop-turn."""
     vehicle = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")
@@ -790,6 +812,7 @@ def test_gross_start_alignment_is_separate_from_continuous_curve_tracking() -> N
     assert gate["route_heading_max_linear_x"] == 0.0
 
 
+# HH_260807 - Soak repeated services with a fixed map obstacle in simulation.
 def test_sim_runner_locks_map_fixed_obstacle_and_repeated_service_contract() -> None:
     """Keep the release soak broader than a one-way campsite smoke test."""
     runner = (

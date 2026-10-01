@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned binary point cloud contract for module-to-module transport.
 avg_msgs/AvgHeader header
 uint32 height
 uint32 width

@@ -1,4 +1,4 @@
-// HH_260805 / TODOLIST 12 - Execute only the safety gate's projected staged
+// HH_260805 - TODO list 12: Execute only the safety gate's projected staged
 // crab/reverse/yaw recommendation; Nav2 retains mission ownership.
 
 #include <algorithm>

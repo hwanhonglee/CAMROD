@@ -1,3 +1,4 @@
+# HH_260318 - Carry system-wide diagnostic status through the module message stream.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

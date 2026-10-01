@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HH_260428: One-time workspace setup — clones external dependencies and installs ROS deps.
+# HH_260428 - One-time workspace setup — clones external dependencies and installs ROS deps.
 #
 # Run this ONCE on a new machine or after a fresh git clone.
 # It will NOT overwrite existing external directories unless --update is given.
@@ -10,7 +10,7 @@
 #   ./setup_camrod.sh --no-rosdep # skip rosdep after explicit system-package + external setup
 #
 # WARN: --update overwrites any local changes inside external/ directories.
-# HH_260630: setup covers the current split runtime:
+# HH_260630 - setup covers the current split runtime:
 #   - HH_260720 - Parking controllers are owned by the local camrod_control package.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
 #   - HH_260721 - AprilTag detector/controller is implemented locally with no legacy docking dependency.
@@ -19,7 +19,7 @@
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
 #   - sim validation is installed by camrod_bringup and run after bringup, not here.
 #   - colcon tests/lint are separate from setup because ament lint policy is package-specific.
-# HH_260727: current field setup assumptions:
+# HH_260727 - current field setup assumptions:
 #   - ZED-F9P heading rover uses /dev/ttyACM0; moving-base corrections use the
 #     FTDI DN05Y9E7 by-id path at 460800 baud. A replacement adapter requires
 #     updating both mirrored GNSS YAMLs after rediscovering /dev/serial/by-id.
@@ -28,15 +28,15 @@
 #   - CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
-# HH_260706: v2.0.1 UI/IP and adaptive safety tuning are config/runtime changes
+# HH_260706 - v2.0.1 UI/IP and adaptive safety tuning are config/runtime changes
 #   installed by colcon_build.sh; setup remains dependency-only.
-# HH_260707: runtime-load and DDS/backlog reductions are code/config/runtime
+# HH_260707 - runtime-load and DDS/backlog reductions are code/config/runtime
 #   changes installed by colcon_build.sh. Do not add launch/test side effects
 #   here; this script remains dependency-only.
-# HH_260708: outdoor field-test helpers are installed by colcon_build.sh as
+# HH_260708 - outdoor field-test helpers are installed by colcon_build.sh as
 #   camrod_bringup scripts/docs. setup stays dependency-only so field testing
 #   never starts processes during machine setup.
-# HH_260702: setup is still dependency-only. Do not add runtime launch/test
+# HH_260702 - setup is still dependency-only. Do not add runtime launch/test
 #   side effects here; use colcon_build.sh for install sync and
 #   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,
 #   campsite, and drop-zone validation after bringup is running.
@@ -56,12 +56,12 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
-# HH_260428: Upstream URLs — override CAMROD_AGILEX_BASE for custom forks of agilexrobotics.
+# HH_260428 - Upstream URLs — override CAMROD_AGILEX_BASE for custom forks of agilexrobotics.
 AGILEX_BASE="${CAMROD_AGILEX_BASE:-https://github.com/agilexrobotics}"
 
 log() { echo "[setup_camrod] $*"; }
 
-# HH_260617: Keep setup usable from CI/Codex/non-interactive shells.  When sudo
+# HH_260617 - Keep setup usable from CI/Codex/non-interactive shells.  When sudo
 # cannot prompt for a password, report the exact apt command instead of hanging
 # or turning optional dependency setup into a hard failure.
 apt_install_pkgs() {
@@ -123,7 +123,7 @@ fi
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
 
-# HH_260428: Clone external repo if missing; update only when --update is given.
+# HH_260428 - Clone external repo if missing; update only when --update is given.
 clone_ext() {
   local url="$1" ref="$2" rel="$3"
   local abs="${SRC_ROOT}/${rel}"
@@ -142,7 +142,7 @@ clone_ext() {
   fi
 }
 
-# HH_260522: camrod_sensing camera component needs nvjpeg.h + libnvjpeg.so.
+# HH_260522 - camrod_sensing camera component needs nvjpeg.h + libnvjpeg.so.
 # Some Jetson images include runtime only; install matching dev packages when needed.
 has_nvjpeg_header() {
   [[ -f /usr/include/nvjpeg.h ]] || \
@@ -197,7 +197,7 @@ REQUIRED_SYS_PKGS=(
   gir1.2-webkit2-4.0
   libsdl2-dev        # HH_260615 - camrod_voice SDL2 audio backend.
   libsdl2-mixer-dev  # HH_260615 - camrod_voice WAV playback via Mix_* API.
-  # HH_260630: Explicitly install deps that rosdep may not resolve in
+  # HH_260630 - Explicitly install deps that rosdep may not resolve in
   # non-interactive field setup sessions.
   ros-humble-nav2-map-server        # Nav2 map server for planning bringup.
   ros-humble-behaviortree-cpp-v3    # Nav2 BT navigator runtime.
@@ -237,13 +237,13 @@ REQUIRED_SYS_PKGS=(
   python3-matplotlib
   python3-pil
   python3-setuptools                # HH_260720 - Python node installation for control/ui
-  can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.
-  iproute2                          # HH_260629: Provides `ip link` for setup_can0.sh.
+  can-utils                         # HH_260629 - SocketCAN diagnostics for Ranger bringup.
+  iproute2                          # HH_260629 - Provides `ip link` for setup_can0.sh.
   libpugixml-dev                    # Lanelet2 XML parser for camrod_map.
   libnanoflann-dev                  # PCL/point-cloud KNN support for perception.
 )
 
-# HH_260611: Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
+# HH_260611 - Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
 # builds do not warn about unavailable CUDA/JetPack runtime libraries.
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   _arch="$(uname -m)"
@@ -279,7 +279,7 @@ fi
 unset _pkg _missing
 
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
-  # HH_260611: Report missing nvjpeg only on Jetson targets where the camera
+  # HH_260611 - Report missing nvjpeg only on Jetson targets where the camera
   # pipeline actually depends on NVIDIA's nvjpeg runtime.
   _arch="$(uname -m)"
   if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
@@ -305,13 +305,13 @@ clone_ext "https://github.com/ros-perception/perception_pcl.git"             "hu
 clone_ext "https://github.com/ros-perception/laser_geometry.git"             "ros2"         "camrod_planning/external/laser_geometry"
 # HH_260721 - Do not clone the standalone ground_segmentation repository. Its
 # header-only core is tracked inside ground_segmentation_ros2, the only runtime package.
-# HH_260428: Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
+# HH_260428 - Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
 clone_ext "${AGILEX_BASE}/ugv_sdk.git"                                        "main"         "camrod_platform/external/ugv_sdk"
 clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "humble"       "camrod_platform/external/ranger_ros2"
 # HH_260720 - AprilTag parking dependencies are declared by camrod_control and camrod_perception.
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
-# HH_260428: These large SDK binaries are NOT stored in git. Download manually
+# HH_260428 - These large SDK binaries are NOT stored in git. Download manually
 # only if you intend to enable the vio_bridge package.
 #
 #   ZED SDK (Ubuntu 22, CUDA 12.x):
@@ -325,14 +325,14 @@ clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "h
 
 # ── rosdep ───────────────────────────────────────────────────────────────────
 if [[ "${DO_ROSDEP}" -eq 1 ]]; then
-  # HH_260630: rosdep init is idempotent; ignore the already-initialized case.
+  # HH_260630 - rosdep init is idempotent; ignore the already-initialized case.
   if ! rosdep init 2>/dev/null; then
     log "rosdep already initialized — skipping init"
   fi
   log "rosdep update"
   rosdep update || log "WARN: rosdep update failed — continuing"
 
-  # HH_260617: These keys are either source-built in this workspace, handled by
+  # HH_260617 - These keys are either source-built in this workspace, handled by
   # explicit apt setup above, Jetson-only, or upstream package.xml names that
   # are not part of the current CAMROD source build
   # that break idempotent x86_64 setup.  Keep rosdep focused on actionable deps.

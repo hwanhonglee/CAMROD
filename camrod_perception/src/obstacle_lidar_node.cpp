@@ -41,7 +41,7 @@ public:
     max_cluster_size_ = this->declare_parameter<int>(
       "max_cluster_size", kMaxClusterSizeDefault);
 
-    // HH_260522: unified ROI filter selector.
+    // HH_260522 - unified ROI filter selector.
     //   box/enabled/on: apply axis-aligned ROI bounds
     //   disabled/off/none: skip ROI bounds
     const std::string roi_filter_mode =
@@ -95,7 +95,7 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
 
-    // HH_260729: An empty cloud is a valid "no obstacle" frame (including the
+    // HH_260729 - An empty cloud is a valid "no obstacle" frame (including the
     // explicit LiDAR-disabled dummy stream).  Publish DELETEALL as a heartbeat
     // instead of silently dropping the frame and making perception diagnostics
     // look like the node crashed.

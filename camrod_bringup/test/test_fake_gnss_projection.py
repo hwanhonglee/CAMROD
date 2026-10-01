@@ -47,6 +47,7 @@ def _project_back_to_enu(x, y):
     )
 
 
+# HH_260806 - Keep the simulated GNSS origin fixed through the ENU/WGS84 round trip.
 def test_origin_round_trip_is_exact():
     east, north, _ = _project_back_to_enu(0.0, 0.0)
 
@@ -54,6 +55,7 @@ def test_origin_round_trip_is_exact():
     assert abs(north) < 1.0e-8
 
 
+# HH_260806 - Protect the authored A/B campsite position from projection drift.
 def test_gnss_ab_location_round_trip_is_submillimetre():
     expected_x = -13.8802
     expected_y = 43.5384

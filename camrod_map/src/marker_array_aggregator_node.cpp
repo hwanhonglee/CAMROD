@@ -1,4 +1,4 @@
-// HH_260304-00:00 // Merge contributor MarkerArray topics into one combined
+// HH_260304 - Merge contributor MarkerArray topics into one combined
 // debug marker topic. This is visualization-only and is distinct from the
 // actual Nav2 master costmap marker topic.
 
@@ -177,7 +177,7 @@ private:
       const size_t prev_count = prev_counts_[source_index];
       auto & prev_ns = prev_namespaces_[source_index];
 
-      // HH_260305-00:00 Delete stale ids when source marker count shrinks.
+      // HH_260305 - Delete stale ids when source marker count shrinks.
       if (prev_count > marker_index) {
         const std::string frame_id = !source.latest.markers.empty() ?
           source.latest.markers.front().header.frame_id : "map";
@@ -187,7 +187,7 @@ private:
         }
       }
 
-      // HH_260305-00:00 Delete previous id when namespace changed at same slot.
+      // HH_260305 - Delete previous id when namespace changed at same slot.
       const size_t overlap = std::min(prev_count, marker_index);
       const std::string frame_id = !source.latest.markers.empty() ?
         source.latest.markers.front().header.frame_id : "map";

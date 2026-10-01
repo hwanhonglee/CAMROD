@@ -1,4 +1,4 @@
-// Exercise the real campsite controller without spinning a robot launch. The
+// HH_260907 - Exercise the real campsite controller without spinning a robot launch. The
 // friend fixture injects fresh localization/mission inputs and advances phase
 // clocks deterministically; velocity safety remains owned by the final gate.
 #include "gtest/gtest.h"
@@ -76,7 +76,7 @@ protected:
   void tick() { node_->onTimer(); }
   void elapsed(const double seconds) {
     node_->phase_start_time_ = node_->now() - rclcpp::Duration::from_seconds(seconds);
-    // The voice timeout uses absolute time, independently of phase_start_time_.
+    // HH_260928 - The voice timeout uses absolute time, independently of phase_start_time_.
     // Advance its clock by the same simulated interval without disabling it.
     node_->recall_clearance_voice_gate_.tick(node_->now().seconds() + seconds);
   }
@@ -215,6 +215,7 @@ protected:
   std::string key_;
 };
 
+// HH_260928 - A completed cue cannot shorten the clearance floor; a missing cue waits for its timeout.
 TEST_F(CampingSiteManeuverControllerTest, FinishedVoiceCannotShortenClearanceFloor) {
   startRecall(1);
   ASSERT_TRUE(returnRequest().first);
@@ -488,6 +489,7 @@ TEST_F(CampingSiteManeuverControllerTest, BatteryUrgentReturnSkipsLoadingConfirm
   EXPECT_FALSE(returnPublished());
 }
 
+// HH_260908 - Urgent return must fail closed if bounded yaw alignment times out.
 TEST_F(CampingSiteManeuverControllerTest, BatteryUrgentYawAlignmentTimesOutFailClosed) {
   startRecall(1, false);
   ASSERT_TRUE(urgentReturnRequest().first);

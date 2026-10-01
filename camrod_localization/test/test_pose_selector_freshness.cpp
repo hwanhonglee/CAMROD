@@ -2,6 +2,7 @@
 
 #include "camrod_localization/pose_selector_freshness.hpp"
 
+// HH_260730 - Prefer the freshest stamped pose while preserving equal-stamp priority.
 namespace
 {
 

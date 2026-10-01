@@ -45,7 +45,7 @@ public:
     // HH_260720 - Use a filter-neutral status contract; EKF operation keeps this input disabled.
     filter_status_topic_ = declare_parameter<std::string>(
       "filter_status_topic", "/localization/filter/status");
-    // HH_260526: Replace use_filter_status toggle with explicit mode.
+    // HH_260526 - Replace use_filter_status toggle with explicit mode.
     // filter_status_mode options: stream | none.
     filter_status_mode_ = normalizeModeToken(
       declare_parameter<std::string>("filter_status_mode", "stream"));
@@ -71,11 +71,11 @@ public:
     gnss_rate_window_s_ = declare_parameter<double>("gnss_rate_window_s", 2.0);
     gnss_rate_window_.setWindowSeconds(gnss_rate_window_s_);
 
-    // HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
+    // HH_260507 - DR timeout — stop robot if DR continues too long or covariance grows too large.
     // 0 disables each check independently.
     dr_max_duration_s_ = declare_parameter<double>("dr_max_duration_s", 0.0);
     dr_max_cov_trace_ = declare_parameter<double>("dr_max_cov_trace", 0.0);
-    // HH_260626: Publish worse modes immediately, but require GNSS recovery to
+    // HH_260626 - Publish worse modes immediately, but require GNSS recovery to
     // remain stable briefly before returning to NORMAL. This avoids repeated
     // DR_ONLY->NORMAL flapping from one late GNSS sample.
     mode_degrade_debounce_s_ = declare_parameter<double>("mode_degrade_debounce_s", 0.0);
@@ -107,7 +107,7 @@ public:
       "/localization/state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
     degraded_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state/degraded", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
-    // HH_260507: DR timeout publisher — true when DR exceeds time or covariance limit.
+    // HH_260507 - DR timeout publisher — true when DR exceeds time or covariance limit.
     dr_timeout_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state/dr_timeout", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
@@ -284,7 +284,7 @@ private:
 
     mode = applyModeDebounce(mode, status_label, now);
 
-    // HH_260507: DR duration tracking and timeout detection.
+    // HH_260507 - DR duration tracking and timeout detection.
     if (in_dr) {
       if (dr_start_time_.nanoseconds() == 0) {
         dr_start_time_ = now;
@@ -451,7 +451,7 @@ private:
   double gnss_rate_window_s_{2.0};
   camrod_localization::GnssRateWindow gnss_rate_window_{2.0};
 
-  // HH_260507: DR timeout — 0 = disabled.
+  // HH_260507 - DR timeout — 0 = disabled.
   double dr_max_duration_s_{0.0};
   double dr_max_cov_trace_{0.0};
   double mode_degrade_debounce_s_{0.0};
@@ -469,7 +469,7 @@ private:
   std::string pending_status_label_;
   rclcpp::Time pending_mode_since_{0, 0, RCL_ROS_TIME};
 
-  // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs).
+  // HH_260422 - true -> also publish /localization/status (AvgLocalizationMsgs).
   bool publish_localization_status_{false};
   std::string localization_status_topic_;
 

@@ -148,7 +148,7 @@ public:
   : Node("localization_input_adapter")
   {
     enable_navsat_to_pose_ = declare_parameter<bool>("enable_navsat_to_pose", true);
-    // HH_260604: Add dual-antenna GNSS heading parameters for GNSS pose orientation.
+    // HH_260604 - Add dual-antenna GNSS heading parameters for GNSS pose orientation.
     enable_gnss_heading_ = declare_parameter<bool>("enable_gnss_heading", false);
     gnss_heading_topic_ = declare_parameter<std::string>(
       "gnss_heading_topic", "/sensing/gnss/navheading");
@@ -221,7 +221,7 @@ public:
 
     navsat_topic_ = declare_parameter<std::string>(
       "navsat_topic", "/sensing/gnss/ublox_gps_node/fix");
-    // HH_260527: Optional metric pose inputs.
+    // HH_260527 - Optional metric pose inputs.
     // UTM pose is treated as a metric XY source and shifted by configured offsets.
     utm_pose_topic_ = declare_parameter<std::string>("utm_pose_topic", "");
     gnss_pose_topic_ = declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose");
@@ -235,7 +235,7 @@ public:
       "gnss_pose_cov_ros_topic", "/sensing/gnss/pose_with_covariance_ros");
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     publish_gnss_covariance_ = declare_parameter<bool>("publish_gnss_covariance", true);
-    // HH_260526: Replace use_navsat_position_covariance toggle with explicit source mode.
+    // HH_260526 - Replace use_navsat_position_covariance toggle with explicit source mode.
     // navsat_covariance_source options: navsat | fixed.
     navsat_covariance_source_ = normalizeWheelInputType(
       declare_parameter<std::string>("navsat_covariance_source", "navsat"));
@@ -279,7 +279,7 @@ public:
     odom_output_frame_id_ = declare_parameter<std::string>("odom_output_frame_id", "");
 
     wheel_input_topic_ = declare_parameter<std::string>(
-      // HH_260410: Prefer platform status odometry as the primary wheel source.
+      // HH_260410 - Prefer platform status odometry as the primary wheel source.
       "wheel_input_topic", "/platform/status/odometry");
     wheel_output_topic_ = declare_parameter<std::string>(
       // HH_260720 - Localization owns the generated wheel stream after frame normalization.
@@ -357,7 +357,7 @@ public:
         navsat_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onNavSatFix, this, _1));
 
-      // HH_260604: Subscribe to dual-antenna GNSS heading when enabled.
+      // HH_260604 - Subscribe to dual-antenna GNSS heading when enabled.
       if (enable_gnss_heading_) {
         gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
           gnss_heading_topic_, rclcpp::SensorDataQoS(),
@@ -427,7 +427,7 @@ public:
         }
       }
 
-      // HH_260413: Explicit startup summary for primary/fallback wheel wiring.
+      // HH_260413 - Explicit startup summary for primary/fallback wheel wiring.
       RCLCPP_INFO(
         get_logger(),
         "wheel bridge configured: primary=(%s,%s) fallback=(%s,%s) timeout=%.2fs output=%s",
@@ -445,7 +445,7 @@ private:
     kFallback
   };
 
-  // HH_260604: Store heading samples with covariance and timestamp for GNSS pose fusion.
+  // HH_260604 - Store heading samples with covariance and timestamp for GNSS pose fusion.
   struct HeadingSample
   {
     geometry_msgs::msg::Quaternion orientation;
@@ -484,7 +484,7 @@ private:
     has_any_heading_ = true;
   }
 
-  // HH_260604: Cache yaw and covariance from dual-antenna GNSS heading.
+  // HH_260604 - Cache yaw and covariance from dual-antenna GNSS heading.
   void onGnssHeading(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
   {
     if (!quaternionIsUsable(msg->orientation)) {
@@ -502,7 +502,7 @@ private:
     candidate.stamp = rclcpp::Time(msg->header.stamp);
     candidate.has_sample = true;
 
-    // HH_260807: u-blox interleaves valid RELPOSNED headings with deterministic
+    // HH_260807 - u-blox interleaves valid RELPOSNED headings with deterministic
     // unavailable placeholders (currently yaw covariance=1000).  Never let an
     // unavailable sample overwrite the most recent valid heading: doing so made
     // the strict antenna lever-arm correction reject otherwise healthy 5 Hz
@@ -524,7 +524,7 @@ private:
     }
   }
 
-  // HH_260604: Prefer dual-antenna heading; fall back to last heading for display only.
+  // HH_260604 - Prefer dual-antenna heading; fall back to last heading for display only.
   bool selectHeading(
     const rclcpp::Time & stamp,
     geometry_msgs::msg::Quaternion & orientation,
@@ -643,7 +643,7 @@ private:
     pose.header = msg->header;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position = p;
-    // HH_260604: Publish GNSS pose orientation from the selected heading instead of fixed yaw.
+    // HH_260604 - Publish GNSS pose orientation from the selected heading instead of fixed yaw.
     pose.pose.orientation = heading_orientation;
 
     // HH_260720 - Publish the canonical GNSS pose and its explicit visualization mirror together.
@@ -654,7 +654,7 @@ private:
       pose_cov.header = pose.header;
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
-      // HH_260604: Expose only yaw covariance when a fresh GNSS heading is available.
+      // HH_260604 - Expose only yaw covariance when a fresh GNSS heading is available.
       pose_cov.pose.covariance[21] = gnss_heading_unavailable_covariance_;
       pose_cov.pose.covariance[28] = gnss_heading_unavailable_covariance_;
       pose_cov.pose.covariance[35] = has_fresh_heading ?
@@ -662,7 +662,7 @@ private:
         gnss_heading_unavailable_covariance_;
 
       if (navsat_covariance_source_ == "navsat" && msg->position_covariance_type != 0) {
-        // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
+        // HH_260415 - Protect filter stability by applying minimum GNSS covariance floors.
         const double nav_x = msg->position_covariance[0];
         const double nav_y = msg->position_covariance[4];
         const double nav_z = msg->position_covariance[8];
@@ -732,7 +732,7 @@ private:
 
   void onRawPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    // HH_260606 // Keep raw-pose bridging in one handler; the duplicate legacy
+    // HH_260606 - Keep raw-pose bridging in one handler; the duplicate legacy
     // definition broke camrod_localization builds without changing behavior.
     if (!enable_navsat_to_pose_) {
       return;
@@ -886,12 +886,12 @@ private:
     const std::string & status_source)
   {
     avg_msgs::msg::AvgOdometry odom = avg_msgs::conversions::fromRos(msg);
-    // HH_260410: Keep configured fallback frame handling when incoming nav odom
+    // HH_260410 - Keep configured fallback frame handling when incoming nav odom
     // does not carry frame IDs.
     if (odom.header.frame_id.empty()) {
       odom.header.frame_id = wheel_odom_frame_;
     }
-    // HH_260413: Force child frame to configured base frame to keep TF consistent.
+    // HH_260413 - Force child frame to configured base frame to keep TF consistent.
     odom.child_frame_id = wheel_base_frame_;
     wheel_odom_pub_->publish(odom);
     nav_msgs::msg::Odometry nav_out = msg;
@@ -936,7 +936,7 @@ private:
     last_wheel_source_switch_time_ = this->now();
     const char * label = (source == WheelSource::kPrimary) ? "primary" :
       (source == WheelSource::kFallback ? "fallback" : "none");
-    // HH_260413: Log actual message-driven source switching for debugging.
+    // HH_260413 - Log actual message-driven source switching for debugging.
     RCLCPP_INFO(
       get_logger(),
       "wheel source switched to %s (%s) primary_seen=%s fallback_seen=%s",
@@ -979,7 +979,7 @@ private:
   std::string gnss_pose_topic_, gnss_pose_ros_topic_;
   std::string gnss_pose_cov_topic_, gnss_pose_cov_ros_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
-  // HH_260604: Keep GNSS heading state for dual-antenna heading selection.
+  // HH_260604 - Keep GNSS heading state for dual-antenna heading selection.
   bool enable_gnss_heading_{false};
   std::string gnss_heading_topic_;
   double gnss_heading_timeout_s_{1.0};

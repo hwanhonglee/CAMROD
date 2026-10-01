@@ -22,7 +22,7 @@
     # =========================================================================
     # 3. DETACH / REATTACH THRESHOLDS
     # =========================================================================
-    # HH_260617: Disable automatic GNSS reattach in sim planning tests.
+    # HH_260617 - Disable automatic GNSS reattach in sim planning tests.
     # Fake sensors and Nav2 can intentionally diverge while validating route
     # planning; auto reset teleports /localization/pose and invalidates the
     # active Nav2 path. Manual initialpose reset remains enabled below.

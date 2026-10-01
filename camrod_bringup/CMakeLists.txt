@@ -10,11 +10,11 @@ find_package(ament_cmake REQUIRED)
 find_package(avg_msgs REQUIRED)  # enforce avg_msgs availability for bringup scripts.
 find_package(rclcpp REQUIRED)
 
-# HH_260630: Install simulation utilities used by bringup smoke tests and
+# HH_260630 - Install simulation utilities used by bringup smoke tests and
 # deterministic validation runs.
 install(
   PROGRAMS
-    # HH_260803 / TODOLIST 12 - Reproduce production-owned boundary recovery.
+    # HH_260803 - TODO list 12: Reproduce production-owned boundary recovery.
     scripts/automatic_route_recovery_probe.py
     scripts/visualization/render_automatic_recovery_results.py
     # HH_260806 - Render the body-hard-stop and recoverable-margin runtime proof.
@@ -47,7 +47,7 @@ install(
     scripts/visualization/render_v2_1_8_return_docking_results.py
     # HH_260819 - Reproduce the measured AMD64 Return/telemetry scheduler A/B.
     scripts/visualization/render_return_resource_profile.py
-    # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
+    # HH_260730 - TODO list 2: Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
     scripts/field_test_tool.sh

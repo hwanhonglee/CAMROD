@@ -12,12 +12,14 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+# HH_260730 - Keep latency percentile boundaries deterministic for sparse samples.
 def test_nearest_rank_percentile_handles_boundaries_and_empty_input():
     assert MODULE.nearest_rank_percentile([], 0.95) is None
     assert MODULE.nearest_rank_percentile([4.0, 1.0, 3.0, 2.0], 0.50) == 2.0
     assert MODULE.nearest_rank_percentile([4.0, 1.0, 3.0, 2.0], 0.95) == 4.0
 
 
+# HH_260730 - Report pose publication gaps and message age from one sample window.
 def test_summarize_samples_calculates_rate_gaps_and_header_age():
     summary = MODULE.summarize_samples(
         [10.0, 10.1, 10.2, 10.4],
@@ -34,6 +36,7 @@ def test_summarize_samples_calculates_rate_gaps_and_header_age():
     assert summary["header_age_ms"]["max"] == 20.0
 
 
+# HH_260730 - Show missing field data explicitly instead of inventing zero latency.
 def test_summarize_samples_keeps_missing_statistics_visible():
     summary = MODULE.summarize_samples([], [])
 
@@ -51,6 +54,7 @@ def test_summarize_samples_keeps_missing_statistics_visible():
     }
 
 
+# HH_260731 - Preserve yaw-wrap and lateral-motion evidence in field summaries.
 def test_motion_summary_unwraps_yaw_and_counts_crab_samples():
     pose_samples = [
         {"stamp": 1.0, "x": 0.0, "y": 0.0, "yaw": 3.10},
@@ -84,6 +88,7 @@ def test_motion_summary_unwraps_yaw_and_counts_crab_samples():
     assert summary["angular_z_abs_radps"]["max"] == 0.02
 
 
+# HH_260731 - Pair pose sources by timestamp and wrap angular error correctly.
 def test_pose_comparison_pairs_by_stamp_and_wraps_yaw_error():
     reference = [
         {"stamp": 1.0, "x": 1.0, "y": 2.0, "yaw": 3.13},
@@ -103,6 +108,7 @@ def test_pose_comparison_pairs_by_stamp_and_wraps_yaw_error():
     assert comparison["stamp_delta_ms"]["max"] < 21.0
 
 
+# HH_260731 - Exclude invalid yaw covariance without losing position comparisons.
 def test_pose_comparison_ignores_unavailable_covariance_yaw_only():
     reference = [
         {

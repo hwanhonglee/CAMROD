@@ -20,6 +20,7 @@ namespace voice_announcer
 class VoiceAnnouncerNode : public rclcpp::Node
 {
 public:
+  // HH_260616 - Bridge audio requests to queued playback and publish playback state.
   explicit VoiceAnnouncerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions{});
   ~VoiceAnnouncerNode();
 
@@ -32,9 +33,7 @@ private:
   void processingLoop();
   void publishState();
 
-  // Start or stop the music bed to match the latest request. Called from the
-  // playback thread while nothing is being spoken, so the bed only fades in
-  // after the cue that announced the trip.
+  // HH_260812 - Sync the trip bed only between speech cues so departure plays first.
   void syncBgm();
   void playShutdownCue();
 
@@ -64,8 +63,7 @@ private:
   std::thread processing_thread_;
   std::atomic<bool> running_{false};
   std::atomic<bool> bgm_requested_{false};
-  // The shutdown cue plays from the destructor, after the executor is gone —
-  // the playback monitor must not publish state from that point on.
+  // HH_260812 - Prevent playback-state publishes after executor teardown.
   std::atomic<bool> state_publishable_{true};
 
   mutable std::mutex key_mutex_;

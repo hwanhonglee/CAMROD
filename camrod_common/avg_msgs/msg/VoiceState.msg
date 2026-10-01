@@ -1,3 +1,4 @@
+# HH_260615 - Publish queued and active voice playback state to other modules.
 avg_msgs/AvgHeader header
 
 uint8 STATE_IDLE=0

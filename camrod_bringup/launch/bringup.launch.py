@@ -10,6 +10,8 @@ import os
 
 
 def _load_impl_module():
+    # HH_260427 - Load the source-tree bringup implementation at launch time so
+    # parameter-file edits take effect without rebuilding this entry point.
     launch_dir = os.path.dirname(os.path.abspath(__file__))
     impl_path = os.path.join(launch_dir, '_bringup_impl.py')
     spec = importlib.util.spec_from_file_location('camrod_bringup_launch_impl', impl_path)

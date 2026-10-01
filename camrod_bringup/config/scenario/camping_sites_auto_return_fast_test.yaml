@@ -1,4 +1,4 @@
-# Fast auto-return validation camping-site set.
+# HH_260428 - Use nearby synthetic campsites to validate the auto-return transition quickly.
 #
 # Test intent:
 # - deterministically trigger GOAL_REACHED quickly in simulation

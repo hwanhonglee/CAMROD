@@ -1,4 +1,4 @@
-# HH_260311-00:00 Sensor pose definition migrated from sensor_kit-local message.
+# HH_260311 - Sensor pose definition migrated from sensor_kit-local message.
 float64 x
 float64 y
 float64 z

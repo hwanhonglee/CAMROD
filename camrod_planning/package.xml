@@ -5,18 +5,18 @@
   <version>0.0.0</version>
   <description>Nav2-based planning wrapper for the camping cart (includes lanelet goal snapping)</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
-  <!-- HH_260617: Use SPDX-style license naming for package metadata consistency. -->
+  <!-- HH_260617 - Use SPDX-style license naming for package metadata consistency. -->
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- HH_260112: Add goal snapper node dependencies -->
+  <!-- HH_260112 - Add goal snapper node dependencies -->
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>builtin_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
-  <!-- HH_260618: nav2_core/pluginlib are required for EngageAwareProgressChecker. -->
+  <!-- HH_260618 - nav2_core/pluginlib are required for EngageAwareProgressChecker. -->
   <depend>nav2_core</depend>
   <depend>nav2_msgs</depend>
   <depend>pluginlib</depend>
@@ -36,7 +36,7 @@
   <depend>diagnostic_msgs</depend>
   <depend>visualization_msgs</depend>
 
-  <!-- HH_260105: Nav2 runtime components used by nav2_lanelet.launch.py -->
+  <!-- HH_260105 - Nav2 runtime components used by nav2_lanelet.launch.py -->
   <!-- HH_260805 - Declare the component launch stack directly so standalone
        camrod_planning installs do not rely on nav2_bringup transitive dependencies. -->
   <exec_depend>launch_ros</exec_depend>
@@ -61,9 +61,9 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <!-- HH_260618: Export CAMROD progress checker to Nav2 controller_server. -->
+    <!-- HH_260618 - Export CAMROD progress checker to Nav2 controller_server. -->
     <nav2_core plugin="${prefix}/progress_checker_plugins.xml"/>
-    <!-- HH_260619: Export CAMROD lanelet centerline planner to Nav2 planner_server. -->
+    <!-- HH_260619 - Export CAMROD lanelet centerline planner to Nav2 planner_server. -->
     <nav2_core plugin="${prefix}/global_planner_plugins.xml"/>
   </export>
 </package>

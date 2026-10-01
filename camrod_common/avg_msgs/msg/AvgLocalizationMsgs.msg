@@ -1,3 +1,4 @@
+# HH_260311 - Aggregate localization outputs behind one module status stream.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

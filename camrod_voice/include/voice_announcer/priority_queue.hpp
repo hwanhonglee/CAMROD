@@ -13,6 +13,7 @@ namespace voice_announcer
 
 struct VoiceRequest
 {
+  // HH_260616 - Compare priority first and insertion sequence second for stable speech order.
   std::string key;
   std::string wav_path;
   uint8_t priority{0};
@@ -30,6 +31,7 @@ struct VoiceRequest
 
 struct PriorityQueueConfig
 {
+  // HH_260616 - Bound duplicate event rate and retained audio backlog.
   std::chrono::milliseconds debounce_ms{3000};
   std::size_t max_queue_size{16};
 };

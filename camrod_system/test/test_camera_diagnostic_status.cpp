@@ -4,6 +4,7 @@
 #include <camrod_system/camera_diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+// HH_260729 - Keep disabled-camera and encoding faults visible at their severity.
 int main()
 {
   using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;

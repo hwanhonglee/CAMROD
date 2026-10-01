@@ -15,6 +15,7 @@ def _snapshot_parameters():
     ]
 
 
+# HH_260918 - Give every snapshot topic one typed absolute-name specification.
 def test_snapshot_topics_have_unique_details_and_absolute_names():
     params = _snapshot_parameters()
     topics = params["topics"]
@@ -26,6 +27,7 @@ def test_snapshot_topics_have_unique_details_and_absolute_names():
     assert all(details[topic].get("type") for topic in topics)
 
 
+# HH_260918 - Retain five minutes of evidence in bounded one-minute bagfiles.
 def test_five_minute_buffer_is_written_in_one_minute_bagfiles():
     params = _snapshot_parameters()
 
@@ -33,6 +35,7 @@ def test_five_minute_buffer_is_written_in_one_minute_bagfiles():
     assert params["bagfile_split_duration_s"] == 60
 
 
+# HH_260918 - Capture sensing through control evidence, including right radar raw data.
 def test_snapshot_covers_each_debug_layer_and_right_radar_raw_data():
     topics = set(_snapshot_parameters()["topics"])
     required = {
@@ -50,6 +53,7 @@ def test_snapshot_covers_each_debug_layer_and_right_radar_raw_data():
     assert required <= topics
 
 
+# HH_260918 - Enable and pass the snapshot policy through central bringup.
 def test_bringup_owns_and_forwards_snapshot_configuration():
     defaults = yaml.safe_load(LAUNCH_DEFAULTS.read_text(encoding="utf-8"))["bringup"]
     launch_source = BRINGUP_LAUNCH.read_text(encoding="utf-8")
@@ -130,6 +134,7 @@ def test_auto_capture_cooldown_covers_one_whole_buffer():
     assert params["auto_trigger"]["startup_grace_s"] > 0.0
 
 
+# HH_260928 - Routine lanelet contact must not spend the automatic bag buffer.
 def test_lanelet_contact_does_not_trigger_an_automatic_snapshot():
     auto_trigger = _auto_trigger()
 

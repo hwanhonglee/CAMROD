@@ -70,14 +70,14 @@ public:
     localization_mode_topic_ = declare_parameter<std::string>(
       "localization_mode_topic", "/localization/mode");
 
-    // HH_260528: robot_localization ekf_node reset subscriber is /localization/set_pose.
+    // HH_260528 - robot_localization ekf_node reset subscriber is /localization/set_pose.
     // Publishing to /localization/ekf_filter/set_pose leaves EKF XY unchanged after RViz initialpose.
     ekf_set_pose_topic_ = declare_parameter<std::string>(
       "ekf_set_pose_topic", "/localization/set_pose");
     avg_pose_reset_topic_ = declare_parameter<std::string>(
       "avg_pose_reset_topic", "/localization/drop_zone/initial_pose");
 
-    // HH_260527: reset_target_mode options:
+    // HH_260527 - reset_target_mode options:
     //   ekf_topic: publish geometry_msgs reset to EKF set_pose topic
     //   avg_pose_topic: publish avg_msgs reset to avg_pose_reset_topic
     //   both: publish both outputs
@@ -104,7 +104,7 @@ public:
     max_gnss_yaw_covariance_ = declare_parameter<double>("max_gnss_yaw_covariance", 100.0);
     min_reset_cov_xy_ = declare_parameter<double>("min_reset_cov_xy", 0.05);
     reset_cov_yaw_ = declare_parameter<double>("reset_cov_yaw", 0.5);
-    // HH_260527: RViz 2D Pose Estimate bridge options.
+    // HH_260527 - RViz 2D Pose Estimate bridge options.
     // initialpose_yaw_source options:
     //   input: use incoming /localization/initialpose yaw
     //   localization: use latest localization yaw
@@ -112,11 +112,11 @@ public:
     enable_initialpose_reset_ = declare_parameter<bool>("enable_initialpose_reset", true);
     initialpose_topic_ = declare_parameter<std::string>(
       "initialpose_topic", "/localization/initialpose");
-    // HH_260528: Keep manual RViz initialpose as operator-authoritative by default.
+    // HH_260528 - Keep manual RViz initialpose as operator-authoritative by default.
     // If GNSS snap is enabled here, far relocations can be pulled back to stale GNSS.
     initialpose_snap_to_gnss_ = declare_parameter<bool>("initialpose_snap_to_gnss", false);
     initialpose_snap_distance_m_ = declare_parameter<double>("initialpose_snap_distance_m", 1.0);
-    // HH_260528: Also listen to RViz default /initialpose unless disabled.
+    // HH_260528 - Also listen to RViz default /initialpose unless disabled.
     enable_initialpose_fallback_topic_ = declare_parameter<bool>(
       "enable_initialpose_fallback_topic", true);
     initialpose_topic_fallback_ = declare_parameter<std::string>(
@@ -385,7 +385,7 @@ private:
 
   double resetYaw(const PoseSample & localization, const PoseSample & gnss) const
   {
-    // HH_260629: During dual-antenna heading loss, GNSS pose keeps position but
+    // HH_260629 - During dual-antenna heading loss, GNSS pose keeps position but
     // yaw covariance is intentionally huge. Do not seed EKF yaw from that placeholder.
     return (!use_localization_yaw_ && gnssYawOk(gnss)) ? gnss.yaw : localization.yaw;
   }

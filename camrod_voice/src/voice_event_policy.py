@@ -18,6 +18,7 @@ class VoiceEvent:
 ModuleSnapshot = Tuple[int, str]
 
 
+# HH_260911 - Accept docking identity only from an explicit parking owner and generation.
 def parking_status_identity(
     message: str, module_name: str = "", topic: str = ""
 ) -> tuple[str, Optional[int], str]:
@@ -56,6 +57,7 @@ def parking_status_identity(
     return "", None, "unknown"
 
 
+# HH_260730 - Gate startup, readiness, motion, and arrival cues on combined system state.
 class VoiceEventPolicy:
     """Combine asynchronous inputs into ordered, de-duplicated events."""
 
@@ -82,14 +84,13 @@ class VoiceEventPolicy:
     # ride through that: otherwise every blip replays the departure cue, restarts
     # the music bed, and resets the reminder schedule so it never comes due.
     _TRAVEL_HOLD_STATES = frozenset({"WARN_RECOVERY", "RECALLED"})
-    # Parking-controller phases, shared by the reverse and AprilTag controllers.
+    # HH_260813 - Track one docking run through controller-active phases and its outcome.
     _DOCKING_ACTIVE_PHASES = frozenset(
         {
             "WAITING_FOR_PARKING_OWNER",
             "REVERSE_APPROACH",
             "WAIT_FOR_CHARGING",
-            # AprilTag parking uses the service-state spelling below and may
-            # hold either phase while yaw settles or charger contact arrives.
+            # HH_260824 - Accept AprilTag's alternate charge-wait and final-yaw phases.
             "WAITING_FOR_CHARGING",
             "WAITING_FOR_TAG",
             "TAG_GUIDED_REVERSE",
@@ -100,12 +101,12 @@ class VoiceEventPolicy:
     )
     _DOCKING_SUCCESS_PHASES = frozenset({"PARKED"})
     _DOCKING_FAILURE_PHASES = frozenset({"ERROR"})
-    # Departure cue per travel context, played once when motion begins.
+    # HH_260812 - Choose one departure cue for the current travel direction.
     _DEPARTURE_KEYS = {
         "site": "navigation.to_campsite",
         "drop_zone": "navigation.to_dropzone",
     }
-    # Reminders repeated over the music bed while the trip is under way.
+    # HH_260812 - Repeat direction-specific reminders over the travel music bed.
     _TRAVEL_ANNOUNCE_KEYS = {
         "site": ("system.announce1", "system.announce2"),
         "drop_zone": ("navigation.return_to_dropzone",),
@@ -246,6 +247,7 @@ class VoiceEventPolicy:
         source: str = "",
     ) -> list[VoiceEvent]:
         """Announce actual AprilTag docking, never ordinary reverse parking."""
+        # HH_260911 - Bind docking cues to the dispatcher-selected method and attempt.
         phase = str(phase).strip().upper()
         method = str(parking_method).strip().lower()
         if method not in {"apriltag", "reverse", "none"}:
@@ -336,6 +338,7 @@ class VoiceEventPolicy:
         B11–B13 never enter RECALL_CLEARANCE_WAIT and retain their old audio.
         """
 
+        # HH_260911 - Hold return speech through the stationary recall-turnaround phase.
         self.campsite_maneuver_phase = str(phase).strip().upper()
         if self.campsite_maneuver_phase == "RECALL_CLEARANCE_WAIT":
             self._recall_turnaround_active = True
@@ -406,6 +409,7 @@ class VoiceEventPolicy:
     def readiness_reasons(
         self, *, require_idle: bool = True
     ) -> tuple[str, ...]:
+        # HH_260730 - Collect every missing readiness input before announcing ready.
         reasons: list[str] = []
         if not self.system_received:
             reasons.append("system_status_missing")
@@ -496,9 +500,7 @@ class VoiceEventPolicy:
             and not self._recall_clearance_announced
         ):
             self._recall_clearance_announced = True
-            # Clearance is spoken while stationary, so it must not depend on
-            # an enabled motion gate or the idle-readiness rendezvous. Cut in
-            # ahead of ordinary travel/arrival cues during the timed pause.
+            # HH_260911 - Speak clearance during the stationary pause, before motion cues.
             events.append(VoiceEvent(
                 "navigation.recall_clear_site", priority=2, interrupt=True))
 
@@ -517,6 +519,7 @@ class VoiceEventPolicy:
     def _sync_trip(self) -> None:
         """Open, keep, or close the latched trip after a planning update."""
 
+        # HH_260813 - Retain the trip across transient planning recovery states.
         context = self._live_travel_context()
         if context:
             self._trip_identity = (
@@ -579,6 +582,7 @@ class VoiceEventPolicy:
     def travel_announce_events(self) -> list[VoiceEvent]:
         """Reminders to repeat over the bed, empty when no trip is running."""
 
+        # HH_260812 - Emit only low-priority reminders while the trip is active.
         if not self.travel_active:
             return []
         keys = self._TRAVEL_ANNOUNCE_KEYS.get(self.travel_context(), ())
@@ -598,6 +602,7 @@ class VoiceEventPolicy:
     def obstacle_repeat_events(self) -> list[VoiceEvent]:
         """Standing explanation while the robot waits out a blocked route."""
 
+        # HH_260812 - Repeat the route-blocked explanation during a sustained hold.
         if not self.obstacle_hold_announced or self._recall_turnaround_active:
             return []
         return [VoiceEvent("navigation.please_step_aside", priority=1)]
@@ -615,11 +620,8 @@ class VoiceEventPolicy:
         if identity is None:
             return None
 
-        # The trip identity is stable for the whole route, so this survives
-        # the planning-state churn that used to replay the cue every few
-        # seconds. `_departed_trips` drives the BGM and periodic reminders
-        # below and must be recorded on every departure, including one whose
-        # spoken cue camrod_ui already announced ahead of the command.
+        # HH_260911 - Record every departure for BGM even when UI already spoke the cue.
+        # HH_260813 - Stable trip identity prevents replay across planning-state churn.
         signature = (self._engage_epoch, identity)
         if signature in self._announced_motion_signatures:
             return None
@@ -631,6 +633,7 @@ class VoiceEventPolicy:
         return VoiceEvent(key, priority=1) if key else None
 
     def _arrival_event(self) -> Optional[VoiceEvent]:
+        # HH_260730 - Announce site arrival only after a matching departure.
         if (
             not self.startup_announced
             or not self._valid_goal()

@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("profile", ["system_checker.yaml", "system_checker_sim.yaml"])
+# HH_260911 - Match exactly one authority for auto and standalone parking graphs.
 def test_exactly_one_parking_authority_matches_each_launch_topology(profile):
     source = ROOT / "camrod_system" / "config" / profile
     mirror = ROOT / "camrod_bringup" / "config" / "system" / profile
@@ -37,6 +38,7 @@ def test_exactly_one_parking_authority_matches_each_launch_topology(profile):
 
 
 @pytest.mark.parametrize("profile", ["default", "sim"])
+# HH_260911 - Keep private controller status out of public diagnostic identities.
 def test_aggregate_registry_includes_only_public_dispatcher_and_legacy_identities(profile):
     relative = Path("diagnostics") / profile / "aggregator" / "diagnostics_config.yaml"
     source = ROOT / "camrod_system" / "config" / relative

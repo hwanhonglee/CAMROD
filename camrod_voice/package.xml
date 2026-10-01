@@ -11,6 +11,7 @@
   <maintainer email="yhjeon@avgenius.kr">AVGenius</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- HH_260616 - Build the C++ announcer and Python event adapter together. -->
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
@@ -23,10 +24,12 @@
   <depend>libsdl2-mixer-dev</depend>
 
   <exec_depend>rclpy</exec_depend>
+  <!-- HH_260730 - Read navigation and transform readiness in the event adapter. -->
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
 
+  <!-- HH_260730 - Run readiness and voice-event contracts with pytest. -->
   <test_depend>ament_cmake_pytest</test_depend>
 
   <export>

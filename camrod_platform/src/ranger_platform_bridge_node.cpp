@@ -1,4 +1,4 @@
-// HH_260428: Ranger platform bridge — normalises ranger-specific CAN-derived topics to the
+// HH_260428 - Ranger platform bridge — normalises ranger-specific CAN-derived topics to the
 // /platform/status/* interface consumed by the CAMROD stack.
 //
 // Individual status topics (functional — consumed by other nodes):
@@ -52,10 +52,10 @@ public:
   RangerPlatformBridgeNode()
   : Node("ranger_platform_bridge")
   {
-    // HH_260428: Odom input parameters — primary (ranger) and fallback (substitute platform).
+    // HH_260428 - Odom input parameters — primary (ranger) and fallback (substitute platform).
     odom_input_topic_      = declare_parameter<std::string>("odom_topic_name",      "/odom");
     odom_fallback_topic_   = declare_parameter<std::string>("odom_fallback_topic",  "/rmp401/odom");
-    // HH_260617: Use canonical `_s` suffix for duration parameters.
+    // HH_260617 - Use canonical `_s` suffix for duration parameters.
     odom_fallback_timeout_s_ = declare_parameter<double>("odom_fallback_timeout_s", 1.0);
 
     actuator_state_topic_  = declare_parameter<std::string>("actuator_state_topic", "/actuator_state");
@@ -94,6 +94,7 @@ public:
       0.0, declare_parameter<double>("charging_fast_status_ttl_s", 1.5));
     charging_sample_max_gap_s_ = std::max(
       0.0, declare_parameter<double>("charging_sample_max_gap_s", 1.0));
+    // HH_260911 - Ignore brief false CAN charging assertions without bypassing debounce.
     charging_assertion_false_grace_s_ = std::max(
       0.0, declare_parameter<double>("charging_assertion_false_grace_s", 0.75));
     charging_detection_.setConfig(ChargingDetectionConfig{
@@ -101,7 +102,7 @@ public:
       charging_confirm_s_, charging_fast_confirm_s_, charging_release_s_,
       charging_sample_max_gap_s_, charging_assertion_false_grace_s_});
     charging_fast_arm_.setTtl(charging_fast_status_ttl_s_);
-    // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
+    // HH_260428 - Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic",  "/platform/status");
     platform_status_publish_rate_hz_ = declare_parameter<double>(
@@ -111,7 +112,7 @@ public:
     }
     platform_status_publish_rate_hz_ =
       std::clamp(platform_status_publish_rate_hz_, 1.0, 50.0);
-    // HH_260506: Frame id used by aggregated AvgPlatformStatus header.
+    // HH_260506 - Frame id used by aggregated AvgPlatformStatus header.
     status_frame_id_      = declare_parameter<std::string>(
       "status_frame_id", "robot_center_link");
     estop_on_exception_    = declare_parameter<bool>("estop_on_exception_state", true);
@@ -122,7 +123,7 @@ public:
       return;
     }
 
-    // HH_260428: Initialize last_primary_odom_time_ via node clock to match
+    // HH_260428 - Initialize last_primary_odom_time_ via node clock to match
     // the clock type used in subsequent this->now() calls (sim vs wall time).
     last_primary_odom_time_ = this->now();
 
@@ -137,17 +138,17 @@ public:
     wheel_pub_    = create_publisher<avg_msgs::msg::AvgTwistStamped>(
       status_wheel_topic_,    rclcpp::QoS(50));
 
-    // HH_260428: Comprehensive DBC status publisher — aggregates all available CAN data
+    // HH_260428 - Comprehensive DBC status publisher — aggregates all available CAN data
     // (0x211, 0x251-0x268, 0x271, 0x281, 0x291) into a single AvgPlatformStatus message.
     platform_status_pub_ = create_publisher<avg_msgs::msg::AvgPlatformStatus>(
       platform_status_topic_, rclcpp::QoS(10));
 
-    // HH_260428: Primary odom subscription (ranger_base /odom, CAN 0x221/0x311/0x312).
+    // HH_260428 - Primary odom subscription (ranger_base /odom, CAN 0x221/0x311/0x312).
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       odom_input_topic_, rclcpp::SensorDataQoS(),
       std::bind(&RangerPlatformBridgeNode::onPrimaryOdom, this, _1));
 
-    // HH_260428: Fallback odom subscription (/rmp401/odom from substitute platform).
+    // HH_260428 - Fallback odom subscription (/rmp401/odom from substitute platform).
     // Only created when fallback topic is non-empty and different from primary.
     if (!odom_fallback_topic_.empty() && odom_fallback_topic_ != odom_input_topic_) {
       odom_fallback_sub_ = create_subscription<nav_msgs::msg::Odometry>(
@@ -155,17 +156,17 @@ public:
         std::bind(&RangerPlatformBridgeNode::onFallbackOdom, this, _1));
     }
 
-    // HH_260428: Actuator state (CAN 0x251-0x258 RPM/current + 0x271 angles + 0x281 speeds).
+    // HH_260428 - Actuator state (CAN 0x251-0x258 RPM/current + 0x271 angles + 0x281 speeds).
     actuator_state_sub_ = create_subscription<ranger_msgs::msg::ActuatorStateArray>(
       actuator_state_topic_, rclcpp::SensorDataQoS(),
       std::bind(&RangerPlatformBridgeNode::onActuatorState, this, _1));
 
-    // HH_260428: System state (CAN 0x211 vehicle_state/control_mode/error_code/battery + 0x291 motion_mode).
+    // HH_260428 - System state (CAN 0x211 vehicle_state/control_mode/error_code/battery + 0x291 motion_mode).
     system_state_sub_ = create_subscription<ranger_msgs::msg::SystemState>(
       system_state_topic_, rclcpp::QoS(10),
       std::bind(&RangerPlatformBridgeNode::onSystemState, this, _1));
 
-    // HH_260617: ranger_base publishes BMS basic feedback (CAN 0x361) as BatteryState.
+    // HH_260617 - ranger_base publishes BMS basic feedback (CAN 0x361) as BatteryState.
     battery_sub_ = create_subscription<sensor_msgs::msg::BatteryState>(
       battery_state_topic_, rclcpp::QoS(10),
       std::bind(&RangerPlatformBridgeNode::onBatteryState, this, _1));
@@ -192,7 +193,7 @@ public:
   }
 
 private:
-  // HH_260428: Publish individual functional topics from odom source.
+  // HH_260428 - Publish individual functional topics from odom source.
   // Called by both primary and fallback odom callbacks.
   void publishOdomStatus(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
   {
@@ -208,7 +209,7 @@ private:
     // HH_260720 - Do not refresh /platform/status from odometry; its heartbeat represents CAN system_state.
   }
 
-  // HH_260428: Primary odom handler (ranger_base /odom, CAN 0x221/0x311/0x312).
+  // HH_260428 - Primary odom handler (ranger_base /odom, CAN 0x221/0x311/0x312).
   // Updates last_primary_odom_time_ and clears fallback flag on each message.
   void onPrimaryOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
   {
@@ -225,7 +226,7 @@ private:
     publishOdomStatus(msg);
   }
 
-  // HH_260428: Fallback odom handler (/rmp401/odom substitute platform).
+  // HH_260428 - Fallback odom handler (/rmp401/odom substitute platform).
   // Activates when primary has never published OR has been silent > odom_fallback_timeout_s.
   void onFallbackOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
   {
@@ -249,7 +250,7 @@ private:
     }
   }
 
-  // HH_260428: Actuator state handler — id-based motor data extraction.
+  // HH_260428 - Actuator state handler — id-based motor data extraction.
   //
   // Motor layout (ranger CAN DBC):
   //   id 0-3  = drive motors No.1-4 (CAN 0x281):
@@ -271,7 +272,7 @@ private:
     int    drive_count     = 0;
     int    steer_count     = 0;
 
-    // HH_260428: Populate motor arrays for AvgPlatformStatus (CAN 0x251-0x258/0x271/0x281).
+    // HH_260428 - Populate motor arrays for AvgPlatformStatus (CAN 0x251-0x258/0x271/0x281).
     std::vector<float> motor_rpm(msg->states.size());
     std::vector<float> motor_speed;
     std::vector<float> motor_angle;
@@ -280,13 +281,13 @@ private:
       motor_rpm[s.id] = static_cast<float>(s.motor.rpm);
 
       if (s.id < 4) {
-        // HH_260428: id 0-3 = drive motors (CAN 0x281), motor_speeds in m/s
+        // HH_260428 - id 0-3 = drive motors (CAN 0x281), motor_speeds in m/s
         const double spd = static_cast<double>(s.motor.motor_speeds);
         drive_speed_sum += spd;
         ++drive_count;
         motor_speed.push_back(static_cast<float>(spd));
       } else {
-        // HH_260428: id 4-7 = steering motors (CAN 0x271), motor_angles in rad
+        // HH_260428 - id 4-7 = steering motors (CAN 0x271), motor_angles in rad
         const double ang = static_cast<double>(s.motor.motor_angles);
         steer_angle_sum += ang;
         ++steer_count;
@@ -311,7 +312,7 @@ private:
     latest_motor_angle_ = std::move(motor_angle);
   }
 
-  // HH_260428: System state handler — derives estop from CAN 0x211 and caches all fields.
+  // HH_260428 - System state handler — derives estop from CAN 0x211 and caches all fields.
   // vehicle_state, control_mode, error_code, battery_voltage, motion_mode all saved for
   // AvgPlatformStatus aggregation.
   void onSystemState(const ranger_msgs::msg::SystemState::ConstSharedPtr msg)
@@ -324,7 +325,7 @@ private:
       latest_system_state_->motion_mode != msg->motion_mode ||
       charging_state_changed_;
 
-    // HH_260428: estop logic from CAN 0x211 vehicle_state + optional error_code.
+    // HH_260428 - estop logic from CAN 0x211 vehicle_state + optional error_code.
     // VEHICLE_STATE_ESTOP always triggers; EXCEPTION triggers when estop_on_exception_=true.
     const bool is_estop =
       (msg->vehicle_state == ranger_msgs::msg::SystemState::VEHICLE_STATE_ESTOP);
@@ -369,7 +370,7 @@ private:
 
   bool inferChargingFromBattery(const sensor_msgs::msg::BatteryState & msg) const
   {
-    // HH_260617: Prefer explicit BatteryState status when a driver provides it.
+    // HH_260617 - Prefer explicit BatteryState status when a driver provides it.
     // The current upstream ranger_base leaves status UNKNOWN, so fall back to the
     // signed BMS current from CAN 0x361. ROS BatteryState convention is negative
     // while discharging; keep the sign configurable because AgileX manuals do not
@@ -487,7 +488,7 @@ private:
     }
   }
 
-  // HH_260428: Publish AvgPlatformStatus aggregating all available CAN data.
+  // HH_260428 - Publish AvgPlatformStatus aggregating all available CAN data.
   // Fields populated:
   //   odometry, velocity (from odom/fallback — CAN 0x221/0x311/0x312)
   //   wheel              (from actuator_state — CAN 0x281/0x271)
@@ -519,7 +520,7 @@ private:
     // Estop
     s.estop = last_estop_;
 
-    // HH_260428: All CAN 0x211 fields and motion_mode (0x291) from SystemState.
+    // HH_260428 - All CAN 0x211 fields and motion_mode (0x291) from SystemState.
     if (latest_system_state_) {
       s.vehicle_state    = latest_system_state_->vehicle_state;
       s.control_mode     = latest_system_state_->control_mode;
@@ -538,12 +539,12 @@ private:
       s.is_charging = charging_debounced_;
     }
 
-    // HH_260428: Motor arrays from actuator_state (CAN 0x251-0x258/0x271/0x281).
+    // HH_260428 - Motor arrays from actuator_state (CAN 0x251-0x258/0x271/0x281).
     s.motor_rpm   = latest_motor_rpm_;
     s.motor_speed = latest_motor_speed_;
     s.motor_angle = latest_motor_angle_;
 
-    // HH_260428: ModuleState — OK when CAN control and no faults, WARN for RC/STANDBY,
+    // HH_260428 - ModuleState — OK when CAN control and no faults, WARN for RC/STANDBY,
     // ERROR for estop or exception or non-zero error_code.
     s.state.module_name = "platform";
     if (last_estop_ || (latest_system_state_ &&

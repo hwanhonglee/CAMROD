@@ -102,20 +102,20 @@ set(msg_files
   "msg/AvgSensingImu.msg"
   "msg/AvgSensingGnss.msg"
   "msg/AvgSensingRadar.msg"
-  "msg/AvgGnssPose.msg" # HH_260326: custom GNSS pose message type
-  "msg/AvgTrackingError.msg" # HH_260330: local/global path tracking error stream
-  "msg/AvgPlatformStatus.msg" # HH_260409: platform CAN/status bridge payload
-  "msg/AvgLightCommand.msg" # 260708: headlight/turn-indicator command for light MCU bridge
-  "msg/PlanningMissionKey.msg" # HH_260617: planning semantic mission key command/status
-  "msg/PlanningRecallRequest.msg" # HH_260617: camping-site recall request
-  "msg/PlanningScenario.msg" # HH_260617: planning scenario command/status
-  "msg/PlanningState.msg" # HH_260617: planning state-machine status
+  "msg/AvgGnssPose.msg" # HH_260326 - custom GNSS pose message type
+  "msg/AvgTrackingError.msg" # HH_260330 - local/global path tracking error stream
+  "msg/AvgPlatformStatus.msg" # HH_260409 - platform CAN/status bridge payload
+  "msg/AvgLightCommand.msg" # HH_260708 - headlight/turn-indicator command for light MCU bridge
+  "msg/PlanningMissionKey.msg" # HH_260617 - planning semantic mission key command/status
+  "msg/PlanningRecallRequest.msg" # HH_260617 - camping-site recall request
+  "msg/PlanningScenario.msg" # HH_260617 - planning scenario command/status
+  "msg/PlanningState.msg" # HH_260617 - planning state-machine status
   "msg/CampsiteOccupancy.msg" # HH_260723 - Perception-owned occupied campsite state
   # HH_260720 - Add typed route metadata used by planning, map, and platform control.
   "msg/RouteLaneletIds.msg"
   "msg/RouteTurnSegment.msg"
   "msg/RouteTurnSegmentArray.msg"
-  "msg/UiDestinationCommand.msg" # HH_260617: UI destination command
+  "msg/UiDestinationCommand.msg" # HH_260617 - UI destination command
   "msg/MotionOperation.msg" # HH_260720 - Typed start/cancel/return command for control nodes.
   "msg/AvgSensingMsgs.msg"
   "msg/AvgLocalizationMsgs.msg"
@@ -126,17 +126,17 @@ set(msg_files
   "msg/AvgBringupMsgs.msg"
   "msg/AvgSensorKitMsgs.msg"
   "msg/AvgSystemMsgs.msg"
-  "msg/AudioRequest.msg"     # HH_260615: voice announcer — key-based WAV playback request
-  "msg/VoiceState.msg"       # HH_260615: voice announcer — current playback state
-  "msg/TopicDetails.msg"     # 260914: camrod_snapshot — topic name/type pair for snapshot service
+  "msg/AudioRequest.msg"     # HH_260615 - voice announcer — key-based WAV playback request
+  "msg/VoiceState.msg"       # HH_260615 - voice announcer — current playback state
+  "msg/TopicDetails.msg"     # HH_260914 - camrod_snapshot — topic name/type pair for snapshot service
 )
 
 set(srv_files
   "srv/RequestGoalByKey.srv"
   "srv/RequestMotionOperation.srv" # HH_260720 - Typed control-operation request service.
-  "srv/ConfigureSnapshotTopics.srv" # 260914: runtime snapshot topic add/remove/status.
-  "srv/EstimateSnapshot.srv" # 260921: estimate/adapt snapshot size before writing.
-  "srv/TriggerSnapshot.srv" # 260914: camrod_snapshot — trigger buffered-bag snapshot write
+  "srv/ConfigureSnapshotTopics.srv" # HH_260914 - runtime snapshot topic add/remove/status.
+  "srv/EstimateSnapshot.srv" # HH_260921 - estimate/adapt snapshot size before writing.
+  "srv/TriggerSnapshot.srv" # HH_260914 - camrod_snapshot — trigger buffered-bag snapshot write
 )
 
 set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")

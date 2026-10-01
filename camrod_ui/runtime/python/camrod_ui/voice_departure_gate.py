@@ -1,4 +1,5 @@
 """ROS-free, cancellable announcement sequencing for one authorized request."""
+# HH_260929 - Keep voice completion separate from ROS and the motion-authorizing caller.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,6 +55,7 @@ class VoiceDepartureGate:
             on_complete()
             return ()
         with self._lock:
+            # HH_260929 - Suppress a duplicate cue sequence for the same pending request.
             if (
                 self._pending is not None
                 and self._pending.keys == ordered
@@ -71,6 +73,7 @@ class VoiceDepartureGate:
         with self._lock:
             if self._pending is None:
                 return
+            # HH_260929 - Idle or unrelated cues cannot release motion before the final cue plays.
             if not self._seen_last_key_playing:
                 if playing and current_key == self._pending.keys[-1]:
                     self._seen_last_key_playing = True
@@ -82,6 +85,7 @@ class VoiceDepartureGate:
             pending.on_complete()
 
     def tick(self, now_s: float) -> None:
+        # HH_260929 - Bound a missing voice-state acknowledgment so departure cannot stall forever.
         pending = None
         with self._lock:
             if (

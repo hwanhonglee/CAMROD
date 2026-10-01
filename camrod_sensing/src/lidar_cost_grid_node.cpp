@@ -34,7 +34,7 @@ public:
   // Implements `LidarCostGridNode` behavior.
   explicit LidarCostGridNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
       : Node("lidar_cost_grid", options) {
-    // HH_260421: Use filtered lidar points as default cost-grid input.
+    // HH_260421 - Use filtered lidar points as default cost-grid input.
     input_topic_ = declare_parameter<std::string>(
         "input_topic", "/sensing/lidar/points_filtered");
     // HH_260702 - Merge perception obstacle clouds into the LiDAR cost grid so
@@ -54,6 +54,7 @@ public:
                                  "/sensing/lidar/filtered_cloud"});
     output_topic_ = declare_parameter<std::string>("output_topic",
                                                    "/sensing/cost_grid/lidar");
+    // HH_260804 - Express the LiDAR cost window around the center-referenced robot.
     base_frame_id_ =
         declare_parameter<std::string>("base_frame_id", "robot_center_link");
     output_frame_id_ = declare_parameter<std::string>("output_frame_id", "map");
@@ -78,7 +79,7 @@ public:
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
-    // HH_260707: Preserve output freshness while avoiding full grid rebuilds
+    // HH_260707 - Preserve output freshness while avoiding full grid rebuilds
     // when the latest LiDAR/perception inputs and rolling-grid origin are
     // stable.
     rebuild_min_pose_delta_m_ =
@@ -183,6 +184,7 @@ private:
           }));
     }
 
+    // HH_260824 - Rasterize only cloud inputs; marker detections are no longer a safety-cost source.
     RCLCPP_INFO(
         get_logger(),
         "lidar_cost_grid: clouds=%zu marker_cost=disabled raw_lidar_cost=%s output=%s",
@@ -371,7 +373,7 @@ private:
   // Implements `getBasePoseInOutput` behavior.
   bool getBasePoseInOutput(geometry_msgs::msg::PointStamped &base_in_output) {
     geometry_msgs::msg::PointStamped base_origin;
-    // HH_260315-00:00 Use latest TF for rolling grid anchoring.
+    // HH_260315 - Use latest TF for rolling grid anchoring.
     // Requesting "now()" can intermittently fail with small future
     // extrapolation during startup/high-load, which causes marker/grid flicker.
     base_origin.header.stamp =
@@ -414,7 +416,7 @@ private:
                                       stamp, tf2::durationFromSec(0.0));
       return true;
     } catch (const tf2::TransformException &) {
-      // HH_260315-00:00 Fallback to latest TF when exact pointcloud stamp is
+      // HH_260315 - Fallback to latest TF when exact pointcloud stamp is
       // slightly ahead of TF buffer time.
       try {
         tf_out = tf_buffer_->lookupTransform(
@@ -453,7 +455,7 @@ private:
       sensor_msgs::PointCloud2ConstIterator<float> iter_x(*input.cloud, "x");
       sensor_msgs::PointCloud2ConstIterator<float> iter_y(*input.cloud, "y");
       sensor_msgs::PointCloud2ConstIterator<float> iter_z(*input.cloud, "z");
-      // HH_260707: Deduplicate dense PointCloud2 hits by output-grid cell
+      // HH_260707 - Deduplicate dense PointCloud2 hits by output-grid cell
       // before applying obstacle-radius disks. This preserves the max-cost
       // result while avoiding repeated markDisk() calls for many points in the
       // same cell.

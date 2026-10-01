@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# HH_260407 - Supply the map helper with shared map and localization references.
+
 import os
 
 from ament_index_python.packages import get_package_share_directory

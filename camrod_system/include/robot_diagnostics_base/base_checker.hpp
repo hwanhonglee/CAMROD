@@ -136,7 +136,7 @@ public:
   }
 
   /**
-   * HH_260606: Read only canonical parameter keys.
+   * HH_260606 - Read only canonical parameter keys.
    */
   template<typename T>
   T get_param(

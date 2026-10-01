@@ -21,6 +21,7 @@ namespace voice_announcer
 class AudioPlayer
 {
 public:
+  // HH_260616 - Own SDL playback and report cue completion to the announcer.
   using FinishCallback = std::function<void()>;
 
   AudioPlayer();
@@ -41,7 +42,7 @@ public:
   void setFinishCallback(FinishCallback cb) { finish_cb_ = std::move(cb); }
   void setVoiceVolume(float gain);
 
-  // ── Background music ──────────────────────────────────────────────────────
+  // HH_260812 - Play a looping music bed independently of speech and duck it for cues.
 
   // Start the looping bed. Idempotent while the same bed is already active.
   bool startBgm(const std::string & path, int fade_in_ms = 0);

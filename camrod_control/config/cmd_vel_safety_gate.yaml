@@ -220,7 +220,7 @@
     # A timer callback cannot turn a previously received localization sample
     # into fresh route-clear evidence; valid runtime range is [0.05, 5.0] s.
     route_safety_recovery_pose_max_age_s: 0.5
-    # HH_260803 / TODOLIST 12 - Publish one fully evaluated candidate for the
+    # HH_260803 - TODO list 12: Publish one fully evaluated candidate for the
     # separate bounded owner. Raw speed is capped at 0.10 m/s and still passes
     # the gate again before reaching the platform.
     route_safety_auto_recovery_candidate_enable: true

@@ -23,7 +23,7 @@ lanelet::LaneletMapPtr Lanelet2MapLoader::load(const std::string & map_path)
 {
   map_.reset();
 
-  // HH_260114 Configure origin (WGS84).
+  // HH_260114 - Configure origin (WGS84).
   lanelet::GPSPoint gps;
   gps.lat = cfg_.offset_lat;
   gps.lon = cfg_.offset_lon;

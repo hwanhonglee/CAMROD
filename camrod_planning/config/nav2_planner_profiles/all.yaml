@@ -1,4 +1,4 @@
-# Development profile retaining every implemented Nav2 planner option.
+# HH_260805 - Development profile retaining every implemented Nav2 planner option.
 planner_server:
   ros__parameters:
     planner_plugins:

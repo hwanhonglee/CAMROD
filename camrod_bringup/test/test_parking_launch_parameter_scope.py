@@ -26,6 +26,7 @@ SRC_ROOT = Path(__file__).resolve().parents[2]
                            "apriltag_parking_controller"}, False),
     ],
 )
+# HH_260911 - Isolate detector launch arguments from each parking controller's YAML.
 def test_detector_include_cannot_replace_controller_yaml(
     monkeypatch, method, detector_enabled, expected_controllers, expect_detector,
 ):

@@ -77,6 +77,7 @@ def backend(*, soc=24.9, state=AvgServiceState.GUEST_LOADING_WAIT, phase="UNLOAD
     return node
 
 
+# HH_260907 - Lock the 25% urgent and 35% mission-admission SOC boundaries.
 @pytest.mark.parametrize("soc, urgent, charging, dispatch", [
     (24.9, True, True, False),
     (25.0, False, True, False),
@@ -95,6 +96,7 @@ def test_soc_boundaries_match_backend_dispatch_and_return(soc, urgent, charging,
     assert node._low_battery_return_pending is (soc < 35.0)
 
 
+# HH_260909 - Check float32 platform SOC conversion at admission thresholds.
 @pytest.mark.parametrize("fraction, expected", [
     (0.35, 35),
     (struct.unpack("<f", struct.pack("<I", 0x3EB33332))[0], 34),
@@ -197,6 +199,7 @@ def test_road_idle_uses_existing_cancel_before_return_transition():
     {"_latest_campsite_status_time_s": 97.0},
     {"_latest_campsite_site": "camping_site_9"},
 ])
+# HH_260907 - Require fresh safety and mission ownership before urgent return motion.
 def test_urgent_return_is_deferred_without_fresh_safe_matching_owner(changes):
     node = backend()
     vars(node).update(changes)
@@ -272,6 +275,7 @@ def test_urgent_battery_does_not_move_post_turn_robot_while_user_is_loading():
 
 @pytest.mark.parametrize("mode", ["auto", "apriltag"])
 @pytest.mark.parametrize("observed_method", ["", "reverse", "apriltag"])
+# HH_260909 - Preserve selected parking method when explicit docking is acknowledged.
 def test_explicit_dock_ack_requests_final_method_without_claiming_controller(mode, observed_method):
     node = backend(soc=80, state=AvgServiceState.DROP_ZONE_WAIT, phase="IDLE")
     node.parking_method = mode
@@ -338,6 +342,7 @@ def test_first_button_replay_cannot_authorize_final_loading_departure():
     node._publish_camping_site_maneuver_controller_return.assert_not_called()
 
 
+# HH_260907 - Bind the final departure button to its service stage and generation.
 def test_final_button_requires_stage_and_generation_and_publishes_only_once():
     node = final_wait_backend()
     assert UiBackendNode._recall_final_return_ready(node)

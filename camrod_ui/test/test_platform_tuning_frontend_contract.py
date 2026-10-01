@@ -17,6 +17,7 @@ PREFIX = SOURCE.split("function DiagnosticsMonitor(", 1)[1].split(
 STATE_NAMES = re.findall(r"const \[(\w+),\s*\w+\] = useState\(", PREFIX)
 
 
+# HH_260911 - Replay the production tuning callbacks to catch stale UI state.
 def replay(body):
     if not shutil.which("node"):
         pytest.skip("Node.js is required for production frontend callback replay")
@@ -110,6 +111,7 @@ def test_http_network_json_and_nonfinite_failures_disable_control(failure):
     assert result["count"] == 1
 
 
+# HH_260911 - Treat only a server acknowledgment as the applied steering rate.
 def test_draft_is_not_confirmed_and_only_acknowledged_response_updates_applied_value():
     result = replay("""
 mount(); await respond(0, good(0.5)); change(0.8); change(0.9);

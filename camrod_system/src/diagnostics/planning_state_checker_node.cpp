@@ -48,7 +48,7 @@ protected:
 
   void setup_tasks_() override
   {
-    // HH_260617: Validate CAMROD semantic planning-state output, not only Nav2 action topics.
+    // HH_260617 - Validate CAMROD semantic planning-state output, not only Nav2 action topics.
     add_task(
       "/planning/state_machine/state",
       [this](DiagnosticStatusWrapper & stat) { check_state(stat); });

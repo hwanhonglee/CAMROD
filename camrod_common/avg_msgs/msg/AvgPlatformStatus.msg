@@ -1,7 +1,7 @@
 builtin_interfaces/Time stamp
 avg_msgs/AvgHeader header
 
-# HH_260409: Unified platform runtime status payload for CAN/state bridge users.
+# HH_260409 - Unified platform runtime status payload for CAN/state bridge users.
 avg_msgs/ModuleState state
 
 avg_msgs/AvgOdometry odometry

@@ -7,7 +7,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from std_msgs.msg import String
 
 
-# HH_260730 / TODOLIST 7 - A fresh 50.29 m sim audit returned zero poses from
+# HH_260730 - TODO list 7: A fresh 50.29 m sim audit returned zero poses from
 # every configured grid/kinematic planner but a valid 256-pose LaneletRoute in
 # 130 ms. LaneletRoute also preserves the operator's requested final yaw, so
 # manual arrival direction remains unrestricted without sacrificing long,
@@ -41,16 +41,16 @@ class Nav2SelectorLatchNode(Node):
     def __init__(self) -> None:
         super().__init__("nav2_selector_latch")
 
-        # HH_260528: Keep combo-level planner/controller choice sticky via transient-local QoS.
+        # HH_260528 - Keep combo-level planner/controller choice sticky via transient-local QoS.
         self._regulated_planner_id = str(
             self.declare_parameter("planner_id", "NavFn").value
         ).strip()
-        # HH_260618: Default to MPPI so normal autonomy uses local trajectory
+        # HH_260618 - Default to MPPI so normal autonomy uses local trajectory
         # sampling against the local costmap instead of pure path tracking.
         self._regulated_controller_id = str(
             self.declare_parameter("controller_id", "MPPI").value
         ).strip()
-        # HH_260730 / TODOLIST 7 - Both sources use the connected route by
+        # HH_260730 - TODO list 7: Both sources use the connected route by
         # default and both receive a projected vehicle-lane position. Manual RViz
         # goals retain requested final yaw; regulated UI goals use lane yaw.
         self._regulated_goal_checker_id = str(
@@ -170,7 +170,7 @@ def main() -> None:
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        # HH_260617: Ctrl+C during launch shutdown should exit cleanly instead
+        # HH_260617 - Ctrl+C during launch shutdown should exit cleanly instead
         # of printing a traceback and reporting this helper as a crashed process.
         pass
     finally:

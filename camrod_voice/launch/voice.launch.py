@@ -9,6 +9,7 @@ from launch_ros.actions import Node, PushRosNamespace
 
 
 def generate_launch_description():
+    # HH_260616 - Launch the announcer and optional event adapter in one voice namespace.
     pkg_dir = get_package_share_directory('camrod_voice')
     cfg = lambda f: os.path.join(pkg_dir, 'config', f)  # noqa: E731
 
@@ -41,10 +42,9 @@ def generate_launch_description():
                 executable='voice_announcer_node',
                 name='voice_announcer',
                 output='screen',
-                # Jetson runs PipeWire's PulseAudio compatibility server. Pin
-                # SDL to that session so it follows the selected BT sink.
+                # HH_260824 - Pin SDL to Jetson's PulseAudio-compatible Bluetooth sink.
                 additional_env={'SDL_AUDIODRIVER': 'pulseaudio'},
-                # The launch argument wins over the file default for locale.
+                # HH_260812 - Let the locale launch argument override the file default.
                 parameters=[cfg('voice_announcer.yaml'), {'locale': locale}],
             ),
 

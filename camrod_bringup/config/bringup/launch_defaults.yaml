@@ -87,17 +87,17 @@ bringup:
   # =========================================================================
   planning:
     # ---- Planning core toggles ----
-    # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
+    # HH_260604 - Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
     enable_planning: true
     # HH_260805 - Compose the vendored planner/controller in the scoped runtime;
     # vendor servers with private executors remain standalone. Three final
     # full-sim trials reached SYSTEM OK and all six containers exited cleanly.
     use_nav2_container: true
-    # HH_260625: Path-cost grids are RViz/guide helpers, not required for Nav2
+    # HH_260625 - Path-cost grids are RViz/guide helpers, not required for Nav2
     # route generation. Keep them off in full bringup to avoid extra OSM loads
     # and raster rebuilds during startup; enable explicitly for cost-grid debug.
     enable_path_cost_grids: false
-    # HH_260618: Keep goal_replanner off by default because Nav2 planner_server
+    # HH_260618 - Keep goal_replanner off by default because Nav2 planner_server
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
@@ -105,7 +105,7 @@ bringup:
     # Its fallback preemption is enabled only after the lanelet-grid width gate
     # proves at least 2.50 m of fresh contiguous drivable corridor.
     enable_obstacle_replan_monitor: true
-    # HH_260625: Let lifecycle_manager autostart own STARTUP unless localization
+    # HH_260625 - Let lifecycle_manager autostart own STARTUP unless localization
     # readiness gating is explicitly enabled. Running the retry node alongside
     # autostart can resend STARTUP while controller_server is still configuring.
     enable_nav2_lifecycle_retry: false
@@ -118,7 +118,7 @@ bringup:
     require_localization_ready: false
     enable_state_machine: true
     enable_progress: true
-    # HH_260618: Publish thick global/local trajectory markers for RViz readability.
+    # HH_260618 - Publish thick global/local trajectory markers for RViz readability.
     enable_path_visualization: true
     # Resolve drop_zone from camrod_bringup/config/map/drop_zones.yaml.
     state_machine_keypoints_yaml: map/drop_zones.yaml
@@ -126,7 +126,7 @@ bringup:
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
     # ---- Nav2 profile selection ----
-    # HH_260522: unified controller selector.
+    # HH_260522 - unified controller selector.
     #   rpp: use nav2_vehicle_param_file profile
     #   dwb: use nav2_vehicle_dwb_param_file profile
     controller_profile: rpp
@@ -139,7 +139,7 @@ bringup:
     # stays consistent with bringup BT XML.
     nav2_behavior_param_file: planning/nav2_behavior.yaml
     # Optional combo override (planner/controller pair-specific tuning).
-    # HH_260522: combo choices live in camrod_planning/config/nav2_combo_profiles/*.yaml
+    # HH_260522 - combo choices live in camrod_planning/config/nav2_combo_profiles/*.yaml
     # (example: disabled.yaml, navfn_rpp.yaml, smac2d_rpp.yaml, smachybrid_rpp.yaml, ...).
     # "__module_default__" resolves to camrod_planning/config/nav2_combo_profiles/disabled.yaml.
     nav2_combo_param_file: __module_default__
@@ -148,15 +148,15 @@ bringup:
     nav2_planner_plugins_param_file: planning/nav2_planner_profiles/production.yaml
     # HH_260805 - Construct only mission RPP and manual-goal RotationShim in production.
     nav2_controller_plugins_param_file: planning/nav2_controller_profiles/production.yaml
-    # HH_260528: Selector IDs for PlannerSelector/ControllerSelector.
+    # HH_260528 - Selector IDs for PlannerSelector/ControllerSelector.
     # "__auto__" infers planner/controller from nav2_combo_param_file name.
     # Examples:
     # - navfn_rpp.yaml       -> planner=NavFn, controller=RPP
     # - smac2d_dwb.yaml      -> planner=Smac2D, controller=DWB
-    # HH_260626: Default to connected lanelet routing. Smac2D/NavFn remain
+    # HH_260626 - Default to connected lanelet routing. Smac2D/NavFn remain
     # fallback/selectable when the graph route is unavailable.
     nav2_selected_planner: LaneletRoute
-    # HH_260625: RPP is the real-bringup default; MPPI remains selectable.
+    # HH_260625 - RPP is the real-bringup default; MPPI remains selectable.
     nav2_selected_controller: RPP
 
     # ---- Per-planning-node parameter file overrides ----
@@ -176,7 +176,7 @@ bringup:
     # This prevents duplicate camera/IMU/LiDAR processes during split-stack tests.
     enable_module: true
     enable_camera: true
-    # HH_260528: Per-camera enable flags for dual econ camera setup.
+    # HH_260528 - Per-camera enable flags for dual econ camera setup.
     #   enable_front_camera: true  → start camera_front_publisher_node (GPU VPI pipeline)
     #   enable_rear_camera:  true  → start camera_rear_publisher_node  (CPU OpenCV pipeline)
     enable_front_camera: true
@@ -219,7 +219,7 @@ bringup:
     lidar_preprocessor_param_file: sensing/lidar/preprocessor.yaml
     lidar_cost_grid_param_file: sensing/lidar/cost_grid.yaml
     inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
-    # HH_260611: Current rover default is simpleRTK2B Heading through ublox_gps.
+    # HH_260611 - Current rover default is simpleRTK2B Heading through ublox_gps.
     # Set false for the SparkFun ZED-F9P single-antenna profile.
     ublox_dual_antenna: true
     # HH_260727 - Send CORS only to the Lite moving base. Its device and baud
@@ -233,7 +233,7 @@ bringup:
     ublox_dual_warm_start_on_startup: false
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
-    # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
+    # HH_260528 - imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
     #   imu_model: cv7  → MicroStrain CV7-AHRS (direct node, respawn)
     #   imu_model: gq7  → MicroStrain GQ7 (microstrain_launch.py + optional NTRIP)
     imu_model: cv7
@@ -249,12 +249,12 @@ bringup:
     robot_center_frame_id: robot_center_link
     rear_axle_frame_id: robot_base_link
     # By default, use internal config defaults declared by platform launch files.
-    # HH_260506: Route sensor_kit TF geometry through bringup config so mount offsets
+    # HH_260506 - Route sensor_kit TF geometry through bringup config so mount offsets
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: platform/robot_visualization.yaml
 
-    # 260708: Exterior lights — light_controller decides HAZARD/crab/turn/OFF,
+    # HH_260708 - Exterior lights — light_controller decides HAZARD/crab/turn/OFF,
     # mcu_serial_bridge streams JSON to the Arduino Nano (headlight relay D10,
     # WS2815 left D5/right D7). Sim keeps the controller but forces the serial
     # bridge off. Details: camrod_platform/docs/lights-design-doc.html
@@ -281,7 +281,7 @@ bringup:
     # and the maneuver start gate. False preserves the current field workflow.
     enable_campsite_occupancy_guard: false
     enable_drop_zone_maneuver_controller: true
-    # HH_260803 / TODOLIST 12 - Execute only gate-approved bounded reverse/crab recovery.
+    # HH_260803 - TODO list 12: Execute only gate-approved bounded reverse/crab recovery.
     enable_route_safety_recovery_controller: true
     param_file: __module_default__
 
@@ -304,7 +304,7 @@ bringup:
     # State-machine ERROR_STOP is a planning soft-estop and must
     # close Nav2 cmd_vel, not only parking/site maneuver handoff.
     cmd_vel_gate_additional_estop_topics: /planning/state_machine/estop
-    # HH_260522: unified source selector for DR-timeout stop trigger.
+    # HH_260522 - unified source selector for DR-timeout stop trigger.
     #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
     #   disabled/off/none: ignore DR-timeout trigger
     cmd_vel_gate_dr_timeout_source_mode: localization_monitor
@@ -325,18 +325,18 @@ bringup:
     # Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
     cmd_vel_gate_cost_stop_enable: true
     cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
-    # HH_260618: Safety/cmd_vel gates use real localization pose. Do not use
+    # HH_260618 - Safety/cmd_vel gates use real localization pose. Do not use
     # /planning/lanelet_pose here: snapped pose can stay on-lane while the robot
     # is physically outside the drivable lanelet/cost corridor.
     cmd_vel_gate_cost_pose_topic: /localization/pose
-    # HH_260527: Primary-only selector default; use selected localization odometry.
+    # HH_260527 - Primary-only selector default; use selected localization odometry.
     cmd_vel_gate_cost_odometry_topic: /localization/odometry
     cmd_vel_gate_robot_base_frame: robot_center_link
-    # HH_260522: pose source preference options:
+    # HH_260522 - pose source preference options:
     #   odometry: prefer /localization/odometry candidate first
     #   tf_robot_base: prefer TF(map<-robot_center_link) first
     #   pose_topic: prefer the configured cost pose topic first.
-    # HH_260618: Prefer the configured real localization pose for safety checks.
+    # HH_260618 - Prefer the configured real localization pose for safety checks.
     cmd_vel_gate_pose_source_preference: pose_topic
     cmd_vel_gate_enable_pose_raw_fallback: false
     cmd_vel_gate_cost_threshold: 85
@@ -370,7 +370,7 @@ bringup:
     cmd_vel_gate_front_dynamic_path_width_m: 1.27
     cmd_vel_gate_front_dynamic_path_max_start_distance_m: 1.5
 
-    # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
+    # HH_260618 - Raw lanelet hard-stop before inflation ego-clear. This blocks
     # translational cmd_vel when the current/corridor cell is lane-boundary or
     # outside lanelet, while still allowing in-place yaw correction.
     cmd_vel_gate_lanelet_safety_enable: true
@@ -405,7 +405,7 @@ bringup:
     cmd_vel_gate_lanelet_safety_width_m: 0.8
     cmd_vel_gate_lanelet_safety_stop_on_unknown: true
     cmd_vel_gate_lanelet_safety_allow_rotation_in_place: true
-    # HH_260618: Keep reverse/lateral free for explicit parking/site maneuver
+    # HH_260618 - Keep reverse/lateral free for explicit parking/site maneuver
     # phases; those phases need their own mission-state boundary guard.
     cmd_vel_gate_lanelet_safety_check_reverse: false
     cmd_vel_gate_lanelet_safety_check_lateral: false
@@ -463,28 +463,28 @@ bringup:
     # the same physical radar envelope does not re-enable static lanelet stops.
     cmd_vel_gate_body_near_maneuver_side_lookahead_m: 1.20
     cmd_vel_gate_body_near_maneuver_rear_lookahead_m: 0.80
-    # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
+    # HH_260630 - Match radar/lidar dynamic stop threshold so side hits are not
     # ignored by a higher side-only threshold.
     cmd_vel_gate_side_cost_threshold: 85
-    # HH_260630: Side lidar/radar cells land near 0.9-1.0 m from robot center,
+    # HH_260630 - Side lidar/radar cells land near 0.9-1.0 m from robot center,
     # so crab-motion stop must look beyond the old 0.8 m window.
     cmd_vel_gate_side_lookahead_m: 1.2
     # HH_260623 - Side scan width covers full body length plus front/rear margins.
     cmd_vel_gate_side_corridor_width_m: 1.69160
-    # HH_260630: Match radar/lidar dynamic stop threshold so rear hits are not
+    # HH_260630 - Match radar/lidar dynamic stop threshold so rear hits are not
     # ignored by a higher rear-only threshold.
     cmd_vel_gate_rear_cost_threshold: 85
-    # HH_260630: Rear dynamic cells can land just past 0.9 m after cost-grid
+    # HH_260630 - Rear dynamic cells can land just past 0.9 m after cost-grid
     # discretization and sensor/footprint offsets.
     cmd_vel_gate_rear_lookahead_m: 1.2
     # HH_260623 - Rear scan width covers full body width plus left/right margins.
     cmd_vel_gate_rear_corridor_width_m: 1.27
-    # HH_260618: Explicit site-crab lateral parking may cross static
+    # HH_260618 - Explicit site-crab lateral parking may cross static
     # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
     # stops the robot.
     cmd_vel_gate_lateral_cmd_bypass_static_cost_stop: true
     cmd_vel_gate_lateral_cmd_bypass_min_mps: 0.02
-    # HH_260618: Reverse campsite parking may cross static lanelet/global-path
+    # HH_260618 - Reverse campsite parking may cross static lanelet/global-path
     # cost after lanelet-snap arrival; LiDAR/Radar source cost remains active.
     cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
     cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
@@ -510,7 +510,7 @@ bringup:
     # HH_260720 - Use the control-owned yaw-alignment zone file.
     cmd_vel_gate_yaw_alignment_zones_file: control/yaw_alignment_zones.yaml
 
-    # HH_260706: Route-heading guard uses slower rotation and a longer tangent
+    # HH_260706 - Route-heading guard uses slower rotation and a longer tangent
     # lookahead to reduce startup left-right oscillation under delayed field data.
     cmd_vel_gate_route_heading_enable: true
     cmd_vel_gate_route_heading_path_topic: /planning/local_path
@@ -538,7 +538,7 @@ bringup:
 
     # HH_260720 - Scale output before publishing /control/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
-    # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
+    # HH_260626 - Publish zero if Nav2 raw cmd_vel stops arriving.
     cmd_vel_gate_input_timeout_s: 0.35
     cmd_vel_gate_zero_publish_rate_hz: 10.0
     # HH_260806 - Keep the vehicle stationary only while maneuver/Nav2 ownership changes.
@@ -581,13 +581,13 @@ bringup:
   perception:
     enable_lidar_obstacle: true
     enable_yolo: true
-    # HH_260707: Default to the front-camera->YOLO component path after real
+    # HH_260707 - Default to the front-camera->YOLO component path after real
     # bringup smoke tests confirmed unchanged public topics and lower DDS load.
     use_camera_yolo_container: true
     # HH_260805 - Active only for physical rear-camera AprilTag parking.
     use_rear_camera_apriltag_container: true
     apriltag_param_file: perception/apriltag_parking_detector.yaml
-    # HH_260522: unified perception pipeline selector.
+    # HH_260522 - unified perception pipeline selector.
     #   auto: camera if available, fallback to lidar_only
     #   lidar_only: disable camera branches
     #   camera_lidar: require camera branches (auto-fallback to lidar_only if camera missing)
@@ -600,7 +600,7 @@ bringup:
   # =========================================================================
   system:
     # Enable full camrod_system diagnostics launch by default in bringup.
-    # HH_260522: diagnostics profile choices are directory names under:
+    # HH_260522 - diagnostics profile choices are directory names under:
     #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
     # HH_260805 - Keep the filtered diagnostic chain in one serialized

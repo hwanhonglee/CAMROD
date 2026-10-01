@@ -64,7 +64,7 @@ public:
       "fallback_pose_cov_topic", "/localization/fallback/pose_with_covariance");
     fallback_odom_topic_ = declare_parameter<std::string>(
       "fallback_odom_topic", "/localization/fallback/odometry");
-    // HH_260527: Allow empty fallback topics to run primary-only selector mode.
+    // HH_260527 - Allow empty fallback topics to run primary-only selector mode.
     fallback_enabled_ = !fallback_pose_cov_topic_.empty() || !fallback_odom_topic_.empty();
     mode_topic_ = declare_parameter<std::string>(
       "mode_topic", "/localization/mode");
@@ -509,17 +509,17 @@ private:
   double switch_hysteresis_s_{0.5};
   int fallback_on_mode_at_or_above_{2};
 
-  // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs).
+  // HH_260422 - true -> also publish /localization/status (AvgLocalizationMsgs).
   bool publish_localization_status_{false};
-  bool publish_selected_tf_{true};          // HH_260422: true -> broadcast selected pose as TF transform
-  bool fallback_enabled_{true};             // HH_260527: false when fallback topics are intentionally left empty
+  bool publish_selected_tf_{true};          // HH_260422 - true -> broadcast selected pose as TF transform
+  bool fallback_enabled_{true};             // HH_260527 - false when fallback topics are intentionally left empty
 
-  // HH_260422: mode_value_ holds the latest enum received from /localization/mode (published by localization_monitor).
+  // HH_260422 - mode_value_ holds the latest enum received from /localization/mode (published by localization_monitor).
   //   When mode_value_ >= fallback_on_mode_at_or_above_ (default DR_ONLY=2), selector switches to fallback source.
   //   Data flow: localization_monitor -> /localization/mode -> pose_selector (source switch).
   int mode_value_{static_cast<int>(avg_msgs::msg::AvgLocalizationMode::INVALID)};
 
-  // HH_260422: selected_initialized_ becomes true after the first source selection completes.
+  // HH_260422 - selected_initialized_ becomes true after the first source selection completes.
   //   While false: evaluateAndPublish() skips all source-switching logic.
   bool selected_initialized_{false};
   Source selected_source_{Source::kPrimary};
@@ -534,7 +534,7 @@ private:
   //   If both are false, primary cannot be selected and fallback is forced regardless of mode.
   bool primary_has_pose_cov_{false};
   bool primary_has_odom_{false};
-  // HH_260422: fallback_has_pose_cov_ / fallback_has_odom_ become true once the fallback source publishes data.
+  // HH_260422 - fallback_has_pose_cov_ / fallback_has_odom_ become true once the fallback source publishes data.
   //   A mode_bad or primary_bad condition only switches to fallback if fallback data is actually available.
   bool fallback_has_pose_cov_{false};
   bool fallback_has_odom_{false};

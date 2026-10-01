@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260729 / TODOLIST 11-12 - Reissue only goals that actually aborted during
+// HH_260729 - TODO list 11: 12 - Reissue only goals that actually aborted during
 // a route-safety hold, after the control gate has remained enabled for a
 // bounded clear delay.
 

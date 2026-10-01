@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Guest recall keeps site identity and never selects an authored site pose."""
 
+# HH_260907 - Keep recall routing tied to the semantic campsite key and the live goal stamp.
+
 from __future__ import annotations
 
 import importlib.util
@@ -58,6 +60,7 @@ def _policy_fixture() -> SimpleNamespace:
 
 
 class RecallTargetPolicyTest(unittest.TestCase):
+    # HH_260911 - Dispatcher handoff remains a running parking phase in central planning.
     def test_dispatcher_handoff_and_selected_parking_share_central_planning_state(self) -> None:
         node = SimpleNamespace(
             SCENARIO_DROP_ZONE_PARKING=PlanningStateMachineNode.SCENARIO_DROP_ZONE_PARKING,
@@ -82,6 +85,7 @@ class RecallTargetPolicyTest(unittest.TestCase):
                 PlanningStateMachineNode._on_maneuver_phase_state(node, message)
                 self.assertEqual(node._maneuver_phase_override_state, expected)
 
+    # HH_260908 - A wider handoff margin still needs a fresh Nav2 terminal success.
     def test_return_handoff_margin_still_requires_fresh_nav2_success(self) -> None:
         now = Time(seconds=100)
         node = SimpleNamespace(

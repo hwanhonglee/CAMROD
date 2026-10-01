@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned visualization marker contract for module-to-module transport.
 uint8 ARROW=0
 uint8 CUBE=1
 uint8 SPHERE=2

@@ -38,6 +38,8 @@ const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS
 const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
 
 const IDLE_STANDBY_RETURN_MS = 10000;
+// HH_260929 - Treat touch, pointer, wheel, and key input as activity so the
+// robot display does not fall back to standby during operator interaction.
 const IDLE_ACTIVITY_EVENTS = Object.freeze([
   'pointerdown',
   'pointerup',
@@ -738,7 +740,7 @@ function DiagnosticsMonitor({
           );
         })}
         {items.length === 0 && (
-          /* HH_260617: UI diagnostics reads the namespaced system aggregator topic. */
+          /* HH_260617 - UI diagnostics reads the namespaced system aggregator topic. */
           <div className="diag-empty">데이터 없음 — /system/diagnostics_agg 대기 중…</div>
         )}
       </div>
@@ -1308,7 +1310,7 @@ function App() {
   const [systemHealth, setSystemHealth] = useState('STARTING');
   const [missionPhase, setMissionPhase] = useState('INITIALIZING');
   const [missionSource, setMissionSource] = useState('none');
-  const [headlightState, setHeadlightState] = useState(false); // 260708: 전조등 토글
+  const [headlightState, setHeadlightState] = useState(false); // HH_260708 - Track the headlight toggle.
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -1604,18 +1606,18 @@ function App() {
 
   useEffect(() => {
     if (anyOn || manualDriveActive) {
-      // ON이 하나라도 있으면 타이머 해제 & 대기 화면 진입 방지
+      // HH_260521 - Any enabled output cancels the timer and prevents standby.
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
       }
     } else if (!showWaiting && !isReturning) {
-      // 전부 OFF + 복귀 중 아닐 때 → 10초 타이머 시작
+      // HH_260602 - Start the standby timer only with all outputs off and no return.
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
       }, IDLE_STANDBY_RETURN_MS);
     } else if (isReturning && idleTimerRef.current) {
-      // 복귀 중이면 기존 타이머 취소
+      // HH_260602 - Cancel an existing standby timer during the return trip.
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
@@ -1626,6 +1628,8 @@ function App() {
 
   useEffect(() => {
     if (!returnCompletionPending || missionDispatch.active) return;
+    // HH_260929 - A completed return resets the touchscreen to the normal
+    // standby selection state only after mission dispatch is no longer active.
     setReturnCompletionPending(false);
     intentPinnedRef.current = false;
     destinationIntentRef.current = 'delivery';
@@ -2084,7 +2088,7 @@ function App() {
           );
           setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
-          // A call mission temporarily uses RETURN_WITH_CARGO while the robot
+          // HH_260929 - A call mission temporarily uses RETURN_WITH_CARGO while the robot
           // re-enters the campsite and turns around. Keep the completion
           // window/site visible through that sequence; close it only after the
           // final loading confirmation starts the real trip back.
@@ -2211,7 +2215,7 @@ function App() {
     setEngageState(false);
   };
 
-  // 260708: 전조등 ON/OFF — /ui/headlight → /platform/headlight/command
+  // HH_260708 - Send the headlight toggle through the UI command endpoint.
   const handleHeadlight = () => {
     const next = !headlightState;
     fetch(`/ui/headlight?value=${next}`, { method: 'POST' })

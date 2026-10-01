@@ -61,6 +61,7 @@ fi
     return result.stdout == "included"
 
 
+# HH_260807 - Default ordinary workspace builds to optimized Release mode.
 def test_normal_build_defaults_to_release() -> None:
     source, args = _prepared_args("--packages-select", "ground_segmentation_ros2")
 
@@ -73,6 +74,7 @@ def test_normal_build_defaults_to_release() -> None:
     ]
 
 
+# HH_260807 - Merge the default build type into an existing CMake argument group.
 def test_release_default_joins_existing_cmake_argument_group() -> None:
     source, args = _prepared_args(
         "--packages-select",
@@ -89,6 +91,7 @@ def test_release_default_joins_existing_cmake_argument_group() -> None:
     ]
 
 
+# HH_260807 - Respect explicit Debug and RelWithDebInfo selections.
 def test_explicit_debug_and_relwithdebinfo_remain_authoritative() -> None:
     for original in (
         ["--cmake-args", "-DCMAKE_BUILD_TYPE=Debug", "-DBUILD_TESTING=ON"],
@@ -107,6 +110,7 @@ def test_explicit_debug_and_relwithdebinfo_remain_authoritative() -> None:
         assert "-DCMAKE_BUILD_TYPE=Release" not in args
 
 
+# HH_260807 - Preserve inline CMake options while adding the Release default.
 def test_inline_cmake_argument_is_preserved_when_adding_release() -> None:
     source, args = _prepared_args("--cmake-args=-DBUILD_TESTING=OFF")
 
@@ -118,6 +122,7 @@ def test_inline_cmake_argument_is_preserved_when_adding_release() -> None:
     ]
 
 
+# HH_260911 - Build the UI frontend only when colcon's package scope includes it.
 def test_ui_frontend_build_scope_honors_explicit_select_and_skip() -> None:
     assert _scope_includes("camrod_ui")
     assert _scope_includes(

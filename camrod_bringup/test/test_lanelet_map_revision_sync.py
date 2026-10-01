@@ -34,6 +34,7 @@ def _tags(element: ET.Element) -> dict[str, str]:
     }
 
 
+# HH_260810 - Pin the active map revision that deployment-derived data uses.
 def test_active_park_map_matches_the_current_user_revision() -> None:
     """Deployment must bind derived configs to the current active map."""
     # HH_260818 - lanelet2_maps.osm is the active source. Named copy files are
@@ -70,6 +71,7 @@ def test_active_park_map_matches_the_current_user_revision() -> None:
     assert {tags["yaw_deg"] for tags in drops.values()} == {"-88.2127"}
 
 
+# HH_260805 - Keep the captured runtime evidence tied to its original map v14.
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:
     """Historical screenshots and timing data must retain their map input."""
     report = json.loads(RUNTIME_REPORT.read_text(encoding="utf-8"))

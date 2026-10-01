@@ -19,6 +19,6 @@ RUN rosdep update || true
 
 WORKDIR /workspaces/camrod_ws
 
-# HH_260309 This image is GPU-ready when launched with:
+# HH_260309 - This image is GPU-ready when launched with:
 #   docker run --gpus all ...
 # CUDA libs are mounted by nvidia-container-toolkit at runtime.

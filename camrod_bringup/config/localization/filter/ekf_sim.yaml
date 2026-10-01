@@ -2,14 +2,14 @@
 # covariance, 3) imu0 input, 4) pose0 GNSS position input, 5) odom0 wheel
 # input, 6) pose1 GNSS heading input, 7) process noise covariance.
 /**:
-# HH_260618: Sim EKF profile accepts the fake GNSS start pose so planning tests
+# HH_260618 - Sim EKF profile accepts the fake GNSS start pose so planning tests
 # begin from the configured simulated robot pose instead of staying at map origin.
-# HH_260109 Use node-agnostic parameters so launch applies them regardless of namespace.
+# HH_260109 - Use node-agnostic parameters so launch applies them regardless of namespace.
   ros__parameters:
     # =========================================================================
     # 1. FILTER CORE AND FRAMES
     # =========================================================================
-    # HH_260327: Reduce EKF loop target to avoid startup overload under full bringup.
+    # HH_260327 - Reduce EKF loop target to avoid startup overload under full bringup.
     # 30 Hz budget (33.3 ms) caused periodic missed-rate warnings; 20 Hz gives 50 ms budget.
     frequency: 20.0
     sensor_timeout: 0.2
@@ -18,7 +18,7 @@
     odom_frame: odom
     # HH_260803 - Sim publishes the same axle-midpoint contract as hardware.
     base_link_frame: robot_center_link
-    # HH_260327: Keep EKF world_frame as odom (single-filter topology stability).
+    # HH_260327 - Keep EKF world_frame as odom (single-filter topology stability).
     # map-frame consistency for /localization/pose is handled by odometry_to_pose_node
     # output_frame_id=map in localization.launch.py.
     world_frame: odom
@@ -34,7 +34,7 @@
     # =========================================================================
     # 2. INITIAL ESTIMATE COVARIANCE
     # =========================================================================
-    # HH_260526: Initial position uncertainty set to 1.0 m² so the first GNSS measurement
+    # HH_260526 - Initial position uncertainty set to 1.0 m² so the first GNSS measurement
     # is well-trusted (K_init ≈ 0.91) and EKF converges to GNSS position within 1-2 epochs.
     # robot_localization default is 1e-9 (near-zero) which gives K≈0 and prevents attachment.
     # 1.0 (not 5.0) avoids over-aggressive initial jumps — GNSS position can vary within 1m at startup.
@@ -58,7 +58,7 @@
     # =========================================================================
     # 3. IMU INPUT (imu0)
     # =========================================================================
-    # HH_260625: Sim fake IMU publishes map-consistent yaw, so yaw fusion stays
+    # HH_260625 - Sim fake IMU publishes map-consistent yaw, so yaw fusion stays
     # enabled here. Real CV7-AHRS yaw is handled differently in ekf.yaml.
     # imu0_config order:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
@@ -116,7 +116,7 @@
     # =========================================================================
     # 6. GNSS HEADING INPUT (pose1)
     # =========================================================================
-    # HH_260625: Sim keeps GNSS yaw as a yaw-only correction.
+    # HH_260625 - Sim keeps GNSS yaw as a yaw-only correction.
     # HH_260723 - robot_localization requires contiguous pose input indices.
     # pose1_config order matches the EKF state vector above.
     # HH_260720 - Reuse the same explicit GNSS mirror for stationary heading.
@@ -135,7 +135,7 @@
     # 7. PROCESS NOISE COVARIANCE
     # =========================================================================
     # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
-    # HH_260526: Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
+    # HH_260526 - Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
     #   Position Q=0.05 → steady-state K≈0.51 (51% GNSS gain, 0.5m GNSS jump → 0.25m EKF jump).
     #   Position Q=0.01 → steady-state K≈0.27 (27% GNSS gain, 0.5m GNSS jump → 0.14m EKF jump).
     #   Lower Q means EKF trusts its own model more between GNSS epochs → less drift while stationary.

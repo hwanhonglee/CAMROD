@@ -6,6 +6,7 @@ Before=network.target
 
 [Service]
 Type=oneshot
+# HH_260629 - Set can0 to 500 kbit/s with 100 ms restart before network startup.
 ExecStart=/usr/local/sbin/camrod-setup-can0 can0 500000 100
 RemainAfterExit=yes
 

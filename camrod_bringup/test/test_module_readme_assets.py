@@ -202,6 +202,7 @@ README_RUNTIME_ASSETS = {
 }
 
 
+# HH_260804 - Rebuild every linked image from current module inputs.
 def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
     """Every README image must be generated from current config and evidence."""
     subprocess.run(
@@ -308,6 +309,7 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         assert animation.format == "GIF"
 
 
+# HH_260804 - Let a package owner regenerate only that package's assets.
 def test_renderer_can_target_one_package(tmp_path: Path) -> None:
     """Package maintainers can regenerate only the assets they own."""
     subprocess.run(
@@ -338,6 +340,7 @@ def test_renderer_can_target_one_package(tmp_path: Path) -> None:
     ]
 
 
+# HH_260810 - Keep offline renderers central and operational probes local.
 def test_visualization_tool_ownership_is_explicit() -> None:
     """Offline renderers are central while operational tools remain local."""
     scripts = SRC_ROOT / "camrod_bringup" / "scripts"
@@ -381,6 +384,7 @@ def test_visualization_tool_ownership_is_explicit() -> None:
     assert "ros2 run camrod_bringup" in ownership
 
 
+# HH_260804 - Render sensor-kit geometry without requiring runtime captures.
 def test_renderer_can_target_sensor_kit_without_runtime_evidence(
     tmp_path: Path,
 ) -> None:
@@ -415,6 +419,7 @@ def test_renderer_can_target_sensor_kit_without_runtime_evidence(
     ]
 
 
+# HH_260804 - Resolve each guide image to a package-owned asset.
 def test_every_visual_doc_links_package_owned_assets() -> None:
     """Every package/release guide must link existing module-owned visuals."""
     image_pattern = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
@@ -432,6 +437,7 @@ def test_every_visual_doc_links_package_owned_assets() -> None:
         ), f"{document.relative_to(SRC_ROOT)} has no module-owned visual"
 
 
+# HH_260804 - Keep release images decodable and owned by their modules.
 def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
     """Release PNG/GIF evidence must not drift back into a version folder."""
     asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
@@ -447,6 +453,7 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
     assert not (SRC_ROOT / "docs" / "assets" / "v2.1.3").exists()
 
 
+# HH_260805 - Bind map-v15 recovery visuals to the captured source hash.
 def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> None:
     """Released recovery evidence must reject the later deployed map geometry."""
     # HH_260818 - Historical map-v15 evidence must reject both a newer map
@@ -484,6 +491,7 @@ def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> No
     )
 
 
+# HH_260807 - Preserve captured geometry when replaying historical recovery runs.
 def test_recovery_renderer_uses_captured_geometry_without_relabeling_history() -> None:
     """New 10 cm runs and metadata-free release runs keep distinct envelopes."""
     spec = importlib.util.spec_from_file_location(
@@ -516,6 +524,7 @@ def test_recovery_renderer_uses_captured_geometry_without_relabeling_history() -
     ) == (0.80837, 0.78323, 0.63505, 0.63495)
 
 
+# HH_260804 - Expose each module's runtime capture in its own guide.
 def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     """Every CAMROD README must expose its actual runtime surface."""
     asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
@@ -555,6 +564,7 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     assert f"**{png_count} PNGs and {gif_count} GIFs**" in visual_guide
 
 
+# HH_260805 - Keep map-v14 recovery evidence separate from later active maps.
 def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
     """Recovery visuals must stay bound to their historical v14 map input."""
     runs = {
@@ -591,6 +601,7 @@ def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
     assert runs["crab"]["maximum_recovery_abs_linear_y_mps"] <= 0.05
 
 
+# HH_260805 - Retain staged yaw and crab evidence for the map-v15 release.
 def test_map_v15_release_evidence_exercises_staged_yaw_and_crab() -> None:
     """Released map-v15 visuals must retain their adaptive runtime evidence."""
     runs = {
@@ -628,6 +639,7 @@ def test_map_v15_release_evidence_exercises_staged_yaw_and_crab() -> None:
     assert runs["crab"]["rapid_recontact_latched"] is False
 
 
+# HH_260804 - Keep capture provenance and its evidence limit explicit.
 def test_runtime_capture_metadata_is_complete_and_not_field_evidence() -> None:
     """Live screens must retain traceability and an explicit evidence limit."""
     report = json.loads(RUNTIME_CAPTURE_REPORT.read_text(encoding="utf-8"))
@@ -662,6 +674,7 @@ def test_runtime_capture_metadata_is_complete_and_not_field_evidence() -> None:
     assert "OPERATOR_STOPPED(16)" in raw_text
 
 
+# HH_260804 - Link only maintained launch entrypoints in bringup guides.
 def test_bringup_docs_reference_only_existing_launch_entrypoint() -> None:
     """Documentation must not reintroduce launch files absent from the package."""
     text = "\n".join(
@@ -679,6 +692,7 @@ def test_bringup_docs_reference_only_existing_launch_entrypoint() -> None:
     assert (SRC_ROOT / "camrod_bringup" / "launch" / "bringup.launch.py").is_file()
 
 
+# HH_260805 - Preserve normalized evidence after duplicate raw logs are pruned.
 def test_bringup_evidence_is_self_contained_after_raw_log_pruning() -> None:
     """Normalized events must retain provenance after duplicate logs are pruned."""
     report = json.loads(BRINGUP_EVIDENCE.read_text(encoding="utf-8"))
@@ -710,6 +724,7 @@ def test_bringup_evidence_is_self_contained_after_raw_log_pruning() -> None:
         assert hold["reason"] == "lanelet_footprint_cost"
 
 
+# HH_260804 - Keep field summary values traceable without claiming raw logs.
 def test_field_summary_matches_report_and_marks_raw_logs_external() -> None:
     """Reported physical values must stay traceable without claiming raw data."""
     summary = json.loads(FIELD_REPORT.read_text(encoding="utf-8"))

@@ -109,7 +109,7 @@
     # =========================================================================
     # 6. WINDOW AND INPUT TOPICS
     # =========================================================================
-    # HH_260527: window_mode options:
+    # HH_260527 - window_mode options:
     #   robot_centered: window centered on current pose
     #   path_bbox: window centered on active path bounding box
     #   fixed: fixed-origin window from map_frame origin
@@ -175,7 +175,7 @@
     # Disabled by default to reduce CPU/log load during realtime runs.
     # Enable temporarily for raster-debug sessions only.
     debug_coverage_stats: false
-    # HH_260625: Keep timing visible when path-cost helpers are explicitly enabled.
+    # HH_260625 - Keep timing visible when path-cost helpers are explicitly enabled.
     debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
@@ -186,11 +186,11 @@
     # /planning/global_path publisher is VOLATILE.
     # Keep subscriber durability VOLATILE to avoid QoS mismatch/drop.
     path_qos_transient_local: false
-    # HH_260618: Enable the primary publisher for this helper. The shared
+    # HH_260618 - Enable the primary publisher for this helper. The shared
     # lanelet_cost_grid_node default disables primary output because the map
     # package normally uses the secondary output; path-cost helpers do not.
     primary_enable: true
-    # HH_260618: Lower heartbeat load; path updates still trigger immediate rebuilds.
+    # HH_260618 - Lower heartbeat load; path updates still trigger immediate rebuilds.
     republish_period_s: 0.25
     output_topic: "/planning/cost_grid/global_path"
 
@@ -290,7 +290,7 @@
     # =========================================================================
     # 6. WINDOW AND INPUT TOPICS
     # =========================================================================
-    # HH_260527: window_mode options:
+    # HH_260527 - window_mode options:
     #   robot_centered: window centered on current pose
     #   path_bbox: window centered on active path bounding box
     #   fixed: fixed-origin window from map_frame origin
@@ -349,7 +349,7 @@
     # Disabled by default to reduce CPU/log load during realtime runs.
     # Enable temporarily for raster-debug sessions only.
     debug_coverage_stats: false
-    # HH_260625: Keep timing visible when path-cost helpers are explicitly enabled.
+    # HH_260625 - Keep timing visible when path-cost helpers are explicitly enabled.
     debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
@@ -358,9 +358,9 @@
     # 10. OUTPUT AND QOS
     # =========================================================================
     path_qos_transient_local: false
-    # HH_260618: Enable the primary publisher for this helper. Without this,
+    # HH_260618 - Enable the primary publisher for this helper. Without this,
     # /planning/cost_grid/local_path has subscribers but no publisher.
     primary_enable: true
-    # HH_260618: Reduce local marker/grid heartbeat; pose/path callbacks still refresh immediately.
+    # HH_260618 - Reduce local marker/grid heartbeat; pose/path callbacks still refresh immediately.
     republish_period_s: 0.20
     output_topic: "/planning/cost_grid/local_path"

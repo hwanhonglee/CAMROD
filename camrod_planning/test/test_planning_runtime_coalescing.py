@@ -1,5 +1,7 @@
 """Tests for latest-only planning visualization and obstacle monitoring inputs."""
 
+# HH_260730 - Keep visualization and obstacle subscriptions latest-only under ROS traffic.
+
 import importlib.util
 import math
 import os
@@ -454,6 +456,7 @@ class PlanningRuntimeCoalescingTest(unittest.TestCase):
             node.destroy_node()
 
 
+# HH_260908 - Retain a usable terminal local path until the extractor's tighter arrival band.
 class LocalPathTerminalRetentionTest(unittest.TestCase):
     """Exercise the native extractor with production YAML on isolated test topics.
 
@@ -567,7 +570,7 @@ class LocalPathTerminalRetentionTest(unittest.TestCase):
         parameters = canonical["/planning/local_path_extractor"]["ros__parameters"]
         goal = yaml.safe_load((self.package / "config/nav2_base.yaml").read_text())
         nav2_tolerance = goal["controller_server"]["ros__parameters"]["goal_checker"]["xy_goal_tolerance"]
-        # The v27 field profile hands off at 0.20 m to avoid a terminal spin.
+        # HH_260928 - The v27 field profile hands off at 0.20 m to avoid a terminal spin.
         # The extractor must still retain its tighter, independent 0.05 m band.
         self.assertEqual(nav2_tolerance, 0.20)
         nav2_mirror = yaml.safe_load(

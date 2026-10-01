@@ -4,7 +4,7 @@
 # =========================================================================
 # 1. OBSTACLE FUSION
 # =========================================================================
-# HH_260629: Shared perception parameters for camrod_perception and camrod_bringup.
+# HH_260629 - Shared perception parameters for camrod_perception and camrod_bringup.
 # Keep the package and bringup copies synchronized before field runs.
 # Fusion uses direct econ_front topics; /sensing/camera/processed is not published.
 /perception/obstacle_fusion:
@@ -12,7 +12,7 @@
     # Topics
     input_cloud_topic:   "/sensing/lidar/points_filtered"
     detection_topic:     "/perception/camera/detections_2d"
-    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HH_260529
+    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HH_260529 - Use front-camera calibration data.
     image_topic:         "/sensing/camera/econ_front/image_rect/compressed"
     bbox_topic:          "/perception/lidar/bboxes"
     output_topic:        "/perception/obstacles"
@@ -21,7 +21,7 @@
     out_markers_topic:   "/perception/camera_lidar/markers"
     out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
 
-    # HH_260707: Keep fusion outputs enabled, but avoid stale sync backlog and
+    # HH_260707 - Keep fusion outputs enabled, but avoid stale sync backlog and
     # debug-image decode/draw work unless an operator UI/RViz is consuming it.
     sync_queue_size: 8
     debug_image_publish_rate_hz: 2.0
@@ -31,8 +31,8 @@
     image_width: 1920
     image_height: 1080
 
-    # HH_260818 / HH_260824 - Safety-facing /perception/obstacles and fusion
-    # markers contain only LiDAR results associated with a current, valid
+    # HH_260818 - Safety-facing /perception/obstacles and fusion markers
+    # (updated on HH_260824) contain only LiDAR results associated with a current, valid
     # semantic detection. Raw/unknown Euclidean clusters remain on the separate
     # diagnostic visualization topic only.
     unknown_class_labels: ["", "?", "unknown"]
@@ -42,9 +42,9 @@
     # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
     extrinsic_x: 0.0
     extrinsic_y: 0.0 # 0.0
-    extrinsic_z: -0.07    # HH_260623: Camera is 10 cm below LiDAR.
+    extrinsic_z: -0.07    # HH_260623 - Camera is 10 cm below LiDAR.
 
-    # HH_260529: Points closer than this [m] are ignored.
+    # HH_260529 - Points closer than this [m] are ignored.
     lidar_min_forward_m: 1.0
 
     # Clustering / tracking
@@ -62,12 +62,12 @@
     input_topic: "/sensing/lidar/points_filtered"                 # LiDAR cloud input for Euclidean clustering.
     bbox_topic: "/perception/lidar/bboxes"                        # MarkerArray output topic for cluster AABB results.
 
-    # HH_260406: Canonical DBSCAN/Euclidean clustering params.
+    # HH_260406 - Canonical DBSCAN/Euclidean clustering params.
     cluster_tolerance: 0.25                                       # Neighbor distance threshold for cluster growth [m].
     min_cluster_size: 12                                          # Minimum number of points required for a valid cluster.
     max_cluster_size: 8000                                        # Maximum number of points allowed for a valid cluster.
 
-    # HH_260522: Unified ROI filter selector.
+    # HH_260522 - Unified ROI filter selector.
     #   box/enabled/on: apply ROI bounds
     #   disabled/off/none: skip ROI bounds
     roi_filter_mode: box
@@ -88,7 +88,7 @@
 # =========================================================================
 # 3. YOLO DETECTOR
 # =========================================================================
-# HH_260629: Explicit YOLO topics prevent fallback to compiled defaults.
+# HH_260629 - Explicit YOLO topics prevent fallback to compiled defaults.
 # model_path / class_label_path are resolved at launch time by yolo.launch.py.
 /perception/yolov9mit:
   ros__parameters:
@@ -105,9 +105,9 @@
     throttle_fps: 5.0
     imshow: false
 
-    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529
+    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529 - Use the rectified front-camera image.
     transport_hint: "compressed"
-    # HH_260730 / TODOLIST 2 - Reject corrupt/decompression-bomb inputs before OpenCV.
+    # HH_260730 - TODO list 2: Reject corrupt/decompression-bomb inputs before OpenCV.
     max_compressed_payload_bytes: 16777216
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"

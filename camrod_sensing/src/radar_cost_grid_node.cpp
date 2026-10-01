@@ -58,6 +58,7 @@ public:
 
     output_topic_ = declare_startup(
       "output_topic", std::string{"/sensing/cost_grid/radar"});
+    // HH_260804 - Compute radar grid origin from robot_center_link, not the rear axle.
     base_frame_id_ = declare_startup("base_frame_id", std::string{"robot_center_link"});
     output_frame_id_ = declare_startup("output_frame_id", std::string{"map"});
     // HH_260729 - Numeric no-target ranges already sit above max_range. The
@@ -721,7 +722,7 @@ private:
         hit_sensor, output_frame_id_, tf2::durationFromSec(0.05));
       return true;
     } catch (const tf2::TransformException &) {
-      // HH_260315-00:00 Fallback to latest TF to avoid transient "future
+      // HH_260315 - Fallback to latest TF to avoid transient "future
       // extrapolation" drops that make marker/grid updates look unstable.
       hit_sensor.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
       try {
@@ -833,7 +834,7 @@ private:
     maybeFinalizeStartupReturnLearning();
 
     geometry_msgs::msg::PointStamped base_origin;
-    // HH_260315-00:00 Anchor rolling grid with latest available TF.
+    // HH_260315 - Anchor rolling grid with latest available TF.
     base_origin.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
     base_origin.header.frame_id = base_frame_id_;
     base_origin.point.x = 0.0;
@@ -917,7 +918,7 @@ private:
       if (!transformHitToOutput(sample.msg, hit_output)) {
         continue;
       }
-      // HH_260630: SEN0592 risk should follow sensor-relative range, not
+      // HH_260630 - SEN0592 risk should follow sensor-relative range, not
       // robot-base distance. Front/side/rear mounts are offset from base_link,
       // so base-distance scaling made close hand/obstacle hits fall below the
       // cmd_vel gate threshold.

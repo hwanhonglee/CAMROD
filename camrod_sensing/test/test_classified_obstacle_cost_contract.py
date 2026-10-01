@@ -1,5 +1,7 @@
 """Lock marker-free classified LiDAR cost routing across package boundaries."""
 
+# HH_260824 - Safety costs consume only validated classified fusion clouds, not markers.
+
 from pathlib import Path
 
 import yaml

@@ -10,6 +10,7 @@ SOURCE = (Path(__file__).resolve().parents[1] / "camrod_ui_guest" / "assets"
           / "guest_frontend" / "index.html")
 
 
+# HH_260911 - Exercise real Guest reconnect code against stale sockets and timers.
 class GuestReconnectTest(unittest.TestCase):
     def run_contract(self, scenario):
         node = shutil.which("node")

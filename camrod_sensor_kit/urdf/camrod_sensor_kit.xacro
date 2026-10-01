@@ -34,7 +34,7 @@
   <xacro:arg name="lidar_xyz" default="0.76336 0.0 0.59538"/>
   <xacro:arg name="lidar_rpy" default="0.0 0.0 0.0"/>
 
-  <!-- HH_260528: Dual econ camera arguments (front + rear).                    -->
+  <!-- HH_260528 - Dual econ camera arguments (front + rear).                    -->
   <!--   TF: sensor_kit_base_link → camera_front_link → camera_front (optical) -->
   <!--       sensor_kit_base_link → camera_rear_link  → camera_rear  (optical) -->
   <!-- HH_260803 - Fallbacks are robot_center_link-relative; mounts did not move. -->
@@ -130,7 +130,7 @@
     </joint>
   </xacro:macro>
 
-  <!-- HH_260528: econ_camera_link macro                                       -->
+  <!-- HH_260528 - econ_camera_link macro                                       -->
   <!--   Creates a body frame (name) and an optical child frame (optical_name).-->
   <!--   optical_name joint uses the standard ROS camera optical convention:  -->
   <!--     RPY = -π/2, 0, -π/2  (Z forward, Y down in optical frame)         -->
@@ -262,7 +262,7 @@
   <!-- ========================================================= -->
   <!-- 10. Radar sensors                                         -->
   <!-- ========================================================= -->
-  <!-- HH_260507: Radar sensors are attached directly under sensor_kit_base_link. -->
+  <!-- HH_260507 - Radar sensors are attached directly under sensor_kit_base_link. -->
   <!-- HH_260623 - Front radar TFs match the 7-channel radar topics exactly. -->
 
   <xacro:sensor_link

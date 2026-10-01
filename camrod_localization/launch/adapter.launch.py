@@ -36,7 +36,7 @@ def generate_launch_description():
             default_value="localization",
             description="Namespace for localization adapter node",
         ),
-        # HH_260409: Expose wheel bridge wiring at launch level so bringup overrides are applied.
+        # HH_260409 - Expose wheel bridge wiring at launch level so bringup overrides are applied.
         DeclareLaunchArgument(
             "wheel_bridge_enable",
             default_value="true",
@@ -50,7 +50,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "wheel_input_topic",
-            # HH_260410: Prefer platform status odometry as primary wheel source.
+            # HH_260410 - Prefer platform status odometry as primary wheel source.
             default_value="/platform/status/odometry",
             description="Wheel bridge input topic",
         ),
@@ -62,7 +62,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "wheel_fallback_input_topic",
-            # HH_260410: Use /rmp401/odom only as fallback when status topic is stale/missing.
+            # HH_260410 - Use /rmp401/odom only as fallback when status topic is stale/missing.
             default_value="/rmp401/odom",
             description="Wheel bridge fallback input topic",
         ),

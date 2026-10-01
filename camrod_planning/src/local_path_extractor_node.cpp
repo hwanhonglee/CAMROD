@@ -41,7 +41,7 @@ public:
     fallback_global_path_topic_ =
       declare_parameter<std::string>("fallback_global_path_topic", "");
     preferred_path_hold_s_ = declare_parameter<double>("preferred_path_hold_s", 1.0);
-    // HH_260316-00:00 Default to lanelet-snapped pose to keep local path aligned to centerline.
+    // HH_260316 - Default to lanelet-snapped pose to keep local path aligned to centerline.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/local_path");
     // HH_260720 - Expose a standard nav_msgs path only at the RViz and Nav2 boundary.
@@ -53,7 +53,7 @@ public:
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
-    // HH_260305-00:00 QoS durability for /planning/global_path subscriber.
+    // HH_260305 - QoS durability for /planning/global_path subscriber.
     // Keep false by default because planner_server publishes VOLATILE.
     global_path_qos_transient_local_ =
       declare_parameter<bool>("global_path_qos_transient_local", false);
@@ -70,24 +70,24 @@ public:
     full_reacquire_distance_m_ = declare_parameter<double>("full_reacquire_distance_m", 3.0);
     full_reacquire_heading_deg_ =
       declare_parameter<double>("full_reacquire_heading_deg", 85.0);
-    // HH_260316-00:00 Guard against occasional discontinuous segments
+    // HH_260316 - Guard against occasional discontinuous segments
     // in upstream paths (prevents straight-line bridge artifacts in RViz/local path).
     max_segment_jump_m_ = declare_parameter<double>("max_segment_jump_m", 3.0);
-    // HH_260306-00:00 Latch local-path stop when goal is reached.
+    // HH_260306 - Latch local-path stop when goal is reached.
     stop_after_goal_reached_ = declare_parameter<bool>("stop_after_goal_reached", true);
-    // Keep the legacy bare-node fallback. Deployed launches load the tighter
+    // HH_260908 - Keep the legacy bare-node fallback. Deployed launches load the tighter
     // completion distance from local_path_extractor.yaml beside Nav2 policy.
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
     empty_republish_period_s_ = declare_parameter<double>("empty_republish_period_s", 0.5);
-    // HH_260305-00:00 Clear stale local-path consumers immediately when inputs go invalid.
+    // HH_260305 - Clear stale local-path consumers immediately when inputs go invalid.
     publish_empty_on_invalid_ = declare_parameter<bool>("publish_empty_on_invalid", true);
     // HH_260702 - Force a one-shot empty path on route changes so RViz and
     // downstream consumers do not keep rendering the previous goal's local path.
     clear_local_path_on_route_change_ =
       declare_parameter<bool>("clear_local_path_on_route_change", true);
-    // HH_260513: Moving-average window applied to local path XY before publishing.
+    // HH_260513 - Moving-average window applied to local path XY before publishing.
     // Reduces high-frequency jitter from the global planner without shifting path centerline.
     // 0 or 1 disables smoothing. Odd values (3, 5, 7) recommended.
     smooth_window_ = declare_parameter<int>("smooth_window", 5);
@@ -96,7 +96,7 @@ public:
     if (global_path_qos_transient_local_) {
       global_path_qos.transient_local();
     }
-    // HH_260305-00:00 Use reliable/latest-only pose QoS.
+    // HH_260305 - Use reliable/latest-only pose QoS.
     // SensorDataQoS(best_effort) can drop updates under load, which makes local path look late.
     auto pose_qos = rclcpp::QoS(1).reliable();
     auto local_path_qos = rclcpp::QoS(1).reliable();
@@ -297,9 +297,9 @@ private:
     if (route_changed && clear_local_path_on_route_change_) {
       publishEmptyPath(true);
     }
-    // HH_260306-00:00 Any valid new global path re-enables local path publishing.
+    // HH_260306 - Any valid new global path re-enables local path publishing.
     route_completed_latched_ = false;
-    // HH_260305-00:00 Keep continuity across frequent replans on the same route.
+    // HH_260305 - Keep continuity across frequent replans on the same route.
     // Only force full reacquire when the route geometry changed significantly.
     if (route_changed || last_closest_idx_ >= global_path_.poses.size()) {
       last_closest_idx_ = global_path_.poses.size();
@@ -509,7 +509,7 @@ private:
     if (static_cast<int>(cur_pts) < min_pts) {
       end = std::min(global_path_.poses.size() - 1, begin + static_cast<size_t>(min_pts - 1));
     }
-    // At the terminal point forward growth cannot satisfy min_points. A
+    // HH_260908 - At the terminal point forward growth cannot satisfy min_points. A
     // segment just over the short lookbehind distance (including rounding at
     // 0.20 m) otherwise leaves one point and clears a still-active route.
     // Retain only existing contiguous predecessors, bounded by min_points
@@ -557,7 +557,7 @@ private:
     force_full_reacquire_ = false;
   }
 
-  // HH_260513: Applies symmetric moving-average to path XY and recomputes orientations.
+  // HH_260513 - Applies symmetric moving-average to path XY and recomputes orientations.
   // End points are clamped (not padded) so orientation at start/end is preserved.
   void smoothPath(avg_msgs::msg::AvgPath & path) const
   {

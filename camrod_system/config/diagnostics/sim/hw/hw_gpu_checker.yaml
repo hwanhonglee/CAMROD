@@ -3,7 +3,7 @@
 # =========================================================================
 /system/hw_checker:
   ros__parameters:
-    # HH_260617: Keep CPU/memory/disk checks in sim but avoid CPU-temp false
+    # HH_260617 - Keep CPU/memory/disk checks in sim but avoid CPU-temp false
     # negatives on developer PCs without exposed thermal sensors.
     publish_rate_hz: 1.0
 
@@ -19,7 +19,7 @@
 
     disk:
       enabled: true
-      # HH_260618: Sim planning/control smoke tests should not fail because the
+      # HH_260618 - Sim planning/control smoke tests should not fail because the
       # developer PC workspace disk is nearly full. Keep the metric visible but
       # do not let it gate simulation readiness.
       warn_threshold: 99.0
@@ -41,7 +41,7 @@
 # =========================================================================
 /system/gpu_checker:
   ros__parameters:
-    # HH_260617: GPU is not required for sim planning/control smoke tests.
+    # HH_260617 - GPU is not required for sim planning/control smoke tests.
     publish_rate_hz: 1.0
 
     gpu:

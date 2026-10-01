@@ -5,7 +5,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# HH_260109 Platform package for CAN, wheel odometry, and vehicle state integration.
+# HH_260109 - Platform package for CAN, wheel odometry, and vehicle state integration.
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -37,7 +37,7 @@ target_link_libraries(robot_visualization_node
   camrod_sensor_kit::camrod_sensor_kit_lib
 )
 
-# 260708: Exterior light controller — headlight relay + WS2815 turn indicators
+# HH_260708 - Exterior light controller — headlight relay + WS2815 turn indicators
 # decided from estop/crab/lanelet turn windows (see docs/lights-design-doc.html).
 add_executable(light_controller_node
   src/light_controller_node.cpp
@@ -51,7 +51,7 @@ ament_target_dependencies(light_controller_node
   avg_msgs
 )
 
-# 260708: Serial JSON bridge to the Arduino Nano light MCU (POSIX termios,
+# HH_260708 - Serial JSON bridge to the Arduino Nano light MCU (POSIX termios,
 # header-only nlohmann json — declared in package.xml like nav2_smac_planner).
 add_executable(mcu_serial_bridge_node
   src/mcu_serial_bridge_node.cpp
@@ -79,7 +79,7 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# HH_260428: ranger_platform_bridge_node — built only when ranger_msgs is available
+# HH_260428 - ranger_platform_bridge_node — built only when ranger_msgs is available
 # (ranger_ros2 external cloned by build_camrod.sh). Bridges CAN-derived ranger topics
 # to /platform/status/* with primary/fallback odom, id-based actuator state extraction,
 # and comprehensive AvgPlatformStatus aggregation (avg_msgs, all DBC fields).
@@ -108,7 +108,7 @@ endif()
 install(DIRECTORY config launch scripts systemd
   DESTINATION share/${PROJECT_NAME})
 
-# 260708: Deterministic light-decision unit test (no ROS runtime needed).
+# HH_260708 - Deterministic light-decision unit test (no ROS runtime needed).
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)

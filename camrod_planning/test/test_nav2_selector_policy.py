@@ -1,5 +1,7 @@
 """Unit tests for atomic manual/regulated Nav2 selector policy."""
 
+# HH_260730 - Keep planner, controller, and goal-checker IDs selected as one policy tuple.
+
 import importlib.util
 from pathlib import Path
 import unittest

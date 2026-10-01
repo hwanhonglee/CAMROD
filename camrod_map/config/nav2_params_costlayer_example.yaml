@@ -1,10 +1,10 @@
-# Example Nav2 parameter file snippet for enabling lanelet_cost_layer.
+# HH_260407 - Example Nav2 parameters for the lanelet_cost_layer plugin.
 local_costmap:
   local_costmap:
     ros__parameters:
-      # Plugin order for local layered costmap.
+      # HH_260318 - Include lanelet costs in the local layered costmap.
       plugins: [obstacle_layer, inflation_layer, lanelet_cost_layer]
-      # Vehicle footprint polygon in robot_center_link frame (meters).
+      # HH_260804 - Express the vehicle footprint in robot_center_link metres.
       footprint: [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
       # Radius fallback when footprint is not configured.
       robot_radius: 0.0

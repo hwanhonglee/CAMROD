@@ -9,6 +9,7 @@
 
 namespace contract = camrod::sensing::camera_front_contract;
 
+// HH_260730 - Exercise malformed frame and JPEG guards before camera publication.
 namespace
 {
 

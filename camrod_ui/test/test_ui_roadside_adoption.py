@@ -66,6 +66,7 @@ class _Logger:
         self.info_messages.append(message)
 
 
+# HH_260824 - Adopt B11-B13 roadside arrival only with matching fresh route and lanelet poses.
 class RoadsideArrivalContractTest(unittest.TestCase):
 
     @staticmethod

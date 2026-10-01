@@ -1,5 +1,8 @@
 #pragma once
 
+// HH_260629 - Centralize field-preserving conversions between standard ROS
+// messages and avg_msgs so CAMROD modules share one interface mapping.
+
 #include <algorithm>
 #include <cstddef>
 

@@ -1,3 +1,4 @@
+# HH_260521 - Reserve shared-memory pools for camera images; mirrored into bringup on HH_260624.
 [general]
 version = 1
 
@@ -31,7 +32,7 @@ count = 30
 size = 4194304
 count = 10
 
-# 1920x1080 BGR = 6,220,800 bytes; 8MB chunk covers it with room to spare
+# HH_260521 - An 8 MB chunk covers a 1920x1080 BGR frame of 6,220,800 bytes.
 # count=30: supports image_raw + image_rect each with up to 10-deep subscriber queues + rqt
 [[segment.mempool]]
 size = 8388608

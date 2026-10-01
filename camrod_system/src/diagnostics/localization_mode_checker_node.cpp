@@ -230,7 +230,7 @@ private:
     }
 
     // 3. Sensor flag 체크 (WARN 레벨)
-    // HH_260617: Sim profiles can disable sensor flag enforcement because the
+    // HH_260617 - Sim profiles can disable sensor flag enforcement because the
     // localization monitor may publish NORMAL confidence while hardware-specific
     // gnss/imu/wheel flags are intentionally synthetic or unavailable.
     if (require_sensor_flags_ && lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN) {

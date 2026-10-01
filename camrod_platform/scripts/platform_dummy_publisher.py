@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Publish an explicitly non-drivable Ranger boundary when CAN is disabled."""
 
+# HH_260729 - Publish faulted Ranger-shaped data while the CAN driver is disabled.
+
 import math
 
 import rclpy
@@ -126,6 +128,7 @@ class PlatformDummyPublisher(Node):
             validate_configuration(
                 self.declare_parameter("publish_rate_hz", 5.0).value,
                 self.declare_parameter("odom_frame_id", "odom").value,
+                # HH_260804 - Keep dummy odometry in the center-referenced runtime frame.
                 self.declare_parameter(
                     "base_frame_id", "robot_center_link"
                 ).value,

@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned short-range sensor reading contract for module-to-module transport.
 uint8 ULTRASOUND=0
 uint8 INFRARED=1
 

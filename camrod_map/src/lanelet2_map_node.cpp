@@ -26,7 +26,7 @@ namespace camrod
 {
 namespace map
 {
-// HH_251215: semantic lanelet visualization utilities
+// HH_251215 - semantic lanelet visualization utilities
 namespace
 {
 
@@ -91,7 +91,7 @@ SemanticTags extractSemanticTags(const PrimitiveT & primitive)
 
 
 Lanelet2MapNode::Lanelet2MapNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : Node("lanelet2_map"), loader_(LoaderConfig())
 {
   loadParameters();
@@ -112,7 +112,7 @@ Lanelet2MapNode::Lanelet2MapNode()
   }
 
   auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-  // HH_260109 Publish map markers under /map prefix.
+  // HH_260109 - Publish map markers under /map prefix.
   // HH_260720 - Publish map visualization through the explicit RViz ROS boundary.
   viz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
     "/map/markers", qos);
@@ -126,7 +126,7 @@ Lanelet2MapNode::Lanelet2MapNode()
   startVisualization();
   publishStaticTF();
 
-  // HH_260413: Keep static map marker computation one-shot by default.
+  // HH_260413 - Keep static map marker computation one-shot by default.
   // Recompute on timer only when explicitly requested through parameter.
   if (visualization_republish_period_s_ > 0.0) {
     viz_timer_ = this->create_wall_timer(
@@ -147,11 +147,11 @@ void Lanelet2MapNode::loadParameters()
   config_.offset_alt = this->declare_parameter<double>("offset_alt", 0.0);
   config_.world_frame_id = this->declare_parameter<std::string>("world_frame_id", "world");
   config_.map_frame_id = this->declare_parameter<std::string>("map_frame_id", "map");
-  // HH_260114 Expose arrow size scaling to quickly tune RViz mismatch.
+  // HH_260114 - Expose arrow size scaling to quickly tune RViz mismatch.
   config_.dir_body_scale = this->declare_parameter<double>("dir_body_scale", 0.55);
   config_.dir_head_scale = this->declare_parameter<double>("dir_head_scale", 0.35);
   config_.dir_width_scale = this->declare_parameter<double>("dir_width_scale", 0.18);
-  // HH_260114 Arrow generation stride.
+  // HH_260114 - Arrow generation stride.
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
   // HH_260623 - Default RViz/planning visualization uses the 2D map ground plane.
   // Raw OSM altitude stays in the loader; marker Z is flattened unless explicitly disabled.
@@ -276,7 +276,7 @@ void Lanelet2MapNode::publishVisualization(
   const bool lightweight_mode = lightweight_local || lightweight_full;
   std::size_t centerline_count = 0U;
   std::size_t line_string_count = 0U;
-  // HH_260625: The first RViz paint must not compute lazy centerlines or
+  // HH_260625 - The first RViz paint must not compute lazy centerlines or
   // semantic/text markers for the whole map. Bounds give the operator immediate
   // local context while planning/lifecycle nodes finish startup.
   if (!lightweight_mode) {
@@ -326,7 +326,7 @@ void Lanelet2MapNode::publishVisualization(
 
   if (markers.markers.empty()) {
     if (local_mode) {
-      // HH_260629: Raw GNSS/startup poses can briefly be outside map-frame
+      // HH_260629 - Raw GNSS/startup poses can briefly be outside map-frame
       // lanelet coordinates. Keep the previous/full cache and avoid a 10 Hz
       // warning storm while waiting for a valid map-frame pose.
       if (!logged_empty_local_marker_warning_) {
@@ -407,7 +407,7 @@ void Lanelet2MapNode::scheduleDetailedFullVisualization()
   if (progressive_detailed_full_viz_timer_) {
     progressive_detailed_full_viz_timer_->cancel();
   }
-  // HH_260629: Publish a fast full-map overview first, then add expensive
+  // HH_260629 - Publish a fast full-map overview first, then add expensive
   // centerline/direction/text details after startup planning has settled.
   progressive_detailed_full_viz_timer_ = this->create_wall_timer(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -463,7 +463,7 @@ void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::AvgPoseStamped::Con
   filter.radius_sq = filter.radius * filter.radius;
   publishVisualization(&filter, "local");
   if (!progressive_local_visualization_published_) {
-    // HH_260629: Do not postpone the full-map timer when the local pose is
+    // HH_260629 - Do not postpone the full-map timer when the local pose is
     // outside the map frame. Otherwise high-rate invalid poses can keep
     // resetting the delayed full publish and leave RViz with no lanelets.
     return;
@@ -477,7 +477,7 @@ void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::AvgPoseStamped::Con
   if (progressive_full_viz_timer_) {
     progressive_full_viz_timer_->cancel();
   }
-  // HH_260625: Count the full-map delay from the first local publish, not node startup.
+  // HH_260625 - Count the full-map delay from the first local publish, not node startup.
   // Otherwise a slow local render can let the full-map timer fire immediately afterward.
   progressive_full_viz_timer_ = this->create_wall_timer(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -635,7 +635,7 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
   visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
-  // HH_260114 Light color centerlines, continuous line style.
+  // HH_260114 - Light color centerlines, continuous line style.
   const auto color = makeColor(0.45f, 0.65f, 0.70f, 0.7f);
   std::size_t count = 0;
   for (const auto & lanelet : loaded_map_->laneletLayer) {
@@ -659,7 +659,7 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
   visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
-  // HH_260114 Slightly thinner bounds with mid-tone gray.
+  // HH_260114 - Slightly thinner bounds with mid-tone gray.
   const auto left_color = makeColor(0.70f, 0.70f, 0.75f, 0.85f);
   const auto right_color = makeColor(0.70f, 0.70f, 0.75f, 0.85f);
   std::size_t count = 0;
@@ -692,7 +692,7 @@ std::size_t Lanelet2MapNode::addAreas(
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
-  // HH_260114 Thicken area outlines slightly so they are visible but calm.
+  // HH_260114 - Thicken area outlines slightly so they are visible but calm.
   const auto area_color = makeColor(0.55f, 0.65f, 0.78f, 0.35f);
   for (const auto & area : loaded_map_->areaLayer) {
     if (!isAreaNear(area)) {
@@ -792,7 +792,7 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
-  // HH_260114 Direction arrow color/alpha matched to Autoware tone.
+  // HH_260114 - Direction arrow color/alpha matched to Autoware tone.
   const auto color = makeColor(0.35f, 0.35f, 0.38f, 0.9f);
   for (const auto & lanelet : loaded_map_->laneletLayer) {
     if (!isLaneletNear(lanelet)) {
@@ -803,8 +803,8 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
       continue;
     }
 
-    // HH_260114 Draw arrows on short segments along the full centerline for accurate alignment.
-    const std::size_t stride = std::max<std::size_t>(1, config_.dir_stride);  // HH_260114 Controlled by parameter.
+    // HH_260114 - Draw arrows on short segments along the full centerline for accurate alignment.
+    const std::size_t stride = std::max<std::size_t>(1, config_.dir_stride);  // HH_260114 - Controlled by parameter.
     for (std::size_t i = 0; i + 1 < centerline.size(); i += stride) {
       if (!isNearVisualizationCenter(centerline[i].x(), centerline[i].y()) &&
         !isNearVisualizationCenter(centerline[i + 1].x(), centerline[i + 1].y()))
@@ -821,7 +821,7 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
       marker.header.frame_id = config_.map_frame_id;
       marker.header.stamp = stamp;
       marker.ns = "lanelet/direction";
-      marker.scale.x = 1.0;  // HH_260114 TRIANGLE_LIST scale derived from points; keep 1.0.
+      marker.scale.x = 1.0;  // HH_260114 - TRIANGLE_LIST scale derived from points; keep 1.0.
       marker.scale.y = 1.0;
       marker.scale.z = 1.0;
       marker.id = id_counter++;
@@ -863,7 +863,7 @@ std::size_t Lanelet2MapNode::addLaneletIds(
     marker.id = id_counter++;
     marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    // HH_260114 Make lanelet text smaller and softer.
+    // HH_260114 - Make lanelet text smaller and softer.
     marker.scale.z = 1.0;
     marker.color = makeColor(0.55f, 0.55f, 0.60f, 0.45f);
     marker.text = std::to_string(lanelet.id());
@@ -896,7 +896,7 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
     double sz;
     bool add_text;
   };
-  // HH_251215: Autoware-like semantic style palette
+  // HH_251215 - Autoware-like semantic style palette
   const std::unordered_map<std::string, SemanticStyle> semantic_styles = {
     {"traffic_light", {"semantic/traffic_light/body", makeColor(0.20f, 0.24f, 0.32f, 0.95f), visualization_msgs::msg::Marker::CUBE, 0.35, 0.35, 2.3, true}},
     {"traffic_sign", {"semantic/traffic_sign", makeColor(0.45f, 0.70f, 0.78f, 0.92f), visualization_msgs::msg::Marker::CUBE, 0.4, 2.4, 1.8, true}},
@@ -1077,7 +1077,7 @@ geometry_msgs::msg::Point Lanelet2MapNode::makeMapPoint(double x, double y, doub
   return makePoint(x, y, align_z_to_ground_ ? map_ground_z_ : z);
 }
 
-// HH_260114 Semantic marker centroid for placement.
+// HH_260114 - Semantic marker centroid for placement.
 geometry_msgs::msg::Point Lanelet2MapNode::computeCentroid(
   const lanelet::ConstLineString3d & line_string)
 {
@@ -1128,7 +1128,7 @@ bool Lanelet2MapNode::isLaneletNear(const lanelet::ConstLanelet & lanelet) const
   if (!active_visualization_filter_) {
     return true;
   }
-  // HH_260625: Avoid computing lazy centerlines for every far-away lanelet during
+  // HH_260625 - Avoid computing lazy centerlines for every far-away lanelet during
   // the first local RViz publish. Bounds are already loaded and cover the same
   // local neighborhood for an 80m startup window.
   return isLineStringNear(lanelet.leftBound()) ||
@@ -1150,14 +1150,14 @@ bool Lanelet2MapNode::isAreaNear(const lanelet::ConstArea & area) const
   return false;
 }
 
-void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-color bulbs.
+void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 - Autoware-style tri-color bulbs.
   const geometry_msgs::msg::Point & base_center,
   const std::string & bulb_namespace,
   visualization_msgs::msg::MarkerArray & markers,
   int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
-  // HH_251215: emulate Autoware bulb layout (red/amber/green row)
+  // HH_251215 - emulate Autoware bulb layout (red/amber/green row)
   struct BulbStyle
   {
     geometry_msgs::msg::Point offset;
@@ -1216,7 +1216,7 @@ bool Lanelet2MapNode::computeFlatArrow(
   const double perp_x = -dir_y;
   const double perp_y = dir_x;
 
-  // HH_260114 Scale by lane width for centerline-relative size.
+  // HH_260114 - Scale by lane width for centerline-relative size.
   const double clamped_width = std::clamp(lane_width, 2.0, 6.0);
   const double half_width = std::max(0.08, clamped_width * config_.dir_width_scale);
   const double body_length = std::max(0.35, clamped_width * config_.dir_body_scale);
@@ -1255,7 +1255,7 @@ bool Lanelet2MapNode::computeFlatArrow(
 // Estimates local lane width from left/right bound point pairs.
 double Lanelet2MapNode::laneWidthAt(const lanelet::ConstLanelet & lanelet, std::size_t idx) const
 {
-  // HH_260103 lane width estimation using left/right bounds at the same index
+  // HH_260103 - lane width estimation using left/right bounds at the same index
   const auto & left = lanelet.leftBound();
   const auto & right = lanelet.rightBound();
   if (left.empty() || right.empty()) {
@@ -1308,7 +1308,7 @@ std_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
 
 double Lanelet2MapNode::lineWidthFromSubtype(const std::string & subtype) const
 {
-  // HH_260114 Autoware-style line thickness.
+  // HH_260114 - Autoware-style line thickness.
   if (subtype == "center_lane" || subtype == "center_line") {
     return 0.4;
   }

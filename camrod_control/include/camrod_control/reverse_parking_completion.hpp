@@ -11,9 +11,9 @@ struct ReverseParkingGoalCheck {
   double xy_error_m{std::numeric_limits<double>::infinity()};
 };
 
-// A travel/axis limit is permission to STOP, never evidence that parking
-// succeeded. Check the actual station XY disk, including during the bounded
-// final approach inside its axial envelope. An outside-disk lateral miss or
+// HH_260907 - A travel/axis limit is permission to STOP, never evidence that parking
+// succeeded. Arrival requires the actual station XY disk, not axial progress alone.
+// HH_260908 - Keep checking through the bounded final approach; lateral miss or
 // overshoot must not count as arrival.
 inline ReverseParkingGoalCheck checkReverseParkingGoal(
     const double vehicle_x, const double vehicle_y,

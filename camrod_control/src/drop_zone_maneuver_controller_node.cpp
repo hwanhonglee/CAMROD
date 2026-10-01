@@ -438,6 +438,8 @@ private:
   }
 
   bool selectParkingApproachTarget(std::string &detail) {
+    // HH_260904 - Accept only a current, frame-matched snapped lanelet goal
+    // near this station; stale missions cannot redirect the parking approach.
     parking_approach_target_.reset();
     parking_approach_within_since_.reset();
     if (!last_snapped_goal_.has_value()) {
@@ -814,6 +816,8 @@ private:
   }
 
   void publishParkingApproachCommand() {
+    // HH_260904 - Correct to the exact parking XY point inside a bounded
+    // envelope and require a settled pose before the 90-degree parking yaw.
     if (!vehiclePoseIsFresh()) {
       setError("pose timeout during exact parking-point approach");
       return;

@@ -9,7 +9,7 @@
     # =========================================================================
     # 1. INPUT TOPICS
     # =========================================================================
-    # HH_260617: Sim planning/control tests should not enter ERROR_STOP because
+    # HH_260617 - Sim planning/control tests should not enter ERROR_STOP because
     # hardware-oriented diagnostics are intentionally absent or stale. The normal
     # hardware profile still uses /system/diagnostics_agg.
     state_status_topic: "/planning/disabled_diagnostics"
@@ -20,7 +20,7 @@
     return_start_vehicle_pose_topic: "/localization/pose"
     return_start_pose_max_distance_m: 1.5
     return_start_pose_stale_timeout_s: 1.0
-    # HH_260617: Canonical goal naming used in logs/docs:
+    # HH_260617 - Canonical goal naming used in logs/docs:
     #   mission_key = semantic site/key name on mission_key_topic (e.g. camping_site_1)
     #   site_goal   = raw UI/mission site-center pose on /planning/site_goal_pose_ros
     #   route_goal  = lanelet-snapped PoseStamped consumed by Nav2
@@ -94,10 +94,10 @@
     site_mission_key_prefix: "camping_site_"
     goal_reached_dwell_s: 10.0
     mission_key_match_distance_m: 1.5
-    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # HH_260618 - Preserve drop_zone semantic key for return route-goal echoes
     # that are lanelet-snap poses rather than the exact station center.
     return_goal_key_preserve_distance_m: 5.0
-    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    # HH_260618 - Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
     site_goal_key_preserve_distance_m: 2.0
     # HH_260619 - UI sends mission_key before raw campsite goal. Keep that key
     # authoritative for the next snapped route goal to avoid drop_zone mis-match.
@@ -111,7 +111,7 @@
     min_goal_publish_interval_s: 1.0
     # HH_260803 - Sim state handoff follows robot_center_link arrival so
     # RViz validation matches the real Nav2 stop reference.
-    # HH_260630: Sim initialpose/EKF settling can leave /planning/lanelet_pose_ros
+    # HH_260630 - Sim initialpose/EKF settling can leave /planning/lanelet_pose_ros
     # about 0.30 m from a freshly snapped route goal even when the fake vehicle is
     # placed on the entry pose. Keep hardware profile tighter; this only unblocks
     # deterministic site-maneuver handoff tests in sim:=true.

@@ -53,9 +53,9 @@ def _resolve_camera_enable(context, *args, **kwargs):
     has_device = bool(device_path) and os.path.exists(device_path)
     front_executable = _camera_executable_exists("camera_front_publisher_node")
     rear_executable = _camera_executable_exists("camera_rear_publisher_node")
-    # HH_260617: Camera publisher nodes are Jetson-only in the current CMake.
+    # HH_260617 - Camera publisher nodes are Jetson-only in the current CMake.
     # Do not include camera.launch.py on x86_64 just because /dev/video0 exists.
-    # HH_260729: Resolve each camera separately.  If only one executable/device
+    # HH_260729 - Resolve each camera separately.  If only one executable/device
     # path is usable, the other channel must receive an explicit dummy instead
     # of being silently treated as enabled by the aggregate OR condition.
     front_effective = requested and front_requested and has_device and front_executable
@@ -115,6 +115,7 @@ def generate_launch_description():
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
         "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
+        # HH_260807 - Load the same preprocessing profile in composed and standalone LiDAR paths.
         "lidar_preprocessor_param_file":  os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
         "radar_sensor_param_file":        os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
@@ -129,7 +130,7 @@ def generate_launch_description():
         DeclareLaunchArgument("sensing_namespace", default_value="sensing"),
 
         DeclareLaunchArgument("enable_camera",               default_value="true"),
-        # HH_260528: Per-camera enable flags for dual econ camera setup.
+        # HH_260528 - Per-camera enable flags for dual econ camera setup.
         DeclareLaunchArgument("enable_front_camera",         default_value="true"),
         DeclareLaunchArgument("enable_rear_camera",          default_value="true"),
         DeclareLaunchArgument("enable_gnss",                 default_value="true"),
@@ -152,6 +153,7 @@ def generate_launch_description():
         # enable this only for bench debugging so the field console stays concise.
         DeclareLaunchArgument("radar_log_status",            default_value="false"),
         DeclareLaunchArgument("enable_lidar_driver",         default_value="true"),
+        # HH_260805 - Keep optional rasterization off while raw and filtered clouds stay available.
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="false"),
         # HH_260805 - Compose LiDAR preprocessing while retaining an independent cost-grid toggle.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
@@ -168,7 +170,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
         ## HJ_260528
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
-        # HH_260611: gnss.launch.py now uses ublox_gps_node only; single vs dual
+        # HH_260611 - gnss.launch.py now uses ublox_gps_node only; single vs dual
         # simpleRTK2B Heading behavior is controlled by ublox_dual_antenna.
         DeclareLaunchArgument(
             "ublox_dual_antenna",
@@ -210,7 +212,7 @@ def generate_launch_description():
             description="Optional moving-base baud override; __config__ uses gnss_param_file",
         ),
 
-        # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
+        # HH_260528 - imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
         DeclareLaunchArgument("imu_model",                   default_value="cv7",
                               description="IMU model: cv7 | gq7"),
 
@@ -239,7 +241,7 @@ def generate_launch_description():
         GroupAction([
             PushRosNamespace(sensing_namespace),
 
-            # HH_260729: Publish only the disabled physical channels from one
+            # HH_260729 - Publish only the disabled physical channels from one
             # low-overhead process.  Each stream carries a fresh dummy_active
             # marker so diagnostics show DUMMY/WARN, never healthy hardware.
             Node(
@@ -334,14 +336,14 @@ def generate_launch_description():
                  camera_params_file=LaunchConfiguration("camera_params_file"),
                  enable_front_camera=LaunchConfiguration("enable_front_camera_effective"),
                  enable_rear_camera=LaunchConfiguration("enable_rear_camera_effective"),
-                 # HH_260629: PushRosNamespace("sensing") above already adds /sensing,
+                 # HH_260629 - PushRosNamespace("sensing") above already adds /sensing,
                  # so pass the relative 'camera' (camera.launch standalone defaults to
                  # 'sensing/camera'). Avoids /sensing/sensing/camera double prefix.
                  camera_namespace="camera",
             ),
 
-            # HH_260606 // Route all GNSS startup through gnss.launch.py only.
-            # HH_260611: dGNSS fallback path was removed; this include always starts ublox_gps_node.
+            # HH_260606 - Route all GNSS startup through gnss.launch.py only.
+            # HH_260611 - dGNSS fallback path was removed; this include always starts ublox_gps_node.
             _inc(gnss_launch,
                  "enable_ntrip",
                  condition=IfCondition(LaunchConfiguration("enable_gnss")),
@@ -404,7 +406,7 @@ def generate_launch_description():
                 package="camrod_sensing",
                 executable="inflation_cost_grid_node",
                 name="inflation_cost_grid",
-                # HH_260618: Inherit PushRosNamespace(sensing_namespace) once.
+                # HH_260618 - Inherit PushRosNamespace(sensing_namespace) once.
                 # Setting namespace here again produced /sensing/sensing/inflation_cost_grid
                 # and prevented /sensing/inflation_cost_grid YAML params from applying.
                 output="screen",

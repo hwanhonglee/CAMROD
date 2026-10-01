@@ -1,3 +1,4 @@
+# HH_260331 - Distinguish local and global path-tracking errors and active path source.
 builtin_interfaces/Time stamp
 string frame_id
 

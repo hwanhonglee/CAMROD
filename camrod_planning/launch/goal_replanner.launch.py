@@ -33,7 +33,7 @@ def generate_launch_description():
             respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('goal_replanner_param_file'),
-                # HH_260528: Stop hard-overriding replanner params in launch.
+                # HH_260528 - Stop hard-overriding replanner params in launch.
                 # Keep runtime behavior controlled by goal_replanner_param_file.
             ],
             condition=IfCondition(LaunchConfiguration('enable_goal_replanner')),

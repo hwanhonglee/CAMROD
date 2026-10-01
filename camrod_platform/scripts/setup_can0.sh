@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# HH_260629 - Reconfigure CAN bitrate and automatic restart before bringing can0 up.
 set -euo pipefail
 
 iface="${1:-can0}"

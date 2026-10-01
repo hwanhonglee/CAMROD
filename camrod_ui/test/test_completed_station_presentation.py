@@ -12,6 +12,7 @@ from avg_msgs.msg import AvgServiceState
 from geometry_msgs.msg import PoseStamped
 
 
+# HH_260911 - Show completion only after an accepted terminal station event.
 class CompletedStationPresentationTests(unittest.TestCase):
     def backend(self):
         frames = []

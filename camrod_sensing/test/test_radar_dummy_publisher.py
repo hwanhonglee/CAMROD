@@ -1,5 +1,7 @@
 """Unit tests for the disabled-hardware radar heartbeat contract."""
 
+# HH_260729 - Verify all seven dummy channels publish canonical no-target ranges.
+
 import importlib.util
 from pathlib import Path
 

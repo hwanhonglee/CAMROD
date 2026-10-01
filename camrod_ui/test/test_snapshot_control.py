@@ -94,6 +94,7 @@ def _trigger_response(success=True, message="Saved 12 messages"):
     )
 
 
+# HH_260918 - Keep snapshot request handling testable without a running ROS node.
 class SnapshotBackendTest(unittest.TestCase):
 
     def test_topic_input_normalizes_deduplicates_and_rejects_invalid_names(self):
@@ -105,6 +106,7 @@ class SnapshotBackendTest(unittest.TestCase):
         self.assertEqual(topics, ["/sensing/radar/right1/range"])
         self.assertEqual(rejected, ["/bad topic"])
 
+    # HH_260922 - Allow the full topic profile rather than truncating selections.
     def test_snapshot_selection_accepts_complete_base_topic_profile(self):
         requested = [f"/topic_{index}" for index in range(74)]
         topics, rejected = UiBackendNode._normalize_snapshot_topics(
@@ -142,6 +144,7 @@ class SnapshotBackendTest(unittest.TestCase):
             ],
         )
 
+    # HH_260922 - Preserve both fixed and proportional free-space reserves.
     def test_snapshot_storage_budget_preserves_larger_of_floor_and_ratio(self):
         with tempfile.TemporaryDirectory() as directory:
             backend = _backend(directory)
@@ -190,6 +193,7 @@ class SnapshotBackendTest(unittest.TestCase):
         self.assertGreater(request.max_bytes, 0)
         self.assertEqual(request.start_time.sec, 70)
 
+    # HH_260918 - Keep write paths server-owned and sanitize operator labels.
     def test_snapshot_uses_server_owned_directory_and_sanitized_label(self):
         response = _trigger_response()
         with tempfile.TemporaryDirectory() as directory:
@@ -260,6 +264,7 @@ class SnapshotBackendTest(unittest.TestCase):
             self.assertEqual(request.start_time.sec, 70)
             self.assertEqual(request.start_time.nanosec, 0)
 
+    # HH_260922 - Pass the complete operator-selected topic set to the writer.
     def test_snapshot_writes_all_74_explicitly_selected_topics(self):
         response = _trigger_response(message="Saved messages")
         requested = [f"/topic_{index}" for index in range(74)]

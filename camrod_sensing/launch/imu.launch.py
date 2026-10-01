@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260528: Unified IMU launch — selects driver based on imu_model parameter.
+# HH_260528 - Unified IMU launch — selects driver based on imu_model parameter.
 #
 # Models:
 #   cv7  — MicroStrain CV7-AHRS (IMU only, direct node launch with respawn)
@@ -92,7 +92,7 @@ def generate_launch_description():
             # HH_260720 - Both CV7 and GQ7 drivers publish standard ROS IMU on data_ros.
             SetRemap(src='imu/data', dst='data_ros'),
 
-            # HH_260729: `enable_imu` owns only the physical acquisition stack.
+            # HH_260729 - `enable_imu` owns only the physical acquisition stack.
             # Keep the velocity converter alive when the driver is disabled so
             # the explicit stationary dummy `data_ros` stream still produces the
             # same canonical AvgImu/twist contracts as real hardware.

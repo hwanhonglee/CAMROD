@@ -8,6 +8,7 @@ def _source(relative_path: str) -> str:
     return (PACKAGE_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+# HH_260824 - Assert that launch and SDL diagnostics expose the physical audio route.
 def test_voice_launch_pins_sdl_to_pipewire_pulse_default_sink():
     launch_source = _source("launch/voice.launch.py")
 

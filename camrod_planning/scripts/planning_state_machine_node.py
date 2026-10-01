@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260312 Planning state machine with keypoint mapping based on /status.
+# HH_260312 - Planning state machine with keypoint mapping based on /status.
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
-# HH_260528 Prefer status_msgs, fallback to diagnostic_msgs for robustness.
+# HH_260528 - Prefer status_msgs, fallback to diagnostic_msgs for robustness.
 try:
     from status_msgs.msg import KeyValue, StatusArray, StatusStatus
 except Exception:  # noqa: BLE001
@@ -40,7 +40,7 @@ except Exception:  # noqa: BLE001
 
 # Implements `_diag_level` behavior.
 def _diag_level(value: object) -> bytes:
-    # HH_260311 Humble uint8 constants may be exposed as bytes.
+    # HH_260311 - Humble uint8 constants may be exposed as bytes.
     if isinstance(value, (bytes, bytearray)):
         if len(value) == 1:
             return bytes(value)
@@ -62,7 +62,7 @@ class Keypoint:
 
 
 class PlanningStateMachineNode(Node):
-    # HH_260528 Scenario IDs for UI/state contracts.
+    # HH_260528 - Scenario IDs for UI/state contracts.
     SCENARIO_WAIT_DROP_ZONE = 0
     SCENARIO_DELIVERY_TO_SITE = 1
     SCENARIO_RETURN_TO_DROP_ZONE = 2
@@ -170,7 +170,7 @@ class PlanningStateMachineNode(Node):
         self.mission_key_topic = str(
             self.declare_parameter("mission_key_topic", "/planning/mission_key").value
         )
-        # HH_260616: UI destination requests publish both mission_key and site_goal.
+        # HH_260616 - UI destination requests publish both mission_key and site_goal.
         # This switch controls whether a mission_key publishes a route_goal directly, while the
         # actual site-center site_goal still passes through goal_snapper before Nav2.
         self.mission_key_publish_route_goal = bool(
@@ -180,7 +180,7 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("request_mission_service", "/planning/request_mission").value
         )
 
-        # HH_260528 Scenario contract topics for UI.
+        # HH_260528 - Scenario contract topics for UI.
         self.scenario_id_topic = str(
             self.declare_parameter("scenario_id_topic", "/planning/state_machine/scenario_id").value
         )
@@ -252,7 +252,7 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("allow_goal_reached_handoff_in_warn", True).value
         )
 
-        # HH_260528 Optional auto-return behavior for scenario 1/3 when site reached.
+        # HH_260528 - Optional auto-return behavior for scenario 1/3 when site reached.
         self.enable_auto_return_on_site_goal = bool(
             self.declare_parameter("enable_auto_return_on_site_goal", False).value
         )
@@ -265,13 +265,13 @@ class PlanningStateMachineNode(Node):
         self.mission_key_match_distance_m = float(
             self.declare_parameter("mission_key_match_distance_m", 1.5).value
         )
-        # HH_260618: Return-to-drop-zone goals can be lanelet-snap poses several
+        # HH_260618 - Return-to-drop-zone goals can be lanelet-snap poses several
         # meters away from the station keypoint. Preserve the semantic drop_zone
         # key when an echoed/snap goal is still near the active return goal.
         self.return_goal_key_preserve_distance_m = float(
             self.declare_parameter("return_goal_key_preserve_distance_m", 5.0).value
         )
-        # HH_260618: UI sends a semantic mission_key and a raw campsite center,
+        # HH_260618 - UI sends a semantic mission_key and a raw campsite center,
         # then goal_snapper publishes the lanelet-snapped route_goal. The route
         # goal is several meters from the campsite keypoint, so repeated/smoothed
         # route_goal echoes must not clear active_mission_key before parking
@@ -402,7 +402,7 @@ class PlanningStateMachineNode(Node):
                 RosPoseStamped, self.drop_zone_goal_raw_ros_topic, 10
             )
 
-        # HH_260617: Publish CAMROD semantic state/status messages instead of
+        # HH_260617 - Publish CAMROD semantic state/status messages instead of
         # std_msgs/String/Int32 wrappers.
         self.pub_state = self.create_publisher(PlanningState, self.state_topic, 10)
         self.pub_estop = self.create_publisher(AvgBool, self.estop_topic, 10)
@@ -698,7 +698,7 @@ class PlanningStateMachineNode(Node):
                     ),
                 )
 
-            # HH_260528 Recall should target lanelet-snapped road point when provided.
+            # HH_260528 - Recall should target lanelet-snapped road point when provided.
             road_key = f"{key_name}_road"
             if road_key not in self.keypoints and "recall_x" in site:
                 self.keypoints[road_key] = Keypoint(
@@ -760,7 +760,7 @@ class PlanningStateMachineNode(Node):
             if not module:
                 continue
             level = self._status_level_int(st.level)
-            # HH_260617: Always record OK levels too. The previous logic only
+            # HH_260617 - Always record OK levels too. The previous logic only
             # stored levels greater than OK, so once an ERROR was observed it
             # never cleared when /system/diagnostics_agg returned to all OK.
             prev = current_levels.get(module)
@@ -975,7 +975,7 @@ class PlanningStateMachineNode(Node):
         return self._default_site_key()
 
     def _goal_update_belongs_to_active_recall(self, mission_key: str) -> bool:
-        # GoalSnapper responds asynchronously after _on_camping_site_recall has
+        # HH_260904 - GoalSnapper responds asynchronously after _on_camping_site_recall has
         # selected scenario 3. Preserve that intent across the snapped-goal
         # echo; otherwise every recall silently becomes DELIVERY_TO_SITE and
         # the campsite controller attempts the normal occupied-site maneuver.
@@ -1011,7 +1011,7 @@ class PlanningStateMachineNode(Node):
             # HH_260727 - A free RViz goal overrides any stale UI mission key.
             # Its pose/yaw still flow to Nav2, but it cannot start site maneuvers.
             self._pending_mission_key_request = ""
-        # HH_260616: A camping-site center can be several meters away from the
+        # HH_260616 - A camping-site center can be several meters away from the
         # lanelet-snapped route_goal. If a mission_key request just preceded this
         # route_goal, keep that semantic key instead of clearing active_mission_key.
         if not manual_navigation and self._pending_mission_key_request:
@@ -1041,7 +1041,7 @@ class PlanningStateMachineNode(Node):
             and self.active_goal is not None
             and self._dist_xy(self.active_goal, msg) <= self.return_goal_key_preserve_distance_m
         ):
-            # HH_260618: Do not let a near-identical route-goal echo clear the
+            # HH_260618 - Do not let a near-identical route-goal echo clear the
             # HH_260720 - Preserve the drop_zone semantic key for alignment and parking.
             matched_mission_key = self.return_mission_key
         if (
@@ -1087,7 +1087,7 @@ class PlanningStateMachineNode(Node):
             )
             self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, reason)
         else:
-            # HH_260618: A fresh unmatched manual/UI goal must enter a driving
+            # HH_260618 - A fresh unmatched manual/UI goal must enter a driving
             # scenario instead of leaving stale WAIT_DZ/RETURN_TO_DROP_ZONE state.
             # Otherwise the state output and route ownership can disagree with
             # the operator's latest goal.
@@ -1351,7 +1351,7 @@ class PlanningStateMachineNode(Node):
             self.return_requested = False
             self.recall_requested = False
         else:
-            # HH_260528 If not at drop-zone yet, command 0 means return first.
+            # HH_260528 - If not at drop-zone yet, command 0 means return first.
             self.return_requested = True
             if self._publish_auto_goal(self.return_mission_key, "scenario:0_to_return", force=True):
                 self.return_requested = False
@@ -1757,7 +1757,7 @@ class PlanningStateMachineNode(Node):
                 self._goal_reached_latched = False
                 self._goal_reached_since = None
 
-            # HH_260528 Scenario 1/3 optional auto-return.
+            # HH_260528 - Scenario 1/3 optional auto-return.
             if (
                 goal_reached
                 and self.enable_auto_return_on_site_goal

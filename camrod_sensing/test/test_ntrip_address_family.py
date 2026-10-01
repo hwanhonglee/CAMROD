@@ -16,6 +16,7 @@ sys.path.insert(0, str(NTRIP_SRC))
 from ntrip_client.ntrip_client import NTRIPClient  # noqa: E402
 
 
+# HH_260819 - Verify NTRIP DNS resolution accepts IPv4, IPv6, and DNS64 routes.
 def test_client_uses_address_family_neutral_connection_helper():
     """DNS resolution may select IPv4, native IPv6, or a DNS64 address."""
     server_socket = MagicMock()

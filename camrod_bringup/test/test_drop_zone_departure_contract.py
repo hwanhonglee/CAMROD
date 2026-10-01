@@ -23,6 +23,7 @@ def _parameters(path: Path, node: str = "/**") -> dict:
     ]
 
 
+# HH_260819 - Deploy the same bounded lanelet exit target and charging gate policy.
 def test_exit_target_and_gate_config_mirrors_are_exact() -> None:
     """Deployment and package copies carry one production safety policy."""
     control_package = CONTROL / "config/control.yaml"
@@ -54,6 +55,7 @@ def test_exit_target_and_gate_config_mirrors_are_exact() -> None:
     assert gate["drop_zone_departure_expected_module_name"] == "control"
 
 
+# HH_260819 - Permit charger departure only from fresh exact controller status.
 def test_fresh_exact_controller_status_is_the_only_status_authorization() -> None:
     """Text fallbacks may own commands but cannot release charging."""
     gate = GATE_NODE.read_text(encoding="utf-8")
@@ -83,6 +85,7 @@ def test_fresh_exact_controller_status_is_the_only_status_authorization() -> Non
     assert "charging_mission_override_.batteryReadyForDeparture()" in active
 
 
+# HH_260819 - Defer the site mission until drop-zone exit completion is confirmed.
 def test_ui_never_releases_campsite_before_exit_complete() -> None:
     """Restart heartbeats attach to the active exit without restarting it."""
     ui = UI_NODE.read_text(encoding="utf-8")
@@ -165,6 +168,7 @@ def test_charging_recall_validation_uses_public_service_states() -> None:
     assert 'or service_state_name == "DEPARTING_CHARGER"' in runner
 
 
+# HH_260819 - Replay active exit state while rejecting stale pose provenance.
 def test_drop_zone_heartbeat_and_pose_provenance_survive_restart() -> None:
     """Active service state repeats and source timestamps cannot be replayed."""
     node = DROP_ZONE_NODE.read_text(encoding="utf-8")

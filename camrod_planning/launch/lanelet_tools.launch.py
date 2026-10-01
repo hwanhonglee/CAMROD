@@ -55,7 +55,7 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
-    # HH_260409: Standalone fallback for empty map_info map_path.
+    # HH_260409 - Standalone fallback for empty map_info map_path.
     if not str(map_path_default).strip():
         for candidate in (
             os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
@@ -68,7 +68,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='planning'),
-        # HH_260409: Use map_info defaults even when this launch runs standalone.
+        # HH_260409 - Use map_info defaults even when this launch runs standalone.
         # This prevents goal_snapper/centerline_snapper startup failures from empty map_path.
         DeclareLaunchArgument('map_path', default_value=map_path_default),
         DeclareLaunchArgument('origin_lat', default_value=origin_lat_default),

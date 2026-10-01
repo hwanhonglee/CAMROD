@@ -8,7 +8,7 @@ scenario:
     - id: camping_site_1_auto_return_10min
       # Includes travel + 600s dwell + return trigger margin.
       timeout_s: 900.0
-      # HH_260617: Trigger via mission-key input so mission_source sequence
+      # HH_260617 - Trigger via mission-key input so mission_source sequence
       # includes "mission_key:*" deterministically.
       mission_key: camping_site_1
 

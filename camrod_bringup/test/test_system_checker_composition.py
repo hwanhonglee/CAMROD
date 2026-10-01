@@ -24,6 +24,7 @@ def _load_system_launch():
     return module
 
 
+# HH_260805 - Give all 24 health checkers one composed or standalone owner.
 def test_every_checker_has_one_verified_runtime_boundary() -> None:
     """Optional composition must not remove or duplicate health coverage."""
     launch = _load_system_launch()
@@ -51,6 +52,7 @@ def test_every_checker_has_one_verified_runtime_boundary() -> None:
     assert default_standalone == []
 
 
+# HH_260805 - Deduplicate requested groups and reject unknown checker groups.
 def test_component_group_parser_is_ordered_and_strict() -> None:
     launch = _load_system_launch()
     assert launch._parse_checker_component_groups(
@@ -65,6 +67,7 @@ def test_component_group_parser_is_ordered_and_strict() -> None:
         raise AssertionError("unknown checker groups must fail at launch")
 
 
+# HH_260805 - Retain standalone checker entrypoints for field debugging.
 def test_composed_checkers_keep_standalone_entrypoints() -> None:
     """Composition must not remove per-checker field-debug commands."""
     launch = _load_system_launch()
@@ -78,6 +81,7 @@ def test_composed_checkers_keep_standalone_entrypoints() -> None:
         )
 
 
+# HH_260805 - Pass scoped container defaults through bringup with an explicit fallback.
 def test_bringup_guards_and_forwards_checker_composition() -> None:
     """Bringup selects scoped checker groups and preserves explicit fallback."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))

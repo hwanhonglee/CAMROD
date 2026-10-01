@@ -1,5 +1,7 @@
 """Launch-condition tests for real versus disabled-sensor publishers."""
 
+# HH_260729 - A physical sensor and its fail-visible dummy must be mutually exclusive.
+
 import importlib.util
 from pathlib import Path
 
@@ -178,6 +180,7 @@ def test_external_component_front_camera_never_gets_duplicate_dummy():
     assert groups == ("rear_camera",)
 
 
+# HH_260805 - Composed rear-camera ownership also blocks a duplicate dummy.
 def test_external_component_rear_camera_never_gets_duplicate_dummy():
     active, groups, _ = _dummy_selection(
         rear_camera_source_external=True,

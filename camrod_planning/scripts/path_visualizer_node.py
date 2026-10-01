@@ -420,7 +420,7 @@ def main(args: Sequence[str] | None = None) -> None:
         pass
     finally:
         node.destroy_node()
-        # HH_260618: Launch shutdown may already close the default context;
+        # HH_260618 - Launch shutdown may already close the default context;
         # guard shutdown so Ctrl-C cleanup is not reported as a node crash.
         if rclpy.ok():
             rclpy.shutdown()

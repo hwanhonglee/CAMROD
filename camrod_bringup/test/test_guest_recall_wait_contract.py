@@ -25,6 +25,7 @@ def _controller_params(path: Path) -> dict:
     return document["/control/camping_site_maneuver_controller"]["ros__parameters"]
 
 
+# HH_260911 - Hold the roadside recall cue long enough at the deployed offset.
 def test_recall_wait_offset_is_explicit_and_deployed_mirror_matches() -> None:
     package = _controller_params(CONTROL_CONFIG)
     bringup = _controller_params(BRINGUP_CONTROL_CONFIG)
@@ -39,6 +40,7 @@ def test_recall_wait_offset_is_explicit_and_deployed_mirror_matches() -> None:
     assert package["recall_clearance_wait_s"] >= duration_s + 1.0
 
 
+# HH_260911 - Use authored site corners and active-recall identity for return goals.
 def test_all_sites_use_authored_geometry_instead_of_guessed_recall_points() -> None:
     sites = yaml.safe_load(CAMPSITES.read_text(encoding="utf-8"))["camping_sites"]
     assert [site["type"] for site in sites] == [
@@ -55,6 +57,7 @@ def test_all_sites_use_authored_geometry_instead_of_guessed_recall_points() -> N
     assert "regulated_recall_goal" in planning
 
 
+# HH_260911 - Allow roadside recall without weakening normal occupied-site guards.
 def test_recall_uses_roadside_motion_but_normal_delivery_still_blocks_occupancy() -> None:
     source = CONTROL_SOURCE.read_text(encoding="utf-8")
     normalized_source = " ".join(source.split())

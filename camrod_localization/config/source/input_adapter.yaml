@@ -9,7 +9,7 @@
     # --------------------------------------------------------------------------
     enable_navsat_to_pose: true
     navsat_topic: "/sensing/gnss/ublox_gps_node/fix"
-    # HH_260527: Optional metric pose sources (already in meter XY frame).
+    # HH_260527 - Optional metric pose sources (already in meter XY frame).
     # Leave empty when using only NavSatFix.
     utm_pose_topic: ""
     gnss_pose_topic: "/sensing/gnss/pose"
@@ -37,7 +37,7 @@
     gnss_lever_arm_fallback_match_tolerance_s: 0.2
     gnss_lever_arm_fallback_max_ekf_yaw_covariance: 1.0
     publish_gnss_covariance: true
-    # HH_260527: navsat_covariance_source options:
+    # HH_260527 - navsat_covariance_source options:
     #   navsat: use NavSatFix covariance (with floor clamp)
     #   fixed: use pose_covariance_diagonal fixed values
     navsat_covariance_source: navsat
@@ -45,17 +45,17 @@
     # HH_260806 - Keep the 0.1 m^2 XY floor paired with the current 1.0 m^2
     # initial XY covariance (scalar K_init about 0.91) and the EKF 3-sigma
     # position gate. Do not retune this from the 20 Hz output-rate change alone.
-    # HH_260526: tuned 0.04 -> 0.2 -> 0.1; 0.04 was unstable and 0.2 attached slowly.
+    # HH_260526 - tuned 0.04 -> 0.2 -> 0.1; 0.04 was unstable and 0.2 attached slowly.
     gnss_covariance_floor_xy: 0.1
     gnss_covariance_floor_z: 0.25
 
     # --- Dual-antenna GNSS heading ---
-    # HH_260611: Enable dual-antenna GNSS heading from ublox_gps NAV-RELPOSNED.
-    # HH_260604: COG heading removed — dual-antenna moving-baseline RTK is the sole heading source.
+    # HH_260611 - Enable dual-antenna GNSS heading from ublox_gps NAV-RELPOSNED.
+    # HH_260604 - COG heading removed — dual-antenna moving-baseline RTK is the sole heading source.
     enable_gnss_heading: true
     gnss_heading_topic: "/sensing/gnss/navheading"
     gnss_heading_timeout_s: 1.0
-    # HH_260625: Live C-track measurement showed GNSS/localization yaw aligned
+    # HH_260625 - Live C-track measurement showed GNSS/localization yaw aligned
     # with each other but ~85 deg clockwise from the lanelet heading. Correct
     # only the dual-antenna heading here; keep map XY/yaw offsets unchanged.
     # HH_260907 - Preserve the operator's deployment yaw trim, -90 -> -92 deg.
@@ -73,7 +73,7 @@
     jump_reject_max_speed_mps: 20.0
     jump_reject_reset_s: 2.0
 
-    # HH_260527: Metric source offsets (subtracted from incoming XY/Z).
+    # HH_260527 - Metric source offsets (subtracted from incoming XY/Z).
     offset_utm_easting: 0.0
     offset_utm_northing: 0.0
     offset_utm_alt: 0.0
@@ -89,24 +89,24 @@
     odom_output_topic: "/localization/primary/odometry"
     odom_pose_topic: "/localization/primary/pose"
     odom_pose_cov_topic: "/localization/primary/pose_with_covariance"
-    # HH_260410: Publish fused localization pose in map frame for map-based planning.
+    # HH_260410 - Publish fused localization pose in map frame for map-based planning.
     odom_output_frame_id: "map"
 
     # --------------------------------------------------------------------------
     # Wheel input -> unified wheel odometry
     # --------------------------------------------------------------------------
     enable_wheel_odometry_bridge: true
-    # HH_260410: Primary wheel source is platform status odometry.
+    # HH_260410 - Primary wheel source is platform status odometry.
     wheel_input_topic: "/platform/status/odometry"
-    # HH_260527: wheel_input_type options:
+    # HH_260527 - wheel_input_type options:
     #   nav_odom: nav_msgs/Odometry input at an external boundary
     #   avg_odom: avg_msgs/AvgOdometry input
     #   twist: avg_msgs/AvgTwistStamped input
     # HH_260720 - Platform publishes the generated AvgOdometry internal contract.
     wheel_input_type: "avg_odom"
-    # HH_260410: /rmp401/odom is fallback-only when primary stream is stale/missing.
+    # HH_260410 - /rmp401/odom is fallback-only when primary stream is stale/missing.
     wheel_fallback_input_topic: "/rmp401/odom"
-    # HH_260527: wheel_fallback_input_type options:
+    # HH_260527 - wheel_fallback_input_type options:
     #   nav_odom: nav_msgs/Odometry input at an external boundary
     #   avg_odom: avg_msgs/AvgOdometry input
     #   twist: avg_msgs/AvgTwistStamped input

@@ -2,6 +2,7 @@
 
 #include "camrod_localization/gnss_rate_window.hpp"
 
+// HH_260807 - Rate estimates deduplicate mirrored fixes and tolerate one missed 5 Hz epoch.
 namespace
 {
 

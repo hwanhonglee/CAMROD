@@ -8,6 +8,8 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # HH_260407 - Launch fusion independently while retaining the same
+    # namespace and parameter contract as the other perception components.
     default_param = os.path.join(
         get_package_share_directory('camrod_perception'),
         'config',

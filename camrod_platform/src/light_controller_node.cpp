@@ -1,4 +1,4 @@
-// 260708 - Exterior light controller.
+// HH_260708 - Exterior light controller.
 // Decides the lamp state (headlight relay + WS2815 turn indicators) from:
 //   priority 1: hazard  — /platform/status OR /planning/state_machine/estop
 //               (the state machine mirrors ERROR_STOP onto its estop topic, HH_260701)

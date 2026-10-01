@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
-# HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
+# HH_260421 - UI backend simplified to direct destination-driven engage/goal dispatch.
+# HH_260520 - Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
 #            Added /battery_percentage and /service/state sub/pub.
 # HH_260810 - Add an operator-map manual Goal Pose path so the managed UI can
 #             replace RViz for normal field operation while retaining /goal_pose.
@@ -555,7 +555,7 @@ class ApiState:
 
     engaged: bool = False
     ready: bool = False
-    # 260708: Operator headlight toggle state (relay via light MCU bridge).
+    # HH_260708 - Operator headlight toggle state (relay via light MCU bridge).
     headlight: bool = False
     operation_mode: str = "STOP"
     ready_message: str = ""
@@ -671,7 +671,7 @@ class UiBackendNode(Node):
         self.platform_drive_enable_topic = str(
             self.declare_parameter("platform_drive_enable_topic", "/platform/drive_enable").value
         )
-        # 260708: Headlight ON/OFF button target, consumed by light_controller.
+        # HH_260708 - Headlight ON/OFF button target, consumed by light_controller.
         self.headlight_command_topic = str(
             self.declare_parameter("headlight_command_topic", "/platform/headlight/command").value
         )
@@ -710,6 +710,8 @@ class UiBackendNode(Node):
                 "snapshot_estimate_service_name", "/estimate_snapshot"
             ).value
         )
+        # HH_260928 - Put operator snapshots on the robot storage volume by
+        # default; launch may still override this deployment-specific path.
         self.snapshot_output_directory = Path(
             os.path.expanduser(
                 str(
@@ -1547,7 +1549,7 @@ class UiBackendNode(Node):
             )
 
         # Publishers.
-        # HH_260617: UI destination and planning mission-key topics now use
+        # HH_260617 - UI destination and planning mission-key topics now use
         # generated avg_msgs semantic messages instead of JSON/String wrappers.
         self.pub_destination = self.create_publisher(
             UiDestinationCommand, self.ui_destination_topic, 10
@@ -1562,7 +1564,7 @@ class UiBackendNode(Node):
         self.pub_platform_drive_enable = self.create_publisher(
             AvgBool, self.platform_drive_enable_topic, 10
         )
-        # 260708: Headlight button publisher (light_controller passes it to the MCU).
+        # HH_260708 - Headlight button publisher (light_controller passes it to the MCU).
         self.pub_headlight = self.create_publisher(AvgBool, self.headlight_command_topic, 10)
         self.pub_camping_site_maneuver_controller_operation = self.create_publisher(
             MotionOperation, self.camping_site_maneuver_controller_operation_topic, 10
@@ -2000,6 +2002,8 @@ class UiBackendNode(Node):
         *,
         label: str,
     ) -> None:
+        # HH_260929 - Delay mission motion until ordered departure speech finishes;
+        # reject a late callback when the active mission identity has changed.
         gate = getattr(self, "_voice_gate", None)
         if gate is None or not getattr(self, "enable_voice_departure_gate", True):
             on_complete()
@@ -4367,7 +4371,7 @@ class UiBackendNode(Node):
             self._drop_zone_exit_waiting_for_fresh_status = True
 
         def release() -> None:
-            # Authorization and the EXIT owner open only after the selected-site
+            # HH_260929 - Authorization and the EXIT owner open only after the selected-site
             # and departure announcements have completed.
             if getattr(self, "publish_engage_from_destination", False):
                 self._publish_engage(True, source=f"{source}:site_departure")
@@ -5173,6 +5177,8 @@ class UiBackendNode(Node):
         recall_final_return: bool = False,
     ) -> Dict[str, Any]:
         """Accept Return only for the exact active site, generation, and owner."""
+        # HH_260907 - Bind each return request to its admitted mission identity;
+        # a stale campsite or client cannot acquire the return motion owner.
         normalized_site = str(site).strip()
         try:
             requested_generation = int(mission_generation)
@@ -5496,6 +5502,8 @@ class UiBackendNode(Node):
         return "return_preempting"
 
     def _redock_lock(self):
+        # HH_260904 - Serialize re-dock request generations so concurrent
+        # Return/Stop and stale timer callbacks cannot re-arm motion.
         lock = getattr(self, "_redock_after_disconnect_lock", None)
         if lock is None:
             lock = threading.RLock()
@@ -5558,6 +5566,8 @@ class UiBackendNode(Node):
         self, source: str, generation: Optional[int] = None
     ) -> bool:
         """Cancel the completed owner, then align under one request generation."""
+        # HH_260904 - Coalesce concurrent requests under the generation lock
+        # before publishing a fresh parking alignment owner.
         lock = UiBackendNode._redock_lock(self)
         complete_immediately = False
         with lock:
@@ -5834,6 +5844,8 @@ class UiBackendNode(Node):
         self, source: str, generation: int
     ) -> None:
         """Install a charger-release request while the redock lock is held."""
+        # HH_260904 - Wait for confirmed CAN charger disconnect rather than
+        # starting re-dock while the contactor still owns the charging state.
         if (
             int(getattr(self, "_redock_after_disconnect_generation", 0))
             != int(generation)
@@ -5947,6 +5959,8 @@ class UiBackendNode(Node):
         return source, generation
 
     def _expire_pending_redock_after_disconnect(self, generation: int) -> None:
+        # HH_260904 - Expire a queued re-dock instead of executing it after its
+        # request generation or charger-release authority becomes stale.
         lock = UiBackendNode._redock_lock(self)
         timer = None
         rearm_timer = None
@@ -6174,6 +6188,8 @@ class UiBackendNode(Node):
 
     def _claim_active_mission(self, site: str, source: str) -> int:
         """Claim one admitted site/intent/owner identity."""
+        # HH_260907 - Reuse a generation only for the same site, owner and
+        # intent; a new claim clears stale return and retry authority.
         normalized_site = str(site).strip()
         normalized_source = str(source).strip()
         owner = UiBackendNode._destination_request_owner(normalized_source)
@@ -6576,6 +6592,8 @@ class UiBackendNode(Node):
 
     def _reassert_startup_fail_closed(self) -> None:
         """Repeat startup cancellation after discovery, then retire the gate."""
+        # HH_260907 - Keep admission closed after restart until Nav2 and
+        # maneuver-owner cancellation is acknowledged after service discovery.
         dispatch_lock = getattr(self, "_destination_dispatch_lock", None)
         if dispatch_lock is None:
             return UiBackendNode._reassert_startup_fail_closed_serialized(self)
@@ -7329,6 +7347,8 @@ class UiBackendNode(Node):
         goal_result: Dict[str, Any] = {}
 
         def release() -> None:
+            # HH_260929 - Start the selected-site route after the departure voice
+            # sequence so UI feedback and physical motion remain in order.
             if self.publish_engage_from_destination:
                 self._publish_engage(True, source=f"{source}:destination")
             if self.publish_mission_engage_from_destination:
@@ -7730,6 +7750,8 @@ class UiBackendNode(Node):
     def _normalize_snapshot_topics(
         values: Any, max_topics: int = 32
     ) -> tuple[List[str], List[str]]:
+        # HH_260918 - Bound and validate explicit ROS topic selections before
+        # forwarding a snapshot configuration request.
         if values is None:
             return [], []
         if not isinstance(values, list):
@@ -7804,6 +7826,8 @@ class UiBackendNode(Node):
     def _snapshot_storage_budget(
         self, output_directory: Optional[Path] = None
     ) -> Dict[str, int]:
+        # HH_260922 - Preserve at least 5 GB or 10% of the filesystem and
+        # discount writable space by the serialization safety factor.
         usage = self._snapshot_disk_usage(output_directory)
         if usage is None:
             return {
@@ -7874,6 +7898,8 @@ class UiBackendNode(Node):
         }
 
     async def get_snapshot_status(self) -> Dict[str, Any]:
+        # HH_260918 - Combine the ROS recorder status with local write state so
+        # an operator can distinguish recording, writing, and unavailable service.
         local = self._snapshot_local_state()
         available_topics = self._snapshot_graph_topic_payload()
         trigger_available = self.snapshot_client.service_is_ready()
@@ -8012,6 +8038,8 @@ class UiBackendNode(Node):
         lookback_seconds: Any = None,
         auto_fit: Any = True,
     ) -> Dict[str, Any]:
+        # HH_260922 - Estimate serialized disk demand before allowing the UI
+        # to request a potentially large snapshot write.
         if not self.snapshot_estimate_client.service_is_ready():
             return {
                 "success": False,
@@ -8129,6 +8157,8 @@ class UiBackendNode(Node):
         lookback_seconds: Any = None,
         auto_fit: Any = True,
     ) -> Dict[str, Any]:
+        # HH_260918 - Keep one write in flight; HH_260922 - enforce the disk
+        # budget against the estimated serialized output before triggering it.
         if not self.snapshot_client.service_is_ready():
             return {
                 "success": False,
@@ -8465,13 +8495,13 @@ class UiBackendNode(Node):
                     try:
                         payload = json.loads(data)
                     except json.JSONDecodeError as exc:
-                        # HH_260616: Keep malformed WebSocket frames from tearing down
+                        # HH_260616 - Keep malformed WebSocket frames from tearing down
                         # the UI bridge; browser/UI retries should not leave stale goals.
                         node.get_logger().warn(f"invalid websocket JSON ignored: {exc}")
                         continue
 
                     if not isinstance(payload, dict):
-                        # HH_260616: The UI protocol is object-based. Ignore other
+                        # HH_260616 - The UI protocol is object-based. Ignore other
                         # payload shapes instead of raising inside Starlette.
                         node.get_logger().warn("websocket payload must be a JSON object")
                         continue
@@ -8524,7 +8554,7 @@ class UiBackendNode(Node):
                         node._publish_engage(new_engage, source="ws_engage")
                         await node._broadcast({"engage": new_engage})
 
-                    # HH_260617: usage_complete is return-to-drop-zone state=3.
+                    # HH_260617 - usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         result = node.request_owned_return_to_drop_zone(
@@ -8540,7 +8570,7 @@ class UiBackendNode(Node):
             except WebSocketDisconnect:
                 pass
             except KeyError as exc:
-                # HH_260616: Some non-browser test clients disconnect without a close
+                # HH_260616 - Some non-browser test clients disconnect without a close
                 # code; Starlette can surface that as KeyError('code').
                 node.get_logger().debug(f"websocket disconnected without close code: {exc}")
             finally:

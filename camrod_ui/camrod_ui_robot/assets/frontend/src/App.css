@@ -5118,7 +5118,7 @@ h1 {
   font-size: 0.78rem;
 }
 
-/* HH_260727 - Ranger 횡/종 조향 전환 런타임 튜닝. */
+/* HH_260727 - Group runtime tuning controls for Ranger steering-mode transitions. */
 .steering-tuning-card {
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.4fr);

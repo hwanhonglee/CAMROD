@@ -2,6 +2,7 @@
 <package format="3">
   <name>camrod_map</name>
   <version>0.0.1</version>
+  <!-- HH_260407 - Declare the CAMROD map package's Lanelet2 loading, cost-grid, and visualization role. -->
   <description>Lanelet2-based map loader, cost-grid generation, and visualization for CAMROD.</description>
 
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>

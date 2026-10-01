@@ -40,7 +40,7 @@ def generate_launch_description():
         DeclareLaunchArgument("yolo_model_path", default_value=default_model),
         DeclareLaunchArgument("yolo_labels_path", default_value=default_labels),
 
-        # HH_260707: Opt-in component path for the front-camera->YOLO hot path.
+        # HH_260707 - Opt-in component path for the front-camera->YOLO hot path.
         # The public node names and topics stay identical to the regular launches.
         ComposableNodeContainer(
             package="rclcpp_components",

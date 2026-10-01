@@ -23,7 +23,7 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
-    # HH_260617: Use canonical `_s` suffix for duration launch arguments.
+    # HH_260617 - Use canonical `_s` suffix for duration launch arguments.
     grace_period_arg = DeclareLaunchArgument(
         'grace_period_s',
         default_value='60',

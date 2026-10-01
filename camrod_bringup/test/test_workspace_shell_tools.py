@@ -61,6 +61,7 @@ def test_setup_declares_renderer_runtime_dependencies() -> None:
         assert f"<exec_depend>{dependency}</exec_depend>" in package
 
 
+# HH_260911 - Publish all kiosk assets before atomically replacing the index.
 def test_frontend_sync_publishes_complete_assets_before_atomic_index() -> None:
     """A running kiosk must never observe an index before its assets exist."""
     sync_source = (

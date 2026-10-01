@@ -15,6 +15,7 @@ VoiceAnnouncerNode::VoiceAnnouncerNode(const rclcpp::NodeOptions & options)
 {
   declareParameters();
 
+  // HH_260824 - Report dummy SDL output explicitly so a silent speaker is not mistaken for success.
   const bool audio_ready = player_.init();
   const std::string audio_driver = player_.audioDriver();
   if (!audio_ready) {
@@ -35,8 +36,7 @@ VoiceAnnouncerNode::VoiceAnnouncerNode(const rclcpp::NodeOptions & options)
     "~/say", rclcpp::QoS(10),
     std::bind(&VoiceAnnouncerNode::onAudioRequest, this, std::placeholders::_1));
 
-  // Latched: the announcer must pick up an in-progress trip even if it starts
-  // (or restarts) after the adapter published the current bed state.
+  // HH_260812 - Latch trip-bed state across announcer startup or restart.
   bgm_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
     "~/bgm", rclcpp::QoS(1).reliable().transient_local(),
     std::bind(&VoiceAnnouncerNode::onBgmRequest, this, std::placeholders::_1));
@@ -56,6 +56,7 @@ VoiceAnnouncerNode::VoiceAnnouncerNode(const rclcpp::NodeOptions & options)
 
 VoiceAnnouncerNode::~VoiceAnnouncerNode()
 {
+  // HH_260812 - Stop publishing before playing the final cue after executor teardown.
   running_.store(false);
   state_publishable_.store(false);
   if (processing_thread_.joinable()) {
@@ -80,7 +81,7 @@ void VoiceAnnouncerNode::declareParameters()
 
   const auto voice_volume = declare_parameter<double>("voice_volume", 1.0);
   const auto bgm_volume   = declare_parameter<double>("bgm_volume", 0.55);
-  // Speech has to stay intelligible over the bed; duck deep rather than a little.
+  // HH_260812 - Duck the bed deeply enough to keep speech intelligible.
   const auto bgm_duck     = declare_parameter<double>("bgm_duck_volume", 0.12);
 
   enable_bgm_        = declare_parameter<bool>("enable_bgm", true);
@@ -91,7 +92,7 @@ void VoiceAnnouncerNode::declareParameters()
 
   enable_shutdown_audio_ = declare_parameter<bool>("enable_shutdown_audio", true);
   shutdown_key_          = declare_parameter<std::string>("shutdown_key", "system.shutdown");
-  // Launch escalates SIGINT to SIGTERM after 5 s; stay inside that window.
+  // HH_260812 - Finish the shutdown cue before launch escalates SIGINT to SIGTERM.
   shutdown_timeout_ = std::chrono::milliseconds(
     static_cast<int64_t>(declare_parameter<double>("shutdown_timeout_s", 4.5) * 1000.0));
 
@@ -110,6 +111,7 @@ void VoiceAnnouncerNode::declareParameters()
 std::string VoiceAnnouncerNode::keyToWavPath(
   const std::string & key, const std::string & locale) const
 {
+  // HH_260812 - Resolve either WAV speech or MP3 music from the same dotted key.
   std::string rel = key;
   std::replace(rel.begin(), rel.end(), '.', '/');
   const std::string base = audio_dir_ + "/" + locale + "/" + rel;
@@ -143,6 +145,7 @@ void VoiceAnnouncerNode::onAudioRequest(
   }
 
   auto interrupt_cb = [this]() { player_.stop(); };
+  // HH_260616 - Publish queued state only for requests admitted by the priority queue.
   if (queue_.push(req, interrupt_cb)) {
     avg_msgs::msg::VoiceState s;
     s.header.stamp = now();
@@ -160,8 +163,7 @@ void VoiceAnnouncerNode::onBgmRequest(avg_msgs::msg::AvgBool::ConstSharedPtr msg
     return;
   }
 
-  // Stopping is immediate — the trip is over, so the bed must not linger under
-  // the arrival cue. Starting waits for the playback thread to go idle.
+  // HH_260812 - Stop the bed at trip end, but start it only after departure speech.
   if (!requested) {
     player_.stopBgm(bgm_fade_out_ms_);
   }
@@ -177,7 +179,7 @@ void VoiceAnnouncerNode::processingLoop()
     }
 
     if (queue_.empty()) {
-      // Nothing more to say: lift the duck and settle the bed to its request.
+      // HH_260812 - Restore music only when speech has drained from the queue.
       player_.duckBgm(false, bgm_duck_fade_ms_);
       syncBgm();
       std::this_thread::sleep_for(50ms);
@@ -231,8 +233,7 @@ void VoiceAnnouncerNode::playShutdownCue()
     return;
   }
 
-  // The service is going away: drop the bed and anything still queued so the
-  // farewell is the last thing heard.
+  // HH_260812 - Clear music and queued speech so shutdown is the final heard cue.
   player_.stopBgm(0);
   player_.duckBgm(false, 0);
   queue_.clear();

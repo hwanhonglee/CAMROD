@@ -1,3 +1,4 @@
+# HH_260521 - Preserve the observed ThetaStar/RPP combo tuning from the planning sweep.
 # Combo Profile: ThetaStar + RPP
 # 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=Y, displacement=11.698m
 # Tuning intent: keep current stable behavior for this combo.

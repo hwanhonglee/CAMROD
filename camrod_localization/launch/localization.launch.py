@@ -60,13 +60,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("drop_zones_yaml",                  default_value=_lc("config/drop_zones.yaml")),
         DeclareLaunchArgument("map_path",                         default_value=""),
-        # HH_260409: Bringup-level wheel source overrides.
+        # HH_260409 - Bringup-level wheel source overrides.
         DeclareLaunchArgument("wheel_bridge_enable",              default_value="true"),
-        # HH_260410: Prefer platform status odometry as primary wheel source.
+        # HH_260410 - Prefer platform status odometry as primary wheel source.
         DeclareLaunchArgument("wheel_input_topic",                default_value="/platform/status/odometry"),
         # HH_260720 - Use the generated AvgOdometry platform contract by default.
         DeclareLaunchArgument("wheel_input_type",                 default_value="avg_odom"),
-        # HH_260410: Use /rmp401/odom only as fallback when status topic is stale/missing.
+        # HH_260410 - Use /rmp401/odom only as fallback when status topic is stale/missing.
         DeclareLaunchArgument("wheel_fallback_input_topic",       default_value="/rmp401/odom"),
         DeclareLaunchArgument("wheel_fallback_input_type",        default_value="nav_odom"),
         DeclareLaunchArgument("wheel_primary_timeout_s",          default_value="0.7"),

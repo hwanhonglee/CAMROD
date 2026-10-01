@@ -52,6 +52,7 @@ def _utc_timestamp(year: int, month: int, day: int, hour: int, minute: int = 0) 
     ).timestamp()
 
 
+# HH_260819 - Preserve service duration, distance, and SQLite recovery contracts.
 class ServiceMetricsTrackerTest(unittest.TestCase):
 
     @staticmethod
@@ -356,6 +357,7 @@ class ServiceMetricsTrackerTest(unittest.TestCase):
         self.assertEqual(snapshot["lifetime"]["completed_service_count"], 1)
         self.assertEqual(snapshot["lifetime"]["interrupted_service_count"], 1)
 
+    # HH_260904 - Include per-site progress and history in operator evidence.
     def test_site_summaries_cover_b1_to_b13_with_average_latest_and_progress(self) -> None:
         clock = _Clock(_utc_timestamp(2026, 9, 4, 0))
         tracker = self._tracker(

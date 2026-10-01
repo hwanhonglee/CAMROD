@@ -7,7 +7,7 @@
 namespace camrod_localization
 {
 
-// HH_260729: Disabled-GNSS transport uses STATUS_NO_FIX + NaN coordinates.
+// HH_260729 - Disabled-GNSS transport uses STATUS_NO_FIX + NaN coordinates.
 // Keep the validation independent from the adapter callback so the safety
 // contract can be unit-tested without launching the full localization graph.
 inline bool navSatFixIsUsable(const sensor_msgs::msg::NavSatFix & msg)

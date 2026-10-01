@@ -15,6 +15,7 @@
 
 /**
  * LiDAR preprocessor node.
+ * HH_260624 - Replace the former ground filter with angle/ROI/voxel preprocessing.
  * Role: angle filter + ROI crop + voxel downsampling.
  * Flow: points_raw -> this node -> filtered_cloud -> ground_segmentation_ros2.
  *
@@ -41,7 +42,7 @@ public:
     this->declare_parameter("roi_z_min", -1.0);
     this->declare_parameter("roi_z_max", 1.0);
     this->declare_parameter("voxel_leaf_size", 0.03);
-    // HH_260707: Keep functionality unchanged by default; operators can cap
+    // HH_260707 - Keep functionality unchanged by default; operators can cap
     // preprocessing only when raw LiDAR arrives faster than downstream can use.
     this->declare_parameter("max_process_hz", 0.0);
     this->declare_parameter("qos_depth", 2);
@@ -67,7 +68,7 @@ public:
     voxel_filter_.setLeafSize(voxel_leaf_size_, voxel_leaf_size_,
                               voxel_leaf_size_);
 
-    // HH_260707: ground_segmentation_ros2 subscribes reliably; keep reliability
+    // HH_260707 - ground_segmentation_ros2 subscribes reliably; keep reliability
     // but use a shallow latest-only queue to avoid stale PointCloud2 backlog.
     auto qos = rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable();
     sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -122,7 +123,7 @@ private:
         continue;
       }
 
-      // HH_260707: Equivalent forward-cone check without per-point atan2().
+      // HH_260707 - Equivalent forward-cone check without per-point atan2().
       if (x <= 0.0f ||
           std::fabs(y) > (static_cast<double>(x) * angle_filter_tan_)) {
         continue;

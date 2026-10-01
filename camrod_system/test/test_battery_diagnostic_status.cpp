@@ -4,6 +4,7 @@
 #include <camrod_system/battery_diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+// HH_260911 - Treat low SOC as advisory unless explicitly fatal, without masking faults.
 int main()
 {
   using Status = diagnostic_msgs::msg::DiagnosticStatus;

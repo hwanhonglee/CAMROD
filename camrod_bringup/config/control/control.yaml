@@ -275,7 +275,7 @@
     # =========================================================================
     # 2. BOUNDED AUTOMATIC ESCAPE
     # =========================================================================
-    # HH_260805 / TODOLIST 12 - The safety gate checks every 0.25 m projected
+    # HH_260805 - TODO list 12: The safety gate checks every 0.25 m projected
     # full-footprint crab/reverse/reverse-yaw stage and all dynamic sources.
     enabled: true
     maximum_speed_mps: 0.10

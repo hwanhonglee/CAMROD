@@ -27,7 +27,7 @@ class EcefToUtmLocal(Node):
 
         # z 처리
         self.declare_parameter('use_altitude', False)
-        # HH_260307-00:00 Optional XY yaw alignment (deg) between map projection axes and lanelet map axes.
+        # HH_260307 - Optional XY yaw alignment (deg) between map projection axes and lanelet map axes.
         self.declare_parameter('yaw_offset_deg', 0.0)
 
         self.input_topic = self.get_parameter('input_topic').value

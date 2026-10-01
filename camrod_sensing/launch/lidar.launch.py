@@ -12,6 +12,7 @@ def generate_launch_description():
     default_cost_grid_param = os.path.join(
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
+    # HH_260807 - Share the canonical preprocessor YAML across launch topologies.
     default_preprocessor_param = os.path.join(
         sensing_share, "config", "lidar", "preprocessor.yaml"
     )
@@ -54,6 +55,7 @@ def generate_launch_description():
             default_value=os.path.join(sensing_share, "config", "lidar", "vanjee", "config.yaml"),
         ),
         DeclareLaunchArgument("enable_lidar_driver",      default_value="true"),
+        # HH_260805 - Grid rasterization is opt-in independently of the LiDAR driver.
         DeclareLaunchArgument("enable_lidar_cost_grid",   default_value="false"),
         # HH_260805 - Keep cost-grid enable independent inside the LiDAR container.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),

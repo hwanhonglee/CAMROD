@@ -18,7 +18,7 @@
     # ── Python ntrip_ros.py (single rover / dual moving-base writer) ──────────
     authenticate: true
     rtcm_message_package: rtcm_msgs
-    # HH_260327: Accept slightly longer GGA strings to avoid reconnect churn.
+    # HH_260327 - Accept slightly longer GGA strings to avoid reconnect churn.
     nmea_max_length: 96
 
     # HH_260722 - Keep /rtcm as the node-level fallback. gnss.launch.py overrides
@@ -34,7 +34,7 @@
 
     rtcm_frame_id: "gps"
 
-    # HH_260327: Relax timeout/retry cadence for unstable RTCM network periods.
+    # HH_260327 - Relax timeout/retry cadence for unstable RTCM network periods.
     rtcm_timeout_seconds: 10
     reconnect_attempt_max: 10
     reconnect_attempt_wait_seconds: 8

@@ -1,4 +1,4 @@
-// HH_260729 / TODOLIST 11-12 - Verify that route recovery cannot restart
+// HH_260729 - TODO list 11: 12 - Verify that route recovery cannot restart
 // canceled or unrelated planning failures and remains bounded for a retained
 // goal.
 

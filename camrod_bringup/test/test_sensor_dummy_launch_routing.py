@@ -131,6 +131,7 @@ def _base_rear_owner_context(**overrides):
 @pytest.mark.parametrize(
     "truthy_sim", ("1", "true", "True", "yes", "YES", "on", "ON")
 )
+# HH_260729 - Force physical-sensor dummy publishers off in every sim spelling.
 def test_sim_switch_forces_dummy_policy_off_for_all_truthy_spellings(
     truthy_sim,
 ):
@@ -225,6 +226,7 @@ def test_sim_selects_non_ranger_platform_and_disables_physical_can():
     )
 
 
+# HH_260729 - Give the external front-camera component sole image ownership.
 def test_external_component_camera_owns_front_without_dummy_overlap():
     front_external = ast.unparse(
         _dictionary_value(
@@ -328,6 +330,7 @@ def test_component_camera_owner_survives_scoped_child_front_override():
         ({"use_rear_camera_apriltag_container": "false"}, "false"),
     ),
 )
+# HH_260805 - Route the rear camera and detector to one selected process owner.
 def test_rear_apriltag_container_has_one_physical_owner(
     overrides, expected_active
 ):
@@ -357,6 +360,7 @@ def test_rear_apriltag_container_has_one_physical_owner(
     ) == ("false" if expected_active == "true" else "true")
 
 
+# HH_260805 - Keep rear capture and detection in one scoped component chain.
 def test_rear_apriltag_container_keeps_the_complete_intra_process_chain():
     """Capture/rectification and detection must share one owner/process."""
     source = (
@@ -407,6 +411,7 @@ def test_master_dummy_policy_default_is_enabled_only_for_non_sim_runs():
     )
 
 
+# HH_260911 - Let urgent battery return remain drivable below dispatch limits.
 def test_default_battery_policy_keeps_urgent_return_drivable():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))["bringup"]
     assert defaults["parking"]["method"] == "auto"
@@ -417,6 +422,7 @@ def test_default_battery_policy_keeps_urgent_return_drivable():
 
 
 @pytest.mark.parametrize("sim,expected", (("false", "auto"), ("true", "reverse")))
+# HH_260911 - Send the same parking owner to the gate, controller and UI.
 def test_parking_owner_selection_reaches_gate_parking_and_ui_together(sim, expected):
     context = LaunchContext()
     context.launch_configurations.update({"sim": sim, "parking_method": "auto"})
@@ -425,6 +431,7 @@ def test_parking_owner_selection_reaches_gate_parking_and_ui_together(sim, expec
         assert context.perform_substitution(arguments["parking_method"]) == expected
 
 
+# HH_260911 - Forward override thresholds consistently to UI, parking and gate.
 def test_battery_threshold_overrides_reach_ui_and_parking_dispatcher_together():
     context = LaunchContext()
     context.launch_configurations.update({
@@ -443,6 +450,7 @@ def test_battery_threshold_overrides_reach_ui_and_parking_dispatcher_together():
     assert context.perform_substitution(gate_arguments["cmd_vel_gate_critical_battery_stop_enabled"]) == "false"
 
 
+# HH_260911 - Share one active station geometry across UI and motion owners.
 def test_ui_station_presence_uses_control_and_parking_drop_zone_geometry():
     # HH_260907 - Never reconstruct departure from an unrelated camrod_map
     # default when bringup supplies its active config/map/drop_zones.yaml.

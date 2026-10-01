@@ -5,16 +5,16 @@
   <version>0.0.0</version>
   <description>Platform/CAN integration for camping cart.</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
-  <!-- HH_260114 Set explicit Apache license. -->
+  <!-- HH_260114 - Set explicit Apache license. -->
   <license>Apache-2.0</license>
-  <!-- HH_260109 New package for vehicle/CAN data such as wheel odometry. -->
+  <!-- HH_260109 - New package for vehicle/CAN data such as wheel odometry. -->
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
-  <!-- HH_260617: BatteryState output is required for charger-contact parking stop logic. -->
+  <!-- HH_260617 - BatteryState output is required for charger-contact parking stop logic. -->
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>
@@ -24,12 +24,12 @@
   <depend>camrod_sensor_kit</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
-  <!-- HH_260807: velocity_kph_gui.py uses the system Tk runtime. -->
+  <!-- HH_260807 - velocity_kph_gui.py uses the system Tk runtime. -->
   <exec_depend>python3-tk</exec_depend>
-  <depend>nlohmann-json-dev</depend> <!-- 260708: light MCU serial JSON bridge -->
-  <!-- HH_260410: Platform status topics are published directly from ranger_base_node. -->
+  <depend>nlohmann-json-dev</depend> <!-- HH_260708 - light MCU serial JSON bridge -->
+  <!-- HH_260410 - Platform status topics are published directly from ranger_base_node. -->
   <depend>ranger_msgs</depend>
-  <!-- HH_260409: platform.launch.py can optionally include ranger_bringup/ranger.launch.py. -->
+  <!-- HH_260409 - platform.launch.py can optionally include ranger_bringup/ranger.launch.py. -->
   <exec_depend>ranger_bringup</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

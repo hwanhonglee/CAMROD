@@ -278,6 +278,7 @@ private:
         declare_parameter<bool>("block_on_platform_error_code", true);
     gate_config_.require_can_control_mode =
         declare_parameter<bool>("require_can_control_mode", true);
+    // HH_260907 - SOC alone no longer hard-stops motion; CAN, E-stop, BMS, and obstacle guards remain.
     gate_config_.critical_battery_stop_enabled =
         declare_parameter<bool>("critical_battery_stop_enabled", false);
     gate_config_.critical_battery_percentage =
@@ -635,6 +636,7 @@ private:
     drop_zone_status_topic_ = declare_parameter<std::string>(
         "drop_zone_maneuver_controller_status_topic",
         "/control/drop_zone_maneuver_controller/status");
+    // HH_260904 - Allow only bounded station positioning/yaw phases to bypass static map costs.
     motion_cost_stop_config_.drop_zone_static_bypass_phases =
         parseLabelSet(declare_parameter<std::string>(
                           "drop_zone_maneuver_controller_static_bypass_phases",
@@ -648,6 +650,7 @@ private:
                           // HH_260807 - The bounded station exit starts outside
                           // road lanelets; dynamic radar checks are still
                           // evaluated before publication.
+                          // HH_260904 - Include final parking-point and yaw alignment phases.
                           "EXIT_STRAIGHT,ALIGN_EXIT_YAW,POSITION_PARKING_POINT,"
                           "ALIGN_PARKING_YAW"),
                       {"exit_straight", "align_exit_yaw", "position_parking_point",
@@ -680,6 +683,7 @@ private:
     apriltag_parking_status_topic_ = declare_parameter<std::string>(
         "apriltag_parking_controller_status_topic",
         "/parking/apriltag_parking_controller/status");
+    // HH_260907 - A configured dispatcher replaces both private parking status authorities.
     parking_dispatcher_status_topic_ = declare_parameter<std::string>(
         "parking_dispatcher_status_topic", "");
     motion_cost_stop_config_.parking_static_bypass_phases = parseLabelSet(
@@ -925,7 +929,7 @@ private:
           updateManeuverPhases();
         };
     if (!parking_dispatcher_status_topic_.empty()) {
-      // Auto parking has exactly one state authority. Never subscribe to both
+      // HH_260907 - Auto parking has exactly one state authority. Never subscribe to both
       // implementations: the inactive controller's IDLE heartbeat would release
       // the active controller's command ownership and obstacle exceptions.
       parking_dispatcher_status_subscription_ =
@@ -959,6 +963,7 @@ private:
           });
     }
     if (enable_resume_after_hold_voice_gate_) {
+      // HH_260910 - Observe the active cue to extend only the already-cleared obstacle hold.
       voice_state_subscription_ = create_subscription<avg_msgs::msg::VoiceState>(
           voice_state_topic_, 10,
           [this](const avg_msgs::msg::VoiceState::SharedPtr message) {
@@ -1105,7 +1110,7 @@ private:
     }
     if (command_source_arbiter_.campsiteStationary() ||
         command_source_arbiter_.parkingStationary()) {
-      // The clearance announcement owns a strict stop. In particular, a
+      // HH_260907 - The clearance announcement owns a strict stop. In particular, a
       // previously latched route-heading correction must not turn its zero
       // input into angular velocity. Parking owner transfers require the same
       // strict stop until both controller CANCEL acknowledgements arrive.
@@ -1122,7 +1127,7 @@ private:
     // the vehicle, but it passes the complete ordinary safety evaluation below.
     if (route_safety_recovery_.active()) {
       refreshRouteSafetyRecovery(now_sec);
-      // HH_260803 / TODOLIST 12 - While the bounded owner uses the raw command
+      // HH_260803 - TODO list 12: While the bounded owner uses the raw command
       // input, ignore the stopped Nav2 stream instead of alternating its zero
       // output with a validated recovery command.
       if (route_safety_recovery_.active() && navigation_source &&

@@ -1,3 +1,4 @@
+# HH_260318 - Aggregate physical sensing groups and health into one status payload.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

@@ -1,5 +1,7 @@
 """Safety and launch-contract tests for the disabled Ranger dummy."""
 
+# HH_260729 - Disabled Ranger output must report ESTOP/fault, never healthy motion.
+
 import importlib.util
 import math
 from pathlib import Path
@@ -30,6 +32,7 @@ def _stamp():
     return Time(sec=123, nanosec=456)
 
 
+# HH_260804 - Keep dummy message frames aligned with robot_center_link.
 def test_dummy_payload_is_estop_non_can_and_faulted():
     message = PLATFORM_DUMMY.build_safe_system_state(
         _stamp(), "robot_center_link"

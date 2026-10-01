@@ -1,4 +1,5 @@
 <CycloneDDS>
+  <!-- HH_260521 - Define the camera DDS profile; mirrored into bringup on HH_260624. -->
   <Domain>
     <Tracing>
       <Verbosity>severe</Verbosity>
@@ -7,7 +8,7 @@
       <Enable>false</Enable>
     </SharedMemory>
     <Internal>
-      <!-- 1920x1080 BGR8 = ~6.2MB/frame; requires net.core.rmem_max >= 20971520 -->
+      <!-- HH_260521 - Reserve >=20 MiB socket buffers for 1080p BGR8 frames; mirrored on HH_260624. -->
       <SocketReceiveBufferSize min="20971520B"/>
       <SocketSendBufferSize min="20971520B"/>
     </Internal>

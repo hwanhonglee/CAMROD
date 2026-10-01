@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 
+// HH_260730 - Validate camera frame geometry and bounded JPEG payloads before publishing.
 namespace camrod::sensing::camera_front_contract
 {
 

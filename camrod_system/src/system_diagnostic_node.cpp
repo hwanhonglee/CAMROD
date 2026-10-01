@@ -102,7 +102,7 @@ private:
     return infer_category_from_name(status.name, status.hardware_id);
   }
 
-  // HH_260617: Most checker statuses are named "node: /domain/item".
+  // HH_260617 - Most checker statuses are named "node: /domain/item".
   // Infer the owning CAMROD module so module readiness is not hidden by checker names.
   static std::string infer_category_from_name(
     const std::string & status_name,
@@ -218,7 +218,7 @@ private:
       if (status_key.empty()) {
         continue;
       }
-      // HH_260617: system_diagnostic publishes `system/diagnostic` to the same
+      // HH_260617 - system_diagnostic publishes `system/diagnostic` to the same
       // diagnostics bus it reads. Ignore its own summary to avoid recursively
       // turning a previous WARN/ERROR into a persistent system-module fault.
       if (status_key == "system/diagnostic") {

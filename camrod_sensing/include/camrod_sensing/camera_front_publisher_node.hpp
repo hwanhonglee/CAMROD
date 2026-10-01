@@ -4,7 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
-#include <sensor_msgs/msg/image.hpp>  // HH_260618: Front camera also offers subscriber-gated raw Image output.
+#include <sensor_msgs/msg/image.hpp>  // HH_260618 - Front camera also offers subscriber-gated raw Image output.
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include <nvjpeg.h>

@@ -14,6 +14,7 @@ BRINGUP_DEFAULTS = (
 )
 
 
+# HH_260805 - Compose only the validated Nav2 core while preserving fallbacks.
 def test_nav2_component_set_and_standalone_fallback_are_both_present() -> None:
     """Maintained core servers compose while vendor servers stay standalone."""
     source = NAV2_LAUNCH.read_text(encoding="utf-8")
@@ -56,6 +57,7 @@ def test_nav2_component_set_and_standalone_fallback_are_both_present() -> None:
     assert "package='camrod_control'" not in source
 
 
+# HH_260810 - Finish lifecycle teardown before bypassing Humble's DSO exit race.
 def test_lifecycle_manager_standalone_exit_avoids_humble_teardown_race() -> None:
     source = (
         SRC_ROOT
@@ -71,6 +73,7 @@ def test_lifecycle_manager_standalone_exit_avoids_humble_teardown_race() -> None
     assert "std::_Exit(EXIT_SUCCESS);" in source
 
 
+# HH_260805 - Keep Nav2 worker threads on the scoped container ROS context.
 def test_composed_nav2_core_uses_the_container_owned_context() -> None:
     """Embedded threads and TF callbacks must not consult the global context."""
     planning = SRC_ROOT / "camrod_planning" / "external"

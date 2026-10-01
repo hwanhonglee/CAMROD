@@ -1,3 +1,4 @@
+# HH_260311 - Bundle robot and platform feedback behind the module status contract.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned point-cloud field layout contract for module-to-module transport.
 uint8 INT8=1
 uint8 UINT8=2
 uint8 INT16=3

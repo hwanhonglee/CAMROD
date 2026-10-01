@@ -60,7 +60,7 @@
     # =========================================================================
     # 4. BLOCKAGE THRESHOLDS AND DEBOUNCE
     # =========================================================================
-    # HH_260630: Trigger dynamic replanning before the 85-cost hard-stop zone.
+    # HH_260630 - Trigger dynamic replanning before the 85-cost hard-stop zone.
     obstacle_cost_threshold: 60
     # HH_260805 - Report obstacles immediately, but preempt LaneletRoute only
     # after 20 s of persistent blockage. The control safety gate still stops

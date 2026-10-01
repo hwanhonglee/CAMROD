@@ -6,6 +6,7 @@
 
 #include "camrod_sensing/radar_dummy_contract.hpp"
 
+// HH_260729 - Dummy radar markers remain per-channel and suppress only fresh fake ranges.
 TEST(RadarDummyContract, DerivesAbsoluteAndRelativePerChannelMarkers)
 {
   EXPECT_EQ(

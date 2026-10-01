@@ -43,7 +43,7 @@ def generate_launch_description():
     )
     declare_velocity_topic = DeclareLaunchArgument(
         "velocity_topic",
-        # HH_260317-00:00 Cross-module input from platform stack stays absolute.
+        # HH_260317 - Cross-module input from platform stack stays absolute.
         default_value="/platform/status/velocity",
         description="Platform velocity input topic",
     )

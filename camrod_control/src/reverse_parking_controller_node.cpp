@@ -489,7 +489,7 @@ private:
       setError("reverse parking timeout");
       return;
     }
-    // A new request may begin inside the unchanged station XY disk. Do not
+    // HH_260908 - A new request may begin inside the unchanged station XY disk. Do not
     // require 5 cm of reverse travel before accepting an already reached goal:
     // that unnecessary motion can drive a parked robot out of the disk.
     if (goal.reached) {
@@ -512,7 +512,7 @@ private:
         finishTravel("station reverse axis reached with lateral miss outside XY disk");
         return;
       }
-      // The axial tolerance bounds a square, while acceptance uses a circle.
+      // HH_260908 - The axial tolerance bounds a square, while acceptance uses a circle.
       // For example (axis=.25, lateral=.128) is still .281 m from a .25 m
       // goal. Continue the existing slow final approach while the station is
       // ahead and the reverse-axis line intersects the XY disk. Do not cross

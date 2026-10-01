@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python
 from camrod_ui.voice_departure_gate import VoiceDepartureGate  # noqa: E402
 
 
+# HH_260929 - Preserve immediate dispatch when no announcement is requested.
 def test_empty_keys_dispatch_immediately():
     gate = VoiceDepartureGate()
     fired = []
@@ -17,6 +18,7 @@ def test_empty_keys_dispatch_immediately():
     assert not gate.busy
 
 
+# HH_260929 - Release departure only after the requested final cue has played.
 def test_dispatch_waits_for_last_key_to_finish_playing():
     gate = VoiceDepartureGate()
     fired = []
@@ -37,6 +39,7 @@ def test_dispatch_waits_for_last_key_to_finish_playing():
     assert not gate.busy
 
 
+# HH_260929 - A missing voice-state update must not strand an authorized departure.
 def test_timeout_fires_dispatch_and_reports_when_never_confirmed():
     gate = VoiceDepartureGate()
     fired = []

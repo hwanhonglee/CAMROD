@@ -1,3 +1,5 @@
+// HH_260907 - Give the private parking controllers one public command, status, and service owner.
+// HH_260909 - Sequence reverse parking before SOC- or operator-required charger docking.
 // One runtime owner sequences reverse-first, SOC-aware final parking and forwards only that
 // controller's private outputs. Both physical controllers remain isolated even
 // during cancellation, late charging feedback, and forced redocking.
@@ -27,6 +29,7 @@ class ParkingDispatcherNode : public rclcpp::Node {
 public:
   explicit ParkingDispatcherNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Node("parking_dispatcher", options) {
+    // HH_260907 - Reject unsafe SOC thresholds and stale-controller timeouts at startup.
     threshold_ = declare_parameter<double>("charging_threshold_percent", 35.0);
     platform_timeout_s_ = declare_parameter<double>("platform_status_timeout_s", 2.0);
     handoff_hold_s_ = declare_parameter<double>("controller_handoff_hold_s", 0.5);
@@ -58,6 +61,7 @@ public:
     operation_sub_ = create_subscription<avg_msgs::msg::MotionOperation>(
         declare_parameter<std::string>("operation_topic", "/parking/operation"), 10,
         [this](avg_msgs::msg::MotionOperation::ConstSharedPtr message) {
+          // HH_260907 - Treat a repeated stamped START as one parking request.
           if (message->operation == avg_msgs::msg::MotionOperation::START &&
               (message->header.stamp.sec != 0 || message->header.stamp.nanosec != 0U)) {
             const std::string identity = message->source + ":" +
@@ -84,6 +88,7 @@ public:
       command_subs_[index] = create_subscription<avg_msgs::msg::AvgTwist>(
           prefix + "/cmd_vel", 10,
           [this, method](avg_msgs::msg::AvgTwist::ConstSharedPtr message) {
+            // HH_260907 - Forward motion only from the acknowledged owner with fresh CAN authority.
             if (!ownership_.owns(method) || failed_) { return; }
             last_command_time_ = now();
             if (!platformAllowsMotion() || selected_phase_ == "PARKED" ||
@@ -137,10 +142,12 @@ private:
     return age >= 0.0 && age <= platform_timeout_s_ && platform_->is_charging;
   }
   bool dockingRequired() const {
+    // HH_260909 - Recheck live SOC and explicit Dock intent after reverse parking.
     return camrod_control::selectParkingMethod(battery(), threshold_, forced_) ==
         ParkingMethod::kAprilTag;
   }
   bool freshReverseParked() const {
+    // HH_260909 - A fresh owned PARKED heartbeat, not an old or cached status, permits handoff.
     const double age = (now() - last_controller_status_time_).seconds();
     return ownership_.owns(ParkingMethod::kReverse) && reverse_parked_verified_ &&
         !failed_ && selected_phase_ == "PARKED" && age >= 0.0 && age <= status_timeout_s_;
@@ -155,7 +162,7 @@ private:
   }
   avg_msgs::msg::AvgServiceState serviceOutput(
       const ParkingMethod method, avg_msgs::msg::AvgServiceState output) const {
-    // Reverse emits its service state BEFORE its ModuleState. Do not expose a
+    // HH_260909 - Reverse emits its service state BEFORE its ModuleState. Do not expose a
     // transient final WAIT/PARKED (which disarms the mission) between stages.
     // Charger contact remains authoritative; reverse completion alone is not.
     if (method == ParkingMethod::kReverse && reverseDockPending() &&
@@ -182,7 +189,7 @@ private:
                      const avg_msgs::msg::ModuleState & message) {
     if (!((pending_start_ && start_sent_ && ownership_.selected() == method) ||
           ownership_.owns(method))) { return; }
-    // A pre-START heartbeat, including an old PARKED, cannot prove completion
+    // HH_260909 - A pre-START heartbeat, including an old PARKED, cannot prove completion
     // for this generation. Private controllers stamp status with their clock.
     if (rclcpp::Time(message.stamp, get_clock()->get_clock_type()) < start_time_) {
       return;
@@ -205,7 +212,7 @@ private:
     if (!ownership_.acknowledgeStart(generation)) { return; }
     pending_start_ = false;
     last_command_time_ = now();
-    // Grant the first heartbeat interval, but do not manufacture PARKED proof.
+    // HH_260909 - Grant the first heartbeat interval, but do not manufacture PARKED proof.
     last_controller_status_time_ = now();
     selected_phase_ = index == 0 ? "REVERSE_APPROACH" : "WAITING_FOR_TAG";
     if (cached_status_[index].has_value() &&
@@ -238,7 +245,7 @@ private:
         *this, "parking/parking_dispatcher", "parking", level, detail));
   }
   void requestControllerStops(const std::string &source) {
-    // Use the same ordered service request channel as handoff/start. A late
+    // HH_260907 - Use the same ordered service request channel as handoff/start. A late
     // CANCEL from a separate topic must not overtake a newly accepted START.
     for (const auto &client : clients_) {
       if (!client->service_is_ready()) { continue; }
@@ -268,17 +275,19 @@ private:
       return {false, "unsupported parking operation"};
     }
     if (ownership_.busy()) {
-      // An explicit Dock during reverse latches only the final destination;
+      // HH_260909 - An explicit Dock during reverse latches only the final destination;
       // it cannot switch the moving owner or bypass the reverse completion.
       forced_ = forced_ || camrod_control::hasForceDockingToken(source);
       return {true, "parking attempt already accepted; " + selectionDescription()};
     }
     forced_ = camrod_control::hasForceDockingToken(source);
+    // HH_260909 - Start with reverse unless a fresh completed reverse can be reused for Dock.
     const auto method = camrod_control::initialParkingMethod(forced_, freshReverseParked());
     beginAttempt(method, source);
     return {true, "parking selection accepted; " + selectionDescription()};
   }
   void beginAttempt(const ParkingMethod method, const std::string & source) {
+    // HH_260907 - Each attempt owns a new generation and zero-command handoff window.
     ownership_.begin(method);
     reverse_parked_verified_ = false;
     reverse_terminal_service_deferred_ = false;
@@ -303,6 +312,7 @@ private:
     service_pub_->publish(handoff);
   }
   void fail(const std::string &detail) {
+    // HH_260907 - Fail closed on controller rejection or timeout and expose ERROR in ModuleState.
     failed_ = true;
     pending_start_ = false;
     ownership_.abort();
@@ -316,6 +326,7 @@ private:
   }
   void tick() {
     if (pending_start_) {
+      // HH_260907 - Require both private CANCEL ACKs, a quiet hold, then selected START ACK.
       publishZero();
       const auto generation = ownership_.generation();
       for (std::size_t index = 0; index < methods_.size(); ++index) {
@@ -364,7 +375,7 @@ private:
     }
     if (freshReverseParked() && !reverseDockPending() &&
         reverse_terminal_service_deferred_ && cached_service_[0].has_value()) {
-      // A fresh high SOC/contact update may resolve a previously unknown SOC
+      // HH_260909 - A fresh high SOC/contact update may resolve a previously unknown SOC
       // while stopped. Release the real cached terminal event, never invent it.
       forwardService(ParkingMethod::kReverse, *cached_service_[0]);
     }
@@ -378,7 +389,7 @@ private:
         return;
       }
     }
-    // Only an actual completed reverse permits the second-stage owner. Its
+    // HH_260909 - Only an actual completed reverse permits the second-stage owner. Its
     // separate generation still requires BOTH CANCEL ACKs and selected START
     // ACK; never move in RC/EStop or after CAN already confirms contact.
     if (freshReverseParked() && dockingRequired() &&

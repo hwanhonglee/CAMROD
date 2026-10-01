@@ -27,11 +27,11 @@
     # =========================================================================
     # 2. STARTUP AND DUAL-ANTENNA OPTIONS
     # =========================================================================
-    # HH_260330: Avoid startup abort on some F9P units reporting
+    # HH_260330 - Avoid startup abort on some F9P units reporting
     # "Failed to read the GNSS config" during CFG polling.
     # Keep receiver running even if runtime CFG read/write is flaky.
     config_on_startup: false
-    # HH_260611: Keep the base YAML single-antenna safe; launch files enable these for simpleRTK2B Heading.
+    # HH_260611 - Keep the base YAML single-antenna safe; launch files enable these for simpleRTK2B Heading.
     dual_antenna: false
     dual_antenna.configure_usb: false
     # HH_260722 - Keep rover USB RTCM disabled in the dual field topology.
@@ -45,7 +45,7 @@
     # =========================================================================
     # 3. RATES AND ROVER MODE
     # =========================================================================
-    # HH_260326: Increase GNSS fix rate for localization consistency validation.
+    # HH_260326 - Increase GNSS fix rate for localization consistency validation.
     # HH_260806 - The custom dual setup applies a CFG-RATE RAM write even with
     # config_on_startup=false, so a receiver-saved profile does not override ROS.
     # HH_260819 - The replacement rover was saved in u-center for 10 Hz

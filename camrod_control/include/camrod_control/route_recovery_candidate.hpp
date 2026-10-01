@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260805 / TODOLIST 12 - Select only fully projected crab, reverse, or
+// HH_260805 - TODO list 12: Select only fully projected crab, reverse, or
 // bounded reverse-yaw commands and permit staged escape from a narrow contact.
 
 #include <algorithm>

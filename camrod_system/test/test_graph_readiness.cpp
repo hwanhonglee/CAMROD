@@ -19,6 +19,7 @@ void expect(
 
 }  // namespace
 
+// HH_260730 - Distinguish startup gaps from persistent or duplicated graph owners.
 int main()
 {
   using camrod_system::graph_readiness::alternativeGroup;

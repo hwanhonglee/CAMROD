@@ -146,7 +146,7 @@ def main():
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        # HH_260617: Ctrl+C during launch shutdown should exit cleanly instead
+        # HH_260617 - Ctrl+C during launch shutdown should exit cleanly instead
         # of printing a traceback and reporting this helper as a crashed process.
         pass
     finally:

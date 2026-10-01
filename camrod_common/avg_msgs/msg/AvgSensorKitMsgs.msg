@@ -1,3 +1,4 @@
+# HH_260318 - Report sensor-kit frames and device metadata with module state.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

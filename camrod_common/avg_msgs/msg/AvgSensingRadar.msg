@@ -1,4 +1,4 @@
-# HH_260312-00:00 Sensing radar subgroup message.
+# HH_260312 - Sensing radar subgroup message.
 # HH_260623 - Split the legacy merged front radar field into explicit front1/front2 channels.
 avg_msgs/AvgRange front1
 avg_msgs/AvgRange front2

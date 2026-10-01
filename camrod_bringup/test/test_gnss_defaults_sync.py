@@ -91,6 +91,7 @@ def test_bringup_gnss_configs_match_sensing_package():
         assert bringup_config.read_bytes() == sensing_config.read_bytes()
 
 
+# HH_260727 - Keep the rover and moving-base receiver ports in one GNSS config.
 def test_synced_gnss_config_owns_both_receiver_ports():
     config_path = (
         _BRINGUP_ROOT / "config" / "sensing" / "gnss" / "zed_f9p_rover.yaml"
@@ -111,6 +112,7 @@ def test_synced_gnss_config_owns_both_receiver_ports():
     assert moving_base["baud"] == 460800
 
 
+# HH_260727 - Remove stale moving-base writers before starting the dual-GNSS route.
 def test_cleanup_removes_stale_moving_base_writer():
     cleanup_path = _BRINGUP_ROOT / "config" / "bringup" / "cleanup_patterns.yaml"
     cleanup = yaml.safe_load(cleanup_path.read_text(encoding="utf-8"))

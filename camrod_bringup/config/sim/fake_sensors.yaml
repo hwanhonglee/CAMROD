@@ -25,13 +25,13 @@
     # =========================================================================
     # HH_260807 - Constant-speed fallback matches the 2.0 km/h final cruise.
     speed_mps: 0.555556
-    # HH_260526: Motion source mode.
+    # HH_260526 - Motion source mode.
     # motion_source: cmd_vel | constant_speed
     motion_source: "cmd_vel"
     # HH_260720 - Sim integrates the same final control topic consumed by Ranger.
     cmd_vel_motion_topic: "/control/cmd_vel"
     cmd_vel_timeout_s: 0.5
-    # HH_260618: Hold the last non-zero command briefly in sim because Nav2 may
+    # HH_260618 - Hold the last non-zero command briefly in sim because Nav2 may
     # interleave zero/non-zero Twist samples during controller updates. Without
     # this, the fake sensor timer can sample only zeros and appear stuck.
     cmd_vel_nonzero_hold_s: 0.20
@@ -82,11 +82,11 @@
     # HH_260810 - Keep the sim start anchor synchronized with the current Park drop-zone centroid.
     start_x: -14.2347
     start_y: 39.7863
-    # HH_260526: Centerline scope mode.
+    # HH_260526 - Centerline scope mode.
     # centerline_scope: all | selected_lanelet
     centerline_scope: "all"
     centerline_connect_max_gap: 5.0
-    # HH_260618: Default to one summary warning instead of hundreds of full-map stitch warnings.
+    # HH_260618 - Default to one summary warning instead of hundreds of full-map stitch warnings.
     log_centerline_stitch_details: false
     # 2026-02-02: Close near-loop centerlines for continuous laps.
     close_loop: true
@@ -115,7 +115,7 @@
     obstacle_reference_frame: "robot"
     obstacle_world_x: 0.0
     obstacle_world_y: 0.0
-    # HH_260630: Compact fake obstacle cluster for directional stop validation.
+    # HH_260630 - Compact fake obstacle cluster for directional stop validation.
     fake_obstacle_cluster_radius_m: 0.12
     # Publish synthetic obstacle cloud to both perception and
     # filtered-lidar topics so sensing cost-grid can consume filtered points.
@@ -125,7 +125,7 @@
     # =========================================================================
     # 8. FAKE LIDAR AND RADAR SOURCES
     # =========================================================================
-    # HH_260630: Keep LiDAR and radar fake obstacle sources independently
+    # HH_260630 - Keep LiDAR and radar fake obstacle sources independently
     # switchable so sim safety tests can isolate each cost-grid input.
     publish_fake_lidar_obstacle_cloud: true
     publish_fake_radar_ranges: true
@@ -154,7 +154,7 @@
     # =========================================================================
     # 9. DUMMY CONVERTER AND COST-GRID OUTPUTS
     # =========================================================================
-    # HH_260617: Sim hardware drivers are disabled; publish deterministic dummy
+    # HH_260617 - Sim hardware drivers are disabled; publish deterministic dummy
     # converter/cost-grid outputs so diagnostics do not block planning/control tests.
     publish_velocity_converter_output: true
     velocity_converter_output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
@@ -163,8 +163,8 @@
     dummy_lidar_cost_grid_width: 120
     dummy_lidar_cost_grid_height: 120
     dummy_lidar_cost_grid_resolution: 0.10
-    # HH_260618: Cost-grid health fallback does not need to follow pose/IMU rate.
-    # HH_260618: Dummy diagnostic grid is not the real obstacle pipeline; lower to reduce load.
+    # HH_260618 - Cost-grid health fallback does not need to follow pose/IMU rate.
+    # HH_260618 - Dummy diagnostic grid is not the real obstacle pipeline; lower to reduce load.
     dummy_lidar_cost_grid_publish_rate_hz: 3.0
 
     # =========================================================================
@@ -180,7 +180,7 @@
     # 11. GNSS FAILURE SIMULATION
     # =========================================================================
     # GNSS failure simulation for DR fallback testing.
-    # HH_260617: Keep failure injection disabled by default so sim:=true
+    # HH_260617 - Keep failure injection disabled by default so sim:=true
     # validates planning/control with steady dummy localization and sensing.
     # gnss_failure_after_s: seconds from startup when GNSS NavSatFix stops. -1 = never.
     # gnss_recovery_after_s: seconds from startup when GNSS resumes. -1 = never recovers.
@@ -201,12 +201,12 @@
     # =========================================================================
     # 12. NAVIGATION MODE AND INITIAL POSE
     # =========================================================================
-    # HH_260526: Navigation model mode.
+    # HH_260526 - Navigation model mode.
     # simulation_nav_mode: centerline | free_nav
-    # HH_260527: Default to free_nav so RViz initial pose (P) relocates
+    # HH_260527 - Default to free_nav so RViz initial pose (P) relocates
     # the full fake-sensor stack exactly to the requested map pose.
     simulation_nav_mode: "free_nav"
-    # HH_260528: Also accept RViz default /initialpose topic.
+    # HH_260528 - Also accept RViz default /initialpose topic.
     enable_initialpose_fallback_topic: true
     initialpose_topic_fallback: "/initialpose"
     # Fake sensors follow lanelet centerline in map frame.

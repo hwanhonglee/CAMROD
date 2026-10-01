@@ -88,7 +88,7 @@ bool parseDouble(const std::string & token, double * out)
 int64_t normalizeTimestampNs(const int64_t timestamp_raw)
 {
   // Accepts either second-based or nanosecond-based timestamps.
-  // HH_260209: Support both seconds and nanoseconds in CSV inputs.
+  // HH_260209 - Support both seconds and nanoseconds in CSV inputs.
   if (timestamp_raw > 0 && timestamp_raw < 1000000000000LL) {
     return timestamp_raw * 1000000000LL;
   }
@@ -186,7 +186,7 @@ bool parsePoseSampleLine(const std::string & line, CsvPoseSample * sample)
 
   normalizeQuaternion(&sample->qw, &sample->qx, &sample->qy, &sample->qz);
 
-  // HH_260209: zedLiveVIO abs CSV appends "source" as the last column.
+  // HH_260209 - zedLiveVIO abs CSV appends "source" as the last column.
   if (fields.size() >= 23u) {
     sample->source = fields.back();
   } else {
@@ -219,7 +219,7 @@ public:
 
     const std::uintmax_t file_size = std::filesystem::file_size(csv_path_);
     if (file_size < read_offset_bytes_) {
-      // HH_260209: Handle log rotation/truncation gracefully.
+      // HH_260209 - Handle log rotation/truncation gracefully.
       read_offset_bytes_ = 0;
     }
 
@@ -259,14 +259,14 @@ public:
   KimeraCsvBridgeNode()
   : Node("kimera_csv_bridge")
   {
-    // HH_260209: Bridge zedLiveVIO CSV outputs into ROS topics for fallback localization.
+    // HH_260209 - Bridge zedLiveVIO CSV outputs into ROS topics for fallback localization.
     abs_csv_path_ = declare_parameter<std::string>("abs_csv_path", "");
     local_csv_path_ = declare_parameter<std::string>("local_csv_path", "");
     publish_abs_ = declare_parameter<bool>("publish_abs", true);
     publish_local_ = declare_parameter<bool>("publish_local", true);
     poll_hz_ = declare_parameter<double>("poll_hz", 20.0);
     poll_hz_ = std::max(1.0, poll_hz_);
-    // HH_260422: Reject implausible Kimera jumps to prevent downstream fly-away behavior.
+    // HH_260422 - Reject implausible Kimera jumps to prevent downstream fly-away behavior.
     abs_enable_outlier_rejection_ = declare_parameter<bool>(
       "abs_enable_outlier_rejection", true);
     local_enable_outlier_rejection_ = declare_parameter<bool>(
@@ -303,7 +303,7 @@ public:
       "local_odom_topic", "/localization/kimera_vio/local_odometry");
     source_topic_ = declare_parameter<std::string>(
       "source_topic", "/localization/kimera_vio/source");
-    // HH_260326: Use status/state parameter names consistently.
+    // HH_260326 - Use status/state parameter names consistently.
     publish_localization_status_ = declare_parameter<bool>(
       "publish_localization_status", false);
     localization_status_topic_ = declare_parameter<std::string>(
@@ -317,7 +317,7 @@ public:
     abs_reader_.setPath(abs_csv_path_);
     local_reader_.setPath(local_csv_path_);
 
-    // HH_260209: Keep latest sample latched for late subscribers without periodic republish.
+    // HH_260209 - Keep latest sample latched for late subscribers without periodic republish.
     rclcpp::QoS latched_qos(rclcpp::KeepLast(1));
     latched_qos.transient_local().reliable();
 
@@ -391,7 +391,7 @@ private:
       return false;
     }
 
-    // HH_260422: After long source gaps, re-seed baseline but do not publish
+    // HH_260422 - After long source gaps, re-seed baseline but do not publish
     // the first post-gap sample. This prevents one-shot fly-away jumps from
     // being accepted as valid state after tracking recovers.
     if (outlier_reseed_gap_sec_ > 0.0 && dt >= outlier_reseed_gap_sec_) {
@@ -419,7 +419,7 @@ private:
       prev.qw, prev.qx, prev.qy, prev.qz,
       current.qw, current.qx, current.qy, current.qz);
 
-    // HH_260422: Allow larger per-sample step when sample interval is long,
+    // HH_260422 - Allow larger per-sample step when sample interval is long,
     // but still cap absolute step to reject impossible fly-away jumps.
     const double dynamic_step_limit_m =
       outlier_max_linear_speed_mps_ * dt * 1.25;

@@ -20,7 +20,7 @@ struct LoaderConfig
 };
 
 /**
- * @brief HH_260114 Helper to load Lanelet2 OSM into a LocalCartesian frame.
+ * @brief HH_260114 - Load Lanelet2 OSM into a LocalCartesian frame.
  */
 class Lanelet2MapLoader
 {

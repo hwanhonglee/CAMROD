@@ -32,7 +32,7 @@ bool expect(bool condition, const std::string & message)
   return true;
 }
 
-// HH_260727: Reproduce the field failure where one retained ABORTED entry was
+// HH_260727 - Reproduce the field failure where one retained ABORTED entry was
 // republished and incorrectly reported as many independent aborts.
 bool testRepeatedAbortedEntryCountsOnce()
 {
@@ -56,7 +56,7 @@ bool testRepeatedAbortedEntryCountsOnce()
   return ok;
 }
 
-// HH_260727: Independent goal UUIDs must remain independent abort samples.
+// HH_260727 - Independent goal UUIDs must remain independent abort samples.
 bool testDistinctAbortedGoalsAreCounted()
 {
   Tracker tracker;
@@ -71,7 +71,7 @@ bool testDistinctAbortedGoalsAreCounted()
   return ok;
 }
 
-// HH_260727: A malformed terminal-state re-entry for one UUID must not inflate
+// HH_260727 - A malformed terminal-state re-entry for one UUID must not inflate
 // the rolling abort count.
 bool testSameGoalCannotReenterAbortHistory()
 {
@@ -91,7 +91,7 @@ bool testSameGoalCannotReenterAbortHistory()
   return ok;
 }
 
-// HH_260727: Preserve the checker's existing strict greater-than-60-seconds
+// HH_260727 - Preserve the checker's existing strict greater-than-60-seconds
 // rolling-window boundary.
 bool testAbortWindowExpiresWithoutNewStatus()
 {

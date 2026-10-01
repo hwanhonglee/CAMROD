@@ -1,4 +1,4 @@
-// 260708 - CAMROD exterior light MCU (Arduino Nano, ATmega328P).
+// HH_260708 - CAMROD exterior light MCU (Arduino Nano, ATmega328P).
 //
 // Receives newline-terminated JSON from camrod_platform/mcu_serial_bridge_node
 // and drives the headlight relay + WS2815 turn indicator strips.

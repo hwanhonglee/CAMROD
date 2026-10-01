@@ -158,6 +158,7 @@ def generate_launch_description():
         default_value=default_frontend_dir,
         description='Static frontend directory for UI backend',
     )
+    # HH_260928 - Match the robot storage default used by bringup and backend.
     snapshot_output_directory_arg = DeclareLaunchArgument(
         'snapshot_output_directory',
         default_value='/home/nvidia/storage/camrod',
@@ -168,6 +169,8 @@ def generate_launch_description():
         default_value='120.0',
         description='Maximum UI wait for a snapshot bag write',
     )
+    # HH_260922 - Keep the administrator snapshot reserve defaults aligned
+    # with bringup and the backend's estimated write budget.
     snapshot_minimum_free_space_mb_arg = DeclareLaunchArgument(
         'snapshot_minimum_free_space_mb',
         default_value='5120',
@@ -351,7 +354,7 @@ def generate_launch_description():
                 LaunchConfiguration('operator_telemetry_stream_rate_hz'),
                 value_type=float,
             ),
-            # HH_260617: UI follows the system namespace for aggregated diagnostics.
+            # HH_260617 - UI follows the system namespace for aggregated diagnostics.
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             # HH_260721 - Consume the platform-neutral operational service lifecycle.
             'service_state_topic': '/service/state',
@@ -396,7 +399,7 @@ def generate_launch_description():
             'site_arrival_roadside_offset_m': 0.30,
             'site_arrival_roadside_lateral_tolerance_m': 0.15,
             'site_arrival_roadside_forward_tolerance_m': 0.60,
-            # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
+            # HH_260617 - Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             # HH_260810 - Site missions retain the regulated input while the
             # operator-map tool replaces RViz on the independent manual input.
@@ -431,7 +434,7 @@ def generate_launch_description():
             ),
             'publish_platform_drive_enable_with_engage': True,
             'default_goal_frame_id': 'map',
-            # HH_260617: Fallback destination uses the same mission-key contract.
+            # HH_260617 - Fallback destination uses the same mission-key contract.
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),

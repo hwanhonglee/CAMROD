@@ -2,6 +2,7 @@
 <package format="3">
   <name>avg_msgs</name>
   <version>0.1.0</version>
+  <!-- HH_260311 - Define the shared module- and system-level message interface package. -->
   <description>Module-level and system-level interface messages for AVG stack integration.</description>
 
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>

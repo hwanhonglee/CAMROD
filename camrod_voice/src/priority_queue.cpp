@@ -11,7 +11,7 @@ bool PriorityQueue::push(const VoiceRequest & req, std::function<void()> interru
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Debounce: same non-empty key within debounce window -> reject
+  // HH_260616 - Debounce repeated keys so a recurring status cannot flood speech.
   if (!req.key.empty()) {
     auto it = last_seen_.find(req.key);
     if (it != last_seen_.end()) {
@@ -23,7 +23,7 @@ bool PriorityQueue::push(const VoiceRequest & req, std::function<void()> interru
     last_seen_[req.key] = std::chrono::steady_clock::now();
   }
 
-  // Critical: clear queue and interrupt immediately
+  // HH_260616 - Critical cues replace the backlog; high-priority cues interrupt speech.
   if (req.priority >= 3) {
     queue_ = std::priority_queue<VoiceRequest>{};
     if (interrupt_cb) {
@@ -40,6 +40,7 @@ bool PriorityQueue::push(const VoiceRequest & req, std::function<void()> interru
   }
 
   VoiceRequest r = req;
+  // HH_260616 - Preserve FIFO order among requests with the same priority.
   r.seq = ++seq_counter_;
   queue_.push(r);
   return true;

@@ -4,6 +4,7 @@
 Only strictly below 25% requests an urgent return. No SOC value authorizes
 ignoring chassis faults, E-stop, localization, or obstacle checks.
 """
+# HH_260907 - Keep SOC decisions as policy signals, never as proof of safe motion or charging.
 
 import math
 
@@ -17,6 +18,7 @@ def battery_policy_snapshot(
     ``charging_required`` is intent; ``parking_selected_method`` is the active
     controller choice. Neither field alone establishes successful charging.
     """
+    # HH_260907 - Treat missing or invalid SOC as needing charge, not as an urgent return.
     try:
         soc = float(percentage)
         known = math.isfinite(soc) and 0.0 <= soc <= 100.0
@@ -33,6 +35,7 @@ def battery_policy_snapshot(
 
 
 def urgent_return_required(percentage, *, urgent_threshold=25.0):
+    # HH_260907 - Reserve urgent return for valid SOC strictly below the 25% band.
     try:
         soc = float(percentage)
     except (TypeError, ValueError):

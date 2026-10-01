@@ -9,6 +9,8 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # HH_260521 - Resolve the standalone detector parameters and installed model
+    # assets from ROS package shares before constructing the optional YOLO node.
     default_param = os.path.join(
         get_package_share_directory('camrod_perception'),
         'config', 'perception_params.yaml',
@@ -18,6 +20,7 @@ def generate_launch_description():
     # Resolve labels path from yolov9mit_ros share (built in camera_lidar_fusion/yolo_ws).
     try:
         yolo_ros_share = get_package_share_directory('yolov9mit_ros')
+        # HH_260629 - Select the deployed TensorRT engine from the YOLO package.
         default_model = os.path.join(yolo_ros_share, 'models', 'epoch74_step151350.vec2box.sim.engine')
         default_labels = os.path.join(yolo_ros_share, 'labels', 'coco_names.txt')
     except Exception:

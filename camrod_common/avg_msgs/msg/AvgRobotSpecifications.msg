@@ -1,4 +1,4 @@
-# HH_260311-00:00 Robot specification definition migrated from sensor_kit-local message.
+# HH_260311 - Robot specification definition migrated from sensor_kit-local message.
 float64 wheelbase
 float64 track_width
 float64 length

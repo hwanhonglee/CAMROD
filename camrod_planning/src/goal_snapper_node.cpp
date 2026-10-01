@@ -154,10 +154,10 @@ public:
 
   explicit GoalSnapperNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : rclcpp::Node("goal_snapper", options)
   {
-    // HH_260112 Snap RViz goal to nearest lanelet centerline.
+    // HH_260112 - Snap RViz goal to nearest lanelet centerline.
     cfg_.map_path = declare_parameter<std::string>("map_path", "");
     cfg_.offset_lat = declare_parameter<double>("offset_lat", 0.0);
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
@@ -174,7 +174,7 @@ public:
     auxiliary_input_goal_topic_ =
       declare_parameter<std::string>("auxiliary_input_goal_topic", "");
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
-    // HH_260317 Publish ROS-native snapped goal for Nav2 consumers.
+    // HH_260317 - Publish ROS-native snapped goal for Nav2 consumers.
     output_goal_topic_ros_ = declare_parameter<std::string>(
       "output_goal_topic_ros", "/planning/goal_pose_snapped_ros");
     output_goal_source_topic_ = declare_parameter<std::string>(
@@ -193,7 +193,7 @@ public:
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", true);
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
 
-    // HH_260528 Restrict goal snapping to the lanelet component connected to
+    // HH_260528 - Restrict goal snapping to the lanelet component connected to
     // the robot's current lane pose to prevent cross-network jumps.
     restrict_to_connected_lanelet_component_ = declare_parameter<bool>(
       "restrict_to_connected_lanelet_component", true);
@@ -215,7 +215,7 @@ public:
     routing_participant_ = declare_parameter<std::string>(
       "routing_participant", "vehicle:car");
     routable_lanelet_only_ = declare_parameter<bool>("routable_lanelet_only", true);
-    // HH_260617: Keep snapped goals inside the same traversable raster component
+    // HH_260617 - Keep snapped goals inside the same traversable raster component
     // used by Nav2. Lanelet routing may be connected while the OccupancyGrid is
     // still disconnected by map gaps, which causes "no valid path" at runtime.
     restrict_to_cost_grid_component_ = declare_parameter<bool>(
@@ -240,7 +240,7 @@ public:
     duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
     duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
     duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
-    // HH_260618: Default to latest-wins command semantics. RViz/UI goal clicks
+    // HH_260618 - Default to latest-wins command semantics. RViz/UI goal clicks
     // should preempt stale active goals; enable sequential release only for
     // explicit waypoint smoke tests.
     sequential_goal_release_enable_ =
@@ -259,7 +259,7 @@ public:
       std::max(1, static_cast<int>(declare_parameter<int>("sequential_goal_max_queue_size", 10)));
     sequential_goal_status_topic_ = declare_parameter<std::string>(
       "sequential_goal_status_topic", "/planning/navigate_to_pose/_action/status");
-    // HH_260618: Wait for Nav2's terminal SUCCEEDED status before releasing the
+    // HH_260618 - Wait for Nav2's terminal SUCCEEDED status before releasing the
     // next queued waypoint. Pose-distance alone can fire while BT is still
     // finishing, which causes topic-goal preemption instead of a clean stop.
     sequential_goal_require_nav2_terminal_ =
@@ -469,7 +469,7 @@ private:
         return true;
       };
 
-    // HH_260528 Try configured participant first, then generic vehicle fallback.
+    // HH_260528 - Try configured participant first, then generic vehicle fallback.
     if (try_build(routing_participant_)) {
       return true;
     }
@@ -571,7 +571,7 @@ private:
     rebuildCostGridComponent();
   }
 
-  // HH_260618: Treat Nav2 action success as the authoritative reached event.
+  // HH_260618 - Treat Nav2 action success as the authoritative reached event.
   // Pose-distance is still used as a fallback when action status is delayed.
   void onNavStatus(const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
   {
@@ -898,7 +898,7 @@ private:
 
   void snapRosGoal(const geometry_msgs::msg::PoseStamped & msg, const char * source_label)
   {
-    // HH_260317 Accept RViz 2D Goal Pose directly (geometry_msgs).
+    // HH_260317 - Accept RViz 2D Goal Pose directly (geometry_msgs).
     // Internal planning helpers still consume avg_msgs output_goal_topic_.
     const double px = msg.pose.position.x;
     const double py = msg.pose.position.y;
@@ -1017,7 +1017,7 @@ private:
     pub_goal_->publish(release.pose);
     publishRosGoal(release.pose);
 
-    // HH_260316 Keep explicit runtime trace for path-failure diagnosis.
+    // HH_260316 - Keep explicit runtime trace for path-failure diagnosis.
     // This confirms whether BT/NavigateToPose is using snapped goal coordinates.
     RCLCPP_INFO(
       get_logger(),
@@ -1146,7 +1146,7 @@ private:
 
   void updateActiveGoalReachedFromPose()
   {
-    // HH_260618: Reached is sticky until a new active goal is released. Nav2 can
+    // HH_260618 - Reached is sticky until a new active goal is released. Nav2 can
     // report SUCCEEDED while simulated/real pose drifts slightly outside the
     // distance threshold during controller settling; clearing the flag here
     // leaves queued goals stuck forever.
@@ -1412,7 +1412,7 @@ private:
     return best;
   }
 
-  // HH_260617: Rebuilds the connected free-space component from the current pose
+  // HH_260617 - Rebuilds the connected free-space component from the current pose
   // in the same lanelet OccupancyGrid consumed by Nav2.
   void rebuildCostGridComponent()
   {
@@ -1452,7 +1452,7 @@ private:
 
     const int start_index = start_y * width + start_x;
     const auto start_offset = static_cast<size_t>(start_index);
-    // HH_260707: Keep the previous flood-fill result while the pose remains
+    // HH_260707 - Keep the previous flood-fill result while the pose remains
     // inside the same passable component of the same cost-grid revision.
     if (has_cost_grid_component_ &&
       cost_grid_component_revision_ == cost_grid_revision_ &&
@@ -1613,7 +1613,7 @@ private:
   avg_msgs::msg::AvgQuaternion last_goal_orientation_;
   double last_goal_received_sec_{0.0};
 
-  // HH_260618 Sequential release state for non-preemptive waypoint behavior.
+  // HH_260618 - Sequential release state for non-preemptive waypoint behavior.
   bool sequential_goal_release_enable_{true};
   std::string sequential_goal_queue_policy_{"append"};
   double sequential_goal_reached_distance_m_{0.25};
@@ -1645,7 +1645,7 @@ private:
   double last_pose_jump_check_y_{0.0};
   double last_pose_jump_reissue_sec_{0.0};
 
-  // HH_260528 Connected lanelet-component restriction state.
+  // HH_260528 - Connected lanelet-component restriction state.
   bool restrict_to_connected_lanelet_component_{true};
   bool allow_component_fallback_to_global_{false};
   bool component_include_lane_changes_{true};
@@ -1667,7 +1667,7 @@ private:
   double last_component_pose_y_{0.0};
   double last_component_update_sec_{0.0};
 
-  // HH_260617 Cost-grid component restriction state.
+  // HH_260617 - Cost-grid component restriction state.
   bool restrict_to_cost_grid_component_{true};
   bool allow_cost_grid_component_fallback_{false};
   bool uncontained_global_snap_override_enable_{true};

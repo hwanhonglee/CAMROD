@@ -31,7 +31,7 @@ count = 30
 size = 4194304
 count = 10
 
-# 1920x1080 BGR = 6,220,800 bytes; 8MB chunk covers it with room to spare
+# HH_260521 - Use 8 MB chunks for 1920x1080 BGR camera frames (6,220,800 bytes).
 # count=30: supports image_raw + image_rect each with up to 10-deep subscriber queues + rqt
 [[segment.mempool]]
 size = 8388608

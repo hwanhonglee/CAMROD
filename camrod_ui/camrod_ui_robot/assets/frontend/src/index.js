@@ -6,6 +6,7 @@
  *   - App 컴포넌트를 최상위로 렌더링
  */
 
+// HH_260521 - Mount the kiosk App in the React 18 root.
 import React from 'react';               // React 코어 라이브러리
 import ReactDOM from 'react-dom/client'; // React 18 DOM 렌더링 API
 import App from './App';                 // 메인 App 컴포넌트 (토글 버튼 UI)

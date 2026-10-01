@@ -76,6 +76,7 @@ def make_ready_policy(*, announce_startup=True, announce_departure=True):
     return policy, events
 
 
+# HH_260911 - Announce recall clearance while stationary before return motion.
 def test_recall_clearance_announces_once_while_stationary_without_idle_ready():
     policy = VoiceEventPolicy(REQUIRED_MODULES)
     policy.announce_startup()
@@ -193,6 +194,7 @@ def test_startup_wait_state_never_announces_return_or_ready_early():
     assert not policy.ready
 
 
+# HH_260730 - Gate ready audio on every required module and announce it once.
 def test_ready_requires_every_input_and_is_announced_once():
     policy, events = make_ready_policy()
 
@@ -203,6 +205,7 @@ def test_ready_requires_every_input_and_is_announced_once():
     assert policy.update_tf(True) == []
 
 
+# HH_260824 - Keep mission speech available after a missed idle-ready transition.
 def test_active_mission_audio_survives_missed_idle_readiness_rendezvous():
     """A mission may start while the gate is still leaving its idle hold."""
 
@@ -450,6 +453,7 @@ def test_return_audio_requires_a_released_drop_zone_goal():
     assert policy.travel_active
 
 
+# HH_260812 - Repeat travel cues according to the active trip direction.
 def test_travel_reminders_follow_the_trip_direction():
     policy, _ = make_ready_policy()
     policy.update_engaged(True)
@@ -519,6 +523,7 @@ def test_music_bed_waits_for_departure_and_ends_with_the_trip():
     assert policy.travel_announce_events() == []
 
 
+# HH_260911 - Silent departure still preserves the music bed and trip reminders.
 def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
     """camrod_ui now speaks site_B*/to_campsite/to_dropzone itself and holds
     the command until playback finishes; this node's own departure cue must
@@ -555,6 +560,7 @@ def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
     assert not policy.travel_active
 
 
+# HH_260813 - Do not restart departure audio on a transient recovery tick.
 def test_transient_recovery_state_does_not_replay_the_departure_cue():
     policy, _ = make_ready_policy()
     policy.update_engaged(True)
@@ -626,6 +632,7 @@ def test_docking_announces_start_then_one_outcome():
     assert event_keys(docking_update(policy, "ERROR")) == ["docking.failed"]
 
 
+# HH_260911 - Carry one docking announcement across parking-owner handoff.
 def test_auto_parking_owner_handoff_and_selected_controller_share_one_voice_run():
     policy, _ = make_ready_policy()
     assert event_keys(docking_update(policy, "WAITING_FOR_PARKING_OWNER")) == [
@@ -637,6 +644,7 @@ def test_auto_parking_owner_handoff_and_selected_controller_share_one_voice_run(
     assert event_keys(docking_update(policy, "PARKED")) == ["docking.succeeded"]
 
 
+# HH_260824 - Keep AprilTag docking phases in one cue run before ready.
 def test_apriltag_docking_phases_remain_one_run_before_system_ready():
     policy = VoiceEventPolicy(REQUIRED_MODULES)
     assert event_keys(policy.announce_startup()) == ["system.startup"]
@@ -672,6 +680,7 @@ def test_docking_outcome_without_a_started_run_stays_silent():
     assert docking_update(policy, "ERROR") == []
 
 
+# HH_260812 - Keep a route-blocked explanation available during obstacle holds.
 def test_blocked_route_keeps_a_standing_explanation_available():
     policy, _ = make_ready_policy()
     policy.update_engaged(True)

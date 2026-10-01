@@ -12,7 +12,7 @@ namespace voice_announcer
 
 namespace
 {
-// Reserved mixer channels: 0 is speech-only, the rest stay free for future cues.
+// HH_260812 - Reserve channel zero for speech while music uses SDL's separate music path.
 constexpr int kMixerChannels = 4;
 constexpr int kReservedChannels = 1;
 
@@ -47,8 +47,7 @@ AudioPlayer::~AudioPlayer()
 
 bool AudioPlayer::openDevice(int sample_rate, int channels)
 {
-  // MP3/OGG decoders must be loaded before the device opens, otherwise
-  // Mix_LoadMUS cannot resolve a compressed background-music bed.
+  // HH_260812 - Load MP3/OGG decoders before opening the music-capable device.
   Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
   if (Mix_OpenAudio(sample_rate, MIX_DEFAULT_FORMAT, channels, 2048) < 0) {
     return false;
@@ -63,6 +62,7 @@ bool AudioPlayer::openDevice(int sample_rate, int channels)
 
 bool AudioPlayer::init(int sample_rate, int channels)
 {
+  // HH_260616 - Fall back to SDL's dummy driver when no physical output is available.
   if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
@@ -80,6 +80,7 @@ bool AudioPlayer::init(int sample_rate, int channels)
     return false;
   }
 
+  // HH_260812 - Retry device opening on the dummy driver for headless deployments.
   SDL_QuitSubSystem(SDL_INIT_AUDIO);
   SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
   if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
@@ -95,6 +96,7 @@ bool AudioPlayer::init(int sample_rate, int channels)
 
 std::string AudioPlayer::audioDriver() const
 {
+  // HH_260824 - Expose the actual SDL driver so silent dummy output can be diagnosed.
   const char * driver = SDL_GetCurrentAudioDriver();
   return driver == nullptr ? std::string{} : std::string{driver};
 }
@@ -131,8 +133,7 @@ bool AudioPlayer::playFile(const std::string & path, bool interrupt)
     return false;
   }
 
-  // Halt first, then let the previous monitor thread observe the silence and
-  // exit — joining after starting new audio would block for the whole clip.
+  // HH_260812 - Halt before joining the previous monitor to avoid blocking on its clip.
   stop();
   if (monitor_thread_.joinable()) {
     monitor_thread_.join();
@@ -182,9 +183,7 @@ void AudioPlayer::monitorPlayback()
   while (Mix_Playing(voice_channel_)) {
     SDL_Delay(50);
   }
-  // PulseAudio (WSL2 등): SDL2 디코더가 먼저 끝나도 오디오 드라이버 버퍼에
-  // 수백 ms 분량의 데이터가 남아 있다. 다음 playFile()이 채널을 정지하기
-  // 전에 버퍼가 소진되도록 추가 대기한다.
+  // HH_260616 - Drain PulseAudio's buffered tail before the next cue can halt the channel.
   const char * drv = SDL_GetCurrentAudioDriver();
   if (drv != nullptr && std::string(drv) == "pulseaudio") {
     SDL_Delay(300);
@@ -201,7 +200,7 @@ bool AudioPlayer::startBgm(const std::string & path, int fade_in_ms)
     return true;
   }
 
-  // A pending fade-out still counts as playing; clear it before restarting.
+  // HH_260812 - Cancel a pending fade-out before restarting the trip music bed.
   if (Mix_FadingMusic() == MIX_FADING_OUT) {
     Mix_HaltMusic();
   }
@@ -247,6 +246,7 @@ int AudioPlayer::targetBgmVolume() const
 
 void AudioPlayer::duckBgm(bool ducked, int fade_ms)
 {
+  // HH_260812 - Lower the music bed for speech and restore it after the cue.
   if (ducked_.exchange(ducked) == ducked) {
     return;
   }

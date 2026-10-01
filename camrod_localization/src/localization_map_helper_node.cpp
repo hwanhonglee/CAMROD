@@ -131,13 +131,13 @@ public:
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
-    // HH_260526: Replace use_map_z/flatten_to_ground toggles with one explicit mode.
+    // HH_260526 - Replace use_map_z/flatten_to_ground toggles with one explicit mode.
     // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
     centerline_z_mode_ = normalizeModeToken(
       declare_parameter<std::string>("centerline_z_mode", "ground"));
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
-    // HH_260413: Throttle heavy nearest-centerline search under high-rate localization input.
+    // HH_260413 - Throttle heavy nearest-centerline search under high-rate localization input.
     centerline_min_update_period_s_ = declare_parameter<double>(
       "centerline_min_update_period_s", 0.05);
     centerline_min_displacement_m_ = declare_parameter<double>(
@@ -151,7 +151,7 @@ public:
     publish_drop_zone_initial_pose_ =
       declare_parameter<bool>("publish_drop_zone_initial_pose", true);
     publish_once_ = declare_parameter<bool>("publish_once", true);
-    // HH_260526: Replace boolean toggles with source modes for readability.
+    // HH_260526 - Replace boolean toggles with source modes for readability.
     // drop_zone_center_mode: yaml_center | corners_mean.
     // drop_zone_yaw_source: input | zone.
     drop_zone_center_mode_ = normalizeModeToken(
@@ -332,7 +332,7 @@ private:
       get_clock()->now() :
       rclcpp::Time(msg->header.stamp);
 
-    // HH_260413: Skip map-nearest search when both time and displacement are below thresholds.
+    // HH_260413 - Skip map-nearest search when both time and displacement are below thresholds.
     if (has_last_centerline_publish_) {
       const double dt = (stamp - last_centerline_publish_stamp_).seconds();
       const double moved = std::hypot(px - last_centerline_input_x_, py - last_centerline_input_y_);

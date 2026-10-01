@@ -1,3 +1,4 @@
+// HH_260909 - Exercise reverse-first ownership, SOC/Dock handoff, and stale-proof rejection.
 // Unit tests of the production dispatcher, not simulated mission acceptance.
 // Domain 189, localhost-only and a cancelled timer prevent field interaction.
 #include "gtest/gtest.h"

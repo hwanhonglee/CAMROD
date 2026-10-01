@@ -1088,7 +1088,7 @@ TEST(RouteSafetyRecovery, PreservesTriggerDirectionUntilContinuousClear) {
   EXPECT_TRUE(recovery.active());
   EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);
 
-  // HH_260729 / TODOLIST 11-12 - Later zero or lateral commands cannot replace
+  // HH_260729 - TODO list 11: 12 - Later zero or lateral commands cannot replace
   // the saved forward trigger that defines route-clear evidence.
   EXPECT_FALSE(recovery.observeViolation(violation, command(0.0, 0.2), 10.1));
   EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);

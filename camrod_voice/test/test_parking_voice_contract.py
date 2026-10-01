@@ -25,6 +25,7 @@ def update(policy, phase, method="apriltag", attempt=4, source="dispatcher"):
         phase, parking_method=method, attempt=attempt, source=source)]
 
 
+# HH_260911 - Announce docking only for an explicitly selected AprilTag controller.
 @pytest.mark.parametrize("method", ["reverse", "none", "", "auto", "apriltag_typo"])
 def test_non_docking_methods_never_publish_docking_or_unmapped_keys(method):
     policy = ready_policy()
@@ -71,6 +72,7 @@ def test_dispatcher_abort_generation_preserves_current_failure_announcement():
     assert update(policy, "PARKED", attempt=4) == []
 
 
+# HH_260911 - Reject late success from a cancelled or different parking owner.
 def test_cancel_and_late_other_controller_status_cannot_announce_success():
     policy = ready_policy()
     assert update(policy, "WAITING_FOR_TAG") == ["docking.started"]

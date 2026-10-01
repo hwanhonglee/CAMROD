@@ -96,7 +96,7 @@ public:
       "out_markers_topic", "/perception/camera_lidar/markers");
     out_euclidean_topic_ = declare_parameter<std::string>(
       "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
-    // HH_260707: Keep fusion outputs enabled while avoiding stale image/cloud
+    // HH_260707 - Keep fusion outputs enabled while avoiding stale image/cloud
     // backlog and expensive debug image work when RViz is not consuming it.
     sync_queue_size_ = std::max(
       1, static_cast<int>(declare_parameter<int>("sync_queue_size", 8)));

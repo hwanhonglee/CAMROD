@@ -173,11 +173,11 @@ class FakeSensorPublisher(Node):
         # - true  : keep fake sensor pose fixed on the path start anchor
         # - false : move along centerline path with `speed_mps`
         self.freeze_motion = bool(self.declare_parameter("freeze_motion", False).value)
-        # HH_260618: Keep simulation input rate aligned with controller needs
+        # HH_260618 - Keep simulation input rate aligned with controller needs
         # while reducing Python CPU load on development PCs.
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 10.0).value
         self.loop = self.declare_parameter("loop", True).value
-        # HH_260526: Replace use_cmd_vel_for_motion with explicit motion source mode.
+        # HH_260526 - Replace use_cmd_vel_for_motion with explicit motion source mode.
         # motion_source options: cmd_vel | constant_speed
         self.motion_source = str(self.declare_parameter("motion_source", "cmd_vel").value).strip().lower()
         if self.motion_source not in {"cmd_vel", "constant_speed"}:
@@ -193,7 +193,7 @@ class FakeSensorPublisher(Node):
         self.cmd_vel_timeout_s = float(
             self.declare_parameter("cmd_vel_timeout_s", 0.5).value
         )
-        # HH_260618: Nav2 controllers can interleave zero and non-zero Twist
+        # HH_260618 - Nav2 controllers can interleave zero and non-zero Twist
         # samples during short-horizon replanning. The sim integrator runs at a
         # lower rate, so sampling only the latest zero can freeze the robot even
         # while valid drive commands are present. Hold the last non-zero command
@@ -263,14 +263,14 @@ class FakeSensorPublisher(Node):
         self.initialpose_topic = str(
             self.declare_parameter("initialpose_topic", "/localization/initialpose").value
         )
-        # HH_260528: Also listen to RViz default topic unless disabled.
+        # HH_260528 - Also listen to RViz default topic unless disabled.
         self.enable_initialpose_fallback_topic = bool(
             self.declare_parameter("enable_initialpose_fallback_topic", True).value
         )
         self.initialpose_topic_fallback = str(
             self.declare_parameter("initialpose_topic_fallback", "/initialpose").value
         )
-        # HH_260526: Replace use_free_nav_sim with explicit navigation model mode.
+        # HH_260526 - Replace use_free_nav_sim with explicit navigation model mode.
         # simulation_nav_mode options: centerline | free_nav
         self.simulation_nav_mode = str(
             self.declare_parameter("simulation_nav_mode", "centerline").value
@@ -283,13 +283,13 @@ class FakeSensorPublisher(Node):
         self.free_nav_mode_enabled = self.simulation_nav_mode == "free_nav"
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
         self.exclude_crosswalk = self.declare_parameter("exclude_crosswalk", True).value
-        # HH_260522: Use a single canonical start anchor switch.
+        # HH_260522 - Use a single canonical start anchor switch.
         # - start_from_pose=true : anchor path traversal from nearest point to (start_x, start_y)
         # - false                : start from beginning of stitched centerline path
         self.start_from_pose = bool(self.declare_parameter("start_from_pose", False).value)
         self.start_x = self.declare_parameter("start_x", 0.0).value
         self.start_y = self.declare_parameter("start_y", 0.0).value
-        # HH_260526: Replace use_all_centerlines with explicit centerline scope.
+        # HH_260526 - Replace use_all_centerlines with explicit centerline scope.
         # centerline_scope options: all | selected_lanelet
         self.centerline_scope = str(
             self.declare_parameter("centerline_scope", "all").value
@@ -303,7 +303,7 @@ class FakeSensorPublisher(Node):
         self.centerline_connect_max_gap = float(
             self.declare_parameter("centerline_connect_max_gap", 5.0).value
         )
-        # HH_260618: Keep full-map sim startup logs readable; detailed stitching
+        # HH_260618 - Keep full-map sim startup logs readable; detailed stitching
         # gaps are available only when explicitly debugging map connectivity.
         self.log_centerline_stitch_details = bool(
             self.declare_parameter("log_centerline_stitch_details", False).value
@@ -344,7 +344,7 @@ class FakeSensorPublisher(Node):
         self.obstacle_world_y = float(
             self.declare_parameter("obstacle_world_y", 0.0).value
         )
-        # HH_260630: Keep the synthetic obstacle compact around the requested
+        # HH_260630 - Keep the synthetic obstacle compact around the requested
         # direction center. A wide perpendicular spread can make side/rear
         # tests appear in the wrong corridor.
         self.fake_obstacle_cluster_radius_m = float(
@@ -359,7 +359,7 @@ class FakeSensorPublisher(Node):
         self.lidar_filtered_topic = str(
             self.declare_parameter("lidar_filtered_topic", "/sensing/lidar/points_filtered").value
         )
-        # HH_260630: Split fake LiDAR cloud and fake radar range publishing so
+        # HH_260630 - Split fake LiDAR cloud and fake radar range publishing so
         # sim safety tests can validate each obstacle source independently.
         self.publish_fake_lidar_obstacle_cloud = bool(
             self.declare_parameter("publish_fake_lidar_obstacle_cloud", True).value
@@ -423,7 +423,7 @@ class FakeSensorPublisher(Node):
                 [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50],
             ).value
         ]
-        # HH_260617: In sim, hardware IMU drivers are disabled by bringup. Publish
+        # HH_260617 - In sim, hardware IMU drivers are disabled by bringup. Publish
         # the velocity-converter output directly so diagnostics/planning can focus
         # on planning/control behavior instead of waiting for a real converter node.
         self.publish_velocity_converter_output = bool(
@@ -435,7 +435,7 @@ class FakeSensorPublisher(Node):
                 "/sensing/platform_velocity_converter/twist_with_covariance",
             ).value
         )
-        # HH_260617: Publish a free local cost grid in sim as a deterministic
+        # HH_260617 - Publish a free local cost grid in sim as a deterministic
         # sensor-health dummy. The real lidar_cost_grid_node may also publish when
         # TF is ready; this fallback prevents diagnostics from failing on TF startup.
         self.publish_dummy_lidar_cost_grid = bool(
@@ -453,7 +453,7 @@ class FakeSensorPublisher(Node):
         self.dummy_lidar_cost_grid_resolution = float(
             self.declare_parameter("dummy_lidar_cost_grid_resolution", 0.10).value
         )
-        # HH_260618: Publish the sim dummy cost grid at a lower rate than pose/IMU.
+        # HH_260618 - Publish the sim dummy cost grid at a lower rate than pose/IMU.
         # The grid is a static health/free-space fallback; publishing it every
         # fake sensor tick only adds serialization and merge load.
         self.dummy_lidar_cost_grid_publish_rate_hz = float(
@@ -545,7 +545,7 @@ class FakeSensorPublisher(Node):
         self._simulated_parking_wait_since = None
         self._simulated_charger_departure_since = None
         self._simulated_is_charging = False
-        # HH_260428: Free nav state — initialized from the path start point so the
+        # HH_260428 - Free nav state — initialized from the path start point so the
         # robot begins at the same location regardless of mode.
         self._free_nav_x = 0.0
         self._free_nav_y = 0.0
@@ -672,11 +672,11 @@ class FakeSensorPublisher(Node):
             vx = max(-vmax, min(vmax, vx))
             vy = max(-vmax, min(vmax, vy))
         self._cmd_linear_x = vx
-        # HH_260618: Preserve lateral crab commands in sim. Site maneuver uses
+        # HH_260618 - Preserve lateral crab commands in sim. Site maneuver uses
         # Twist.linear.y after Nav2 reaches the lanelet-snap pose; ignoring this
         # axis made the robot stay on the road and time out before site entry.
         self._cmd_linear_y = vy
-        # HH_260428: Track angular.z for free nav mode (unicycle steering).
+        # HH_260428 - Track angular.z for free nav mode (unicycle steering).
         self._cmd_angular_z = float(msg.angular.z)
         self._last_cmd_time = time.time()
         if (
@@ -1060,7 +1060,7 @@ class FakeSensorPublisher(Node):
 
     # Implements `_nearest_distance_on_path` behavior.
     def _nearest_distance_on_path(self, x, y):
-        # HH_260527: Use nearest projection on each segment (not nearest vertex only)
+        # HH_260527 - Use nearest projection on each segment (not nearest vertex only)
         # so RViz initialpose snaps to the geometrically closest path point.
         if len(self._path) < 2:
             return 0.0
@@ -1169,13 +1169,13 @@ class FakeSensorPublisher(Node):
             motion_speed = self.speed_mps
 
         if self.free_nav_mode_enabled:
-            # HH_260428: Free nav mode — body-frame cmd_vel integration.
+            # HH_260428 - Free nav mode — body-frame cmd_vel integration.
             # Integrates linear.x, linear.y, and angular.z so Nav2 and parking
             # controllers can steer the simulated robot off the lanelet centerline.
-            # HH_260618: Integrate angular-only commands as well. Nav2 can issue
+            # HH_260618 - Integrate angular-only commands as well. Nav2 can issue
             # rotate-in-place alignment before forward motion; ignoring zero-vx
             # angular.z leaves the simulated yaw frozen and the controller stuck.
-            # HH_260618: Integrate lateral linear.y for campsite crab entry/exit.
+            # HH_260618 - Integrate lateral linear.y for campsite crab entry/exit.
             if not holding and not self.freeze_motion:
                 omega = self._cmd_angular_z if self.motion_uses_cmd_vel else 0.0
                 if (
@@ -1301,7 +1301,7 @@ class FakeSensorPublisher(Node):
         wheel_speed = motion_speed
         wheel_msg.twist.twist.linear.x = wheel_speed
         wheel_msg.twist.twist.linear.y = lateral_speed
-        # HH_260618: Publish the simulated yaw-rate on wheel/DR odometry so
+        # HH_260618 - Publish the simulated yaw-rate on wheel/DR odometry so
         # localization and Nav2 see the same in-place rotation that free_nav
         # HH_260720 - Integrate motion from the final /control/cmd_vel output.
         wheel_msg.twist.twist.angular.z = yaw_rate
@@ -1364,7 +1364,7 @@ class FakeSensorPublisher(Node):
                 + self.obstacle_offset * obstacle_dir_y
                 + self.obstacle_lateral_offset * left_y
             )
-        # HH_260630: Publish a compact 3x3 cluster centered at the requested
+        # HH_260630 - Publish a compact 3x3 cluster centered at the requested
         # obstacle point so directional stop tests exercise the intended corridor.
         obstacle_perp_x = -obstacle_dir_y
         obstacle_perp_y = obstacle_dir_x
@@ -1409,7 +1409,7 @@ class FakeSensorPublisher(Node):
             grid.data = [0] * int(grid.info.width * grid.info.height)
             self.pub_dummy_lidar_cost_grid.publish(grid)
 
-    # HH_260707: Mirror the real SEN0592 heartbeat behavior. Publish every
+    # HH_260707 - Mirror the real SEN0592 heartbeat behavior. Publish every
     # radar topic on every fake-sensor tick; non-hit sensors report
     # max_range+epsilon so diagnostics stay alive while cost-grid consumers
     # discard the sample as outside valid range.

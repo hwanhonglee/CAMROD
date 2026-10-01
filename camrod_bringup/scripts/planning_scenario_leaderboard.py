@@ -314,7 +314,7 @@ class PlanningScenarioLeaderboard(Node):
         start = time.monotonic()
 
         if mission_key:
-            # HH_260617: Prefer mission dispatch for state-machine-driven scenarios.
+            # HH_260617 - Prefer mission dispatch for state-machine-driven scenarios.
             self.publish_mission_key(mission_key)
         else:
             self.publish_goal(x, y, z, yaw_deg)

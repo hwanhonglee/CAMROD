@@ -381,7 +381,7 @@ rate_only_topics() {
 EOF
 }
 
-# HH_260730 / TODOLIST 8 - These rates must be sampled concurrently with
+# HH_260730 - TODO list 8: These rates must be sampled concurrently with
 # process and Jetson telemetry; sequential `hz` samples cannot explain a CPU
 # spike at the same instant.
 profile_topics() {
@@ -404,7 +404,7 @@ profile_topics() {
 EOF
 }
 
-# HH_260729 / TODOLIST 11-13 - Keep every route-hold, retained-goal,
+# HH_260729 - TODO list 11: 13 - Keep every route-hold, retained-goal,
 # full-footprint, obstacle, and steering-feedback source on one rosbag clock.
 recovery_topics() {
   cat <<'EOF'
@@ -539,7 +539,7 @@ cmd_record_recovery() {
   [[ ! -e "${bag_dir}" ]] || die "bag directory already exists: ${bag_dir}"
   mkdir -p "${log_dir}/meta"
 
-  # HH_260729 / TODOLIST 11-13 - Freeze the exact source/config identity before
+  # HH_260729 - TODO list 11: 13 - Freeze the exact source/config identity before
   # motion so field evidence can be traced back to one commit and parameter set.
   run_shell_to_log "${log_dir}/meta/date.txt" date --iso-8601=seconds
   run_eval_to_log \
@@ -603,7 +603,7 @@ cmd_record_recovery() {
   local missing=()
   while IFS= read -r topic; do
     [[ -n "${topic}" ]] || continue
-    # HH_260729 / TODOLIST 11-13 - Pass initially missing topics to rosbag too.
+    # HH_260729 - TODO list 11: 13 - Pass initially missing topics to rosbag too.
     # Its discovery loop can attach after a lifecycle node activates or respawns;
     # the missing list remains a preflight warning, not a permanent exclusion.
     topics+=("${topic}")

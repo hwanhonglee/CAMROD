@@ -25,6 +25,7 @@ def _speed_helpers() -> dict:
     return namespace
 
 
+# HH_260807 - Verify vector ground speed and the 2 km/h field cruise gauge.
 def test_speed_helpers_report_vector_ground_speed() -> None:
     helpers = _speed_helpers()
 

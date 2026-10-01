@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# HH_260805 - Release the explicit ROS context after manager and executor teardown.
 def test_container_owns_and_finalizes_explicit_context():
     source = (ROOT / "src" / "scoped_component_container.cpp").read_text(
         encoding="utf-8"
@@ -27,6 +28,7 @@ def test_container_owns_and_finalizes_explicit_context():
     )
 
 
+# HH_260805 - Detach components before their plugin libraries are unloaded.
 def test_components_leave_executor_before_plugin_unload():
     source = (ROOT / "src" / "scoped_component_container.cpp").read_text(
         encoding="utf-8"
@@ -40,6 +42,7 @@ def test_components_leave_executor_before_plugin_unload():
     assert source.index("\n  context.reset();") < source.index("plugin_loaders.clear()")
 
 
+# HH_260805 - Install both scoped executor variants for launch selection.
 def test_both_executor_variants_are_installed():
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 
@@ -47,6 +50,7 @@ def test_both_executor_variants_are_installed():
     assert "camrod_add_scoped_container(scoped_component_container_mt)" in cmake
 
 
+# HH_260805 - Exit only after cleanup to avoid Humble DSO destructor races.
 def test_process_exit_skips_humble_dso_destructor_race_after_cleanup():
     source = (ROOT / "src" / "scoped_component_container.cpp").read_text(
         encoding="utf-8"

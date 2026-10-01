@@ -3,7 +3,7 @@
 <package format="3">
   <name>camrod_bringup</name>
   <version>0.0.0</version>
-  <!-- HH_260617: Replace placeholder metadata with the package role. -->
+  <!-- HH_260617 - Replace placeholder metadata with the package role. -->
   <description>Launch orchestration and system-level configuration profiles for the CAMROD stack.</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
   <!-- Set explicit Apache license. -->
@@ -23,7 +23,7 @@
   <!-- HH_260730 - avg_msgs plus geometry/nav/sensor messages are also the
        eight-stage production contract measured by pose_latency_probe.py. -->
   <depend>avg_msgs</depend>
-  <!-- HH_260707: Optional front-camera/YOLO component container launch path. -->
+  <!-- HH_260707 - Optional front-camera/YOLO component container launch path. -->
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <!-- HH_260805 - Rear parking composition directly loads image_proc::RectifyNode. -->
@@ -36,7 +36,7 @@
   <exec_depend>ros2bag</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
-  <!-- HH_260730 / TODOLIST 2 - Field probe decodes NvJPEG output independently. -->
+  <!-- HH_260730 - TODO list 2: Field probe decodes NvJPEG output independently. -->
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <!-- HH_260810 - Installed documentation/evidence renderers must also run on

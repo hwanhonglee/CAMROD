@@ -79,7 +79,7 @@ ament_target_dependencies(drop_zone_maneuver_controller_node
 )
 target_link_libraries(drop_zone_maneuver_controller_node yaml-cpp)
 
-# HH_260803 / TODOLIST 12 - Keep bounded route recovery separate from the
+# HH_260803 - TODO list 12: Keep bounded route recovery separate from the
 # final safety gate and from campsite/drop-zone maneuver ownership.
 add_executable(route_safety_recovery_controller_node
   src/route_safety_recovery_controller_node.cpp

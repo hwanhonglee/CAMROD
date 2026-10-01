@@ -1,4 +1,4 @@
-// 260708 - Deterministic coverage for the exterior light decision logic.
+// HH_260708 - Deterministic coverage for the exterior light decision logic.
 // Mirrors the planning cmd_vel gate approach: every priority branch and the
 // route sync guard are exercised without a ROS runtime.
 #include <gtest/gtest.h>

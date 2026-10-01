@@ -1,3 +1,4 @@
+# HH_260311 - Aggregate map grids and visualization layers for module diagnostics.
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 

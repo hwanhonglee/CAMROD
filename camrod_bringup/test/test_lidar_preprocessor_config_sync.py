@@ -70,6 +70,7 @@ def _preprocessor_parameter_lists(tree: ast.AST) -> list[ast.List]:
     return parameter_lists
 
 
+# HH_260807 - Keep the LiDAR parameter schema aligned with its node declarations.
 def test_package_config_matches_node_fqn_and_declared_schema() -> None:
     config = yaml.safe_load(SENSING_CONFIG.read_text(encoding="utf-8"))
     assert set(config) == {"/sensing/lidar/lidar_preprocessor"}
@@ -81,10 +82,12 @@ def test_package_config_matches_node_fqn_and_declared_schema() -> None:
     assert parameters["max_process_hz"] == 0.0
 
 
+# HH_260807 - Deploy exactly the same LiDAR parameters as the package source.
 def test_bringup_preprocessor_config_is_byte_identical_mirror() -> None:
     assert BRINGUP_CONFIG.read_bytes() == SENSING_CONFIG.read_bytes()
 
 
+# HH_260807 - Apply runtime topic wiring after the shared parameter file in both modes.
 def test_standalone_and_composed_nodes_load_config_before_wiring_overrides() -> None:
     tree = ast.parse(LIDAR_DRIVER_LAUNCH.read_text(encoding="utf-8"))
     assert _function_return_dict_keys(tree, "_lidar_runtime_overrides") == {
@@ -107,6 +110,7 @@ def test_standalone_and_composed_nodes_load_config_before_wiring_overrides() -> 
         assert runtime_overrides.func.id == "_lidar_runtime_overrides"
 
 
+# HH_260807 - Forward one LiDAR parameter file through every launch layer.
 def test_aggregate_and_bringup_forward_the_same_parameter_file() -> None:
     lidar_launch = (
         SRC_ROOT / "camrod_sensing" / "launch" / "lidar.launch.py"
@@ -130,6 +134,7 @@ def test_aggregate_and_bringup_forward_the_same_parameter_file() -> None:
     )
 
 
+# HH_260807 - Keep TF callbacks live during standalone ground segmentation.
 def test_ground_segmentation_standalone_uses_multithreaded_executor() -> None:
     """Keep TF reception live while standalone cloud callbacks wait on TF."""
     cmake = GROUND_SEGMENTATION_CMAKE.read_text(encoding="utf-8")

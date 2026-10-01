@@ -1,4 +1,5 @@
 <CycloneDDS>
+  <!-- HH_260521 - Bind camera DDS transport to loopback and disable shared memory for this profile. -->
   <Domain>
     <General>
       <Interfaces>
@@ -12,7 +13,7 @@
       <Enable>false</Enable>
     </SharedMemory>
     <Internal>
-      <!-- 1920x1080 BGR8 = ~6.2MB/frame; requires net.core.rmem_max >= 20971520 -->
+      <!-- HH_260521 - A 1920x1080 BGR8 frame is about 6.2 MB; require net.core.rmem_max >= 20971520. -->
       <SocketReceiveBufferSize min="20971520B"/>
       <SocketSendBufferSize min="20971520B"/>
     </Internal>

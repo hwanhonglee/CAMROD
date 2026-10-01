@@ -11,11 +11,12 @@ def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
-# Declares robot-visualization arguments and launches marker/polygon publisher node.
+# HH_260407 - Launch the platform marker and polygon publisher with package parameters.
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='platform'),
         DeclareLaunchArgument('map_frame_id', default_value='map'),
+        # HH_260804 - Center visualization on the canonical robot_center_link frame.
         DeclareLaunchArgument('base_frame_id', default_value='robot_center_link'),
         DeclareLaunchArgument(
             'params_file',

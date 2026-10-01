@@ -1,5 +1,7 @@
 """Unit tests for disabled-hardware sensing placeholder contracts."""
 
+# HH_260729 - Disabled sensors publish explicit no-fix/uncertain placeholder data.
+
 import importlib.util
 import math
 from pathlib import Path
@@ -65,6 +67,7 @@ def test_invalid_publish_rate_is_rejected(invalid_rate):
         SENSING_DUMMY.validate_publish_rate(invalid_rate)
 
 
+# HH_260807 - Keep dummy GNSS outputs in the physical gnss_link frame.
 def test_gnss_dummy_is_explicitly_not_a_fix():
     message = SENSING_DUMMY.make_gnss_fix(_stamp())
 

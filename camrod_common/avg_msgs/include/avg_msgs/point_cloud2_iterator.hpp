@@ -1,6 +1,5 @@
 #pragma once
 
-// Utility iterator wrapper for PointCloud2 field access.
-// Not a ROS message type, but exposed through avg_msgs to keep include style uniform.
+// HH_260318 - Expose the PointCloud2 field iterator through avg_msgs for a
+// consistent include path; this wrapper is not a ROS message type.
 #include <sensor_msgs/point_cloud2_iterator.hpp>
-

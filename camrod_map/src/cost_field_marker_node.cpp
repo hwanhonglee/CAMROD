@@ -25,7 +25,7 @@ namespace camrod_map
 class CostFieldMarkerNode : public rclcpp::Node
 {
 public:
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   CostFieldMarkerNode()
   : Node("cost_field_marker")
   {
@@ -35,11 +35,11 @@ public:
       "marker_topic", "/map/cost_grid/inflation_markers");
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
-    marker_scale_ = declare_parameter<double>("marker_scale", 0.2);  // HH_260101 configurable size
+    marker_scale_ = declare_parameter<double>("marker_scale", 0.2);  // HH_260101 - configurable size
     min_value_ = declare_parameter<int>("min_value", 0);
     max_value_ = declare_parameter<int>("max_value", 100);
-    alpha_ = declare_parameter<double>("alpha", 0.35);  // HH_260102 softer opacity
-    z_offset_ = declare_parameter<double>("z_offset", 0.05);  // HH_260101 lift markers above map
+    alpha_ = declare_parameter<double>("alpha", 0.35);  // HH_260102 - softer opacity
+    z_offset_ = declare_parameter<double>("z_offset", 0.05);  // HH_260101 - lift markers above map
     cell_scale_ratio_ = declare_parameter<double>("cell_scale_ratio", 1.0);
     palette_ = declare_parameter<std::string>("palette", "safety");
     show_unknown_ = declare_parameter<bool>("show_unknown", false);
@@ -71,7 +71,7 @@ public:
     RCLCPP_DEBUG(get_logger(), "cost_field_marker_node listening on %s, publishing %s",
       grid_topic_.c_str(), marker_topic_.c_str());
 
-    // HH_260103 periodic republish for RViz toggle refresh
+    // HH_260103 - periodic republish for RViz toggle refresh
     updateRepublishTimer();
   }
 
@@ -108,7 +108,7 @@ private:
     const double cy = std::cos(yaw);
     const double sy = std::sin(yaw);
 
-    // HH_260305-00:00 Reserve by sampled-cell upper bound (not full grid size).
+    // HH_260305 - Reserve by sampled-cell upper bound (not full grid size).
     // This reduces allocation pressure on large maps and improves RViz latency.
     const std::size_t sampled_w =
       (width + static_cast<std::size_t>(sample_stride_) - 1U) / static_cast<std::size_t>(sample_stride_);
@@ -136,7 +136,7 @@ private:
       }
     }
 
-    // HH_260318-00:00 If sampled cells are all unknown/out-of-range, publish DELETEALL.
+    // HH_260318 - If sampled cells are all unknown/out-of-range, publish DELETEALL.
     // RViz may otherwise keep stale CUBE_LIST visuals from the previous non-empty frame.
     if (marker.points.empty()) {
       if (clear_on_empty_grid_) {
@@ -348,7 +348,7 @@ private:
       }
     }
 
-    // HH_260307-00:00 Prioritize pending fresh grid conversion over old marker heartbeat.
+    // HH_260307 - Prioritize pending fresh grid conversion over old marker heartbeat.
     // Without this, a throttled onGrid() could leave RViz stuck on stale markers.
     if (pending_grid_update_ && latest_grid_ && !latest_grid_->data.empty() && canPublishNow()) {
       publishFromGrid(*latest_grid_);
@@ -364,7 +364,7 @@ private:
       return;
     }
 
-    // HH_260305-00:00 Fallback: generate first marker set only when cache is empty.
+    // HH_260305 - Fallback: generate first marker set only when cache is empty.
     // Periodic timer should primarily republish cached markers to avoid expensive full-grid scans.
     if (latest_grid_ && !latest_grid_->data.empty() && canPublishNow()) {
       publishFromGrid(*latest_grid_);

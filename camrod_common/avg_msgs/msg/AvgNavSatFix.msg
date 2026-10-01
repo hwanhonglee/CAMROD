@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned GNSS fix and covariance contract for module-to-module transport.
 uint8 COVARIANCE_TYPE_UNKNOWN=0
 uint8 COVARIANCE_TYPE_APPROXIMATED=1
 uint8 COVARIANCE_TYPE_DIAGONAL_KNOWN=2

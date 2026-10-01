@@ -1,4 +1,4 @@
-# HH_260414: Reduce message filter queue depth to mitigate TF extrapolation flicker/crashes in real-sensor runs.
+# HH_260414 - Reduce message filter queue depth to mitigate TF extrapolation flicker/crashes in real-sensor runs.
 Panels:
   - Class: rviz_common/Displays
     Help Height: 78
@@ -36,7 +36,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    # HH_260413: Keep sync source on always-visible map display to avoid RViz close when
+    # HH_260413 - Keep sync source on always-visible map display to avoid RViz close when
     # toggling Localization group displays.
     SyncSource: Lanelet2_Map
 Visualization Manager:
@@ -839,7 +839,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    # HH_260413: Lower default render FPS to reduce RViz CPU load on embedded PC.
+    # HH_260413 - Lower default render FPS to reduce RViz CPU load on embedded PC.
     Frame Rate: 20
   Name: root
   Tools:

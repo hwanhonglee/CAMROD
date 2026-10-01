@@ -241,6 +241,7 @@ class VoiceEventAdapterNode(Node):
         self._emit_policy_events(self._policy.announce_startup())
 
     def _on_readiness_timer(self):
+        # HH_260730 - Recheck TF and Nav2 action readiness until voice can say ready.
         try:
             tf_ready = self._tf_buffer.can_transform(
                 self._readiness_map_frame,
@@ -260,6 +261,7 @@ class VoiceEventAdapterNode(Node):
         self._tick_battery_full()
 
     def _tick_travel_announce(self):
+        # HH_260812 - Pause trip reminders while a route-safety hold owns the audio.
         if not self._en_travel_announce or not self._policy.travel_active:
             return
         if self._policy.obstacle_hold_announced:
@@ -286,6 +288,7 @@ class VoiceEventAdapterNode(Node):
         self._emit_policy_events(self._policy.obstacle_repeat_events())
 
     def _tick_battery_full(self):
+        # HH_260812 - Repeat the full-charge cue only while charger contact persists.
         full = (
             self._en_battery
             and self._charging
@@ -348,6 +351,7 @@ class VoiceEventAdapterNode(Node):
         self._emit_policy_events(self._policy.update_engaged(bool(msg.data)))
 
     def _on_parking_status(self, msg: ModuleState, source_topic: str = ""):
+        # HH_260911 - Forward verified controller identity and attempt to docking policy.
         if not self._en_docking:
             return
         method, attempt, owner = parking_status_identity(
@@ -356,13 +360,13 @@ class VoiceEventAdapterNode(Node):
             msg.operating_state, parking_method=method, attempt=attempt, source=owner))
 
     def _on_camping_site_status(self, msg: ModuleState):
+        # HH_260911 - Use the maneuver-controller phase to time recall clearance.
         self._emit_policy_events(
             self._policy.update_campsite_maneuver(msg.operating_state))
 
     def _on_platform_status(self, msg: AvgPlatformStatus):
         self._on_estop(bool(msg.estop))
-        # Charge level and charger state feed the repeated full cue regardless
-        # of whether the one-shot edges below are enabled.
+        # HH_260812 - Feed charge and contact into the repeated full cue independently.
         self._charging = bool(msg.is_charging)
         self._battery_pct = (
             float(msg.battery_percentage) if msg.battery_state_available
@@ -470,8 +474,7 @@ class VoiceEventAdapterNode(Node):
         req.interrupt = interrupt
         req.locale = ''          # node default 사용
         self._say_pub.publish(req)
-        # INFO is intentional operational evidence: it distinguishes an event
-        # policy miss from a downstream audio-device/playback failure.
+        # HH_260824 - Log each request to separate policy misses from audio failure.
         self.get_logger().info(
             f'AudioRequest published: key={key} priority={priority} '
             f'interrupt={interrupt}')

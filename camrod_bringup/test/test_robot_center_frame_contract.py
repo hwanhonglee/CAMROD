@@ -79,11 +79,13 @@ def _nested(mapping: dict, keys: tuple[str, ...]) -> dict:
     return mapping
 
 
+# HH_260804 - Deploy exactly the package-owned robot-center sensor geometry.
 def test_sensor_config_mirror_is_byte_synchronized() -> None:
     """Full bringup must deploy the same canonical geometry as the package."""
     assert PACKAGE_SENSOR_CONFIG.read_bytes() == BRINGUP_SENSOR_CONFIG.read_bytes()
 
 
+# HH_260806 - Keep measured body dimensions and rear-axle offset auditable.
 def test_center_offset_and_measured_body_are_auditable() -> None:
     """Keep the axle midpoint and the fabrication-inclusive measured envelope."""
     robot = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]
@@ -100,6 +102,7 @@ def test_center_offset_and_measured_body_are_auditable() -> None:
     ) == pytest.approx(robot["width"])
 
 
+# HH_260807 - Add a ten-centimeter planning margin around the measured body.
 def test_planning_margin_is_ten_centimeters_on_every_side() -> None:
     """The recoverable planning envelope adds 10 cm around the measured body."""
     extents = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]["body_extents"]
@@ -117,6 +120,7 @@ def test_planning_margin_is_ten_centimeters_on_every_side() -> None:
 
 
 @pytest.mark.parametrize("keys,legacy_x", LEGACY_SENSOR_X_M.items())
+# HH_260804 - Shift frame origin without moving a physical sensor mount.
 def test_sensor_x_shift_preserves_physical_mount(
     keys: tuple[str, ...], legacy_x: float
 ) -> None:
@@ -128,6 +132,7 @@ def test_sensor_x_shift_preserves_physical_mount(
 
 
 @pytest.mark.parametrize("sensor,expected_xy", REMEASURED_SIDE_RADAR_XY_M.items())
+# HH_260807 - Use the remeasured side-radar mounts in robot-center coordinates.
 def test_remeasured_side_radar_mounts_use_robot_center(
     sensor: str, expected_xy: tuple[float, float]
 ) -> None:
@@ -138,6 +143,7 @@ def test_remeasured_side_radar_mounts_use_robot_center(
     assert pose["z"] == pytest.approx(0.29013)
 
 
+# HH_260806 - Align antenna TF and localization center correction to one lever arm.
 def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     """TF exposes the left antenna while localization publishes robot center."""
     gnss = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["gnss"]
@@ -165,6 +171,7 @@ def test_gnss_left_antenna_and_center_correction_share_one_lever_arm() -> None:
     )
 
 
+# HH_260807 - Mirror the measured-delay EKF rewind window into deployment.
 def test_real_ekf_lag_window_and_deployment_mirror() -> None:
     """Keep the measured-delay rewind window identical in package and bringup."""
     package_path = SRC_ROOT / "camrod_localization" / "config" / "filter" / "ekf.yaml"
@@ -187,6 +194,7 @@ def test_real_ekf_lag_window_and_deployment_mirror() -> None:
     assert parameters["history_length"] == pytest.approx(1.0)
 
 
+# HH_260806 - Exercise the real antenna lever arm in full simulation too.
 def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
     """Full simulation must exercise rather than bypass lever-arm correction."""
     localization = _wildcard_parameters(PACKAGE_LOCALIZATION_CONFIG)
@@ -205,6 +213,7 @@ def test_sim_gnss_models_the_same_raw_antenna_and_heading_contract() -> None:
     ) == pytest.approx(0.0)
 
 
+# HH_260804 - Make Nav2 and the final gate share a robot-center footprint.
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     """Planning and final command authorization must use one occupied boundary."""
     # HH_260809 - This is the generated 10 cm offset of the canonical tapered,
@@ -285,6 +294,7 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert launch_control["cmd_vel_gate_lanelet_safety_boundary_corner_samples"] == 4
 
 
+# HH_260807 - Draw the same ten-centimeter safety margin seen by the gate.
 def test_visual_boundary_uses_ten_centimeter_margins() -> None:
     """Verify RViz and the gate share one robot-center-local boundary contract."""
     package_path = SRC_ROOT / "camrod_platform" / "config" / "robot_visualization.yaml"
@@ -317,6 +327,7 @@ def test_visual_boundary_uses_ten_centimeter_margins() -> None:
     assert "setFootprintPolygonWorld" not in motion_source
 
 
+# HH_260804 - Keep retry-containment policy identical in both gate configs.
 def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None:
     """The deployed gate must retain the package-owned retry containment."""
     package_path = (
@@ -339,6 +350,7 @@ def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None
     ] == pytest.approx(0.75)
 
 
+# HH_260807 - Give the gate a fine lanelet grid without duplicating Nav2 ownership.
 def test_high_resolution_lanelet_safety_grid_and_nav2_owner_contract() -> None:
     """Keep final safety resolution separate from Nav2 without stop-go arbitration."""
     package_grid = (
@@ -394,6 +406,7 @@ def test_high_resolution_lanelet_safety_grid_and_nav2_owner_contract() -> None:
     )
 
 
+# HH_260804 - Preserve the physical dock stop while moving the frame origin.
 def test_apriltag_longitudinal_thresholds_preserve_rear_axle_stop_points() -> None:
     """Moving the measured base forward must not move the physical dock stop."""
     parking = _yaml(
@@ -442,6 +455,7 @@ def test_apriltag_longitudinal_thresholds_preserve_rear_axle_stop_points() -> No
         ),
     ],
 )
+# HH_260804 - Route active odometry, localization and sensing through center TF.
 def test_active_runtime_consumers_use_robot_center_link(
     path: str, node: str, key: str
 ) -> None:
@@ -451,6 +465,7 @@ def test_active_runtime_consumers_use_robot_center_link(
     assert parameters[key] == "robot_center_link"
 
 
+# HH_260804 - Keep one TF root while retaining the rear-axle compatibility frame.
 def test_urdf_has_one_center_root_and_a_rear_axle_compatibility_child() -> None:
     """The compatibility frame must not create a second TF parent."""
     xacro = (
@@ -469,6 +484,7 @@ def test_urdf_has_one_center_root_and_a_rear_axle_compatibility_child() -> None:
 
 
 @pytest.mark.parametrize("profile", ("default", "sim"))
+# HH_260804 - Report the same center-relative mounts in operator diagnostics.
 def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None:
     """Operator diagnostics must report the same mounts as TF and RobotParams."""
     config = _yaml(

@@ -5,9 +5,9 @@
   <version>0.0.0</version>
   <description>LiDAR/Camera preprocessing and velocity conversion for camping cart.</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
-  <!-- HH_260114 Set explicit Apache license. -->
+  <!-- HH_260114 - Set explicit Apache license. -->
   <license>Apache-2.0</license>
-  <!-- HH_260109 New sensing package for LiDAR/Camera preprocessing and runtime sensor interfaces. -->
+  <!-- HH_260109 - New sensing package for LiDAR/Camera preprocessing and runtime sensor interfaces. -->
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
@@ -38,7 +38,7 @@
   <depend>pcl_conversions</depend>
   <depend>opencv</depend>
   <depend>cuda_cudart</depend>
-  <!-- HH_260528: rear camera publisher (camera_rear_publisher_node) -->
+  <!-- HH_260528 - rear camera publisher (camera_rear_publisher_node) -->
   <depend>cv_bridge</depend>
   <depend>yaml-cpp</depend>
   <build_depend>libpcl-all-dev</build_depend>
@@ -46,7 +46,7 @@
   <!-- HJ_260529: optional LiDAR driver — declared so packages-up-to pulls it in automatically -->
   <exec_depend>vanjee_lidar_sdk</exec_depend>
   <exec_depend>vanjee_lidar_msg</exec_depend>
-  <!-- HH_260611: ublox_gps is the only GNSS driver path; the old dGNSS fallback was removed. -->
+  <!-- HH_260611 - ublox_gps is the only GNSS driver path; the old dGNSS fallback was removed. -->
   <exec_depend>ublox_gps</exec_depend>
   <exec_depend>ntrip_client</exec_depend>
   <!-- HH_260722 - moving_base_rtcm_writer consumes ROS RTCM and writes POWER+XBEE serial. -->

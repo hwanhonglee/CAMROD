@@ -1,3 +1,4 @@
+# HH_260720 - Expose one controller-ready AprilTag pose without detection aliases.
 avg_msgs/AvgHeader header
 string family
 int32 id

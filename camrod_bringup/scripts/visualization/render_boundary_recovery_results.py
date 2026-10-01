@@ -606,7 +606,7 @@ def main():
     lanelet_map = lanelet2.io.load(str(args.map), LocalCartesianProjector(ORIGIN))
     points = route_points(lanelet_map)
     route_samples = analyze_route(map_geometry(lanelet_map), points)
-    # HH_260804 / v2.1.3 - Keep pre-owner evidence visibly distinct from the
+    # HH_260804 - Keep v2.1.3 pre-owner evidence visibly distinct from the
     # automatic recovery controller introduced after this manual probe run.
     analysis_path = (
         args.analysis_output

@@ -1,3 +1,4 @@
+# HH_260521 - Preserve the observed ThetaStar/Graceful combo tuning from the planning sweep.
 # Combo Profile: ThetaStar + Graceful
 # 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=N, displacement=0.003m
 # Tuning intent: recovery-biased preset (encourage initial movement on this combo).

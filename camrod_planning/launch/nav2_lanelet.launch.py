@@ -15,7 +15,7 @@ import yaml
 
 
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
-    # HH_260406: Robust map_info parser for key-layout differences.
+    # HH_260406 - Robust map_info parser for key-layout differences.
     if not isinstance(map_info_cfg, dict):
         return {}
     wildcard = map_info_cfg.get('/**')
@@ -45,14 +45,14 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 def infer_nav2_combo_ids(combo_param_file: str) -> tuple[str, str]:
     """Infer planner/controller IDs from combo profile filename."""
     name = os.path.basename(str(combo_param_file)).lower()
-    # HH_260626: Default to the connected lanelet route when no combo profile
+    # HH_260626 - Default to the connected lanelet route when no combo profile
     # is selected; grid planners remain fallback/selectable.
     planner_id = 'LaneletRoute'
-    # HH_260618: Default controller is MPPI. Global path remains the reference,
+    # HH_260618 - Default controller is MPPI. Global path remains the reference,
     # but local trajectory sampling/cost critics decide the actual cmd_vel.
     controller_id = 'MPPI'
 
-    # HH_260528: Keep mapping explicit so one combo file controls both selectors.
+    # HH_260528 - Keep mapping explicit so one combo file controls both selectors.
     planner_tokens = (
         ('laneletroute', 'LaneletRoute'),
         ('lanelet_route', 'LaneletRoute'),
@@ -132,7 +132,7 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
             name='nav2_selector_latch',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
-            # HH_260528: Keep selector publisher alive even if transient startup errors occur.
+            # HH_260528 - Keep selector publisher alive even if transient startup errors occur.
             respawn=True,
             respawn_delay=2.0,
             parameters=[{
@@ -175,7 +175,7 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
-    # HH_260409: Keep nav2_lanelet launch resilient when map_info map_path is empty.
+    # HH_260409 - Keep nav2_lanelet launch resilient when map_info map_path is empty.
     if not str(map_path_default).strip():
         for candidate in (
             os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
@@ -189,7 +189,7 @@ def generate_launch_description():
     # -------------------------------------------------------------------------
     # Default config file paths (4-stage overlay)
     # -------------------------------------------------------------------------
-    # HH_260330: Standalone planning launch uses package-local config by default.
+    # HH_260330 - Standalone planning launch uses package-local config by default.
     default_base_param = os.path.join(pkg_share, 'config', 'nav2_base.yaml')
     default_vehicle_param = os.path.join(pkg_share, 'config', 'nav2_vehicle.yaml')
     default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
@@ -204,7 +204,7 @@ def generate_launch_description():
         pkg_share, 'config', 'nav2_controller_profiles', 'production.yaml'
     )
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
-    # HH_260626: Default BT uses PlannerSelector; selector default is LaneletRoute.
+    # HH_260626 - Default BT uses PlannerSelector; selector default is LaneletRoute.
     # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
     default_nav_to_pose_bt_xml = os.path.join(
         pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector.xml'
@@ -288,7 +288,7 @@ def generate_launch_description():
     )
     nav2_manual_planner_arg = DeclareLaunchArgument(
         'nav2_manual_planner',
-        # HH_260730 / TODOLIST 7 - Fresh sim calls with the same 50.29 m
+        # HH_260730 - TODO list 7: Fresh sim calls with the same 50.29 m
         # start/goal produced zero poses from NavFn, ThetaStar, SmacHybrid, and
         # SmacLattice; LaneletRoute returned 256 poses in 130 ms and retained
         # the operator's 107.8 deg final yaw. Project manual x/y onto a routable
@@ -413,7 +413,7 @@ def generate_launch_description():
     nav2_base_params = RewrittenYaml(
         source_file=nav2_base_param_file,
         root_key='planning',
-        # HH_260619: Inject lanelet map launch arguments into the Nav2
+        # HH_260619 - Inject lanelet map launch arguments into the Nav2
         # LaneletRoute planner plugin. RewrittenYaml rewrites parameter leaves;
         # a raw nested dict in Node(parameters=...) is not a node-scoped YAML.
         param_rewrites={
@@ -444,7 +444,7 @@ def generate_launch_description():
         root_key='planning',
         param_rewrites={
             **nav2_frame_rewrites,
-            # HH_260421: Replace host-specific absolute BT XML paths from YAML.
+            # HH_260421 - Replace host-specific absolute BT XML paths from YAML.
             'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
             'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
         },
@@ -498,13 +498,13 @@ def generate_launch_description():
                 'global_frame': 'map',
                 'local_frame': 'odom',
                 'robot_base_frame': nav2_robot_base_frame,
-                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                # HH_260330 - Keep TF tolerance aligned with nav2_base/behavior profiles.
                 'transform_tolerance': 0.5,
             }
         },
         'smoother_server': {
             'ros__parameters': {
-                # HH_260629: SimpleSmoother collision checks otherwise default
+                # HH_260629 - SimpleSmoother collision checks otherwise default
                 # to base_link, which this robot does not publish.
                 'global_frame': 'map',
                 'robot_base_frame': nav2_robot_base_frame,
@@ -517,11 +517,11 @@ def generate_launch_description():
                 'robot_base_frame': nav2_robot_base_frame,
                 # HH_260720 - Nav2 requires the explicit nav_msgs odometry mirror.
                 'odom_topic': '/localization/odometry_ros',
-                # HH_260421: Force package-share-resolved BT XML paths to avoid
+                # HH_260421 - Force package-share-resolved BT XML paths to avoid
                 # host-specific absolute-path breakage.
                 'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
                 'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
-                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                # HH_260330 - Keep TF tolerance aligned with nav2_base/behavior profiles.
                 'transform_tolerance': 0.5,
             }
         },
@@ -579,10 +579,10 @@ def generate_launch_description():
         respawn=True,
         respawn_delay=2.0,
         parameters=nav2_param_chain,
-        # HH_260304-00:00 Keep only controller-internal debug topics that are still useful.
-        # HH_260304-00:00 Do not expose /planning/local_plan_raw: older RViz sessions may
-        # HH_260304-00:00 overlay it on top of /planning/local_path and make the local plan
-        # HH_260304-00:00 look duplicated or branch to a wrong loop segment.
+        # HH_260304 - Keep only controller-internal debug topics that are still useful.
+        # HH_260304 - Do not expose /planning/local_plan_raw: older RViz sessions may
+        # HH_260304 - overlay it on top of /planning/local_path and make the local plan
+        # HH_260304 - look duplicated or branch to a wrong loop segment.
         remappings=[
             # HH_260720 - Nav2 produces an unapproved candidate for the control safety gate.
             ('cmd_vel', navigation_cmd_vel_topic),
@@ -605,12 +605,12 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             parameters=nav2_param_chain + [{
-                # HH_260306-00:00 Hard-override to block fallback to default "robot_base_link"
+                # HH_260306 - Hard-override to block fallback to default "robot_base_link"
                 # during recovery behavior pose transforms.
                 'global_frame': 'map',
                 'local_frame': 'odom',
                 'robot_base_frame': nav2_robot_base_frame,
-                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                # HH_260330 - Keep TF tolerance aligned with nav2_base/behavior profiles.
                 'transform_tolerance': 0.5,
             }],
             remappings=[
@@ -619,10 +619,10 @@ def generate_launch_description():
             ],
         )
     else:
-        # HH_260604: Do not abort bringup when optional Nav2 behavior package is absent.
+        # HH_260604 - Do not abort bringup when optional Nav2 behavior package is absent.
         behavior_server = LogInfo(msg='[nav2_lanelet] nav2_behaviors not found; skipping behavior_server')
 
-    # HH_260513: SimpleSmoother server for BT SmoothPath node.
+    # HH_260513 - SimpleSmoother server for BT SmoothPath node.
     if has_nav2_smoother:
         smoother_server = Node(
             package='nav2_smoother',
@@ -636,7 +636,7 @@ def generate_launch_description():
             respawn=True,
             respawn_delay=2.0,
             parameters=nav2_param_chain + [{
-                # HH_260629: Hard-override to block smoother collision checks
+                # HH_260629 - Hard-override to block smoother collision checks
                 # from using Nav2's default base_link frame.
                 'global_frame': 'map',
                 'robot_base_frame': nav2_robot_base_frame,
@@ -644,7 +644,7 @@ def generate_launch_description():
             }],
         )
     else:
-        # HH_260604: Do not abort bringup when optional Nav2 smoother package is absent.
+        # HH_260604 - Do not abort bringup when optional Nav2 smoother package is absent.
         smoother_server = LogInfo(msg='[nav2_lanelet] nav2_smoother not found; skipping smoother_server')
 
     bt_navigator = Node(
@@ -659,19 +659,19 @@ def generate_launch_description():
         respawn=True,
         respawn_delay=2.0,
         parameters=nav2_param_chain + [{
-            # HH_260306-00:00 Keep BT transform helpers pinned to configured Nav2 base frame.
+            # HH_260306 - Keep BT transform helpers pinned to configured Nav2 base frame.
             'global_frame': 'map',
             'robot_base_frame': nav2_robot_base_frame,
-            # HH_260421: Override host-specific absolute BT XML paths from YAML.
+            # HH_260421 - Override host-specific absolute BT XML paths from YAML.
             'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
             'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
-            # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+            # HH_260330 - Keep TF tolerance aligned with nav2_base/behavior profiles.
             'transform_tolerance': 0.5,
         }],
         remappings=[
-            # HH_260316-00:00 Consume snapped goal topic only.
+            # HH_260316 - Consume snapped goal topic only.
             # Prevent raw-goal bypass when external tools publish to /planning/goal_pose directly.
-            # HH_260317-00:00 Apply both relative/absolute remaps for external tools.
+            # HH_260317 - Apply both relative/absolute remaps for external tools.
             ('goal_pose', '/planning/goal_pose_snapped_ros'),
             ('/goal_pose', '/planning/goal_pose_snapped_ros'),
         ],
@@ -682,10 +682,10 @@ def generate_launch_description():
         'controller_server',
     ]
     if has_nav2_smoother:
-        # HH_260604: Activate smoother only when its package is installed.
+        # HH_260604 - Activate smoother only when its package is installed.
         lifecycle_node_names.append('smoother_server')
     if has_nav2_behaviors:
-        # HH_260604: Activate behavior server only when its package is installed.
+        # HH_260604 - Activate behavior server only when its package is installed.
         lifecycle_node_names.append('behavior_server')
     lifecycle_node_names.extend([
         'bt_navigator',
@@ -707,9 +707,9 @@ def generate_launch_description():
         respawn_delay=2.0,
         parameters=[{
             'use_sim_time': False,
-            # HH_260327: allow launch-level localization gate to control activation timing.
+            # HH_260327 - allow launch-level localization gate to control activation timing.
             'autostart': nav2_autostart,
-            # HH_260410: Increase bond/service windows to avoid false startup abort
+            # HH_260410 - Increase bond/service windows to avoid false startup abort
             # on heavy bringup (planner_server may respond later under load).
             'bond_timeout': 20.0,
             'service_timeout': 10000,

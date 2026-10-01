@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned goal lifecycle status contract for module-to-module transport.
 int8 STATUS_UNKNOWN=0
 int8 STATUS_ACCEPTED=1
 int8 STATUS_EXECUTING=2

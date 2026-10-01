@@ -27,7 +27,7 @@
     auxiliary_input_goal_topic: "/planning/auto_goal_raw"
     # Publish only snapped goal on dedicated topic.
     output_goal_topic: "/planning/goal_pose_snapped"
-    # HH_260528: ROS PoseStamped mirror for direct Nav2 consumption.
+    # HH_260528 - ROS PoseStamped mirror for direct Nav2 consumption.
     output_goal_topic_ros: "/planning/goal_pose_snapped_ros"
     output_goal_source_topic: "/planning/goal_source"
     # HH_260727 - Allow source-specific Nav2 selectors to settle before goal delivery.
@@ -46,7 +46,7 @@
     # =========================================================================
     # 4. Z HANDLING
     # =========================================================================
-    # HH_260528 Z behavior:
+    # HH_260528 - Z behavior:
     # use_map_z=true   -> lanelet projected Z + map_z_offset
     # flatten_to_ground=true -> overwrite to 2D planning ground Z(0) + map_z_offset
     use_map_z: false
@@ -57,7 +57,7 @@
     # =========================================================================
     # 5. LANELET COMPONENT AND ROUTING FILTERS
     # =========================================================================
-    # HH_260707: Avoid a duplicate Lanelet2 RoutingGraph build in goal_snapper.
+    # HH_260707 - Avoid a duplicate Lanelet2 RoutingGraph build in goal_snapper.
     # The cost-grid component below remains the reachable-goal filter, while
     # LaneletRoutePlanner remains the authoritative route graph for planning.
     restrict_to_connected_lanelet_component: false
@@ -78,11 +78,11 @@
     # =========================================================================
     # 6. COST-GRID COMPONENT FILTER
     # =========================================================================
-    # HH_260617: Snap only to the same traversable OccupancyGrid component
+    # HH_260617 - Snap only to the same traversable OccupancyGrid component
     # as the current pose. This prevents Nav2 from receiving a lanelet-routing
     # goal that is disconnected in the actual costmap raster.
     restrict_to_cost_grid_component: true
-    # HH_260625: Startup map cost grid is an unknown placeholder until the first
+    # HH_260625 - Startup map cost grid is an unknown placeholder until the first
     # LaneletRoute publishes route IDs; use lanelet-component filtering during that window.
     allow_cost_grid_component_fallback: true
     # HH_260619 - Campsite center goals are off-lane by design. Avoid snapping
@@ -96,11 +96,11 @@
     # =========================================================================
     # 7. SEQUENTIAL GOAL QUEUE
     # =========================================================================
-    # HH_260618: RViz/UI goals are commands, not a waypoint queue. Publish the
+    # HH_260618 - RViz/UI goals are commands, not a waypoint queue. Publish the
     # latest snapped goal immediately so Nav2 preempts older active goals.
     # Enable this only for explicit waypoint smoke tests.
     sequential_goal_release_enable: false
-    # HH_260618: If sequential mode is explicitly enabled, keep only the newest
+    # HH_260618 - If sequential mode is explicitly enabled, keep only the newest
     # pending goal rather than following stale clicks in FIFO order.
     sequential_goal_queue_policy: "replace_pending"
     # HH_260623 - This latch also suppresses active-goal reissues; keep it
@@ -114,7 +114,7 @@
     sequential_goal_duplicate_yaw_eps_rad: 0.05
     sequential_goal_max_queue_size: 10
     sequential_goal_status_topic: "/planning/navigate_to_pose/_action/status"
-    # HH_260618: Release queued waypoints only after Nav2 reports SUCCEEDED, not
+    # HH_260618 - Release queued waypoints only after Nav2 reports SUCCEEDED, not
     # only after pose-distance arrival, to avoid BT topic-goal preemption.
     sequential_goal_require_nav2_terminal: true
 

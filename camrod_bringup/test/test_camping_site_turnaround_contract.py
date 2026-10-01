@@ -27,6 +27,7 @@ def _sites(path: Path) -> list[dict]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["camping_sites"]
 
 
+# HH_260805 - Keep standalone and full-bringup campsite policies identical.
 def test_active_campsite_config_is_byte_synchronized() -> None:
     """Standalone planning and full bringup must select the same maneuver policy."""
     expected = PACKAGE_CONFIG.read_bytes()
@@ -35,6 +36,7 @@ def test_active_campsite_config_is_byte_synchronized() -> None:
     # runtime mirrors. Only the two active paths form the deployment contract.
 
 
+# HH_260806 - Turn inside drive-in sites but avoid a roadside zero-turn at B11-B13.
 def test_drive_in_sites_turn_and_constrained_sites_skip_zero_turn() -> None:
     """B1-B10 turn inside; B11-B13 must never zero-turn at the roadside stop."""
     modes = {
@@ -50,6 +52,7 @@ def test_drive_in_sites_turn_and_constrained_sites_skip_zero_turn() -> None:
         assert modes[f"camping_site_{index}"] == "roadside_stop"
 
 
+# HH_260806 - Do not steer constrained roadside sites to copied service poses.
 def test_roadside_sites_use_map_centers_without_legacy_service_pose() -> None:
     """A copied B12 service pose must not redirect B11-B13 into unsafe terrain."""
     sites = {site["type"]: site for site in _sites(PACKAGE_CONFIG)}
@@ -58,6 +61,7 @@ def test_roadside_sites_use_map_centers_without_legacy_service_pose() -> None:
         assert not any(key.startswith("service_") and key != "service_mode" for key in site)
 
 
+# HH_260806 - Require an ordered runtime maneuver trace for every campsite.
 def test_checked_in_runtime_evidence_covers_all_thirteen_sites() -> None:
     """Every active site must have direct ordered runtime evidence."""
     summary = json.loads(EVIDENCE_SUMMARY.read_text(encoding="utf-8"))

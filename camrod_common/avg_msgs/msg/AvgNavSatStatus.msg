@@ -1,3 +1,4 @@
+# HH_260629 - Add a CAMROD-owned GNSS fix state contract for module-to-module transport.
 int8 STATUS_NO_FIX=-1
 int8 STATUS_FIX=0
 int8 STATUS_SBAS_FIX=1

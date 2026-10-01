@@ -256,7 +256,7 @@ private:
   void check_missing_gpu(StatusWrapper & stat)
   {
     if (!gpu_required_) {
-      // HH_260617: Simulation/dev PCs may not expose NVIDIA GPU. When the
+      // HH_260617 - Simulation/dev PCs may not expose NVIDIA GPU. When the
       // selected diagnostics profile marks GPU optional, publish OK instead
       // of blocking planning/control validation.
       stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "GPU check disabled or not required");

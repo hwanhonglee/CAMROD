@@ -9,10 +9,12 @@ def _script_text() -> str:
     return SCRIPT.read_text(encoding="utf-8")
 
 
+# HH_260730 - Keep the field acceptance shell tool parseable before deployment.
 def test_field_tool_shell_syntax() -> None:
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
 
 
+# HH_260730 - Require the native gate message and explicit drive/engage controls.
 def test_gate_commands_use_native_avg_bool_contract() -> None:
     text = _script_text()
 
@@ -29,6 +31,7 @@ def test_gate_commands_use_native_avg_bool_contract() -> None:
     assert "publish_gate_bool /platform/drive_enable true" in text
 
 
+# HH_260730 - Do not report a stop until subscribers and disabled outputs agree.
 def test_stop_gate_fails_closed_and_verifies_output() -> None:
     text = _script_text()
 
@@ -41,6 +44,7 @@ def test_stop_gate_fails_closed_and_verifies_output() -> None:
     assert "/platform/set_enabled" not in text
 
 
+# HH_260730 - Record recovery evidence only while each safety owner is live.
 def test_recovery_recording_requires_live_safety_owners() -> None:
     text = _script_text()
 
@@ -56,6 +60,7 @@ def test_recovery_recording_requires_live_safety_owners() -> None:
         assert topic in text
 
 
+# HH_260730 - Distinguish intended topics from topics present in the captured bag.
 def test_recovery_metadata_separates_requested_and_recorded_topics() -> None:
     text = _script_text()
 
@@ -65,6 +70,7 @@ def test_recovery_metadata_separates_requested_and_recorded_topics() -> None:
     assert "recorded_topics.txt" in text
 
 
+# HH_260730 - Collect watch and profiling samples concurrently in the field.
 def test_watch_and_profile_collect_concurrent_evidence() -> None:
     text = _script_text()
 
@@ -75,6 +81,7 @@ def test_watch_and_profile_collect_concurrent_evidence() -> None:
     assert "profile) cmd_profile" in text
 
 
+# HH_260730 - Route the field command through the synchronized pose probe.
 def test_pose_latency_command_runs_the_synchronized_probe() -> None:
     text = _script_text()
 
@@ -84,6 +91,7 @@ def test_pose_latency_command_runs_the_synchronized_probe() -> None:
     assert "pose-latency) cmd_pose_latency" in text
 
 
+# HH_260730 - Preserve the full camera/YOLO acceptance window and evidence topics.
 def test_camera_yolo_defaults_to_full_acceptance_window() -> None:
     text = _script_text()
 
@@ -94,6 +102,7 @@ def test_camera_yolo_defaults_to_full_acceptance_window() -> None:
     assert "## component native libraries" in text
 
 
+# HH_260730 - Fail configuration sync when either tree contains unmirrored files.
 def test_config_sync_rejects_extra_package_and_install_files() -> None:
     text = _script_text()
 

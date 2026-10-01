@@ -245,7 +245,7 @@ def generate_launch_description():
             default_value=planning_state_machine_keypoints_default,
         ),
 
-        # HH_260527: Removed unused map-origin launch args.
+        # HH_260527 - Removed unused map-origin launch args.
         # (system_namespace, enable_module_validator).
 
         IncludeLaunchDescription(
@@ -301,7 +301,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'local_path.launch.py'))
             ),
-            # HH_260409: Propagate local-path args to child launch so bringup overrides
+            # HH_260409 - Propagate local-path args to child launch so bringup overrides
             # are applied consistently (fixes hidden default fallback behavior).
             launch_arguments=lc_dict(
                 'module_namespace',

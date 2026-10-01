@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260729 / TODOLIST 11-12 - Preserve the route-violation direction until
+// HH_260729 - TODO list 11: 12 - Preserve the route-violation direction until
 // the original lanelet probe is continuously clear, while allowing an
 // explicitly opposite command to move the robot back toward a safe corridor.
 

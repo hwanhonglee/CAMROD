@@ -14,7 +14,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, CompressedImage
 
 
-# HH_260730 / TODOLIST 2 - A healthy topic rate alone cannot prove that NvJPEG
+# HH_260730 - TODO list 2: A healthy topic rate alone cannot prove that NvJPEG
 # produced a non-empty, decodable frame of the configured dimensions.
 class CameraPayloadProbe(Node):
 

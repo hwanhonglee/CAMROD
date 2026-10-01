@@ -50,6 +50,7 @@ def _lidar_runtime_overrides() -> dict:
 
 
 def _build_lidar_processing_container(context, *args, **kwargs):
+    # HH_260805 - Compose preprocessing, ground segmentation, and an optional grid.
     del args, kwargs
     if not _truthy(context.perform_substitution(
         LaunchConfiguration("use_lidar_processing_container")
@@ -185,6 +186,7 @@ def generate_launch_description():
         DeclareLaunchArgument("vanjee_tf_roll", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_pitch", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_yaw", default_value="0.0"),
+        # HH_260804 - Parent the physical LiDAR mount to the canonical center frame.
         DeclareLaunchArgument("vanjee_tf_parent", default_value="robot_center_link"),
         DeclareLaunchArgument("vanjee_tf_child", default_value="vanjee_lidar"),
     ]

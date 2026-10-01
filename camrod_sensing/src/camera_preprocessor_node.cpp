@@ -17,10 +17,10 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   CameraPreprocessorNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : rclcpp::Node("camera_preprocessor")
   {
-    // HH_260109 Use sensing-prefixed camera topics by default.
+    // HH_260109 - Use sensing-prefixed camera topics by default.
     input_image_topic_ = declare_parameter<std::string>("input_image_topic", "/sensing/camera/image_raw");
     input_camera_info_topic_ =
       declare_parameter<std::string>("input_camera_info_topic", "/sensing/camera/camera_info");
