@@ -88,6 +88,7 @@ from camrod_ui.battery_policy import (
 )
 from camrod_ui.driving_snapshot import (
     BASE_MAP_MAX_LINES, BASE_MAP_MAX_POINTS, BASE_MAP_NAMESPACES,
+    MAP_AREA_MAX_COUNT, MAP_AREA_MAX_VERTICES,
     DrivingSnapshotCache, sample_indices,
     transform_detection_orientation, transform_detection_point,
 )
@@ -1269,6 +1270,9 @@ class UiBackendNode(Node):
         # HH_261001 - Passive public driving data is independent of the single operator
         # telemetry lease and cannot acquire motion authorization.
         self._driving = DrivingSnapshotCache()
+        # HH_261002 - Static display polygons reuse the configured map catalogs;
+        # they never alter mission keypoints, parking areas or safety decisions.
+        self._driving.map_areas(self._load_driving_map_areas())
         self.driving_objects_topic = str(self.declare_parameter(
             "driving_objects_topic", "/perception/camera_lidar/markers"
         ).value)
@@ -1789,6 +1793,58 @@ class UiBackendNode(Node):
             if site and mission_key:
                 parsed[site] = mission_key
         return parsed
+
+    def _load_driving_map_areas(self) -> List[Dict[str, Any]]:
+        """HH_261002 - Read bounded authored polygons, not inferred marker labels."""
+        records = []
+        for parameter, catalog_key, kind in (
+            ("camping_sites_yaml", "camping_sites", "camping_site"),
+            ("drop_zones_yaml", "drop_zones", "drop_zone"),
+        ):
+            yaml_path = str(getattr(self, parameter, "") or "").strip()
+            if not yaml_path:
+                continue
+            try:
+                path = Path(yaml_path).expanduser()
+                # Bound parsing and never revisit the filesystem in HTTP/map callbacks.
+                with path.open("r", encoding="utf-8") as stream:
+                    text = stream.read(2 * 1024 * 1024 + 1)
+                if len(text) > 2 * 1024 * 1024:
+                    raise ValueError("map area catalog exceeds 2 MiB")
+                data = yaml.safe_load(text)
+                entries = data.get(catalog_key) if isinstance(data, dict) else None
+                if not isinstance(entries, list) or len(entries) > MAP_AREA_MAX_COUNT:
+                    raise ValueError("map area catalog must contain a bounded list")
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    semantic = str(entry.get("type", ""))
+                    if kind == "camping_site":
+                        labels = {f"camping_site_{index}": f"B{index}" for index in range(1, 14)}
+                        if semantic not in labels:
+                            continue
+                        identity, site = semantic, labels[semantic]
+                    else:
+                        if semantic != "drop_zone":
+                            continue
+                        identity, site = str(entry.get("id", "")).strip(), None
+                        if not identity:
+                            # No invented identity or rectangle for an unlabelled station.
+                            continue
+                    corners = entry.get("corners")
+                    if (not isinstance(corners, list)
+                            or not 3 <= len(corners) <= MAP_AREA_MAX_VERTICES + 1
+                            or any(not isinstance(corner, dict) for corner in corners)):
+                        continue
+                    records.append({
+                        "id": identity, "kind": kind, "site": site,
+                        "frame_id": str(entry.get("frame_id", self.default_goal_frame_id)),
+                        "points": [[corner.get("x"), corner.get("y")] for corner in corners],
+                        "source": parameter,
+                    })
+            except (OSError, ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
+                self.get_logger().warning(f"Driving display map catalog unavailable ({parameter}): {exc}")
+        return records
 
     def _load_camping_site_keypoints(self, yaml_path: str) -> Dict[str, MissionKeypoint]:
         keypoints: Dict[str, MissionKeypoint] = {}

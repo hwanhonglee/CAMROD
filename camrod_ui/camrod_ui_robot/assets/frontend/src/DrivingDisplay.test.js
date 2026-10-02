@@ -106,6 +106,55 @@ describe('read-only driving snapshot normalization', () => {
     expect(normalizeBaseMap({ ...snapshot.base_map, frame_id: 'odom' }).valid).toBe(false);
     expect(normalizeBaseMap({ ...snapshot.base_map, source: 'illustration' }).valid).toBe(false);
   });
+  test('all configured sites and drop-zone polygons render before a route and highlight only the destination', () => {
+    // HH_261002 - The overview shows received YAML footprints, not invented
+    // site rectangles; route authority stays independent of static map areas.
+    const snapshot = fixture();
+    snapshot.route.valid = false;
+    snapshot.mission.active = false;
+    snapshot.base_map = { valid: true, frame_id: 'map', source: '/map/markers',
+      polylines: [], areas: [
+        ...Array.from({ length: 13 }, (_, index) => ({
+          id: `camping_site_${index + 1}`, label: `B${index + 1}`,
+          kind: 'camping_site', site: `B${index + 1}`,
+          source: 'camping_sites_yaml',
+          points: [[index * 4, 0], [index * 4 + 2, 0],
+            [index * 4 + 2, 2], [index * 4, 2]],
+        })),
+        { id: 'dz_area_7144', label: '드롭존', kind: 'drop_zone', site: null,
+          source: 'drop_zones_yaml', points: [[-4, 0], [-2, 0], [-2, 2], [-4, 2]] },
+      ] };
+    expect(normalizeDrivingSnapshot(snapshot).baseMap.areas).toHaveLength(14);
+    global.IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(<DrivingDisplay snapshot={snapshot} onDismiss={() => {}} />));
+    const map = host.querySelector('[data-testid="driving-map"]');
+    expect(map.querySelectorAll('[data-testid="driving-map-area"]')).toHaveLength(14);
+    expect(map.querySelectorAll('[data-testid="driving-map-area-label"]')).toHaveLength(14);
+    expect(map.querySelectorAll('[data-testid="driving-map-area-leader"]')).toHaveLength(14);
+    for (const label of map.querySelectorAll('[data-testid="driving-map-area-label"]')) {
+      const leader = map.querySelector(`[data-testid="driving-map-area-leader"][data-area-id="${label.getAttribute('data-area-id')}"]`);
+      expect(Number(leader.getAttribute('x1'))).toBe(Number(label.getAttribute('data-anchor-x')));
+      expect(Number(leader.getAttribute('y1'))).toBe(Number(label.getAttribute('data-anchor-y')));
+    }
+    expect(map.textContent).toContain('B13');
+    expect(map.textContent).toContain('드롭존');
+    expect(map.querySelector('.dd-path-core')).toBeNull();
+    expect(map.querySelector('.dd-map-area--selected')).toBeNull();
+
+    const delivery = { ...snapshot, mission: { ...snapshot.mission, active: true, site: 'B9' } };
+    act(() => root.render(<DrivingDisplay snapshot={delivery} onDismiss={() => {}} />));
+    expect(map.querySelector('.dd-map-area--selected').getAttribute('data-site')).toBe('B9');
+    const returning = { ...delivery, mission: { ...delivery.mission,
+      service_state_name: 'RETURN_WITH_CARGO' } };
+    act(() => root.render(<DrivingDisplay snapshot={returning} onDismiss={() => {}} />));
+    expect(map.querySelector('.dd-map-area--selected').getAttribute('data-kind')).toBe('drop_zone');
+    expect(normalizeBaseMap({ ...snapshot.base_map, frame_id: 'odom' }).areas).toEqual([]);
+    act(() => root.unmount());
+    host.remove();
+  });
   test('a route without explicit backend mission validity stays hidden', () => {
     const snapshot = fixture();
     delete snapshot.route.valid;

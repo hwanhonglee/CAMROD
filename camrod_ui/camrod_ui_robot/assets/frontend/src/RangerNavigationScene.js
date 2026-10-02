@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { advanceWheelRoll, buildRouteRibbon, clamp, dampHeading, interpolatePose,
-  mapToThree, motionMayAnimate, poseIsFresh, signedTravelDistance, wrapAngle } from './navigationMath';
+import { advanceWheelRoll, bodyPoseDelta, buildRouteRibbon, clamp, estimateWheelStep, interpolatePose,
+  mapToThree, motionMayAnimate, navigationCameraHeading, navigationMotionKind, poseIsFresh, wrapAngle } from './navigationMath';
 import { illustrativeScenerySites, illustrativeMapScenerySites, illustrativeMapRoads } from './illustrativeScenery';
 import { classifyNavigationObject, createNavigationObjectVisual,
   updateNavigationObjectVisual, navigationObjectDimensions } from './navigationObjectVisuals';
 import { RANGER_MODEL_URL, RANGER_SIDE_WRAP_URL, RANGER_FRONT_WRAP_URL, RANGER_REAR_WRAP_URL } from './rangerModelAsset';
+import { areaIsDestination, areaLabelPoint } from './navigationAreas';
+import { createNavigationAreaVisuals, sceneryClearOfAreas } from './navigationAreaVisuals';
 import './RangerNavigationScene.css';
 
 const WHEEL_NAMES = ['fl', 'fr', 'rl', 'rr'];
@@ -102,8 +104,12 @@ function makeNavigationIllustration(input, baseMap, origin, dark) {
 
   // HH_261002 - Clear the entire map network and active route, not just the nearest
   // lane, so decorative trees never occupy another branch of the displayed road.
-  const sites = input.source === 'base_map' ? illustrativeMapScenerySites(baseMap, input.route)
+  const candidates = input.source === 'base_map' ? illustrativeMapScenerySites(baseMap, input.route)
     : illustrativeScenerySites(input.route);
+  // HH_261002 - Authored camping/drop-zone footprints remain free of example trees.
+  const areas = baseMap?.areas || [];
+  const sites = { shrubs: candidates.shrubs.filter(site => sceneryClearOfAreas(site, areas, 0.8)),
+    trees: candidates.trees.filter(site => sceneryClearOfAreas(site, areas, 1.5)) };
   world.userData = { source: input.source, roadCount: input.roads.length,
     shrubs: sites.shrubs.length, trees: sites.trees.length };
   const shrubSites = sites.shrubs.map((site) => ({ ...mapToThree([site.x, site.y], origin), scale: site.scale }));
@@ -286,6 +292,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
   const detailRef = useRef(false);
   const detailAngleRef = useRef(0);
   const objectLabelsRef = useRef(new Map());
+  const areaLabelsRef = useRef(new Map());
   const [detailView, setDetailView] = useState(false);
   const [detailAngleIndex, setDetailAngleIndex] = useState(0);
   const [modelStatus, setModelStatus] = useState('loading');
@@ -297,9 +304,10 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     const host = hostRef.current;
     if (!host) return undefined;
     let disposed = false, renderer, animationId = 0, observer;
-    let model = null, spinNodes = [], modelLength = null, wheelRoll = 0;
+    let model = null, wheels = [], modelLength = null, motionKind = 'stationary';
     let routeWorld = null, routeWorldOrigin = null, routeWorldKey = '';
     let baseMapWorldOrigin = null, baseMapWorldKey = '';
+    let areaWorld = null, areaWorldOrigin = null, areaWorldKey = '';
     let cargoShown = false, orbitAngle = detailAngleRef.current;
     const loadedWrapFaces = new Set();
     let receivedAt = performance.now(), lastTargetAt = receivedAt, lastFrame = 0, lastDebug = 0, renderedFrames = 0;
@@ -407,7 +415,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     const updateNavigationIllustration = () => {
       // HH_261002 - Do not resample map bounds or place scenery on every pose tick.
       // Receipt age, mission labels, and camera motion do not change this geometry.
-      const routeKey = JSON.stringify([sample.baseMap?.valid ? sample.baseMap.polylines : null,
+      const routeKey = JSON.stringify([sample.baseMap?.valid ? sample.baseMap.polylines : null, sample.baseMap?.areas,
         hasIllustrativeRoute(sample) ? sample.route : []]);
       if (routeWorld && routeKey === routeWorldKey) {
         routeWorld.position.set(routeWorldOrigin.x - origin.x, 0, origin.y - routeWorldOrigin.y);
@@ -434,7 +442,24 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       routeWorld.position.set(routeWorldOrigin.x - origin.x, 0, origin.y - routeWorldOrigin.y);
     };
 
+    // HH_261002 - Service areas are independent of routes and pose freshness.
+    // Rebuild only on authored geometry/destination changes, then rebase cheaply.
+    const updateAreas = () => {
+      const areas = sample.baseMap?.valid ? sample.baseMap.areas || [] : [];
+      const key = JSON.stringify([areas, areas.map(area => areaIsDestination(area, sample.mission))]);
+      if (key !== areaWorldKey) {
+        if (areaWorld) { scene.remove(areaWorld); disposeTree(areaWorld); }
+        areaWorld = areas.length ? createNavigationAreaVisuals(areas, origin,
+          area => areaIsDestination(area, sample.mission), dark) : null;
+        areaWorldOrigin = { ...origin };
+        areaWorldKey = key;
+        if (areaWorld) scene.add(areaWorld);
+      }
+      if (areaWorld) areaWorld.position.set(areaWorldOrigin.x - origin.x, 0, origin.y - areaWorldOrigin.y);
+    };
+
     const updateBaseMap = () => {
+      updateAreas();
       if (!sample.baseMap?.valid) {
         if (baseMapWorldKey) replacePositions(baseMapLines, []);
         if (baseMapWorldKey) replacePositions(boundaryPaint, []);
@@ -505,20 +530,23 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
 
     // HH_261001 - A new normalized telemetry snapshot updates pose and metric geometry. Only
     // consecutive nearby poses in the same frame are interpolated; a frame
-    // switch or a >5 m jump resets the renderer rather than animating a leap.
+    // HH_261002 - A frame switch, stale recovery or >2 m jump resets the renderer
+    // rather than inventing wheel movement across a missing/discontinuous sample.
     const accept = (next) => {
       const now = performance.now();
+      const previousFresh = poseIsFresh(sample, now - receivedAt);
       receivedAt = now;
       sample = next;
       if (!poseIsFresh(next)) transition = null;
       else {
         const newPose = { ...next.pose };
-        const reset = !currentPose || currentPose.frame_id !== newPose.frame_id
-          || Math.hypot(newPose.x - currentPose.x, newPose.y - currentPose.y) > 5;
+        const reset = !previousFresh || !currentPose || currentPose.frame_id !== newPose.frame_id
+          || Math.hypot(newPose.x - currentPose.x, newPose.y - currentPose.y) > 2;
         if (reset) {
           currentPose = newPose;
           origin = { x: newPose.x, y: newPose.y };
           cameraHeading = newPose.yaw;
+          motionKind = 'stationary';
           transition = null;
         } else if (Math.hypot(newPose.x - (transition?.to.x ?? currentPose.x), newPose.y - (transition?.to.y ?? currentPose.y)) > 0.00001
           || Math.abs(wrapAngle(newPose.yaw - (transition?.to.yaw ?? currentPose.yaw))) > 0.00001) {
@@ -551,12 +579,19 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       // HH_261001 - The model is already metres, +X forward/+Y up/+Z right. Never rescale.
       model.scale.set(1, 1, 1);
       applyModelSurfaceFinish(model, dark);
-      spinNodes = WHEEL_NAMES.map((name) => model.getObjectByName(`wheel_${name}_spin`))
-        .filter(Boolean).map((node) => ({ node, rest: node.quaternion.clone() }));
       robot.add(model);
       robot.updateMatrixWorld(true);
-      spinNodes.forEach(({ node }) => {
-        const wheel = robot.worldToLocal(node.getWorldPosition(new THREE.Vector3()));
+      // HH_261002 - Animate the existing independent steer/spin joints. Derive
+      // lever arms from the actual GLB, never a hard-coded replacement vehicle.
+      wheels = WHEEL_NAMES.map((name) => {
+        const spin = model.getObjectByName(`wheel_${name}_spin`);
+        const steer = model.getObjectByName(`wheel_${name}_steer`);
+        if (!spin || !steer) return null;
+        const pivot = robot.worldToLocal(steer.getWorldPosition(new THREE.Vector3()));
+        return { name, spin, steer, spinRest: spin.quaternion.clone(), steerRest: steer.quaternion.clone(),
+          position: { x: pivot.x, y: -pivot.z }, steerRad: 0, rollRad: 0, pivot };
+      }).filter(Boolean);
+      wheels.forEach(({ pivot: wheel }) => {
         const wheelContact = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.43), shadowMaterial);
         wheelContact.rotation.x = -Math.PI / 2;
         wheelContact.position.set(wheel.x, 0.016, wheel.z);
@@ -600,6 +635,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
 
     const wheelQuaternion = new THREE.Quaternion();
     const wheelAxis = new THREE.Vector3(0, 0, 1);
+    const steerAxis = new THREE.Vector3(0, 1, 0);
     const projectedObject = new THREE.Vector3();
     // HH_261001 - The render loop consumes cached, already-normalized telemetry only. It
     // does not poll ROS, change a mission, or extrapolate stale vehicle pose.
@@ -617,16 +653,24 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
         currentPose = interpolatePose(transition.from, transition.to, fraction);
         if (fraction >= 1) transition = null;
       } else if (!moving) transition = null;
-      if (moving && previous && currentPose) {
-        wheelRoll = advanceWheelRoll(wheelRoll, signedTravelDistance(previous, currentPose, sample.signedSpeed));
-      }
-      wheelQuaternion.setFromAxisAngle(wheelAxis, wheelRoll);
-      spinNodes.forEach(({ node, rest }) => node.quaternion.copy(rest).multiply(wheelQuaternion));
+      // HH_261002 - Body yaw and lateral movement are independent of forward
+      // speed: zero-turn rolls opposite wheels, crab steers all four sideways.
+      const step = moving ? bodyPoseDelta(previous, currentPose) : null;
+      motionKind = navigationMotionKind(step);
+      wheels.forEach((wheel) => {
+        const estimate = estimateWheelStep(step, wheel.position, wheel.steerRad);
+        wheel.steerRad = estimate.steer;
+        wheel.rollRad = advanceWheelRoll(wheel.rollRad, estimate.distance);
+        wheelQuaternion.setFromAxisAngle(steerAxis, wheel.steerRad);
+        wheel.steer.quaternion.copy(wheel.steerRest).multiply(wheelQuaternion);
+        wheelQuaternion.setFromAxisAngle(wheelAxis, wheel.rollRad);
+        wheel.spin.quaternion.copy(wheel.spinRest).multiply(wheelQuaternion);
+      });
       const displayPose = currentPose || { x: origin.x, y: origin.y, yaw: 0 };
       const position = mapToThree([displayPose.x, displayPose.y, 0], origin);
       robot.position.set(position.x, 0, position.z);
       robot.rotation.y = displayPose.yaw;
-      if (fresh && moving) cameraHeading = dampHeading(cameraHeading, displayPose.yaw, delta, 2.5);
+      if (fresh && moving) cameraHeading = navigationCameraHeading(cameraHeading, displayPose.yaw, delta, motionKind);
       detailBlend += ((detailRef.current ? 1 : 0) - detailBlend) * Math.min(1, delta * 7);
       orbitAngle += (detailAngleRef.current - orbitAngle) * Math.min(1, delta * 7);
       // HH_261001 - Smoothly mix the navigation-follow camera with the opt-in model-detail
@@ -649,6 +693,30 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       renderer.render(scene, camera);
       renderedFrames += 1;
       let visibleObjectLabels = 0;
+      // HH_261002 - Label only on-screen nearby areas; keep all authored areas
+      // in the overview map. Static labels do not imply fresh robot localization.
+      let visibleAreaLabels = 0;
+      const placedLabels = [];
+      areaLabelsRef.current.forEach((element, id) => {
+        const area = sample.baseMap?.areas?.find(item => item.id === id);
+        const anchor = areaLabelPoint(area);
+        if (!anchor || !areaWorld || Math.hypot(anchor[0] - displayPose.x, anchor[1] - displayPose.y) > 55) {
+          element.style.visibility = 'hidden'; return;
+        }
+        const point = mapToThree(anchor, origin, 0.08);
+        projectedObject.set(point.x, point.y, point.z).project(camera);
+        if (projectedObject.z < -1 || projectedObject.z > 1 || Math.abs(projectedObject.x) > 0.92
+          || Math.abs(projectedObject.y) > 0.86) { element.style.visibility = 'hidden'; return; }
+        const x = (projectedObject.x + 1) * host.clientWidth / 2;
+        const y = (1 - projectedObject.y) * host.clientHeight / 2;
+        if (placedLabels.some(other => Math.abs(other.x - x) < 70 && Math.abs(other.y - y) < 28)) {
+          element.style.visibility = 'hidden'; return;
+        }
+        placedLabels.push({ x, y });
+        element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+        element.style.visibility = 'visible';
+        visibleAreaLabels += 1;
+      });
       objectLabelsRef.current.forEach((element, index) => {
         const object = sample.objects[index];
         if (!fresh || !sample.perceptionReady || !object) { element.style.visibility = 'hidden'; return; }
@@ -678,14 +746,19 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       if (now - lastDebug > 100) {
         renderer.domElement.dataset.navigationState = JSON.stringify({
           renderedFrames, motionValid: moving, poseFresh: fresh, modelPositionMeters: { x: displayPose.x, y: displayPose.y },
-          modelYawRad: displayPose.yaw, cameraYawRad: cameraHeading, wheelRollRad: wheelRoll,
+          modelYawRad: displayPose.yaw, cameraYawRad: cameraHeading, wheelRollRad: wheels[0]?.rollRad || 0,
+          motionKind, wheels: wheels.map(({ name, steerRad, rollRad }) => ({ name, steerRad, rollRad })),
           cameraSideOffsetMeters: side,
           robotProjectedXNdc: projectedObject.set(position.x, 0.53, position.z).project(camera).x,
-          wheelAngleSource: 'estimated-from-received-displacement', steeringAngleSource: 'unavailable',
-          wheelNodes: spinNodes.length, metricRobotLength: modelLength, modelScale: robot.scale.toArray(),
+          wheelAngleSource: 'estimated-from-received-body-pose', steeringAngleSource: 'estimated-from-received-body-pose',
+          wheelNodes: wheels.length, metricRobotLength: modelLength, modelScale: robot.scale.toArray(),
           routeVertices: route.geometry.attributes.position.count, pointCount: points.geometry.attributes.position.count,
-          baseMapVertices: baseMapLines.geometry.attributes.position.count,
+          // HH_261002 - A map may not have arrived yet (including UI fixtures).
+          // Missing optional geometry must not throw in every render frame.
+          baseMapVertices: baseMapLines.geometry.attributes.position?.count || 0,
           baseMapVisible: baseMapLines.visible, baseMapSource: sample.baseMap?.source || null,
+          serviceAreaCount: areaWorld?.userData.areaCount || 0, visibleAreaLabels,
+          serviceAreaIds: (sample.baseMap?.areas || []).map(area => area.id),
           baseMapBoundaryColor: dark ? '#4ade80' : '#1ea65a',
           baseMapBoundaryWidthMeters: LANE_BOUNDARY_WIDTH_M,
           baseMapBoundaryPaintVertices: boundaryPaint.geometry.attributes.position?.count || 0,
@@ -729,6 +802,13 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     data-demo={demo ? 'true' : 'false'}
     data-cargo-preview={cargoVisible ? 'true' : 'false'} data-wrap-visible={wrapVisible ? 'true' : 'false'}>
     <div ref={hostRef} className="ranger-navigation-surface" />
+    <div className="ranger-navigation-area-labels" aria-label="캠핑사이트 및 출발·복귀 구역">
+      {(data.baseMap?.areas || []).map(area => <div key={area.id} className="ranger-navigation-area-label"
+        data-kind={area.kind} data-destination={areaIsDestination(area, data.mission) ? 'true' : 'false'}
+        ref={element => { if (element) areaLabelsRef.current.set(area.id, element); else areaLabelsRef.current.delete(area.id); }}>
+        {area.label}{areaIsDestination(area, data.mission) && <small>목적지</small>}
+      </div>)}
+    </div>
     <div className="ranger-navigation-object-labels" aria-label="수신된 전방 객체">
       {data.objects.slice(0, 12).map((object, index) => <div className="ranger-navigation-object-label"
         data-size-mode={navigationObjectDimensions(object) ? 'observed' : 'symbolic'}
@@ -762,6 +842,9 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
     {modelStatus !== 'ready' && <div className="ranger-navigation-loading" role="status"><span className="ranger-navigation-loading-icon">3D</span><strong>{loadingText}</strong><span>정적 이미지로 대체하지 않습니다</span></div>}
     {!data.perceptionReady && <span className="ranger-navigation-perception-wait">전방 인지 수신 대기</span>}
     <div className="ranger-navigation-legend"><span>{demo ? '시연 경로 · 예시 배경'
-      : `${data.baseMap?.valid ? '수신 Lanelet 지도 · ' : ''}${hasRoute ? '실제 경로' : '경로 대기'} · ${data.baseMap?.valid ? '도로 폭·주변은 예시 (실제 지형 아님)' : '도로변 예시 배경 (실제 지형 아님)'}`}</span></div>
+      : `${data.baseMap?.valid ? '수신 Lanelet 지도 · ' : ''}${hasRoute ? '실제 경로' : '경로 대기'} · ${data.baseMap?.valid ? '도로 폭·주변은 예시 (실제 지형 아님)' : '도로변 예시 배경 (실제 지형 아님)'}`}
+      {/* HH_261002 - Do not present inferred wheel poses as measured joint telemetry. */}
+      {detailView && <><br />바퀴 조향·회전: 차체 이동 기반 추정</>}
+    </span></div>
   </div>;
 }

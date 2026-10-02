@@ -632,6 +632,7 @@ function DiagnosticsMonitor({
           <button
             key={tab.id}
             type="button"
+            data-ui={`operator-diagnostic-tab-${tab.id}`}
             className={`diag-tab-button ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
             aria-selected={activeTab === tab.id}
@@ -1889,6 +1890,30 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         }
       }
 
+      // HH_261002 - Preserve shared departure retry feedback without issuing
+      // movement; an operator may select the failed destination again.
+      if (data.departure_failed && data.mission_retryable) {
+        const retrySite = String(data.mission_retry_site || '선택 사이트');
+        const retryOwner = String(data.mission_retry_owner || '');
+        setMissionBlockMessage(
+          (!data.message || data.message === 'Drop-zone exit failed; select the destination again to retry')
+            ? `${retrySite} 출차에 실패했습니다. 같은 사이트를 다시 선택해 주세요.`
+            : data.message
+        );
+        if (retryOwner !== 'guest') {
+          const cleared = {};
+          SITE_NAMES.forEach(site => { cleared[site] = false; });
+          setStates(cleared);
+          setSelectedSite(null);
+          setActiveRecallSite(null);
+          setShowMoveConfirm(false);
+          setShowMoveVerify(false);
+          setMoveVerifyInput('');
+          setMoveVerifyError(false);
+          missionDispatchActiveRef.current = false;
+        }
+      }
+
       if ('charging_required' in data || 'parking_policy_mode' in data || 'parking_selected_method' in data) {
         setParkingPolicy(previous => ({
           charging_required: 'charging_required' in data ? Boolean(data.charging_required) : previous.charging_required,
@@ -2605,6 +2630,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   ) : null;
   const adminEntryZone = (
     <div
+      data-ui="operator-admin-entry"
       className="diag-secret-zone diag-secret-zone-global"
       onMouseDown={handleDiagPressStart}
       onMouseUp={handleDiagPressEnd}
@@ -2632,10 +2658,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
       <div className="admin-runtime-shell">
         {showLoginModal ? (
           <div className="modal-overlay">
-            <div className="modal-box login-modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-box login-modal-box" data-ui="operator-admin-login-modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">진단 관리자 인증</span>
-                <button className="modal-back-btn" onClick={() => setShowLoginModal(false)}>뒤로가기</button>
+                <button className="modal-back-btn" data-ui="operator-admin-login-cancel" onClick={() => setShowLoginModal(false)}>뒤로가기</button>
               </div>
               <div className="modal-body login-modal-body">
                 <div className="login-fields-row">
@@ -2643,6 +2669,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                     <label>아이디</label>
                     <input
                       type="text"
+                      data-ui="operator-admin-id"
                       value={loginId}
                       onChange={e => setLoginId(e.target.value)}
                       onFocus={() => setActiveField('id')}
@@ -2655,6 +2682,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                     <input
                       id="login-pw-input"
                       type="password"
+                      data-ui="operator-admin-password"
                       value={loginPw}
                       onChange={e => setLoginPw(e.target.value)}
                       onFocus={() => setActiveField('pw')}
@@ -2663,7 +2691,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                     />
                   </div>
                 </div>
-                <button className="login-submit-btn" onClick={handleLogin}>확인</button>
+                <button className="login-submit-btn" data-ui="operator-admin-login" onClick={handleLogin}>확인</button>
                 {loginError && <p className="login-error">{loginError}</p>}
                 <div className="vkb-wrap">
                   <div className="vkb-field-tabs">
@@ -2695,7 +2723,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             <div className="modal-box" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">{modalData?.title || '진단'}</span>
-                <button className="modal-back-btn" onClick={() => setActiveModal(null)}>뒤로가기</button>
+                <button className="modal-back-btn" data-ui="operator-admin-exit" onClick={() => setActiveModal(null)}>뒤로가기</button>
               </div>
               <div className="modal-body">
                 <DiagnosticsMonitor
@@ -3183,6 +3211,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               <div className="preview-yn-btns">
                 <button
                   className="preview-yes-btn"
+                  data-ui="operator-site-preview-confirm"
                   onClick={() => setShowMoveConfirm(true)}
                   disabled={recallRequestPending}
                 >
@@ -3249,7 +3278,11 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               <p className="preview-returning" aria-live="polite">
                 {motionNotice?.message || (recallReturnPresentation
                   ? recallProgress.message
-                  : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
+                  : serviceStateName === 'WAITING_FOR_CHARGING'
+                  ? '주차를 마치고 충전기 연결을 기다리고 있습니다.'
+                  : serviceStateName === 'DROP_ZONE_PARKING'
+                    ? '대기·충전 장소에서 주차 중입니다.'
+                    : '배송을 마치고 대기·충전 장소로 복귀 중입니다.')}
               </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
@@ -3377,7 +3410,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           {/* 페이지 인디케이터 (점) */}
           <div className="page-dots">
             {Array.from({ length: Math.ceil(SITE_NAMES.length / 6) }).map((_, i) => (
-              <span key={i} className={`page-dot ${togglePage === i ? 'active' : ''}`} onClick={() => setTogglePage(i)} />
+              <span key={i} data-ui={`operator-site-page-${i}`} className={`page-dot ${togglePage === i ? 'active' : ''}`} onClick={() => setTogglePage(i)} />
             ))}
           </div>
 
@@ -3443,6 +3476,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             <div className="move-confirm-btns">
               <button
                 className="move-confirm-yes"
+                data-ui="operator-move-confirm-yes"
                 onClick={() => {
                   setShowMoveConfirm(false);
                   setMoveVerifyInput('');
@@ -3500,6 +3534,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               </div>
             )}
             <input
+              data-ui="operator-site-code-input"
               className={`move-verify-input${moveVerifyError ? ' error' : ''}`}
               value={moveVerifyInput}
               onChange={e => { setMoveVerifyInput(e.target.value.toUpperCase()); setMoveVerifyError(false); }}
@@ -3537,6 +3572,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               </button>
               <button
                 className="move-confirm-yes"
+                data-ui="operator-site-code-confirm"
                 onClick={() => {
                   if (moveVerifyInput.trim().toUpperCase() === selectedSite.toUpperCase()) {
                     setShowMoveVerify(false);

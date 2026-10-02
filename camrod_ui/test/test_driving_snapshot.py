@@ -5,17 +5,20 @@ import json
 import math
 from pathlib import Path
 import sys
+import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
+import yaml
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
 
 from camrod_ui.driving_snapshot import (  # noqa: E402
     BASE_MAP_MAX_LINES, BASE_MAP_MAX_POINTS, BASE_MAP_NAMESPACES,
+    MAP_AREA_MAX_COUNT, MAP_AREA_MAX_VERTICES,
     DrivingSnapshotCache, sample_indices,
-    transform_detection_orientation, transform_detection_point,
+    transform_detection_orientation, transform_detection_point, validated_map_polygon,
 )
 
 
@@ -70,7 +73,96 @@ class DrivingSnapshotTest(unittest.TestCase):
                     "namespace": "lanelet/centerline", "marker_id": 1,
                     "points": [[0.0, 0.0], [10.0, 0.0]],
                 }],
+                "areas": [], "areas_age_s": None,
+                "areas_source": "configured_map_catalogs",
             })
+
+    def test_authored_areas_are_permanent_and_independent_of_marker_roads_and_missions(self):
+        # HH_261002 - These explicit test coordinates stand in for authored map
+        # corners, never inferred rectangles around dispatch goal coordinates.
+        points = [[2, 3], [5, 3], [5, 7], [2, 7], [2, 3]]
+        site = {"id": "camping_site_9", "kind": "camping_site", "site": "B9",
+                "frame_id": "map", "source": "camping_sites_yaml", "points": points}
+        zone = {**site, "id": "dz_area_7144", "kind": "drop_zone", "site": None,
+                "source": "drop_zones_yaml"}
+        self.cache.map_areas([site, zone])
+        self.cache.base_map([], clear=True)
+        self.now += 86400
+        for mission in ({"active": False}, self.mission, {**self.mission, "site": "B13", "generation": 9}):
+            result = self.cache.snapshot(mission)["base_map"]
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["polylines"], [])
+            self.assertEqual(result["areas_age_s"], 86400)
+            self.assertEqual(result["areas"][0], {
+                "id": "camping_site_9", "kind": "camping_site", "site": "B9", "label": "B9",
+                "points": points[:-1], "source": "camping_sites_yaml",
+            })
+            self.assertEqual(result["areas"][1]["label"], "드롭존")
+        self.cache.map_areas([])
+        self.assertFalse(self.cache.snapshot({})["base_map"]["valid"])
+
+    def test_area_polygons_reject_invalid_geometry_without_sampling_or_guessing(self):
+        valid = [[0, 0], [4, 0], [4, 3], [0, 3]]
+        self.assertEqual(validated_map_polygon(valid), valid)
+        self.assertEqual(validated_map_polygon(list(reversed(valid))), list(reversed(valid)))
+        self.assertIsNone(validated_map_polygon([[0, 0], [2, 2], [0, 2], [2, 0]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [4, 0], [1, 3], [3, -1], [0, 2]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [1, 1], [2, 2]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [1, 0], [True, 2]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [1, 0], [float("nan"), 2]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [1, 0], [float("inf"), 2]]))
+        self.assertIsNone(validated_map_polygon([[0, 0], [1, 0], [1, 1], [1, 0]]))
+        self.assertIsNone(validated_map_polygon([[i, i % 2] for i in range(MAP_AREA_MAX_VERTICES + 2)]))
+
+    def test_area_catalog_replacement_rejects_unknown_sources_frames_ids_and_overflow(self):
+        site = {"id": "camping_site_1", "kind": "camping_site", "site": "B1",
+                "frame_id": "map", "source": "camping_sites_yaml", "points": [[0, 0], [2, 0], [1, 1]]}
+        self.cache.map_areas([site])
+        self.assertTrue(self.cache.snapshot({})["base_map"]["valid"])
+        for wrong in ({"frame_id": "odom"}, {"source": "inferred"}, {"site": "B99"},
+                      {"kind": "unknown"}, {"id": ""}, {"points": []}):
+            self.cache.map_areas([{**site, **wrong}])
+            self.assertEqual(self.cache.snapshot({})["base_map"]["areas"], [])
+        self.cache.map_areas([site, site])
+        self.assertEqual(self.cache.snapshot({})["base_map"]["areas"], [])
+        self.cache.map_areas([{**site, "id": f"site{index}"} for index in range(MAP_AREA_MAX_COUNT + 1)])
+        self.assertEqual(self.cache.snapshot({})["base_map"]["areas"], [])
+
+    def test_backend_area_loader_uses_only_exact_configured_map_corners(self):
+        source = (Path(__file__).resolve().parents[1] / "runtime/python/camrod_ui/ui_backend_node.py").read_text()
+        method = next(node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.FunctionDef)
+                      and node.name == "_load_driving_map_areas")
+        namespace = {"List": list, "Dict": dict, "Any": object, "Path": Path, "yaml": yaml,
+                     "MAP_AREA_MAX_COUNT": MAP_AREA_MAX_COUNT, "MAP_AREA_MAX_VERTICES": MAP_AREA_MAX_VERTICES}
+        exec(ast.unparse(method), namespace)
+        loader = namespace["_load_driving_map_areas"]
+        warnings = []
+        with tempfile.TemporaryDirectory() as directory:
+            camping = Path(directory) / "camping.yaml"
+            drops = Path(directory) / "drops.yaml"
+            corners = [{"x": 3, "y": 4}, {"x": 7, "y": 4}, {"x": 7, "y": 8}, {"x": 3, "y": 8}]
+            camping.write_text(yaml.safe_dump({"camping_sites": [
+                {"type": "camping_site_1", "x": 999, "y": 999, "corners": corners},
+                {"type": "camping_site_2", "x": 6, "y": 7},
+                {"type": "camping_site_3", "frame_id": "unknown", "corners": corners},
+            ]}))
+            drops.write_text(yaml.safe_dump({"drop_zones": [
+                {"id": "authored_station", "type": "drop_zone", "corners": corners},
+            ]}))
+            backend = SimpleNamespace(camping_sites_yaml=str(camping), drop_zones_yaml=str(drops),
+                default_goal_frame_id="map", get_logger=lambda: SimpleNamespace(warning=warnings.append))
+            self.cache.map_areas(loader(backend))
+            areas = self.cache.snapshot({})["base_map"]["areas"]
+            self.assertEqual([area["id"] for area in areas], ["camping_site_1", "authored_station"])
+            self.assertEqual(areas[0]["points"], [[3, 4], [7, 4], [7, 8], [3, 8]])
+            self.assertEqual(warnings, [])
+            backend.camping_sites_yaml = str(Path(directory) / "missing.yaml")
+            self.cache.map_areas(loader(backend))
+            self.assertEqual([area["id"] for area in self.cache.snapshot({})["base_map"]["areas"]], ["authored_station"])
+            self.assertEqual(len(warnings), 1)
+        self.assertNotIn("publish", ast.unparse(method))
+        self.assertNotIn("_keypoints_by_mission_key", ast.unparse(method))
+        self.assertNotIn("_drop_zone_polygons", ast.unparse(method))
 
     def test_static_map_public_marker_ids_survive_updates_and_respect_namespace(self):
         # HH_261002 - IDs remain producer identities, not array offsets after

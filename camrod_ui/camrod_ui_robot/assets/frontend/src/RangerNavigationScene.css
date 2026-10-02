@@ -1,4 +1,13 @@
 .ranger-navigation-scene { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; isolation: isolate; }
+/* HH_261002 - Passive authored-area labels share the map's colors; never intercept controls. */
+.ranger-navigation-area-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ranger-navigation-area-label { position: absolute; top: 0; left: 0; visibility: hidden; padding: 5px 9px; border-radius: 7px; border: 1px solid #449778; background: #f3fff7e8; color: #20553f; font-size: 12px; font-weight: 750; white-space: nowrap; box-shadow: 0 2px 7px #183d3024; }
+.ranger-navigation-area-label[data-kind="drop_zone"] { border-color: #b27a27; color: #78511c; background: #fff7e8ec; }
+.ranger-navigation-area-label[data-destination="true"] { border-color: #159bd6; color: #08688e; background: #e9f8ffef; }
+.ranger-navigation-area-label small { margin-left: 5px; font-size: 9px; font-weight: 600; }
+.dd-theme-dark .ranger-navigation-area-label { background: #183b30ee; color: #a3e8c6; }
+.dd-theme-dark .ranger-navigation-area-label[data-kind="drop_zone"] { background: #3e321aee; color: #f3cb88; }
+.dd-theme-dark .ranger-navigation-area-label[data-destination="true"] { background: #173746ee; color: #83dcff; }
 .ranger-navigation-surface { position: absolute; inset: 0; overflow: hidden; border-radius: 14px; background: #e9eee8; }
 .ranger-navigation-object-labels { position: absolute; inset: 0; overflow: hidden; border-radius: 14px; pointer-events: none; }
 .ranger-navigation-object-label { position: absolute; top: 0; left: 0; display: flex; align-items: center; gap: 7px; visibility: hidden; padding: 7px 9px; border: 1px solid #d8b889; border-radius: 8px; background: #fffaf0f2; box-shadow: 0 4px 12px #4b3e2424; color: #5c4424; white-space: nowrap; font-size: 11px; line-height: 1.2; }

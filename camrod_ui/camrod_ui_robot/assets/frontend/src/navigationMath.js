@@ -36,11 +36,59 @@ export function poseIsFresh(data, elapsedMs = 0) {
 }
 
 export function motionMayAnimate(data, elapsedMs = 0) {
-  if (!poseIsFresh(data, elapsedMs)) return false;
-  if (['SAFETY_STOP', 'STOPPED'].includes(data.mission?.phase)) return false;
-  if (['OPERATOR_STOPPED', 'GUEST_LOADING_WAIT', 'UNLOAD_WAIT', 'CHARGING', 'DROP_ZONE_WAIT',
-    'WAITING_FOR_RETURN_REQUEST', 'WAITING_FOR_CHARGING', 'SITE_ARRIVED'].includes(data.mission?.state)) return false;
-  return true;
+  // HH_261002 - A mission/stop label is not a motion measurement. Display fresh
+  // received movement even during manual control or braking; never extrapolate.
+  return Boolean(poseIsFresh(data, elapsedMs));
+}
+
+// HH_261002 - Recover a body-frame planar displacement from two measured poses.
+// The midpoint/chord correction handles curved motion without confusing map-Y
+// travel with crab. Reject frame changes/teleports instead of spinning the wheels.
+export function bodyPoseDelta(from, to) {
+  if (!from || !to || ![from.x, from.y, from.yaw, to.x, to.y, to.yaw].every(finiteNumber)
+    || from.frame_id !== to.frame_id) return null;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  if (Math.hypot(dx, dy) > 2) return null;
+  const yaw = wrapAngle(to.yaw - from.yaw), midYaw = from.yaw + yaw / 2;
+  const correction = Math.abs(yaw) < 1e-6 ? 1 : yaw / (2 * Math.sin(yaw / 2));
+  return { x: (dx * Math.cos(midYaw) + dy * Math.sin(midYaw)) * correction,
+    y: (-dx * Math.sin(midYaw) + dy * Math.cos(midYaw)) * correction, yaw };
+}
+
+// HH_261002 - These labels only select a display camera, never a control mode.
+export function navigationMotionKind(step) {
+  if (!step || Math.hypot(step.x, step.y, step.yaw) < 1e-6) return 'stationary';
+  if (Math.hypot(step.x, step.y) < Math.abs(step.yaw) * 0.2) return 'zero-turn';
+  if (Math.abs(step.y) > Math.abs(step.x) * 0.5) return 'crab';
+  return step.x < 0 ? 'reverse' : 'forward';
+}
+
+// HH_261002 - Rigid-body point velocity gives each wheel its own rolling path:
+// (dx - dYaw*y, dy + dYaw*x). Positions come from the metric GLB steer pivots.
+// This is a no-slip visualization estimate, NOT measured CAN steering or RPM.
+export function estimateWheelStep(step, position, previousSteer = 0) {
+  if (!step || !position || ![step.x, step.y, step.yaw, position.x, position.y].every(finiteNumber)) {
+    return { steer: previousSteer, distance: 0 };
+  }
+  const x = step.x - step.yaw * position.y, y = step.y + step.yaw * position.x;
+  const travel = Math.hypot(x, y);
+  if (travel < 1e-6) return { steer: previousSteer, distance: 0 };
+  let steer = Math.atan2(y, x), distance = travel;
+  // Equivalent +/-90 degree wheel poses allow reverse travel without turning
+  // every wheel 180 degrees. A display-only lateral deadband (~2.9 degrees)
+  // prevents tiny longitudinal pose noise from flipping crab steering by 180.
+  if (Math.abs(x) < travel * 0.05) {
+    steer = previousSteer < 0 ? -Math.PI / 2 : Math.PI / 2;
+    distance = y * Math.sign(steer);
+  } else if (steer > Math.PI / 2) { steer -= Math.PI; distance = -travel; }
+  else if (steer < -Math.PI / 2) { steer += Math.PI; distance = -travel; }
+  return { steer, distance };
+}
+
+// HH_261002 - Keep an orientation reference during zero-turn/crab so the body
+// can visibly rotate/translate sideways. Resume rear-follow on longitudinal travel.
+export function navigationCameraHeading(current, target, deltaSeconds, kind) {
+  return ['forward', 'reverse'].includes(kind) ? dampHeading(current, target, deltaSeconds, 2.5) : current;
 }
 
 // HH_261001 - Wheel rotation is a display estimate from confirmed displacement, not a CAN

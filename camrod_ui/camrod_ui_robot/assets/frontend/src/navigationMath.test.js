@@ -1,6 +1,6 @@
 // HH_261001 - Verify metric coordinates, heading interpolation, and freshness-gated animation.
-import { advanceWheelRoll, buildRouteRibbon, dampHeading, followCamera, interpolateAngle,
-  interpolatePose, mapToThree, motionMayAnimate, poseIsFresh, signedTravelDistance } from './navigationMath';
+import { advanceWheelRoll, bodyPoseDelta, buildRouteRibbon, dampHeading, estimateWheelStep, followCamera, interpolateAngle,
+  interpolatePose, mapToThree, motionMayAnimate, navigationCameraHeading, navigationMotionKind, poseIsFresh, signedTravelDistance } from './navigationMath';
 
 const data = () => ({ connected: true, pose: { x: 0, y: 0, yaw: 0, age_s: 0.1 }, mission: { phase: 'DRIVING', state: 'MOVING_TO_SITE' } });
 
@@ -17,16 +17,94 @@ test('pose interpolation never extrapolates outside received endpoints', () => {
   expect(interpolatePose(from, to, 4)).toMatchObject(to);
   expect(interpolatePose(from, to, -2)).toMatchObject(from);
 });
-test('stale, disconnected and explicit stopped states stop animation', () => {
+test('stale/disconnected data freeze motion, but service labels never hide a fresh measured pose', () => {
   expect(poseIsFresh(data(), 901)).toBe(false);
   expect(poseIsFresh(data(), 900)).toBe(true);
   for (const age_s of [undefined, NaN, -0.1, Infinity]) {
     expect(poseIsFresh({ ...data(), pose: { ...data().pose, age_s } })).toBe(false);
   }
   expect(motionMayAnimate({ ...data(), connected: false })).toBe(false);
-  expect(motionMayAnimate({ ...data(), mission: { phase: 'SAFETY_STOP' } })).toBe(false);
-  expect(motionMayAnimate({ ...data(), mission: { state: 'GUEST_LOADING_WAIT' } })).toBe(false);
+  // HH_261002 - Manual motion/braking can coexist with a stopped mission label.
+  expect(motionMayAnimate({ ...data(), mission: { phase: 'SAFETY_STOP' } })).toBe(true);
+  expect(motionMayAnimate({ ...data(), mission: { state: 'GUEST_LOADING_WAIT' } })).toBe(true);
   expect(motionMayAnimate(data(), 400)).toBe(true);
+});
+
+// HH_261002 - Regression cases reproduce crab (zero forward speed), zero-turn
+// (zero translation) and reverse without requiring a controller or CAN fixture.
+const wheelPositions = [
+  { x: 0.44, y: 0.27 }, { x: 0.44, y: -0.27 },
+  { x: -0.44, y: 0.27 }, { x: -0.44, y: -0.27 },
+];
+const pose = (x = 0, y = 0, yaw = 0) => ({ x, y, yaw, frame_id: 'map' });
+test.each([1, -1])('zero-turn %i rolls opposite sides and steers front/rear oppositely', (sign) => {
+  const step = bodyPoseDelta(pose(), pose(0, 0, sign * 0.1));
+  expect(navigationMotionKind(step)).toBe('zero-turn');
+  const wheels = wheelPositions.map(position => estimateWheelStep(step, position));
+  expect(wheels.map(w => Math.sign(w.steer))).toEqual([-1, 1, 1, -1]);
+  expect(wheels.map(w => Math.sign(w.distance))).toEqual([-sign, sign, -sign, sign]);
+  wheels.forEach(w => expect(Math.abs(w.distance)).toBeCloseTo(Math.hypot(0.44, 0.27) * 0.1));
+});
+test.each([1, -1])('crab %i preserves body yaw and rolls all four lateral wheels', (sign) => {
+  const step = bodyPoseDelta(pose(), pose(0, sign * 0.1, 0));
+  expect(navigationMotionKind(step)).toBe('crab');
+  wheelPositions.forEach(position => {
+    const wheel = estimateWheelStep(step, position);
+    expect(Math.abs(wheel.steer)).toBeCloseTo(Math.PI / 2);
+    expect(wheel.distance * Math.sin(wheel.steer)).toBeCloseTo(sign * 0.1);
+    expect(wheel.distance * Math.cos(wheel.steer)).toBeCloseTo(0);
+  });
+});
+test('diagonal crab uses the actual body direction, not map axes or a fixed 90-degree steer', () => {
+  const step = bodyPoseDelta(pose(0, 0, Math.PI / 2), pose(-0.1, 0.1, Math.PI / 2));
+  expect(navigationMotionKind(step)).toBe('crab');
+  expect(estimateWheelStep(step, wheelPositions[0]).steer).toBeCloseTo(Math.PI / 4);
+  expect(navigationMotionKind(bodyPoseDelta(pose(0, 0, Math.PI / 2), pose(0, 0.1, Math.PI / 2)))).toBe('forward');
+});
+test('small longitudinal pose noise cannot flip a lateral wheel by 180 degrees', () => {
+  let previous = 0;
+  for (const x of [0.001, -0.001, 0, -0.002, 0.002]) {
+    const wheel = estimateWheelStep({ x, y: 0.1, yaw: 0 }, wheelPositions[0], previous);
+    expect(wheel.steer).toBeCloseTo(Math.PI / 2);
+    expect(wheel.distance).toBeGreaterThan(0);
+    previous = wheel.steer;
+  }
+});
+test('reverse rolls backwards without turning every wheel around', () => {
+  const step = bodyPoseDelta(pose(), pose(-0.1));
+  expect(navigationMotionKind(step)).toBe('reverse');
+  wheelPositions.forEach(position => {
+    const wheel = estimateWheelStep(step, position);
+    expect(wheel.steer).toBeCloseTo(0);
+    expect(wheel.distance).toBeCloseTo(-0.1);
+  });
+});
+test('curved body motion preserves different inner/outer wheel travel and shortest yaw wrap', () => {
+  const angle = 0.1, radius = 2;
+  const step = bodyPoseDelta(pose(), pose(radius * Math.sin(angle), radius * (1 - Math.cos(angle)), angle));
+  expect(step.x).toBeCloseTo(radius * angle);
+  expect(step.y).toBeCloseTo(0);
+  expect(estimateWheelStep(step, wheelPositions[0]).distance).toBeLessThan(estimateWheelStep(step, wheelPositions[1]).distance);
+  expect(bodyPoseDelta(pose(0, 0, Math.PI - 0.02), pose(0, 0, -Math.PI + 0.02)).yaw).toBeCloseTo(0.04);
+});
+test('still, invalid, stale-gap/frame-reset increments preserve the last wheel pose', () => {
+  expect(bodyPoseDelta(pose(), pose(3))).toBeNull();
+  expect(bodyPoseDelta(pose(), { ...pose(), frame_id: 'odom' })).toBeNull();
+  expect(bodyPoseDelta(pose(), pose(NaN))).toBeNull();
+  expect(navigationMotionKind(null)).toBe('stationary');
+  for (const step of [null, bodyPoseDelta(pose(), pose())]) {
+    expect(estimateWheelStep(step, wheelPositions[0], 0.75)).toEqual({ steer: 0.75, distance: 0 });
+  }
+  expect(estimateWheelStep({ x: 0, y: -0.1, yaw: 0 }, wheelPositions[0], -1).steer).toBeCloseTo(-Math.PI / 2);
+});
+test('camera exposes zero-turn/crab rotation and resumes rear-follow on forward/reverse movement', () => {
+  for (const kind of ['zero-turn', 'crab', 'stationary']) {
+    expect(navigationCameraHeading(0.3, 1.2, 0.05, kind)).toBe(0.3);
+  }
+  for (const kind of ['forward', 'reverse']) {
+    expect(navigationCameraHeading(0.3, 1.2, 0.05, kind)).toBeGreaterThan(0.3);
+    expect(navigationCameraHeading(0.3, 1.2, 0.05, kind)).toBeLessThan(1.2);
+  }
 });
 test('estimated wheel rotation uses signed confirmed travel and freezes with zero/missing speed', () => {
   const from = { x: 0, y: 0 }, to = { x: 0.3, y: 0.4 };

@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import './DrivingDisplay.css';
 import RangerNavigationScene from './RangerNavigationScene';
 import { RANGER_MODEL_URL } from './rangerModelAsset';
+import { areaIsDestination, areaLabelPoint, layoutAreaLabels, normalizeNavigationAreas } from './navigationAreas';
 
 // HH_261001 - Telemetry and geometry are read-only. The optional operator stop action calls
 // the existing App handler only after an explicit confirmation.
@@ -52,7 +53,7 @@ function sampleBounded(values, maximum, validate) {
 export function normalizeBaseMap(source, pose = null) {
   if (source?.valid !== true || source.source !== '/map/markers'
     || source.frame_id !== 'map' || (pose && pose.frame_id !== source.frame_id)
-    || !Array.isArray(source.polylines)) return { valid: false, frame_id: '', polylines: [], source: null };
+    || !Array.isArray(source.polylines)) return { valid: false, frame_id: '', polylines: [], areas: [], source: null };
   const polylines = [];
   let remaining = LIMITS.mapPoints;
   for (const line of source.polylines.slice(0, LIMITS.mapLines)) {
@@ -65,8 +66,11 @@ export function normalizeBaseMap(source, pose = null) {
       ...(Number.isSafeInteger(line.marker_id) ? { marker_id: line.marker_id } : {}) });
     remaining -= points.length;
   }
-  return { valid: polylines.length > 0, frame_id: source.frame_id, polylines,
-    source: source.source };
+  // HH_261002 - Authored map catalog polygons are an independent static layer:
+  // area-only maps remain visible without a route or road marker receipt.
+  const areas = normalizeNavigationAreas(source.areas);
+  return { valid: polylines.length > 0 || areas.length > 0, frame_id: source.frame_id,
+    polylines, areas, source: source.source };
 }
 
 function routeUnavailableReason(connected, pose, routeSource, route, mission) {
@@ -297,7 +301,8 @@ function DrivingScene({ data, demo, theme, robotModelUrl }) {
 
 function RouteMap({ data, id }) {
   const ready = Boolean(data.pose && data.route.length > 1);
-  const mapReady = Boolean(data.baseMap?.valid && data.baseMap.polylines.length);
+  const mapReady = Boolean(data.baseMap?.valid
+    && (data.baseMap.polylines.length || data.baseMap.areas.length));
   if (!ready && !mapReady) return <div className="dd-map dd-map--empty" data-testid="driving-map"><Icon name="pin" size={27} /><span>지도 수신 대기</span><small>지도 또는 경로가 수신되면 표시됩니다</small></div>;
   // HH_261002 - The static, measured lanelet basemap is shown without a mission.
   // A route is a separate overlay and appears only when its own authority is valid.
@@ -309,9 +314,14 @@ function RouteMap({ data, id }) {
   const routePoints = ready ? data.route.map(xy) : [];
   const baseLines = mapReady ? data.baseMap.polylines.map((line) => ({ namespace: line.namespace,
     points: line.points.map(xy) })) : [];
-  const fit = ready ? routePoints.concat({ x: 0, y: 0 })
-    : data.pose ? [{ x: -25, y: -15 }, { x: 25, y: 15 }]
-      : baseLines.flatMap((line) => line.points);
+  const areas = mapReady ? data.baseMap.areas.map((area) => ({ ...area,
+    points: area.points.map(xy), center: xy(areaLabelPoint(area)),
+    selected: areaIsDestination(area, data.mission) })) : [];
+  // HH_261002 - Fit the real site/drop-zone footprints with the received road
+  // map, so idle mode keeps every configured area visible before a path exists.
+  const fit = baseLines.flatMap((line) => line.points)
+    .concat(areas.flatMap((area) => area.points), routePoints,
+      data.pose ? [{ x: 0, y: 0 }] : []);
   const xs = fit.map((point) => point.x), ys = fit.map((point) => point.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -320,15 +330,34 @@ function RouteMap({ data, id }) {
   const py = (y) => 88 + (y - (minY + maxY) / 2) * scale;
   const path = (points) => points.map((point, index) => `${index ? 'L' : 'M'}${px(point.x).toFixed(1)},${py(point.y).toFixed(1)}`).join(' ');
   const end = routePoints[routePoints.length - 1];
+  const labels = layoutAreaLabels(areas.map((area) => ({ id: area.id,
+    anchor: { x: px(area.center.x), y: py(area.center.y) } })));
+  const areaById = new Map(areas.map((area) => [area.id, area]));
   return <div className="dd-map" data-testid="driving-map" data-map-source={mapReady ? data.baseMap.source : ''}>
     <svg viewBox="0 0 292 176" role="img" aria-label={mapReady ? '수신된 Lanelet 지도와 유효한 경로의 축소 지도' : '현재 위치와 수신 경로의 축소 지도'}>
       <defs><pattern id={`${id}-map-grid`} width="29" height="29" patternUnits="userSpaceOnUse"><path d="M29 0H0v29" fill="none" className="dd-map-grid" /></pattern></defs>
       <rect width="292" height="176" fill={`url(#${id}-map-grid)`} />
+      {areas.map((area) => <path key={`area-${area.id}`} d={`${path(area.points)} Z`}
+        data-testid="driving-map-area" data-area-id={area.id} data-kind={area.kind}
+        data-site={area.site || ''} data-source={area.source}
+        className={`dd-map-area dd-map-area--${area.kind}${area.selected ? ' dd-map-area--selected' : ''}`} />)}
       {baseLines.map((line, index) => <path key={`${line.namespace}-${index}`} d={path(line.points)}
         data-testid="driving-map-base-line" data-namespace={line.namespace} className="dd-map-base-line" fill="none" />)}
       {ready && <><path d={path(routePoints)} fill="none" strokeWidth="10" className="dd-path-halo" strokeLinejoin="round" />
         <path d={path(routePoints)} fill="none" strokeWidth="3.4" className="dd-path-core" strokeLinejoin="round" strokeLinecap="round" />
         <circle cx={px(end.x)} cy={py(end.y)} r="6" className="dd-map-end" /></>}
+      {labels.map((label) => {
+        const area = areaById.get(label.id);
+        return <g key={`label-${label.id}`} data-area-label-group={label.id}>
+          <line x1={label.anchorX} y1={label.anchorY} x2={label.x} y2={label.y}
+            data-testid="driving-map-area-leader" data-area-id={label.id}
+            className={`dd-map-area-leader${area.selected ? ' dd-map-area-leader--selected' : ''}`} />
+          <text x={label.x} y={label.y} data-testid="driving-map-area-label"
+            data-area-id={label.id} data-label-side={label.side}
+            data-anchor-x={label.anchorX} data-anchor-y={label.anchorY}
+            className={`dd-map-area-label${area.selected ? ' dd-map-area-label--selected' : ''}`}>{area.label}</text>
+        </g>;
+      })}
       {data.pose && <><circle cx={px(0)} cy={py(0)} r="13" className="dd-map-location-halo" />
         <path d="m0-8 6 14-6-3-6 3Z" transform={`translate(${px(0)} ${py(0)})`} className="dd-map-location" /></>}
     </svg>

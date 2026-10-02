@@ -40,6 +40,8 @@ BASE_MAP_NAMESPACES = frozenset({
 })
 BASE_MAP_MAX_LINES = 512
 BASE_MAP_MAX_POINTS = 3000
+MAP_AREA_MAX_COUNT = 64
+MAP_AREA_MAX_VERTICES = 128
 
 
 def sample_indices(size, limit):
@@ -57,6 +59,53 @@ def finite(value):
     except (TypeError, ValueError, OverflowError):
         return None
     return value if math.isfinite(value) else None
+
+
+def validated_map_polygon(points):
+    """HH_261002 - Preserve an authored simple ring; never infer or resize it."""
+    if not isinstance(points, (list, tuple)) or not 3 <= len(points) <= MAP_AREA_MAX_VERTICES + 1:
+        return None
+    polygon = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            return None
+        x, y = (finite(value) for value in point)
+        if x is None or y is None:
+            return None
+        polygon.append((x, y))
+    if polygon[0] == polygon[-1]:
+        polygon.pop()
+    if (not 3 <= len(polygon) <= MAP_AREA_MAX_VERTICES
+            or len(set(polygon)) != len(polygon)):
+        return None
+    edges = list(zip(polygon, polygon[1:] + polygon[:1]))
+    area_twice = sum(a[0] * b[1] - b[0] * a[1] for a, b in edges)
+    if not math.isfinite(area_twice) or abs(area_twice) <= 1e-8:
+        return None
+
+    def orientation(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    def on_segment(a, b, c):
+        return (min(a[0], b[0]) - 1e-9 <= c[0] <= max(a[0], b[0]) + 1e-9
+                and min(a[1], b[1]) - 1e-9 <= c[1] <= max(a[1], b[1]) + 1e-9)
+
+    for index, (a, b) in enumerate(edges):
+        for other in range(index + 1, len(edges)):
+            if other == index + 1 or (index == 0 and other == len(edges) - 1):
+                continue
+            c, d = edges[other]
+            turns = (orientation(a, b, c), orientation(a, b, d),
+                     orientation(c, d, a), orientation(c, d, b))
+            if not all(math.isfinite(value) for value in turns):
+                return None
+            if ((turns[0] > 0) != (turns[1] > 0) and (turns[2] > 0) != (turns[3] > 0)
+                    or abs(turns[0]) <= 1e-9 and on_segment(a, b, c)
+                    or abs(turns[1]) <= 1e-9 and on_segment(a, b, d)
+                    or abs(turns[2]) <= 1e-9 and on_segment(c, d, a)
+                    or abs(turns[3]) <= 1e-9 and on_segment(c, d, b)):
+                return None
+    return [[x, y] for x, y in polygon]
 
 
 def mission_key(mission):
@@ -122,6 +171,8 @@ class DrivingSnapshotCache:
         self._base_map = {}
         self._base_map_received = None
         self._base_map_source = "/map/markers"
+        self._map_areas = []
+        self._map_areas_received = None
         self._route = None
         self._route_goal_cutover_stamp = None
         self._progress = {}
@@ -174,6 +225,51 @@ class DrivingSnapshotCache:
                                               sample_indices(len(line["points"]), limit)]}
                 for identity, line in self._base_map.items()
             }
+
+    def map_areas(self, records):
+        """HH_261002 - Replace passive configured areas, independent of missions.
+
+        Marker DELETEALL affects only marker roads. These polygons come from the
+        separately configured map catalogs, which are loaded at backend startup.
+        Invalid input never becomes a guessed rectangle around a goal/keypoint.
+        """
+        accepted, duplicate_ids = {}, set()
+        if isinstance(records, (list, tuple)) and len(records) <= MAP_AREA_MAX_COUNT:
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                identity, kind, site = record.get("id"), record.get("kind"), record.get("site")
+                if not isinstance(identity, str) or not 1 <= len(identity) <= 96:
+                    continue
+                if identity in accepted or identity in duplicate_ids:
+                    accepted.pop(identity, None)
+                    duplicate_ids.add(identity)
+                    continue
+                if record.get("frame_id") != "map":
+                    continue
+                if kind == "camping_site":
+                    if (not isinstance(site, str)
+                            or site not in {f"B{index}" for index in range(1, 14)}
+                            or identity != f"camping_site_{site[1:]}"
+                            or record.get("source") != "camping_sites_yaml"):
+                        continue
+                    label = site
+                elif kind == "drop_zone":
+                    if record.get("source") != "drop_zones_yaml":
+                        continue
+                    label, site = "드롭존", None
+                else:
+                    continue
+                points = validated_map_polygon(record.get("points"))
+                if points is None:
+                    continue
+                accepted[identity] = {
+                    "id": identity, "label": label, "kind": kind, "site": site,
+                    "points": points, "source": record["source"],
+                }
+        with self._lock:
+            self._map_areas = list(accepted.values())
+            self._map_areas_received = self._now()
 
     def pose(self, x, y, yaw, frame_id):
         with self._lock:
@@ -420,6 +516,8 @@ class DrivingSnapshotCache:
             base_map = list(self._base_map.values())
             base_map_received = self._base_map_received
             base_map_source = self._base_map_source
+            map_areas = list(self._map_areas)
+            map_areas_received = self._map_areas_received
             route = self._route
             progress = dict(self._progress)
             sensors = dict(self._sensors)
@@ -565,9 +663,11 @@ class DrivingSnapshotCache:
             "battery": {"percentage": platform["battery"] if platform_live else None},
             "pose": pose_value,
             "base_map": {
-                "valid": bool(base_map), "frame_id": "map",
+                "valid": bool(base_map or map_areas), "frame_id": "map",
                 "polylines": base_map, "age_s": age(base_map_received),
                 "source": base_map_source,
+                "areas": map_areas, "areas_age_s": age(map_areas_received),
+                "areas_source": "configured_map_catalogs",
             },
             "route": {
                 # HH_261001 - This is a mission-bound latched path, not a 30 s
