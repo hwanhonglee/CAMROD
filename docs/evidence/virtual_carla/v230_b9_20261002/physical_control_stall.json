@@ -1,0 +1,66 @@
+{
+  "/carla/ego_vehicle/extended_ackermann_control/control_info": {
+    "header": {
+      "stamp": {
+        "sec": 0,
+        "nanosec": 0
+      },
+      "frame_id": ""
+    },
+    "active_mode": {
+      "mode": 0
+    },
+    "motion_backend": "PHYSX_FOUR_WHEEL_STEERING",
+    "baseline_gate_accepted": true,
+    "baseline_manifest_sha256": "8778ea54729e0e69766567956b926d17a257ce9e3c5c4c33b21107c76862ea7c",
+    "physical_gate_accepted": true,
+    "physical_manifest_sha256": "523c9139dcd6aee24096fe810e7e715c285a807e60ac0dbfb0ef51499d514f78",
+    "interlock_reason": "awaiting physical steering acknowledgement",
+    "target_speed": 0.5555559992790222,
+    "target_accel": 0.0,
+    "target_front_steer": 0.009241807274520397,
+    "target_rear_steer": -0.009241807274520397,
+    "target_yaw_rate": 0.0,
+    "steering_sequence": 4462,
+    "four_wheel_api_version": "carla.physx_four_wheel_steer_torque.v2",
+    "target_front_left_steer": 0.009189136326313019,
+    "target_front_right_steer": 0.009295085445046425,
+    "target_rear_left_steer": -0.009189136326313019,
+    "target_rear_right_steer": -0.009295085445046425,
+    "independent_wheel_drive_required": true,
+    "physical_four_wheel_backend_ready": true,
+    "target_front_left_wheel_torque_nm": 3.0,
+    "target_front_right_wheel_torque_nm": 2.965806007385254,
+    "target_rear_left_wheel_torque_nm": 3.0,
+    "target_rear_right_wheel_torque_nm": 2.965806007385254,
+    "current_speed": 0.0005175337428227067,
+    "current_accel": 0.0016937695909291506,
+    "current_yaw_rate": -3.94011294702068e-06,
+    "speed_pid_output": 0.0,
+    "accel_pid_output": 0.0,
+    "throttle": 0.0,
+    "brake": 1.0,
+    "front_steer_norm": 0.0,
+    "rear_steer_norm": -0.006017233710736036,
+    "reverse": false,
+    "hand_brake": true
+  },
+  "/carla/ego_vehicle/vehicle_control_cmd": {
+    "header": {
+      "stamp": {
+        "sec": 0,
+        "nanosec": 0
+      },
+      "frame_id": ""
+    },
+    "throttle": 0.0,
+    "steer": 0.0,
+    "brake": 1.0,
+    "hand_brake": true,
+    "reverse": false,
+    "gear": 0,
+    "manual_gear_shift": false
+  },
+  "/carla/ego_vehicle/vehicle_control_cmd_manual": null,
+  "/carla/ego_vehicle/vehicle_control_manual_override": null
+}

@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--url', default='http://127.0.0.1:8010/')
     parser.add_argument('--debug-port', type=int, default=9224)
+    parser.add_argument('--include-records', action='store_true')
     args = parser.parse_args()
     page = next(page for page in fetch(f'http://127.0.0.1:{args.debug_port}/json')
                 if page.get('type') == 'page' and page.get('url') == args.url)
@@ -35,6 +36,12 @@ def main():
                   'navigation_render_state': client.evaluate(
                       "JSON.parse(document.querySelector('canvas[data-navigation-state]')"
                       "?.dataset.navigationState || 'null')")}
+        # HH_261002 - Save a read-only bounded journal view as evidence, never
+        # copy or mutate the field database, and never infer distance accuracy.
+        if args.include_records:
+            record['mission_records'] = fetch(args.url.rstrip('/') + '/api/mission-records?limit=3')
+        record['loaded_scripts'] = client.evaluate(
+            'Array.from(document.scripts).map(s => s.src).filter(Boolean)')
         args.output.with_suffix('.json').write_text(json.dumps(record, ensure_ascii=False, indent=2))
         print(json.dumps({'mission': snapshot.get('mission'), 'output': str(args.output)}, ensure_ascii=False))
     finally:
