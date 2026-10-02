@@ -1,0 +1,17 @@
+/* HH_261001 - Keep the original service DOM mounted; the driving surface occupies the
+   viewport only while its presentation latch is open. */
+.control-body { position: relative; min-height: 0; }
+.control-body-driving { padding: 0; gap: 0; }
+.control-body-driving > .preview-panel,
+.control-body-driving > .app { visibility: hidden; pointer-events: none; }
+.driving-integrated-panel { position: absolute; inset: 0; z-index: 5; min-width: 0; min-height: 0; }
+.main-layout-driving > .control-header,
+.main-layout-driving > .waiting-runtime-panel,
+.main-layout-driving > .mission-role-banner { display: none; }
+.main-layout-driving > .diag-secret-zone-global { pointer-events: none; }
+.driving-integrated-demo-label { margin-left: auto; color: #855315; background: #fff5df; border: 1px solid #e6cf9f; border-radius: 8px; padding: .45rem .7rem; font-size: .75rem; font-weight: 700; }
+.driving-integrated-open { margin-left: auto; border: 0; background: #2d6e40; color: white; border-radius: 10px; font: inherit; font-weight: 700; padding: .65rem 1rem; cursor: pointer; }
+.driving-integrated-demo-label + .driving-integrated-open { margin-left: .5rem; }
+.driving-preview-canvas .main-layout,
+.driving-preview-canvas .waiting-screen { position: absolute; inset: 0; }
+.driving-preview-canvas { position: relative; }

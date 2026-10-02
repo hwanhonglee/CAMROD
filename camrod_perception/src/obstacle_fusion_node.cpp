@@ -30,6 +30,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "camrod_perception/classified_detection.hpp"
+#include "camrod_perception/observed_lidar_extent.hpp"
 
 // Coordinate frames
 //   LiDAR (vanjee_lidar_750): raw X forward, Y left, Z up
@@ -96,6 +97,12 @@ public:
       "out_markers_topic", "/perception/camera_lidar/markers");
     out_euclidean_topic_ = declare_parameter<std::string>(
       "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
+    // HH_261002 - Publish measured partial extents only on a separate display
+    // topic. The legacy Detection3D box, marker, association and obstacle cloud
+    // remain unchanged so UI geometry cannot alter planner/safety behavior.
+    publish_navigation_boxes_ = declare_parameter<bool>("publish_navigation_boxes", true);
+    out_navigation_boxes_topic_ = declare_parameter<std::string>(
+      "out_navigation_boxes_topic", "/perception/camera_lidar/navigation_boxes");
     // HH_260707 - Keep fusion outputs enabled while avoiding stale image/cloud
     // backlog and expensive debug image work when RViz is not consuming it.
     sync_queue_size_ = std::max(
@@ -148,6 +155,9 @@ public:
           }
           if (p.get_name() == "publish_debug_image_without_subscribers") {
             publish_debug_image_without_subscribers_ = p.as_bool();
+          }
+          if (p.get_name() == "publish_navigation_boxes") {
+            publish_navigation_boxes_ = p.as_bool();
           }
         }
         rcl_interfaces::msg::SetParametersResult result;
@@ -218,6 +228,8 @@ public:
       out_markers_topic_, 10);
     pub_euclidean_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       out_euclidean_topic_, 10);
+    pub_navigation_boxes_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      out_navigation_boxes_topic_, 10);
 
     RCLCPP_INFO(
       get_logger(),
@@ -338,10 +350,18 @@ private:
     }
 
     visualization_msgs::msg::MarkerArray markers;
+    visualization_msgs::msg::MarkerArray navigation_boxes;
+    // HH_261002 - Clear partial boxes even when detections expire or the display
+    // publisher is disabled, preventing a previous observation from persisting.
+    visualization_msgs::msg::Marker clear_navigation;
+    clear_navigation.header = cloud_msg->header;
+    clear_navigation.ns = "fusion_observed_extent";
+    clear_navigation.action = visualization_msgs::msg::Marker::DELETEALL;
+    navigation_boxes.markers.push_back(clear_navigation);
     vision_msgs::msg::Detection3DArray out3d;
     if (det_msg) {
       out3d = associateDetections(
-        proj, det_msg, publish_debug_image ? &img : nullptr, markers);
+        proj, det_msg, publish_debug_image ? &img : nullptr, markers, navigation_boxes);
     }
     out3d.header.stamp = cloud_msg->header.stamp;
     out3d.header.frame_id = cloud_msg_frame_;
@@ -350,6 +370,7 @@ private:
 
     pub_det3d_->publish(out3d);
     pub_markers_->publish(markers);
+    pub_navigation_boxes_->publish(navigation_boxes);
 
     fuseEuclideanClusters(
       det_msg, cloud_msg->header.stamp, img_w, img_h,
@@ -525,7 +546,8 @@ private:
   vision_msgs::msg::Detection3DArray associateDetections(
     const std::vector<ProjPt> & proj,
     const vision_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
-    cv::Mat * img, visualization_msgs::msg::MarkerArray & markers)
+    cv::Mat * img, visualization_msgs::msg::MarkerArray & markers,
+    visualization_msgs::msg::MarkerArray & navigation_boxes)
   {
     const int kMinPts = min_pts_;
     const int kNClose = std::max(1, n_closest_);
@@ -681,6 +703,39 @@ private:
       sphere.color.a = 0.8f;
       sphere.lifetime = rclcpp::Duration::from_seconds(0.2);
       markers.markers.push_back(sphere);
+
+      // HH_261002 - The 0.4 m fusion sphere/Detection3D size above is a legacy
+      // placeholder, not a measured body size. Expose only finite foreground
+      // LiDAR min/max extents, without EMA or class-size guesses, to the UI.
+      // The same id/stamp/frame provides an exact join with this observation.
+      if (publish_navigation_boxes_) {
+        constexpr double kObservedForegroundDepthBandM = 0.60;
+        const auto extent = camrod_perception::EstimateObservedLidarExtent(
+          bbox_pts, static_cast<std::size_t>(std::max(3, kMinPts)),
+          kObservedForegroundDepthBandM);
+        if (extent) {
+          visualization_msgs::msg::Marker box;
+          box.header = sphere.header;
+          box.ns = "fusion_observed_extent";
+          box.id = marker_id;
+          box.type = visualization_msgs::msg::Marker::CUBE;
+          box.action = visualization_msgs::msg::Marker::ADD;
+          box.pose.position.x = extent->center[0];
+          box.pose.position.y = extent->center[1];
+          box.pose.position.z = extent->center[2];
+          box.pose.orientation.w = 1.0;
+          box.scale.x = extent->size[0];
+          box.scale.y = extent->size[1];
+          box.scale.z = extent->size[2];
+          box.color.r = 1.0f;
+          box.color.g = 0.55f;
+          box.color.b = 0.0f;
+          box.color.a = 0.25f;
+          box.text = "observed_lidar_extent";
+          box.lifetime = sphere.lifetime;
+          navigation_boxes.markers.push_back(box);
+        }
+      }
 
       char buf[64];
       std::snprintf(buf, sizeof(buf), "%s\n%.2f m", label.c_str(), lidar_dist);
@@ -914,6 +969,7 @@ private:
   double debug_image_publish_rate_hz_{2.0};
   int debug_draw_stride_{4};
   bool publish_debug_image_without_subscribers_{false};
+  bool publish_navigation_boxes_{true};
   double detection_max_age_s_{0.50};
   std::set<std::string> unknown_class_labels_{"", "?", "unknown"};
   int image_width_{1920};
@@ -924,6 +980,7 @@ private:
   std::string image_topic_, bbox_topic_, output_topic_;
   std::string out_image_topic_, out_det3d_topic_, out_markers_topic_,
     out_euclidean_topic_;
+  std::string out_navigation_boxes_topic_;
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
 
@@ -976,6 +1033,8 @@ private:
     pub_markers_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
     pub_euclidean_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    pub_navigation_boxes_;
 };
 
 int main(int argc, char ** argv)

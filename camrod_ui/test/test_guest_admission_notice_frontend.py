@@ -136,5 +136,7 @@ def test_both_screen_headers_use_normal_flow_status_and_have_no_guest_modal():
     assert "position: 'static'" in status and "pointerEvents: 'none'" in status
     assert 'onClick=' not in status and 'zIndex' not in status
     assert 'setTimeout' not in HELPER and 'fetch(' not in HELPER and 'CARLA' not in HELPER
-    assert 'onClick={handleStopMove}' in SOURCE
+    # HH_261001 - Stop now requires a second, mission-revision-checked tap.
+    assert "onClick={() => requestStopConfirmation('service')}" in SOURCE
+    assert 'onClick={confirmOperatorStop}' in SOURCE
     assert 'onClick={handleArrivalComplete}' in SOURCE

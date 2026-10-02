@@ -139,6 +139,7 @@ class VoiceEventPolicy:
         return_mission_key: str = "drop_zone",
         max_ready_localization_mode: int = NORMAL_LOCALIZATION_MODE,
         announce_departure: bool = True,
+        announce_return_departure: Optional[bool] = None,
     ) -> None:
         self.required_modules = tuple(
             dict.fromkeys(
@@ -151,12 +152,15 @@ class VoiceEventPolicy:
             str(return_mission_key).strip() or "drop_zone"
         )
         self.max_ready_localization_mode = int(max_ready_localization_mode)
-        # HH_260910 - camrod_ui now announces site_B*/to_campsite/to_dropzone
-        # itself and holds the engage/goal command until playback finishes, so
-        # motion no longer starts alongside speech. Keep this reactive cue off
-        # by default to avoid saying the departure twice; trip bookkeeping
-        # (BGM, periodic reminders) below is unaffected either way.
+        # HH_261002 - UI gates site departure speech, but does not publish a
+        # return departure key. Keep the two directions independently enabled
+        # so a return is never silent merely to avoid duplicate site speech.
         self.announce_departure = bool(announce_departure)
+        self.announce_return_departure = (
+            self.announce_departure
+            if announce_return_departure is None
+            else bool(announce_return_departure)
+        )
 
         self.system_received = False
         self.system_modules: dict[str, ModuleSnapshot] = {}
@@ -532,8 +536,25 @@ class VoiceEventPolicy:
             self._trip_identity is not None
             and self.planning_state in self._TRAVEL_HOLD_STATES
         ):
-            # Recovery is a hiccup inside the same route, not the end of it.
-            return
+            # HH_261002 - Keep a sensor hiccup only for the same route. A
+            # return/recall request can also enter a hold state, and retaining
+            # the old direction there spoke campsite on the way to drop zone
+            # (or vice versa) until planning published the replacement goal.
+            previous_context, previous_key, previous_source = self._trip_identity
+            same_direction = (
+                self.planning_scenario in (
+                    self._ROUTE_TO_SITE_SCENARIOS
+                    if previous_context == "site"
+                    else self._ROUTE_TO_DROP_ZONE_SCENARIOS
+                )
+            )
+            if (
+                same_direction
+                and self.active_mission_key == previous_key
+                and self.active_goal_source == previous_source
+                and not self.return_requested
+            ):
+                return
         self._trip_identity = None
 
     def travel_context(self) -> str:
@@ -627,7 +648,9 @@ class VoiceEventPolicy:
             return None
         self._announced_motion_signatures.add(signature)
         self._departed_trips.add(identity)
-        if not self.announce_departure:
+        if identity[0] == "site" and not self.announce_departure:
+            return None
+        if identity[0] == "drop_zone" and not self.announce_return_departure:
             return None
         key = self._DEPARTURE_KEYS.get(identity[0], "")
         return VoiceEvent(key, priority=1) if key else None

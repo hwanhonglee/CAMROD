@@ -5,12 +5,12 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "three": "0.170.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "postbuild": "bash ../../../scripts/sync_frontend_build.sh"
+    "start": "REACT_APP_RANGER_ASSET_REV=$(sha256sum public/models/ranger-navigation.glb public/models/woraksan-side-wrap.png public/models/woraksan-front-wrap.png public/models/woraksan-rear-wrap.png | sha256sum | cut -c1-16) react-scripts start",
+    "build": "bash ../../../scripts/build_frontend.sh"
   },
   "browserslist": {
     "production": [">0.2%", "not dead", "not op_mini all"],

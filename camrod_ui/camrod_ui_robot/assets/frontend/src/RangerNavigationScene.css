@@ -1,0 +1,52 @@
+.ranger-navigation-scene { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; isolation: isolate; }
+.ranger-navigation-surface { position: absolute; inset: 0; overflow: hidden; border-radius: 14px; background: #e9eee8; }
+.ranger-navigation-object-labels { position: absolute; inset: 0; overflow: hidden; border-radius: 14px; pointer-events: none; }
+.ranger-navigation-object-label { position: absolute; top: 0; left: 0; display: flex; align-items: center; gap: 7px; visibility: hidden; padding: 7px 9px; border: 1px solid #d8b889; border-radius: 8px; background: #fffaf0f2; box-shadow: 0 4px 12px #4b3e2424; color: #5c4424; white-space: nowrap; font-size: 11px; line-height: 1.2; }
+.ranger-navigation-object-label::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 7px; height: 7px; transform: translateX(-50%) rotate(45deg); border-right: 1px solid #d7b482; border-bottom: 1px solid #d7b482; background: #fffdf4; }
+.ranger-navigation-object-label strong { font-size: inherit; font-weight: 750; }
+.ranger-navigation-object-label span { color: #8f734c; font-size: 10px; font-variant-numeric: tabular-nums; }
+/* HH_261002 - Keep class, range and observed dimensions distinct from unknown-size glyphs. */
+.ranger-navigation-object-icon { width: 24px; height: 28px; flex: 0 0 24px; }
+.ranger-navigation-object-title { display: flex; align-items: baseline; gap: 8px; }
+.ranger-navigation-object-label small { display: block; margin-top: 4px; font-size: 9px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.ranger-navigation-object-label[data-size-mode="symbolic"] { border-style: dashed; }
+/* HH_261002 - A measured off-route object stays readable at the view edge. */
+.ranger-navigation-object-label[data-edge="right"]::before { content: '→'; font-weight: 800; }
+.ranger-navigation-object-label[data-edge="left"]::before { content: '←'; font-weight: 800; }
+.ranger-navigation-object-label[data-edge="top"]::before { content: '↑'; font-weight: 800; }
+.ranger-navigation-object-label[data-edge="bottom"]::before { content: '↓'; font-weight: 800; }
+.ranger-navigation-object-label[data-edge]:not([data-edge=""])::after { display: none; }
+.ranger-navigation-perception-wait { position: absolute; bottom: 16px; left: 16px; font-size: 11px; color: var(--dd-muted, #63756b); background: var(--dd-card, #fff); padding: 7px 10px; border-radius: 8px; border: 1px solid var(--dd-line, #dce4de); box-shadow: 0 2px 10px #1e33241a; pointer-events: none; }
+.dd-theme-dark .ranger-navigation-surface { background: #1b2c32; }
+.dd-theme-dark .ranger-navigation-object-label { background: #2d302bf2; color: #f5d5a5; border-color: #947247; box-shadow: 0 4px 14px #0005; }
+.dd-theme-dark .ranger-navigation-object-label::after { background: #2d302b; border-color: #947247; }
+.dd-theme-dark .ranger-navigation-object-label span { color: #dfbf90; }
+.ranger-navigation-detail { position: absolute; top: 16px; right: 16px; min-height: 38px; padding: 8px 12px; background: var(--dd-card, #fff); border: 1px solid var(--dd-line, #dce4de); border-radius: 9px; color: var(--dd-accent, #2d6e40); box-shadow: 0 2px 10px #1e33241a; font-family: inherit; font-size: 11px; font-weight: 750; cursor: pointer; z-index: 2; }
+.ranger-navigation-detail:hover, .ranger-navigation-detail[aria-pressed="true"] { background: var(--dd-accent-soft, #edf5ee); }
+.ranger-navigation-detail:focus-visible { outline: 2px solid var(--dd-accent, #2d6e40); outline-offset: 2px; }
+.ranger-navigation-angle { top: 61px; display: flex; align-items: center; gap: 6px; }
+.ranger-navigation-angle > span { font-size: 9px; color: var(--dd-muted, #748177); font-weight: 500; }
+.ranger-navigation-canvas { display: block; width: 100%; height: 100%; pointer-events: none; outline: none; }
+.ranger-navigation-route-status { position: absolute; top: 16px; left: 16px; display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid var(--dd-line, #dce4de); border-radius: 9px; color: var(--dd-muted, #66796d); background: var(--dd-card, #fff); box-shadow: 0 2px 10px #1e33241a; font-size: 11px; white-space: nowrap; pointer-events: none; }
+.ranger-navigation-route-status i { width: 6px; height: 6px; border-radius: 50%; background: #098ebf; }
+.ranger-navigation-route-status.is-waiting i { background: #9aaba1; }
+.ranger-navigation-caption { position: absolute; bottom: 7%; left: 0; right: 0; display: flex; align-items: center; flex-direction: column; gap: 4px; color: var(--dd-muted, #748177); font-size: 9px; line-height: 1.35; pointer-events: none; }
+.ranger-navigation-caption strong { color: var(--dd-accent, #2d6e40); font-size: 11px; font-weight: 800; }
+.ranger-navigation-caption strong > span { font-size: 8px; font-weight: 500; margin-left: 5px; color: var(--dd-muted, #748177); }
+.ranger-navigation-legend { position: absolute; bottom: 16px; right: 16px; display: flex; justify-content: flex-end; gap: 13px; color: var(--dd-muted, #52645c); font-size: 10px; pointer-events: none; }
+.ranger-navigation-legend > span { display: flex; align-items: center; gap: 4px; }
+.ranger-navigation-legend > span:first-child { background: var(--dd-card, #fff); border: 1px solid var(--dd-line, #dce4de); border-radius: 7px; padding: 6px 8px; }
+.ranger-navigation-legend i { width: 15px; height: 3px; border-radius: 2px; background: #159bd6; }
+.ranger-navigation-legend > span:nth-child(2) i { width: 4px; height: 4px; border-radius: 50%; background: #73998e; }
+.ranger-navigation-loading { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; flex-direction: column; gap: 10px; width: min(90%, 290px); padding: 23px 18px; border: 1px solid var(--dd-line, #dce4de); border-radius: 14px; background: var(--dd-card, #fff); color: var(--dd-muted, #748177); text-align: center; font-size: 10px; }
+.ranger-navigation-loading strong { font-size: 12px; font-weight: 650; }
+.ranger-navigation-loading-icon { font-weight: 800; font-size: 19px; color: var(--dd-accent, #2d6e40); padding: 10px; border-radius: 10px; background: var(--dd-accent-soft, #edf5ee); }
+.dd-density-short .ranger-navigation-detail { font-size: 10px; right: 10px; top: 10px; padding: 6px 9px; min-height: 34px; }
+.dd-density-short .ranger-navigation-angle { top: 51px; }
+.dd-density-short .ranger-navigation-route-status { top: 10px; left: 10px; font-size: 10px; padding: 7px 9px; }
+.dd-density-short .ranger-navigation-caption { bottom: 7%; font-size: 8px; gap: 2px; }
+.dd-density-short .ranger-navigation-caption strong { font-size: 10px; }
+.dd-density-short .ranger-navigation-legend { bottom: 10px; right: 10px; font-size: 9px; gap: 9px; }
+.dd-density-short .ranger-navigation-perception-wait { bottom: 10px; left: 10px; font-size: 9px; padding: 5px 7px; }
+.dd-density-short .ranger-navigation-object-label { padding: 5px 6px; font-size: 10px; gap: 5px; }
+.dd-density-short .ranger-navigation-object-label span { font-size: 9px; }

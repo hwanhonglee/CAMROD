@@ -141,6 +141,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_classified_detection test/test_classified_detection.cpp)
   target_include_directories(test_classified_detection PRIVATE include)
+  # HH_261002 - Validate UI-only foreground extents independently of ROS and planning.
+  ament_add_gtest(test_observed_lidar_extent test/test_observed_lidar_extent.cpp)
+  target_include_directories(test_observed_lidar_extent PRIVATE include)
+  target_compile_features(test_observed_lidar_extent PRIVATE cxx_std_17)
 
   find_package(ament_lint_auto REQUIRED)
   # HH_260721 - Keep vendored YOLO sources outside CAMROD package lint ownership.

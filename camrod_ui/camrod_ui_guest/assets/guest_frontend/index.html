@@ -562,6 +562,9 @@
   let activeRequestIntent = null;
   let activeRequestOwner = null;
   let activeRequestRetryable = false;
+  // HH_261001 - Only the backend may grant this after cancelling this Guest UI's exact
+  // recall generation. OPERATOR_STOPPED alone also covers operator/safety stops.
+  let guestCancelRestartReady = false;
   let activeMissionGeneration = 0;
   let lastIdentityRevision = -1;
   // HH_260803 - Match Robot UI mission admission instead of enabling a site
@@ -657,6 +660,11 @@
       }
       if (acceptIdentity && d.mission_retryable !== undefined) {
         activeRequestRetryable = Boolean(d.mission_retryable);
+      }
+      // HH_261001 - Apply the grant only with the accepted dispatch identity; a delayed
+      // status must not reopen public controls for a newer mission.
+      if (acceptIdentity && d.guest_cancel_restart_ready !== undefined) {
+        guestCancelRestartReady = d.guest_cancel_restart_ready === true;
       }
       if (acceptIdentity && d.mission_generation !== undefined) {
         const incomingGeneration = Number(d.mission_generation);
@@ -1137,13 +1145,23 @@
       }
 
     } else if (currentServiceStateName === 'OPERATOR_STOPPED') {
+      // HH_261001 - A Guest-owned cancellation may show site selection again, whereas an
+      // operator, safety, or startup stop must remain locked on this phone.
+      const guestCanRestart = guestCancelRestartReady && !activeRequestIntent;
       dot.classList.add('si-busy');
       phaseLbl.textContent = '운행 중지';
-      stateLbl.textContent = '현재 운행이 취소되었습니다';
-      siteCard.style.display = 'none';
+      stateLbl.textContent = guestCanRestart
+        ? '현재 호출이 취소되었습니다'
+        : '로봇 운행이 정지되었습니다';
+      siteCard.style.display = guestCanRestart && sites.length ? 'block' : 'none';
       completeCard.style.display = 'none';
+      setSiteGridEnabled(guestCanRestart && missionBatteryReady);
       banner.classList.add('show', 'info-returning');
-      banner.textContent = '새 운행은 로봇 화면에서 선택해 주세요.';
+      banner.textContent = guestCanRestart
+        ? (missionBatteryReady
+          ? '취소한 호출입니다. 안전을 확인한 뒤 사이트를 선택해 다시 호출할 수 있습니다.'
+          : '취소한 호출입니다. 배터리가 ' + minimumBatteryPercentage + '% 이상일 때 다시 호출할 수 있습니다.')
+        : '관리자 정지 상태입니다. 새 운행은 로봇 화면에서 확인해 주세요.';
 
     } else {
       dot.classList.add('si-busy');
@@ -1214,10 +1232,15 @@
   // Parking completion is sufficient; control owns the station departure even
   // when charger contact is still pending or absent.
   function isDispatchReady() {
+    // HH_261001 - The stopped-state exception requires the backend's cancellation grant;
+    // SOC and the no-active-request check still apply before sending a recall.
     const stationaryReady = missionBatteryReady && (
       currentPhase === 'idle'
       || currentPhase === 'waiting_for_charging'
       || currentPhase === 'charging'
+      || (currentPhase === 'stopped'
+        && currentServiceStateName === 'OPERATOR_STOPPED'
+        && guestCancelRestartReady)
     );
     const retryReady = activeRequestRetryable
       && activeRequestIntent === 'recall'

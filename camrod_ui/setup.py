@@ -29,6 +29,7 @@ setup(
         # Launch files install to share/camrod_ui/launch/ for bringup compatibility.
         (f"share/{package_name}/launch", [
             "camrod_ui_robot/launch/ui.launch.py",
+            "camrod_ui_robot/launch/mission_recorder.launch.py",
             "camrod_ui_guest/launch/ui_guest.launch.py",
         ]),
         *_collect_data_files("camrod_ui_robot/assets/frontend/build", f"share/{package_name}/camrod_ui_robot/assets/frontend/build"),
@@ -43,6 +44,8 @@ setup(
     entry_points={
         "console_scripts": [
             "ui_backend_node = camrod_ui.ui_backend_node:main",
+            # HH_261002 - Passive per-mission decoded platform/CAN recorder.
+            "mission_recorder_node = camrod_ui.mission_recorder_node:main",
             "ui_guest_node = camrod_ui.ui_guest_node:main",
             # HH_260727 - Native lightweight shell for the operator web UI.
             "camrod_ui_window = camrod_ui.operator_ui_window:main",

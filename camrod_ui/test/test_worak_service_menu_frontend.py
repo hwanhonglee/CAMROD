@@ -22,7 +22,9 @@ def replay(script):
     start = SOURCE.index("ws.onmessage = (event) => {")
     handler = SOURCE[start:SOURCE.index("// HH_260708 - Reconnect the operator WebSocket", start)]
     start = SOURCE.index("const handleWaitingClick = () => {")
-    handlers = SOURCE[start:SOURCE.index("\n  };", start) + len("\n  };")]
+    # HH_261001 - The safety acknowledgement, not the initial home tap,
+    # opens the chooser; replay both production handlers in order.
+    handlers = SOURCE[start:SOURCE.index("const resetIdleTimer", start)]
     start = SOURCE.index("const selectDestinationIntent = (intent) => {")
     handlers += SOURCE[start:SOURCE.index("const handleServiceDocking =", start)]
     setters = sorted(set(re.findall(r"\b(set[A-Z]\w*)\(", handler + handlers)))
@@ -53,7 +55,7 @@ const idle = () => send({mission_dispatch_active:false,mission_dispatch_generati
 
 def test_station_heartbeat_does_not_close_open_service_chooser():
     result = replay(r"""
-handleWaitingClick(); idle(); idle();
+handleWaitingClick(); handleServiceSafetyConfirm(); idle(); idle();
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,
   menu:uiState.setShowServiceSelection,pinned:intentPinnedRef.current}));
 """)
@@ -62,7 +64,7 @@ console.log(JSON.stringify({waiting:uiState.setShowWaiting,
 
 @pytest.mark.parametrize("intent", ["delivery", "recall"])
 def test_idle_identity_and_recall_replay_preserve_confirmed_service_role(intent):
-    result = replay("handleWaitingClick(); activateDestinationService(" + json.dumps(intent) + r""");
+    result = replay("handleWaitingClick(); handleServiceSafetyConfirm(); activateDestinationService(" + json.dumps(intent) + r""");
 idle(); idle(); idle();
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,
   menu:uiState.setShowServiceSelection,role:uiState.setDestinationIntent,
@@ -74,7 +76,7 @@ console.log(JSON.stringify({waiting:uiState.setShowWaiting,
 
 def test_new_authoritative_mission_unpins_local_choice_and_restores_actual_role():
     result = replay(r"""
-handleWaitingClick(); activateDestinationService('delivery');
+handleWaitingClick(); handleServiceSafetyConfirm(); activateDestinationService('delivery');
 send({mission_dispatch_active:true,mission_dispatch_generation:42,
   mission_dispatch_site:'B2',mission_dispatch_owner:'guest',mission_dispatch_intent:'recall',
   robot_recall_site:'B2',service_state:SERVICE_STATE.RECALL_TO_SITE_ROAD});
@@ -88,7 +90,7 @@ console.log(JSON.stringify({role:uiState.setDestinationIntent,
 
 def test_unpinned_completed_visit_returns_to_default_standby():
     result = replay(r"""
-handleWaitingClick(); activateDestinationService('recall');
+handleWaitingClick(); handleServiceSafetyConfirm(); activateDestinationService('recall');
 intentPinnedRef.current = false;
 idle();
 console.log(JSON.stringify({waiting:uiState.setShowWaiting,role:uiState.setDestinationIntent}));
@@ -102,7 +104,8 @@ def test_new_parking_preview_retains_stop_and_error_copy_priority():
     assert "motionNotice?.label || parkingLifecycleStatus(" in block
     assert "motionNotice?.message || (serviceStateName" in block
     assert 'className="guest-recall-overlay"' not in SOURCE
-    assert 'onClick={handleManualStop}' in SOURCE
+    assert "onClick={() => requestStopConfirmation('manual')}" in SOURCE
+    assert 'onClick={confirmOperatorStop}' in SOURCE
 
 
 def test_service_controls_have_distinct_real_pointer_targets():

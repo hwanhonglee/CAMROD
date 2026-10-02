@@ -61,7 +61,10 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         )
 
     def test_return_status_exits_idle_screen(self) -> None:
-        self.assertIn("if (isReturning && showWaiting)", self.source)
+        # HH_261002 - The backend can retain an accepted mission while the
+        # individual site toggle changes during recovery; either signal must
+        # keep standby from covering the driving presentation.
+        self.assertIn("if ((isReturning || missionDispatch.active) && showWaiting)", self.source)
         self.assertIn("setShowWaiting(false);", self.source)
 
     def test_usage_guide_opens_straight_onto_two_sections(self) -> None:
@@ -155,6 +158,35 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         )
         self.assertNotIn("ch-runtime", css_source)
 
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
+    def test_confirmed_full_charge_is_visible_without_changing_parking_policy(self) -> None:
+        # HH_261002 - The backend's explicit full-charge signal is displayed
+        # on both the public standby band and the Robot UI charging panel.
+        self.assertIn("if ('battery_charge_complete' in data)", self.source)
+        self.assertIn("setBatteryChargeComplete(Boolean(data.battery_charge_complete));", self.source)
+        self.assertEqual(self.source.count("batteryChargeComplete={batteryChargeComplete}"), 3)
+        self.assertIn("배터리가 100%로 충전되었습니다.", self.source)
+        self.assertIn("현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.", self.source)
+
+        start = self.source.index("const parkingLifecycleStatus =")
+        helper = self.source[start:self.source.index("function WaitingRuntimeStatusPanel(", start)]
+        script = helper + r"""
+const values = [
+  parkingLifecycleStatus('CHARGING', '', {}, false),
+  parkingLifecycleStatus('CHARGING', '', {}, true),
+  parkingLifecycleStatus('WAITING_FOR_CHARGING', '', {}, true),
+  parkingLifecycleStatus('DROP_ZONE_WAIT', '', {}, true),
+];
+process.stdout.write(JSON.stringify(values));
+"""
+        result = subprocess.run(
+            ["node"], input=script, text=True, capture_output=True, check=True,
+        )
+        self.assertEqual(
+            json.loads(result.stdout),
+            ["충전 중", "충전 완료", "충전 접점 연결 대기 중", "대기·충전 장소 주차 완료"],
+        )
+
     def test_waiting_runtime_status_is_below_banner_and_above_evidence(self) -> None:
         waiting_start = self.source.index("if (showWaiting)")
         waiting_end = self.source.index("if (showServiceSelection)", waiting_start)
@@ -185,7 +217,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
 
         menu_start = self.source.index("if (showServiceSelection)")
         # Bound the actual production control layout without a simulator-only hook.
-        menu_end = self.source.index('<div className="main-layout" onClick=', menu_start)
+        # HH_261001 - The integrated display adds a computed class to the
+        # existing control shell; its stable data-ui still bounds the menu.
+        menu_end = self.source.index('data-ui="operator-control-screen"', menu_start)
         menu = self.source[menu_start:menu_end]
         for expected in (
             "배달 서비스",
@@ -242,7 +276,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source,
         )
         banner_start = self.source.index('className={`mission-role-banner')
-        body_start = self.source.index('<div className="control-body">', banner_start)
+        body_start = self.source.index('className={`control-body', banner_start)
         panel_start = self.source.index('<div className="app">', body_start)
         self.assertLess(banner_start, body_start)
         self.assertLess(body_start, panel_start)
@@ -332,7 +366,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.source.index(") : activeSite ? (")
         ]
         self.assertIn("운행을 정지하시겠습니까?", returning_preview)
-        self.assertIn("onClick={handleStopMove}", returning_preview)
+        self.assertIn("onClick={() => requestStopConfirmation('service')}", returning_preview)
+        self.assertIn('data-ui="operator-stop-confirm-no"', self.source)
+        self.assertIn('data-ui="operator-stop-confirm-yes"', self.source)
 
         returning_states = self.source[
             self.source.index("const RETURNING_STATES = new Set([") :
@@ -378,7 +414,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
                                 self.source.index(") : activeSite ? (")]
         self.assertIn("motionNotice?.label || recallProgress.label", returning)
         self.assertIn("motionNotice?.message || (recallReturnPresentation", returning)
-        self.assertIn("onClick={handleStopMove}", returning)
+        self.assertIn("onClick={() => requestStopConfirmation('service')}", returning)
         for first, last in ((") : activeSite ? (", ") : activeRecallSite ? ("),
                             (") : activeRecallSite ? (", ") : manualDriveActive ? ("),
                             (") : manualDriveActive ? (", ") : serviceStateName === 'OPERATOR_STOPPED'")):
@@ -386,7 +422,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
             self.assertIn("motionNotice?.message ||", block)
         self.assertEqual(self.source.count("{guestAdmissionStatus}"), 2)
         self.assertNotIn('className="guest-recall-overlay"', self.source)
-        arrival = self.source[self.source.index(") : arrivedSite ? ("):
+        arrival = self.source[self.source.index(") : arrivedSite && !recallTurnaroundInProgress ? ("):
                               self.source.index(") : ['CHARGING'")]
         self.assertNotIn("motionNotice", arrival)
         self.assertIn("recallReturnInstructions(arrivedSite, recallFinalReturnReady)", arrival)
@@ -595,9 +631,13 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         lifecycle_start = self.source.index("if ('service_state' in data)")
         lifecycle_end = self.source.index("if ('system_health' in data)", lifecycle_start)
         lifecycle = self.source[lifecycle_start:lifecycle_end]
-        self.assertIn("const recallTurnaroundInProgress", lifecycle)
-        self.assertIn("!recallFinalReturnReadyRef.current", lifecycle)
-        self.assertIn("if (!recallTurnaroundInProgress)", lifecycle)
+        # HH_261002 - The WebSocket lifecycle retains the arrival site while
+        # Recall turns around; the render gate hides its old arrival button
+        # until the backend's final-ready signal enables the second action.
+        self.assertIn("const recallCompletionStage", lifecycle)
+        self.assertIn("if (!recallCompletionStage)", lifecycle)
+        self.assertIn("const recallTurnaroundInProgress", self.source)
+        self.assertIn("&& !recallFinalReturnReady", self.source)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_recall_return_progress_matches_both_uis_for_every_site(self) -> None:
@@ -677,6 +717,7 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         guest_action = guest_source[guest_start:guest_source.index("function sendCancel()", guest_start)]
         script = helpers + r"""
 const robotCalls = [], guestCalls = [], warnings = [];
+const previewMode = false;
 const WebSocket = {OPEN: 1};
 let recallFinalReturnReady = false;
 const missionExecutionErrorRef = {current: ''}, returnRequestPendingRef = {current: false};

@@ -1,0 +1,26 @@
+{
+  "asset": "ranger-driving-rear.png",
+  "description": "Transparent studio render of actual approved Ranger FBX mesh; not live or road-test evidence.",
+  "source": "/home/hong/Downloads/ranger-carla-4ws-pipeline/assets/fbx/ranger_carla_rigged_template.fbx",
+  "source_sha256": "ef93de43399af7b0a56bfb994fb66993d8ff9b4fc627de731dae0c08775fa77c",
+  "source_selection": "docs/MODEL_BUILD_CURRENT.md: approved template checkpoint",
+  "output_sha256": "5991b01fd2aa222cba2598adace6356e359d9a51ffc987b0998a00dc8559b2c3",
+  "blender_version": "3.0.1",
+  "source_geometry": {
+    "Ranger": {
+      "vertices": 635576,
+      "polygons": 1167363
+    }
+  },
+  "geometry_modified": false,
+  "source_fbx_modified": false,
+  "source_axes": "+X front, +Y left, +Z up; centimeters",
+  "camera": "rear-right elevated orthographic, approximately 32 degrees down",
+  "material_fallback_meshes": [
+    "Ranger"
+  ],
+  "material_note": "Source mesh has no material slots. Olive powder coat, warm alloy lower chassis and dark tire rubber are display-only fallback materials, assigned by existing geometric regions; not claimed source textures.",
+  "render_command": "blender --background --factory-startup --python tools/render_ranger_driving_asset.py",
+  "color_management": "Native linear RGBA OpenEXR render encoded once to sRGB PNG by ImageMagick.",
+  "render_engine": "Cycles CPU, 16 samples; optional denoising and compositing disabled after output validation failed with them enabled."
+}

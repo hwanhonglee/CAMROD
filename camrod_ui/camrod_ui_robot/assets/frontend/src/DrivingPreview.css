@@ -1,0 +1,11 @@
+/* HH_261001 - Keep the explicitly labeled UI preview separate from live robot controls. */
+.driving-preview-shell { height: 100vh; overflow: hidden; background: #e8eef3; color: #152737; font-family: 'Noto Sans KR', 'Noto Sans CJK KR', sans-serif; }
+.driving-preview-toolbar { box-sizing: border-box; min-height: 64px; height: 64px; padding: 8px 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #eaf2ed; color: #1b4332; border-bottom: 1px solid #cddfd1; }
+.driving-preview-toolbar strong { font-size: 18px; letter-spacing: -.4px; }
+.driving-preview-toolbar small { display: block; color: #5c7164; font-size: 11px; margin-top: 5px; }
+.driving-preview-toolbar nav { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.driving-preview-toolbar button { border: 1px solid #d3ded6; background: white; border-radius: 8px; color: #1f5130; font: inherit; font-size: 12px; padding: 9px 12px; cursor: pointer; }
+.driving-preview-toolbar button[aria-pressed='true'] { background: #2d6e40; color: white; border-color: #2d6e40; }
+.driving-preview-canvas { height: calc(100vh - 64px); padding: 0; box-sizing: border-box; }
+.driving-preview-shell[data-theme='dark'] { background: #080f17; }
+@media (max-width: 1300px) { .driving-preview-toolbar { min-height: 82px; height: 82px; gap: 10px; } .driving-preview-toolbar strong { font-size: 14px; } .driving-preview-toolbar button { padding: 7px 8px; font-size: 11px; } .driving-preview-canvas { height: calc(100vh - 82px); padding: 0; } }

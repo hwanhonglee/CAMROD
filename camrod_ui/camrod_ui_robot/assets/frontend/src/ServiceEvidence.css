@@ -1,0 +1,117 @@
+/* HH_261002 - Restore leg-level distance evidence without changing the existing site graph or navigation UI. */
+.evidence-distance-summary-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.9rem 0 1.1rem;
+}
+
+.evidence-distance-panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #cfded3;
+  border-radius: 12px;
+  background: #f8fbf9;
+}
+
+.evidence-distance-panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.3rem 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.evidence-distance-panel-heading h3 {
+  margin: 0;
+  color: #244d34;
+  font-size: 0.95rem;
+}
+
+.evidence-distance-panel-heading > span {
+  color: #526c5b;
+  font-size: 0.8rem;
+}
+
+.evidence-distance-panel-heading strong {
+  color: #1d5937;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.evidence-distance-breakdown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.evidence-distance-kind {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.evidence-distance-kind > span {
+  color: #52675a;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.evidence-distance-kind > strong {
+  color: #255a39;
+  font-size: 0.94rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.evidence-distance-kind.unknown {
+  border-color: #e9daba;
+  background: #fffaf0;
+}
+
+.evidence-distance-kind.unknown > strong { color: #765421; }
+
+.evidence-service-overview > .evidence-distance-breakdown {
+  grid-column: 1 / -1;
+  padding-top: 0.8rem;
+  border-top: 1px solid #e0e6e2;
+}
+
+.evidence-table .evidence-distance-breakdown.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 16rem;
+}
+
+.evidence-table .evidence-distance-kind { padding: 0.35rem 0.45rem; }
+.evidence-table .evidence-distance-kind > strong { font-size: 0.76rem; }
+
+.evidence-historical-records {
+  margin: 0.75rem 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid #dfc99f;
+  border-radius: 9px;
+  background: #fffaf0;
+  color: #674d26;
+  font-size: 0.83rem;
+  line-height: 1.55;
+}
+
+.evidence-historical-records p { margin: 0.3rem 0 0; }
+
+@media (max-width: 900px) {
+  .evidence-distance-summary-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 700px) {
+  .evidence-distance-panel { padding: 0.75rem; }
+  .evidence-distance-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .evidence-service-overview > .evidence-distance-breakdown { padding-top: 0.55rem; }
+}

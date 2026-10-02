@@ -1697,6 +1697,31 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'system/api_ui_port', 8010),
             'API UI backend bind port',
         ),
+        # HH_261002 - Keep the passive mission/CAN journal independent of the
+        # existing service metrics database and physical-platform parameters.
+        (
+            'enable_mission_recorder',
+            cfg_get(launch_cfg, 'system/enable_mission_recorder', True),
+            'Enable passive per-mission decoded platform/CAN recording',
+        ),
+        (
+            'mission_records_root',
+            os.environ.get(
+                'CAMROD_MISSION_RECORDS_ROOT',
+                os.path.expanduser('~/.local/state/camrod/mission_records'),
+            ),
+            'Independent mission journal storage root',
+        ),
+        (
+            'mission_recorder_environment',
+            os.environ.get('CAMROD_RECORDING_ENVIRONMENT', 'real'),
+            'Mission recording source label: real or simulation',
+        ),
+        (
+            'mission_recorder_raw_can_interface',
+            os.environ.get('CAMROD_MISSION_RAW_CAN_INTERFACE', ''),
+            'Optional receive-only physical SocketCAN interface',
+        ),
         (
             'api_ui_manual_return_preempt_hold_s',
             cfg_get(launch_cfg, 'system/api_ui_manual_return_preempt_hold_s', 0.5),
@@ -2542,6 +2567,12 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        # HH_261002 - Forward journal configuration without changing the UI's
+        # existing mission authority or enabling raw CAN capture implicitly.
+        'enable_mission_recorder': lc['enable_mission_recorder'],
+        'mission_records_root': lc['mission_records_root'],
+        'mission_recorder_environment': lc['mission_recorder_environment'],
+        'mission_recorder_raw_can_interface': lc['mission_recorder_raw_can_interface'],
         # HH_260819 - Keep the Return ownership barrier explicit and tunable at
         # the top-level deployment boundary without adding sustained CPU work.
         'manual_return_preempt_hold_s': lc['api_ui_manual_return_preempt_hold_s'],

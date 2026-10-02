@@ -97,12 +97,10 @@ class VoiceEventAdapterNode(Node):
         self.declare_parameter('readiness_check_period_s', 0.5)
         self.declare_parameter('max_ready_localization_mode', 0)
         self.declare_parameter('return_mission_key', 'drop_zone')
-        # HH_260910 - camrod_ui now plays site_B*/to_campsite/to_dropzone
-        # itself and holds the engage/goal command until playback finishes.
-        # Keep this node's own reactive departure cue off by default so the
-        # trip is not announced twice; flip it on only if camrod_ui's gate is
-        # disabled and the old reactive-only behavior is wanted back.
+        # HH_261002 - UI owns pre-motion site speech; it does not speak the
+        # return route. Keep the reactive site cue off, but the return cue on.
         self.declare_parameter('enable_reactive_departure_cue', False)
+        self.declare_parameter('enable_reactive_return_cue', True)
 
         p = self.get_parameter
         self._en_nav = p('enable_nav_audio').value
@@ -159,12 +157,15 @@ class VoiceEventAdapterNode(Node):
 
         self._en_reactive_departure_cue = bool(
             p('enable_reactive_departure_cue').value)
+        self._en_reactive_return_cue = bool(
+            p('enable_reactive_return_cue').value)
         self._policy = VoiceEventPolicy(
             required_modules,
             return_mission_key=str(p('return_mission_key').value),
             max_ready_localization_mode=int(
                 p('max_ready_localization_mode').value),
             announce_departure=self._en_reactive_departure_cue,
+            announce_return_departure=self._en_reactive_return_cue,
         )
 
         # 발행: voice_announcer/say → /voice/voice_announcer/say
@@ -230,7 +231,8 @@ class VoiceEventAdapterNode(Node):
             f'battery={self._en_battery}, charging={self._en_charging}, '
             f'docking={self._en_docking}, bgm={self._en_bgm}, '
             f'announce={self._en_travel_announce}@{self._announce_period:.0f}s, '
-            f'reactive_departure_cue={self._en_reactive_departure_cue}, '
+            f'reactive_site_cue={self._en_reactive_departure_cue}, '
+            f'reactive_return_cue={self._en_reactive_return_cue}, '
             f'readiness_modules={",".join(required_modules)}, '
             f'tf={self._readiness_map_frame}<-{self._readiness_base_frame})')
 
