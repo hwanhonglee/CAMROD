@@ -57,6 +57,18 @@ describe('local-only driving preview', () => {
     expect(bend.motion.yaw_rate_rps).toBeGreaterThan(0);
     expect(demoRoutePose(8)).toEqual({x: 8, y: 0, yaw: 0});
   });
+  test('labelled map fixture retains separate green bounds without a mission', () => {
+    // HH_261002 - Preview road paint is synthetic and must not be a command source.
+    const snapshot = makeDrivingPreviewSnapshot('idle', 0);
+    expect(snapshot.mission.active).toBe(false);
+    expect(snapshot.base_map.source).toBe('/map/markers');
+    expect(snapshot.base_map.provenance).toBe('synthetic_preview_only');
+    expect(snapshot.base_map.polylines.map(line => line.namespace)).toEqual([
+      'lanelet/right_bound', 'lanelet/left_bound',
+    ]);
+    expect(snapshot.base_map.polylines.every(line => line.points.length > 2)).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
   test('the entire fixture boxes stay outside the robot corridor along every route bend', () => {
     // HH_261002 - This passive preview cannot brake; do not visually drive through fixtures.
     const snapshot = makeDrivingPreviewSnapshot('delivery', 0);

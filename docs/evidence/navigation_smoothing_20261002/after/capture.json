@@ -1,0 +1,173 @@
+{
+  "evidence_type": "isolated_synthetic_ui_preview",
+  "real_driving": false,
+  "viewport": [
+    1920,
+    1080
+  ],
+  "light": {
+    "renderedFrames": 11,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": 4,
+      "y": 0
+    },
+    "modelYawRad": 0,
+    "cameraYawRad": 0,
+    "wheelRollRad": 0.013131248771967035,
+    "motionKind": "stationary",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": 0.013131248771967035
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": 0.013131248771967035
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": 0.013131248771967035
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": 0.013131248771967035
+      }
+    ],
+    "cameraSideOffsetMeters": 0,
+    "robotProjectedXNdc": -1.0334813669325214e-17,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 621,
+    "pointCount": 0,
+    "baseMapVertices": 64,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 0,
+    "visibleAreaLabels": 0,
+    "serviceAreaIds": [],
+    "baseMapBoundaryColor": "#1ea65a",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "baseMapBoundaryPaintVertices": 396,
+    "renderedTriangles": 128666,
+    "cameraMode": "navigation-follow",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": true,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+    "illustratedRoadCount": 1,
+    "illustrativeShrubs": 10,
+    "illustrativeTrees": 2,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_left",
+      "wrap_right",
+      "wrap_front",
+      "wrap_rear"
+    ],
+    "visibleObjectLabels": 3,
+    "observedObjectBoxes": 2,
+    "objectVisualCount": 3,
+    "renderCalls": 71,
+    "renderTriangles": 128666,
+    "renderPixelRatio": 1
+  },
+  "dark": {
+    "renderedFrames": 17,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": 4,
+      "y": 0
+    },
+    "modelYawRad": 0,
+    "cameraYawRad": 0,
+    "wheelRollRad": 0,
+    "motionKind": "stationary",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": 0
+      }
+    ],
+    "cameraSideOffsetMeters": 0,
+    "robotProjectedXNdc": -1.0334813669325214e-17,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 621,
+    "pointCount": 0,
+    "baseMapVertices": 64,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 0,
+    "visibleAreaLabels": 0,
+    "serviceAreaIds": [],
+    "baseMapBoundaryColor": "#4ade80",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "baseMapBoundaryPaintVertices": 396,
+    "renderedTriangles": 128666,
+    "cameraMode": "navigation-follow",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": true,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+    "illustratedRoadCount": 1,
+    "illustrativeShrubs": 10,
+    "illustrativeTrees": 2,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_left",
+      "wrap_right",
+      "wrap_front",
+      "wrap_rear"
+    ],
+    "visibleObjectLabels": 3,
+    "observedObjectBoxes": 2,
+    "objectVisualCount": 3,
+    "renderCalls": 71,
+    "renderTriangles": 128666,
+    "renderPixelRatio": 1
+  },
+  "control_or_api_requests": [],
+  "runtime_errors": [],
+  "websockets": []
+}

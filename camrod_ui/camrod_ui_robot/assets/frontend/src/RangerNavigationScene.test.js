@@ -1,5 +1,6 @@
 import React, { act } from 'react';
-import { Color } from 'three';
+import { Color, WebGLRenderer } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createRoot } from 'react-dom/client';
 import RangerNavigationScene, { configureCargoPreview, hasIllustrativeRoute,
   navigationCameraSideOffset, baseMapLinePositions, baseMapLineColors, syncBaseMapVisibility,
@@ -27,6 +28,35 @@ test('WebGL failure is explicit and never replaced with a static robot image', (
   expect(host.textContent).not.toContain('Ranger 3D 모델');
   expect(host.textContent).toContain('전방 인지 수신 대기');
   expect(host.querySelector('[data-navigation="zoom"]').textContent).toBe('외관 보기');
+});
+
+test('frame-start time cannot hide telemetry accepted later in the same frame', () => {
+  // HH_261002 - Reproduce RAF's older frame timestamp, then retain the real
+  // stale timeout when no further telemetry arrives. No fake fresh-data bypass.
+  const renderer = { domElement: document.createElement('canvas'), shadowMap: {},
+    info: { render: { calls: 0, triangles: 0 } },
+    setPixelRatio: jest.fn(), getPixelRatio: () => 1, setClearColor: jest.fn(),
+    setSize: jest.fn(), render: jest.fn(), dispose: jest.fn(), forceContextLoss: jest.fn() };
+  WebGLRenderer.mockImplementationOnce(() => renderer);
+  GLTFLoader.mockImplementationOnce(() => ({ load: jest.fn() }));
+  let callback, now = 1000;
+  const clock = jest.spyOn(performance, 'now').mockImplementation(() => now);
+  const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(next => { callback = next; return 1; });
+  const cancel = jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  try {
+    act(() => root.render(<RangerNavigationScene data={data} />));
+    now = 1010;
+    act(() => root.render(<RangerNavigationScene data={{ ...data }} />));
+    now = 1015;
+    act(() => callback(1005));
+    expect(JSON.parse(renderer.domElement.dataset.navigationState).poseFresh).toBe(true);
+    now = 2200;
+    act(() => callback(2190));
+    expect(JSON.parse(renderer.domElement.dataset.navigationState).poseFresh).toBe(false);
+  } finally {
+    act(() => root.unmount());
+    clock.mockRestore(); raf.mockRestore(); cancel.mockRestore();
+  }
 });
 
 test('model detail pointer/click gestures do not bubble into display dismissal', () => {
@@ -84,10 +114,14 @@ test('received base map has metre-space geometry even when there is no route', (
   const baseMap = { valid: true, polylines: [{ namespace: 'lanelet/left_bound',
     points: [[10, 20], [12, 20], [12, 22]] }] };
   expect(hasIllustrativeRoute({ ...data, route: [] })).toBe(false);
-  expect(baseMapLinePositions(baseMap, { x: 10, y: 20 }).map((value) => value + 0)).toEqual([
-    0, 0.025, 0, 2, 0.025, 0,
-    2, 0.025, 0, 2, 0.025, -2,
-  ]);
+  // HH_261002 - Curved display samples retain metre scale, exact endpoints, and map height.
+  const positions = baseMapLinePositions(baseMap, { x: 10, y: 20 }).map(value => value + 0);
+  expect(positions.length).toBeGreaterThan(12);
+  expect(positions.slice(0, 3)).toEqual([0, 0.025, 0]);
+  expect(positions.slice(-3)).toEqual([2, 0.025, -2]);
+  expect(positions.filter((_, i) => i % 3 === 1).every(y => y === 0.025)).toBe(true);
+  expect(positions.filter((_, i) => i % 3 === 0).every(x => x >= 0 && x <= 2)).toBe(true);
+  expect(positions.filter((_, i) => i % 3 === 2).every(z => z >= -2 && z <= 0)).toBe(true);
   expect(baseMapLinePositions({ ...baseMap, valid: false }, { x: 10, y: 20 })).toEqual([]);
   const lines = { visible: false, geometry: { attributes: { position: { count: 4 } } } };
   expect(syncBaseMapVisibility(lines, true)).toBe(true);
@@ -115,46 +149,55 @@ test('map road illustration remains independent of route and pose freshness', ()
   expect(navigationIllustrationInput({ ...data, route: [[0, 0], [2, 0]] }).source).toBe('route');
 });
 
-test('map boundaries are green in both themes without recoloring centerlines or changing geometry', () => {
-  // HH_261002 - Every colored endpoint corresponds to an unchanged received map vertex.
+test('curved boundaries are green in both themes while centerlines and source remain unchanged', () => {
+  // HH_261002 - Colors follow curved display vertices; the neutral centerline stays uncurved.
   const baseMap = { valid: true, polylines: ['lanelet/left_bound', 'lanelet/right_bound',
     'lanelet/centerline'].map(namespace => ({ namespace, points: [[0, 0], [5, 0], [7, 1]] })) };
   const vertices = baseMapLinePositions(baseMap, { x: 0, y: 0 });
+  const sourceBefore = JSON.stringify(baseMap);
+  const greenComponents = vertices.length - 12;
+  expect(vertices.slice(-12).map(value => value + 0)).toEqual([
+    0, 0.025, 0, 5, 0.025, 0, 5, 0.025, 0, 7, 0.025, -1,
+  ]);
   for (const [dark, green, neutral] of [[false, '#1ea65a', '#506c60'], [true, '#4ade80', '#91ada8']]) {
     const colors = baseMapLineColors(baseMap, dark);
     expect(colors).toHaveLength(vertices.length);
     const rgb = new Color(green).toArray();
-    expect(colors.slice(0, 24)).toEqual(Array.from({ length: 8 }, () => rgb).flat());
-    expect(colors.slice(24)).toEqual(Array.from({ length: 4 }, () => new Color(neutral).toArray()).flat());
+    expect(colors.slice(0, greenComponents)).toEqual(Array.from({ length: greenComponents / 3 }, () => rgb).flat());
+    expect(colors.slice(greenComponents)).toEqual(Array.from({ length: 4 }, () => new Color(neutral).toArray()).flat());
   }
   expect(baseMapLineColors({ ...baseMap, valid: false })).toEqual([]);
   expect(baseMapLinePositions(baseMap, { x: 0, y: 0 })).toEqual(vertices);
+  expect(JSON.stringify(baseMap)).toBe(sourceBefore);
 });
 
 test('filled road geometry never joins disconnected lines or rejects sparse map segments', () => {
   const origin = { x: 10, y: 20 };
   const paths = [[[10, 20], [30, 20]], [[110, 20], [114, 20]]];
   const positions = illustratedRoadPositions(paths, origin, 2, 0.008);
-  expect(positions).toHaveLength(36);
+  expect(positions.length).toBeGreaterThan(36);
   expect(positions.filter((_, index) => index % 3 === 1).every(y => y === 0.008)).toBe(true);
   const xValues = positions.filter((_, index) => index % 3 === 0);
-  expect(xValues.every(x => x <= 20 || x >= 100)).toBe(true);
-  expect(illustratedRoadPositions(paths, origin, 2, 0.008, 15)).toHaveLength(18);
+  // HH_261002 - Round caps extend by half-width, never across separate roads.
+  expect(xValues.every(x => x <= 21 || x >= 99)).toBe(true);
+  const shortRoad = illustratedRoadPositions(paths, origin, 2, 0.008, 15);
+  expect(shortRoad.length).toBeGreaterThan(18);
+  expect(shortRoad.filter((_, i) => i % 3 === 0).every(x => x >= 99)).toBe(true);
   expect(illustratedRoadPositions([[[10, 20], [10, 20]]], origin, 2, 0.008)).toEqual([]);
 });
 
-test('received boundary paint has physical 0.10 m width and six vertices per segment', () => {
+test('received boundary paint keeps physical 0.10 m width with round end caps', () => {
   // HH_261002 - Road paint follows actual Lanelet bounds, not an invented centerline.
   const map = { valid: true, polylines: [{ namespace: 'lanelet/left_bound',
     points: [[10, 20], [30, 20]] }] };
   const positions = boundaryPaintPositions(map, { x: 10, y: 20 });
   expect(LANE_BOUNDARY_WIDTH_M).toBe(0.1);
-  expect(positions).toHaveLength(6 * 3);
+  expect(positions.length).toBeGreaterThan(6 * 3);
   const xs = positions.filter((_, index) => index % 3 === 0);
   const heights = positions.filter((_, index) => index % 3 === 1);
   const zs = positions.filter((_, index) => index % 3 === 2);
-  expect(Math.min(...xs)).toBeCloseTo(0);
-  expect(Math.max(...xs)).toBeCloseTo(20);
+  expect(Math.min(...xs)).toBeCloseTo(-0.05);
+  expect(Math.max(...xs)).toBeCloseTo(20.05);
   expect(heights.every((height) => height === 0.027)).toBe(true);
   expect(Math.min(...zs)).toBeCloseTo(-0.05);
   expect(Math.max(...zs)).toBeCloseTo(0.05);
@@ -168,9 +211,11 @@ test('paint treats two boundaries independently, excludes centerline, and fails 
     { namespace: 'lanelet/centerline', points: [[10, 22], [30, 22]] },
   ] };
   const positions = boundaryPaintPositions(map, { x: 10, y: 20 });
-  expect(positions).toHaveLength(2 * 6 * 3);
-  const zFirst = positions.slice(0, 18).filter((_, index) => index % 3 === 2);
-  const zSecond = positions.slice(18).filter((_, index) => index % 3 === 2);
+  const first = boundaryPaintPositions({ ...map, polylines: [map.polylines[0]] }, { x: 10, y: 20 });
+  const second = boundaryPaintPositions({ ...map, polylines: [map.polylines[1]] }, { x: 10, y: 20 });
+  expect(positions).toEqual([...first, ...second]);
+  const zFirst = first.filter((_, index) => index % 3 === 2);
+  const zSecond = second.filter((_, index) => index % 3 === 2);
   expect(zFirst.every((z) => Math.abs(z) <= 0.05 + 1e-8)).toBe(true);
   expect(zSecond.every((z) => Math.abs(z + 4) <= 0.05 + 1e-8)).toBe(true);
   expect(boundaryPaintPositions({ ...map, valid: false }, { x: 10, y: 20 })).toEqual([]);
@@ -189,6 +234,22 @@ test('boundary paint rebases map coordinates without changing width or height', 
     expect(rebased[index + 1]).toBeCloseTo(original[index + 1]);
     expect(rebased[index + 2]).toBeCloseTo(original[index + 2] - 5);
   }
+});
+
+test('side boundary curves feed both the thin line and paint without editing the map', () => {
+  // HH_261002 - The former angular center hairline must not remain under curved paint.
+  const points = [[0, 0], [4, 0], [4, 4]];
+  const map = { valid: true, polylines: [{ namespace: 'lanelet/left_bound', points }] };
+  const before = JSON.stringify(map);
+  const line = baseMapLinePositions(map, { x: 0, y: 0 });
+  expect(line.length).toBeGreaterThan(12);
+  expect(baseMapLineColors(map).length).toBe(line.length);
+  expect(boundaryPaintPositions(map, { x: 0, y: 0 }).length).toBeGreaterThan(line.length);
+  expect(JSON.stringify(map)).toBe(before);
+  // There are visual samples rounding the corner, not just rounded strip end caps.
+  const xy = [];
+  for (let index = 0; index < line.length; index += 3) xy.push([line[index], -line[index + 2]]);
+  expect(xy.some(([x, y]) => x < 4 && x > 3.5 && y > 0 && y < 0.5)).toBe(true);
 });
 
 test('a measured forward object at the side of the camera keeps a readable edge label', () => {

@@ -3,6 +3,7 @@ import './DrivingDisplay.css';
 import RangerNavigationScene from './RangerNavigationScene';
 import { RANGER_MODEL_URL } from './rangerModelAsset';
 import { areaIsDestination, areaLabelPoint, layoutAreaLabels, normalizeNavigationAreas } from './navigationAreas';
+import { displayBoundaryLines } from './navigationBoundaryCurves';
 
 // HH_261001 - Telemetry and geometry are read-only. The optional operator stop action calls
 // the existing App handler only after an explicit confirmation.
@@ -312,7 +313,9 @@ function RouteMap({ data, id }) {
     return { x: -relative.left, y: -relative.forward };
   };
   const routePoints = ready ? data.route.map(xy) : [];
-  const baseLines = mapReady ? data.baseMap.polylines.map((line) => ({ namespace: line.namespace,
+  // HH_261002 - The mini-map matches the bounded 3D boundary curve. Keep the
+  // normalized source map and all navigation/controller inputs untouched.
+  const baseLines = mapReady ? displayBoundaryLines(data.baseMap.polylines).map((line) => ({ namespace: line.namespace,
     points: line.points.map(xy) })) : [];
   const areas = mapReady ? data.baseMap.areas.map((area) => ({ ...area,
     points: area.points.map(xy), center: xy(areaLabelPoint(area)),

@@ -47,6 +47,14 @@ export function demoRoutePose(distance) {
   return { x: 14, y: 6 + d - DEMO_TURN_END, yaw: Math.PI / 2 };
 }
 const DEMO_ROUTE = Array.from({ length: 81 }, (_, index) => demoRoutePose(index * DEMO_LENGTH / 80));
+// HH_261002 - A labelled local fixture also exercises sparse green map paint.
+// It never replaces the map or sensor input used by the operating Robot UI.
+const DEMO_MAP_LINES = [-1, 1].map(side => ({
+  namespace: side < 0 ? 'lanelet/right_bound' : 'lanelet/left_bound',
+  marker_id: side < 0 ? 2 : 1,
+  points: DEMO_ROUTE.filter((_, pointIndex) => pointIndex % 5 === 0).map(p =>
+    [p.x - Math.sin(p.yaw) * side * 1.6, p.y + Math.cos(p.yaw) * side * 1.6]),
+}));
 
 function previewServiceState({ idle, arrived, returning, leg }) {
   if (idle) return 'DROP_ZONE_WAIT';
@@ -109,6 +117,9 @@ export function makeDrivingPreviewSnapshot(mode = 'delivery', elapsed = 0, activ
       frame_id: 'robot_center_link', age_s: offline || stale ? 9 : 0.02 },
     battery: { percentage: 82 },
     pose: { ...position, frame_id: 'map', age_s: offline || stale ? 9 : 0.02 },
+    base_map: { valid: true, frame_id: 'map', source: '/map/markers',
+      provenance: 'synthetic_preview_only',
+      polylines: DEMO_MAP_LINES, areas: [], age_s: 0 },
     route: { points: (returning ? [...DEMO_ROUTE].reverse() : DEMO_ROUTE).map(p => [p.x, p.y]),
       frame_id: 'map', age_s: offline || stale ? 9 : 0.05, valid: !wheelFixture && !offline && !stale && !idle && !arrived },
     progress: { remaining_distance_m: offline || stale || wheelFixture ? null : DEMO_TRAVEL_LENGTH - travelled,

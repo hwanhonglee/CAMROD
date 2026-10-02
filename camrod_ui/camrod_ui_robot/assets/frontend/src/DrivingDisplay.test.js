@@ -331,6 +331,19 @@ describe('display interactions', () => {
     expect(host.querySelector('[data-testid="ranger-navigation-scene"]').getAttribute('data-model-url')).toBe('/models/actual-ranger.glb');
   });
 
+  test('mini-map rounds only display boundary corners while keeping received XY intact', () => {
+    // HH_261002 - Mini-map and 3D paint share a visual approximation, not a new map.
+    const snapshot = fixture();
+    snapshot.base_map = { valid: true, frame_id: 'map', source: '/map/markers',
+      polylines: [{ namespace: 'lanelet/left_bound', points: [[0, 2], [5, 2], [5, 6]] }] };
+    const original = JSON.stringify(snapshot);
+    act(() => root.render(<DrivingDisplay snapshot={snapshot} onDismiss={() => {}} />));
+    const path = host.querySelector('[data-namespace="lanelet/left_bound"]').getAttribute('d');
+    expect((path.match(/L/g) || []).length).toBeGreaterThan(2);
+    expect(normalizeBaseMap(snapshot.base_map).polylines[0].points).toEqual(snapshot.base_map.polylines[0].points);
+    expect(JSON.stringify(snapshot)).toBe(original);
+  });
+
   test('layout density follows available card height rather than viewport height', () => {
     const bounds = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 410, width: 1200 });
     act(() => root.render(<DrivingDisplay snapshot={fixture()} onDismiss={() => {}} />));

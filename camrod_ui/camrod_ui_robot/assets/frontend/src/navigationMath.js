@@ -1,5 +1,6 @@
 // HH_261001 - Physical navigation coordinates: ROS map (x forward, y left, z up) metres
 // map to Three/glTF (x forward, y up, z right). No visual vehicle scaling.
+import { illustratedRoadPositions } from './navigationRoadVisuals';
 export const RANGER_WHEEL_RADIUS_M = 0.153;
 export const NAVIGATION_STALE_MS = 1000;
 export const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
@@ -125,16 +126,7 @@ export function followCamera(pose, heading, origin = { x: 0, y: 0 }, detail = 0,
 }
 
 export function buildRouteRibbon(points, origin, width = 0.12, height = 0.025) {
-  const vertices = [];
-  for (let index = 1; index < points.length; index += 1) {
-    const a = mapToThree(points[index - 1], origin, height);
-    const b = mapToThree(points[index], origin, height);
-    const dx = b.x - a.x, dz = b.z - a.z;
-    const length = Math.hypot(dx, dz);
-    if (!length || length > 15) continue;
-    const nx = -dz / length * width / 2, nz = dx / length * width / 2;
-    vertices.push(a.x + nx, height, a.z + nz, a.x - nx, height, a.z - nz, b.x + nx, height, b.z + nz,
-      a.x - nx, height, a.z - nz, b.x - nx, height, b.z - nz, b.x + nx, height, b.z + nz);
-  }
-  return vertices;
+  // HH_261002 - Match rounded map paint without changing path XY or bridging
+  // the existing 15 m route discontinuity limit. This returns display triangles.
+  return illustratedRoadPositions([points], origin, width, height, 15);
 }
