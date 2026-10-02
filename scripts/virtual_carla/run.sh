@@ -563,10 +563,12 @@ validate_step_pacer_ready() {
   fi
 
   local deadline=$((SECONDS + 10)) response="" summary=""
+  # HH_261002 - Query proven pacing, not an incidental PAUSED window between
+  # rendered ticks. The dedicated service retains fresh ACK and fault checks.
   while (( SECONDS < deadline )); do
     response="$(
       timeout 2s ros2 service call \
-        /virtual_carla/step_pacer/health std_srvs/srv/Trigger '{}' 2>&1
+        /virtual_carla/step_pacer/startup_ready std_srvs/srv/Trigger '{}' 2>&1
     )" || true
     if grep -q 'success=True' <<<"${response}"; then
       summary="$(grep -o 'message=.*' <<<"${response}" | tail -n 1)"

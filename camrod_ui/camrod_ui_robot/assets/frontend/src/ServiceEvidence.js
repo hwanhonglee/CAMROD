@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import MissionRecords from './MissionRecords';
+import './ServiceEvidence.css';
 
 const SUMMARY_ENDPOINT = '/api/service-metrics/summary';
 const HISTORY_ENDPOINT = '/api/service-metrics?days=30';
@@ -24,9 +26,11 @@ const siteOf = service => (
   service?.site || service?.destination_site || service?.destination || '-'
 );
 
-const formatDistance = (distanceM, digits = 2) => {
+const formatDistance = (distanceM, digits = 3) => {
   const value = finiteNumber(distanceM);
-  if (value === null) return null;
+  if (value === null || value < 0) return null;
+  // HH_261002 - Show sub-kilometre trips in metres so real movement is not rounded to 0.00 km.
+  if (value < 1000) return formatMeters(value);
   return `${(value / 1000).toLocaleString('ko-KR', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -54,11 +58,70 @@ const formatDuration = durationS => {
 const formatMeters = distanceM => {
   const value = finiteNumber(distanceM);
   if (value === null) return '-';
+  if (value > 0 && value < 0.05) {
+    return `${value.toLocaleString('ko-KR', { maximumSignificantDigits: 3 })} m`;
+  }
   return `${value.toLocaleString('ko-KR', {
     minimumFractionDigits: value < 10 ? 1 : 0,
     maximumFractionDigits: 1,
   })} m`;
 };
+
+const DISTANCE_KINDS = [
+  ['delivery', '일반 주행'], ['recall', '호출'],
+  ['return', '복귀'], ['unknown', '구간 미확인'],
+];
+
+// HH_261002 - Restore v2 category evidence without reclassifying legacy data.
+// A missing or inconsistent breakdown belongs to unknown, never to a guessed intent.
+export function serviceDistanceBreakdown(record) {
+  const total = distanceOf(record);
+  if (total === null || total < 0) return null;
+  const fallback = { delivery: 0, recall: 0, return: 0, unknown: total };
+  if (!isRecord(record?.distance_breakdown_m)) return fallback;
+  const values = {};
+  for (const [kind] of DISTANCE_KINDS) {
+    const value = finiteNumber(record.distance_breakdown_m[kind]);
+    if (value !== null && value < 0) return fallback;
+    values[kind] = value === null ? 0 : value;
+  }
+  const known = values.delivery + values.recall + values.return;
+  const arithmeticTolerance = Math.max(1, total) * Number.EPSILON * 8;
+  if (known > total + arithmeticTolerance || known + values.unknown > total + 0.05) return fallback;
+  return { ...values, unknown: Math.max(0, total - known) };
+}
+
+function DistanceBreakdown({ record, compact = false }) {
+  const values = serviceDistanceBreakdown(record);
+  return <span className={`evidence-distance-breakdown${compact ? ' compact' : ''}`}
+    role="group" aria-label="구간별 운행 거리">
+    {DISTANCE_KINDS.map(([kind, label]) => <span className={`evidence-distance-kind ${kind}`} key={kind}>
+      <span>{label}</span><strong data-distance-kind={kind}>{values ? formatDistance(values[kind]) : '—'}</strong>
+    </span>)}
+  </span>;
+}
+
+function DistanceTotalsPanel({ title, record }) {
+  const total = distanceOf(record);
+  const totalKm = total !== null && total >= 0
+    ? `${(total / 1000).toLocaleString('ko-KR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km`
+    : '확인 불가';
+  return <section className="evidence-distance-panel" aria-label={`${title} 구간별 거리`}>
+    <div className="evidence-distance-panel-heading"><h3>{title}</h3><span>합계 <strong>{totalKm}</strong></span></div>
+    <DistanceBreakdown record={record} />
+  </section>;
+}
+
+function HistoricalRecordsNotice({ history }) {
+  const count = finiteNumber(history?.record_count);
+  const distance = finiteNumber(history?.distance_m);
+  if (!(count > 0) || distance === null || distance < 0
+      || history?.included_in_lifetime_total !== true) return null;
+  return <aside className="evidence-historical-records" aria-label="기존 운행 기록 보존 안내">
+    <strong>기존 기록 {Math.trunc(count).toLocaleString('ko-KR')}건의 구간 미분류 거리 {formatDistance(distance)}가 전체 누적에 포함되어 있습니다.</strong>
+    <p>과거에 구간 분류가 저장되지 않은 거리만 ‘구간 미확인’으로 유지합니다. 전체 누적에 다시 더하지 않습니다.</p>
+  </aside>;
+}
 
 const formatPercentage = value => {
   const parsed = finiteNumber(value);
@@ -252,12 +315,16 @@ async function readJson(response) {
   return body;
 }
 
-export function useServiceMetricsSummary(refreshMs = 3000) {
+export function useServiceMetricsSummary(refreshMs = 3000, enabled = true) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return undefined;
+    }
     let mounted = true;
     let timer = null;
     let controller = null;
@@ -290,7 +357,7 @@ export function useServiceMetricsSummary(refreshMs = 3000) {
       if (timer) clearTimeout(timer);
       if (controller) controller.abort();
     };
-  }, [refreshMs]);
+  }, [refreshMs, enabled]);
 
   return { data, loading, error };
 }
@@ -394,6 +461,7 @@ function ServiceOverview({ service, active }) {
         <div><dt>시작</dt><dd>{formatDateTime(start)}</dd></div>
         <div><dt>{active ? '현재 상태' : '완료'}</dt><dd>{active ? serviceStatusLabel(service) : formatDateTime(end)}</dd></div>
       </dl>
+      <DistanceBreakdown record={service} />
     </div>
   );
 }
@@ -478,7 +546,7 @@ function SitePerformance({ sites, loading, error }) {
           <thead>
             <tr>
               <th>사이트</th><th>완료/시도</th><th>완료율</th>
-              <th>평균 거리</th><th>평균 시간</th><th>최근 실행</th><th>현재 진행</th>
+              <th>평균 거리</th><th>평균 시간</th><th>최근 실행</th><th>현재 진행</th><th>누적 구간별 거리</th>
             </tr>
           </thead>
           <tbody>
@@ -508,6 +576,7 @@ function SitePerformance({ sites, loading, error }) {
                         </small>
                       </span>
                     ) : '-'}</td>
+                  <td><DistanceBreakdown record={site} compact /></td>
                 </tr>
               );
             })}
@@ -602,12 +671,23 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
         onRetry={() => setRequestKey(key => key + 1)}
       />
 
+      <HistoricalRecordsNotice history={data?.historical_unclassified} />
+
       <section className="evidence-dashboard-kpis" aria-label="실증 운행 핵심 지표">
         <EvidenceKpi label="오늘 이동 거리" value={todayDistance || fallback} />
         <EvidenceKpi label="오늘 완료 서비스" value={todayCount || fallback} />
         <EvidenceKpi label="전체 이동 거리" value={lifetimeDistance || fallback} />
         <EvidenceKpi label="전체 완료 서비스" value={lifetimeCount || fallback} />
       </section>
+
+      {/* HH_261002 - Keep category totals separate from mission-journal totals and existing site charts. */}
+      <div className="evidence-distance-summary-layout" aria-label="실증 구간별 거리와 합계">
+        <DistanceTotalsPanel title="오늘 구간별 거리" record={data?.today} />
+        <DistanceTotalsPanel title="전체 구간별 거리" record={data?.lifetime} />
+      </div>
+
+      {/* HH_261002 - Restore the separate read-only mission journal beneath existing KPIs. */}
+      <MissionRecords />
 
       <section className="evidence-panel evidence-current-panel">
         <div className="evidence-panel-heading">
@@ -641,13 +721,14 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
           <div className="evidence-table-scroll">
             <table className="evidence-table">
               <caption className="sr-only">날짜별 운행 거리와 완료 서비스 수</caption>
-              <thead><tr><th>날짜</th><th>완료 서비스</th><th>이동 거리</th></tr></thead>
+              <thead><tr><th>날짜</th><th>완료 서비스</th><th>이동 거리</th><th>구간별 거리</th></tr></thead>
               <tbody>
                 {history.map((day, index) => (
                   <tr key={day.date || index}>
                     <td>{formatDate(day.date)}</td>
                     <td>{formatCount(completedCountOf(day)) || '-'}</td>
                     <td>{formatDistance(distanceOf(day), 3) || '-'}</td>
+                    <td><DistanceBreakdown record={day} compact /></td>
                   </tr>
                 ))}
               </tbody>
@@ -667,7 +748,7 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
           <div className="evidence-table-scroll">
             <table className="evidence-table evidence-recent-table">
               <caption className="sr-only">최근 서비스별 목적지와 이동 거리</caption>
-              <thead><tr><th>완료 시각</th><th>목적지</th><th>거리</th><th>소요</th><th>결과</th></tr></thead>
+              <thead><tr><th>완료 시각</th><th>목적지</th><th>거리</th><th>소요</th><th>결과</th><th>구간별 거리</th></tr></thead>
               <tbody>
                 {recentServices.map((service, index) => (
                   <tr key={service.id || service.service_id || index}>
@@ -676,6 +757,7 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
                     <td>{formatDistance(distanceOf(service), 3) || '-'}</td>
                     <td>{formatDuration(service.duration_s)}</td>
                     <td><span className="evidence-result">{serviceStatusLabel(service)}</span></td>
+                    <td><DistanceBreakdown record={service} compact /></td>
                   </tr>
                 ))}
               </tbody>

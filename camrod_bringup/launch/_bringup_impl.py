@@ -34,7 +34,7 @@ from launch_ros.actions import Node
 
 _MISSING = object()
 
-# HH_260617: Optional modules are skipped on x86 when their launch files remain
+# HH_260617 - Optional modules are skipped on x86 when their launch files remain
 # installed but their native/third-party executables are unavailable.
 OPTIONAL_MODULE_EXECUTABLES = {
     'camrod_voice': (
@@ -94,7 +94,7 @@ OVERRIDE_SPECS = {
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
         'gnss_param_file':        ('sensing/gnss_param_file',),
         'ntrip_param_file':       ('sensing/ntrip_param_file',),
-        # HH_260528: imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
+        # HH_260528 - imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
         'imu_param_file': ('sensing/imu_param_file',),
         'vanjee_config_path': ('sensing/vanjee_config_path',),
         'ground_seg_param_file': ('sensing/ground_seg_param_file',),
@@ -103,7 +103,7 @@ OVERRIDE_SPECS = {
         'params_file': ('platform/params_file',),
         'robot_visualization_param_file': ('platform/robot_visualization_param_file',),
         'ranger_params_file': ('platform/ranger_params_file',),
-        # 260708: exterior lights (light_controller + mcu_serial_bridge).
+        # HH_260708 - exterior lights (light_controller + mcu_serial_bridge).
         'lights_param_file': ('platform/lights_param_file',),
     },
     'map': {
@@ -204,7 +204,7 @@ def pkill_safe_pattern(raw: str) -> str:
 
 # Builds a shell command for cleanup from process patterns.
 def build_cleanup_cmd(patterns: list[str]) -> str:
-    # HH_260618: Build an ancestor allow-list so cleanup can kill stale previous
+    # HH_260618 - Build an ancestor allow-list so cleanup can kill stale previous
     # bringup processes without terminating the current launch wrapper/shell.
     ancestor_scan = (
         '_ancestors=" $$ "; '
@@ -224,7 +224,7 @@ def build_cleanup_cmd(patterns: list[str]) -> str:
             f'kill "$_pid" 2>/dev/null || true; '
             f'done'
         )
-    # HH_260618: Python launch children can survive SIGTERM long enough to
+    # HH_260618 - Python launch children can survive SIGTERM long enough to
     # overload the next test run. Escalate only the previously matched stale
     # CAMROD/Nav2 process set after a short grace period.
     force_kill = (
@@ -1028,7 +1028,7 @@ def generate_launch_description():
             'LiDAR obstacle-cost raster parameter file override',
         ),
 
-        # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
+        # HH_260604 - Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
         (
             'use_nav2_container',
@@ -1038,7 +1038,7 @@ def generate_launch_description():
             'Compose Nav2 planner/controller in the scoped runtime container',
         ),
         ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', False), 'Enable path cost-grid helpers'),
-        # HH_260618: Default off unless explicitly enabled; Nav2 planner_server
+        # HH_260618 - Default off unless explicitly enabled; Nav2 planner_server
         # already owns /planning/global_path in the normal bringup path.
         ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', False), 'Enable goal replanner'),
         # HH_260619 - Keep this separate from goal_replanner: it only preempts
@@ -1305,7 +1305,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_robot_base_frame', 'robot_center_link'),
             'Axle-midpoint frame used by command safety geometry',
         ),
-        # HH_260618: Default to real localization pose for safety/cmd_vel gates.
+        # HH_260618 - Default to real localization pose for safety/cmd_vel gates.
         (
             'control_cmd_vel_gate_pose_source_preference',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_pose_source_preference', 'pose_topic'),
@@ -1383,7 +1383,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_grid_stale_log_interval_s', 1.0),
             'Log interval for merged cost-grid stale fail-safe blocks',
         ),
-        # HH_260622: The merged inflation grid includes static route/lanelet
+        # HH_260622 - The merged inflation grid includes static route/lanelet
         # guidance. Only configured dynamic sources may trigger cost-stop.
         (
             'control_cmd_vel_gate_cost_stop_require_dynamic_source',
@@ -1441,7 +1441,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_front_dynamic_path_max_start_distance_m', 1.5),
             'Max robot-to-local-path start distance for front dynamic release (m)',
         ),
-        # HH_260618: Raw lanelet hard-stop parameters. This stays separate
+        # HH_260618 - Raw lanelet hard-stop parameters. This stays separate
         # from /planning/cost_grid/inflation because inflation clears the ego
         # footprint for planner startup and cannot be the final lanelet guard.
         (
@@ -1631,7 +1631,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
             'Maximum pose-to-local-path distance for path-based lanelet safety',
         ),
-        # HH_260622: Use a narrow center corridor for local-path lanelet safety;
+        # HH_260622 - Use a narrow center corridor for local-path lanelet safety;
         # full robot-width raw boundary checks falsely stop at merges.
         (
             'control_cmd_vel_gate_lanelet_safety_front_path_width_m',
@@ -1643,7 +1643,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', True),
             'Allow FRONT_PATH static-cost bypass during bounded route re-entry',
         ),
-        # HH_260622: Allow bounded route re-entry for manually placed/sim poses
+        # HH_260622 - Allow bounded route re-entry for manually placed/sim poses
         # that start slightly outside lanelet while a valid local path exists.
         (
             'control_cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
@@ -1767,7 +1767,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_front_lookahead_margin_m', 0.45),
             'Static safety margin for front lookahead (m)',
         ),
-        # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # HH_260622 - Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         (
             'control_cmd_vel_gate_side_rear_cost_stop',
@@ -1807,7 +1807,7 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_side_lookahead_m',
-            # HH_260630: Sim and sensor cost grids place side hits near 1.0 m
+            # HH_260630 - Sim and sensor cost grids place side hits near 1.0 m
             # from robot center; keep crab stop ahead of that cell center.
             cfg_get(launch_cfg, 'control/cmd_vel_gate_side_lookahead_m', 1.2),
             'Side lookahead distance (m)',
@@ -1825,7 +1825,7 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_rear_lookahead_m',
-            # HH_260630: Rear obstacle cell centers can sit past 0.9 m after
+            # HH_260630 - Rear obstacle cell centers can sit past 0.9 m after
             # grid quantization, so 0.8 m can leak reverse motion.
             cfg_get(launch_cfg, 'control/cmd_vel_gate_rear_lookahead_m', 1.2),
             'Rear lookahead distance (m)',
@@ -1836,7 +1836,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_rear_corridor_width_m', 1.27),
             'Rear corridor width (m)',
         ),
-        # HH_260618: Site-crab lateral parking is mission-owned; let it cross
+        # HH_260618 - Site-crab lateral parking is mission-owned; let it cross
         # static lanelet/global-path front/side/rear cost while preserving live LiDAR/Radar stops.
         (
             'control_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop',
@@ -1848,7 +1848,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lateral_cmd_bypass_min_mps', 0.02),
             'Minimum lateral cmd_vel for site-crab static cost bypass',
         ),
-        # HH_260618: Reverse campsite parking also leaves the lanelet corridor,
+        # HH_260618 - Reverse campsite parking also leaves the lanelet corridor,
         # so it needs the same static-cost bypass while preserving live obstacle stops.
         (
             'control_cmd_vel_gate_reverse_cmd_bypass_static_cost_stop',
@@ -1915,7 +1915,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_yaw_alignment_exit_margin_m', 0.3),
             'Exit hysteresis margin for yaw alignment zones (m)',
         ),
-        # HH_260618: Route-heading guard for normal Nav2 driving.
+        # HH_260618 - Route-heading guard for normal Nav2 driving.
         (
             'control_cmd_vel_gate_route_heading_enable',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_enable', True),
@@ -2080,6 +2080,31 @@ def generate_launch_description():
             'api_ui_port',
             cfg_get(launch_cfg, 'system/api_ui_port', 8010),
             'API UI backend bind port',
+        ),
+        # HH_261002 - Keep the mission/CAN journal separate from service
+        # metrics and let a simulator provide its own isolated storage root.
+        (
+            'enable_mission_recorder',
+            cfg_get(launch_cfg, 'system/enable_mission_recorder', True),
+            'Enable passive per-mission decoded platform/CAN recording',
+        ),
+        (
+            'mission_records_root',
+            os.environ.get(
+                'CAMROD_MISSION_RECORDS_ROOT',
+                os.path.expanduser('~/.local/state/camrod/mission_records'),
+            ),
+            'Independent mission journal storage root',
+        ),
+        (
+            'mission_recorder_environment',
+            os.environ.get('CAMROD_RECORDING_ENVIRONMENT', 'real'),
+            'Mission recording source label: real or simulation',
+        ),
+        (
+            'mission_recorder_raw_can_interface',
+            os.environ.get('CAMROD_MISSION_RAW_CAN_INTERFACE', ''),
+            'Optional receive-only physical SocketCAN interface',
         ),
         (
             'api_ui_manual_return_preempt_hold_s',
@@ -2253,7 +2278,7 @@ def generate_launch_description():
         ),
         ('radar_log_status', cfg_get(launch_cfg, 'sensing/radar_log_status', False), 'Print per-port radar status lines'),
         ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
-        # HH_260528: Per-camera enable flags for dual econ camera setup.
+        # HH_260528 - Per-camera enable flags for dual econ camera setup.
         ('enable_front_camera', cfg_get(launch_cfg, 'sensing/enable_front_camera', True), 'Enable front econ camera node'),
         ('enable_rear_camera',  cfg_get(launch_cfg, 'sensing/enable_rear_camera',  True), 'Enable rear econ camera node'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
@@ -2268,7 +2293,7 @@ def generate_launch_description():
         ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
         ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable physical IMU driver (converter remains available for dummy input)'),
-        # HH_260528: Unified IMU model selector (imu_mode → imu_model).
+        # HH_260528 - Unified IMU model selector (imu_mode → imu_model).
         ('imu_model',       cfg_get(launch_cfg, 'sensing/imu_model',       'cv7'), 'IMU model: cv7 | gq7'),
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
@@ -2330,18 +2355,18 @@ def generate_launch_description():
         ('gnss_namespace', cfg_get(launch_cfg, 'namespaces/gnss', 'gnss'), 'GNSS namespace'),
 
         ('gnss_rtcm_topic', cfg_get(launch_cfg, 'topics/gnss_rtcm', '/sensing/gnss/rtcm'), 'GNSS RTCM topic'),
-        # HH_260528: Platform type selector.
+        # HH_260528 - Platform type selector.
         ('platform_type', cfg_get(launch_cfg, 'platform/type', 'ranger'), 'Platform type: ranger|rmp401'),
         # Keep platform top launch lean. Ranger detailed params are in ranger_params_file.
         ('platform_ranger_driver_enable', cfg_get(launch_cfg, 'platform/ranger_driver_enable', True), 'Enable Ranger base CAN node in platform launch'),
-        # HH_260528: Ranger bridge toggle (independent from Ranger base node).
+        # HH_260528 - Ranger bridge toggle (independent from Ranger base node).
         ('platform_ranger_bridge_enable', cfg_get(launch_cfg, 'platform/ranger_bridge_enable', True), 'Enable ranger_platform_bridge_node in platform launch'),
         ('platform_ranger_auto_setup_can', cfg_get(launch_cfg, 'platform/ranger_auto_setup_can', True), 'Bring can0 up before Ranger CAN node starts'),
         ('platform_ranger_can_bitrate', cfg_get(launch_cfg, 'platform/ranger_can_bitrate', 500000), 'Ranger SocketCAN bitrate'),
         ('platform_ranger_can_restart_ms', cfg_get(launch_cfg, 'platform/ranger_can_restart_ms', 100), 'Ranger SocketCAN restart-ms'),
-        # HH_260528: Keep sensor_kit bridge optional for debug.
+        # HH_260528 - Keep sensor_kit bridge optional for debug.
         ('platform_sensor_kit_bridge_enable', cfg_get(launch_cfg, 'platform/sensor_kit_bridge_enable', True), 'Enable sensor_kit bridge include in platform launch'),
-        # 260708: Exterior lights (headlight relay + WS2815 indicators via light MCU).
+        # HH_260708 - Exterior lights (headlight relay + WS2815 indicators via light MCU).
         ('platform_lights_enable', cfg_get(launch_cfg, 'platform/lights_enable', True), 'Enable light_controller node in platform launch'),
         ('platform_lights_mcu_bridge_enable', cfg_get(launch_cfg, 'platform/lights_mcu_bridge_enable', True), 'Enable light MCU serial bridge (real hardware only; sim forces false)'),
 
@@ -2646,7 +2671,7 @@ def generate_launch_description():
             ),
             'Map origin altitude',
         ),
-        # HH_260527: Removed unused map-origin launch args.
+        # HH_260527 - Removed unused map-origin launch args.
         # (yaw_offset_deg, utm_origin_*, rotate_latlon_xy_by_yaw_offset).
 
         ('lanelet_id', cfg_get(launch_cfg, 'sim/lanelet_id', -1), 'Fake sensor lanelet id'),
@@ -2690,7 +2715,7 @@ def generate_launch_description():
     perception_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['perception'])
     sim_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['sim'])
 
-    # HH_260522: Use unified controller_profile selector.
+    # HH_260522 - Use unified controller_profile selector.
     controller_profile_cli = cli_launch_arg('controller_profile').strip().lower()
     controller_profile_cfg = str(cfg_get(launch_cfg, 'planning/controller_profile', '')).strip().lower()
     controller_profile = controller_profile_cli or controller_profile_cfg
@@ -2720,7 +2745,7 @@ def generate_launch_description():
             scoped=True,
         )
 
-    # HH_260611: Treat optional modules as optional at launch time so stale/missing
+    # HH_260611 - Treat optional modules as optional at launch time so stale/missing
     # package artifacts do not block GNSS and sensing validation on this x86_64 PC.
     def has_launch_file(pkg: str, launch_file: str) -> tuple[bool, str]:
         try:
@@ -2774,7 +2799,7 @@ def generate_launch_description():
         'ranger_can_bitrate': lc['platform_ranger_can_bitrate'],
         'ranger_can_restart_ms': lc['platform_ranger_can_restart_ms'],
         'sensor_kit_bridge_enable': lc['platform_sensor_kit_bridge_enable'],
-        # 260708: light_controller runs in sim too (topic-only, no hardware);
+        # HH_260708 - light_controller runs in sim too (topic-only, no hardware);
         # the MCU serial bridge is hardware-facing so sim disables it.
         'lights_enable': lc['platform_lights_enable'],
         'lights_mcu_bridge_enable': sim_switch(
@@ -2790,7 +2815,7 @@ def generate_launch_description():
         'origin_lon': lc['origin_lon'],
         'origin_alt': lc['origin_alt'],
         'module_namespace': lc['map_namespace'],
-        # HH_260527: Removed unused pass-through args
+        # HH_260527 - Removed unused pass-through args
         # (system_namespace, enable_module_validator).
     }
     apply_cfg_overrides(map_args, map_overrides)
@@ -2845,7 +2870,7 @@ def generate_launch_description():
     ]
     apply_cfg_overrides(fake_sensors_args, sim_overrides)
 
-    # HH_260707: When the opt-in component path is enabled, the front camera is
+    # HH_260707 - When the opt-in component path is enabled, the front camera is
     # started by camera_yolo_container.launch.py while the rear camera remains in
     # sensing.launch.py for future perception consumers. Sim disables hardware cameras.
     # HH_260720 - Camera launch does not carry an implicit AprilTag parking dependency.
@@ -3026,7 +3051,7 @@ def generate_launch_description():
         'ublox_dual_base_rtcm_device': lc['ublox_dual_base_rtcm_device'],
         'ublox_dual_base_rtcm_baud': lc['ublox_dual_base_rtcm_baud'],
         'camera_device_path': lc['camera_device_path'],
-        # HH_260527: Removed unused pass-through args
+        # HH_260527 - Removed unused pass-through args
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).
     }
     apply_cfg_overrides(sensing_args, sensing_overrides)
@@ -3081,7 +3106,7 @@ def generate_launch_description():
     wheel_input_topic_for_filter = lc['wheel_input_topic']
     wheel_input_type_for_filter = lc['wheel_input_type']
 
-    # HH_260618: In sim mode, relax EKF GNSS rejection so the fake GNSS start
+    # HH_260618 - In sim mode, relax EKF GNSS rejection so the fake GNSS start
     # pose becomes the planning/control truth instead of leaving EKF at map origin.
     _ekf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'ekf_sim.yaml')
     _ekf_real_cfg = localization_overrides.get('filter_ekf_param_file', '')
@@ -3092,7 +3117,7 @@ def generate_launch_description():
         _ekf_real_cfg or '',
     )
 
-    # HH_260617: In sim planning tests, automatic GNSS reattach can teleport the
+    # HH_260617 - In sim planning tests, automatic GNSS reattach can teleport the
     # EKF pose away from the active Nav2 path. Keep the node for manual
     # initialpose reset bridging, but use a sim parameter file that disables
     # automatic distance-based reattach.
@@ -3113,7 +3138,7 @@ def generate_launch_description():
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
-        # HH_260713: Map and GNSS projection must consume the exact same map-info
+        # HH_260713 - Map and GNSS projection must consume the exact same map-info
         # file.  Falling back inside camrod_localization can silently select the
         # package copy while full bringup loads its bringup-local map copy.
         'map_info_file': lc['map_info_file'],
@@ -3137,7 +3162,7 @@ def generate_launch_description():
     if 'drop_zones_yaml' not in localization_args:
         # HH_260623 - Keep localization map helper aligned with planning/parking drop-zone semantics.
         localization_args['drop_zones_yaml'] = lc['planning_state_machine_keypoints_yaml']
-    # HH_260618: Apply sim EKF override after apply_cfg_overrides so it is not
+    # HH_260618 - Apply sim EKF override after apply_cfg_overrides so it is not
     # overwritten by user-level localization/filter_ekf_param_file entries.
     localization_args['filter_ekf_param_file'] = _ekf_cfg
     localization_args['filter_gnss_reattach_param_file'] = _gnss_reattach_cfg
@@ -3154,7 +3179,7 @@ def generate_launch_description():
         'enable_path_visualization': lc['enable_path_visualization'],
         'planning_state_machine_keypoints_yaml': lc['planning_state_machine_keypoints_yaml'],
         'planning_state_machine_camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
-        # HH_260617: In sim, avoid ERROR_STOP from intentionally missing/stale
+        # HH_260617 - In sim, avoid ERROR_STOP from intentionally missing/stale
         # hardware diagnostics so RViz/UI planning-control tests can move.
         'planning_state_machine_param_file': sim_opt_in_switch(
             lc['sim'],
@@ -3178,7 +3203,7 @@ def generate_launch_description():
         'navigation_cmd_vel_topic': lc['control_navigation_cmd_vel_ros_topic'],
         'module_namespace': lc['planning_namespace'],
         'nav2_robot_base_frame': lc['robot_center_frame_id'],
-        # HH_260528: Keep selector IDs as raw values (not file-path overrides).
+        # HH_260528 - Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
         'nav2_reverse_controller': lc['planning_nav2_reverse_controller'],
@@ -3294,7 +3319,7 @@ def generate_launch_description():
         'use_checker_components': lc['use_checker_components'],
         'checker_component_groups': lc['checker_component_groups'],
         'checker_component_threads': lc['checker_component_threads'],
-        # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
+        # HH_260617 - sim defaults to the diagnostics/sim profile so hardware-only
         # checks do not block planning/control validation.
         'config_profile': diagnostics_profile_runtime,
         'config_profile_fallback': lc['diagnostics_profile_fallback'],
@@ -3428,6 +3453,12 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        'enable_mission_recorder': lc['enable_mission_recorder'],
+        'mission_records_root': lc['mission_records_root'],
+        'mission_recorder_environment': lc['mission_recorder_environment'],
+        'mission_recorder_raw_can_interface': lc[
+            'mission_recorder_raw_can_interface'
+        ],
         # HH_260819 - Keep the Return ownership barrier explicit and tunable at
         # the top-level deployment boundary without adding sustained CPU work.
         'manual_return_preempt_hold_s': lc['api_ui_manual_return_preempt_hold_s'],
@@ -3578,7 +3609,7 @@ def generate_launch_description():
     optional_modules = []
     ui_launch_exists, ui_launch_path = has_launch_file('camrod_ui', 'ui.launch.py')
     if ui_launch_exists:
-        # HH_260611: Start UI only when an API/UI surface is requested and the launch file exists.
+        # HH_260611 - Start UI only when an API/UI surface is requested and the launch file exists.
         ui_condition = IfCondition(
             PythonExpression([
                 "'", lc['enable_plugin_api'], "' == 'true' or '",
@@ -3598,7 +3629,7 @@ def generate_launch_description():
         )
     modules = []
     for pkg, launch_file, launch_args, condition in module_specs:
-        # HH_260617: Optional feature packages may be intentionally unavailable on
+        # HH_260617 - Optional feature packages may be intentionally unavailable on
         # development PCs. Check required executables as well as launch-file presence
         # so stale install/share artifacts do not make bringup fail at runtime.
         if pkg in OPTIONAL_MODULE_EXECUTABLES:

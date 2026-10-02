@@ -45,9 +45,15 @@ def degraded_modules():
     return module_snapshots(values)
 
 
-def make_ready_policy(*, announce_startup=True, announce_departure=True):
+def make_ready_policy(
+    *, announce_startup=True, announce_departure=True,
+    announce_return_departure=None,
+):
     policy = VoiceEventPolicy(
-        REQUIRED_MODULES, announce_departure=announce_departure)
+        REQUIRED_MODULES,
+        announce_departure=announce_departure,
+        announce_return_departure=announce_return_departure,
+    )
     events = []
     if announce_startup:
         events.extend(policy.announce_startup())
@@ -520,10 +526,8 @@ def test_music_bed_waits_for_departure_and_ends_with_the_trip():
 
 
 def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
-    """camrod_ui now speaks site_B*/to_campsite/to_dropzone itself and holds
-    the command until playback finishes; this node's own departure cue must
-    stay muted so the trip is not announced twice, while the BGM and the
-    periodic reminders it still owns keep working exactly as before."""
+    """The UI speaks site_B*/to_campsite before it releases motion; disabling
+    that reactive site cue must not disable BGM or periodic reminders."""
     policy, _ = make_ready_policy(announce_departure=False)
     policy.update_engaged(True)
     policy.update_gate(
@@ -553,6 +557,113 @@ def test_announce_departure_false_keeps_bed_and_reminders_but_stays_silent():
         return_requested=False,
     )
     assert not policy.travel_active
+
+
+def test_ui_gated_site_voice_does_not_mute_released_return_route():
+    """HH_261002 - A return must say drop-zone, never repeat campsite speech."""
+    policy, _ = make_ready_policy(
+        announce_departure=False, announce_return_departure=True,
+    )
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+
+    site = policy.update_planning(
+        state="RUNNING", scenario="DELIVERY_TO_SITE",
+        active_mission_key="camping_site_7", active_goal_source="regulated",
+        return_requested=False,
+    )
+    assert event_keys(site) == []
+    assert policy.travel_context() == "site"
+
+    pending = policy.update_planning(
+        state="RETURNING", scenario="RETURN_TO_DROP_ZONE",
+        active_mission_key="camping_site_7", active_goal_source="return_request",
+        return_requested=True,
+    )
+    assert event_keys(pending) == []
+    assert not policy.travel_active
+
+    released = policy.update_planning(
+        state="RETURNING", scenario="RETURN_TO_DROP_ZONE",
+        active_mission_key="drop_zone", active_goal_source="auto_snapper:drop_zone",
+        return_requested=False,
+    )
+    assert event_keys(released) == ["navigation.to_dropzone"]
+    assert policy.travel_context() == "drop_zone"
+    assert event_keys(policy.travel_announce_events()) == [
+        "navigation.return_to_dropzone"
+    ]
+    assert policy.update_planning(
+        state="RETURNING", scenario="RETURN_TO_DROP_ZONE",
+        active_mission_key="drop_zone", active_goal_source="auto_snapper:drop_zone",
+        return_requested=False,
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "old_scenario,old_key,old_source,hold_state,new_scenario,new_key,new_source,return_requested",
+    [
+        (
+            "DELIVERY_TO_SITE", "camping_site_7", "regulated", "WARN_RECOVERY",
+            "RETURN_TO_DROP_ZONE", "drop_zone", "return_request", True,
+        ),
+        (
+            "RETURN_TO_DROP_ZONE", "drop_zone", "auto_snapper:drop_zone",
+            "RECALLED", "RECALL_TO_SITE", "camping_site_7", "guest_recall", False,
+        ),
+    ],
+)
+def test_direction_change_during_hold_clears_old_travel_voice(
+    old_scenario, old_key, old_source, hold_state,
+    new_scenario, new_key, new_source, return_requested,
+):
+    """HH_261002 - A hold must not keep announcing the previous destination."""
+    policy, _ = make_ready_policy()
+    policy.update_engaged(True)
+    policy.update_gate(
+        level=0, operating_state="ENABLED", message="reasons=none"
+    )
+    policy.update_planning(
+        state="RUNNING" if old_scenario == "DELIVERY_TO_SITE" else "RETURNING",
+        scenario=old_scenario, active_mission_key=old_key,
+        active_goal_source=old_source, return_requested=False,
+    )
+    assert policy.travel_active
+
+    assert policy.update_planning(
+        state=hold_state, scenario=new_scenario, active_mission_key=new_key,
+        active_goal_source=new_source, return_requested=return_requested,
+    ) == []
+    assert not policy.travel_active
+    assert policy.travel_context() == ""
+    assert policy.travel_announce_events() == []
+
+    released = policy.update_planning(
+        state="RETURNING" if new_scenario == "RETURN_TO_DROP_ZONE" else "RUNNING",
+        scenario=new_scenario, active_mission_key=new_key,
+        active_goal_source=new_source, return_requested=False,
+    )
+    assert event_keys(released) == [
+        "navigation.to_dropzone"
+        if new_scenario == "RETURN_TO_DROP_ZONE"
+        else "navigation.to_campsite"
+    ]
+
+
+def test_voice_adapter_defaults_to_ui_site_and_policy_return_ownership():
+    """HH_261002 - The deployed YAML must preserve the asymmetric routing."""
+    root = Path(__file__).resolve().parents[1]
+    config = (root / "config/voice_event_adapter.yaml").read_text(
+        encoding="utf-8"
+    )
+    adapter = (root / "src/voice_event_adapter_node.py").read_text(
+        encoding="utf-8"
+    )
+    assert "enable_reactive_departure_cue: false" in config
+    assert "enable_reactive_return_cue: true" in config
+    assert "announce_return_departure=self._en_reactive_return_cue" in adapter
 
 
 def test_transient_recovery_state_does_not_replay_the_departure_cue():

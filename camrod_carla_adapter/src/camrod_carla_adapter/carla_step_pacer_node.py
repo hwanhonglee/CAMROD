@@ -167,6 +167,7 @@ class StepPacerStateMachine:
         self.last_synchronous_mode = None
         self.last_synchronous_mode_running = None
         self.last_fixed_delta_seconds = None
+        self.last_completed_step_ack_s = None
         self.fault_reason = ''
 
     @property
@@ -300,6 +301,7 @@ class StepPacerStateMachine:
                 now,
             )
         completed_step_command_s = self.step_command_s
+        self.last_completed_step_ack_s = now
         self.frame = parsed_frame
         self.expected_frame = None
         self.step_command_s = None
@@ -400,6 +402,39 @@ class StepPacerStateMachine:
         if self.last_synchronous_mode_running is not False:
             return PacerHealth(False, common + ' reason=not_paused')
         return PacerHealth(True, common + ' paused_ack=true')
+
+    def startup_ready(self, now_s):
+        """Accept proven, fresh pacing without requiring an idle tick window."""
+        # HH_261002 - A slow rendered frame can consume the entire step period.
+        # Keep health() strictly PAUSED, but let application startup observe an
+        # in-flight tick only after a recent exact +1 PAUSED acknowledgement.
+        # Duplicate RUNNING statuses cannot refresh this completed-step proof.
+        strict = self.health(now_s)
+        if strict.success or ' reason=step_ack_pending' not in strict.message:
+            return strict
+        now = _valid_monotonic(now_s)
+        if self.last_completed_step_ack_s is None:
+            return PacerHealth(
+                False, strict.message + ' startup_reason=no_completed_step_ack')
+        completed_age = now - self.last_completed_step_ack_s
+        if not 0.0 <= completed_age <= self.config.status_timeout_s:
+            return PacerHealth(
+                False, strict.message + ' startup_reason=completed_step_ack_stale')
+        if (
+            self.step_command_s is None
+            or not 0.0 <= now - self.step_command_s
+            <= self.config.step_ack_timeout_s
+            or self.frame is None
+            or self.expected_frame != self.frame + 1
+        ):
+            return PacerHealth(
+                False, strict.message + ' startup_reason=invalid_pending_step')
+        return PacerHealth(
+            True,
+            strict.message.replace(' reason=step_ack_pending', '')
+            + f' completed_step_ack=true completed_ack_age={completed_age:.3f}s'
+            + ' step_ack_pending=true',
+        )
 
     def release(self, now_s):
         """Stop pacing and return PLAY so the bridge can shut down cleanly."""
@@ -508,6 +543,8 @@ class CarlaStepPacerNode(Node):
             'release_service', '/virtual_carla/step_pacer/release')
         self.health_service_name = self._topic_parameter(
             'health_service', '/virtual_carla/step_pacer/health')
+        self.startup_ready_service_name = self._topic_parameter(
+            'startup_ready_service', '/virtual_carla/step_pacer/startup_ready')
 
         config = validate_step_pacer_config(StepPacerConfig(
             step_period_s=self.declare_parameter(
@@ -557,6 +594,8 @@ class CarlaStepPacerNode(Node):
             Trigger, self.release_service_name, self._on_release)
         self.health_service = self.create_service(
             Trigger, self.health_service_name, self._on_health)
+        self.startup_ready_service = self.create_service(
+            Trigger, self.startup_ready_service_name, self._on_startup_ready)
         self.timer = self.create_timer(poll_period_s, self._on_timer)
 
         # No control command is published until exclusive ownership succeeds.
@@ -653,6 +692,13 @@ class CarlaStepPacerNode(Node):
             health = self.state.health(time.monotonic())
             response.success = health.success
             response.message = health.message
+        return response
+
+    def _on_startup_ready(self, _request, response):
+        with self._callback_lock:
+            readiness = self.state.startup_ready(time.monotonic())
+            response.success = readiness.success
+            response.message = readiness.message
         return response
 
     def _on_release(self, _request, response):

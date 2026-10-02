@@ -19,6 +19,9 @@ RANGER_COMMAND_WHEELBASE_M = 0.90
 RANGER_MAX_ACKERMANN_STEER_RAD = 0.6981
 RANGER_MAX_CRAB_ANGLE_RAD = math.radians(88.0)
 RANGER_MAX_ACKERMANN_SPEED_MPS = 1.4
+# HH_261002 - Explicit CARLA site-only manual test ceiling. The ordinary
+# mapping/default remains 1.4; this does not set an autonomous target speed.
+RANGER_SIMULATOR_MANUAL_MAX_ACKERMANN_SPEED_MPS = 2.0
 RANGER_MAX_CRAB_SPEED_MPS = 1.0
 RANGER_MAX_YAW_RATE_RADPS = 0.7853
 RANGER_MAX_INPUT_TIMEOUT_SEC = 0.35
@@ -110,7 +113,7 @@ class MappingConfig:
             raise ValueError("speed and yaw-rate limits must be > 0")
 
 
-def validate_ranger_contract(config):
+def validate_ranger_contract(config, *, allow_carla_site_manual_speed_2mps=False):
     """Reject overrides that change CAMROD semantics or widen accepted limits."""
 
     if not isinstance(config, MappingConfig):
@@ -138,7 +141,12 @@ def validate_ranger_contract(config):
     upper_limits = (
         ("max_ackermann_steer_rad", RANGER_MAX_ACKERMANN_STEER_RAD),
         ("max_crab_angle_rad", RANGER_MAX_CRAB_ANGLE_RAD),
-        ("max_ackermann_speed_mps", RANGER_MAX_ACKERMANN_SPEED_MPS),
+        # HH_261002 - Only the explicit simulator profile may select the 2 m/s
+        # longitudinal envelope. Every other audited limit stays unchanged.
+        ("max_ackermann_speed_mps", (
+            RANGER_SIMULATOR_MANUAL_MAX_ACKERMANN_SPEED_MPS
+            if allow_carla_site_manual_speed_2mps
+            else RANGER_MAX_ACKERMANN_SPEED_MPS)),
         ("max_crab_speed_mps", RANGER_MAX_CRAB_SPEED_MPS),
         ("max_yaw_rate_radps", RANGER_MAX_YAW_RATE_RADPS),
     )

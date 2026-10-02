@@ -29,8 +29,10 @@ def test_active_configuration_contains_all_thirteen_sites_and_drop_zone():
     assert tuple(sites) == matrix.DEFAULT_SITES
     assert sites["B11"].service_mode == "roadside_stop"
     assert sites["B12"].service_mode == "roadside_stop"
-    assert drop_zone.source_id == "dz_area_7019"
-    assert (drop_zone.x_m, drop_zone.y_m) == pytest.approx((-11.3585, 40.0901))
+    # HH_261002 - Match the active single-station map-v26 drop zone; the old
+    # 7019 assertion was stale even though the runtime used 7144 successfully.
+    assert drop_zone.source_id == "dz_area_7144"
+    assert (drop_zone.x_m, drop_zone.y_m) == pytest.approx((-8.47366, 40.391))
 
 
 def test_site_selection_defaults_to_all_and_rejects_duplicates_or_unknown():
@@ -529,7 +531,7 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
         "return_goal_reached_distance_m"
     ] == 0.35
     assert parity["/perception/yolov9mit"]["min_confidence"] == 0.5
-    assert site["/perception/yolov9mit"]["min_confidence"] == 0.95
+    assert site["/perception/yolov9mit"]["min_confidence"] == 0.80
     assert parity[command_adapter]["recovery_breakaway_enable"] is False
     assert site[command_adapter]["recovery_breakaway_enable"] is True
     assert parity[command_adapter][
@@ -1943,10 +1945,13 @@ def _operator_client_with_fake_visible_dom(probe):
     client.timeout_s = 1.0
     client._interactions = []
     client._typed_value = ""
+    client._fake_safety_gate_visible = False
     client.cdp_calls = []
     client._install_transport_probe = lambda: None
 
     def element(selector):
+        if selector in ('[data-ui="service-safety-gate"]', '[data-ui="usage-safety-confirm"]') and not client._fake_safety_gate_visible:
+            return {"count": 0, "visibleCount": 0}
         return {
             "count": 1,
             "visibleCount": 1,
@@ -1964,8 +1969,9 @@ def _operator_client_with_fake_visible_dom(probe):
                 if selector == '[data-ui="operator-site-code-input"]'
                 else None
             ),
-            "text": ("배달 서비스" if selector == '.mission-role-banner.role-delivery'
-                     else "호출 서비스" if selector == '.mission-role-banner.role-recall' else ""),
+            # HH_261002 - The exact title excludes the sibling navigation button.
+            "text": ("배달 서비스" if selector == '.mission-role-banner.role-delivery > strong'
+                     else "호출 서비스" if selector == '.mission-role-banner.role-recall > strong' else ""),
         }
 
     def call(method, params):
@@ -2126,6 +2132,28 @@ def test_operator_service_menu_uses_visible_navigation_from_each_inactive_screen
     client._click = press
     client.open_service_menu()
     assert clicked == expected
+    assert not any(method == "Runtime.evaluate" for method, _ in client.cdp_calls)
+
+
+def test_operator_service_menu_acknowledges_visible_safety_notice_before_site_choice():
+    # HH_261002 - The current production waiting screen gates service selection
+    # behind an actual safety notice.  Evidence automation must click its
+    # visible confirmation, including after a previous attempt left it open.
+    client = _operator_client_with_fake_visible_dom({})
+    client._fake_safety_gate_visible = True
+    clicked = []
+    original_click = client._click
+
+    def click(selector, description):
+        clicked.append(selector)
+        result = original_click(selector, description)
+        if selector == '[data-ui="usage-safety-confirm"]':
+            client._fake_safety_gate_visible = False
+        return result
+
+    client._click = click
+    client.open_service_menu()
+    assert clicked == ['[data-ui="usage-safety-confirm"]']
     assert not any(method == "Runtime.evaluate" for method, _ in client.cdp_calls)
 
 

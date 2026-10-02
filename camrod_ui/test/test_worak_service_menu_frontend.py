@@ -106,7 +106,7 @@ def test_new_parking_preview_retains_stop_and_error_copy_priority():
     assert "motionNotice?.label || parkingLifecycleStatus(" in block
     assert "motionNotice?.message || (serviceStateName" in block
     assert 'className="guest-recall-overlay"' not in SOURCE
-    assert 'onClick={handleManualStop}' in SOURCE
+    assert "onClick={() => requestStopConfirmation('manual')}" in SOURCE
 
 
 def test_service_controls_have_distinct_real_pointer_targets():

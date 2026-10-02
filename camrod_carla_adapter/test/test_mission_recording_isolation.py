@@ -1,4 +1,4 @@
-"""CARLA compatibility paths and v2.2.9 snapshots stay separate from field data."""
+"""CARLA mission/CAN journals and snapshots stay separate from field data."""
 
 import importlib.util
 import json
@@ -56,7 +56,7 @@ def test_direct_launch_resolves_dedicated_journal(
     assert os.environ["XDG_STATE_HOME"] == "/production-state"
 
 
-def test_full_launch_isolates_v229_snapshots_without_retired_recorder(
+def test_full_launch_isolates_snapshots_and_passive_mission_recorder(
         monkeypatch, isolated_environment):
     full = _module(FULL)
     monkeypatch.setenv("RANGER_WORK_ROOT", "/virtual-work")
@@ -88,9 +88,15 @@ def test_full_launch_isolates_v229_snapshots_without_retired_recorder(
         if isinstance(action, DeclareLaunchArgument):
             action.execute(context)
     nodes = {node["executable"]: node for node in captured}
-    # Develop v2.2.9 retired the journal node; do not resurrect it in CARLA.
-    assert "mission_recorder_node" not in nodes
+    # HH_261002 - CARLA records decoded simulated platform samples, never
+    # physical raw SocketCAN frames or the production robot's journal.
+    assert "mission_recorder_node" in nodes
+    recorder = nodes["mission_recorder_node"]["parameters"][0]
+    assert recorder["storage_root"].perform(context) == expected_root
+    assert recorder["environment"].perform(context) == "simulation"
+    assert recorder["raw_can_interface"].perform(context) == ""
     backend = nodes["ui_backend_node"]["parameters"][0]
+    assert backend["mission_records_root"].perform(context) == expected_root
     assert backend["snapshot_output_directory"].perform(context) == "/virtual-work/camrod/snapshots"
     params = yaml.safe_load(Path(context.launch_configurations["snapshot_param_file"]).read_text())
     config = params["/**"]["ros__parameters"]

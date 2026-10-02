@@ -42,6 +42,18 @@ def test_role_topics_follow_non_default_vehicle_role():
     ) == "/carla/test_vehicle/gnss_right"
 
 
+def test_command_overlay_is_empty_by_default_and_preserves_base_file():
+    """HH_261002 - New site cap cannot silently replace a stricter custom base."""
+    module = _load_launch_module("adapter.launch.py")
+    context = LaunchContext()
+    context.launch_configurations["command_config_file"] = "/custom/strict.yaml"
+    context.launch_configurations["command_runtime_override_param_file"] = ""
+    assert module._command_parameter_files(context) == ["/custom/strict.yaml"]
+    context.launch_configurations["command_runtime_override_param_file"] = "/site/manual.yaml"
+    assert module._command_parameter_files(context) == [
+        "/custom/strict.yaml", "/site/manual.yaml"]
+
+
 def test_through_poses_bt_uses_loaded_selector_plugin_ids():
     path = (
         Path(get_package_share_directory("camrod_planning"))

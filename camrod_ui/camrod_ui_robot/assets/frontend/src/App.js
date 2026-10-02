@@ -24,6 +24,9 @@ import {
   useServiceMetricsSummary,
 } from './ServiceEvidence';
 import SnapshotControl from './SnapshotControl';
+import DrivingDisplay from './DrivingDisplay';
+import useDrivingDisplay from './useDrivingDisplay';
+import './DrivingIntegration.css';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -300,12 +303,13 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
   return { tone: 'ok', label: `임무 가능 · 배터리 ${battery}%` };
 };
 
-const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parkingPolicy) => {
+const parkingLifecycleStatus = (serviceStateName, serviceStateDescription, parkingPolicy, batteryChargeComplete = false) => {
   const state = String(serviceStateName || '').trim().toUpperCase();
   const description = String(serviceStateDescription || '').trim().toUpperCase();
   const selectedMethod = String(parkingPolicy?.parking_selected_method || '').trim().toLowerCase();
 
-  if (state === 'CHARGING') return '충전 중';
+  // HH_261002 - A confirmed BMS full signal is distinct from charger contact.
+  if (state === 'CHARGING') return batteryChargeComplete ? '충전 완료' : '충전 중';
   if (state === 'WAITING_FOR_CHARGING') return '충전 접점 연결 대기 중';
   if (state === 'DROP_ZONE_WAIT') return '대기·충전 장소 주차 완료';
   if (state === 'DROP_ZONE_PARKING') {
@@ -333,6 +337,7 @@ function WaitingRuntimeStatusPanel({
   parkingPolicy,
   serviceStateName,
   serviceStateDescription,
+  batteryChargeComplete,
 }) {
   const items = [
     {
@@ -350,7 +355,7 @@ function WaitingRuntimeStatusPanel({
     {
       key: 'parking',
       label: '주차',
-      value: parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy),
+      value: parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy, batteryChargeComplete),
       tone: 'parking',
       title: parkingPolicyMessage(parkingPolicy),
     },
@@ -741,7 +746,7 @@ function DiagnosticsMonitor({
           );
         })}
         {items.length === 0 && (
-          /* HH_260617: UI diagnostics reads the namespaced system aggregator topic. */
+          /* HH_260617 - UI diagnostics reads the namespaced system aggregator topic. */
           <div className="diag-empty">데이터 없음 — /system/diagnostics_agg 대기 중…</div>
         )}
       </div>
@@ -1285,7 +1290,10 @@ function BatteryIcon({ pct }) {
   );
 }
 
-function App() {
+function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = {}) {
+  // HH_261001 - Local preview renders this SAME application. Only its data source changes;
+  // all robot-network authority is explicitly disabled in preview mode.
+  const previewMode = drivingPreviewSnapshot !== null;
   // ── React 상태(State) 선언 ──────────────────────────────────────────────
   const [states, setStates] = useState(() => {
     const init = {};
@@ -1295,7 +1303,11 @@ function App() {
   const [occupiedSites, setOccupiedSites] = useState([]);
 
   const [connected, setConnected] = useState(false);
+  const [drivingTheme, setDrivingTheme] = useState('light');
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
+  // HH_261002 - Present charging completion only after the backend confirms
+  // BMS full status or 100% SOC during an active charging session.
+  const [batteryChargeComplete, setBatteryChargeComplete] = useState(false);
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
   // HH_260721 - Display operational progress independently from diagnostic health.
@@ -1311,7 +1323,7 @@ function App() {
   const [systemHealth, setSystemHealth] = useState('STARTING');
   const [missionPhase, setMissionPhase] = useState('INITIALIZING');
   const [missionSource, setMissionSource] = useState('none');
-  const [headlightState, setHeadlightState] = useState(false); // 260708: 전조등 토글
+  const [headlightState, setHeadlightState] = useState(false); // HH_260708 - Track the operator headlight toggle.
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -1374,6 +1386,7 @@ function App() {
   const [guestNavigateSite, setGuestNavigateSite] = useState(null); // 게스트 사이트 이동 알림
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
+  const [stopConfirmation, setStopConfirmation] = useState(null); // HH_261001 - Second confirmation for the stop button.
   const [showDockingConfirm, setShowDockingConfirm] = useState(false);
   const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
   const [showRecallConfirm, setShowRecallConfirm] = useState(false);
@@ -1401,9 +1414,46 @@ function App() {
   });
   // HH_260819 - Public field-operation evidence stays lightweight and separate
   // from the administrator-only, high-bandwidth telemetry session.
-  const serviceMetrics = useServiceMetricsSummary();
+  const serviceMetrics = useServiceMetricsSummary(3000, !previewMode);
+
+  const previewMission = drivingPreviewSnapshot?.mission;
+  const previewConnected = drivingPreviewSnapshot?.connected;
+  const previewBattery = drivingPreviewSnapshot?.battery?.percentage;
+  const previewActive = previewMission?.active;
+  const previewGeneration = previewMission?.generation;
+  const previewSite = previewMission?.site;
+  const previewIntent = previewMission?.intent;
+  const previewServiceState = previewMission?.service_state_name;
+  const previewPhase = previewMission?.phase;
+  const previewDescription = previewMission?.description;
+  useEffect(() => {
+    if (!previewMode) return;
+    setConnected(previewConnected === true);
+    setBatteryPct(previewBattery ?? null);
+    setBatteryChargeComplete(false);
+    setServiceStateName(previewServiceState || 'DROP_ZONE_WAIT');
+    setServiceStateDescription(previewDescription || '');
+    setMissionPhase(previewPhase || 'READY');
+    setSystemHealth('OK');
+    setMissionSource(previewActive ? 'ui' : 'none');
+    setMissionDispatch({ active: Boolean(previewActive), generation: previewGeneration || 0,
+      site: previewSite || '', intent: previewIntent || 'delivery', owner: 'robot' });
+    setStates(Object.fromEntries(SITE_NAMES.map(site => [site, Boolean(previewActive && site === previewSite)])));
+    setDestinationIntent(previewIntent === 'recall' ? 'recall' : 'delivery');
+    setActiveRecallSite(previewActive && previewIntent === 'recall' ? previewSite : null);
+    setIsReturning(['RETURNING_TO_DROP_ZONE', 'RETURN_WITH_CARGO', 'DROP_ZONE_PARKING'].includes(previewServiceState));
+    setShowWaiting(!previewActive);
+    setShowServiceSelection(false);
+    setShowServiceSafetyGate(false);
+    setShowArrivalComplete(false);
+    setSelectedSite(null);
+    setArrivedSite(null);
+    setTogglePage(previewSite === 'B7' ? 1 : 0);
+  }, [previewMode, previewConnected, previewBattery, previewActive, previewGeneration,
+    previewSite, previewIntent, previewServiceState, previewPhase, previewDescription]);
 
   const openSettingsLoginModal = () => {
+    if (previewMode) return;
     setActiveModal(null);
     setLoginId('');
     setLoginPw('');
@@ -1414,6 +1464,7 @@ function App() {
   };
 
   const handleLogin = () => {
+    if (previewMode) return;
     if (loginId === 'admin' && loginPw === '1234') {
       setShowLoginModal(false);
       setActiveModal('settings');
@@ -1453,6 +1504,7 @@ function App() {
 
   // ── 진단 페이지 비밀 진입 (우측 끝 5초 장누르기) ───────────────────────────
   const handleDiagPressStart = (e) => {
+    if (previewMode) return;
     e.stopPropagation();
     const startTime = Date.now();
     const duration = 1500;
@@ -1515,6 +1567,16 @@ function App() {
   const recallReturnPresentation =
     hasExplicitRecallIntent
     && serviceStateName === 'RETURN_WITH_CARGO';
+  // HH_261002 - The first Recall completion starts a controller-owned site
+  // re-entry/turnaround while the arrival site stays latched for the second
+  // confirmation. Suppress only its stale arrival presentation; retain the
+  // mission identity and Return authority until RECALL_RETURN_WAIT is ready.
+  const recallTurnaroundInProgress = Boolean(
+    missionDispatch.active && missionDispatch.intent === 'recall'
+    && activeRecallSite && activeRecallSite === arrivedSite
+    && serviceStateName === 'RETURN_WITH_CARGO'
+    && !recallFinalReturnReady
+  );
   const robotOwnsReturn = !missionExecutionError && robotCanCompleteMission(
     missionDispatch, arrivedSite, serviceStateName
   );
@@ -1537,6 +1599,20 @@ function App() {
     && missionDispatch.generation > 0
     && missionDispatch.owner === 'guest';
 
+  // HH_261001 - Presentation only. Dismissing this layer must not call Stop,
+  // Return, engage, site-toggle or any other mission-authority handler.
+  const drivingDisplay = useDrivingDisplay({
+    missionDispatch, serviceStateName, missionPhase, connected,
+    injectedSnapshot: drivingPreviewSnapshot,
+    // HH_261002 - A diagnostic ERROR during an accepted safety hold is a
+    // warning to show in the driving view, not a reason to abandon that view.
+    // Mission errors and operator modals still own their existing screens.
+    blocked: showLoginModal || Boolean(activeModal) || showServiceSafetyGate
+      || showMoveConfirm || showDeliveryConfirm || showRecallConfirm
+      || showMoveVerify || showDockingConfirm || Boolean(missionExecutionError)
+      || (showArrivalComplete && arrivedSite && robotOwnsReturn
+        && !recallTurnaroundInProgress),
+  });
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
     if (!OPERATING_HOURS_GATE_ENABLED) {
@@ -1578,12 +1654,12 @@ function App() {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
-    if (!anyOn && !manualDriveActive && !showWaiting && !isReturning) {
+    if (!anyOn && !manualDriveActive && !missionDispatch.active && !showWaiting && !isReturning) {
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
       }, IDLE_STANDBY_RETURN_MS);
     }
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, missionDispatch.active, showWaiting, isReturning]);
 
   useEffect(() => {
     const onIdleActivity = () => {
@@ -1604,8 +1680,9 @@ function App() {
   }, [resetIdleTimer]);
 
   useEffect(() => {
-    if (anyOn || manualDriveActive) {
-      // ON이 하나라도 있으면 타이머 해제 & 대기 화면 진입 방지
+    if (anyOn || manualDriveActive || missionDispatch.active) {
+      // HH_261002 - The backend mission identity stays authoritative when
+      // site toggles briefly clear during a recovery or diagnostic outage.
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
@@ -1623,7 +1700,7 @@ function App() {
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, missionDispatch.active, showWaiting, isReturning]);
 
   useEffect(() => {
     if (!returnCompletionPending || missionDispatch.active) return;
@@ -1639,13 +1716,13 @@ function App() {
     setShowWaiting(true);
   }, [returnCompletionPending, missionDispatch.active]);
 
-  // HJ_260804 - A Guest UI mission can start while the Robot UI is on its idle
-  // screen. Expose the return status as soon as that mission starts returning.
+  // HH_261002 - An admitted mission can outlive its site toggle during a
+  // recovery. Keep its driving presentation above the public standby screen.
   useEffect(() => {
-    if (isReturning && showWaiting) {
+    if ((isReturning || missionDispatch.active) && showWaiting) {
       setShowWaiting(false);
     }
-  }, [isReturning, showWaiting]);
+  }, [isReturning, missionDispatch.active, showWaiting]);
 
   // Reopening standby ends the visit, so the next visitor starts from the
   // service menu instead of inheriting the previous role.
@@ -2127,16 +2204,16 @@ function App() {
           );
           setIsReturning(false);
         } else if (RETURNING_STATES.has(serviceState) || data.returning) {
-          // A call mission temporarily uses RETURN_WITH_CARGO while the robot
-          // re-enters the campsite and turns around. Keep the completion
-          // window/site visible through that sequence; close it only after the
-          // final loading confirmation starts the real trip back.
-          const recallTurnaroundInProgress = (
+          // HH_261002 - Recall uses RETURN_WITH_CARGO for both the moving
+          // turnaround and RECALL_RETURN_WAIT. Preserve the arrival site for
+          // the second confirmation; the derived presentation gate hides its
+          // modal/button only while final-ready is false. The ordinary return
+          // state clears this site after the final confirmation departs.
+          const recallCompletionStage = (
             serviceState === SERVICE_STATE.RETURN_WITH_CARGO
             && destinationIntentRef.current === 'recall'
-            && !recallFinalReturnReadyRef.current
           );
-          if (!recallTurnaroundInProgress) {
+          if (!recallCompletionStage) {
             setShowArrivalComplete(false);
             setArrivedSite(null);
           }
@@ -2169,6 +2246,11 @@ function App() {
         const snapshotBattery = Number(data.battery_percentage);
         setBatteryPct(Number.isFinite(snapshotBattery) ? snapshotBattery : null);
       }
+      // HH_261002 - Keep the full-charge notice tied to its explicit backend
+      // signal; a percent reading or CHARGING state alone cannot prove completion.
+      if ('battery_charge_complete' in data) {
+        setBatteryChargeComplete(Boolean(data.battery_charge_complete));
+      }
       // HH_260708 - Mirror planning engage state broadcast by the backend.
       if ('engage' in data) {
         setEngageState(data.engage);
@@ -2196,6 +2278,7 @@ function App() {
       returnRequestPendingRef.current = false;
       setReturnRequestPending(false);
       setConnected(false);
+      setBatteryChargeComplete(false);
       if (wsMountedRef.current) {
         wsReconnectTimerRef.current = setTimeout(() => {
           wsReconnectTimerRef.current = null;
@@ -2209,6 +2292,7 @@ function App() {
 
   // ── 컴포넌트 마운트/언마운트 시 WebSocket 관리 ──────────────────────────
   useEffect(() => {
+    if (previewMode) return undefined;
     wsMountedRef.current = true;
     connect();
     return () => {
@@ -2222,7 +2306,7 @@ function App() {
       wsRef.current = null;
       if (socket) socket.close();
     };
-  }, [connect]);
+  }, [connect, previewMode]);
 
   useEffect(() => {
     if (showWaiting) {
@@ -2236,6 +2320,7 @@ function App() {
 
   // ── 개별 사이트 토글 핸들러 ─────────────────────────────────────────────
   const handleEngage = () => {
+    if (previewMode) return;
     if (engageState) {
       // HH_260724 - ENGAGE OFF is an operator stop, so route it through the full backend stop path.
       fetch('/ui/stop', { method: 'POST' })
@@ -2249,13 +2334,15 @@ function App() {
   };
 
   const handleManualStop = () => {
+    if (previewMode) return;
     // HH_260724 - Manual driving stop must cancel Nav2 and publish OPERATOR_STOPPED.
     fetch('/ui/stop', { method: 'POST' }).catch(() => {});
     setEngageState(false);
   };
 
-  // 260708: 전조등 ON/OFF — /ui/headlight → /platform/headlight/command
+  // HH_260708 - Relay the headlight ON/OFF selection from /ui/headlight to /platform/headlight/command.
   const handleHeadlight = () => {
+    if (previewMode) return;
     const next = !headlightState;
     fetch(`/ui/headlight?value=${next}`, { method: 'POST' })
       .then((res) => { if (res.ok) setHeadlightState(next); })
@@ -2282,6 +2369,7 @@ function App() {
   };
 
   const handleServiceDocking = async () => {
+    if (previewMode) return;
     if (
       serviceDockingPendingRef.current
       || !dockingAllowedAtServiceState(serviceStateName)
@@ -2304,6 +2392,7 @@ function App() {
   };
 
   const requestCampingSiteRecall = async (site) => {
+    if (previewMode) return;
     const requestEpoch = recallRequestEpochRef.current + 1;
     recallRequestEpochRef.current = requestEpoch;
     const authorityRevisionAtRequest = missionAuthorityRevisionRef.current;
@@ -2419,6 +2508,7 @@ function App() {
 
   // ── 프리뷰에서 "Yes" 클릭 → 실제 ON publish ─────────────────────────────
   const handleConfirmMove = async () => {
+    if (previewMode) return;
     if (!selectedSite) return;
     if (destinationIntent === 'recall') {
       await requestCampingSiteRecall(selectedSite);
@@ -2432,6 +2522,7 @@ function App() {
 
   // ── 이동 중 "운행 중지" 클릭 → 전체 운행 정지 ────────────────────────────
   const handleStopMove = () => {
+    if (previewMode) return;
     // Return, docking, and parking can continue after the active-site toggle
     // has already cleared. Use the authoritative full stop for every visible
     // service-motion stop button so all motion owners are cancelled together.
@@ -2439,8 +2530,27 @@ function App() {
     setEngageState(false);
   };
 
+  const requestStopConfirmation = (kind) => {
+    if (previewMode) return;
+    setStopConfirmation({ kind, revision: missionAuthorityRevisionRef.current });
+  };
+
+  const confirmOperatorStop = () => {
+    const pending = stopConfirmation;
+    setStopConfirmation(null);
+    // HH_261001 - A delayed tap must never stop a different mission that started while
+    // this dialog was open, or a mission that has already ended.
+    if (!pending || pending.revision !== missionAuthorityRevisionRef.current) return;
+    if (pending.kind === 'manual') {
+      if (manualDriveActive) handleManualStop();
+    } else if (activeStateSite || activeRecallSite || displayedReturning) {
+      handleStopMove();
+    }
+  };
+
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
   const handleArrivalComplete = () => {
+    if (previewMode) return;
     if (missionExecutionErrorRef.current) {
       setMissionBlockMessage(
         missionExecutionFailureMessage(missionExecutionErrorRef.current)
@@ -2473,6 +2583,7 @@ function App() {
 
   // ── 실제 토글 적용 & WebSocket 전송 ─────────────────────────────────────
   const applyToggle = (site, newState) => {
+    if (previewMode) return;
     setMissionBlockMessage('');
     const updated = {};
     SITE_NAMES.forEach(s => { updated[s] = false; });
@@ -2496,6 +2607,16 @@ function App() {
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  // HH_261002 - The idle home map is opened only by a visible user action.
+  // It reuses the read-only driving view without starting or altering a mission.
+  const idleMapPanel = !missionDispatch.active && drivingDisplay.visible && (
+    <div className="idle-map-panel" data-ui="idle-navigation-map">
+      <DrivingDisplay snapshot={drivingDisplay.snapshot} onDismiss={drivingDisplay.dismiss}
+        onToggleTheme={previewMode ? undefined : () => setDrivingTheme(current => current === 'light' ? 'dark' : 'light')}
+        systemHealth={systemHealth} batteryPolicy={currentBatteryPolicy}
+        embedded={false} demo={previewMode} theme={previewMode ? drivingPreviewTheme : drivingTheme} />
+    </div>
+  );
   const missionExecutionWarning = missionExecutionError && (
     <p role="alert" className="mission-block-msg" style={{ color: '#b42318', padding: '1rem', background: '#fff0ee' }}>
       {missionExecutionFailureMessage(missionExecutionError)}
@@ -2705,6 +2826,10 @@ function App() {
               </div>
             </div>
             <div className="wh-right-group">
+              {drivingDisplay.canOpen && !drivingDisplay.visible && !missionDispatch.active && (
+                <button type="button" className="idle-map-open" data-ui="open-idle-navigation-map"
+                  onClick={drivingDisplay.open}>주행 지도 보기</button>
+              )}
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -2727,6 +2852,7 @@ function App() {
           parkingPolicy={parkingPolicy}
           serviceStateName={serviceStateName}
           serviceStateDescription={serviceStateDescription}
+          batteryChargeComplete={batteryChargeComplete}
         />
 
         {/* ── 하단 콘텐츠 영역: 실증 요약 + 기존 4개 버튼 2×2 ── */}
@@ -2777,6 +2903,7 @@ function App() {
         </div>
 
         {/* ── 모달 오버레이 ── */}
+        {idleMapPanel}
         {serviceEvidenceModal}
 
         {/* ── 서비스 선택 전 안전 안내 ── */}
@@ -2847,6 +2974,10 @@ function App() {
               </div>
             </div>
             <div className="ch-right">
+              {drivingDisplay.canOpen && !drivingDisplay.visible && !missionDispatch.active && (
+                <button type="button" className="idle-map-open" data-ui="open-idle-navigation-map"
+                  onClick={drivingDisplay.open}>주행 지도 보기</button>
+              )}
               <div className="wh-wifi ch-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -2870,6 +3001,7 @@ function App() {
           parkingPolicy={parkingPolicy}
           serviceStateName={serviceStateName}
           serviceStateDescription={serviceStateDescription}
+          batteryChargeComplete={batteryChargeComplete}
         />
 
         <main className="service-selection-body">
@@ -2946,6 +3078,7 @@ function App() {
           </button>
         </main>
 
+        {idleMapPanel}
         {showDeliveryConfirm && (
           <div className="move-confirm-overlay" onClick={() => setShowDeliveryConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
@@ -3022,7 +3155,7 @@ function App() {
 
   return (
     <div
-      className="main-layout"
+      className={`main-layout${previewMode ? ' driving-preview-app' : ''}${drivingDisplay.visible ? ' main-layout-driving' : ''}`}
       data-ui="operator-control-screen"
       onClick={resetIdleTimer}
       onTouchStart={resetIdleTimer}
@@ -3066,15 +3199,31 @@ function App() {
         parkingPolicy={parkingPolicy}
         serviceStateName={serviceStateName}
         serviceStateDescription={serviceStateDescription}
+        batteryChargeComplete={batteryChargeComplete}
       />
 
       {/* ── 역할 배너: 서비스 메뉴에서 확정된 배달/리콜을 바디 전체 폭에 표시 ── */}
       <div className={`mission-role-banner role-${destinationIntent}`}>
         <strong>{destinationIntent === 'recall' ? '호출 서비스' : '배달 서비스'}</strong>
+        {previewMode && <span className="driving-integrated-demo-label">화면 시연 · 실제 주행 아님</span>}
+        {drivingDisplay.canOpen && !drivingDisplay.visible && (
+          <button type="button" className="driving-integrated-open" data-ui="open-driving-display"
+            onClick={drivingDisplay.open}>주행 화면 보기</button>
+        )}
       </div>
 
       {/* ── 바디: 프리뷰 + 컨트롤 패널 ── */}
-      <div className="control-body">
+      <div className={`control-body${drivingDisplay.visible ? ' control-body-driving' : ''}`}
+        data-preview={previewMode && !drivingDisplay.visible ? 'returned' : undefined}>
+        {drivingDisplay.visible && (
+          <div className="driving-integrated-panel" data-ui="driving-display-overlay">
+            <DrivingDisplay snapshot={drivingDisplay.snapshot} onDismiss={drivingDisplay.dismiss}
+              onSafetyStop={previewMode ? undefined : handleStopMove}
+              onToggleTheme={previewMode ? undefined : () => setDrivingTheme(current => current === 'light' ? 'dark' : 'light')}
+              systemHealth={systemHealth} batteryPolicy={currentBatteryPolicy}
+              embedded demo={previewMode} theme={previewMode ? drivingPreviewTheme : drivingTheme} />
+          </div>
+        )}
 
         {/* ── 왼쪽: 사이트 이미지 프리뷰 패널 ── */}
         <div className="preview-panel">
@@ -3110,7 +3259,7 @@ function App() {
                 <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>아니오</button>
               </div>
             </>
-          ) : arrivedSite ? (
+          ) : arrivedSite && !recallTurnaroundInProgress ? (
             <>
               <img
                 src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[arrivedSite]}`}
@@ -3155,11 +3304,15 @@ function App() {
           ) : ['CHARGING', 'WAITING_FOR_CHARGING', 'DROP_ZONE_PARKING'].includes(serviceStateName) ? (
             <>
               <span className="preview-placeholder-title">
-                {motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy)}
+                {motionNotice?.label || parkingLifecycleStatus(serviceStateName, serviceStateDescription, parkingPolicy, batteryChargeComplete)}
               </span>
               <p className="preview-returning" aria-live="polite">
                 {motionNotice?.message || (serviceStateName === 'CHARGING'
-                  ? '플랫폼에서 충전 상태가 확인되었습니다.'
+                  ? (batteryChargeComplete
+                    ? '배터리가 100%로 충전되었습니다.'
+                    : Number.isFinite(Number(batteryPct)) && batteryPct !== null && Number(batteryPct) >= 0
+                      ? `현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.`
+                      : '플랫폼에서 충전 상태가 확인되었습니다.')
                   : serviceStateName === 'WAITING_FOR_CHARGING'
                     ? '충전 도킹 정렬이 완료되어 충전 접점 연결을 기다리고 있습니다.'
                     : '로봇이 대기·충전 장소에서 마지막 주차 동작을 진행하고 있습니다.')}
@@ -3180,7 +3333,7 @@ function App() {
               </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
               </div>
             </>
           ) : activeSite ? (
@@ -3194,7 +3347,7 @@ function App() {
               <p className="preview-moving">{motionNotice?.message || '배송 로봇이 이동중 입니다.'}</p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
               </div>
             </>
           ) : activeRecallSite ? (
@@ -3208,7 +3361,7 @@ function App() {
               <p className="preview-moving">{motionNotice?.message || '도로 측 대기 지점으로 이동 중입니다.'}</p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('service')}>운행 정지</button>
               </div>
             </>
           ) : manualDriveActive ? (
@@ -3219,7 +3372,7 @@ function App() {
               </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleManualStop}>예</button>
+                <button type="button" className="preview-stop-btn" onClick={() => requestStopConfirmation('manual')}>운행 정지</button>
               </div>
             </>
           ) : serviceStateName === 'OPERATOR_STOPPED' ? (
@@ -3329,7 +3482,8 @@ function App() {
       {serviceEvidenceModal}
 
       {/* ── 출발 최종 확인 팝업 ── */}
-          {showArrivalComplete && arrivedSite && robotOwnsReturn && (
+          {showArrivalComplete && arrivedSite && robotOwnsReturn
+            && !recallTurnaroundInProgress && (
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
@@ -3403,6 +3557,22 @@ function App() {
               >
                 아니오
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stopConfirmation && (
+        <div className="move-confirm-overlay" data-ui="operator-stop-confirm-dialog"
+          onClick={() => setStopConfirmation(null)}>
+          <div className="move-confirm-box operator-stop-confirm-box" role="alertdialog" aria-modal="true"
+            aria-labelledby="operator-stop-confirm-title" onClick={e => e.stopPropagation()}>
+            <p id="operator-stop-confirm-title" className="move-confirm-msg">운행을 정지하시겠습니까?</p>
+            <div className="move-confirm-btns">
+              <button type="button" className="move-confirm-yes" data-ui="operator-stop-confirm-yes"
+                onClick={confirmOperatorStop}>예</button>
+              <button type="button" className="move-confirm-no" data-ui="operator-stop-confirm-no"
+                onClick={() => setStopConfirmation(null)}>아니요</button>
             </div>
           </div>
         </div>

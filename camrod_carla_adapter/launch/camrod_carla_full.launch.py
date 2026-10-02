@@ -52,11 +52,7 @@ def _include(path, arguments, condition=None):
 
 
 def _mission_records_root():
-    """Resolve the legacy path anchor for simulation state and snapshots.
-
-    v2.2.9 no longer launches the mission journal node. Keep the existing
-    environment/launch argument compatible with saved operator commands.
-    """
+    """Resolve the isolated CARLA mission journal and state path anchor."""
     configured = _environment_path("CAMROD_CARLA_MISSION_RECORDS_ROOT")
     if configured:
         return configured
@@ -233,6 +229,9 @@ def generate_launch_description():
             "port", default_value=os.environ.get("CARLA_PORT", "2000")
         ),
         DeclareLaunchArgument("launch_vehicle_control", default_value="true"),
+        # HH_261002 - Default empty keeps the ordinary command boundary exact;
+        # only the explicit CARLA site wrapper selects the manual-speed overlay.
+        DeclareLaunchArgument("carla_command_runtime_override_param_file", default_value=""),
         DeclareLaunchArgument(
             "recovery_breakaway_enable",
             default_value="false",
@@ -927,17 +926,19 @@ def generate_launch_description():
     ]
 
     actions = [
-        # Child processes get a simulation-only SQLite/state root too. Merely
-        # isolating the now-retired mission journal does not protect metrics.
+        # HH_261002 - Isolate simulation mission/CAN records and metrics from
+        # the real robot; the recorder is now active again.
         SetEnvironmentVariable("XDG_STATE_HOME", os.path.dirname(_mission_records_root())),
         SetLaunchConfiguration("snapshot_param_file", simulation_snapshot_params),
         SetLaunchConfiguration("snapshot_output_directory", simulation_snapshot_directory),
-        # Keep the legacy label for external launch consumers. v2.2.9 removed
-        # the recorder; the state/snapshot boundaries above do the isolation.
         SetLaunchConfiguration("mission_recorder_environment", "simulation"),
         _include(
             controller_launch,
             {
+                # HH_261002 - Match the verified 0.05 s CARLA tick; the upstream
+                # 0.02 s controller can brake while awaiting the previous tick's
+                # wheel RPC acknowledgement. Preserve ACK checks and watchdogs.
+                "control_loop_rate": "0.05",
                 "role_name": LaunchConfiguration("role_name"),
                 "host": LaunchConfiguration("host"),
                 "port": LaunchConfiguration("port"),
@@ -966,6 +967,8 @@ def generate_launch_description():
             adapter_launch,
             {
                 "role_name": LaunchConfiguration("role_name"),
+                "command_runtime_override_param_file": LaunchConfiguration(
+                    "carla_command_runtime_override_param_file"),
                 "map_alignment_file": LaunchConfiguration(
                     "map_alignment_file"
                 ),
@@ -1436,6 +1439,13 @@ def generate_launch_description():
                 "rviz": LaunchConfiguration("rviz"),
                 "enable_plugin_api": LaunchConfiguration("enable_plugin_api"),
                 "enable_api_ui": LaunchConfiguration("enable_api_ui"),
+                "mission_records_root": LaunchConfiguration(
+                    "mission_records_root"
+                ),
+                "mission_recorder_environment": "simulation",
+                # A CARLA /platform/status sample is simulated platform
+                # telemetry, never a physical SocketCAN frame.
+                "mission_recorder_raw_can_interface": "",
                 # Keep develop's raw-camera fallback contract in parity mode.
                 # CARLA's relay is subscriber-aware and rate-bounds raw frames;
                 # the tuned wrapper may explicitly disable this fallback.

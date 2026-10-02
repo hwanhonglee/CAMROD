@@ -4,7 +4,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -20,6 +20,39 @@ def _role_topic(suffix):
     ]
 
 
+def _command_parameter_files(context):
+    """HH_261002 - Append an opt-in simulator overlay without replacing defaults."""
+    files = [LaunchConfiguration("command_config_file").perform(context)]
+    overlay = LaunchConfiguration(
+        "command_runtime_override_param_file").perform(context).strip()
+    if overlay:
+        files.append(overlay)
+    return files
+
+
+def _launch_command_adapter(context):
+    # HH_261002 - Resolve the optional overlay only at launch time. An empty
+    # overlay preserves custom lower limits as well as the shared 1.4 m/s cap.
+    return [Node(
+        package="camrod_carla_adapter",
+        executable="twist_to_4ws",
+        name="camrod_twist_to_4ws",
+        output="screen",
+        parameters=_command_parameter_files(context) + [{
+            "input_topic": LaunchConfiguration("input_twist_topic"),
+            "output_topic": LaunchConfiguration("extended_command_topic"),
+            "recovery_breakaway_enable": ParameterValue(
+                LaunchConfiguration("recovery_breakaway_enable"), value_type=bool),
+            "rotation_recovery_breakaway_enable": ParameterValue(
+                LaunchConfiguration("rotation_recovery_breakaway_enable"), value_type=bool),
+            "rotation_recovery_breakaway_status_timeout_sec": ParameterValue(
+                LaunchConfiguration("rotation_recovery_breakaway_status_timeout_sec"),
+                value_type=float),
+            "use_sim_time": False,
+        }],
+    )]
+
+
 def generate_launch_description():
     share = get_package_share_directory("camrod_carla_adapter")
     command_config = os.path.join(share, "config", "command_adapter.yaml")
@@ -31,6 +64,11 @@ def generate_launch_description():
         DeclareLaunchArgument("role_name", default_value="ego_vehicle"),
         DeclareLaunchArgument(
             "command_config_file", default_value=command_config),
+        DeclareLaunchArgument(
+            "command_runtime_override_param_file", default_value="",
+            description=(
+                "Optional simulator-only command cap overlay; "
+                "empty preserves base limits")),
         DeclareLaunchArgument(
             "feedback_config_file", default_value=feedback_config),
         DeclareLaunchArgument(
@@ -109,39 +147,7 @@ def generate_launch_description():
             ),
         ),
 
-        Node(
-            package="camrod_carla_adapter",
-            executable="twist_to_4ws",
-            name="camrod_twist_to_4ws",
-            output="screen",
-            parameters=[
-                LaunchConfiguration("command_config_file"),
-                {
-                    "input_topic": LaunchConfiguration("input_twist_topic"),
-                    "output_topic": LaunchConfiguration(
-                        "extended_command_topic"),
-                    "recovery_breakaway_enable": ParameterValue(
-                        LaunchConfiguration("recovery_breakaway_enable"),
-                        value_type=bool,
-                    ),
-                    "rotation_recovery_breakaway_enable": ParameterValue(
-                        LaunchConfiguration(
-                            "rotation_recovery_breakaway_enable"
-                        ),
-                        value_type=bool,
-                    ),
-                    "rotation_recovery_breakaway_status_timeout_sec": (
-                        ParameterValue(
-                            LaunchConfiguration(
-                                "rotation_recovery_breakaway_status_timeout_sec"
-                            ),
-                            value_type=float,
-                        )
-                    ),
-                    "use_sim_time": False,
-                },
-            ],
-        ),
+        OpaqueFunction(function=_launch_command_adapter),
         Node(
             package="camrod_carla_adapter",
             executable="carla_feedback_bridge",

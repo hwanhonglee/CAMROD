@@ -42,6 +42,9 @@ def test_ros_boundary_maps_control_readiness_health_and_release(tmp_path):
             'release_service', value='/virtual_carla/test/release_' + suffix),
         Parameter(
             'health_service', value='/virtual_carla/test/health_' + suffix),
+        Parameter(
+            'startup_ready_service',
+            value='/virtual_carla/test/startup_ready_' + suffix),
         Parameter('lock_file', value=str(tmp_path / 'step-pacer.lock')),
     ])
     controls = _CapturePublisher()
@@ -68,12 +71,25 @@ def test_ros_boundary_maps_control_readiness_health_and_release(tmp_path):
         pending = node._on_health(Trigger.Request(), Trigger.Response())
         assert pending.success is False
         assert 'reason=step_ack_pending' in pending.message
+        initial_ready = node._on_startup_ready(
+            Trigger.Request(), Trigger.Response())
+        assert initial_ready.success is False
+        assert 'no_completed_step_ack' in initial_ready.message
 
         node._on_status(_status(42, running=True))
         node._on_status(_status(43, running=True))
         node._on_status(_status(43, running=False))
         assert node.state.frame == 43
         assert node.state.phase == PacerPhase.WAITING_FOR_DEADLINE
+
+        # HH_261002 - Startup can sample a proven in-flight step; the strict
+        # currently-paused health endpoint remains unchanged and false here.
+        node.state.next_step_deadline_s = 0.0
+        node._on_timer()
+        pacing = node._on_startup_ready(Trigger.Request(), Trigger.Response())
+        assert pacing.success is True
+        assert 'completed_step_ack=true' in pacing.message
+        assert node._on_health(Trigger.Request(), Trigger.Response()).success is False
 
         released = node._on_release(Trigger.Request(), Trigger.Response())
         assert released.success is True

@@ -281,8 +281,8 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
         "input_topics": ["/perception/obstacles"],
         "max_cost": 95,
     },
-    # Full/develop-parity must retain the current develop detector threshold.
-    # Only the site-geometry wrapper selects the measured Woraksan overlay.
+    # HH_261002 - Keep develop-parity at 0.50; only the CARLA site wrapper
+    # uses the measured 0.80 threshold with the corrected 80-label model.
     "/perception/yolov9mit": {
         "min_confidence": 0.5,
     },
@@ -297,7 +297,7 @@ def _with_site_geometry(
     result["/carla_charging_contact_emulator"] = dict(
         CARLA_CHARGING_CONTACT_PARAMETERS
     )
-    result["/perception/yolov9mit"]["min_confidence"] = 0.95
+    result["/perception/yolov9mit"]["min_confidence"] = 0.80
     result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
     result["/control/cmd_vel_safety_gate"][
         "allow_manual_departure_while_charging"
@@ -1487,6 +1487,18 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
             audited_profile
         ].items()
     }
+    if audited_profile == "develop-plus-carla-site-geometry-v27":
+        # HH_261002 - Reject a live 81-name detector even if the other CARLA
+        # parameters match: the engine emits 80 logits per anchor, so a label
+        # count mismatch changes the meaning of every detection after anchor 0.
+        expected_parameters["/perception/yolov9mit"]["class_label_path"] = str(
+            args.install_root.expanduser().resolve()
+            / "camrod_carla_adapter"
+            / "share"
+            / "camrod_carla_adapter"
+            / "config"
+            / "yolo_coco80.txt"
+        )
     lanelet_parameter_nodes = (
         "/map/lanelet_map_provider",
         "/map/lanelet_boundary_cost_grid",

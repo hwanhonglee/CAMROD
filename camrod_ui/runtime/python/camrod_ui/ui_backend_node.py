@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
-# HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
+# HH_260421 - UI backend simplified to direct destination-driven engage/goal dispatch.
+# HH_260520 - Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
 #            Added /battery_percentage and /service/state sub/pub.
 # HH_260810 - Add an operator-map manual Goal Pose path so the managed UI can
 #             replace RViz for normal field operation while retaining /goal_pose.
@@ -18,6 +18,7 @@ import shutil
 import struct
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,7 @@ from avg_msgs.msg import (
     AvgAprilTagPose,
     AvgServiceState,
     AvgBool,
+    AvgFloat32,
     AvgLocalizationStatus,
     AvgLocalizationMode,
     AvgOccupancyGrid,
@@ -80,8 +82,14 @@ import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
 from camrod_ui.battery_policy import (
+    battery_charge_complete,
     battery_policy_snapshot,
     urgent_return_required,
+)
+from camrod_ui.driving_snapshot import (
+    BASE_MAP_MAX_LINES, BASE_MAP_MAX_POINTS, BASE_MAP_NAMESPACES,
+    DrivingSnapshotCache, sample_indices,
+    transform_detection_orientation, transform_detection_point,
 )
 from camrod_ui.manual_drive_policy import (
     MANUAL_DRIVE_DEADMAN_TIMEOUT_S,
@@ -90,6 +98,11 @@ from camrod_ui.manual_drive_policy import (
     ManualDriveLimits,
     ManualDrivePolicy,
     ManualDriveProtocolError,
+)
+from camrod_ui.mission_recording_bridge import (
+    MissionRecordingEmitter,
+    default_mission_records_path,
+    load_mission_recording_snapshot,
 )
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
@@ -612,7 +625,7 @@ class ApiState:
 
     engaged: bool = False
     ready: bool = False
-    # 260708: Operator headlight toggle state (relay via light MCU bridge).
+    # HH_260708 - Operator headlight toggle state (relay via light MCU bridge).
     headlight: bool = False
     operation_mode: str = "STOP"
     ready_message: str = ""
@@ -630,6 +643,7 @@ class ApiState:
         default_factory=lambda: {"site": "", "run": False}
     )
     battery_percentage: int = -1
+    battery_charge_complete: bool = False
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
     occupied_sites: List[str] = field(default_factory=list)
 
@@ -670,6 +684,29 @@ class UiBackendNode(Node):
         self.port = int(self.declare_parameter("port", 8000).value)
         self.enable_http_server = bool(self.declare_parameter("enable_http_server", True).value)
         self.frontend_dir = Path(str(self.declare_parameter("frontend_dir", "").value))
+        # HH_261002 - Keep per-mission CAN-derived telemetry in an independent
+        # recorder. Never repoint or migrate the existing service metrics DB.
+        self.mission_records_root = str(self.declare_parameter(
+            "mission_records_root", str(default_mission_records_path())
+        ).value)
+        self.mission_recording_event_topic = str(self.declare_parameter(
+            "mission_recording_event_topic", "/ui/mission_recording/events"
+        ).value)
+        recording_qos = QoSProfile(
+            depth=100,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.pub_mission_recording_event = self.create_publisher(
+            String, self.mission_recording_event_topic, recording_qos
+        )
+
+        def publish_recording_event(payload: str) -> None:
+            event = String()
+            event.data = payload
+            self.pub_mission_recording_event.publish(event)
+
+        self._mission_recording = MissionRecordingEmitter(publish_recording_event)
         # HH_260819 - Persist proof-of-operation evidence outside the build and
         # install trees so an ARM64 rebuild cannot erase accumulated history.
         self.service_metrics_enabled = bool(
@@ -738,7 +775,7 @@ class UiBackendNode(Node):
         self.platform_drive_enable_topic = str(
             self.declare_parameter("platform_drive_enable_topic", "/platform/drive_enable").value
         )
-        # 260708: Headlight ON/OFF button target, consumed by light_controller.
+        # HH_260708 - Headlight ON/OFF button target, consumed by light_controller.
         self.headlight_command_topic = str(
             self.declare_parameter("headlight_command_topic", "/platform/headlight/command").value
         )
@@ -1423,6 +1460,17 @@ class UiBackendNode(Node):
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
         )
+        # HH_261001 - Passive public driving data is independent of the single operator
+        # telemetry lease and cannot acquire motion authorization.
+        self._driving = DrivingSnapshotCache()
+        self.driving_objects_topic = str(self.declare_parameter(
+            "driving_objects_topic", "/perception/camera_lidar/markers"
+        ).value)
+        # HH_261002 - Dedicated display-only measured extents. The older
+        # Detection3D and sphere sizes are fixed glyphs, not physical boxes.
+        self.driving_object_boxes_topic = str(self.declare_parameter(
+            "driving_object_boxes_topic", "/perception/camera_lidar/navigation_boxes"
+        ).value)
         self._service_metrics = ServiceMetricsTracker(
             self.service_metrics_database_path
             if self.service_metrics_enabled else None,
@@ -1483,6 +1531,7 @@ class UiBackendNode(Node):
         self._site_route_anchors: Dict[str, PoseStamped] = {}
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
         self._latest_platform_is_charging = False
+        self._latest_platform_power_supply_status = 0
         self._latest_platform_control_mode = -1
         self._latest_service_state: Optional[int] = None
         # A terminal heartbeat is also present while a newly accepted recall
@@ -1516,6 +1565,9 @@ class UiBackendNode(Node):
         # A Guest browser can survive a backend restart; reusing generation 1
         # would otherwise let an old B-site operation match the new process.
         self._mission_generation = (time.time_ns() // 1_000_000) * 1000
+        # HH_261001 - The Guest bridge must distinguish a new backend writer from an old
+        # generation-0 operation status when a browser request is pending.
+        self._backend_session_id = uuid.uuid4().hex
         self._active_mission_generation = 0
         self._active_mission_owner = ""
         self._active_mission_intent = ""
@@ -1525,6 +1577,9 @@ class UiBackendNode(Node):
         self._return_operation_sequence = 0
         self._terminal_clear_armed_generation = 0
         self._active_mission_retryable = False
+        # HH_261001 - Only an authority-checked Guest CANCEL may reopen public dispatch
+        # from OPERATOR_STOPPED. Operator/emergency/startup stops stay closed.
+        self._guest_cancel_restart_ready = False
         # HH_260819 - Return uses one transient timer only while changing Nav2
         # ownership. Repeated buttons share this latch instead of creating work.
         self._manual_return_transition_lock = threading.Lock()
@@ -1752,6 +1807,43 @@ class UiBackendNode(Node):
             self._on_arrival_pose,
             10,
         )
+        # HH_261001 - Only bounded route/progress and fused centroid markers are added.
+        # Pose, platform, and diagnostic feedback reuse existing always-on subscribers;
+        # this does not subscribe camera images, clouds or the operator "all" view.
+        self._driving_subscriptions = [self.create_subscription(
+            NavPath, self.telemetry_topics["global_path"],
+            self._on_driving_path, state_qos,
+        )]
+        # HH_261002 - Static roads must survive idle/new missions without opening
+        # the high-bandwidth operator lease. The map producer is low-rate and
+        # transient-local; late UI startup receives its last published map.
+        self._driving_subscriptions.append(self.create_subscription(
+            MarkerArray, self.telemetry_topics["map_markers"], self._on_driving_base_map,
+            QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1,
+                       reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        ))
+        self._driving_subscriptions.append(self.create_subscription(
+            MarkerArray, self.driving_objects_topic, self._on_driving_objects,
+            QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1,
+                       reliability=ReliabilityPolicy.BEST_EFFORT,
+                       durability=DurabilityPolicy.VOLATILE),
+        ))
+        self._driving_subscriptions.append(self.create_subscription(
+            MarkerArray, self.driving_object_boxes_topic, self._on_driving_object_boxes,
+            QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1,
+                       reliability=ReliabilityPolicy.BEST_EFFORT,
+                       durability=DurabilityPolicy.VOLATILE),
+        ))
+        for field_name in (
+            "remaining_distance_m", "remaining_time_s", "completion_pct",
+        ):
+            self._driving_subscriptions.append(self.create_subscription(
+                AvgFloat32, f"/planning/progress/{field_name}",
+                lambda message, name=field_name: self._driving.progress(
+                    name, message.data, self._driving_mission()
+                ), 1,
+            ))
         self.sub_drop_zone_exit_complete = self.create_subscription(
             AvgBool,
             self.drop_zone_exit_complete_topic,
@@ -1804,7 +1896,7 @@ class UiBackendNode(Node):
             )
 
         # Publishers.
-        # HH_260617: UI destination and planning mission-key topics now use
+        # HH_260617 - UI destination and planning mission-key topics now use
         # generated avg_msgs semantic messages instead of JSON/String wrappers.
         self.pub_destination = self.create_publisher(
             UiDestinationCommand, self.ui_destination_topic, 10
@@ -1819,7 +1911,7 @@ class UiBackendNode(Node):
         self.pub_platform_drive_enable = self.create_publisher(
             AvgBool, self.platform_drive_enable_topic, 10
         )
-        # 260708: Headlight button publisher (light_controller passes it to the MCU).
+        # HH_260708 - Headlight button publisher (light_controller passes it to the MCU).
         self.pub_headlight = self.create_publisher(AvgBool, self.headlight_command_topic, 10)
         self.pub_camping_site_maneuver_controller_operation = self.create_publisher(
             MotionOperation, self.camping_site_maneuver_controller_operation_topic, 10
@@ -2768,6 +2860,253 @@ class UiBackendNode(Node):
             keys.append(f"navigation.site_{site}")
         keys.append("navigation.to_campsite")
         return tuple(keys)
+
+    def _driving_mission(self) -> Dict[str, Any]:
+        """HH_261001 - Read-only presentation identity, not dispatch authority."""
+        # HH_261001 - This helper acquires _lock itself. Read it before the state lock,
+        # and preserve its identity exactly as on /ws (including return legs).
+        dispatch = UiBackendNode._mission_dispatch_snapshot(self)
+        with self._lock:
+            return {
+                "active": dispatch["mission_dispatch_active"],
+                "generation": dispatch["mission_dispatch_generation"],
+                "intent": dispatch["mission_dispatch_intent"],
+                "site": dispatch["mission_dispatch_site"],
+                "service_state_name": self._state.service_state_name,
+                "phase": self._state.mission_phase,
+                "description": self._state.service_state_description,
+            }
+
+    def _on_driving_path(self, message: NavPath) -> None:
+        # HH_261001 - Sample before allocation, retaining endpoints and bounding callback
+        # work even for a very long planner path.
+        size = len(message.poses)
+        indices = (range(size) if size <= 500 else
+                   (round(index * (size - 1) / 499) for index in range(500)))
+        points = [
+            [message.poses[index].pose.position.x, message.poses[index].pose.position.y]
+            for index in indices
+        ]
+        # HH_261001 - Preserve the producer stamp independently of receipt time.
+        # A delayed transient-local path from the previous goal must not be
+        # attached to the current mission merely because DDS delivered it now.
+        self._driving.route(
+            points, message.header.frame_id, self._driving_mission(),
+            source_stamp_s=_ros_stamp_seconds(message.header.stamp),
+        )
+
+    def _on_driving_base_map(self, message: MarkerArray) -> None:
+        """HH_261002 - Read actual lanelet roads, independently of mission/lease.
+
+        These map markers are LINE_STRIPs from lanelet2_map_node. Unknown frames
+        are rejected, not treated as map coordinates or repaired with latest TF.
+        The diagnostic map subscription/cache remains independent and unchanged.
+        """
+        records, deleted = {}, set()
+        clear = not message.markers
+        # HH_261002 - Fail closed on an unbounded/malformed source publication;
+        # never miss a later DELETEALL by accepting only an arbitrary prefix.
+        if len(message.markers) > 4096:
+            self._driving.base_map([], clear=True, source=self.telemetry_topics["map_markers"])
+            return
+        point_limit = min(300, max(2, BASE_MAP_MAX_POINTS // max(
+            1, min(BASE_MAP_MAX_LINES, len(message.markers)))))
+        for marker in message.markers:
+            if marker.action == Marker.DELETEALL:
+                clear = True
+                records.clear()
+                deleted.clear()
+                continue
+            if marker.ns not in BASE_MAP_NAMESPACES:
+                continue
+            identity = (marker.ns, marker.id)
+            records.pop(identity, None)
+            deleted.add(identity)
+            if (marker.action != Marker.ADD or marker.type != Marker.LINE_STRIP
+                    or marker.header.frame_id != "map" or len(marker.points) < 2
+                    or len(records) >= BASE_MAP_MAX_LINES):
+                continue
+            position, rotation = marker.pose.position, marker.pose.orientation
+            quaternion = (rotation.x, rotation.y, rotation.z, rotation.w)
+            # HH_261002 - The existing map publisher leaves its pose quaternion
+            # all-zero; RViz treats that default as identity. Do so only here,
+            # never weakening object/TF quaternion validation elsewhere.
+            if quaternion == (0.0, 0.0, 0.0, 0.0):
+                quaternion = (0.0, 0.0, 0.0, 1.0)
+            points = []
+            for index in sample_indices(len(marker.points), point_limit):
+                point = marker.points[index]
+                transformed = transform_detection_point(
+                    (point.x, point.y, point.z),
+                    (position.x, position.y, position.z), quaternion,
+                )
+                if transformed is None:
+                    points = []
+                    break
+                points.append(transformed[:2])
+            if len(points) < 2:
+                continue
+            records[identity] = {
+                "namespace": marker.ns, "id": marker.id,
+                "frame_id": "map", "points": points,
+            }
+            deleted.discard(identity)
+        self._driving.base_map(list(records.values()), deleted_ids=deleted,
+                               clear=clear, source=self.telemetry_topics["map_markers"])
+
+    def _on_driving_objects(self, message: MarkerArray) -> None:
+        """HH_261001 - Read the existing fusion centroid/text contract, without point clouds."""
+        markers = message.markers[:128]
+        labels = {
+            (marker.ns, marker.id): marker for marker in markers
+            if marker.ns == "fusion_det" and marker.action == Marker.ADD
+            and marker.type == Marker.TEXT_VIEW_FACING
+        }
+        records, deleted = {}, set()
+        clear = not message.markers
+        ros_now_s = self._now_s()
+        transforms = {}
+        for marker in markers:
+            if marker.action == Marker.DELETEALL and marker.ns in ("", "fusion_det"):
+                clear = True
+                records.clear()
+                deleted.clear()
+                continue
+            if marker.ns != "fusion_det":
+                continue
+            sphere_id = marker.id if marker.id % 2 == 0 else marker.id - 1
+            identity = f"fusion_det:{sphere_id}"
+            if marker.action == Marker.DELETE:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            if marker.action != Marker.ADD or marker.type != Marker.SPHERE or marker.id % 2:
+                continue
+            if len(records) >= 32:
+                continue
+            stamp = _ros_stamp_seconds(marker.header.stamp)
+            frame = str(marker.header.frame_id or "").strip()
+            position = marker.pose.position
+            xyz = [position.x, position.y, position.z]
+            if stamp is None or stamp <= 0 or stamp > ros_now_s + 0.05 or ros_now_s - stamp > 1:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            if frame != "map":
+                transform_key = (frame, stamp)
+                if transform_key not in transforms:
+                    try:
+                        transform = self._tf_buffer.lookup_transform(
+                            "map", frame, Time.from_msg(marker.header.stamp),
+                            timeout=Duration(seconds=0.0),
+                        ).transform
+                        translation, rotation = transform.translation, transform.rotation
+                        transforms[transform_key] = (
+                            (translation.x, translation.y, translation.z),
+                            (rotation.x, rotation.y, rotation.z, rotation.w),
+                        )
+                    except Exception:
+                        transforms[transform_key] = None
+                transform = transforms[transform_key]
+                xyz = transform_detection_point(xyz, *transform) if transform else None
+            if xyz is None or not frame:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            text_marker = labels.get((marker.ns, marker.id + 1))
+            label = None
+            if (text_marker is not None and text_marker.header.frame_id == marker.header.frame_id
+                    and _ros_stamp_seconds(text_marker.header.stamp) == stamp):
+                label = str(text_marker.text or "").split("\n", 1)[0].strip() or None
+            records[identity] = {
+                "id": identity, "class_name": label,
+                "x": xyz[0], "y": xyz[1], "z": xyz[2],
+                "frame_id": "map", "transform_available": True, "stamp_s": stamp,
+                "source_frame": frame,
+                "lifetime_s": _ros_stamp_seconds(marker.lifetime),
+            }
+            deleted.discard(identity)
+        self._driving.fusion_objects(list(records.values()), ros_now_s=ros_now_s,
+                                     deleted_ids=deleted, clear=clear)
+
+    def _on_driving_object_boxes(self, message: MarkerArray) -> None:
+        """HH_261002 - Pass only explicit observed foreground extents to navigation.
+
+        This is a passive display subscriber. It never subscribes a cloud,
+        changes perception outputs, or treats the legacy 0.4 m glyph as a box.
+        """
+        records, deleted, transforms = {}, set(), {}
+        clear = not message.markers
+        ros_now_s = self._now_s()
+        for marker in message.markers[:128]:
+            if marker.action == Marker.DELETEALL and marker.ns in ("", "fusion_observed_extent"):
+                clear = True
+                records.clear()
+                deleted.clear()
+                continue
+            if marker.ns != "fusion_observed_extent" or marker.id < 0 or marker.id % 2:
+                continue
+            identity = f"fusion_det:{marker.id}"
+            if marker.action == Marker.DELETE:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            if marker.action != Marker.ADD or marker.type != Marker.CUBE or len(records) >= 32:
+                continue
+            stamp = _ros_stamp_seconds(marker.header.stamp)
+            frame = str(marker.header.frame_id or "").strip()
+            if not frame or stamp is None or stamp <= 0 or stamp > ros_now_s + 0.05 or ros_now_s - stamp > 1:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            position, rotation = marker.pose.position, marker.pose.orientation
+            xyz = [position.x, position.y, position.z]
+            orientation = transform_detection_orientation((rotation.x, rotation.y, rotation.z, rotation.w))
+            if frame != "map":
+                key = (frame, stamp)
+                if key not in transforms:
+                    try:
+                        transform = self._tf_buffer.lookup_transform(
+                            "map", frame, Time.from_msg(marker.header.stamp),
+                            timeout=Duration(seconds=0.0),
+                        ).transform
+                        translation, rotation = transform.translation, transform.rotation
+                        transforms[key] = (
+                            (translation.x, translation.y, translation.z),
+                            (rotation.x, rotation.y, rotation.z, rotation.w),
+                        )
+                    except Exception:
+                        transforms[key] = None
+                transform = transforms[key]
+                xyz = transform_detection_point(xyz, *transform) if transform else None
+                orientation = (transform_detection_orientation(orientation, transform[1])
+                               if transform and orientation else None)
+            if xyz is None or orientation is None:
+                records.pop(identity, None)
+                deleted.add(identity)
+                continue
+            records[identity] = {
+                "id": identity, "x": xyz[0], "y": xyz[1], "z": xyz[2],
+                "frame_id": "map", "source_frame": frame, "transform_available": True,
+                "stamp_s": stamp, "lifetime_s": _ros_stamp_seconds(marker.lifetime),
+                "size": {axis: getattr(marker.scale, axis) for axis in ("x", "y", "z")},
+                "orientation": dict(zip(("x", "y", "z", "w"), orientation)),
+                "source": "observed_lidar_extent",
+            }
+            deleted.discard(identity)
+        self._driving.observed_object_boxes(list(records.values()), ros_now_s=ros_now_s,
+                                           deleted_ids=deleted, clear=clear)
+
+    def _snapshot_driving(self) -> Dict[str, Any]:
+        mission = self._driving_mission()
+        with self._lock:
+            # HH_261001 - Reuse only actually captured, transformed operator data. A public
+            # GET does not start or renew the high-bandwidth telemetry lease.
+            cloud = copy.deepcopy(self._telemetry["perception"]["obstacle_cloud"])
+            received = self._telemetry_source_rx.get("perception.obstacles")
+        return self._driving.snapshot(
+            mission, perception=cloud, perception_received=received,
+        )
 
     @staticmethod
     def _new_telemetry_snapshot() -> Dict[str, Any]:
@@ -4933,6 +5272,9 @@ class UiBackendNode(Node):
             "mission_retry_site": site if retryable else "",
             "mission_retry_owner": owner if retryable else "",
             "departure_failed": retryable,
+            "guest_cancel_restart_ready": bool(
+                not active and getattr(self, "_guest_cancel_restart_ready", False)
+            ),
         }
 
     def _active_mission_identity(self) -> tuple[str, str, int, int]:
@@ -5103,6 +5445,15 @@ class UiBackendNode(Node):
         # another campsite's latest route must never authorize roadside adopt.
         stamp_key = self._route_goal_stamp_key(msg)
         previous_stamp = getattr(self, "_ui_last_route_goal_stamp", (0, 0))
+        if stamp_key > previous_stamp:
+            # HH_261001 - A new snapped goal ends the previous display route.
+            # The cache compares producer stamps so cross-topic DDS reordering
+            # cannot erase a path that was already computed for this goal.
+            driving = getattr(self, "_driving", None)
+            if driving is not None:
+                driving.invalidate_route_before(
+                    stamp_key[0] + stamp_key[1] * 1.0e-9
+                )
         completed = getattr(self, "_ui_completed_station_goal", None)
         if completed and stamp_key > completed["goal_stamp"]:
             # A fresh timestamped route goal is new intent, including RViz.
@@ -5226,6 +5577,9 @@ class UiBackendNode(Node):
             }
             for module in sorted(module_levels.keys())
         ]
+        driving = getattr(self, "_driving", None)
+        if driving is not None:
+            driving.diagnostics(diagnostics)
 
         system_health = (
             "ERROR" if error_count > 0 else
@@ -5257,6 +5611,30 @@ class UiBackendNode(Node):
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
         control_mode = int(msg.control_mode)
         charging = bool(msg.is_charging)
+        power_supply_status = int(getattr(msg, "battery_power_supply_status", 0))
+        driving = getattr(self, "_driving", None)
+        if driving is not None:
+            # HH_261001 - Reuse the canonical platform subscription; the display owns no
+            # command or extra high-rate actuator subscriber. Preserve signed
+            # motion and source stamps so cached aggregates do not appear fresh.
+            velocity_header = getattr(msg.velocity, "header", None)
+            angular = getattr(msg.velocity.twist, "angular", None)
+            driving_now_s = self._now_s()
+            driving.platform(
+                msg.velocity.twist.linear.x, msg.velocity.twist.linear.y,
+                float(msg.battery_percentage) * 100.0 if msg.battery_state_available else None,
+                yaw_rate_rps=getattr(angular, "z", None),
+                frame_id=getattr(velocity_header, "frame_id", None),
+                velocity_stamp_s=_ros_stamp_seconds(getattr(velocity_header, "stamp", None)),
+                ros_now_s=driving_now_s,
+            )
+            wheel_header = getattr(getattr(msg, "wheel", None), "header", None)
+            driving.wheels(
+                getattr(msg, "motor_speed", None), getattr(msg, "motor_angle", None),
+                getattr(msg, "motor_rpm", None),
+                stamp_s=_ros_stamp_seconds(getattr(wheel_header, "stamp", None)),
+                ros_now_s=driving_now_s,
+            )
         self._latest_platform_status_time_s = self._now_s()
         self._latest_platform_motion_ready = (
             control_mode == 1 and not bool(msg.estop)
@@ -5278,6 +5656,7 @@ class UiBackendNode(Node):
             )
             self._latest_platform_control_mode = control_mode
             self._latest_platform_is_charging = charging
+            self._latest_platform_power_supply_status = power_supply_status
             charging_changed = charging != previous_charging
             can_resume_redock = (
                 control_mode == 1
@@ -5326,6 +5705,7 @@ class UiBackendNode(Node):
         elif (
             charging_changed
             and not charging
+            and power_supply_status != 4
             and self._latest_service_state == int(AvgServiceState.CHARGING)
         ):
             # HH_260721 - Return to uncharged standby only when no departure state replaced charging.
@@ -5371,8 +5751,27 @@ class UiBackendNode(Node):
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
-        if battery_changed:
-            self._schedule_broadcast({"battery": pct, **UiBackendNode._battery_parking_policy_snapshot(self)})
+            previous_charge_complete = bool(getattr(
+                self._state, "battery_charge_complete", False
+            ))
+            charge_complete = battery_charge_complete(
+                pct,
+                charging=charging,
+                power_supply_status=power_supply_status,
+                previously_complete=previous_charge_complete,
+            )
+            charge_complete_changed = charge_complete != previous_charge_complete
+            self._state.battery_charge_complete = charge_complete
+        if battery_changed or charge_complete_changed or charging_changed:
+            # HH_261002 - A confirmed charging contact and a completed charge
+            # are different UI facts; neither alters docking authorization.
+            self._schedule_broadcast({
+                "battery": pct,
+                "battery_charge_complete": charge_complete,
+                "platform_is_charging": charging,
+                "battery_power_supply_status": power_supply_status,
+                **UiBackendNode._battery_parking_policy_snapshot(self),
+            })
         self._update_low_battery_return_policy(pct, source="platform_status")
         if battery_changed:
             UiBackendNode._publish_destination_dispatch_status(
@@ -5383,6 +5782,14 @@ class UiBackendNode(Node):
     def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_arrival_pose = msg
         self._latest_arrival_pose_time_s = self._now_s()
+        driving = getattr(self, "_driving", None)
+        if driving is not None:
+            yaw_deg = _quaternion_yaw_deg(msg.pose.orientation)
+            driving.pose(
+                msg.pose.position.x, msg.pose.position.y,
+                math.radians(yaw_deg) if yaw_deg is not None else None,
+                msg.header.frame_id,
+            )
         if getattr(self, "_telemetry_capture_active", False):
             UiBackendNode._record_telemetry_pose(self, msg)
 
@@ -5594,6 +6001,11 @@ class UiBackendNode(Node):
         self._charging_departure_from_charger = False
         if already_safe:
             return
+        # HH_261002 - A failed station exit remains a retryable mission, but
+        # its interrupted attempt and reason must survive in the journal.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(f"drop_zone_exit_failed:{source}")
         if getattr(self, "publish_mission_engage_from_destination", False):
             self._publish_mission_engage(False, source=source)
         active_site, active_source, active_generation, _ = (
@@ -6307,14 +6719,16 @@ class UiBackendNode(Node):
             self._state.service_state = state
             self._state.service_state_name = state_name
             self._state.service_state_description = description
-        if state_changed:
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.observe_service_state(
-                    state,
-                    state_name,
-                    now_s=time.time(),
-                )
+        if visible_changed:
+            # HH_261002 - Only a changed authoritative service transition
+            # enters the passive mission journal; ROS heartbeats stay cheap.
+            UiBackendNode._record_service_phase(
+                self, state, state_name, description
+            )
+        if visible_changed:
+            UiBackendNode._observe_service_metrics(
+                self, state, state_name, description
+            )
         if visible_changed:
             self.get_logger().info(
                 f"Service state received: {state_name}({state}) ({description})"
@@ -6571,13 +6985,9 @@ class UiBackendNode(Node):
         msg.description = UiBackendNode._encode_service_state_echo(
             self, public_description, generation
         )
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.observe_service_state(
-                int(state),
-                msg.state_name,
-                now_s=time.time(),
-            )
+        UiBackendNode._observe_service_metrics(
+            self, int(state), msg.state_name, public_description
+        )
         # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
         self._latest_service_state = int(state)
         self.pub_service_state.publish(msg)
@@ -6772,12 +7182,18 @@ class UiBackendNode(Node):
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
-    def _publish_camping_site_maneuver_controller_return(self, source: str) -> None:
-        # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+    def _publish_camping_site_maneuver_controller_return(
+        self, source: str, before_release: Optional[Callable[[], None]] = None,
+    ) -> None:
+        # HH_261002 - Open the drive gate immediately before the semantic RETURN
+        # publish when the final Recall confirmation releases a stopped robot.
+        # Other callers keep their existing gate policy by omitting the callback.
         msg = MotionOperation()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.operation = MotionOperation.RETURN
         msg.source = source
+        if before_release is not None:
+            before_release()
         self.pub_camping_site_maneuver_controller_operation.publish(msg)
         self.get_logger().info(
             f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
@@ -6901,6 +7317,7 @@ class UiBackendNode(Node):
         active_site, _, active_generation, return_generation = (
             UiBackendNode._active_mission_identity(self)
         )
+        record_new_return = True
         if active_generation > 0 and active_site:
             current_token = str(
                 getattr(self, "_return_operation_token", "")
@@ -6908,6 +7325,7 @@ class UiBackendNode(Node):
             new_return_identity = bool(
                 return_generation != active_generation or not current_token
             )
+            record_new_return = new_return_identity
             if new_return_identity:
                 sequence = int(
                     getattr(self, "_return_operation_sequence", 0)
@@ -6953,6 +7371,21 @@ class UiBackendNode(Node):
             self._return_progress_generation = 0
             if f"ui_return_token={current_token}" not in source:
                 source = f"{source}:ui_return_token={current_token}"
+        if record_new_return:
+            UiBackendNode._ensure_return_service_metrics(self, source)
+            recall = UiBackendNode._is_guest_recall_source(
+                str(getattr(self, "_active_mission_source", ""))
+            )
+            final_return = (
+                not recall
+                or active_generation <= 0
+                or int(getattr(self, "_recall_final_return_generation", 0))
+                == active_generation
+                or "battery" in str(source).lower()
+            )
+            UiBackendNode._record_return_request(
+                self, source, final_return=final_return
+            )
         # HH_260818 - A return request is state-independent, but route planning
         # must not start from inside a campsite. Latch physical CRAB_OUT first;
         # that controller publishes the planning recall at the shared snap anchor.
@@ -7739,6 +8172,120 @@ class UiBackendNode(Node):
             "robot_ui:recall"
         )
 
+    def _start_service_metrics(
+        self, site: str, mission_key: str, source: str, generation: int
+    ) -> None:
+        """Open a separately classified record for one admitted mission."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        session = str(getattr(self, "_service_metrics_session_id", ""))
+        if not session:
+            session = uuid.uuid4().hex
+            self._service_metrics_session_id = session
+        # HH_261002 - A generation is stable across a duplicate UI request;
+        # an actual retry claims a new generation and gets a new record.
+        started = metrics.start_service(
+            site,
+            mission_key=mission_key,
+            source=source,
+            intent=UiBackendNode._destination_request_intent(source),
+            request_id=f"{session}:mission:{int(generation)}",
+            now_s=time.time(),
+        )
+        if started:
+            self._service_metrics_return_generation = -1
+
+    def _ensure_return_service_metrics(self, source: str) -> None:
+        """Count a standalone approved Return without inventing a B-site trip."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None or getattr(metrics, "has_active_service", False):
+            return
+        site = str(getattr(self, "_active_mission_site", "")).strip() or "DROP_ZONE"
+        metrics.start_service(
+            site, source=source, intent="return",
+            request_id=f"return:{uuid.uuid4().hex}", now_s=time.time(),
+        )
+
+    def _observe_service_metrics(
+        self, state: int, state_name: str, description: str = ""
+    ) -> None:
+        """Classify delivery, Recall and final Return without changing motion."""
+        metrics = getattr(self, "_service_metrics", None)
+        if metrics is None:
+            return
+        phase = str(state_name).strip()
+        prefix = "camping_site_maneuver_controller:"
+        if str(description).startswith(prefix):
+            phase = str(description)[len(prefix):].split(":", 1)[0].strip() or phase
+        generation = int(getattr(self, "_active_mission_generation", 0))
+        if state == int(AvgServiceState.RETURNING_TO_DROP_ZONE):
+            self._service_metrics_return_generation = generation
+        leg_kind = ""
+        if state == int(AvgServiceState.RETURN_WITH_CARGO):
+            recall = UiBackendNode._is_guest_recall_source(
+                str(getattr(self, "_active_mission_source", ""))
+            )
+            final_return = (
+                (generation > 0 and int(getattr(
+                    self, "_recall_final_return_generation", 0
+                )) == generation)
+                or int(getattr(self, "_service_metrics_return_generation", -1))
+                == generation
+                or "return_source=battery" in str(description)
+            )
+            leg_kind = "recall" if recall and not final_return else "return"
+        metrics.observe_service_state(
+            state, state_name, now_s=time.time(), phase=phase, leg_kind=leg_kind
+        )
+
+    def _record_mission_start(self, site: str, source: str, generation: int) -> None:
+        """Observe an admitted trip without changing its command authority."""
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is None:
+            return
+        # HH_261002 - A retried departure keeps its mission ID while each
+        # accepted attempt receives a distinct journal event.
+        attempt = int(getattr(self, "_mission_recording_attempt", 0)) + 1
+        self._mission_recording_attempt = attempt
+        recorder.start(
+            site, UiBackendNode._destination_request_intent(source), generation,
+            f"generation:{generation}:attempt:{attempt}", source,
+        )
+
+    def _record_return_request(self, source: str, *, final_return: bool) -> None:
+        """Annotate an approved return, including Recall's two-stage return."""
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.request_return(source, final_return=final_return)
+
+    def _record_service_phase(
+        self, state: int, state_name: str, description: str = ""
+    ) -> None:
+        """Pass authoritative service transitions to the passive journal."""
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is None:
+            return
+        generation = int(getattr(self, "_active_mission_generation", 0))
+        recall = UiBackendNode._is_guest_recall_source(
+            str(getattr(self, "_active_mission_source", ""))
+        )
+        final_return = (
+            generation > 0
+            and int(getattr(self, "_recall_final_return_generation", 0)) == generation
+        )
+        leg_kind = ""
+        if state == int(AvgServiceState.RETURN_WITH_CARGO):
+            # HH_261002 - Recall's first departure from the site is still its
+            # collection leg; only confirmed final return counts as return.
+            leg_kind = "recall" if recall and not final_return else "return"
+        elif state in {
+            int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+            int(AvgServiceState.DROP_ZONE_PARKING),
+        }:
+            leg_kind = "return"
+        recorder.phase(state, state_name, description, leg_kind)
+
     def _claim_active_mission(self, site: str, source: str) -> int:
         """Claim or retry one mission identity and return its generation."""
         # Destination admission owns the command boundary immediately, even
@@ -7802,6 +8349,7 @@ class UiBackendNode(Node):
             self._active_mission_owner = owner
             self._active_mission_intent = intent
             self._active_mission_retryable = False
+            self._guest_cancel_restart_ready = False
             self._recall_terminal_clear_armed = False
         return generation
 
@@ -7860,6 +8408,7 @@ class UiBackendNode(Node):
             self._return_operation_token = ""
             self._terminal_clear_armed_generation = 0
             self._active_mission_retryable = False
+            self._guest_cancel_restart_ready = False
             self._recall_terminal_clear_armed = False
 
         state_lock = getattr(self, "_lock", None)
@@ -7901,6 +8450,7 @@ class UiBackendNode(Node):
             self._return_operation_token = ""
             self._terminal_clear_armed_generation = 0
             self._active_mission_retryable = False
+            self._guest_cancel_restart_ready = False
             self._recall_terminal_clear_armed = False
             self._battery_return_urgent = False
             self._urgent_return_after_departure = False
@@ -8351,6 +8901,11 @@ class UiBackendNode(Node):
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        # HH_261002 - Preserve a global STOP even when the backend restarted
+        # and no longer remembers the current mission generation.
+        recorder = getattr(self, "_mission_recording", None)
+        if recorder is not None:
+            recorder.stop(source)
         UiBackendNode._cancel_voice_dispatch(self, "_stop_active_service_serialized")
         UiBackendNode._advance_command_epoch(self)
         UiBackendNode._clear_generation_zero_authority(self)
@@ -8388,6 +8943,24 @@ class UiBackendNode(Node):
             self._publish_mission_engage(False, source=source)
         self._publish_engage(False, source=source)
         with self._lock:
+            # HH_261001 - A Guest CANCEL prefix is not sufficient authority: a delayed
+            # cancel may name an older site/generation after a new mission
+            # starts. Grant restart only for the exact active Guest recall.
+            cancelled_site, cancelled_generation = (
+                UiBackendNode._parse_operation_identity(source)
+            )
+            active_site = str(getattr(self, "_active_mission_site", "")).strip()
+            active_source = str(getattr(self, "_active_mission_source", "")).strip()
+            guest_cancel_restart_ready = bool(
+                str(source).strip().lower().startswith("guest:cancel:")
+                and active_site
+                and cancelled_site == active_site
+                and cancelled_generation > 0
+                and cancelled_generation
+                == int(getattr(self, "_active_mission_generation", 0))
+                and UiBackendNode._destination_request_owner(active_source) == "guest"
+                and UiBackendNode._destination_request_intent(active_source) == "recall"
+            )
             self._active_mission_site = ""
             self._active_mission_source = ""
             self._active_mission_generation = 0
@@ -8398,6 +8971,7 @@ class UiBackendNode(Node):
             self._return_operation_token = ""
             self._terminal_clear_armed_generation = 0
             self._active_mission_retryable = False
+            self._guest_cancel_restart_ready = guest_cancel_restart_ready
             self._recall_terminal_clear_armed = False
             self._battery_return_urgent = False
             self._urgent_return_after_departure = False
@@ -8705,6 +9279,11 @@ class UiBackendNode(Node):
                 "request_site": str(site).strip(),
                 "request_run": bool(run),
                 "request_source": str(source).strip(),
+                # HH_261001 - Guest may outlive this backend process. Distinguish its new
+                # authoritative writer from transient-local old status frames.
+                "backend_session_id": str(
+                    getattr(self, "_backend_session_id", "")
+                ),
                 "error": str(result.get("error", "")),
                 "message": str(result.get("message", "")),
                 "active_site": mission["mission_dispatch_site"],
@@ -8715,6 +9294,9 @@ class UiBackendNode(Node):
                 "active_owner": mission["mission_dispatch_owner"],
                 "active_generation": mission[
                     "mission_dispatch_generation"
+                ],
+                "guest_cancel_restart_ready": mission[
+                    "guest_cancel_restart_ready"
                 ],
                 # This transient-local backend DataWriter is the only service
                 # lifecycle authority consumed by Guest UI. Raw controller
@@ -8858,6 +9440,23 @@ class UiBackendNode(Node):
             )
 
         guest_recall = UiBackendNode._is_guest_recall_source(source)
+        # HH_261001 - Public recall may recover from its *own* cancelled mission, but must
+        # never release an operator, safety, or startup OPERATOR_STOPPED latch.
+        if (
+            UiBackendNode._destination_request_owner(source) == "guest"
+            and getattr(self, "_latest_service_state", None)
+            == int(AvgServiceState.OPERATOR_STOPPED)
+            and not bool(getattr(self, "_guest_cancel_restart_ready", False))
+        ):
+            return {
+                "site": site,
+                "run": False,
+                "mission_key": "",
+                "goal_pose_published": False,
+                "blocked": True,
+                "error": "guest_restart_not_authorized",
+                "message": "Guest recall cannot override an operator or safety stop",
+            }
         pending_departure = getattr(self, "_pending_site_after_drop_zone_exit", None)
         if (
             pending_departure is not None
@@ -8978,14 +9577,10 @@ class UiBackendNode(Node):
             generation = UiBackendNode._claim_active_mission(
                 self, site, source
             )
-            service_metrics = getattr(self, "_service_metrics", None)
-            if service_metrics is not None:
-                service_metrics.start_service(
-                    site,
-                    mission_key=mission_key,
-                    source=source,
-                    now_s=time.time(),
-                )
+            UiBackendNode._record_mission_start(self, site, source, generation)
+            UiBackendNode._start_service_metrics(
+                self, site, mission_key, source, generation
+            )
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -9046,14 +9641,10 @@ class UiBackendNode(Node):
         # HJ_260804 - Only accepted/adopted destinations become the fallback
         # arrival identity. A battery-rejected request must not replace it.
         generation = UiBackendNode._claim_active_mission(self, site, source)
-        service_metrics = getattr(self, "_service_metrics", None)
-        if service_metrics is not None:
-            service_metrics.start_service(
-                site,
-                mission_key=mission_key,
-                source=source,
-                now_s=time.time(),
-            )
+        UiBackendNode._record_mission_start(self, site, source, generation)
+        UiBackendNode._start_service_metrics(
+            self, site, mission_key, source, generation
+        )
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
@@ -9370,6 +9961,15 @@ class UiBackendNode(Node):
                 "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                "battery_charge_complete": bool(getattr(
+                    self._state, "battery_charge_complete", False
+                )),
+                "platform_is_charging": bool(getattr(
+                    self, "_latest_platform_is_charging", False
+                )),
+                "battery_power_supply_status": int(getattr(
+                    self, "_latest_platform_power_supply_status", 0
+                )),
                 # HH_260724 - Initial UI snapshots carry the active battery policy state,
                 # not only edge-triggered websocket updates.
                 "battery_return_pending": self._low_battery_return_pending,
@@ -9693,20 +10293,64 @@ class UiBackendNode(Node):
                 if not UiBackendNode._recall_final_return_ready(self):
                     return {"success": False, "error": "recall_final_return_not_ready",
                             "message": "Final loading confirmation is allowed only after the in-site turn"}
-                self._recall_final_return_generation = active_generation
-                # Preserve ownership before the controller emits cargo-return
-                # or parking progress; the service bridge rejects stale generations.
-                self._return_requested_generation = active_generation
                 final_source = f"{source}:recall_final_return:site={active_site}:g={active_generation}"
+                previous_final_generation = getattr(
+                    self, "_recall_final_return_generation", 0
+                )
+                previous_return_generation = getattr(
+                    self, "_return_requested_generation", 0
+                )
+                drive_gate_opened = False
 
                 def _open_drive_gate(final_source: str = final_source) -> None:
+                    nonlocal drive_gate_opened
                     if getattr(self, "publish_mission_engage_from_destination", False):
                         self._publish_mission_engage(True, source=final_source)
                     else:
                         self._publish_platform_drive_enable(True, source=final_source)
+                    drive_gate_opened = True
 
-                self._publish_camping_site_maneuver_controller_return(
-                    source=final_source, before_release=_open_drive_gate
+                # HH_261002 - Latch ownership before the controller can answer,
+                # but roll it back if the local RETURN publish fails. A failed
+                # publish must not appear as an accepted final return in the UI
+                # or mission journal, and a retry must remain possible.
+                self._recall_final_return_generation = active_generation
+                self._return_requested_generation = active_generation
+                try:
+                    self._publish_camping_site_maneuver_controller_return(
+                        source=final_source, before_release=_open_drive_gate
+                    )
+                except Exception as error:
+                    self._recall_final_return_generation = previous_final_generation
+                    self._return_requested_generation = previous_return_generation
+                    if drive_gate_opened:
+                        try:
+                            if getattr(self, "publish_mission_engage_from_destination", False):
+                                self._publish_mission_engage(
+                                    False, source=f"{final_source}:publish_failed"
+                                )
+                            else:
+                                self._publish_platform_drive_enable(
+                                    False, source=f"{final_source}:publish_failed"
+                                )
+                        except Exception as gate_error:
+                            self.get_logger().error(
+                                f"final Recall gate rollback failed: {gate_error}"
+                            )
+                    self.get_logger().error(
+                        f"final Recall RETURN publish failed: {error}"
+                    )
+                    return {
+                        "success": False,
+                        "site": active_site,
+                        "error": "recall_final_return_publish_failed",
+                        "message": "Final Recall return command was not published; retry is allowed",
+                    }
+                # HH_261002 - Record final return only after the controller
+                # command was locally published, not on an attempted release.
+                UiBackendNode._ensure_return_service_metrics(self, final_source)
+                UiBackendNode._record_return_request(
+                    self, final_source, final_return=True
                 )
                 return {"success": True, "site": active_site,
                         "mission_generation": active_generation, "transition": "recall_final_return"}
@@ -10714,13 +11358,13 @@ class UiBackendNode(Node):
                     try:
                         payload = json.loads(data)
                     except json.JSONDecodeError as exc:
-                        # HH_260616: Keep malformed WebSocket frames from tearing down
+                        # HH_260616 - Keep malformed WebSocket frames from tearing down
                         # the UI bridge; browser/UI retries should not leave stale goals.
                         node.get_logger().warn(f"invalid websocket JSON ignored: {exc}")
                         continue
 
                     if not isinstance(payload, dict):
-                        # HH_260616: The UI protocol is object-based. Ignore other
+                        # HH_260616 - The UI protocol is object-based. Ignore other
                         # payload shapes instead of raising inside Starlette.
                         node.get_logger().warn("websocket payload must be a JSON object")
                         continue
@@ -10824,7 +11468,7 @@ class UiBackendNode(Node):
                             "ws_engage",
                         )
 
-                    # HH_260617: usage_complete is return-to-drop-zone state=3.
+                    # HH_260617 - usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         result = await asyncio.to_thread(
@@ -10848,7 +11492,7 @@ class UiBackendNode(Node):
             except WebSocketDisconnect:
                 pass
             except KeyError as exc:
-                # HH_260616: Some non-browser test clients disconnect without a close
+                # HH_260616 - Some non-browser test clients disconnect without a close
                 # code; Starlette can surface that as KeyError('code').
                 node.get_logger().debug(f"websocket disconnected without close code: {exc}")
             finally:
@@ -10989,6 +11633,12 @@ class UiBackendNode(Node):
 
         # ── REST API endpoints ────────────────────────────────────────────────
 
+        @app.get("/api/driving")
+        def get_driving() -> JSONResponse:
+            return JSONResponse(
+                node._snapshot_driving(), headers={"Cache-Control": "no-store"},
+            )
+
         @app.get("/ui/state")
         def get_state() -> JSONResponse:
             return JSONResponse(node._snapshot())
@@ -11117,6 +11767,19 @@ class UiBackendNode(Node):
                     recent_limit=recent_limit,
                 )
             )
+
+        # HH_261002 - Bounded read-only export of the independent mission/CAN
+        # journal; a stale recorder is an error, never a convincing zero total.
+        @app.get("/api/mission-records")
+        def get_mission_records(limit: int = 100) -> JSONResponse:
+            data, status = load_mission_recording_snapshot(
+                node.mission_records_root,
+                limit=limit,
+                emitter_error=getattr(
+                    getattr(node, "_mission_recording", None), "error", ""
+                ),
+            )
+            return JSONResponse(data, status_code=status)
 
         # HH_260810 - The browser renews this lease only while the administrator
         # telemetry modal is open. The ROS timer owns subscription creation and

@@ -1,5 +1,6 @@
 """Contracts for the full CAMROD-on-CARLA composition."""
 
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -31,6 +32,7 @@ CARLA_PERCEPTION_CONFIG = (
 CARLA_SITE_GEOMETRY_PERCEPTION_CONFIG = (
     PACKAGE_ROOT / "config" / "perception_carla_site_geometry.yaml"
 )
+CARLA_YOLO_COCO80_LABELS = PACKAGE_ROOT / "config" / "yolo_coco80.txt"
 PRODUCTION_APRILTAG_CONFIG = (
     REPO_ROOT
     / "camrod_perception"
@@ -81,6 +83,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     source = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
 
     assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
+        "manual_drive_linear_limit_mps": "2.0",
         "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
         "carla_cmd_vel_gate_speed_scale": "1.0",
         "carla_allow_manual_departure_while_charging": "true",
@@ -141,6 +144,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     resolved = module.develop_site_geometry_arguments("/adapter-share")
     assert set(resolved) == {
         *module.DEVELOP_SITE_GEOMETRY_ARGUMENTS,
+        "carla_command_runtime_override_param_file",
         "carla_perception_runtime_override_param_file",
         "carla_apriltag_param_file",
         "carla_parking_runtime_override_param_file",
@@ -148,6 +152,10 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     }
     assert resolved["carla_perception_runtime_override_param_file"] == (
         "/adapter-share/config/perception_carla_site_geometry.yaml"
+    )
+    # HH_261002 - Only the site wrapper selects the explicit manual-speed cap.
+    assert resolved["carla_command_runtime_override_param_file"] == (
+        "/adapter-share/config/command_adapter_carla_site_manual.yaml"
     )
     assert resolved["carla_apriltag_param_file"] == (
         "/adapter-share/config/apriltag_parking_detector_carla.yaml"
@@ -170,7 +178,6 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "use_sim_planning_profile",
         "use_sim_localization_profile",
         "use_sim_parking_method",
-        "manual_drive_linear_limit_mps",
         "carla_navigation_minimum_ackermann_turn_radius_m",
         "carla_cost_stop_threshold",
         "carla_lanelet_safety_threshold",
@@ -418,8 +425,17 @@ def test_carla_perception_overlays_keep_develop_parity_and_scope_site_tuning():
     ] == 0.5
     assert "/perception/yolov9mit" not in carla
     assert site["/perception/yolov9mit"]["ros__parameters"] == {
-        "min_confidence": 0.95
+        "min_confidence": 0.80
     }
+    # HH_261002 - The pinned model outputs 80 classes.  The site wrapper
+    # provides its own table without changing the shared 81-name field file.
+    shared_labels = (
+        REPO_ROOT / "camrod_perception" / "external" / "yolov9mit_ros"
+        / "labels" / "coco_names.txt"
+    ).read_text(encoding="utf-8").splitlines()
+    site_labels = CARLA_YOLO_COCO80_LABELS.read_text(encoding="utf-8").splitlines()
+    assert len(shared_labels) == 81 and shared_labels[-1] == "tent"
+    assert len(site_labels) == 80 and site_labels == shared_labels[:80]
     expected_extrinsic = {
         "extrinsic_x": 0.0,
         "extrinsic_y": 0.00001,
@@ -433,7 +449,7 @@ def test_carla_perception_overlays_keep_develop_parity_and_scope_site_tuning():
     )
 
 
-def test_full_and_site_launches_select_distinct_perception_overlays():
+def test_full_and_site_launches_select_distinct_perception_overlays(monkeypatch):
     full = FULL_LAUNCH.read_text(encoding="utf-8")
     site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
 
@@ -441,6 +457,19 @@ def test_full_and_site_launches_select_distinct_perception_overlays():
     assert site.develop_site_geometry_arguments("/adapter-share")[
         "carla_perception_runtime_override_param_file"
     ] == "/adapter-share/config/perception_carla_site_geometry.yaml"
+    assert site.develop_site_geometry_yolo_labels("/adapter-share") == (
+        "/adapter-share/config/yolo_coco80.txt"
+    )
+    # HH_261002 - The nested YOLO launch writes class_label_path last, so
+    # verify the outer site action sets the launch configuration before include.
+    monkeypatch.setattr(site, "get_package_share_directory", lambda _: "/adapter-share")
+    actions = site.generate_launch_description().entities
+    assert len(actions) == 2
+    context = LaunchContext()
+    actions[0].execute(context)
+    assert context.launch_configurations["yolo_labels_path"] == (
+        "/adapter-share/config/yolo_coco80.txt"
+    )
 
 
 def test_full_launch_defaults_to_production_apriltag_profile():
@@ -569,6 +598,41 @@ def test_full_launch_keeps_carla_lifecycle_external_and_enables_full_bringup():
     assert '"use_sim_localization_profile": "true"' in tuned
     assert '"use_sim_parking_method": "true"' in tuned
     assert '"recovery_breakaway_enable": "true"' in tuned
+
+
+def test_vehicle_controller_tick_alignment_preserves_existing_safety_arguments():
+    # HH_261002 - Match the simulator's 50 ms step without overriding upstream
+    # torque caps, physical ACK checks, watchdogs, or verified gate manifests.
+    tree = ast.parse(FULL_LAUNCH.read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name) and node.func.id == "_include"
+        and node.args and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "controller_launch"
+    ]
+    assert len(calls) == 1
+    arguments = calls[0].args[1]
+    assert isinstance(arguments, ast.Dict)
+    values = {
+        ast.literal_eval(key): value
+        for key, value in zip(arguments.keys, arguments.values)
+    }
+    forwarded = {
+        "role_name", "host", "port", "verified_baseline_manifest",
+        "verified_physical_four_wheel_manifest", "extended_mode_backend",
+        "accepted_carla_python_egg", "python_egg_cache",
+        "rotation_recovery_breakaway_enable",
+    }
+    assert set(values) == forwarded | {"control_loop_rate"}
+    assert ast.literal_eval(values["control_loop_rate"]) == "0.05"
+    for name in forwarded:
+        value = values[name]
+        assert isinstance(value, ast.Call)
+        assert isinstance(value.func, ast.Name)
+        assert value.func.id == "LaunchConfiguration"
+        assert len(value.args) == 1
+        assert ast.literal_eval(value.args[0]) == name
 
 
 def test_recovery_breakaway_authority_is_explicit_opt_in_only():
@@ -1784,6 +1848,21 @@ def test_full_uses_develop_cost_thresholds_and_tuned_uses_hard_costs():
     assert '"carla_cost_stop_threshold": "100"' in tuned
     assert '"carla_lanelet_safety_threshold": "100"' in tuned
     assert '"carla_lanelet_safety_current_threshold": "100"' in tuned
+
+
+def test_site_manual_overlay_changes_only_explicit_longitudinal_envelope():
+    """HH_261002 - Preserve all shared limits and automatic producer configs."""
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    base = yaml.safe_load((PACKAGE_ROOT / "config" / "command_adapter.yaml").read_text())["/**"]["ros__parameters"]
+    overlay = yaml.safe_load((PACKAGE_ROOT / "config" / "command_adapter_carla_site_manual.yaml").read_text())["/**"]["ros__parameters"]
+    assert base["max_ackermann_speed_mps"] == 1.4
+    assert overlay == {"max_ackermann_speed_mps": 2.0, "allow_carla_site_manual_speed_2mps": True}
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS["manual_drive_linear_limit_mps"] == "2.0"
+    assert "manual_drive_lateral_limit_mps" not in site.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+    assert "manual_drive_angular_limit_radps" not in site.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+    full = FULL_LAUNCH.read_text()
+    assert 'DeclareLaunchArgument("carla_command_runtime_override_param_file", default_value="")' in full
+    assert '"command_runtime_override_param_file": LaunchConfiguration(' in full
 
 
 def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():

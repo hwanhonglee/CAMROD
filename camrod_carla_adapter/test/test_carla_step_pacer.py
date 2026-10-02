@@ -212,6 +212,69 @@ def test_release_is_explicit_idempotent_play_and_disables_readiness():
     assert _status(machine, 99, True, 1.0) == ()
 
 
+def test_startup_ready_accepts_continuous_slow_steps_but_health_stays_strict():
+    # HH_261002 - Slow frames have no idle period to sample; a completed exact
+    # PAUSED ACK proves pacing without bypassing the next outstanding ACK.
+    machine = StepPacerStateMachine(now_s=0.0)
+    assert machine.startup_ready(0.0).success is False
+    _paused(machine, frame=100, now_s=0.01)
+    assert machine.startup_ready(0.02).success is True
+    machine.poll(0.061)
+    first = machine.startup_ready(0.062)
+    assert first.success is False
+    assert 'no_completed_step_ack' in first.message
+    _status(machine, 101, True, 0.13)
+    assert machine.startup_ready(0.13).success is False
+    _paused(machine, frame=101, now_s=0.14)
+    assert machine.poll(0.14) == (PacerCommand.STEP_ONCE,)
+    for frame, now in [(102, 0.21), (103, 0.28), (104, 0.35)]:
+        _status(machine, frame - 1, True, now - 0.01)
+        ready = machine.startup_ready(now - 0.005)
+        assert ready.success is True
+        assert 'completed_step_ack=true' in ready.message
+        assert 'step_ack_pending=true' in ready.message
+        assert machine.health(now - 0.005).success is False
+        _paused(machine, frame=frame, now_s=now)
+        assert machine.poll(now) == (PacerCommand.STEP_ONCE,)
+        assert machine.poll(now) == ()
+
+
+def test_startup_ready_rejects_stale_completed_ack_even_with_fresh_running_status():
+    machine = StepPacerStateMachine(now_s=0.0)
+    _paused(machine, now_s=0.01)
+    machine.poll(0.061)
+    _paused(machine, frame=101, now_s=0.14)
+    machine.poll(0.14)
+    _status(machine, 101, True, 0.65)
+    readiness = machine.startup_ready(0.65)
+    assert readiness.success is False
+    assert 'completed_step_ack_stale' in readiness.message
+    assert machine.last_completed_step_ack_s == 0.14
+
+
+@pytest.mark.parametrize('failure', ['stale_status', 'expired_step', 'fault', 'released', 'invalid_time'])
+def test_startup_ready_preserves_watchdogs_faults_and_release(failure):
+    config = replace(StepPacerConfig(), step_ack_timeout_s=0.10)
+    machine = StepPacerStateMachine(config, now_s=0.0)
+    _paused(machine, now_s=0.01)
+    machine.poll(0.061)
+    _paused(machine, frame=101, now_s=0.14)
+    machine.poll(0.14)
+    now = 0.15
+    if failure == 'stale_status':
+        now = 0.65
+    elif failure == 'expired_step':
+        now = 0.25
+        _status(machine, 101, True, now)
+    elif failure == 'fault':
+        _paused(machine, frame=103, now_s=now)
+    elif failure == 'released':
+        machine.release(now)
+    else:
+        now = math.nan
+    assert machine.startup_ready(now).success is False
+
+
 @pytest.mark.parametrize(
     'config',
     [

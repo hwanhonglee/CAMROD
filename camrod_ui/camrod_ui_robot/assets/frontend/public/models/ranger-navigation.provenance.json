@@ -1,0 +1,233 @@
+{
+  "asset": "ranger-navigation.glb",
+  "source": "/home/hong/Downloads/ranger-carla-4ws-pipeline/assets/fbx/ranger_carla_rigged_template.fbx",
+  "source_sha256": "ef93de43399af7b0a56bfb994fb66993d8ff9b4fc627de731dae0c08775fa77c",
+  "source_unchanged": true,
+  "output_sha256": "da468915fa41de59955c0d297ccfadb0002248cac8f7f60414a7e731cfa8d202",
+  "bytes": 5576620,
+  "triangles": 118778,
+  "lod_bounds_m": {
+    "minimum": [
+      -0.7879831194877625,
+      -2.03549861907959e-05,
+      -0.562824547290802
+    ],
+    "maximum": [
+      0.7758507132530212,
+      1.3258744478225708,
+      0.558230996131897
+    ]
+  },
+  "lod_dimensions_m": {
+    "length": 1.5638338327407837,
+    "height": 1.3258948028087616,
+    "width": 1.121055543422699
+  },
+  "parts": {
+    "body": {
+      "triangles": 59499,
+      "vertices": 32780
+    },
+    "wheel_fl": {
+      "triangles": 13439,
+      "vertices": 8191
+    },
+    "wheel_fr": {
+      "triangles": 13440,
+      "vertices": 10247
+    },
+    "wheel_rl": {
+      "triangles": 13439,
+      "vertices": 8248
+    },
+    "wheel_rr": {
+      "triangles": 13439,
+      "vertices": 9216
+    }
+  },
+  "coordinate_contract": "meters; +X forward, +Y up, +Z right; ROS (x,y,z) -> glTF (x,z,-y)",
+  "source_bounds_m": {
+    "minimum": [
+      -0.7896158695220947,
+      -1.2790886572133786e-08,
+      -0.5625373125076294
+    ],
+    "maximum": [
+      0.7634302377700806,
+      1.3238738775253296,
+      0.5574146509170532
+    ]
+  },
+  "body_dimensions_m": {
+    "length": 1.5530461072921753,
+    "width": 1.1199519634246826,
+    "height": 1.3238738775253296
+  },
+  "wheels": {
+    "wheel_fl": {
+      "steer_node": "wheel_fl_steer",
+      "spin_node": "wheel_fl_spin",
+      "pivot_m": [
+        0.444887,
+        0.152987,
+        -0.274071
+      ],
+      "steer_axis": "+Y",
+      "spin_axis": "+Z",
+      "rolling_radius_m": 0.153
+    },
+    "wheel_fr": {
+      "steer_node": "wheel_fr_steer",
+      "spin_node": "wheel_fr_spin",
+      "pivot_m": [
+        0.445246,
+        0.155055,
+        0.267415
+      ],
+      "steer_axis": "+Y",
+      "spin_axis": "+Z",
+      "rolling_radius_m": 0.153
+    },
+    "wheel_rl": {
+      "steer_node": "wheel_rl_steer",
+      "spin_node": "wheel_rl_spin",
+      "pivot_m": [
+        -0.445118,
+        0.152987,
+        -0.270872
+      ],
+      "steer_axis": "+Y",
+      "spin_axis": "+Z",
+      "rolling_radius_m": 0.153
+    },
+    "wheel_rr": {
+      "steer_node": "wheel_rr_steer",
+      "spin_node": "wheel_rr_spin",
+      "pivot_m": [
+        -0.445015,
+        0.155056,
+        0.277528
+      ],
+      "steer_axis": "+Y",
+      "spin_axis": "+Z",
+      "rolling_radius_m": 0.153
+    }
+  },
+  "wraps": {
+    "left": {
+      "node": "wrap_left",
+      "material": "sidewrap_left",
+      "size_m": [
+        1.18,
+        0.33999999999999997
+      ],
+      "height_range_m": [
+        0.64,
+        0.98
+      ],
+      "surface_offset_m": 0.002,
+      "projection": "Existing body LOD BVH, outward-facing surface; cutouts/recess jumps excluded",
+      "grid_segments": [
+        40,
+        20
+      ],
+      "faces": 1426,
+      "trimmed_triangles": 174,
+      "surface_validation": "Seven centroid/edge/interior rays per triangle; retain only 0\u20138 mm outward clearance at every probe",
+      "outward_direction": "-Z"
+    },
+    "right": {
+      "node": "wrap_right",
+      "material": "sidewrap_right",
+      "size_m": [
+        1.18,
+        0.33999999999999997
+      ],
+      "height_range_m": [
+        0.64,
+        0.98
+      ],
+      "surface_offset_m": 0.002,
+      "projection": "Existing body LOD BVH, outward-facing surface; cutouts/recess jumps excluded",
+      "grid_segments": [
+        40,
+        20
+      ],
+      "faces": 1469,
+      "trimmed_triangles": 131,
+      "surface_validation": "Seven centroid/edge/interior rays per triangle; retain only 0\u20138 mm outward clearance at every probe",
+      "outward_direction": "+Z"
+    },
+    "front": {
+      "node": "wrap_front",
+      "material": "sidewrap_front",
+      "size_m": [
+        0.62,
+        0.2699999999999999
+      ],
+      "height_range_m": [
+        0.67,
+        0.94
+      ],
+      "surface_offset_m": 0.002,
+      "projection": "Existing body LOD BVH, outward-facing surface; cutouts/recess jumps excluded",
+      "grid_segments": [
+        32,
+        16
+      ],
+      "faces": 980,
+      "trimmed_triangles": 44,
+      "surface_validation": "Seven centroid/edge/interior rays per triangle; retain only 0\u20138 mm outward clearance at every probe",
+      "outward_direction": "+X"
+    },
+    "rear": {
+      "node": "wrap_rear",
+      "material": "sidewrap_rear",
+      "size_m": [
+        0.96,
+        0.33999999999999997
+      ],
+      "height_range_m": [
+        0.64,
+        0.98
+      ],
+      "surface_offset_m": 0.002,
+      "projection": "Existing body LOD BVH, outward-facing surface; cutouts/recess jumps excluded",
+      "grid_segments": [
+        40,
+        20
+      ],
+      "faces": 1586,
+      "trimmed_triangles": 14,
+      "surface_validation": "Seven centroid/edge/interior rays per triangle; retain only 0\u20138 mm outward clearance at every probe",
+      "outward_direction": "-X"
+    }
+  },
+  "cargo": {
+    "node": "accessory_cargo_preview",
+    "provisional": true,
+    "default_visible": true,
+    "contents": [
+      "12 packed cardboard boxes"
+    ],
+    "box_count": 12,
+    "bed_floor_height_m": 0.616,
+    "maximum_height_m": 0.948,
+    "footprint_m": {
+      "x": [
+        -0.68,
+        0.31
+      ],
+      "lateral": [
+        -0.403,
+        0.403
+      ]
+    },
+    "note": "Display-only cargo resting on the original bed floor and below upper rails; no physics, load-capacity or real cargo measurement claim. Upper shelf removed entirely."
+  },
+  "derivation": "Existing source-pinned rigid weight repair in memory, split rigid wheel/base groups, planar dissolve and bounded collapse decimation. White/dark-rubber/metal display materials replace absent source materials.",
+  "rigid_weight_mask_sha256": "fbf0e8ab07323d960c7c6748258d53d12cea9bd261a344923c495c7c1482a40e",
+  "blender_version": "3.0.1",
+  "reproduce": "blender --background --factory-startup --python tools/export_ranger_navigation_asset.py",
+  "not_evidence": "Display asset only; no road, simulator, load capacity or kinematic acceptance claim."
+}

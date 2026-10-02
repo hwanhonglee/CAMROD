@@ -98,6 +98,10 @@ def dispatch(node, source="http_ui_destination", site="B1"):
 @pytest.mark.parametrize("state", [None, AvgServiceState.OPERATOR_STOPPED, AvgServiceState.DROP_ZONE_WAIT])
 def test_robot_and_guest_inside_station_exit_before_site_goal(backend, source, state):
     backend._latest_service_state = state
+    # HH_261001 - Public Guest restart from OPERATOR_STOPPED is allowed only when the
+    # previous authority-checked Guest recall was the one cancelled.
+    if state == AvgServiceState.OPERATOR_STOPPED and source.startswith("guest"):
+        backend._guest_cancel_restart_ready = True
     # A prior road handoff cannot override the new physical parked pose.
     backend._drop_zone_exit_handoff_ready = True
     result = dispatch(backend, source)
@@ -126,6 +130,8 @@ def test_robot_and_guest_inside_station_exit_before_site_goal(backend, source, s
 def test_outside_station_never_runs_blind_exit(backend, source, state):
     backend._latest_arrival_pose.pose.position.x = 5.0
     backend._latest_service_state = state
+    if state == AvgServiceState.OPERATOR_STOPPED and source.startswith("guest"):
+        backend._guest_cancel_restart_ready = True
     backend._drop_zone_exit_cancel_suppressed = True
     result = dispatch(backend, source)
     assert result["run"]

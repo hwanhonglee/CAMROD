@@ -225,6 +225,35 @@ def test_node_contract_allows_tighter_actuation_limits():
     ))
 
 
+def test_site_manual_speed_opt_in_preserves_other_mapping_limits():
+    """HH_261002 - 2 m/s is explicit CARLA-only, never a wider shared default."""
+    assert CFG.max_ackermann_speed_mps == 1.4
+    site = replace(CFG, max_ackermann_speed_mps=2.0)
+    with pytest.raises(ValueError):
+        validate_ranger_contract(site)
+    validate_ranger_contract(site, allow_carla_site_manual_speed_2mps=True)
+    with pytest.raises(ValueError):
+        validate_ranger_contract(
+            replace(site, max_ackermann_speed_mps=math.nextafter(2.0, math.inf)),
+            allow_carla_site_manual_speed_2mps=True)
+    for field in ("max_crab_speed_mps", "max_yaw_rate_radps", "max_ackermann_steer_rad"):
+        with pytest.raises(ValueError):
+            validate_ranger_contract(
+                replace(site, **{field: math.nextafter(getattr(CFG, field), math.inf)}),
+                allow_carla_site_manual_speed_2mps=True)
+
+
+@pytest.mark.parametrize("requested", [-3.0, -2.0, -0.5, 0.5, 2.0, 3.0])
+def test_site_forward_reverse_cap_does_not_rescale_normal_requests(requested):
+    """HH_261002 - Raise clipping only; do not multiply existing auto targets."""
+    site = replace(CFG, max_ackermann_speed_mps=2.0)
+    command = map_planar_twist(requested, 0.0, 0.0, site)
+    assert command.mode == DriveMode.ACKERMANN
+    assert command.speed == pytest.approx(max(-2.0, min(2.0, requested)))
+    shared = map_planar_twist(requested, 0.0, 0.0, CFG)
+    assert shared.speed == pytest.approx(max(-1.4, min(1.4, requested)))
+
+
 @pytest.mark.parametrize(
     "settings",
     [

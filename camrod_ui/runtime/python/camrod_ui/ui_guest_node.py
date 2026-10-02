@@ -102,16 +102,26 @@ def guest_mission_dispatch_ready(
     battery: int,
     minimum: int,
     active_request_intent: str = "",
+    guest_cancel_restart_ready: bool = False,
 ) -> bool:
-    """Apply stationary/SOC admission and reject an already reserved mission."""
-    return state in {
+    """HH_261001 - Admit standby or a Guest-owned cancel restart, subject to SOC/owner."""
+    stationary = state in {
         int(AvgServiceState.DROP_ZONE_WAIT),
         # Parking has already completed before this healthy charger-contact
         # wait.  A missing/intermittent CAN charge signal must not prevent a
         # sufficiently charged robot from starting the station-exit sequence.
         int(AvgServiceState.WAITING_FOR_CHARGING),
         int(AvgServiceState.CHARGING),
-    } and battery >= minimum and not str(active_request_intent).strip()
+    }
+    own_cancel_restart = (
+        state == int(AvgServiceState.OPERATOR_STOPPED)
+        and guest_cancel_restart_ready is True
+    )
+    return (
+        (stationary or own_cancel_restart)
+        and battery >= minimum
+        and not str(active_request_intent).strip()
+    )
 
 
 def guest_mission_cancel_available(
@@ -252,6 +262,14 @@ class UiGuestNode(Node):
         self._pending_dispatch_nonce: str = ""
         self._pending_dispatch_deadline_s: float = 0.0
         self._active_request_retryable: bool = False
+        # HH_261001 - Mirrored from the backend's authority-checked stop provenance. A
+        # generic OPERATOR_STOPPED must never be treated as public dispatchable.
+        self._guest_cancel_restart_ready: bool = False
+        # HH_261001 - Session IDs reject late status from a retired backend; an unknown
+        # writer clears local authority until a known session is verified.
+        self._backend_session_id: str = ""
+        self._retired_backend_session_ids: set[str] = set()
+        self._backend_session_unknown: bool = False
         self._mission_terminal_clear_armed: bool = False
         # Guard repeated browser clicks while the service-state transition from
         # GUEST_LOADING_WAIT to RETURN_WITH_CARGO is still in flight.
@@ -407,6 +425,9 @@ class UiGuestNode(Node):
             active_site = self._active_site
             request_intent = self._active_request_intent
             request_owner = getattr(self, "_active_request_owner", "")
+            guest_cancel_restart_ready = bool(
+                getattr(self, "_guest_cancel_restart_ready", False)
+            )
             identity_revision = int(
                 getattr(self, "_dispatch_identity_revision", 0)
             )
@@ -420,6 +441,7 @@ class UiGuestNode(Node):
             "site": active_site,
             "request_intent": request_intent,
             "request_owner": request_owner,
+            "guest_cancel_restart_ready": guest_cancel_restart_ready,
             "identity_revision": identity_revision,
         })
         self.get_logger().info(f"[guest] Service state received: {phase}({state})")
@@ -453,6 +475,22 @@ class UiGuestNode(Node):
             f"source={str(msg.source).strip()}"
         )
 
+    def _clear_backend_session_authority_locked(self) -> None:
+        """HH_261001 - Fail closed before adopting a different backend DataWriter."""
+        self._active_site = ""
+        self._active_request_intent = ""
+        self._active_request_owner = ""
+        self._active_mission_generation = 0
+        self._active_request_retryable = False
+        self._guest_cancel_restart_ready = False
+        self._mission_terminal_clear_armed = False
+        self._guest_return_request_pending = False
+        self._pending_dispatch_nonce = ""
+        self._pending_dispatch_deadline_s = 0.0
+        self._service_state = int(AvgServiceState.OPERATOR_STOPPED)
+        self._service_state_description = ""
+        self._battery_parking_policy = guest_battery_parking_policy_payload({})
+
     def _on_destination_dispatch_status(self, msg: String) -> None:
         """Apply only the backend-authoritative destination owner and site."""
         try:
@@ -469,6 +507,8 @@ class UiGuestNode(Node):
         active_source = str(payload.get("active_source", "")).strip()
         active_intent = str(payload.get("active_intent", "")).strip()
         retryable = bool(payload.get("retryable", False))
+        guest_cancel_restart_ready = payload.get("guest_cancel_restart_ready") is True
+        backend_session_id = str(payload.get("backend_session_id", "")).strip()
         try:
             active_generation = int(payload.get("active_generation", 0))
         except (TypeError, ValueError):
@@ -508,6 +548,69 @@ class UiGuestNode(Node):
         request_owner = destination_request_owner(active_source)
         request_source = str(payload.get("request_source", "")).strip()
         with self._lock:
+            current_session_id = str(
+                getattr(self, "_backend_session_id", "")
+            ).strip()
+            retired_session_ids = set(getattr(
+                self, "_retired_backend_session_ids", set()
+            ))
+            if backend_session_id and backend_session_id in retired_session_ids:
+                self.get_logger().warn(
+                    "[guest] retired backend session status ignored: "
+                    f"session={backend_session_id}"
+                )
+                return
+            session_changed = bool(
+                backend_session_id and backend_session_id != current_session_id
+            )
+            session_reverified = bool(
+                backend_session_id
+                and backend_session_id == current_session_id
+                and getattr(self, "_backend_session_unknown", False)
+            )
+            session_unverified = bool(
+                not backend_session_id
+                and (current_session_id or getattr(self, "_backend_session_unknown", False))
+            )
+            if session_changed:
+                if current_session_id:
+                    retired_session_ids.add(current_session_id)
+            if session_changed or session_reverified or session_unverified:
+                UiGuestNode._clear_backend_session_authority_locked(self)
+                # HH_261001 - An unidentified frame revokes authority, but is not proof
+                # that the known writer has retired. Preserve its ID so a
+                # later verified frame from that same writer can recover.
+                if backend_session_id:
+                    self._backend_session_id = backend_session_id
+                self._backend_session_unknown = session_unverified
+                self._retired_backend_session_ids = retired_session_ids
+            if (session_changed or session_reverified) and not has_service_state:
+                # HH_261001 - A new writer without a lifecycle snapshot must not inherit
+                # a previous process's apparently dispatchable station state.
+                authoritative_service_state = int(AvgServiceState.OPERATOR_STOPPED)
+                authoritative_service_name = "OPERATOR_STOPPED"
+                authoritative_service_description = "Backend lifecycle unavailable"
+                has_service_state = True
+                guest_cancel_restart_ready = False
+            if session_unverified:
+                # HH_261001 - A legacy/unidentified writer cannot carry an authoritative
+                # restart grant once a session-aware backend was observed.
+                # Keep rendering a stopped, empty mission until a valid
+                # session ID arrives, even if more legacy frames follow.
+                accepted = False
+                active_site = active_source = active_intent = ""
+                active_generation = 0
+                retryable = guest_cancel_restart_ready = False
+                authoritative_service_state = int(AvgServiceState.OPERATOR_STOPPED)
+                authoritative_service_name = "OPERATOR_STOPPED"
+                authoritative_service_description = "Backend session unavailable"
+                has_service_state = True
+                request_owner = ""
+                request_source = "backend_session_unknown"
+            elif not backend_session_id:
+                # HH_261001 - Old backend payloads remain readable, but never grant the
+                # new Guest-cancel restart privilege without provenance.
+                guest_cancel_restart_ready = False
             pending_nonce = str(
                 getattr(self, "_pending_dispatch_nonce", "")
             ).strip()
@@ -538,6 +641,8 @@ class UiGuestNode(Node):
             if (
                 pending_nonce
                 and local_generation == 0
+                and not session_changed
+                and not session_unverified
                 and not correlated_guest_ack
                 and not newer_cross_owner_authority
             ):
@@ -587,6 +692,11 @@ class UiGuestNode(Node):
                 active_generation if active_site else 0
             )
             self._active_request_retryable = bool(active_site and retryable)
+            self._guest_cancel_restart_ready = bool(
+                not active_site
+                and authoritative_service_state == int(AvgServiceState.OPERATOR_STOPPED)
+                and guest_cancel_restart_ready
+            )
             # Any current authoritative status resolves a generation-0 local
             # reservation. For Guest responses, a nonce mismatch was rejected
             # above; operator/Robot ownership is independently authoritative.
@@ -611,6 +721,7 @@ class UiGuestNode(Node):
             request_intent = self._active_request_intent
             request_owner = self._active_request_owner
             mission_retryable = self._active_request_retryable
+            guest_cancel_restart_ready = self._guest_cancel_restart_ready
             self._dispatch_identity_revision = int(
                 getattr(self, "_dispatch_identity_revision", 0)
             ) + 1
@@ -626,6 +737,7 @@ class UiGuestNode(Node):
             "dispatch_error": str(payload.get("error", "")),
             "dispatch_request_site": str(payload.get("request_site", "")).strip(),
             "mission_retryable": mission_retryable,
+            "guest_cancel_restart_ready": guest_cancel_restart_ready,
             "identity_revision": identity_revision,
         }
         if has_service_state:
@@ -903,6 +1015,7 @@ class UiGuestNode(Node):
                 battery,
                 self.minimum_mission_dispatch_battery_percent,
                 "" if retry_same_guest_recall else active_intent,
+                bool(getattr(self, "_guest_cancel_restart_ready", False)),
             ):
                 if active_intent:
                     error = "mission_already_active"
@@ -1043,6 +1156,7 @@ class UiGuestNode(Node):
                     request_intent = node._active_request_intent
                     request_owner = node._active_request_owner
                     mission_retryable = node._active_request_retryable
+                    guest_cancel_restart_ready = node._guest_cancel_restart_ready
                     mission_generation = node._active_mission_generation
                     identity_revision = node._dispatch_identity_revision
                     battery = node._battery
@@ -1061,6 +1175,7 @@ class UiGuestNode(Node):
                     "request_intent": request_intent,
                     "request_owner": request_owner,
                     "mission_retryable": mission_retryable,
+                    "guest_cancel_restart_ready": guest_cancel_restart_ready,
                     "mission_generation": mission_generation,
                     "identity_revision": identity_revision,
                     "battery": battery,

@@ -80,9 +80,25 @@ class ManualDriveValidationTest(unittest.TestCase):
         )
         self.assertAlmostEqual(crab.linear_y, 0.25)
 
+    def test_carla_two_mps_is_explicit_and_scales_both_directions(self) -> None:
+        # HH_261002 - Raising the configurable ceiling must not change the
+        # production default or implicitly speed up crab/zero-turn commands.
+        limits = ManualDriveLimits(linear_x_mps=2.0)
+        self.assertEqual(ManualDriveLimits().linear_x_mps, 0.20)
+        self.assertEqual(limits.lateral_y_mps, 0.20)
+        self.assertEqual(limits.angular_z_radps, 0.20)
+        for direction in (-1, 1):
+            for scale in (0.10, 0.50, 1.00):
+                _, command = validate_drive_frame(
+                    drive_frame(2, forward=direction, scale=scale), limits
+                )
+                self.assertAlmostEqual(command.linear_x, direction * 2.0 * scale)
+                self.assertEqual(command.linear_y, 0.0)
+                self.assertEqual(command.angular_z, 0.0)
+
     def test_server_envelope_rejects_values_above_adapter_limits(self) -> None:
         for field, invalid in (
-            ("linear_x_mps", 1.400001),
+            ("linear_x_mps", 2.000001),
             ("lateral_y_mps", 1.000001),
             ("angular_z_radps", 0.785301),
         ):

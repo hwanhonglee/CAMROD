@@ -137,6 +137,311 @@ class GuestUiContractTest(unittest.TestCase):
                 AvgServiceState.CHARGING, 80, 35, "recall"
             )
         )
+        # HH_261001 - A Guest-owned CANCEL is distinct from an operator/emergency stop.
+        self.assertFalse(
+            guest_mission_dispatch_ready(AvgServiceState.OPERATOR_STOPPED, 80, 35)
+        )
+        self.assertTrue(
+            guest_mission_dispatch_ready(
+                AvgServiceState.OPERATOR_STOPPED, 80, 35, "", True
+            )
+        )
+        self.assertFalse(
+            guest_mission_dispatch_ready(
+                AvgServiceState.OPERATOR_STOPPED, 34, 35, "", True
+            )
+        )
+        self.assertFalse(
+            guest_mission_dispatch_ready(
+                AvgServiceState.OPERATOR_STOPPED, 80, 35, "recall", True
+            )
+        )
+
+    def test_guest_cancelled_stop_reopens_any_site_but_other_stops_do_not(self) -> None:
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _service_state=int(AvgServiceState.OPERATOR_STOPPED),
+            _battery=80,
+            _active_site="",
+            _active_request_intent="",
+            _active_request_owner="",
+            _active_mission_generation=0,
+            _active_request_retryable=False,
+            _guest_cancel_restart_ready=True,
+            _mission_terminal_clear_armed=False,
+            _guest_return_request_pending=False,
+            _dispatch_request_sequence=0,
+            _dispatch_identity_revision=0,
+            minimum_mission_dispatch_battery_percent=35,
+            _schedule_broadcast=lambda _payload: None,
+        )
+        admitted, error, _, _ = UiGuestNode._reserve_guest_recall_request(node, "B7")
+        self.assertTrue(admitted, error)
+        self.assertEqual(node._active_site, "B7")
+        node._active_site = ""
+        node._active_request_intent = ""
+        node._active_request_owner = ""
+        node._guest_cancel_restart_ready = False
+        admitted, error, _, _ = UiGuestNode._reserve_guest_recall_request(node, "B2")
+        self.assertFalse(admitted)
+        self.assertEqual(error, "robot_not_ready")
+
+    def test_backend_guest_stop_provenance_cannot_override_operator_stop(self) -> None:
+        backend = SimpleNamespace(
+            _latest_service_state=int(AvgServiceState.OPERATOR_STOPPED),
+            _guest_cancel_restart_ready=False,
+            _active_mission_site="",
+            _active_mission_source="",
+            _active_mission_generation=0,
+            _resolve_mission_key_for_site=lambda _site: "camping_site_2",
+            _latest_platform_is_charging=False,
+            get_logger=lambda: SimpleNamespace(warn=lambda _message: None),
+        )
+        blocked = UiBackendNode._apply_destination_command_serialized(
+            backend, "B2", True, "guest:dispatch:r=current"
+        )
+        self.assertEqual(blocked["error"], "guest_restart_not_authorized")
+        # HH_261001 - After an owned Guest cancel, the same command still needs the
+        # backend's fresh map-frame pose check before it can move.
+        backend._guest_cancel_restart_ready = True
+        with mock.patch.object(
+            UiBackendNode,
+            "_station_departure_origin",
+            return_value=(None, "drop_zone_pose_unavailable"),
+        ):
+            missing_pose = UiBackendNode._apply_destination_command_serialized(
+                backend, "B2", True, "guest:dispatch:r=current"
+            )
+        self.assertEqual(missing_pose["error"], "drop_zone_pose_unavailable")
+
+    def test_guest_reconnect_receives_authoritative_cancel_restart_provenance(self) -> None:
+        broadcasts = []
+
+        def bridge() -> SimpleNamespace:
+            node = SimpleNamespace(
+                _lock=threading.Lock(),
+                _service_state=int(AvgServiceState.RECALL_TO_SITE_ROAD),
+                _active_site="B2",
+                _active_request_intent="recall",
+                _active_request_owner="guest",
+                _active_mission_generation=9,
+                _active_request_retryable=False,
+                _guest_cancel_restart_ready=False,
+                _mission_terminal_clear_armed=False,
+                _guest_return_request_pending=False,
+                _pending_dispatch_nonce="",
+                site_names=[f"B{index}" for index in range(1, 14)],
+                _schedule_broadcast=broadcasts.append,
+                get_logger=lambda: SimpleNamespace(warn=lambda _message: None),
+            )
+            node._phase_of = lambda state: UiGuestNode._phase_of(node, state)
+            return node
+
+        stopped = {
+            "accepted": True,
+            "backend_session_id": "boot-current",
+            "request_source": "guest:cancel:site=B2:g=9",
+            "active_site": "",
+            "active_source": "",
+            "active_intent": "",
+            "active_generation": 0,
+            "service_state": int(AvgServiceState.OPERATOR_STOPPED),
+            "service_state_name": "OPERATOR_STOPPED",
+            "guest_cancel_restart_ready": True,
+        }
+        node = bridge()
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(stopped))
+        )
+        self.assertTrue(node._guest_cancel_restart_ready)
+        self.assertTrue(broadcasts[-1]["guest_cancel_restart_ready"])
+        self.assertEqual(broadcasts[-1]["request_intent"], "")
+
+        # HH_261001 - A later terminal lifecycle frame is the backend DataWriter's last
+        # retained sample. It must carry the same provenance to a new bridge.
+        terminal = dict(stopped, request_source="service_terminal")
+        restarted_bridge = bridge()
+        UiGuestNode._on_destination_dispatch_status(
+            restarted_bridge, String(data=json.dumps(terminal))
+        )
+        self.assertTrue(restarted_bridge._guest_cancel_restart_ready)
+
+        operator_stop = dict(terminal, request_source="http_stop",
+                             guest_cancel_restart_ready=False)
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(operator_stop))
+        )
+        self.assertFalse(node._guest_cancel_restart_ready)
+        completed = dict(terminal, service_state=int(AvgServiceState.CHARGING),
+                         service_state_name="CHARGING", guest_cancel_restart_ready=False)
+        UiGuestNode._on_destination_dispatch_status(
+            restarted_bridge, String(data=json.dumps(completed))
+        )
+        self.assertFalse(restarted_bridge._guest_cancel_restart_ready)
+
+    def test_backend_restart_preempts_pending_guest_ack_and_retires_old_writer(self) -> None:
+        broadcasts = []
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _backend_session_id="boot-old",
+            _retired_backend_session_ids=set(),
+            _backend_session_unknown=False,
+            _service_state=int(AvgServiceState.OPERATOR_STOPPED),
+            _active_site="B7",
+            _active_request_intent="recall",
+            _active_request_owner="guest",
+            _active_mission_generation=0,
+            _active_request_retryable=False,
+            _guest_cancel_restart_ready=True,
+            _pending_dispatch_nonce="pending-old",
+            _pending_dispatch_deadline_s=999.0,
+            _dispatch_identity_revision=12,
+            _mission_terminal_clear_armed=False,
+            _guest_return_request_pending=False,
+            site_names=["B2", "B7"],
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: SimpleNamespace(warn=lambda _message: None),
+        )
+        node._phase_of = lambda state: UiGuestNode._phase_of(node, state)
+        fresh_start = {
+            "accepted": True,
+            "backend_session_id": "boot-new",
+            "request_source": "backend_startup_fail_closed",
+            "active_site": "",
+            "active_source": "",
+            "active_intent": "",
+            "active_generation": 0,
+            "service_state": int(AvgServiceState.OPERATOR_STOPPED),
+            "service_state_name": "OPERATOR_STOPPED",
+            "guest_cancel_restart_ready": False,
+        }
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(fresh_start))
+        )
+        self.assertEqual(node._backend_session_id, "boot-new")
+        self.assertEqual(node._pending_dispatch_nonce, "")
+        self.assertEqual(node._active_site, "")
+        self.assertFalse(node._guest_cancel_restart_ready)
+        self.assertEqual(node._dispatch_identity_revision, 13)
+        self.assertEqual(broadcasts[-1]["service_state_name"], "OPERATOR_STOPPED")
+
+        old_frame = dict(fresh_start, backend_session_id="boot-old",
+                         request_source="guest:cancel:site=B7:g=9",
+                         guest_cancel_restart_ready=True)
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(old_frame))
+        )
+        self.assertEqual(len(broadcasts), 1)
+        self.assertFalse(node._guest_cancel_restart_ready)
+
+        admitted = dict(fresh_start, request_source="guest:dispatch:r=new",
+                        active_site="B2", active_source="guest:dispatch:r=new",
+                        active_intent="recall", active_generation=19,
+                        service_state=int(AvgServiceState.RECALL_TO_SITE_ROAD),
+                        service_state_name="RECALL_TO_SITE_ROAD")
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(admitted))
+        )
+        self.assertEqual(node._active_site, "B2")
+        self.assertEqual(node._active_mission_generation, 19)
+        self.assertEqual(node._dispatch_identity_revision, 14)
+
+    def test_missing_backend_session_after_known_writer_fails_closed(self) -> None:
+        broadcasts = []
+        node = SimpleNamespace(
+            _lock=threading.Lock(),
+            _backend_session_id="boot-known",
+            _retired_backend_session_ids=set(),
+            _backend_session_unknown=False,
+            _service_state=int(AvgServiceState.OPERATOR_STOPPED),
+            _active_site="B7",
+            _active_request_intent="recall",
+            _active_request_owner="guest",
+            _active_mission_generation=0,
+            _guest_cancel_restart_ready=True,
+            _pending_dispatch_nonce="pending-old",
+            _pending_dispatch_deadline_s=999.0,
+            _dispatch_identity_revision=3,
+            site_names=["B2", "B7"],
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: SimpleNamespace(warn=lambda _message: None),
+        )
+        node._phase_of = lambda state: UiGuestNode._phase_of(node, state)
+        unidentified = {
+            "accepted": True,
+            "request_source": "service_lifecycle",
+            "active_site": "B7",
+            "active_source": "guest:dispatch:r=old",
+            "active_intent": "recall",
+            "active_generation": 9,
+            "service_state": int(AvgServiceState.CHARGING),
+            "service_state_name": "CHARGING",
+            "guest_cancel_restart_ready": True,
+        }
+        for _ in range(2):
+            UiGuestNode._on_destination_dispatch_status(
+                node, String(data=json.dumps(unidentified))
+            )
+            self.assertTrue(node._backend_session_unknown)
+            self.assertEqual(node._backend_session_id, "boot-known")
+            self.assertNotIn("boot-known", node._retired_backend_session_ids)
+            self.assertEqual(node._active_site, "")
+            self.assertEqual(node._service_state, int(AvgServiceState.OPERATOR_STOPPED))
+            self.assertFalse(node._guest_cancel_restart_ready)
+            self.assertEqual(broadcasts[-1]["request_intent"], "")
+        self.assertEqual(node._pending_dispatch_nonce, "")
+
+        # HH_261001 - The unknown frame did not prove A was replaced. A's next verified
+        # status may restore only the authority explicitly present in A.
+        same_writer = dict(
+            unidentified, backend_session_id="boot-known",
+            request_source="service_terminal", active_site="",
+            active_source="", active_intent="", active_generation=0,
+            service_state=int(AvgServiceState.OPERATOR_STOPPED),
+            service_state_name="OPERATOR_STOPPED",
+        )
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(same_writer))
+        )
+        self.assertFalse(node._backend_session_unknown)
+        self.assertEqual(node._backend_session_id, "boot-known")
+        self.assertTrue(node._guest_cancel_restart_ready)
+        self.assertEqual(node._active_site, "")
+
+        verified = dict(unidentified, backend_session_id="boot-new",
+                        active_site="", active_source="", active_intent="",
+                        active_generation=0, guest_cancel_restart_ready=False)
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(verified))
+        )
+        self.assertFalse(node._backend_session_unknown)
+        self.assertEqual(node._backend_session_id, "boot-new")
+        self.assertIn("boot-known", node._retired_backend_session_ids)
+        self.assertEqual(node._service_state, int(AvgServiceState.CHARGING))
+        self.assertFalse(node._guest_cancel_restart_ready)
+
+        count = len(broadcasts)
+        UiGuestNode._on_destination_dispatch_status(
+            node, String(data=json.dumps(same_writer))
+        )
+        self.assertEqual(len(broadcasts), count)
+        self.assertEqual(node._backend_session_id, "boot-new")
+        self.assertFalse(node._guest_cancel_restart_ready)
+
+        # HH_261001 - Even on a clean first connection, a legacy payload cannot grant
+        # the new cancellation-specific privilege without a session token.
+        legacy = SimpleNamespace(
+            _lock=threading.Lock(), _service_state=int(AvgServiceState.CHARGING),
+            _active_site="", _active_request_intent="", _active_request_owner="",
+            _active_mission_generation=0, site_names=["B2", "B7"],
+            _schedule_broadcast=broadcasts.append,
+            get_logger=lambda: SimpleNamespace(warn=lambda _message: None),
+        )
+        legacy._phase_of = lambda state: UiGuestNode._phase_of(legacy, state)
+        UiGuestNode._on_destination_dispatch_status(
+            legacy, String(data=json.dumps(unidentified))
+        )
+        self.assertFalse(legacy._guest_cancel_restart_ready)
 
     def test_guest_cancel_is_available_only_while_motion_is_owned(self) -> None:
         cancellable_states = {

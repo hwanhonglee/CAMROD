@@ -7,9 +7,17 @@ tag identity, physical tag size, AprilTag validation threshold, ROI policy,
 thread count, and outputs remain production-parity; only AprilTag detector
 decimation is disabled so CARLA's 960x720 rear image retains enough tag pixels
 at the Drop Zone acquisition distance.  Separately, this wrapper explicitly
-selects the measured Woraksan YOLO `min_confidence=0.95` overlay; ordinary
-`camrod` retains develop's `0.50` value and only applies the CARLA camera-to-
-LiDAR extrinsic.  It also selects the campsite-geometry
+selects the CARLA-only YOLO `min_confidence=0.80` overlay and 80-class label
+table.  HH_261002 live testing found that the shared 81-name table misindexed
+this 80-class engine; the corrected table and 0.80 threshold distinguish the
+observed real walker from lower-confidence scenery false positives, without
+claiming a general obstacle-safety certification.
+HH_261002 additionally selects a 2.0 m/s manual forward/reverse limit and an
+explicit command-adapter cap overlay only for this simulator site profile.
+It does not change automatic requested speeds, lateral/yaw manual limits,
+steering, safety authorization or watchdogs; full/develop defaults stay intact.
+Ordinary `camrod` retains develop's `0.50` value and only applies the CARLA
+camera-to-LiDAR extrinsic.  It also selects the campsite-geometry
 parameters exercised by the 7a095ee B1 physical round-trip and one
 authenticated CARLA-plant recovery lease.  The site profile also opts into
 full-route-relative recovery, zero-hold timing, corrective yaw, and bounded
@@ -87,13 +95,17 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 # Keep this mapping explicit and host-independent: the live runtime auditor
 # checks the corresponding ROS parameters before a campsite matrix may move.
 DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
+    # HH_261002 - Simulator manual forward/reverse alone may request 2.0 m/s.
+    # Automatic target speeds, lateral/yaw manual limits, watchdogs and safety
+    # gates remain unchanged; ordinary develop/full retain their 0.20 defaults.
+    "manual_drive_linear_limit_mps": "2.0",
     # CARLA publishes a real rear RGB stream, but the AprilTag debug JPEG is
     # intentionally event-driven and can be stale before acquisition.  Only
     # this simulator evidence profile may show the live rear stream in that
@@ -261,6 +273,10 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
 def develop_site_geometry_arguments(adapter_share):
     """Bind the proven site profile to its CARLA-only sensor/plant configs."""
     arguments = dict(DEVELOP_SITE_GEOMETRY_ARGUMENTS)
+    # HH_261002 - Lift only this simulator adapter's longitudinal clipping cap
+    # to match its explicit manual UI limit; never accelerate automatic targets.
+    arguments["carla_command_runtime_override_param_file"] = os.path.join(
+        adapter_share, "config", "command_adapter_carla_site_manual.yaml")
     # Unlike full/develop-parity, this evidence profile explicitly opts into
     # the measured Woraksan YOLO false-positive filter as well as the shared
     # CARLA camera-to-LiDAR extrinsic.
@@ -287,6 +303,11 @@ def develop_site_geometry_arguments(adapter_share):
     return arguments
 
 
+def develop_site_geometry_yolo_labels(adapter_share):
+    """HH_261002 - Bind this 80-logit engine to exactly 80 CARLA-only names."""
+    return os.path.join(adapter_share, "config", "yolo_coco80.txt")
+
+
 def generate_launch_description():
     adapter_share = get_package_share_directory("camrod_carla_adapter")
     full_launch = os.path.join(
@@ -294,6 +315,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        # HH_261002 - The nested YOLO launch appends class_label_path after
+        # parameter YAMLs, so set its launch value before including full CAMROD.
+        SetLaunchConfiguration(
+            "yolo_labels_path", develop_site_geometry_yolo_labels(adapter_share)
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(full_launch),
             launch_arguments=develop_site_geometry_arguments(

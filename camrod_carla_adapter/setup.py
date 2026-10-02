@@ -29,7 +29,10 @@ setup(
             glob("config/*.yaml")
             + glob("config/*.json")
             + glob("config/*.xml")
-            + glob("config/*.osm"),
+            + glob("config/*.osm")
+            # HH_261002 - Install the CARLA-only 80-class YOLO label table;
+            # the shared/field label file retains its separate 81st tent name.
+            + glob("config/*.txt"),
         ),
     ],
     install_requires=["setuptools"],

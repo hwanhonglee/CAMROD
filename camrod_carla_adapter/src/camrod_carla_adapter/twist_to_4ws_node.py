@@ -107,7 +107,12 @@ class TwistToFourWSNode(Node):
             max_yaw_rate_radps=float(self.declare_parameter(
                 "max_yaw_rate_radps", 0.7853).value),
         )
-        validate_ranger_contract(self.config)
+        # HH_261002 - Startup-only simulator opt-in; a ROS parameter update
+        # alone must not silently change the already validated mapping object.
+        allow_site_manual_speed = bool(self.declare_parameter(
+            "allow_carla_site_manual_speed_2mps", False).value)
+        validate_ranger_contract(
+            self.config, allow_carla_site_manual_speed_2mps=allow_site_manual_speed)
         self._validate_timing()
 
         self.command_publisher = self.create_publisher(

@@ -43,8 +43,8 @@ motion condition.
 | Startup delay expires | `system.startup` | 1 |
 | First complete readiness | `system.ready` | 1 |
 | Announcer node shuts down | `system.shutdown` | — |
-| Engaged departure to site | `navigation.to_campsite` | 1 |
-| Engaged departure to drop zone | `navigation.to_dropzone` | 1 |
+| Authorized site departure, before motion (UI gate) | `navigation.site_B*`, then `navigation.to_campsite` | 1 |
+| Released return route to drop zone (voice adapter) | `navigation.to_dropzone` | 1 |
 | Recall return enters `RECALL_CLEARANCE_WAIT` (B1–B10) | `navigation.recall_clear_site` | 2 |
 | Trip to site under way, every period | `system.announce1` + `system.announce2` | 0 |
 | Trip to drop zone under way, every period | `navigation.return_to_dropzone` | 0 |

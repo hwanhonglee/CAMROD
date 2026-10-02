@@ -2337,7 +2337,9 @@ class OperatorBrowserClient(GuestBrowserClient):
         self._wait_element(
             '[data-ui="operator-control-screen"]', "operator control screen"
         )
-        role_selector = f'.mission-role-banner.role-{mission_intent}'
+        # HH_261002 - Read the service title, not sibling navigation controls;
+        # keep exact intent validation when the banner also offers map viewing.
+        role_selector = f'.mission-role-banner.role-{mission_intent} > strong'
         role = self._wait_element(role_selector, f"selected {mission_intent} service banner")
         expected_role = "배달 서비스" if mission_intent == "delivery" else "호출 서비스"
         if role.get("text") != expected_role:
@@ -2434,15 +2436,30 @@ class OperatorBrowserClient(GuestBrowserClient):
         Its return button is disabled during a mission, and the normal pointer
         acceptance preserves that restriction instead of forcing React state.
         """
-        waiting = self._element('[data-ui="operator-open-destination"]')
-        if waiting.get("visibleCount") == 1:
-            self._click(
-                '[data-ui="operator-open-destination"]',
-                "open service selection",
-            )
-        elif self._element('[data-ui="operator-service-selection-screen"]').get("visibleCount") != 1:
-            self._click('[data-ui="operator-back-to-services"]', "return to service selection")
-        return self._wait_element('[data-ui="operator-service-selection-screen"]', "service selection screen")
+        safety_gate = '[data-ui="service-safety-gate"]'
+        service_screen = '[data-ui="operator-service-selection-screen"]'
+        # HH_261002 - The production waiting screen now requires a safety
+        # notice acknowledgement before the service chooser appears.  Click
+        # its visible confirmation through the same pointer path as every
+        # mission action, including when a previous attempt left it open.
+        if self._element(safety_gate).get("visibleCount") != 1:
+            waiting = self._element('[data-ui="operator-open-destination"]')
+            if waiting.get("visibleCount") == 1:
+                self._click(
+                    '[data-ui="operator-open-destination"]',
+                    "open service selection",
+                )
+            elif self._element(service_screen).get("visibleCount") != 1:
+                self._click('[data-ui="operator-back-to-services"]', "return to service selection")
+        deadline = time.monotonic() + self.timeout_s
+        while time.monotonic() < deadline:
+            if self._element(safety_gate).get("visibleCount") == 1:
+                self._click('[data-ui="usage-safety-confirm"]', "acknowledge safety notice")
+                break
+            if self._element(service_screen).get("visibleCount") == 1:
+                break
+            time.sleep(0.05)
+        return self._wait_element(service_screen, "service selection screen")
 
     def request_return(self, context: Mapping[str, Any]) -> dict[str, Any]:
         self._interactions = []

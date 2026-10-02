@@ -505,6 +505,7 @@ class UiBackendStopTest(unittest.TestCase):
 
     def test_dispatch_snapshot_and_status_expose_one_identity(self) -> None:
         backend = self._mission_authority_backend()
+        backend._backend_session_id = "backend-boot-a"
 
         snapshot = UiBackendNode._mission_dispatch_snapshot(backend)
         UiBackendNode._publish_destination_dispatch_status(
@@ -526,6 +527,7 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(status["active_site"], "B1")
         self.assertEqual(status["active_owner"], "operator")
         self.assertEqual(status["active_generation"], 41)
+        self.assertEqual(status["backend_session_id"], "backend-boot-a")
 
     def test_live_robot_clients_receive_admission_and_clear(self) -> None:
         for source, owner, intent in (
@@ -1701,6 +1703,7 @@ class UiBackendStopTest(unittest.TestCase):
 
     def test_charging_contact_does_not_cancel_active_station_departure(self) -> None:
         published_states = []
+        broadcasts = []
         logger = _FakeLogger()
         backend = SimpleNamespace(
             _drop_zone_exit_active=True,
@@ -1714,6 +1717,9 @@ class UiBackendStopTest(unittest.TestCase):
             lambda state, source: published_states.append((state, source))
         )
         backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        # HH_261002 - Charging edges now broadcast contact and FULL separately
+        # even when battery SOC is unavailable and departure stays authorized.
+        backend._schedule_broadcast = broadcasts.append
         backend._now_s = lambda: 99.0
         backend._lock = threading.Lock()
         backend._state = SimpleNamespace(battery_percentage=-1)
@@ -1724,7 +1730,36 @@ class UiBackendStopTest(unittest.TestCase):
 
         self.assertTrue(backend._latest_platform_is_charging)
         self.assertEqual(published_states, [])
+        self.assertTrue(broadcasts[-1]["platform_is_charging"])
+        self.assertFalse(broadcasts[-1]["battery_charge_complete"])
         self.assertIn("preserving departure authorization", logger.info_messages[-1])
+
+    def test_full_charge_websocket_edge_is_not_a_parking_success_signal(self) -> None:
+        broadcasts = []
+        backend = SimpleNamespace(
+            _drop_zone_exit_active=True,
+            _latest_platform_is_charging=False,
+            _latest_service_state=int(AvgServiceState.DEPARTING_CHARGER),
+            _runtime_policy=SimpleNamespace(update_platform=lambda **_kwargs: None),
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(battery_percentage=100),
+        )
+        backend.get_logger = lambda: _FakeLogger()
+        backend._update_runtime_state = lambda callback: callback()
+        backend._publish_service_state = lambda *_args, **_kwargs: None
+        backend._update_low_battery_return_policy = lambda *_args, **_kwargs: None
+        backend._schedule_broadcast = broadcasts.append
+        backend._now_s = lambda: 99.0
+        message = AvgPlatformStatus()
+        message.is_charging = True
+        message.battery_state_available = True
+        message.battery_percentage = 1.0
+        # HH_261002 - UI completion requires charging+100%, not a parked state
+        # or the SOC number alone; control-state authorization is unchanged.
+        UiBackendNode._on_platform_status(backend, message)
+        self.assertTrue(backend._state.battery_charge_complete)
+        self.assertTrue(broadcasts[-1]["battery_charge_complete"])
+        self.assertTrue(broadcasts[-1]["platform_is_charging"])
 
     def test_platform_velocity_is_recorded_without_battery_telemetry(self) -> None:
         metrics = _FakeServiceMetrics()
@@ -2981,6 +3016,7 @@ class UiBackendStopTest(unittest.TestCase):
             "mission_retry_site": "",
             "mission_retry_owner": "",
             "departure_failed": False,
+            "guest_cancel_restart_ready": False,
         })
 
         backend._pending_site_after_drop_zone_exit = None
@@ -3004,7 +3040,52 @@ class UiBackendStopTest(unittest.TestCase):
             "mission_retry_site": "",
             "mission_retry_owner": "",
             "departure_failed": False,
+            "guest_cancel_restart_ready": False,
         })
+
+    def test_only_authority_matched_guest_cancel_reopens_public_restart(self) -> None:
+        backend = SimpleNamespace(
+            _lock=threading.Lock(),
+            _state=SimpleNamespace(ws_site_states={"B2": True},
+                                   destination={"site": "B2", "run": True}),
+            site_names=["B2"],
+            publish_mission_engage_from_destination=False,
+            _cancel_pending_manual_return_transition=lambda _source: None,
+            _cancel_active_motion=lambda source: None,
+            _publish_engage=lambda _enabled, source: None,
+            _publish_service_state=lambda state, source: setattr(
+                backend, "_latest_service_state", int(state)
+            ),
+            _schedule_broadcast=lambda _payload: None,
+        )
+        with mock.patch.object(UiBackendNode, "_cancel_voice_dispatch"), \
+             mock.patch.object(UiBackendNode, "_advance_command_epoch"), \
+             mock.patch.object(UiBackendNode, "_clear_generation_zero_authority"), \
+             mock.patch.object(UiBackendNode, "_cancel_pending_charging_departure_transition"), \
+             mock.patch.object(UiBackendNode, "_cancel_pending_redock_after_disconnect"), \
+             mock.patch.object(UiBackendNode, "_cancel_pending_parking_rearm_transition"), \
+             mock.patch.object(UiBackendNode, "_publish_destination_dispatch_status"):
+            for source, permitted in (
+                ("guest:cancel:site=B2:g=9", True),
+                ("guest:cancel:site=B2:g=8", False),
+                ("guest:cancel:site=B1:g=9", False),
+                ("http_stop", False),
+                ("service_state:OPERATOR_STOPPED", False),
+                ("backend_startup_fail_closed", False),
+            ):
+                backend._active_mission_site = "B2"
+                backend._active_mission_source = "guest:dispatch:r=current"
+                backend._active_mission_generation = 9
+                backend._guest_cancel_restart_ready = True
+                UiBackendNode._stop_active_service_serialized(backend, source)
+                self.assertEqual(
+                    backend._guest_cancel_restart_ready, permitted, source
+                )
+                self.assertEqual(
+                    UiBackendNode._mission_dispatch_snapshot(backend)[
+                        "guest_cancel_restart_ready"
+                    ], permitted, source
+                )
 
     def test_stale_robot_websocket_off_cannot_cancel_newer_generation(self) -> None:
         backend = SimpleNamespace(
@@ -4984,6 +5065,93 @@ class UiBackendStopTest(unittest.TestCase):
         self.assertEqual(
             [event[0] for event in events], ["engage", "controller_return"]
         )
+
+    def test_recall_return_publisher_opens_gate_before_controller_command(self) -> None:
+        # HH_261002 - Exercise the real publisher signature; a stub accepting
+        # before_release had hidden a runtime TypeError in the final Recall leg.
+        events = []
+        backend = SimpleNamespace(
+            get_clock=lambda: SimpleNamespace(
+                now=lambda: SimpleNamespace(to_msg=lambda: RosTime(sec=123))
+            ),
+            pub_camping_site_maneuver_controller_operation=SimpleNamespace(
+                publish=lambda message: events.append(("publish", message))
+            ),
+            camping_site_maneuver_controller_operation_topic="/control/camping_site_maneuver_controller/operation",
+            get_logger=lambda: _FakeLogger(),
+        )
+
+        UiBackendNode._publish_camping_site_maneuver_controller_return(
+            backend, source="robot_ui:recall_final_return",
+            before_release=lambda: events.append(("gate", True)),
+        )
+
+        self.assertEqual([event[0] for event in events], ["gate", "publish"])
+        self.assertEqual(events[1][1].operation, MotionOperation.RETURN)
+        self.assertEqual(events[1][1].source, "robot_ui:recall_final_return")
+
+    def test_failed_final_recall_publish_rolls_back_latch_and_can_retry(self) -> None:
+        # HH_261002 - Failed local publish is not an accepted return or a
+        # mission-journal event; the same generation must remain retryable.
+        events = []
+        logger = _FakeLogger()
+
+        def fail_after_gate(source, before_release):
+            before_release()
+            events.append(("publish_attempt", source))
+            raise RuntimeError("operation writer unavailable")
+
+        backend = self._mission_authority_backend(
+            _active_mission_source="guest:dispatch:r=current",
+            _active_mission_owner="guest",
+            _active_mission_intent="recall",
+            _latest_service_state=int(AvgServiceState.GUEST_LOADING_WAIT),
+            _latest_campsite_phase="RECALL_RETURN_WAIT",
+            _latest_campsite_site="B1",
+            _latest_campsite_status_time_s=99.5,
+            _now_s=lambda: 100.0,
+            _recall_final_return_generation=0,
+            _mission_execution_error="",
+            publish_mission_engage_from_destination=True,
+            _publish_mission_engage=lambda enabled, source: events.append(
+                ("engage", enabled)
+            ),
+            _publish_camping_site_maneuver_controller_return=fail_after_gate,
+            get_logger=lambda: logger,
+        )
+        with mock.patch.object(UiBackendNode, "_ensure_return_service_metrics") as metrics, \
+                mock.patch.object(UiBackendNode, "_record_return_request") as journal:
+            failed = UiBackendNode.request_owned_return_to_drop_zone(
+                backend, "B1", 41, source="robot_ui:usage_complete",
+                allowed_owners={"operator", "robot"}, recall_final_return=True,
+            )
+            self.assertFalse(failed["success"])
+            self.assertEqual(failed["error"], "recall_final_return_publish_failed")
+            self.assertEqual(backend._recall_final_return_generation, 0)
+            self.assertEqual(backend._return_requested_generation, 0)
+            self.assertEqual(
+                [event[0] for event in events],
+                ["engage", "publish_attempt", "engage"],
+            )
+            self.assertEqual(events[-1], ("engage", False))
+            metrics.assert_not_called()
+            journal.assert_not_called()
+
+            backend._publish_camping_site_maneuver_controller_return = (
+                lambda source, before_release: (
+                    before_release(), events.append(("publish", source))
+                )
+            )
+            retried = UiBackendNode.request_owned_return_to_drop_zone(
+                backend, "B1", 41, source="robot_ui:usage_complete",
+                allowed_owners={"operator", "robot"}, recall_final_return=True,
+            )
+            self.assertTrue(retried["success"])
+            self.assertEqual(retried["transition"], "recall_final_return")
+            self.assertEqual(backend._recall_final_return_generation, 41)
+            self.assertEqual(backend._return_requested_generation, 41)
+            metrics.assert_called_once()
+            journal.assert_called_once()
 
 
     def test_robot_guest_completion_rejects_wrong_site_generation_and_early_return(

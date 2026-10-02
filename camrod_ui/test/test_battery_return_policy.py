@@ -12,7 +12,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
 
 from avg_msgs.msg import AvgBool, AvgPlatformStatus, AvgServiceState, ModuleState, MotionOperation  # noqa: E402
-from camrod_ui.battery_policy import battery_policy_snapshot, urgent_return_required  # noqa: E402
+from camrod_ui.battery_policy import (  # noqa: E402
+    battery_charge_complete, battery_policy_snapshot, urgent_return_required,
+)
 from camrod_ui.ui_backend_node import UiBackendNode  # noqa: E402
 
 
@@ -93,6 +95,26 @@ def test_soc_boundaries_match_backend_dispatch_and_return(soc, urgent, charging,
     assert node._battery_return_urgent is urgent
     assert node._publish_camping_site_maneuver_controller_return.call_count == int(urgent)
     assert node._low_battery_return_pending is (soc < 35.0)
+
+
+@pytest.mark.parametrize("soc, charging, status, previous, expected", [
+    (99, True, 1, False, False),
+    (100, True, 1, False, True),
+    (99, False, 4, False, True),
+    (99, True, 1, True, True),
+    (100, False, 3, True, False),
+    (100, False, 0, False, False),
+    (float("nan"), True, 1, False, False),
+])
+def test_charge_completion_requires_full_bms_or_active_charge_at_100_percent(
+    soc, charging, status, previous, expected,
+):
+    # HH_261002 - A parked robot with a 100% SOC estimate is not sufficient
+    # evidence of a successful charging session; a confirmed BMS full state is.
+    assert battery_charge_complete(
+        soc, charging=charging, power_supply_status=status,
+        previously_complete=previous,
+    ) is expected
 
 
 @pytest.mark.parametrize("fraction, expected", [

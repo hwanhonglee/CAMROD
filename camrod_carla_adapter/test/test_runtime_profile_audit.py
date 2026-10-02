@@ -574,7 +574,7 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
         "cost_stop_merged_dynamic_source_labels"
     ] == "radar"
     assert parity["/perception/yolov9mit"]["min_confidence"] == 0.5
-    assert site["/perception/yolov9mit"]["min_confidence"] == 0.95
+    assert site["/perception/yolov9mit"]["min_confidence"] == 0.80
     assert parity["/ui_backend"][
         "telemetry_docking_rear_camera_fallback_enabled"
     ] is False

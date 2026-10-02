@@ -962,10 +962,10 @@ def test_runtime_runner_contains_no_automatic_motion_client() -> None:
         "ros2 action send_goal",
     )
     assert not any(token in source for token in forbidden)
-    # The only service CLI use is a read-only Trigger health probe.  Motion,
+    # HH_261002 - The only service CLI use is a read-only readiness probe. Motion,
     # engage, goal and bridge PLAY/PAUSE are owned by their dedicated nodes.
     assert source.count("ros2 service call") == 1
-    assert "/virtual_carla/step_pacer/health std_srvs/srv/Trigger" in source
+    assert "/virtual_carla/step_pacer/startup_ready std_srvs/srv/Trigger" in source
     assert "prepare_ros_carla_python bridge" in source
     assert "prepare_ros_carla_python spawn" in source
 

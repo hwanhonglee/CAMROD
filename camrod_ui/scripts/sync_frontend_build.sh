@@ -1,13 +1,13 @@
 #!/bin/bash
 # Syncs React build output to colcon build/install paths after npm run build.
-# Called automatically via package.json postbuild.
+# HH_261002 - Called after a staged build succeeds; standalone use remains valid.
 
 set -euo pipefail
 
 FRONTEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../camrod_ui_robot/assets/frontend" && pwd)"
 WS_ROOT="$(realpath "$FRONTEND_DIR/../../../../..")"
 
-SRC="$FRONTEND_DIR/build"
+SRC="${CAMROD_FRONTEND_BUILD_SOURCE:-$FRONTEND_DIR/build}"
 COLCON="$WS_ROOT/build/camrod_ui/camrod_ui_robot/assets/frontend/build"
 INSTALL="$WS_ROOT/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build"
 
@@ -19,7 +19,13 @@ copy_if_needed() {
     return 0
   fi
   if [ ! -e "$dst_file" ] || [ "$(stat -Lc '%d:%i' "$src_file")" != "$(stat -Lc '%d:%i' "$dst_file" 2>/dev/null)" ]; then
-    cp "$src_file" "$dst_file"
+    # HH_261002 - Replace complete assets atomically, including old install
+    # symlinks, so concurrent image requests cannot read half-written bytes.
+    local temporary_asset
+    temporary_asset="$(mktemp "$(dirname "$dst_file")/.asset-publish.XXXXXX")"
+    cp "$src_file" "$temporary_asset"
+    chmod --reference="$src_file" "$temporary_asset"
+    mv -f "$temporary_asset" "$dst_file"
   fi
 }
 
@@ -71,15 +77,21 @@ sync_build_tree() {
 
   publish_index "$dst"
 
-  # HH_260619 - Remove stale hashed React files only after the new index is
-  # atomically visible, so in-flight requests can finish during publication.
-  while IFS= read -r -d '' dst_file; do
-    rel_path="${dst_file#"$dst/static/"}"
-    if [ ! -f "$SRC/static/$rel_path" ]; then
-      rm -f "$dst_file"
-    fi
-  done < <(find "$dst/static" \( -type f -o -type l \) -print0)
+  # HH_261002 - Retain previous content-hashed bundles for already-open tabs.
+  # Pruning belongs to offline maintenance, not live publication.
 }
+
+if [[ ! -s "$SRC/index.html" || ! -d "$SRC/static" ]]; then
+  echo "[sync_frontend_build] refusing incomplete frontend output: $SRC" >&2
+  exit 1
+fi
+
+# HH_261002 - A staged build updates the source build as another publication
+# target; failed compilation never reaches this point or touches served files.
+if [[ "$(realpath "$SRC")" != "$(realpath -m "$FRONTEND_DIR/build")" ]]; then
+  mkdir -p "$FRONTEND_DIR/build"
+  sync_build_tree "$FRONTEND_DIR/build"
+fi
 
 synced=0
 if [ -d "$COLCON" ]; then
