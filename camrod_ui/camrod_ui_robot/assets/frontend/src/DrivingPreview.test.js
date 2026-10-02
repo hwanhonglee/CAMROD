@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import DrivingPreview, { makeDrivingPreviewSnapshot, demoRoutePose } from './DrivingPreview';
+import DrivingPreview, { makeDrivingPreviewSnapshot, demoRoutePose, fourWheelPreviewMotion } from './DrivingPreview';
 
 // HH_261001 - Preview only exercises presentation; no ROS backend can be involved.
 jest.mock('./DrivingDisplay', () => function MockDisplay({ onDismiss, demo, snapshot }) {
@@ -57,6 +57,18 @@ describe('local-only driving preview', () => {
     expect(bend.motion.yaw_rate_rps).toBeGreaterThan(0);
     expect(demoRoutePose(8)).toEqual({x: 8, y: 0, yaw: 0});
   });
+  test('labelled map fixture retains separate green bounds without a mission', () => {
+    // HH_261002 - Preview road paint is synthetic and must not be a command source.
+    const snapshot = makeDrivingPreviewSnapshot('idle', 0);
+    expect(snapshot.mission.active).toBe(false);
+    expect(snapshot.base_map.source).toBe('/map/markers');
+    expect(snapshot.base_map.provenance).toBe('synthetic_preview_only');
+    expect(snapshot.base_map.polylines.map(line => line.namespace)).toEqual([
+      'lanelet/right_bound', 'lanelet/left_bound',
+    ]);
+    expect(snapshot.base_map.polylines.every(line => line.points.length > 2)).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
   test('the entire fixture boxes stay outside the robot corridor along every route bend', () => {
     // HH_261002 - This passive preview cannot brake; do not visually drive through fixtures.
     const snapshot = makeDrivingPreviewSnapshot('delivery', 0);
@@ -77,6 +89,92 @@ describe('local-only driving preview', () => {
     expect(stopped.motion.speed_mps).toBe(0);
     expect(stopped.motion.yaw_rate_rps).toBe(0);
     expect(stopped.mission.service_state_name).toBe('RETURNING_TO_DROP_ZONE');
+  });
+  // HH_261002 - Body trajectories and signed twists must agree in the local
+  // fixture; synthetic zero-turn/crab are not inferred from command labels.
+  test.each(['zero_turn_left', 'zero_turn_right'])(
+    '%s rotates in place with zero translational speed', mode => {
+      const first = makeDrivingPreviewSnapshot(mode, 1);
+      const second = makeDrivingPreviewSnapshot(mode, 3);
+      const sign = mode.endsWith('right') ? -1 : 1;
+      expect(second.pose.x).toBe(first.pose.x);
+      expect(second.pose.y).toBe(first.pose.y);
+      expect(second.pose.yaw - first.pose.yaw).toBeCloseTo(sign * 0.35 * 2);
+      expect(second.motion.speed_mps).toBe(0);
+      expect(second.motion.vx_mps).toBe(0);
+      expect(second.motion.vy_mps).toBe(0);
+      expect(second.motion.yaw_rate_rps).toBe(sign * 0.35);
+      expect(second.mission.description).toContain('실제 주행 아님');
+      expect(second.route.valid).toBe(false);
+      expect(second.progress.valid).toBe(false);
+    },
+  );
+  test.each(['crab_left', 'crab_right'])(
+    '%s moves laterally without rotating the body', mode => {
+      const first = makeDrivingPreviewSnapshot(mode, 1);
+      const second = makeDrivingPreviewSnapshot(mode, 3);
+      const sign = mode.endsWith('right') ? -1 : 1;
+      expect(second.pose.x).toBe(first.pose.x);
+      expect(second.pose.yaw).toBe(first.pose.yaw);
+      expect(second.pose.y - first.pose.y).toBeCloseTo(sign * 0.45 * 2);
+      expect(second.motion.vx_mps).toBe(0);
+      expect(second.motion.vy_mps).toBe(sign * 0.45);
+      expect(second.motion.speed_mps).toBe(0.45);
+      expect(second.motion.yaw_rate_rps).toBe(0);
+    },
+  );
+  test('reverse uses negative longitudinal motion, not a forward U-turn', () => {
+    const first = makeDrivingPreviewSnapshot('reverse', 1);
+    const second = makeDrivingPreviewSnapshot('reverse', 3);
+    expect(second.pose.x - first.pose.x).toBeCloseTo(-0.45 * 2);
+    expect(second.pose.y).toBe(first.pose.y);
+    expect(second.pose.yaw).toBe(0);
+    expect(second.motion.vx_mps).toBe(-0.45);
+    expect(second.motion.speed_mps).toBe(0.45);
+    expect(second.motion.yaw_rate_rps).toBe(0);
+  });
+  test.each(['zero_turn_left', 'zero_turn_right', 'crab_left', 'crab_right', 'reverse'])(
+    '%s freezes its own pose on stop/offline and ends without teleporting', mode => {
+      const moving = makeDrivingPreviewSnapshot(mode, 3);
+      for (const pausedMode of ['stop', 'offline', 'stale']) {
+        const stopped = makeDrivingPreviewSnapshot(pausedMode, 3, mode);
+        expect(stopped.pose.x).toBe(moving.pose.x);
+        expect(stopped.pose.y).toBe(moving.pose.y);
+        expect(stopped.pose.yaw).toBe(moving.pose.yaw);
+        expect(stopped.motion.speed_mps).toBe(0);
+        expect(stopped.motion.yaw_rate_rps).toBe(0);
+        if (pausedMode === 'offline') {
+          expect(stopped.connected).toBe(false);
+          expect(stopped.pose.age_s).toBeGreaterThan(2.5);
+        }
+        if (pausedMode === 'stale') {
+          expect(stopped.connected).toBe(true);
+          expect(stopped.pose.age_s).toBeGreaterThan(2.5);
+          expect(stopped.motion.age_s).toBeGreaterThan(2.5);
+          expect(stopped.progress.valid).toBe(false);
+        }
+      }
+      const arrived = makeDrivingPreviewSnapshot(mode, 30);
+      expect(arrived.motion.speed_mps).toBe(0);
+      expect(arrived.motion.yaw_rate_rps).toBe(0);
+      expect(arrived.pose).toEqual(makeDrivingPreviewSnapshot(mode, 50).pose);
+      expect(arrived.mission.description).toContain('시연 완료');
+    },
+  );
+  test('the labelled 4WS selector remains offline inside the existing preview', () => {
+    act(() => root.render(<DrivingPreview />));
+    const selector = host.querySelector('[data-preview=four-wheel-mode]');
+    expect(selector.options.length).toBe(6);
+    expect(selector.textContent).toContain('시연: 제자리 좌회전');
+    act(() => {
+      selector.value = 'zero_turn_left';
+      selector.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    act(() => jest.advanceTimersByTime(1500));
+    expect(selector.value).toBe('zero_turn_left');
+    expect(host.querySelector('[data-testid=display]').dataset.demo).toBe('true');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fourWheelPreviewMotion('delivery', 1)).toBeNull();
   });
   test('the route ends at zero speed and zero ETA instead of silently teleporting', () => {
     const arrived = makeDrivingPreviewSnapshot('delivery', 100);

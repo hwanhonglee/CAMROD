@@ -331,6 +331,12 @@ def generate_launch_description():
             '(CARLA/external-simulator opt-in)'
         ),
     )
+    # HH_261002 - Explicit mission resume is opt-in and never follows disarm.
+    manual_mission_resume_enabled_arg = DeclareLaunchArgument(
+        'manual_mission_resume_enabled',
+        default_value='false',
+        description='Offer explicit suspended-road-mission resume after simulator manual control',
+    )
     manual_drive_linear_limit_mps_arg = DeclareLaunchArgument(
         'manual_drive_linear_limit_mps',
         default_value='0.20',
@@ -546,6 +552,9 @@ def generate_launch_description():
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'manual_cmd_vel_ros_topic': LaunchConfiguration('manual_cmd_vel_ros_topic'),
+            'manual_mission_resume_enabled': ParameterValue(
+                LaunchConfiguration('manual_mission_resume_enabled'), value_type=bool,
+            ),
             'manual_drive_linear_limit_mps': ParameterValue(
                 LaunchConfiguration('manual_drive_linear_limit_mps'),
                 value_type=float,
@@ -742,6 +751,7 @@ def generate_launch_description():
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
         manual_cmd_vel_ros_topic_arg,
+        manual_mission_resume_enabled_arg,
         manual_drive_linear_limit_mps_arg,
         manual_drive_lateral_limit_mps_arg,
         manual_drive_angular_limit_radps_arg,

@@ -26,6 +26,7 @@ import {
 import SnapshotControl from './SnapshotControl';
 import DrivingDisplay from './DrivingDisplay';
 import useDrivingDisplay from './useDrivingDisplay';
+import ManualMissionResume, { manualResumeFromSnapshot } from './ManualMissionResume';
 import './DrivingIntegration.css';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
@@ -1323,6 +1324,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const [systemHealth, setSystemHealth] = useState('STARTING');
   const [missionPhase, setMissionPhase] = useState('INITIALIZING');
   const [missionSource, setMissionSource] = useState('none');
+  // HH_261002 - Optional CARLA-only pause context; production backends leave
+  // this absent/false. Reading it never re-engages or resumes a mission.
+  const [manualResume, setManualResume] = useState(null);
+  const manualResumeRevisionRef = useRef(0);
   const [headlightState, setHeadlightState] = useState(false); // HH_260708 - Track the operator headlight toggle.
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
@@ -1581,7 +1586,9 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     missionDispatch, arrivedSite, serviceStateName
   );
   const recallProgress = recallReturnProgress(activeRecallSite, serviceStateDescription);
-  const motionNotice = serviceMotionNotice(missionPhase, systemHealth);
+  const motionNotice = manualResume?.pending
+    ? { label: '자율주행 일시정지', message: '수동 개입으로 일시정지했습니다. 명시적으로 재개하기 전에는 자율주행하지 않습니다.' }
+    : serviceMotionNotice(missionPhase, systemHealth);
   const guestAdmissionMessage = guestAdmissionNotice({
     dispatch: missionDispatch, showRecall: showGuestRecall, noticeSite: guestNavigateSite,
     missionPhase, serviceStateName, systemHealth,
@@ -1607,7 +1614,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     // HH_261002 - A diagnostic ERROR during an accepted safety hold is a
     // warning to show in the driving view, not a reason to abandon that view.
     // Mission errors and operator modals still own their existing screens.
-    blocked: showLoginModal || Boolean(activeModal) || showServiceSafetyGate
+    blocked: Boolean(manualResume?.pending) || showLoginModal || Boolean(activeModal) || showServiceSafetyGate
       || showMoveConfirm || showDeliveryConfirm || showRecallConfirm
       || showMoveVerify || showDockingConfirm || Boolean(missionExecutionError)
       || (showArrivalComplete && arrivedSite && robotOwnsReturn
@@ -1796,6 +1803,17 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         return;
       }
       setConnected(true);
+      // HH_261002 - Restore the optional prompt after initial connect/reconnect.
+      // A newer WebSocket snapshot wins over this read-only HTTP response.
+      const resumeRevision = manualResumeRevisionRef.current;
+      fetch('/ui/state', { cache: 'no-store' })
+        .then(response => response.ok ? response.json() : null)
+        .then(snapshot => {
+          if (!snapshot || !wsMountedRef.current || wsRef.current !== ws
+              || wsGenerationRef.current !== connectionGeneration
+              || manualResumeRevisionRef.current !== resumeRevision) return;
+          setManualResume(current => manualResumeFromSnapshot(current, snapshot));
+        }).catch(() => { /* The next authoritative WebSocket snapshot retries presentation. */ });
     };
 
     // 서버에서 메시지 수신 시 → 상태 업데이트
@@ -1806,6 +1824,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         || wsRef.current !== ws
       ) return;
       const data = JSON.parse(event.data);
+      if ('manual_resume' in data || data.mission_dispatch_active === true) {
+        manualResumeRevisionRef.current += 1;
+        setManualResume(current => manualResumeFromSnapshot(current, data));
+      }
 
       // Persist failure snapshots across reloads and minimal phase frames.
       // Only an explicit backend clear may remove the operator-recovery warning.
@@ -2607,6 +2629,11 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  // HH_261002 - The same in-flow card is available on service and diagnostic
+  // screens, but never as an overlay hiding the manual drive controls.
+  const manualResumePanel = !previewMode && (
+    <ManualMissionResume key={manualResume?.token || 'none'} resume={manualResume} connected={connected} />
+  );
   // HH_261002 - The idle home map is opened only by a visible user action.
   // It reuses the read-only driving view without starting or altering a mission.
   const idleMapPanel = !missionDispatch.active && drivingDisplay.visible && (
@@ -2761,6 +2788,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 >뒤로가기</button>
               </div>
               <div className="modal-body">
+                {manualResumePanel}
                 <DiagnosticsMonitor
                   redockStatus={redockStatus}
                   parkingPolicy={parkingPolicy}
@@ -2847,13 +2875,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
         <WaitingRuntimeStatusPanel
           systemHealth={systemHealth}
-          missionPhase={missionPhase}
+          missionPhase={manualResume?.pending ? 'STOPPED' : missionPhase}
           batteryPolicy={currentBatteryPolicy}
           parkingPolicy={parkingPolicy}
           serviceStateName={serviceStateName}
           serviceStateDescription={serviceStateDescription}
           batteryChargeComplete={batteryChargeComplete}
         />
+        {manualResumePanel}
 
         {/* ── 하단 콘텐츠 영역: 실증 요약 + 기존 4개 버튼 2×2 ── */}
         <div className="waiting-body">
@@ -2996,13 +3025,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         {/* 대기 화면과 같은 운행 상태 배너를 서비스 선택 화면에서도 유지한다. */}
         <WaitingRuntimeStatusPanel
           systemHealth={systemHealth}
-          missionPhase={missionPhase}
+          missionPhase={manualResume?.pending ? 'STOPPED' : missionPhase}
           batteryPolicy={currentBatteryPolicy}
           parkingPolicy={parkingPolicy}
           serviceStateName={serviceStateName}
           serviceStateDescription={serviceStateDescription}
           batteryChargeComplete={batteryChargeComplete}
         />
+        {manualResumePanel}
 
         <main className="service-selection-body">
           <div className="service-selection-heading">
@@ -3194,13 +3224,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
       {/* 대기·서비스 선택 화면과 같은 운행 상태 배너를 목적지 화면에서도 유지한다. */}
       <WaitingRuntimeStatusPanel
         systemHealth={systemHealth}
-        missionPhase={missionPhase}
+        missionPhase={manualResume?.pending ? 'STOPPED' : missionPhase}
         batteryPolicy={currentBatteryPolicy}
         parkingPolicy={parkingPolicy}
         serviceStateName={serviceStateName}
         serviceStateDescription={serviceStateDescription}
         batteryChargeComplete={batteryChargeComplete}
       />
+      {manualResumePanel}
 
       {/* ── 역할 배너: 서비스 메뉴에서 확정된 배달/리콜을 바디 전체 폭에 표시 ── */}
       <div className={`mission-role-banner role-${destinationIntent}`}>
@@ -3227,7 +3258,12 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
         {/* ── 왼쪽: 사이트 이미지 프리뷰 패널 ── */}
         <div className="preview-panel">
-          {missionExecutionError ? missionExecutionWarning : missionPhase === 'INITIALIZING' ? (
+          {missionExecutionError ? missionExecutionWarning : manualResume?.pending ? (
+            <>
+              <span className="preview-placeholder-title">자율주행 일시정지</span>
+              <p className="preview-returning">수동 제어를 종료한 뒤 재개 버튼을 눌러주세요.</p>
+            </>
+          ) : missionPhase === 'INITIALIZING' ? (
             <>
               <span className="preview-placeholder-title">시스템 준비 중</span>
               <span className="preview-placeholder">

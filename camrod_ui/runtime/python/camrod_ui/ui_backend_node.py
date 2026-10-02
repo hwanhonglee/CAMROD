@@ -88,6 +88,7 @@ from camrod_ui.battery_policy import (
 )
 from camrod_ui.driving_snapshot import (
     BASE_MAP_MAX_LINES, BASE_MAP_MAX_POINTS, BASE_MAP_NAMESPACES,
+    MAP_AREA_MAX_COUNT, MAP_AREA_MAX_VERTICES,
     DrivingSnapshotCache, sample_indices,
     transform_detection_orientation, transform_detection_point,
 )
@@ -104,6 +105,7 @@ from camrod_ui.mission_recording_bridge import (
     default_mission_records_path,
     load_mission_recording_snapshot,
 )
+from camrod_ui.manual_mission_resume import ROAD_STAGES, resume_payload, resume_reason
 from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
@@ -799,6 +801,14 @@ class UiBackendNode(Node):
             self.declare_parameter("manual_cmd_vel_ros_topic", "").value
         ).strip()
         self.manual_drive_available = bool(self.manual_cmd_vel_ros_topic)
+        # HH_261002 - Opt-in simulator workflow; production never suspends or
+        # resumes a mission merely because manual ownership is released.
+        self.manual_mission_resume_enabled = bool(self.declare_parameter(
+            "manual_mission_resume_enabled", False
+        ).value)
+        self._manual_resume_context = None
+        self._manual_resume_cancel_futures = []
+        self._manual_resume_cancel_services_ready = False
         # The browser only sends a normalized scale.  The ROS backend owns the
         # physical command envelope, so a CARLA launch can expose an adjustable
         # Ranger-safe range without letting a client forge an arbitrary Twist.
@@ -1463,6 +1473,9 @@ class UiBackendNode(Node):
         # HH_261001 - Passive public driving data is independent of the single operator
         # telemetry lease and cannot acquire motion authorization.
         self._driving = DrivingSnapshotCache()
+        # HH_261002 - Static display polygons reuse the configured map catalogs;
+        # they never alter mission keypoints, parking areas or safety decisions.
+        self._driving.map_areas(self._load_driving_map_areas())
         self.driving_objects_topic = str(self.declare_parameter(
             "driving_objects_topic", "/perception/camera_lidar/markers"
         ).value)
@@ -2065,6 +2078,58 @@ class UiBackendNode(Node):
                 parsed[site] = mission_key
         return parsed
 
+    def _load_driving_map_areas(self) -> List[Dict[str, Any]]:
+        """HH_261002 - Read bounded authored polygons, not inferred marker labels."""
+        records = []
+        for parameter, catalog_key, kind in (
+            ("camping_sites_yaml", "camping_sites", "camping_site"),
+            ("drop_zones_yaml", "drop_zones", "drop_zone"),
+        ):
+            yaml_path = str(getattr(self, parameter, "") or "").strip()
+            if not yaml_path:
+                continue
+            try:
+                path = Path(yaml_path).expanduser()
+                # Bound parsing and never revisit the filesystem in HTTP/map callbacks.
+                with path.open("r", encoding="utf-8") as stream:
+                    text = stream.read(2 * 1024 * 1024 + 1)
+                if len(text) > 2 * 1024 * 1024:
+                    raise ValueError("map area catalog exceeds 2 MiB")
+                data = yaml.safe_load(text)
+                entries = data.get(catalog_key) if isinstance(data, dict) else None
+                if not isinstance(entries, list) or len(entries) > MAP_AREA_MAX_COUNT:
+                    raise ValueError("map area catalog must contain a bounded list")
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    semantic = str(entry.get("type", ""))
+                    if kind == "camping_site":
+                        labels = {f"camping_site_{index}": f"B{index}" for index in range(1, 14)}
+                        if semantic not in labels:
+                            continue
+                        identity, site = semantic, labels[semantic]
+                    else:
+                        if semantic != "drop_zone":
+                            continue
+                        identity, site = str(entry.get("id", "")).strip(), None
+                        if not identity:
+                            # No invented identity or rectangle for an unlabelled station.
+                            continue
+                    corners = entry.get("corners")
+                    if (not isinstance(corners, list)
+                            or not 3 <= len(corners) <= MAP_AREA_MAX_VERTICES + 1
+                            or any(not isinstance(corner, dict) for corner in corners)):
+                        continue
+                    records.append({
+                        "id": identity, "kind": kind, "site": site,
+                        "frame_id": str(entry.get("frame_id", self.default_goal_frame_id)),
+                        "points": [[corner.get("x"), corner.get("y")] for corner in corners],
+                        "source": parameter,
+                    })
+            except (OSError, ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
+                self.get_logger().warning(f"Driving display map catalog unavailable ({parameter}): {exc}")
+        return records
+
     def _load_camping_site_keypoints(self, yaml_path: str) -> Dict[str, MissionKeypoint]:
         keypoints: Dict[str, MissionKeypoint] = {}
         path = Path(yaml_path).expanduser() if yaml_path else None
@@ -2519,7 +2584,17 @@ class UiBackendNode(Node):
             # Validate before changing the running system, but consume seq only
             # after the complete STOP/cancel transition has succeeded.
             self._manual_drive_policy.validate_arm(lease, payload)
+            UiBackendNode._capture_manual_resume(self)
             self._stop_active_service(source="ws_manual_drive_arm")
+            if bool(getattr(self, "manual_mission_resume_enabled", False)):
+                # HH_261002 - STOP's DDS echo belongs to the previous epoch.
+                # Update its local display now; never weaken the stale-echo
+                # guard that protects the newly armed manual lease.
+                with self._lock:
+                    self._state.service_state = int(AvgServiceState.OPERATOR_STOPPED)
+                    self._state.service_state_name = "OPERATOR_STOPPED"
+                    self._state.service_state_description = "Stopped for manual control"
+                self._latest_service_state = int(AvgServiceState.OPERATOR_STOPPED)
             # STOP and the newly armed generation-0 manual owner are distinct
             # epochs. A delayed self echo of STOP must not disarm this lease.
             UiBackendNode._advance_command_epoch(self)
@@ -2537,6 +2612,162 @@ class UiBackendNode(Node):
                 "type": "state",
                 "manual_drive": self._manual_drive_policy.snapshot(),
             }
+
+    def _capture_manual_resume(self) -> None:
+        """HH_261002 - Snapshot identity before the existing full STOP barrier."""
+        if not bool(getattr(self, "manual_mission_resume_enabled", False)):
+            return
+        generation = int(getattr(self, "_active_mission_generation", 0))
+        if not generation:
+            if getattr(self, "_manual_resume_context", None):
+                # A new manual lease retries the real cancellation barrier,
+                # not a permanently failed future from the previous lease.
+                self._manual_resume_cancel_futures = []
+                self._manual_resume_cancel_services_ready = False
+            return  # Re-arming manual must not overwrite a suspended identity.
+        service_name = SERVICE_STATE_NAMES.get(getattr(self, "_latest_service_state", None), "")
+        self._manual_resume_context = {
+            "token": uuid.uuid4().hex,
+            "site": self._active_mission_site, "source": self._active_mission_source,
+            "owner": self._active_mission_owner, "intent": self._active_mission_intent,
+            "generation": generation, "stage": ROAD_STAGES.get(service_name, "unsupported"),
+            "return_requested_generation": self._return_requested_generation,
+            "recall_final_return_generation": self._recall_final_return_generation,
+            "service_metrics_return_generation": getattr(self, "_service_metrics_return_generation", -1),
+            "suspended_monotonic": time.monotonic(),
+        }
+        self._manual_resume_cancel_futures = []
+        self._manual_resume_cancel_services_ready = False
+
+    def _manual_resume_snapshot(self) -> Dict[str, Any]:
+        """Read-only eligibility; it never publishes or resumes automatically."""
+        context = getattr(self, "_manual_resume_context", None)
+        if not context:
+            return resume_payload(None, "no_suspended_mission")
+        pose = getattr(self, "_latest_arrival_pose", None)
+        try:
+            pose_stamp = _ros_stamp_seconds(pose.header.stamp)
+            pose_valid = (pose.header.frame_id == "map" and all(math.isfinite(v) for v in (
+                pose.pose.position.x, pose.pose.position.y,
+                pose.pose.orientation.x, pose.pose.orientation.y,
+                pose.pose.orientation.z, pose.pose.orientation.w)))
+            pose_valid = pose_valid and sum(v * v for v in (
+                pose.pose.orientation.x, pose.pose.orientation.y,
+                pose.pose.orientation.z, pose.pose.orientation.w)) > 1e-12
+            station_origin, _ = UiBackendNode._station_departure_origin(self)
+            # HH_261002 - A road snapshot is not permission to restart after
+            # manually entering a campsite. Such poses need a maneuver owner.
+            for goal in getattr(self, "_keypoints_by_mission_key", {}).values():
+                corners = getattr(goal, "corners", [])
+                if corners and UiBackendNode._point_in_polygon(
+                        pose.pose.position.x, pose.pose.position.y, corners):
+                    station_origin = True
+        except (AttributeError, TypeError, ValueError):
+            pose_stamp, pose_valid, station_origin = 0.0, False, None
+        cancellation_ready = bool(getattr(self, "_manual_resume_cancel_services_ready", False))
+        for future in getattr(self, "_manual_resume_cancel_futures", []):
+            try:
+                if not future.done():
+                    cancellation_ready = False
+                    continue
+                result = future.result()
+                # HH_261002 - NONE acknowledges cancellation; TERMINATED with
+                # no cancelling goals proves there is no old action to wait on.
+                # REJECTED/UNKNOWN and transport failures stay fail-closed.
+                accepted = result.return_code == 0 or (
+                    result.return_code == 3 and not result.goals_canceling)
+                cancellation_ready = cancellation_ready and accepted
+            except Exception:  # A failed cancellation cannot reopen autonomy.
+                cancellation_ready = False
+        # A successful cancel RPC may only acknowledge a still-CANCELING
+        # action. Its observed terminal/idle status must arrive before replan.
+        runtime_policy = getattr(self, "_runtime_policy", None)
+        cancellation_ready = cancellation_ready and getattr(runtime_policy, "nav_status", 0) not in {
+            GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING, GoalStatus.STATUS_CANCELING,
+        }
+        policy = getattr(self, "_manual_drive_policy", None)
+        reason = resume_reason(
+            context, enabled=bool(getattr(self, "manual_mission_resume_enabled", False)),
+            manual=policy.snapshot() if policy else {},
+            active_generation=int(getattr(self, "_active_mission_generation", 0)),
+            now_s=self._now_s(), pose_received_s=getattr(self, "_latest_arrival_pose_time_s", 0),
+            pose_stamp_s=pose_stamp, platform_received_s=getattr(self, "_latest_platform_status_time_s", 0),
+            platform_stamp_s=getattr(self, "_manual_resume_velocity_stamp_s", 0),
+            speed_mps=getattr(self, "_manual_resume_speed_mps", math.nan),
+            yaw_rate_rps=getattr(self, "_manual_resume_yaw_rate_rps", math.nan),
+            pose_valid=pose_valid, platform_ready=bool(getattr(self, "_latest_platform_motion_ready", False)),
+            ready=bool(getattr(self._state, "ready", False)),
+            startup_pending=bool(getattr(self, "_startup_recovery_pending", False)),
+            cancellation_ready=cancellation_ready,
+            settled=time.monotonic() - context["suspended_monotonic"] >= 1.0,
+            outside_station=station_origin is False,
+        )
+        if (reason == "ready" and context["stage"] == "outbound"
+                and bool(getattr(self, "require_battery_for_mission_dispatch", True))
+                and float(getattr(self._state, "battery_percentage", -1)) <
+                float(getattr(self, "minimum_mission_dispatch_battery_percent", 35))):
+            reason = "battery_below_mission_minimum"
+        return resume_payload(context, reason)
+
+    def request_manual_mission_resume(self, token: Any) -> Dict[str, Any]:
+        """HH_261002 - Only an explicit, single-use request may replan a road leg."""
+        with self._destination_dispatch_lock, self._manual_drive_transition_lock:
+            status = UiBackendNode._manual_resume_snapshot(self)
+            context = getattr(self, "_manual_resume_context", None)
+            if not isinstance(token, str) or not token or not context or token != context["token"]:
+                return {"success": False, "accepted": False, "error": "stale_resume_token",
+                        "message": "Suspended mission token is no longer current", "manual_resume": status}
+            if not status["can_resume"]:
+                return {"success": False, "accepted": False, "error": status["reason"],
+                        "message": status["message"], "manual_resume": status}
+            mission_key = self._resolve_mission_key_for_site(context["site"])
+            if not mission_key or (context["stage"] == "outbound" and
+                    mission_key not in self._keypoints_by_mission_key):
+                return {"success": False, "accepted": False, "error": "missing_mission_geometry",
+                        "message": "Mission geometry unavailable", "manual_resume": status}
+            # Consume before publication. A duplicate request and every old
+            # STOP echo are inert even though journal generation is preserved.
+            self._manual_resume_context = None
+            UiBackendNode._advance_command_epoch(self)
+            UiBackendNode._clear_generation_zero_authority(self)
+            with self._lock:
+                self._active_mission_site = context["site"]
+                self._active_mission_source = context["source"]
+                self._active_mission_owner = context["owner"]
+                self._active_mission_intent = context["intent"]
+                self._active_mission_generation = context["generation"]
+                self._return_requested_generation = context["return_requested_generation"]
+                self._recall_final_return_generation = context["recall_final_return_generation"]
+                self._service_metrics_return_generation = context["service_metrics_return_generation"]
+                self._active_mission_retryable = False
+                self._state.destination = {"site": context["site"], "run": True}
+            source = f'{context["source"]}:manual_resume:site={context["site"]}:g={context["generation"]}'
+            recorder = getattr(self, "_mission_recording", None)
+            if recorder is not None:
+                recorder.resume(source, context["stage"], token)
+            try:
+                if context["stage"] == "return":
+                    # A new return token rejects the cancelled pre-manual leg.
+                    self._return_operation_token = f'resume-g{context["generation"]}-{token}'
+                    self._return_progress_generation = 0
+                    self._publish_planning_return_request(
+                        f'{source}:ui_return_token={self._return_operation_token}')
+                elif context["intent"] == "recall":
+                    if not self._publish_planning_camping_site_recall(mission_key, source):
+                        raise RuntimeError("recall replan rejected")
+                else:
+                    self._publish_engage(True, source=source)
+                    self._publish_mission_engage(True, source=source)
+                    self._publish_service_state(AvgServiceState.MOVING_TO_SITE, source=source)
+                    if not self._publish_goal_for_site(context["site"], source)["goal_pose_published"]:
+                        raise RuntimeError("site replan rejected")
+            except Exception as exc:
+                self._stop_active_service(source="manual_resume_failed")
+                return {"success": False, "accepted": False, "error": "resume_dispatch_failed",
+                        "message": str(exc), "manual_resume": UiBackendNode._manual_resume_snapshot(self)}
+            status = UiBackendNode._manual_resume_snapshot(self)
+            self._schedule_broadcast({"manual_resume": status, **UiBackendNode._mission_dispatch_snapshot(self)})
+            return {"success": True, "accepted": True, "manual_resume": status}
 
     def _apply_manual_drive(
         self, lease: ManualDriveLease, payload: Any
@@ -2642,6 +2873,7 @@ class UiBackendNode(Node):
         )
 
     def _shutdown_manual_drive(self) -> None:
+        self._manual_resume_context = None
         if not self.manual_drive_available:
             return
         with self._manual_drive_transition_lock:
@@ -5185,6 +5417,8 @@ class UiBackendNode(Node):
 
     def _schedule_broadcast(self, payload: dict) -> None:
         """Schedule a broadcast from a ROS2 callback thread into the asyncio loop."""
+        if bool(getattr(self, "manual_mission_resume_enabled", False)):
+            payload = {**payload, "manual_resume": UiBackendNode._manual_resume_snapshot(self)}
         if self._main_loop is None:
             return
         with self._ws_clients_lock:
@@ -5636,6 +5870,13 @@ class UiBackendNode(Node):
                 ros_now_s=driving_now_s,
             )
         self._latest_platform_status_time_s = self._now_s()
+        if bool(getattr(self, "manual_mission_resume_enabled", False)):
+            # HH_261002 - Eligibility uses actual fresh platform motion, never
+            # a released key or the last commanded zero as proof of stopping.
+            self._manual_resume_speed_mps = math.hypot(
+                float(msg.velocity.twist.linear.x), float(msg.velocity.twist.linear.y))
+            self._manual_resume_yaw_rate_rps = float(msg.velocity.twist.angular.z)
+            self._manual_resume_velocity_stamp_s = _ros_stamp_seconds(msg.velocity.header.stamp)
         self._latest_platform_motion_ready = (
             control_mode == 1 and not bool(msg.estop)
             and int(msg.error_code) == 0 and int(msg.vehicle_state) == 0 and not charging
@@ -6401,6 +6642,12 @@ class UiBackendNode(Node):
                 "service_state:OPERATOR_STOPPED",
                 publish_service_state=False,
             )
+        if (getattr(self, "_manual_resume_context", None)
+                and current_generation == 0
+                and state != int(AvgServiceState.OPERATOR_STOPPED)):
+            # HH_261002 - Cancelled road/campsite heartbeats cannot resurrect
+            # RETURN_WITH_CARGO while the suspended mission has no authority.
+            return
         if (
             bool(getattr(self, "_startup_recovery_pending", False))
             and state != int(AvgServiceState.OPERATOR_STOPPED)
@@ -8288,6 +8535,7 @@ class UiBackendNode(Node):
 
     def _claim_active_mission(self, site: str, source: str) -> int:
         """Claim or retry one mission identity and return its generation."""
+        self._manual_resume_context = None
         # Destination admission owns the command boundary immediately, even
         # while charger departure is still dwelling before mission_engage.
         # Revoke an armed browser lease inside the same serialized dispatch
@@ -8756,8 +9004,12 @@ class UiBackendNode(Node):
             # HH_260804 - rclpy service clients expose call_async(); using the
             # rclcpp-style async_send_request() made /ui/stop return HTTP 500
             # before it could cancel Nav2 or publish the stopped service state.
-            client.call_async(request)
+            future = client.call_async(request)
+            if source == "ws_manual_drive_arm" and getattr(self, "_manual_resume_context", None):
+                self._manual_resume_cancel_futures.append(future)
             sent_topics.append(topic)
+        if source == "ws_manual_drive_arm" and getattr(self, "_manual_resume_context", None):
+            self._manual_resume_cancel_services_ready = bool(sent_topics) and len(sent_topics) == len(self.nav2_cancel_clients)
         if sent_topics:
             self.get_logger().info(
                 f"Nav2 cancel requested ({source}): {', '.join(sent_topics)}"
@@ -8900,6 +9152,8 @@ class UiBackendNode(Node):
     def _stop_active_service_serialized(
         self, source: str, *, publish_service_state: bool = True
     ) -> None:
+        if source != "ws_manual_drive_arm":
+            self._manual_resume_context = None
         # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
         # HH_261002 - Preserve a global STOP even when the backend restarted
         # and no longer remembers the current mission generation.
@@ -10011,6 +10265,7 @@ class UiBackendNode(Node):
         snapshot["backend_startup_recovery"] = bool(
             getattr(self, "_startup_recovery_pending", False)
         )
+        snapshot["manual_resume"] = UiBackendNode._manual_resume_snapshot(self)
         return snapshot
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
@@ -10048,6 +10303,7 @@ class UiBackendNode(Node):
         # A raw map goal is also a command-owner takeover. Zero and revoke the
         # existing manual-drive lease before changing authority so a stale
         # disarm/deadman callback cannot disengage this new goal afterward.
+        self._manual_resume_context = None
         self._revoke_manual_drive("manual_goal_takeover")
         UiBackendNode._advance_command_epoch(self)
         UiBackendNode._set_generation_zero_authority(self, "manual_goal")
@@ -11902,6 +12158,18 @@ class UiBackendNode(Node):
         def post_stop() -> JSONResponse:
             result = node.set_stop()
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/manual_resume")
+        async def post_manual_resume(request: Request) -> JSONResponse:
+            # HH_261002 - POST with an exact suspended token is the sole resume
+            # trigger. GET, reconnect, deadman and disarm remain read-only/stop.
+            try:
+                payload = await request.json()
+            except (ValueError, json.JSONDecodeError):
+                payload = {}
+            token = payload.get("token") if isinstance(payload, dict) else None
+            result = node.request_manual_mission_resume(token)
+            return JSONResponse(result, status_code=200 if result.get("success") else 409)
 
         @app.post("/ui/destination")
         def post_destination(

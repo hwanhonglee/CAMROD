@@ -83,6 +83,7 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     source = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
 
     assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
+        "manual_mission_resume_enabled": "true",
         "manual_drive_linear_limit_mps": "2.0",
         "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
         "carla_cmd_vel_gate_speed_scale": "1.0",
@@ -2076,3 +2077,20 @@ def test_carla_diagnostics_match_rendered_sensor_contract():
             (root / "sensing" / filename).read_text(encoding="utf-8")
         )[f"/system/{node_name}"]["ros__parameters"]
         assert params[stream_name][rate_key] == 2.0
+
+
+def test_explicit_manual_mission_resume_is_only_enabled_by_site_profile():
+    """HH_261002 - Production/full cannot gain automatic or implicit resume."""
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS["manual_mission_resume_enabled"] == "true"
+    full = FULL_LAUNCH.read_text(encoding="utf-8")
+    declaration = full.index('"manual_mission_resume_enabled",')
+    assert 'default_value="false"' in full[declaration:declaration + 280]
+    assert '"ui_manual_mission_resume_enabled": LaunchConfiguration(' in full
+    ui = (REPO_ROOT / "camrod_ui/camrod_ui_robot/launch/ui.launch.py").read_text()
+    declaration = ui.index("'manual_mission_resume_enabled',")
+    assert "default_value='false'" in ui[declaration:declaration + 240]
+    bringup = (REPO_ROOT / "camrod_bringup/launch/_bringup_impl.py").read_text()
+    assert "'ui_manual_mission_resume_enabled',\n            False," in bringup
+    backend = (REPO_ROOT / "camrod_ui/runtime/python/camrod_ui/ui_backend_node.py").read_text()
+    assert '"manual_mission_resume_enabled", False' in backend

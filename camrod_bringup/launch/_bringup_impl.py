@@ -1173,6 +1173,12 @@ def generate_launch_description():
             'Optional dedicated operator Twist boundary consumed by control',
         ),
         (
+            # HH_261002 - Only the CARLA profile opts into token-bound resume.
+            'ui_manual_mission_resume_enabled',
+            False,
+            'Enable explicit manual-to-autonomous road mission resume in the simulator',
+        ),
+        (
             'control_manual_drive_linear_limit_mps',
             cfg_get(launch_cfg, 'control/manual_drive_linear_limit_mps', 0.20),
             'Maximum operator forward/reverse speed before the final safety gate',
@@ -3528,6 +3534,7 @@ def generate_launch_description():
         # Empty in ordinary CAMROD. The CARLA overlay alone supplies the
         # dedicated manual Twist topic, which makes the UI drive panel opt-in.
         'manual_cmd_vel_ros_topic': lc['control_manual_cmd_vel_ros_topic'],
+        'manual_mission_resume_enabled': lc['ui_manual_mission_resume_enabled'],
         'manual_drive_linear_limit_mps': lc[
             'control_manual_drive_linear_limit_mps'
         ],

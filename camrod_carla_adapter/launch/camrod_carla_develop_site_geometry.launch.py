@@ -102,6 +102,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 # Keep this mapping explicit and host-independent: the live runtime auditor
 # checks the corresponding ROS parameters before a campsite matrix may move.
 DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
+    # HH_261002 - Preserve an interrupted road mission for explicit UI resume;
+    # manual release alone still leaves the vehicle stopped.
+    "manual_mission_resume_enabled": "true",
     # HH_261002 - Simulator manual forward/reverse alone may request 2.0 m/s.
     # Automatic target speeds, lateral/yaw manual limits, watchdogs and safety
     # gates remain unchanged; ordinary develop/full retain their 0.20 defaults.

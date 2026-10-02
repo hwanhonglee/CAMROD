@@ -114,6 +114,16 @@ class MissionRecordingEmitter:
         # erased its local recording identity. This never authorizes motion.
         return self._emit("stop_requested", reason=str(reason)[:1024], global_stop=True)
 
+    def resume(self, source, stage, token):
+        """HH_261002 - Continue the same paused envelope, never a second mission."""
+        with self._lock:
+            if not self.mission_id:
+                return False
+            self.last_phase = None
+            return self._emit("mission_started", attempt_id=f"manual_resume:{token}",
+                              source=str(source)[:1024], phase=str(stage),
+                              reason="explicit_autonomous_resume_after_manual")
+
 
 def load_mission_recording_snapshot(root, *, now_s=None, maximum_age_s=5.0, limit=100,
                                     emitter_error=""):

@@ -342,6 +342,11 @@ def generate_launch_description():
         # remain launch arguments so the operator can select a lower ceiling;
         # ordinary CAMROD keeps the UI package's conservative 0.20 defaults.
         DeclareLaunchArgument(
+            # HH_261002 - Keep generic CARLA parity unchanged unless opted in.
+            "manual_mission_resume_enabled",
+            default_value="false",
+        ),
+        DeclareLaunchArgument(
             "manual_drive_linear_limit_mps",
             default_value=os.environ.get(
                 "CAMROD_MANUAL_LINEAR_LIMIT_MPS", "0.20"
@@ -1177,6 +1182,9 @@ def generate_launch_description():
                 ),
                 "control_manual_drive_linear_limit_mps": LaunchConfiguration(
                     "manual_drive_linear_limit_mps"
+                ),
+                "ui_manual_mission_resume_enabled": LaunchConfiguration(
+                    "manual_mission_resume_enabled"
                 ),
                 "control_manual_drive_lateral_limit_mps": LaunchConfiguration(
                     "manual_drive_lateral_limit_mps"
