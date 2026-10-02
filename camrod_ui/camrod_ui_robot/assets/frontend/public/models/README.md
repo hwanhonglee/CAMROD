@@ -71,13 +71,17 @@ and stay below Y=0.948 m and the upper rails. Its extras specify
 cargo: they are not measured real cargo and do not establish load capacity,
 physical attachment, or collision behavior. No upper shelf remains in the GLB.
 
-Reproduce the GLB from the workspace source root:
+Historical authoring command from the original modeling workspace (not a
+standalone command in this pure UI release):
 
 ```sh
 blender --background --factory-startup --python tools/export_ranger_navigation_asset.py
 ```
 
-The exporter checks the approved FBX hash, validates authored rigid group
+The exporter is separate authoring tooling, not a UI runtime dependency, and is
+not bundled with this release's core sources. The packaged GLB/textures are
+sufficient to build and run the UI. In the original authoring workspace, the
+exporter checks the approved FBX hash, validates authored rigid group
 counts, and rejects output above 150,000 triangles / 6 MiB. The source-pinned
 weight-mask script and JSON remain dependencies in the existing model package.
 
@@ -96,7 +100,8 @@ occluded by the real body are not invented or moved to make them visible.
 This asset is not a live camera image, simulator acceptance capture, or evidence
 of road testing. See the adjacent provenance JSON for source/output SHA-256.
 
-Reproduce from the workspace source root:
+Historical studio-render command, also requiring the separate original
+authoring workspace and source FBX:
 
 ```sh
 blender --background --factory-startup --python tools/render_ranger_driving_asset.py
