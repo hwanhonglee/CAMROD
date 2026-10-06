@@ -80,6 +80,15 @@ def test_real_websocket_flags_survive_but_cannot_hide_active_controls_or_final_c
     prefix = SOURCE[SOURCE.index('const SERVICE_STATE ='):SOURCE.index('// HH_260904 - Re-dock events')]
     start = SOURCE.index('const emptyBatteryReturnState =')
     prefix += SOURCE[start:SOURCE.index('function WaitingRuntimeStatusPanel(', start)]
+    # HH_261006 - Replay the imported production resume reducer, not a stub,
+    # when this branch's WebSocket callback includes the optional resume feature.
+    if re.search(r'import .*\bmanualResumeFromSnapshot\b', SOURCE):
+        resume_source = (Path(__file__).resolve().parents[1]
+                         / 'camrod_ui_robot/assets/frontend/src/ManualMissionResume.js').read_text(encoding='utf-8')
+        prefix += resume_source[
+            resume_source.index('export function manualResumeFromSnapshot('):
+            resume_source.index('export default function ManualMissionResume(')
+        ].replace('export function', 'function', 1)
     start = SOURCE.index('ws.onmessage = (event) => {')
     handler = SOURCE[start:SOURCE.index('// HH_260708 - Reconnect the operator WebSocket', start)]
     setters = sorted(set(re.findall(r'\b(set[A-Z]\w*)\(', handler)))

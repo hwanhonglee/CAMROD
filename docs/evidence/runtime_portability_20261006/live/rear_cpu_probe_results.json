@@ -1,0 +1,799 @@
+{
+  "utc_start": "2026-10-06T05:35:26.227291+00:00",
+  "cpu_convention": "100 percent equals one logical CPU; user+system process time",
+  "logical_cpu_count": 12,
+  "samples": [
+    {
+      "label": "closed_before",
+      "elapsed_seconds": 15.020886931102723,
+      "processes": {
+        "relay": {
+          "pid": 1148303,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/lib/camrod_carla_adapter/carla_sensor_relay",
+            "--ros-args",
+            "-r",
+            "__node:=carla_sensor_relay",
+            "--params-file",
+            "/tmp/launch_params_hqchtdu4"
+          ],
+          "threads_start": 33,
+          "cpu_percent_one_core": 32.022077138735824,
+          "rss_mib_mean": 94.1216796875,
+          "rss_mib_max": 102.890625,
+          "threads_end": 33
+        },
+        "detector": {
+          "pid": 1149078,
+          "command": [
+            "/home/hong/camrod_ws/install/camrod_perception/lib/camrod_perception/apriltag_parking_detector_node",
+            "--ros-args",
+            "-r",
+            "__node:=apriltag_parking_detector",
+            "-r",
+            "__ns:=/perception",
+            "--params-file",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/config/apriltag_parking_detector_carla.yaml",
+            "--params-file",
+            "/tmp/launch_params_gte516w3"
+          ],
+          "threads_start": 24,
+          "cpu_percent_one_core": 30.956893699609456,
+          "rss_mib_mean": 104.25026041666666,
+          "rss_mib_max": 104.33203125,
+          "threads_end": 24
+        },
+        "ui": {
+          "pid": 1149289,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_ui/lib/camrod_ui/ui_backend_node",
+            "--ros-args",
+            "-r",
+            "__node:=ui_backend",
+            "--params-file",
+            "/tmp/launch_params_byddcq32"
+          ],
+          "threads_start": 24,
+          "cpu_percent_one_core": 27.361899592558036,
+          "rss_mib_mean": 97.50559895833334,
+          "rss_mib_max": 97.69140625,
+          "threads_end": 24
+        }
+      },
+      "telemetry": {
+        "schema_version": 3,
+        "options": {
+          "docking_rear_camera_fallback_enabled": false,
+          "raw_lidar_bbox_overlay_enabled": false
+        },
+        "stream_rate_hz": 10.0,
+        "session_active": false,
+        "active_view": "",
+        "sources": {},
+        "gnss": {
+          "fix": {},
+          "navpvt": {},
+          "covariance": {},
+          "relative_heading": {}
+        },
+        "imu": {},
+        "radar": {
+          "channels": {}
+        },
+        "lidar": {
+          "frame_id": "",
+          "points": [],
+          "point_count": 0,
+          "streams": {
+            "filtered": {},
+            "raw": {},
+            "obstacles": {}
+          }
+        },
+        "cameras": {
+          "front": {
+            "available": false,
+            "sequence": 0
+          },
+          "rear": {
+            "available": false,
+            "sequence": 0
+          },
+          "docking": {
+            "available": false,
+            "sequence": 0
+          }
+        },
+        "localization": {
+          "pose": {},
+          "status": {},
+          "trace": []
+        },
+        "motion": {
+          "velocity": {},
+          "tracking_error": {}
+        },
+        "paths": {
+          "global": {},
+          "local": {},
+          "maneuvers": {}
+        },
+        "footprint": {
+          "frame_id": "",
+          "points": [],
+          "physical_points": [],
+          "planning_points": []
+        },
+        "perception": {
+          "obstacle_cloud": {},
+          "obstacle_boxes": {},
+          "cost_layers": {
+            "lanelet": {},
+            "lidar": {},
+            "radar": {},
+            "inflation": {}
+          }
+        },
+        "safety": {
+          "gate": {},
+          "controllers": {},
+          "radar_evidence": "",
+          "obstacle_replan": ""
+        },
+        "docking": {
+          "tag_detected": false,
+          "tag": {},
+          "is_charging": false,
+          "battery_percentage": null
+        },
+        "mission": {
+          "phase": "READY",
+          "source": "none",
+          "service_state": 16,
+          "service_state_name": "OPERATOR_STOPPED",
+          "service_state_description": "Stopped by operator",
+          "engaged": false,
+          "ready": true,
+          "system_health": "OK"
+        },
+        "generated_unix_s": 1791264949.718
+      }
+    },
+    {
+      "label": "docking_open",
+      "elapsed_seconds": 20.046088538132608,
+      "processes": {
+        "relay": {
+          "pid": 1148303,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/lib/camrod_carla_adapter/carla_sensor_relay",
+            "--ros-args",
+            "-r",
+            "__node:=carla_sensor_relay",
+            "--params-file",
+            "/tmp/launch_params_hqchtdu4"
+          ],
+          "threads_start": 33,
+          "cpu_percent_one_core": 32.12596805481293,
+          "rss_mib_mean": 94.32451171875,
+          "rss_mib_max": 102.93359375,
+          "threads_end": 33
+        },
+        "detector": {
+          "pid": 1149078,
+          "command": [
+            "/home/hong/camrod_ws/install/camrod_perception/lib/camrod_perception/apriltag_parking_detector_node",
+            "--ros-args",
+            "-r",
+            "__node:=apriltag_parking_detector",
+            "-r",
+            "__ns:=/perception",
+            "--params-file",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/config/apriltag_parking_detector_carla.yaml",
+            "--params-file",
+            "/tmp/launch_params_gte516w3"
+          ],
+          "threads_start": 24,
+          "cpu_percent_one_core": 41.40458615760051,
+          "rss_mib_mean": 105.159423828125,
+          "rss_mib_max": 105.29296875,
+          "threads_end": 24
+        },
+        "ui": {
+          "pid": 1149289,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_ui/lib/camrod_ui/ui_backend_node",
+            "--ros-args",
+            "-r",
+            "__node:=ui_backend",
+            "--params-file",
+            "/tmp/launch_params_byddcq32"
+          ],
+          "threads_start": 24,
+          "cpu_percent_one_core": 29.831256050897746,
+          "rss_mib_mean": 99.342919921875,
+          "rss_mib_max": 99.53515625,
+          "threads_end": 25
+        }
+      },
+      "telemetry": {
+        "schema_version": 3,
+        "options": {
+          "docking_rear_camera_fallback_enabled": false,
+          "raw_lidar_bbox_overlay_enabled": false
+        },
+        "stream_rate_hz": 10.0,
+        "session_active": true,
+        "active_view": "docking",
+        "sources": {
+          "localization.pose": {
+            "age_s": 0.033,
+            "rate_hz": 20.0
+          },
+          "camera.docking": {
+            "age_s": 0.162,
+            "rate_hz": 6.01
+          },
+          "docking.tag_detected": {
+            "age_s": 0.162,
+            "rate_hz": 6.01
+          },
+          "controller.apriltag_parking": {
+            "age_s": 0.013,
+            "rate_hz": 10.0
+          },
+          "control.safety_gate": {
+            "age_s": 0.166,
+            "rate_hz": 13.55
+          },
+          "platform.velocity": {
+            "age_s": 0.167,
+            "rate_hz": 5.0
+          },
+          "controller.drop_zone": {
+            "age_s": 0.475,
+            "rate_hz": 0.98
+          }
+        },
+        "gnss": {
+          "fix": {},
+          "navpvt": {},
+          "covariance": {},
+          "relative_heading": {}
+        },
+        "imu": {},
+        "radar": {
+          "channels": {}
+        },
+        "lidar": {
+          "frame_id": "",
+          "points": [],
+          "point_count": 0,
+          "streams": {
+            "filtered": {},
+            "raw": {},
+            "obstacles": {}
+          }
+        },
+        "cameras": {
+          "front": {
+            "available": false,
+            "sequence": 0
+          },
+          "rear": {
+            "available": false,
+            "sequence": 0
+          },
+          "docking": {
+            "available": true,
+            "format": "jpeg",
+            "frame_id": "camera_rear",
+            "bytes": 269351,
+            "sequence": 139,
+            "source": "compressed",
+            "endpoint": "/api/camera/docking"
+          }
+        },
+        "localization": {
+          "pose": {},
+          "status": {},
+          "trace": []
+        },
+        "motion": {
+          "velocity": {
+            "frame_id": "odom",
+            "vx_mps": -5.968613152599355e-08,
+            "vy_mps": 1.27532794313948e-07,
+            "speed_mps": 1.4080855059996168e-07,
+            "speed_kph": 5.06910782159862e-07,
+            "yaw_rate_rps": -3.3648797440809847e-10,
+            "motion_mode": 0,
+            "control_mode": 1,
+            "vehicle_state": 0,
+            "estop": false,
+            "is_charging": false,
+            "battery_percentage": 80.0000011920929
+          },
+          "tracking_error": {}
+        },
+        "paths": {
+          "global": {},
+          "local": {},
+          "maneuvers": {}
+        },
+        "footprint": {
+          "frame_id": "",
+          "points": [],
+          "physical_points": [],
+          "planning_points": []
+        },
+        "perception": {
+          "obstacle_cloud": {},
+          "obstacle_boxes": {},
+          "cost_layers": {
+            "lanelet": {},
+            "lidar": {},
+            "radar": {},
+            "inflation": {}
+          }
+        },
+        "safety": {
+          "gate": {
+            "level": 0,
+            "operating_state": "STANDBY",
+            "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false charging_departure_auth=none drop_zone_auth_phase=none drop_zone_auth_age_s=-1.00 manual_departure_remaining_s=0.00 battery=80.0% route_clear_s=0.00 route_releases=0/50 route_episode_progress_m=0.000 recovery_motion_observed=false recovery_candidate=none recovery_reason=route_hold_inactive",
+            "missing_nodes": [],
+            "missing_topics": []
+          },
+          "controllers": {
+            "apriltag_parking": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "parking_method=none battery_percent=80.000000 charging_required=false forced=false attempt=3 phase=IDLE"
+            },
+            "drop_zone": {
+              "level": 0,
+              "operating_state": "IDLE",
+              "message": "phase=IDLE exit_target_source=none exit_target_error_m=0.000 parking_point_error_m=0.000 parking_point_body_forward_m=0.000 parking_point_body_lateral_m=0.000 target_yaw_deg=91.79 settle_s=0.00 yaw_rate_degps=0.00"
+            }
+          },
+          "radar_evidence": "",
+          "obstacle_replan": ""
+        },
+        "docking": {
+          "tag_detected": false,
+          "tag": {},
+          "is_charging": false,
+          "battery_percentage": 80.0000011920929
+        },
+        "mission": {
+          "phase": "READY",
+          "source": "none",
+          "service_state": 16,
+          "service_state_name": "OPERATOR_STOPPED",
+          "service_state_description": "Stopped by operator",
+          "engaged": false,
+          "ready": true,
+          "system_health": "OK"
+        },
+        "generated_unix_s": 1791264972.795
+      }
+    },
+    {
+      "label": "closed_after",
+      "elapsed_seconds": 15.02180060511455,
+      "processes": {
+        "relay": {
+          "pid": 1148303,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/lib/camrod_carla_adapter/carla_sensor_relay",
+            "--ros-args",
+            "-r",
+            "__node:=carla_sensor_relay",
+            "--params-file",
+            "/tmp/launch_params_hqchtdu4"
+          ],
+          "threads_start": 33,
+          "cpu_percent_one_core": 32.685828610508054,
+          "rss_mib_mean": 94.19778645833334,
+          "rss_mib_max": 102.93359375,
+          "threads_end": 33
+        },
+        "detector": {
+          "pid": 1149078,
+          "command": [
+            "/home/hong/camrod_ws/install/camrod_perception/lib/camrod_perception/apriltag_parking_detector_node",
+            "--ros-args",
+            "-r",
+            "__node:=apriltag_parking_detector",
+            "-r",
+            "__ns:=/perception",
+            "--params-file",
+            "/home/hong/camrod_ws/install/camrod_carla_adapter/share/camrod_carla_adapter/config/apriltag_parking_detector_carla.yaml",
+            "--params-file",
+            "/tmp/launch_params_gte516w3"
+          ],
+          "threads_start": 24,
+          "cpu_percent_one_core": 30.821870970804945,
+          "rss_mib_mean": 105.38020833333333,
+          "rss_mib_max": 105.45703125,
+          "threads_end": 24
+        },
+        "ui": {
+          "pid": 1149289,
+          "command": [
+            "/usr/bin/python3",
+            "/home/hong/camrod_ws/install/camrod_ui/lib/camrod_ui/ui_backend_node",
+            "--ros-args",
+            "-r",
+            "__node:=ui_backend",
+            "--params-file",
+            "/tmp/launch_params_byddcq32"
+          ],
+          "threads_start": 25,
+          "cpu_percent_one_core": 27.09395569139872,
+          "rss_mib_mean": 99.6890625,
+          "rss_mib_max": 99.79296875,
+          "threads_end": 24
+        }
+      },
+      "telemetry": {
+        "schema_version": 3,
+        "options": {
+          "docking_rear_camera_fallback_enabled": false,
+          "raw_lidar_bbox_overlay_enabled": false
+        },
+        "stream_rate_hz": 10.0,
+        "session_active": false,
+        "active_view": "",
+        "sources": {
+          "localization.pose": {
+            "age_s": 18.086,
+            "rate_hz": 20.0
+          },
+          "camera.docking": {
+            "age_s": 18.215,
+            "rate_hz": 6.01
+          },
+          "docking.tag_detected": {
+            "age_s": 18.215,
+            "rate_hz": 6.01
+          },
+          "controller.apriltag_parking": {
+            "age_s": 18.066,
+            "rate_hz": 10.0
+          },
+          "control.safety_gate": {
+            "age_s": 18.219,
+            "rate_hz": 13.55
+          },
+          "platform.velocity": {
+            "age_s": 18.22,
+            "rate_hz": 5.0
+          },
+          "controller.drop_zone": {
+            "age_s": 18.528,
+            "rate_hz": 0.98
+          }
+        },
+        "gnss": {
+          "fix": {},
+          "navpvt": {},
+          "covariance": {},
+          "relative_heading": {}
+        },
+        "imu": {},
+        "radar": {
+          "channels": {}
+        },
+        "lidar": {
+          "frame_id": "",
+          "points": [],
+          "point_count": 0,
+          "streams": {
+            "filtered": {},
+            "raw": {},
+            "obstacles": {}
+          }
+        },
+        "cameras": {
+          "front": {
+            "available": false,
+            "sequence": 0
+          },
+          "rear": {
+            "available": false,
+            "sequence": 0
+          },
+          "docking": {
+            "available": false,
+            "sequence": 0
+          }
+        },
+        "localization": {
+          "pose": {},
+          "status": {},
+          "trace": []
+        },
+        "motion": {
+          "velocity": {},
+          "tracking_error": {}
+        },
+        "paths": {
+          "global": {},
+          "local": {},
+          "maneuvers": {}
+        },
+        "footprint": {
+          "frame_id": "",
+          "points": [],
+          "physical_points": [],
+          "planning_points": []
+        },
+        "perception": {
+          "obstacle_cloud": {},
+          "obstacle_boxes": {},
+          "cost_layers": {
+            "lanelet": {},
+            "lidar": {},
+            "radar": {},
+            "inflation": {}
+          }
+        },
+        "safety": {
+          "gate": {},
+          "controllers": {},
+          "radar_evidence": "",
+          "obstacle_replan": ""
+        },
+        "docking": {
+          "tag_detected": false,
+          "tag": {},
+          "is_charging": false,
+          "battery_percentage": null
+        },
+        "mission": {
+          "phase": "READY",
+          "source": "none",
+          "service_state": 16,
+          "service_state_name": "OPERATOR_STOPPED",
+          "service_state_description": "Stopped by operator",
+          "engaged": false,
+          "ready": true,
+          "system_health": "OK"
+        },
+        "generated_unix_s": 1791264990.848
+      }
+    }
+  ],
+  "metadata": {
+    "streams": {
+      "image": {
+        "received": 27,
+        "first": {
+          "monotonic": 3459140.301081928,
+          "width": 960,
+          "height": 720,
+          "frame_id": "camera_rear",
+          "stamp": 1791264926.3919067,
+          "encoding": "bgra8"
+        },
+        "last": {
+          "monotonic": 3459145.134193309,
+          "width": 960,
+          "height": 720,
+          "frame_id": "camera_rear",
+          "stamp": 1791264931.2242415,
+          "encoding": "bgra8"
+        },
+        "wall_rate_hz": 5.379557380233439
+      },
+      "camera_info": {
+        "received": 48,
+        "first": {
+          "monotonic": 3459140.301384324,
+          "width": 960,
+          "height": 720,
+          "frame_id": "camera_rear",
+          "stamp": 1791264926.3977365,
+          "encoding": null
+        },
+        "last": {
+          "monotonic": 3459145.216462609,
+          "width": 960,
+          "height": 720,
+          "frame_id": "camera_rear",
+          "stamp": 1791264931.3164573,
+          "encoding": null
+        },
+        "wall_rate_hz": 9.562411273580821
+      }
+    },
+    "publishers": {
+      "/sensing/camera/econ_rear/image_rect": [
+        {
+          "node": "/carla_sensor_relay",
+          "type": "sensor_msgs/msg/Image"
+        }
+      ],
+      "/sensing/camera/econ_rear/camera_info": [
+        {
+          "node": "/carla_sensor_relay",
+          "type": "sensor_msgs/msg/CameraInfo"
+        }
+      ]
+    },
+    "parameters": {
+      "/perception/apriltag_parking_detector": {
+        "image_topic": "/sensing/camera/econ_rear/image_rect",
+        "camera_info_topic": "/sensing/camera/econ_rear/camera_info",
+        "quad_decimate": 1.0,
+        "n_threads": 2,
+        "roi_full_search_interval": 30,
+        "publish_debug_image": true,
+        "debug_jpeg_quality": 80
+      },
+      "/carla_sensor_relay": {
+        "rear_image_input": "/carla/ego_vehicle/rgb_rear/image",
+        "rear_info_input": "/carla/ego_vehicle/rgb_rear/camera_info",
+        "rear_image_outputs": [
+          "/sensing/camera/econ_rear/image_raw",
+          "/sensing/camera/econ_rear/image_rect"
+        ],
+        "raw_image_max_rate_hz": 10.0,
+        "compressed_image_max_rate_hz": 5.0,
+        "publish_compressed_images": true
+      },
+      "/ui_backend": {
+        "enable_operator_telemetry": true,
+        "telemetry_session_timeout_s": 12.0,
+        "telemetry_camera_raw_fallback_enabled": true,
+        "telemetry_docking_rear_camera_fallback_enabled": false
+      }
+    },
+    "nodes": [
+      "/_ros2cli_daemon_188_c048a0e8a8aa4018bcac3b032f3c93fb",
+      "/camrod_twist_to_4ws",
+      "/carla_extended_ackermann_control",
+      "/carla_feedback_bridge",
+      "/carla_platform_heartbeat",
+      "/carla_radar_relay",
+      "/carla_ros_bridge",
+      "/carla_sensor_relay",
+      "/carla_spawn_objects",
+      "/carla_step_pacer",
+      "/control/camping_site_maneuver_controller",
+      "/control/cmd_vel_safety_gate",
+      "/control/drop_zone_maneuver_controller",
+      "/control/route_safety_recovery_controller",
+      "/control/transform_listener_impl_5b3cf617f1b0",
+      "/ekf_map_to_odom_static_tf",
+      "/launch_ros_1148034",
+      "/localization/ekf_filter",
+      "/localization/gnss_reattach",
+      "/localization/input_adapter",
+      "/localization/map_helper",
+      "/localization/monitor",
+      "/localization/pose_selector",
+      "/localization/transform_listener_impl_5dd4f0c989c0",
+      "/map/lanelet_boundary_cost_grid",
+      "/map/lanelet_map_provider",
+      "/map/lanelet_safety_cost_grid",
+      "/map/transform_listener_impl_60079592b600",
+      "/map/transform_listener_impl_62d7fbebcbb0",
+      "/mission_recorder",
+      "/parking/apriltag_parking_controller",
+      "/parking/parking_dispatcher",
+      "/parking/reverse_parking_controller",
+      "/parking/transform_listener_impl_5c1f1984edd8",
+      "/perception/apriltag_parking_detector",
+      "/perception/campsite_occupancy",
+      "/perception/obstacle_fusion",
+      "/perception/obstacle_lidar",
+      "/perception/transform_listener_impl_5fed97ed55d0",
+      "/perception/yolov9mit",
+      "/physical_four_wheel_bridge",
+      "/planning/behavior_server",
+      "/planning/bt_navigator",
+      "/planning/bt_navigator_navigate_through_poses_rclcpp_node",
+      "/planning/bt_navigator_navigate_to_pose_rclcpp_node",
+      "/planning/centerline_snapper",
+      "/planning/controller_server",
+      "/planning/global_costmap/global_costmap",
+      "/planning/goal_snapper",
+      "/planning/lifecycle_manager_planning",
+      "/planning/local_costmap/local_costmap",
+      "/planning/local_path_extractor",
+      "/planning/nav2_container",
+      "/planning/nav2_selector_latch",
+      "/planning/obstacle_replan_monitor",
+      "/planning/path_tracking_error",
+      "/planning/path_visualizer",
+      "/planning/planner_server",
+      "/planning/planning_progress",
+      "/planning/planning_state_machine",
+      "/planning/smoother_server",
+      "/planning/transform_listener_impl_78aa1400da80",
+      "/planning/transform_listener_impl_78d99800d940",
+      "/platform/light_controller",
+      "/platform/robot_visualization",
+      "/ranger_platform_bridge",
+      "/rear_cpu_readonly_probe_20261006",
+      "/sensing/imu/platform_velocity_converter",
+      "/sensing/inflation_cost_grid",
+      "/sensing/lidar/carla_lidar_filter",
+      "/sensing/lidar/lidar_cost_grid",
+      "/sensing/lidar/lidar_processing_container",
+      "/sensing/radar/radar_cost_grid",
+      "/sensing/radar/transform_listener_impl_5633865e3140",
+      "/sensing/transform_listener_impl_57c2e15155f0",
+      "/sensor_kit/robot_state_publisher",
+      "/snapshotter",
+      "/system/autonomy_topics_checker_container",
+      "/system/camera_checker",
+      "/system/cost_grid_checker",
+      "/system/diagnostics_agg",
+      "/system/diagnostics_aggregator",
+      "/system/gnss_checker",
+      "/system/gpu_checker",
+      "/system/hardware_sensing_checker_container",
+      "/system/hw_checker",
+      "/system/imu_checker",
+      "/system/lidar_checker",
+      "/system/localization_checker_container",
+      "/system/localization_gnss_checker",
+      "/system/localization_init_checker",
+      "/system/localization_lanelet_checker",
+      "/system/localization_mode_checker",
+      "/system/localization_pose_checker",
+      "/system/localization_source_checker",
+      "/system/map_cost_grid_checker",
+      "/system/network_checker",
+      "/system/perception_obstacle_checker",
+      "/system/planning_costmap_checker",
+      "/system/planning_lifecycle_checker",
+      "/system/planning_lifecycle_checker_container",
+      "/system/planning_nav_status_checker",
+      "/system/planning_path_checker",
+      "/system/planning_state_checker",
+      "/system/radar_checker",
+      "/system/system_checker",
+      "/system/system_core_container",
+      "/system/system_diagnostic",
+      "/system/velocity_converter_checker",
+      "/system/wheel_odometry_checker",
+      "/ui_backend",
+      "/ui_guest"
+    ]
+  },
+  "closed_request": {
+    "enabled": true,
+    "requested": false,
+    "requested_view": "all",
+    "active_view": "",
+    "session_active": false,
+    "timeout_s": 12.0
+  },
+  "open_request": {
+    "enabled": true,
+    "requested": true,
+    "requested_view": "docking",
+    "active_view": "",
+    "session_active": false,
+    "timeout_s": 12.0
+  },
+  "final_closed_request": {
+    "enabled": true,
+    "requested": false,
+    "requested_view": "all",
+    "active_view": "",
+    "session_active": false,
+    "timeout_s": 12.0
+  },
+  "utc_end": "2026-10-06T05:36:30.849693+00:00"
+}

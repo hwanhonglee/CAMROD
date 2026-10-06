@@ -36,7 +36,8 @@ def test_exactly_one_parking_authority_matches_each_launch_topology(profile):
     assert "/parking/private/apriltag/status|avg_msgs/msg/ModuleState|1" in auto["required_topics"]
 
 
-@pytest.mark.parametrize("profile", ["default", "sim"])
+# HH_261006 - CARLA must classify the same public owner without changing its timeout.
+@pytest.mark.parametrize("profile", ["default", "sim", "carla"])
 def test_aggregate_registry_includes_only_public_dispatcher_and_legacy_identities(profile):
     relative = Path("diagnostics") / profile / "aggregator" / "diagnostics_config.yaml"
     source = ROOT / "camrod_system" / "config" / relative
@@ -48,3 +49,5 @@ def test_aggregate_registry_includes_only_public_dispatcher_and_legacy_identitie
     assert "parking/reverse_parking_controller" in parking
     assert "parking/apriltag_parking_controller" in parking
     assert all("private" not in name for name in parking)
+    dispatcher = [item for item in document["topics"] if item["name"] == "parking/parking_dispatcher"]
+    assert dispatcher == [{"name": "parking/parking_dispatcher", "group": "parking/runtime", "timeout_s": 3.0}]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HH_260428: Pure colcon build wrapper — no downloads, no external repo changes.
+# HH_260428 - Pure colcon build wrapper — no downloads, no external repo changes.
 # Safe to run repeatedly for incremental development.
 #
 # Usage:
@@ -10,35 +10,35 @@
 #
 # All unknown arguments are forwarded directly to `colcon build`.
 # Run setup_camrod.sh first if external/ directories are missing.
-# HH_260630: camrod_ui robot frontend assets are built here before colcon installs
+# HH_260630 - camrod_ui robot frontend assets are built here before colcon installs
 # the package, so a normal full build also refreshes the UI bundle. This wrapper
 # runs `colcon build` only; runtime sim validation and package lint/test commands
 # are intentionally run separately so field builds are not blocked by lint-scope
 # issues in vendored external packages.
-# HH_260701: this wrapper is the canonical way to install the current field
+# HH_260701 - this wrapper is the canonical way to install the current field
 # baseline after config-only updates too: planning soft-estop wiring, synchronized
 # GNSS/LiDAR diagnostics configs, radar no-target handling, and README updates all
 # land in the install tree through this script.
-# HH_260702: this wrapper also preserves the current validation contract:
+# HH_260702 - this wrapper also preserves the current validation contract:
 # - validate/reuse matching npm dependencies and run npm build before packaging
 #   camrod_ui when it is in scope;
 # - install synchronized bringup/package configs and README updates together;
 # - leave sim/manual/obstacle/camping/drop-zone validation to
 #   camrod_bringup/scripts/sim_validation_runner.py after launch.
-# HH_260703: use this wrapper after config-only field safety changes too; the
+# HH_260703 - use this wrapper after config-only field safety changes too; the
 # install tree must receive cmd_vel gate, diagnostics, GNSS, and README updates
 # before outdoor validation.
-# HH_260706: v2.0.1 field updates also depend on this wrapper: it rebuilds the
+# HH_260706 - v2.0.1 field updates also depend on this wrapper: it rebuilds the
 # UI bundle before packaging and syncs adaptive cmd_vel gate/config docs into
 # install before tagging.
-# HH_260707: runtime-load update also depends on this wrapper: perception queue
+# HH_260707 - runtime-load update also depends on this wrapper: perception queue
 # tuning, LiDAR/cost-grid cache parameters, map/path marker throttles, filtered
 # system diagnostics, and README updates are installed through normal colcon
 # package data installation.
-# HH_260708: field_test_tool.sh and field_test_runbook.md are installed through
+# HH_260708 - field_test_tool.sh and field_test_runbook.md are installed through
 # this wrapper so outdoor tests can collect config-sync, diagnostics, Hz, CPU,
 # and gate-state evidence from the same installed package graph.
-# HH_260807: single-config CMake packages now default to Release so compute-heavy
+# HH_260807 - single-config CMake packages now default to Release so compute-heavy
 # sensor components use compiler optimization in normal robot builds. An explicit
 # -DCMAKE_BUILD_TYPE override remains authoritative for debugging/profiling.
 # HH_260825 - Always resolve and enter the workspace root and pass explicit
@@ -134,92 +134,53 @@ SRC_ROOT="${WS_ROOT}/src"
 mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
 cd "${WS_ROOT}"
 
-# HH_260616: Scope-aware cleanup for generated artifacts. Package-selected builds
+# HH_260616 - Scope-aware cleanup for generated artifacts. Package-selected builds
 # must not delete artifacts owned by packages that are not being rebuilt.
 _build_scope_includes_pkg() {
-  local pkg="$1" token
+  local pkg="$1" token selected
   shift
-  # HH_260702: Colcon selectors accept multiple package names after one option.
-  # Keep scanning selector arguments until the next option so camrod_ui is
-  # recognized even when it is not the first package in --packages-select.
-  local in_selector=0
-  local in_up_to_selector=0
-  local in_skip_selector=0
-  local saw_selector=0
-  local saw_direct_selector=0
-  local saw_up_to_selector=0
-  local matched_selector=0
-  local up_to_match=0
-  local up_to_targets=()
+  # HH_261006 - Resolve every selector with colcon's graph, including regex,
+  # dependency and build-result filters. Cache UI selection before cleanup so
+  # deleting a build directory cannot change a state-dependent selection later.
+  if [[ "${pkg}" == camrod_ui && -n "${CAMROD_UI_BUILD_SCOPE:-}" ]]; then
+    return "${CAMROD_UI_BUILD_SCOPE}"
+  fi
+  local collecting=0
+  local selection_args=()
   for token in "$@"; do
     case "${token}" in
-      --packages-up-to)
-        saw_selector=1
-        saw_up_to_selector=1
-        in_selector=0
-        in_up_to_selector=1
-        in_skip_selector=0
-        continue
-        ;;
-      --packages-select|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
-        saw_selector=1
-        saw_direct_selector=1
-        in_selector=1
-        in_up_to_selector=0
-        in_skip_selector=0
-        continue
-        ;;
-      --packages-skip)
-        in_selector=0
-        in_up_to_selector=0
-        in_skip_selector=1
+      --packages-*|--base-paths|--base-paths=*|--paths|--paths=*|--metas|--metas=*|--build-base|--build-base=*|--ignore-user-meta)
+        selection_args+=("${token}")
+        collecting=1
         continue
         ;;
       --*)
-        in_selector=0
-        in_up_to_selector=0
-        in_skip_selector=0
+        collecting=0
         ;;
     esac
-    if [[ "${in_skip_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
-      return 1
-    fi
-    if [[ "${in_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
-      matched_selector=1
-    fi
-    if [[ "${in_up_to_selector}" -eq 1 ]]; then
-      up_to_targets+=("${token}")
-    fi
+    [[ "${collecting}" -eq 0 ]] || selection_args+=("${token}")
   done
-
-  [[ "${saw_selector}" -eq 0 ]] && return 0
-  if [[ "${saw_direct_selector}" -eq 1 && "${matched_selector}" -ne 1 ]]; then
-    return 1
+  if ! selected="$(colcon list --base-paths "${SRC_ROOT}" \
+      --build-base "${SRC_ROOT}/../build" "${selection_args[@]}" --names-only)"; then
+    echo "[colcon_build] ERROR: cannot resolve package selection; refusing to skip UI preparation" >&2
+    return 2
   fi
-  if [[ "${saw_up_to_selector}" -eq 1 ]]; then
-    [[ ${#up_to_targets[@]} -gt 0 ]] || return 1
-    # `--packages-up-to` selects its targets *and their recursive dependency
-    # closure*. A string-only target comparison skipped camrod_ui when building
-    # up to camrod_bringup even though bringup has a runtime dependency on it,
-    # leaving the installed React bundle stale. Ask colcon's own package graph
-    # so the frontend preparation/verification scope matches the actual build.
-    while IFS= read -r token; do
-      if [[ "${token}" == "${pkg}" ]]; then
-        up_to_match=1
-        break
-      fi
-    done < <(
-      colcon list \
-        --base-paths "${SRC_ROOT}" \
-        --packages-up-to "${up_to_targets[@]}" \
-        --names-only
-    )
-    [[ "${up_to_match}" -eq 1 ]] || return 1
-  fi
-  return 0
+  while IFS= read -r token; do
+    [[ "${token}" != "${pkg}" ]] || return 0
+  done <<< "${selected}"
+  return 1
 }
 
-# HH_260611: Remove stale per-package CMake build directories whose cached source
+# HH_261006 - A failed graph query is an error, not an excluded UI package.
+unset CAMROD_UI_BUILD_SCOPE
+if _build_scope_includes_pkg camrod_ui "$@"; then
+  CAMROD_UI_BUILD_SCOPE=0
+else
+  CAMROD_UI_BUILD_SCOPE=$?
+  [[ "${CAMROD_UI_BUILD_SCOPE}" -eq 1 ]] || exit "${CAMROD_UI_BUILD_SCOPE}"
+fi
+
+# HH_260611 - Remove stale per-package CMake build directories whose cached source
 # path no longer exists. This handles external repo moves without requiring a full
 # workspace clean.
 _clean_stale_cmake_build_dirs() {
@@ -237,16 +198,29 @@ _clean_stale_cmake_build_dirs() {
 }
 _clean_stale_cmake_build_dirs
 
-# HH_260706: Recreate camrod_ui build/install prefixes as a unit. Removing only
+# HH_260706 - Recreate camrod_ui build/install prefixes as a unit. Removing only
 # one generated launch symlink can make ament_python symlink_data fail on the
 # next rebuild, leaving the robot UI launch missing from install.
 _clean_stale_install_artifacts() {
   if _build_scope_includes_pkg camrod_ui "$@"; then
-    rm -rf "${WS_ROOT}/build/camrod_ui" "${WS_ROOT}/install/camrod_ui"
-    log "removed camrod_ui build/install prefixes for a clean UI reinstall"
+    local token preserve_selection_state=0
+    for token in "$@"; do
+      case "${token}" in
+        --packages-select-build-failed|--packages-skip-build-finished|--packages-select-test-failures|--packages-skip-test-passed)
+          preserve_selection_state=1 ;;
+      esac
+    done
+    # HH_261006 - Colcon evaluates status selectors again during build. Keep
+    # their result files intact or deleting the build prefix changes scope.
+    if [[ "${preserve_selection_state}" -eq 1 ]]; then
+      log "preserving UI build/install prefixes for state-dependent selection"
+    else
+      rm -rf "${WS_ROOT}/build/camrod_ui" "${WS_ROOT}/install/camrod_ui"
+      log "removed camrod_ui build/install prefixes for a clean UI reinstall"
+    fi
   fi
 
-  # HH_260611: Remove stale isolated install prefixes for packages that are no
+  # HH_260611 - Remove stale isolated install prefixes for packages that are no
   # longer part of this x86_64 build graph. If left in place, setup.bash tries
   # to source missing local_setup.bash files and launch reports unrelated
   # packages as "not built".
@@ -272,7 +246,7 @@ _clean_stale_install_artifacts() {
 }
 _clean_stale_install_artifacts "$@"
 
-# HH_260629: Build the camrod_ui robot React frontend before colcon so setup.py can
+# HH_260629 - Build the camrod_ui robot React frontend before colcon so setup.py can
 # package the generated build/ tree into install (see camrod_ui/setup.py). The guest
 # frontend is static (no build step). Only runs when camrod_ui is in the build scope.
 _prepare_camrod_ui_build_environment() {
@@ -335,7 +309,7 @@ _build_camrod_ui_frontend() {
   _build_scope_includes_pkg camrod_ui "$@" || return 0
 
   local frontend_dir="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend"
-  [[ -f "${frontend_dir}/package.json" ]] || { log "camrod_ui frontend not found, skip npm build"; return 0; }
+  [[ -f "${frontend_dir}/package.json" ]] || { log "ERROR: selected camrod_ui frontend is missing" >&2; return 1; }
   [[ -f "${frontend_dir}/camrod-build-env.json" ]] || {
     log "ERROR: canonical camrod_ui build environment manifest is missing" >&2
     return 1
@@ -510,13 +484,18 @@ _verify_camrod_ui_frontend_install() {
     log "ERROR: frontend bundle lacks the visible Operator UI contract hook" >&2
     return 1
   fi
+  # HH_261006 - A valid JS bundle alone does not prove that the robot and its
+  # livery/images were installed. Compare every public asset byte-for-byte.
+  python3 "${SRC_ROOT}/camrod_ui/scripts/verify_frontend_assets.py" \
+    --frontend "${frontend_dir}" --build "${frontend_dir}/build" \
+    --installed "${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build"
   log "camrod_ui frontend verified: ${installed_bundle}"
 }
 
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
 
-# HH_260428: Sanitize stale install paths from prefix vars to avoid picking up
+# HH_260428 - Sanitize stale install paths from prefix vars to avoid picking up
 # packages from a previous build that no longer exists on disk.
 #
 # The virtual/CARLA profile has two deliberate underlays outside this workspace:
@@ -582,7 +561,7 @@ _reject_legacy_ground_segmentation_package() {
 }
 _reject_legacy_ground_segmentation_package
 
-# HH_260428: Collect all external/ base directories for colcon --base-paths.
+# HH_260428 - Collect all external/ base directories for colcon --base-paths.
 # Excludes .git internals, build/install/log artifacts, and disabled packages.
 mapfile -t EXTERNAL_BASES < <(
   cd "${WS_ROOT}" && find src -type d -name external \
@@ -596,7 +575,7 @@ mapfile -t EXTERNAL_BASES < <(
 BUILD_SKIP_PACKAGES=()
 # HH_260720 - The removed docking package no longer needs architecture-specific build skips.
 
-# HH_260616: Keep planning/sensing development builds usable on machines where the
+# HH_260616 - Keep planning/sensing development builds usable on machines where the
 # optional voice stack has not been provisioned yet. setup_camrod.sh installs
 # libsdl2-mixer-dev; until then camrod_voice cannot configure because SDL2_mixer
 # is a required pkg-config dependency.
@@ -611,7 +590,7 @@ if [[ ${#BUILD_SKIP_PACKAGES[@]} -gt 0 ]]; then
   BUILD_SKIP_ARGS=(--packages-skip "${BUILD_SKIP_PACKAGES[@]}")
 fi
 
-# HH_260428: Mark extracted vendor binary trees (e.g. tier4_adapi) so colcon
+# HH_260428 - Mark extracted vendor binary trees (e.g. tier4_adapi) so colcon
 # does not try to build them as source packages.
 _mark_vendor_trees() {
   local root
@@ -625,7 +604,7 @@ _mark_vendor_trees() {
 }
 _mark_vendor_trees
 
-# HH_260428: tier4_adapi ships aarch64-only vendor libs.
+# HH_260428 - tier4_adapi ships aarch64-only vendor libs.
 # On x86_64 mark the three arch-specific packages so colcon skips them.
 _TIER4="${SRC_ROOT}/camrod_map/external/tier4_adapi"
 _ARCH="$(uname -m)"

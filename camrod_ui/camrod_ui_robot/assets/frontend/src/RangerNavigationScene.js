@@ -13,6 +13,7 @@ import { illustratedRoadPositions } from './navigationRoadVisuals';
 import { createNavigationVegetation } from './navigationSceneryVisuals';
 import { displayBoundaryLines, smoothDisplayPolyline, MAX_BOUNDARY_VISUAL_DEVIATION_M } from './navigationBoundaryCurves';
 import './RangerNavigationScene.css';
+import { acquireNavigationGraphics, navigationGraphicsBridge } from './navigationGraphicsLease';
 
 export { illustratedRoadPositions } from './navigationRoadVisuals';
 
@@ -255,11 +256,18 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
   const [modelStatus, setModelStatus] = useState('loading');
   const [cargoVisible, setCargoVisible] = useState(false);
   const [wrapVisible, setWrapVisible] = useState(false);
+  // HH_261006 - Native WebKit starts with its existing WebGL-off default.
+  // Wait for its view-scoped opt-in; Chromium/web browsers render as before.
+  const [graphicsReady, setGraphicsReady] = useState(() => !navigationGraphicsBridge());
   latestRef.current = data;
+
+  useEffect(() => acquireNavigationGraphics(
+    () => setGraphicsReady(true), () => setModelStatus('webgl-unavailable'),
+  ), []);
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return undefined;
+    if (!host || !graphicsReady) return undefined;
     let disposed = false, renderer, animationId = 0, observer;
     let model = null, wheels = [], modelLength = null, motionKind = 'stationary';
     let routeWorld = null, routeWorldOrigin = null, routeWorldKey = '';
@@ -757,7 +765,7 @@ export default function RangerNavigationScene({ data, demo = false, theme = 'lig
       renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [modelUrl, wrapUrl, frontWrapUrl, rearWrapUrl, theme, showCargoPreview, demo]);
+  }, [modelUrl, wrapUrl, frontWrapUrl, rearWrapUrl, theme, showCargoPreview, demo, graphicsReady]);
 
   useEffect(() => { controllerRef.current?.accept(data); }, [data]);
 

@@ -6,6 +6,8 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -407,8 +409,30 @@ process.stdout.write(JSON.stringify(values));
             self.assertNotIn("복귀 중", notice["message"])
         self.assertEqual(notices[5:], [None, None, None])
 
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_motion_notice_only_replaces_motion_copy_and_preserves_arrival_actions(self) -> None:
-        self.assertIn("const motionNotice = serviceMotionNotice(missionPhase, systemHealth);", self.source)
+        # HH_261006 - Execute the production expression, including virtual's
+        # explicit-resume notice, instead of requiring an obsolete one-line form.
+        start = self.source.index("function serviceMotionNotice(")
+        helpers = self.source[start:self.source.index("function robotCanCompleteMission(", start)]
+        start = self.source.index("const motionNotice =")
+        expression = self.source[start:self.source.index(";\n", start) + 1]
+        result = subprocess.run(
+            ["node"], input=helpers + "\nconst notice = (manualResume, missionPhase, systemHealth) => {"
+            + expression + " return motionNotice; };\n"
+            + "console.log(JSON.stringify([notice(null,'DRIVING','OK'), notice(null,'SAFETY_STOP','OK'),"
+            + "notice(null,'STOPPED','OK'), notice(null,'DRIVING','ERROR'),"
+            + "notice({pending:true},'DRIVING','OK')]));",
+            text=True, capture_output=True, check=True,
+        )
+        notices = json.loads(result.stdout)
+        self.assertIsNone(notices[0])
+        self.assertEqual(notices[1]["label"], "안전 정지")
+        self.assertEqual(notices[2]["message"], "운행이 정지되었습니다.")
+        self.assertEqual(notices[3]["label"], "시스템 오류")
+        if "manualResume?.pending" in expression:
+            self.assertEqual(notices[4]["label"], "자율주행 일시정지")
+            self.assertIn("명시적으로 재개하기 전에는 자율주행하지 않습니다", notices[4]["message"])
         returning = self.source[self.source.index(") : displayedReturning ? ("):
                                 self.source.index(") : activeSite ? (")]
         self.assertIn("motionNotice?.label || recallProgress.label", returning)
@@ -827,6 +851,14 @@ process.stdout.write(JSON.stringify({robotCalls, guestCalls, warnings, labels}))
                 battery_helpers_start,
             )
         ]
+        # HH_261006 - Source-sliced WebSocket replay must also load its real
+        # imported helper; a stub would conceal resume-state regressions.
+        if re.search(r"import .*\bmanualResumeFromSnapshot\b", self.source):
+            resume_source = APP_SOURCE.with_name("ManualMissionResume.js").read_text(encoding="utf-8")
+            prefix += resume_source[
+                resume_source.index("export function manualResumeFromSnapshot("):
+                resume_source.index("export default function ManualMissionResume(")
+            ].replace("export function", "function", 1)
         handler_start = self.source.index("ws.onmessage = (event) => {")
         handler = self.source[
             handler_start : self.source.index(
@@ -1074,15 +1106,34 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         self.assertIn("evidence-trip-more", self.service_evidence_source)
 
     def test_frontend_entry_document_is_never_served_from_stale_cache(self) -> None:
+        # HH_261006 - The serving policy moved into a ROS-independent helper;
+        # validate real responses plus backend wiring rather than old local names.
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        sys.path.insert(0, str(UI_BACKEND_SOURCE.parents[1]))
+        from camrod_ui.frontend_serving import register_frontend_routes
+
         self.assertIn(
-            '"Cache-Control": "no-store, no-cache, must-revalidate"',
+            "register_frontend_routes(app, node._resolve_frontend_dir())",
             self.backend_source,
         )
-        self.assertIn("if real == index_real", self.backend_source)
-        self.assertIn(
-            "return FileResponse(str(index_real), headers=no_store_headers)",
-            self.backend_source,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "index.html").write_text("<!doctype html><title>CAMROD</title>")
+            (root / "static").mkdir()
+            (root / "static/main.hash.js").write_text("/* hashed bundle */")
+            app = FastAPI()
+            register_frontend_routes(app, root)
+            client = TestClient(app)
+            for path in ("/", "/index.html", "/navigation"):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate")
+                    self.assertEqual(response.headers["pragma"], "no-cache")
+                    self.assertIn("text/html", response.headers["content-type"])
+            self.assertIn("immutable", client.get("/static/main.hash.js").headers["cache-control"])
 
     def test_evidence_modal_merges_live_summary_into_bounded_history(self) -> None:
         self.assertIn("...detailData", self.service_evidence_source)

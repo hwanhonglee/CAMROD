@@ -1,0 +1,16 @@
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [launch]: All log files can be found below /home/hong/camrod_ws/log/virtual_carla/2026-10-06-15-18-49-027660-htop-1186509
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [launch]: Default logging verbosity is set to INFO
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [scoped_component_container_mt-1]: process started with pid [1186562]
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [scoped_component_container_mt-2]: process started with pid [1186564]
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-1] [INFO] [1791267529.429015404] [rear_perf_decimate_1_container]: Load Library: /home/hong/camrod_ws/install/camrod_perception/lib/libapriltag_parking_detector_component.so
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-2] [INFO] [1791267529.432266797] [rear_perf_decimate_2_container]: Load Library: /home/hong/camrod_ws/install/camrod_perception/lib/libapriltag_parking_detector_component.so
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-1] [INFO] [1791267529.436859996] [rear_perf_decimate_1_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod::perception::AprilTagParkingDetectorNode>
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-1] [INFO] [1791267529.436911469] [rear_perf_decimate_1_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod::perception::AprilTagParkingDetectorNode>
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-2] [INFO] [1791267529.438413314] [rear_perf_decimate_2_container]: Found class: rclcpp_components::NodeFactoryTemplate<camrod::perception::AprilTagParkingDetectorNode>
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-2] [INFO] [1791267529.438448647] [rear_perf_decimate_2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<camrod::perception::AprilTagParkingDetectorNode>
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/rear_perf_decimate_2/apriltag_parking_detector' in container '/rear_perf_decimate_2_container'
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-2] [INFO] [1791267529.460209461] [rear_perf_decimate_2.apriltag_parking_detector]: AprilTag parking detector ready: family=tag36h11 target_id=3 size=0.160m decimate=2.0
+Oct 06 15:18:49 htop bash[1186509]: [INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/rear_perf_decimate_1/apriltag_parking_detector' in container '/rear_perf_decimate_1_container'
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-1] [INFO] [1791267529.461147204] [rear_perf_decimate_1.apriltag_parking_detector]: AprilTag parking detector ready: family=tag36h11 target_id=3 size=0.160m decimate=1.0
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-1] [INFO] [1791267529.507870112] [rear_perf_decimate_1.apriltag_parking_detector]: rear camera calibration ready: fx=480.0 fy=480.0 cx=480.0 cy=360.0
+Oct 06 15:18:49 htop bash[1186509]: [scoped_component_container_mt-2] [INFO] [1791267529.507879811] [rear_perf_decimate_2.apriltag_parking_detector]: rear camera calibration ready: fx=480.0 fy=480.0 cx=480.0 cy=360.0

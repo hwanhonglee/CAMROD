@@ -1,0 +1,367 @@
+{
+  "evidence_type": "connected_live_idle_ui_camera_transition",
+  "autonomous_driving_test": false,
+  "mission_before": {
+    "active": false,
+    "generation": 0,
+    "intent": "",
+    "site": "",
+    "service_state_name": "OPERATOR_STOPPED",
+    "phase": "READY",
+    "description": "Stopped by operator"
+  },
+  "normal_view": {
+    "renderedFrames": 32,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": -8.492698421124567,
+      "y": 40.28740467620283
+    },
+    "modelYawRad": 1.5845369216966265,
+    "cameraYawRad": 1.5845369216966265,
+    "wheelRollRad": 0,
+    "motionKind": "stationary",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": 0
+      }
+    ],
+    "cameraSideOffsetMeters": 0,
+    "robotProjectedXNdc": 7.162977825003531e-19,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 0,
+    "pointCount": 0,
+    "baseMapVertices": 7868,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 14,
+    "visibleAreaLabels": 1,
+    "serviceAreaIds": [
+      "camping_site_1",
+      "camping_site_2",
+      "camping_site_3",
+      "camping_site_4",
+      "camping_site_5",
+      "camping_site_6",
+      "camping_site_7",
+      "camping_site_8",
+      "camping_site_9",
+      "camping_site_10",
+      "camping_site_11",
+      "camping_site_12",
+      "camping_site_13",
+      "dz_area_7144"
+    ],
+    "baseMapBoundaryColor": "#1ea65a",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "boundaryVisualMaxDeviationMeters": 0.12,
+    "baseMapBoundaryPaintVertices": 42858,
+    "renderedTriangles": 236148,
+    "cameraMode": "navigation-follow",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": false,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+    "illustratedRoadCount": 54,
+    "illustrativeShrubs": 88,
+    "illustrativeTrees": 28,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_left",
+      "wrap_right",
+      "wrap_rear",
+      "wrap_front"
+    ],
+    "visibleObjectLabels": 0,
+    "observedObjectBoxes": 0,
+    "objectVisualCount": 0,
+    "renderCalls": 55,
+    "renderTriangles": 236148,
+    "renderPixelRatio": 1.5
+  },
+  "url": "http://127.0.0.1:8010/",
+  "scripts": [
+    "http://127.0.0.1:8010/static/js/main.43877c65.js"
+  ],
+  "configured_area_ids": [
+    "camping_site_1",
+    "camping_site_10",
+    "camping_site_11",
+    "camping_site_12",
+    "camping_site_13",
+    "camping_site_2",
+    "camping_site_3",
+    "camping_site_4",
+    "camping_site_5",
+    "camping_site_6",
+    "camping_site_7",
+    "camping_site_8",
+    "camping_site_9",
+    "dz_area_7144"
+  ],
+  "minimap_area_ids": [
+    "camping_site_1",
+    "camping_site_10",
+    "camping_site_11",
+    "camping_site_12",
+    "camping_site_13",
+    "camping_site_2",
+    "camping_site_3",
+    "camping_site_4",
+    "camping_site_5",
+    "camping_site_6",
+    "camping_site_7",
+    "camping_site_8",
+    "camping_site_9",
+    "dz_area_7144"
+  ],
+  "minimap_area_labels": [
+    "드롭존",
+    "B12",
+    "B9",
+    "B7",
+    "B5",
+    "B3",
+    "B1",
+    "B13",
+    "B11",
+    "B10",
+    "B8",
+    "B6",
+    "B4",
+    "B2"
+  ],
+  "exterior_view": {
+    "renderedFrames": 279,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": -8.492698421124567,
+      "y": 40.28740467620283
+    },
+    "modelYawRad": 1.5845369216966265,
+    "cameraYawRad": 1.5845369216966265,
+    "wheelRollRad": 0,
+    "motionKind": "stationary",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": 0
+      }
+    ],
+    "cameraSideOffsetMeters": 2.7499999999999996,
+    "robotProjectedXNdc": -6.094482989184994e-16,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 0,
+    "pointCount": 0,
+    "baseMapVertices": 7868,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 14,
+    "visibleAreaLabels": 1,
+    "serviceAreaIds": [
+      "camping_site_1",
+      "camping_site_2",
+      "camping_site_3",
+      "camping_site_4",
+      "camping_site_5",
+      "camping_site_6",
+      "camping_site_7",
+      "camping_site_8",
+      "camping_site_9",
+      "camping_site_10",
+      "camping_site_11",
+      "camping_site_12",
+      "camping_site_13",
+      "dz_area_7144"
+    ],
+    "baseMapBoundaryColor": "#1ea65a",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "boundaryVisualMaxDeviationMeters": 0.12,
+    "baseMapBoundaryPaintVertices": 42858,
+    "renderedTriangles": 236148,
+    "cameraMode": "model-detail",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": false,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+    "illustratedRoadCount": 54,
+    "illustrativeShrubs": 88,
+    "illustrativeTrees": 28,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_left",
+      "wrap_right",
+      "wrap_rear",
+      "wrap_front"
+    ],
+    "visibleObjectLabels": 0,
+    "observedObjectBoxes": 0,
+    "objectVisualCount": 0,
+    "renderCalls": 55,
+    "renderTriangles": 236148,
+    "renderPixelRatio": 1.5
+  },
+  "normal_view_final": {
+    "renderedFrames": 529,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": -8.492698421124567,
+      "y": 40.28740467620283
+    },
+    "modelYawRad": 1.5845369216966265,
+    "cameraYawRad": 1.5845369216966265,
+    "wheelRollRad": 0,
+    "motionKind": "stationary",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": 0
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": 0
+      }
+    ],
+    "cameraSideOffsetMeters": 1.3400475833491265e-20,
+    "robotProjectedXNdc": 7.162977825003531e-19,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 0,
+    "pointCount": 0,
+    "baseMapVertices": 7868,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 14,
+    "visibleAreaLabels": 1,
+    "serviceAreaIds": [
+      "camping_site_1",
+      "camping_site_2",
+      "camping_site_3",
+      "camping_site_4",
+      "camping_site_5",
+      "camping_site_6",
+      "camping_site_7",
+      "camping_site_8",
+      "camping_site_9",
+      "camping_site_10",
+      "camping_site_11",
+      "camping_site_12",
+      "camping_site_13",
+      "dz_area_7144"
+    ],
+    "baseMapBoundaryColor": "#1ea65a",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "boundaryVisualMaxDeviationMeters": 0.12,
+    "baseMapBoundaryPaintVertices": 42858,
+    "renderedTriangles": 236148,
+    "cameraMode": "navigation-follow",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": false,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+    "illustratedRoadCount": 54,
+    "illustrativeShrubs": 88,
+    "illustrativeTrees": 28,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_left",
+      "wrap_right",
+      "wrap_rear",
+      "wrap_front"
+    ],
+    "visibleObjectLabels": 0,
+    "observedObjectBoxes": 0,
+    "objectVisualCount": 0,
+    "renderCalls": 55,
+    "renderTriangles": 236148,
+    "renderPixelRatio": 1.5
+  },
+  "mission_after": {
+    "active": false,
+    "generation": 0,
+    "intent": "",
+    "site": "",
+    "service_state_name": "OPERATOR_STOPPED",
+    "phase": "READY",
+    "description": "Stopped by operator"
+  },
+  "mutating_http_requests": [],
+  "runtime_exceptions": []
+}

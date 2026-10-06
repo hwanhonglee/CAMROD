@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-06",
+  "scope": "Local x86 HTTP asset deployment verification; not a Jetson GPU or driving test",
+  "frontend": "/home/hong/camrod_ws/src/camrod_ui/camrod_ui_robot/assets/frontend/build",
+  "tests": {
+    "frontend_serving": 25,
+    "frontend_serving_and_backend_stop_and_guest_contract": 173,
+    "failed": 0
+  },
+  "real_tcp_http_checks": [
+    {"method": "GET", "path": "/", "status": 200, "content_type": "text/html; charset=utf-8", "bytes": 471},
+    {"method": "GET", "path": "/navigation", "status": 200, "content_type": "text/html; charset=utf-8", "bytes": 471},
+    {"method": "GET", "path": "/models/ranger-navigation.glb", "status": 200, "content_type": "model/gltf-binary", "bytes": 5576620, "sha256": "da468915fa41de59955c0d297ccfadb0002248cac8f7f60414a7e731cfa8d202"},
+    {"method": "HEAD", "path": "/models/ranger-navigation.glb", "status": 200, "content_type": "model/gltf-binary", "content_length": 5576620, "bytes": 0},
+    {"method": "GET", "path": "/models/woraksan-rear-wrap.png", "status": 200, "content_type": "image/png", "bytes": 1084559, "sha256": "a2b87a47eead0a16cf2c5692b4df30761ddea033a3834771870e83a706e5a1b3"},
+    {"method": "GET", "path": "/models/does-not-exist.glb", "status": 404, "content_type": "application/json", "bytes": 49},
+    {"method": "HEAD", "path": "/models/does-not-exist.glb", "status": 404, "content_type": "application/json", "content_length": 49, "bytes": 0},
+    {"method": "GET", "path": "/%2e%2e/setup.py", "status": 404, "content_type": "application/json", "bytes": 36}
+  ],
+  "test_server_stopped": true,
+  "launch_or_sensor_defaults_changed": false
+}

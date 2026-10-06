@@ -1,0 +1,466 @@
+{
+  "real_driving": false,
+  "evidence_type": "production_WebKit_connected_idle_UI_lifecycle",
+  "url": "http://127.0.0.1:8010/",
+  "webgl_setting_events": [
+    false,
+    true,
+    false,
+    true,
+    false,
+    true,
+    false
+  ],
+  "checks": {
+    "initial_home": {
+      "enabled": false
+    },
+    "navigation": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 60,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": -8.492698414143598,
+            "y": 40.28740467893969
+          },
+          "modelYawRad": 1.5845369217899767,
+          "cameraYawRad": 1.5845369217899767,
+          "wheelRollRad": 0,
+          "motionKind": "stationary",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 0
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -1.3290281054619987e-17,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 0,
+          "pointCount": 0,
+          "baseMapVertices": 7868,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 14,
+          "visibleAreaLabels": 1,
+          "serviceAreaIds": [
+            "camping_site_1",
+            "camping_site_2",
+            "camping_site_3",
+            "camping_site_4",
+            "camping_site_5",
+            "camping_site_6",
+            "camping_site_7",
+            "camping_site_8",
+            "camping_site_9",
+            "camping_site_10",
+            "camping_site_11",
+            "camping_site_12",
+            "camping_site_13",
+            "dz_area_7144"
+          ],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 42858,
+          "renderedTriangles": 236162,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": false,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+          "illustratedRoadCount": 54,
+          "illustrativeShrubs": 88,
+          "illustrativeTrees": 28,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_rear",
+            "wrap_front",
+            "wrap_left",
+            "wrap_right"
+          ],
+          "visibleObjectLabels": 0,
+          "observedObjectBoxes": 0,
+          "objectVisualCount": 0,
+          "renderCalls": 55,
+          "renderTriangles": 236162,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n2026년 10월 6일 (화)\n오후 03:02:01\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n\n실증 운행 현황\n2026. 10. 06. 오후 03:02 기준\n상세 보기 ›\n최근 서비스\n161.8 m\n오늘 누적\n0.0 m\n오늘 완료\n0회\n전체 누적\n862.2 m · 3회\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n\nCAMROD\n월악산 국립공원\n현재 미션\n주행 현황\n연결됨\nGNSS\nDIAG OK\n80%\n15:02\n다크\n홈으로\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n운행 정지\n로봇의 현재 임무 상태를 표시합니다.\n목적지\n목적지 정보 대기\n센서 상태\n3/3 수신\nLiDAR\nDIAG OK\nCamera\nDIAG OK\nRadar\nDIAG OK\n좌표가 확인된 감지 데이터만 표시합니다\n드롭존외관 보기\n현재 미션 경로 수신 대기전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n현재 미션 경로 수신 대기\n현재 경로 지도\n\n드롭존\nB12\nB9\nB7\nB5\nB3\nB1\nB13\nB11\nB10\nB8\nB6\nB4\nB2\n↑ 전방경로 수신 대기\n현재 위치\n데이터 대기\n남은 거리\n—m\n예상 소요\n—분\n경로 진행률\n산출 대기\n유효한 주행 예측 정보가 없습니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC"
+      }
+    },
+    "home_restored": {
+      "enabled": false,
+      "snapshot": {
+        "status": null,
+        "navigation": {},
+        "errors": [],
+        "idleEntry": true,
+        "text": "\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n주행 지도 보기\nWIFI\n80%\n2026년 10월 6일 (화)\n오후 03:02:11\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n\n실증 운행 현황\n2026. 10. 06. 오후 03:02 기준\n상세 보기 ›\n최근 서비스\n161.8 m\n오늘 누적\n0.0 m\n오늘 완료\n0회\n전체 누적\n862.2 m · 3회\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n"
+      }
+    },
+    "navigation_reopened": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 61,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": -8.492698392961945,
+            "y": 40.287404679328006
+          },
+          "modelYawRad": 1.5845369217714727,
+          "cameraYawRad": 1.5845369217714727,
+          "wheelRollRad": 0,
+          "motionKind": "stationary",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 0
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -8.179856281003039e-19,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 0,
+          "pointCount": 0,
+          "baseMapVertices": 7868,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 14,
+          "visibleAreaLabels": 1,
+          "serviceAreaIds": [
+            "camping_site_1",
+            "camping_site_2",
+            "camping_site_3",
+            "camping_site_4",
+            "camping_site_5",
+            "camping_site_6",
+            "camping_site_7",
+            "camping_site_8",
+            "camping_site_9",
+            "camping_site_10",
+            "camping_site_11",
+            "camping_site_12",
+            "camping_site_13",
+            "dz_area_7144"
+          ],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 42858,
+          "renderedTriangles": 236164,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": false,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+          "illustratedRoadCount": 54,
+          "illustrativeShrubs": 88,
+          "illustrativeTrees": 28,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_left",
+            "wrap_right",
+            "wrap_front",
+            "wrap_rear"
+          ],
+          "visibleObjectLabels": 0,
+          "observedObjectBoxes": 0,
+          "objectVisualCount": 0,
+          "renderCalls": 55,
+          "renderTriangles": 236164,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n2026년 10월 6일 (화)\n오후 03:02:21\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n\n실증 운행 현황\n2026. 10. 06. 오후 03:02 기준\n상세 보기 ›\n최근 서비스\n161.8 m\n오늘 누적\n0.0 m\n오늘 완료\n0회\n전체 누적\n862.2 m · 3회\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n\nCAMROD\n월악산 국립공원\n현재 미션\n주행 현황\n연결됨\nGNSS\nDIAG OK\n80%\n15:02\n다크\n홈으로\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n운행 정지\n로봇의 현재 임무 상태를 표시합니다.\n목적지\n목적지 정보 대기\n센서 상태\n3/3 수신\nLiDAR\nDIAG OK\nCamera\nDIAG OK\nRadar\nDIAG OK\n좌표가 확인된 감지 데이터만 표시합니다\n드롭존외관 보기\n현재 미션 경로 수신 대기전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n현재 미션 경로 수신 대기\n현재 경로 지도\n\n드롭존\nB12\nB9\nB7\nB5\nB3\nB1\nB13\nB11\nB10\nB8\nB6\nB4\nB2\n↑ 전방경로 수신 대기\n현재 위치\n데이터 대기\n남은 거리\n—m\n예상 소요\n—분\n경로 진행률\n산출 대기\n유효한 주행 예측 정보가 없습니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC"
+      }
+    },
+    "navigation_reloaded": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 61,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": -8.492698477769371,
+            "y": 40.28740467933303
+          },
+          "modelYawRad": 1.5845369217479721,
+          "cameraYawRad": 1.5845369217479721,
+          "wheelRollRad": 0,
+          "motionKind": "stationary",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 0
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 0
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -2.104526130549326e-19,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 0,
+          "pointCount": 0,
+          "baseMapVertices": 7868,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 14,
+          "visibleAreaLabels": 1,
+          "serviceAreaIds": [
+            "camping_site_1",
+            "camping_site_2",
+            "camping_site_3",
+            "camping_site_4",
+            "camping_site_5",
+            "camping_site_6",
+            "camping_site_7",
+            "camping_site_8",
+            "camping_site_9",
+            "camping_site_10",
+            "camping_site_11",
+            "camping_site_12",
+            "camping_site_13",
+            "dz_area_7144"
+          ],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 42858,
+          "renderedTriangles": 236160,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": false,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+          "illustratedRoadCount": 54,
+          "illustrativeShrubs": 88,
+          "illustrativeTrees": 28,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_left",
+            "wrap_right",
+            "wrap_front",
+            "wrap_rear"
+          ],
+          "visibleObjectLabels": 0,
+          "observedObjectBoxes": 0,
+          "objectVisualCount": 0,
+          "renderCalls": 55,
+          "renderTriangles": 236160,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n2026년 10월 6일 (화)\n오후 03:02:32\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n\n실증 운행 현황\n2026. 10. 06. 오후 03:02 기준\n상세 보기 ›\n최근 서비스\n161.8 m\n오늘 누적\n0.0 m\n오늘 완료\n0회\n전체 누적\n862.2 m · 3회\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n\nCAMROD\n월악산 국립공원\n현재 미션\n주행 현황\n연결됨\nGNSS\nDIAG OK\n80%\n15:02\n다크\n홈으로\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n운행 정지\n로봇의 현재 임무 상태를 표시합니다.\n목적지\n목적지 정보 대기\n센서 상태\n3/3 수신\nLiDAR\nDIAG OK\nCamera\nDIAG OK\nRadar\nDIAG OK\n좌표가 확인된 감지 데이터만 표시합니다\n드롭존외관 보기\n현재 미션 경로 수신 대기전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n현재 미션 경로 수신 대기\n현재 경로 지도\n\n드롭존\nB12\nB9\nB7\nB5\nB3\nB1\nB13\nB11\nB10\nB8\nB6\nB4\nB2\n↑ 전방경로 수신 대기\n현재 위치\n데이터 대기\n남은 거리\n—m\n예상 소요\n—분\n경로 진행률\n산출 대기\n유효한 주행 예측 정보가 없습니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC"
+      }
+    }
+  },
+  "webkit_version": [
+    2,
+    50,
+    4
+  ],
+  "mission_before": {
+    "active": false,
+    "generation": 0,
+    "intent": "",
+    "site": "",
+    "service_state_name": "OPERATOR_STOPPED",
+    "phase": "READY",
+    "description": "Stopped by operator"
+  },
+  "last_snapshot": {
+    "status": "ready",
+    "navigation": {
+      "renderedFrames": 61,
+      "motionValid": true,
+      "poseFresh": true,
+      "modelPositionMeters": {
+        "x": -8.492698477769371,
+        "y": 40.28740467933303
+      },
+      "modelYawRad": 1.5845369217479721,
+      "cameraYawRad": 1.5845369217479721,
+      "wheelRollRad": 0,
+      "motionKind": "stationary",
+      "wheels": [
+        {
+          "name": "fl",
+          "steerRad": 0,
+          "rollRad": 0
+        },
+        {
+          "name": "fr",
+          "steerRad": 0,
+          "rollRad": 0
+        },
+        {
+          "name": "rl",
+          "steerRad": 0,
+          "rollRad": 0
+        },
+        {
+          "name": "rr",
+          "steerRad": 0,
+          "rollRad": 0
+        }
+      ],
+      "cameraSideOffsetMeters": 0,
+      "robotProjectedXNdc": -2.104526130549326e-19,
+      "wheelAngleSource": "estimated-from-received-body-pose",
+      "steeringAngleSource": "estimated-from-received-body-pose",
+      "wheelNodes": 4,
+      "metricRobotLength": 1.5638338327407837,
+      "modelScale": [
+        1,
+        1,
+        1
+      ],
+      "routeVertices": 0,
+      "pointCount": 0,
+      "baseMapVertices": 7868,
+      "baseMapVisible": true,
+      "baseMapSource": "/map/markers",
+      "serviceAreaCount": 14,
+      "visibleAreaLabels": 1,
+      "serviceAreaIds": [
+        "camping_site_1",
+        "camping_site_2",
+        "camping_site_3",
+        "camping_site_4",
+        "camping_site_5",
+        "camping_site_6",
+        "camping_site_7",
+        "camping_site_8",
+        "camping_site_9",
+        "camping_site_10",
+        "camping_site_11",
+        "camping_site_12",
+        "camping_site_13",
+        "dz_area_7144"
+      ],
+      "baseMapBoundaryColor": "#1ea65a",
+      "baseMapBoundaryWidthMeters": 0.1,
+      "boundaryVisualMaxDeviationMeters": 0.12,
+      "baseMapBoundaryPaintVertices": 42858,
+      "renderedTriangles": 236160,
+      "cameraMode": "navigation-follow",
+      "detailAngleRad": 0,
+      "detailAngleIndex": 0,
+      "demoEnvironmentVisible": false,
+      "illustrativeEnvironmentVisible": true,
+      "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-CARLA-geometry",
+      "illustratedRoadCount": 54,
+      "illustrativeShrubs": 88,
+      "illustrativeTrees": 28,
+      "cargoPreviewVisible": true,
+      "shelfPreviewVisible": false,
+      "wrapFacesLoaded": [
+        "wrap_left",
+        "wrap_right",
+        "wrap_front",
+        "wrap_rear"
+      ],
+      "visibleObjectLabels": 0,
+      "observedObjectBoxes": 0,
+      "objectVisualCount": 0,
+      "renderCalls": 55,
+      "renderTriangles": 236160,
+      "renderPixelRatio": 1.5
+    },
+    "errors": [],
+    "idleEntry": false,
+    "text": "\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\nWIFI\n80%\n2026년 10월 6일 (화)\n오후 03:02:32\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n자동 주차 · 배터리 35% 기준\n배터리\n임무 가능 · 배터리 80%\n\n실증 운행 현황\n2026. 10. 06. 오후 03:02 기준\n상세 보기 ›\n최근 서비스\n161.8 m\n오늘 누적\n0.0 m\n오늘 완료\n0회\n전체 누적\n862.2 m · 3회\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n\nCAMROD\n월악산 국립공원\n현재 미션\n주행 현황\n연결됨\nGNSS\nDIAG OK\n80%\n15:02\n다크\n홈으로\n현재 속도\n0.0\nkm/h\n로봇 기준 주행 속도\n주행 상태\n운행 정지\n로봇의 현재 임무 상태를 표시합니다.\n목적지\n목적지 정보 대기\n센서 상태\n3/3 수신\nLiDAR\nDIAG OK\nCamera\nDIAG OK\nRadar\nDIAG OK\n좌표가 확인된 감지 데이터만 표시합니다\n드롭존외관 보기\n현재 미션 경로 수신 대기전방 인지 수신 대기\n수신 Lanelet 지도 · 경로 대기 · 도로 폭·주변은 예시 (실제 지형 아님)\n다음 이동 안내\n경로 안내 대기\n현재 미션 경로 수신 대기\n현재 경로 지도\n\n드롭존\nB12\nB9\nB7\nB5\nB3\nB1\nB13\nB11\nB10\nB8\nB6\nB4\nB2\n↑ 전방경로 수신 대기\n현재 위치\n데이터 대기\n남은 거리\n—m\n예상 소요\n—분\n경로 진행률\n산출 대기\n유효한 주행 예측 정보가 없습니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC"
+  },
+  "reload_document_finished": 2,
+  "passed": true
+}

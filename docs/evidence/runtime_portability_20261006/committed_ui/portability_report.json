@@ -1,0 +1,693 @@
+{
+  "evidence_type": "committed_source_isolated_synthetic_ui_preview",
+  "real_driving": false,
+  "source_commit": "0387c56682bc6c1095556547a46b4ea11063e3ab",
+  "source_origin": "git archive 0387c5668 camrod_ui, no existing build or public tree copied",
+  "workspace": "/tmp/camrod-committed-ui.BRJDk4/workspace",
+  "node": "v18.20.8",
+  "npm": "10.8.2",
+  "browser_flags": [
+    "--headless=new",
+    "--no-sandbox",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader"
+  ],
+  "commands": [
+    "npm ci --prefer-offline --no-audit --no-fund",
+    "npm run build"
+  ],
+  "assets": [
+    {
+      "path": "B10_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6445783,
+      "sha256": "aa9b1676c16312b725fd0728d052e63e0ef84f9ece85f5e9314a11f8f6c9737f",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B11_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6556884,
+      "sha256": "f04b02e938464d15034785cc5cc265baf92934d93825bfca017bb94f7ccbc1d7",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B12_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6597377,
+      "sha256": "a75d56c055059fd9ee06448b979346c04a62ed4605140c93f96cbfce66401b0e",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B13_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6128926,
+      "sha256": "371b887ac07279d636fe96e064206ac23b256e76572f886d2a3c1be362d37b81",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B1_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 5153608,
+      "sha256": "1fb175cb39a0e0deb1833abfdb7eeec15b6d11f22151642ca94338c5f8ec9ea4",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B2_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 5448562,
+      "sha256": "140e0c12933027daa6014d1ebfc14e0b3b5a2ac8a7a6dfcf80023b9d591d3e95",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B3_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 5580995,
+      "sha256": "0c8a77699669cc3ac1d693fd8ac62e8ab79116ccf09b3b8ebd72653eaa84a9d4",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B4_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 5515376,
+      "sha256": "799cbc2d6130027af4c1e70ea041e94c9453aba9b3cea244d079f65e3d238820",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B5_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6782763,
+      "sha256": "ea952752ff6cbdb936ed3124e78ca26c5b6a2fd521e5a441a872fcb60b3d72ea",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B6_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6774336,
+      "sha256": "2479f9fcbe0a372b59dc7435223f98bc7d25a22e5165cf1bb291743f945090e6",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B7_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6840659,
+      "sha256": "a30ae133372f3f66910f9a7e4c28aab0d6fd6df8d4d665f91cea927da71b3c54",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B8_site.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6517755,
+      "sha256": "898c32f23890070ab750783d854d0464f82a6c10283cb682bdc3733ae421be3a",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "B9_ste.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 6543868,
+      "sha256": "7fbc022e6bbe2916efd3703fb814ae849c528b7fc27e41c84dc3510bcaf753e1",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "Gemini_Generated_Image_s8ihhfs8ihhfs8ih.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 1361969,
+      "sha256": "d8d7c76b3bde50a345f3ca24fbb6def047c708a2a5677019dfd5d1fc2ad683a2",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "Woraksan_national_park.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 725920,
+      "sha256": "3be976f8ca6920a3a9e51fa8de31705638d0e4def6732c80c0ab695bc9afcecc",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "guide/robot-stop.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 367048,
+      "sha256": "9c4e11fa9ae4d555d62586be1c513f0cd117fb4b51cd245967a2bb840f0aad6a",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "guide/service-selection.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 260889,
+      "sha256": "4c5dd79c29ee113f257971618bf66e7c0486fb76839b5d01ccab6706b3685ad6",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "hiking_trail_nobg.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 464244,
+      "sha256": "b3e9d717aaac8c4d819d0e16871204739811033d0184d355ab2abbc166f429d6",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "information_nobg.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 640787,
+      "sha256": "957387301f0b80913dbbc7d166c15cae0748c8b2b191b0a383133db3e60ab0d2",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/README.md",
+      "http_status": 200,
+      "mime_type": "text/markdown",
+      "bytes": 5821,
+      "sha256": "fce9ca1dcdbd933248be45b0a3e9dd89f88fe5786c37f938338e415e1f1f502f",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/ranger-driving-rear.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 814382,
+      "sha256": "5991b01fd2aa222cba2598adace6356e359d9a51ffc987b0998a00dc8559b2c3",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/ranger-driving-rear.provenance.json",
+      "http_status": 200,
+      "mime_type": "application/json",
+      "bytes": 1475,
+      "sha256": "665c55e94d5ca38ced1e0a0ff2507fe920effc5496e410bca75897eab8115f8e",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/ranger-navigation.glb",
+      "http_status": 200,
+      "mime_type": "model/gltf-binary",
+      "bytes": 5576620,
+      "sha256": "da468915fa41de59955c0d297ccfadb0002248cac8f7f60414a7e731cfa8d202",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/ranger-navigation.provenance.json",
+      "http_status": 200,
+      "mime_type": "application/json",
+      "bytes": 6322,
+      "sha256": "7bfb0ae3a74a2c5397da236d624b65455cd534edb3c78fa0c2a65b704c9c7d50",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/woraksan-front-wrap.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 1399204,
+      "sha256": "1f62c8926278d1022215c002aab60d502631eb862287adb5864858c9f3faa981",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/woraksan-rear-wrap.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 1084559,
+      "sha256": "a2b87a47eead0a16cf2c5692b4df30761ddea033a3834771870e83a706e5a1b3",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/woraksan-side-wrap.README.md",
+      "http_status": 200,
+      "mime_type": "text/markdown",
+      "bytes": 2007,
+      "sha256": "b948af438da887f6f0eed91c6fe69505cb2b6d4c5c022080078d435ab770972f",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/woraksan-side-wrap.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 1987476,
+      "sha256": "ff621d94ff9c0255dfd879d8ecf552582fda6835a001278893147b219cea2a4c",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "models/woraksan-wrap-variants.README.md",
+      "http_status": 200,
+      "mime_type": "text/markdown",
+      "bytes": 2913,
+      "sha256": "aa9f8202c1c4a1327d0255ddfe7f8e4b8ca239c07dd948a6caf932b41942e63a",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "robot_gemini_nobg.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 797883,
+      "sha256": "8cabd29479fa7ba888c5e89e3d3f459f38546323b6ecf9266e66430c3d30e0a9",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "로봇안전안내.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 2105145,
+      "sha256": "13eec052639f838ea946a13abc24ce11ceefa600b54460f408e904f7655dc3b2",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "서비스_선택.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 1010717,
+      "sha256": "2d8c0608d64e4c2eb33e059246b859681955bc9c0763237b9d7ee5a853caaf37",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_국립공원_로고.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 39787,
+      "sha256": "54dd64e923b908e8cff0cc559b91d52eb9c9b874139e4ce757ae71d378ca0f7d",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_덕주산성_1.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 2780908,
+      "sha256": "0490fd4de7af9f85beb1bfebcd4a9a2136969a0eccbb162bd62d4df4862d4b00",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_만수계곡1.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 3095394,
+      "sha256": "6a9e096832b971176e56a6a0503124a35407ca17bd99c8ea6976643cbcbb7be1",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_만수계곡2.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 534294,
+      "sha256": "b04581367fd7efdb1220cb044ae6ec4a41eddef8e773fed78ac96f73a821b76f",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_만수계곡3.jpeg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 329517,
+      "sha256": "9bed22f8cb853e332be83ba332fc6024edbd5bbc5b8c66ed5f6328326ce9d418",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_만수계곡4.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 394329,
+      "sha256": "d9b3d8b985b11d7503b42cff0e0c3732adeca51ef14b980ad2d1ab64d9e76d46",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_만수계곡5.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 177500,
+      "sha256": "dc70ec2609b6136b165593b4ecfe423f995e8b6459b40743ebee84008719b26a",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_A.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 3188004,
+      "sha256": "08dc84225e7918a1e64aa1bcb141ec23585ed552e4a54f5a1c3db21ad2307723",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_B.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 4190538,
+      "sha256": "d6e169e4f0bd4db254bc030f59818365e8d953ff224b984313a7f8a830710dc1",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_C.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 4127048,
+      "sha256": "b180a99022e42619d43e6cb7812f44a265459e583b6047ea7996dfcf66c18d8e",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_D.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 4192949,
+      "sha256": "b59a5068cd483f03f6692a75318d683fcd3d28ce73223a46d8137319d2acd431",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_E.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 4227410,
+      "sha256": "507aae246084d8dad74fff6ed9e8447d32898dc086e6ddd3d1e76a0af9b23706",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_배치도_F.png",
+      "http_status": 200,
+      "mime_type": "image/png",
+      "bytes": 4198925,
+      "sha256": "259c54cf19ec63d1c2bb47ecbceaa4ee67728af3f5940aead1475fb45e94a867",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_북바위산1.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 266097,
+      "sha256": "8cd0e96af80d4166361e09719c67068a2112801416ca70d3449739f942a35055",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_북바위산2.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 340602,
+      "sha256": "a05bf7004923d1ec6e3a8360931e071a8bb51c53b93c7c60250eda7c8979ed8b",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_북바위산3.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 265386,
+      "sha256": "0b8af7f1a783dc20c027da12e110dec5a361345b891d6b58c04bad46366a2a29",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_북바위산4.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 280565,
+      "sha256": "18267f9a8f0fe9b895232541a2c5ff65f19611b27e0519e32e782733284164be",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_송계계곡 산책1.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 4225743,
+      "sha256": "be766bcfc1459e6c96d684e6a703fa60276a6f8895ecb9cbbbf137da94eb3dbf",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_송계계곡 산책2.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 575017,
+      "sha256": "96c1ce2d48789bbbc9cd92d8e1b1b17d13ad9d49b5e671ba911a61a1fd4ee998",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_영봉_코스_동창교_출발2.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 2059357,
+      "sha256": "c663572a4ca9e904b2b0b324a5cae33acf55f1479f8ef81d486e5baff06c7f9f",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_영봉코스_덕주사_출발1.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 228910,
+      "sha256": "0fdbdeaf9f776d930c2efc2303b3590fe7e57091ca5b572b6130a6751486d323",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_영봉코스_덕주사_출발2.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 4363294,
+      "sha256": "fcf1793a21ba26971a07256bf25e1bcaac412033b9090b25005b449fbbacf99a",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_영봉코스_동창교_출발1.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 251190,
+      "sha256": "5a4c7439ae499d672c61f49c9898af64e3a0e701cc48db1d517608b9712047d2",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_하늘재_역사1.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 4590320,
+      "sha256": "ba501c6c4d954855b40ca766501d4b1199ed7a6d5b16fe7aeaa2c458f323d584",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_하늘재_역사2.jpg",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 151975,
+      "sha256": "4d68400c483cae977b18a2b3799128dfd65eb9fd4d486f0c3c9e3b9bacb2fa10",
+      "source_build_http_identical": true
+    },
+    {
+      "path": "월악산_하늘재_역사3.JPG",
+      "http_status": 200,
+      "mime_type": "image/jpeg",
+      "bytes": 768552,
+      "sha256": "3ac44a07f9c1a3c9bdfdada1ecee519402d61b1ecd2293b5550d30761d3cc857",
+      "source_build_http_identical": true
+    }
+  ],
+  "optional_browser_favicon": {
+    "http_status": 404,
+    "present": false,
+    "impact": "Browser tab icon only; no model, wrap, or home artwork missing."
+  },
+  "navigation": {
+    "renderedFrames": 4,
+    "motionValid": true,
+    "poseFresh": true,
+    "modelPositionMeters": {
+      "x": 4.044996664100099,
+      "y": 0
+    },
+    "modelYawRad": 0,
+    "cameraYawRad": 0,
+    "wheelRollRad": -0.29409584379149495,
+    "motionKind": "forward",
+    "wheels": [
+      {
+        "name": "fl",
+        "steerRad": 0,
+        "rollRad": -0.29409584379149495
+      },
+      {
+        "name": "fr",
+        "steerRad": 0,
+        "rollRad": -0.29409584379149495
+      },
+      {
+        "name": "rl",
+        "steerRad": 0,
+        "rollRad": -0.29409584379149495
+      },
+      {
+        "name": "rr",
+        "steerRad": 0,
+        "rollRad": -0.29409584379149495
+      }
+    ],
+    "cameraSideOffsetMeters": 0,
+    "robotProjectedXNdc": -1.0334813669325217e-17,
+    "wheelAngleSource": "estimated-from-received-body-pose",
+    "steeringAngleSource": "estimated-from-received-body-pose",
+    "wheelNodes": 4,
+    "metricRobotLength": 1.5638338327407837,
+    "modelScale": [
+      1,
+      1,
+      1
+    ],
+    "routeVertices": 621,
+    "pointCount": 0,
+    "baseMapVertices": 256,
+    "baseMapVisible": true,
+    "baseMapSource": "/map/markers",
+    "serviceAreaCount": 0,
+    "visibleAreaLabels": 0,
+    "serviceAreaIds": [],
+    "baseMapBoundaryColor": "#1ea65a",
+    "baseMapBoundaryWidthMeters": 0.1,
+    "boundaryVisualMaxDeviationMeters": 0.12,
+    "baseMapBoundaryPaintVertices": 1236,
+    "renderedTriangles": 129324,
+    "cameraMode": "navigation-follow",
+    "detailAngleRad": 0,
+    "detailAngleIndex": 0,
+    "demoEnvironmentVisible": true,
+    "illustrativeEnvironmentVisible": true,
+    "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-physical-geometry",
+    "illustratedRoadCount": 1,
+    "illustrativeShrubs": 10,
+    "illustrativeTrees": 2,
+    "cargoPreviewVisible": true,
+    "shelfPreviewVisible": false,
+    "wrapFacesLoaded": [
+      "wrap_front",
+      "wrap_left",
+      "wrap_right",
+      "wrap_rear"
+    ],
+    "visibleObjectLabels": 3,
+    "observedObjectBoxes": 2,
+    "objectVisualCount": 3,
+    "renderCalls": 71,
+    "renderTriangles": 129324,
+    "renderPixelRatio": 1
+  },
+  "model_status": "ready",
+  "visible_text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n4륜 표시 시연 선택\n시연: 제자리 좌회전\n시연: 제자리 우회전\n시연: 왼쪽 크랩\n시연: 오른쪽 크랩\n시연: 후진\n다크 모드\n시연 애니메이션 정지\nCAMROD\n월악산 국립공원\n현재 미션\n배달 서비스\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n14:31\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\n\nB7 사이트로 이동하고 있습니다.\n\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n\n시연 감지 데이터 표시\n\nperson\n6.6 m\n시연 크기 0.55 × 0.65 × 1.70 m\ncar\n11.1 m\n시연 크기 4.20 × 1.80 × 1.50 m\n미분류\n15.8 m\n크기 미확인 · 분류 아이콘\n외관 보기\n시연 경로\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 6m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n31m\n예상 소요\n34초\n경로 진행률\n1%\n\n수신한 경로 기반 추정치입니다\n\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC",
+  "rendered_images": [
+    {
+      "src": "http://127.0.0.1:8030/%EC%9B%94%EC%95%85%EC%82%B0_%EA%B5%AD%EB%A6%BD%EA%B3%B5%EC%9B%90_%EB%A1%9C%EA%B3%A0.jpg",
+      "complete": true,
+      "width": 567,
+      "height": 422
+    },
+    {
+      "src": "http://127.0.0.1:8030/%EC%9B%94%EC%95%85%EC%82%B0_%EA%B5%AD%EB%A6%BD%EA%B3%B5%EC%9B%90_%EB%A1%9C%EA%B3%A0.jpg",
+      "complete": true,
+      "width": 567,
+      "height": 422
+    },
+    {
+      "src": "http://127.0.0.1:8030/B7_site.jpg",
+      "complete": true,
+      "width": 4000,
+      "height": 2252
+    }
+  ],
+  "webgl": {
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "javascript_assets": [
+    "http://127.0.0.1:8030/static/js/main.73f3317d.js"
+  ],
+  "detail_views": [
+    {
+      "filename": "detail_view_0.png",
+      "angle": 0,
+      "wrap_faces": [
+        "wrap_front",
+        "wrap_left",
+        "wrap_right",
+        "wrap_rear"
+      ]
+    },
+    {
+      "filename": "detail_view_1.png",
+      "angle": 1,
+      "wrap_faces": [
+        "wrap_front",
+        "wrap_left",
+        "wrap_right",
+        "wrap_rear"
+      ]
+    },
+    {
+      "filename": "detail_view_2.png",
+      "angle": 2,
+      "wrap_faces": [
+        "wrap_front",
+        "wrap_left",
+        "wrap_right",
+        "wrap_rear"
+      ]
+    },
+    {
+      "filename": "detail_view_3.png",
+      "angle": 3,
+      "wrap_faces": [
+        "wrap_front",
+        "wrap_left",
+        "wrap_right",
+        "wrap_rear"
+      ]
+    }
+  ],
+  "existing_home_text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n4륜 표시 시연 선택\n시연: 제자리 좌회전\n시연: 제자리 우회전\n시연: 왼쪽 크랩\n시연: 오른쪽 크랩\n시연: 후진\n다크 모드\n시연 애니메이션 정지\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n주행 지도 보기\nWIFI\n82%\n2026년 10월 6일 화\n오후 02:31:45\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n대기·충전 장소 주차 완료\n배터리\n임무 가능 · 배터리 82%\n실증 운행 현황\n기록 없음\n상세 보기 ›\n최근 서비스\n기록 없음\n오늘 누적\n기록 없음\n오늘 완료\n기록 없음\n전체 누적\n기록 없음\n서비스 선택\n로봇 이용 방법\n시설 안내\n탐방로",
+  "existing_home_images": [
+    {
+      "src": "http://127.0.0.1:8030/%EC%9B%94%EC%95%85%EC%82%B0_%EA%B5%AD%EB%A6%BD%EA%B3%B5%EC%9B%90_%EB%A1%9C%EA%B3%A0.jpg",
+      "complete": true,
+      "width": 567
+    },
+    {
+      "src": "http://127.0.0.1:8030/%EC%84%9C%EB%B9%84%EC%8A%A4_%EC%84%A0%ED%83%9D.png",
+      "complete": true,
+      "width": 1254
+    },
+    {
+      "src": "http://127.0.0.1:8030/robot_gemini_nobg.png",
+      "complete": true,
+      "width": 1117
+    },
+    {
+      "src": "http://127.0.0.1:8030/information_nobg.png",
+      "complete": true,
+      "width": 1117
+    },
+    {
+      "src": "http://127.0.0.1:8030/hiking_trail_nobg.png",
+      "complete": true,
+      "width": 1117
+    }
+  ],
+  "http_errors": [],
+  "failed_requests": [],
+  "runtime_errors": [],
+  "console_errors": [],
+  "browser_logs": [
+    {
+      "entry": {
+        "source": "network",
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+        "timestamp": 1791264630069.629,
+        "url": "http://127.0.0.1:8030/favicon.ico",
+        "networkRequestId": "1145647.129"
+      }
+    }
+  ],
+  "websockets": [],
+  "control_or_api_requests": [],
+  "checks_passed": true,
+  "all_optional_browser_assets_available": false,
+  "checks_scope": "Required published assets, navigation rendering, home imagery, and no control/API traffic; optional favicon omission separately recorded."
+}

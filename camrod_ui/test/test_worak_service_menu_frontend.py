@@ -19,6 +19,15 @@ def replay(script):
                     SOURCE.index("// HH_260904 - Re-dock events")]
     start = SOURCE.index("const emptyBatteryReturnState =")
     prefix += SOURCE[start:SOURCE.index("function WaitingRuntimeStatusPanel(", start)]
+    # HH_261006 - Include the real imported reducer used by virtual's callback;
+    # pure CAMROD has no resume import and continues through the same fixture.
+    if re.search(r"import .*\bmanualResumeFromSnapshot\b", SOURCE):
+        resume_source = (Path(__file__).resolve().parents[1]
+                         / "camrod_ui_robot/assets/frontend/src/ManualMissionResume.js").read_text(encoding="utf-8")
+        prefix += resume_source[
+            resume_source.index("export function manualResumeFromSnapshot("):
+            resume_source.index("export default function ManualMissionResume(")
+        ].replace("export function", "function", 1)
     start = SOURCE.index("ws.onmessage = (event) => {")
     handler = SOURCE[start:SOURCE.index("// HH_260708 - Reconnect the operator WebSocket", start)]
     start = SOURCE.index("const handleWaitingClick = () => {")

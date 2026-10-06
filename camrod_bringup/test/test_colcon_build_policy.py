@@ -148,6 +148,31 @@ def test_ui_frontend_build_scope_honors_packages_up_to_dependency_closure() -> N
     )
 
 
+def test_ui_scope_uses_colcon_regex_and_dependency_filters() -> None:
+    # HH_261006 - These selectors select package graphs, not literal names.
+    assert _scope_includes("camrod_ui", "--packages-up-to-regex", "^camrod_bringup$")
+    assert _scope_includes("camrod_ui", "--packages-select-regex", "^camrod_ui$")
+    assert not _scope_includes("camrod_ui", "--packages-skip-regex", "^camrod_ui$")
+    assert _scope_includes("camrod_ui", "--packages-above-and-dependencies", "camrod_ui")
+    assert not _scope_includes("camrod_ui", "--packages-skip-up-to", "camrod_bringup")
+
+
+def test_ui_scope_query_errors_are_not_silent_exclusion() -> None:
+    source = BUILD_WRAPPER.read_text(encoding="utf-8")
+    function = _function_source(source, "_build_scope_includes_pkg")
+    script = f"""
+SRC_ROOT={str(SRC_ROOT)!r}
+colcon() {{ return 42; }}
+{function}
+_build_scope_includes_pkg camrod_ui --packages-up-to camrod_bringup
+"""
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "cannot resolve package selection" in result.stderr
+    preflight = source.index("unset CAMROD_UI_BUILD_SCOPE")
+    assert preflight < source.index('_clean_stale_install_artifacts "$@"')
+
+
 def test_ui_frontend_install_verification_is_content_and_freshness_closed() -> None:
     source = BUILD_WRAPPER.read_text(encoding="utf-8")
     fingerprint = _function_source(

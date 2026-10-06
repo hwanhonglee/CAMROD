@@ -1,0 +1,40 @@
+{
+  "evidence_type": "actual_operator_ui_window_function_with_synthetic_preview",
+  "real_driving": false,
+  "mode": "default_webgl_disabled",
+  "production_source_modified": false,
+  "url": "http://127.0.0.1:8010/?driving_preview=1",
+  "webkit_version": [
+    2,
+    50,
+    4
+  ],
+  "observed": {
+    "model_status": "webgl-unavailable",
+    "navigation": {},
+    "webgl2_available": false,
+    "errors": [
+      "THREE.WebGLRenderer: Error creating WebGL context."
+    ],
+    "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\nCAMROD\n월악산 국립공원\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n14:39\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\nB7 사이트로 이동하고 있습니다.\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n시연 감지 데이터 표시\n외관 보기\n시연 경로\n3D\n이 환경에서 3D 렌더링을 사용할 수 없습니다\n정적 이미지로 대체하지 않습니다\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 5m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n31m\n예상 소요\n34초\n경로 진행률\n3%\n수신한 경로 기반 추정치입니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n",
+    "images": [
+      {
+        "src": "http://127.0.0.1:8010/%EC%9B%94%EC%95%85%EC%82%B0_%EA%B5%AD%EB%A6%BD%EA%B3%B5%EC%9B%90_%EB%A1%9C%EA%B3%A0.jpg",
+        "width": 567,
+        "complete": true
+      },
+      {
+        "src": "http://127.0.0.1:8010/%EC%9B%94%EC%95%85%EC%82%B0_%EA%B5%AD%EB%A6%BD%EA%B3%B5%EC%9B%90_%EB%A1%9C%EA%B3%A0.jpg",
+        "width": 567,
+        "complete": true
+      },
+      {
+        "src": "http://127.0.0.1:8010/B7_site.jpg",
+        "width": 4000,
+        "complete": true
+      }
+    ]
+  },
+  "settings_enable_webgl": false,
+  "production_requested_webgl": false
+}

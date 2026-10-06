@@ -1,0 +1,212 @@
+{
+  "started": "2026-10-06T15:22:07.510750+09:00",
+  "architecture": "x86_64",
+  "cpu_logical": 12,
+  "cpu_units": "100 percent = one logical CPU",
+  "phases": [
+    {
+      "label": "closed_before",
+      "elapsed_s": 20.034004332963377,
+      "host_cpu_percent_all_cores": 42.6,
+      "containers": {
+        "1": {
+          "pid": 1186562,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_1_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 55.006477071925175,
+          "rss_mib_mean": 244.66233995225696,
+          "threads": 35,
+          "counts": {
+            "detected": 190,
+            "true": 0,
+            "jpeg": 0
+          },
+          "output_hz": 9.48387535722848,
+          "jpeg_hz": 0.0,
+          "cpu_ms_per_processed_image": 57.99999999999998
+        },
+        "2": {
+          "pid": 1186564,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_2_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 30.24857087621292,
+          "rss_mib_mean": 143.90523952907986,
+          "threads": 35,
+          "counts": {
+            "detected": 190,
+            "true": 0,
+            "jpeg": 0
+          },
+          "output_hz": 9.48387535722848,
+          "jpeg_hz": 0.0,
+          "cpu_ms_per_processed_image": 31.89473684210524
+        }
+      }
+    },
+    {
+      "label": "debug_open",
+      "elapsed_s": 20.029742474202067,
+      "host_cpu_percent_all_cores": 45.7,
+      "containers": {
+        "1": {
+          "pid": 1186562,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_1_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 69.5465756384116,
+          "rss_mib_mean": 245.31948390151516,
+          "threads": 35,
+          "counts": {
+            "detected": 190,
+            "true": 0,
+            "jpeg": 190
+          },
+          "output_hz": 9.485893303157365,
+          "jpeg_hz": 9.485893303157365,
+          "cpu_ms_per_processed_image": 73.31578947368418
+        },
+        "2": {
+          "pid": 1186564,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_2_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 45.28265908401966,
+          "rss_mib_mean": 142.50625326541274,
+          "threads": 35,
+          "counts": {
+            "detected": 190,
+            "true": 0,
+            "jpeg": 190
+          },
+          "output_hz": 9.485893303157365,
+          "jpeg_hz": 9.485893303157365,
+          "cpu_ms_per_processed_image": 47.73684210526319
+        }
+      }
+    },
+    {
+      "label": "closed_after",
+      "elapsed_s": 20.010780091863126,
+      "host_cpu_percent_all_cores": 42.4,
+      "containers": {
+        "1": {
+          "pid": 1186562,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_1_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 55.769939746316666,
+          "rss_mib_mean": 245.38650667688268,
+          "threads": 35,
+          "counts": {
+            "detected": 190,
+            "true": 0,
+            "jpeg": 0
+          },
+          "output_hz": 9.494882214874705,
+          "jpeg_hz": 0.0,
+          "cpu_ms_per_processed_image": 58.736842105263136
+        },
+        "2": {
+          "pid": 1186564,
+          "cmdline": [
+            "/home/hong/camrod_ws/install/camrod_runtime/lib/camrod_runtime/scoped_component_container_mt",
+            "--ros-args",
+            "-r",
+            "__node:=rear_perf_decimate_2_container",
+            "-r",
+            "__ns:=/"
+          ],
+          "cpu_percent": 30.333650023310206,
+          "rss_mib_mean": 150.25989218476357,
+          "threads": 35,
+          "counts": {
+            "detected": 189,
+            "true": 0,
+            "jpeg": 0
+          },
+          "output_hz": 9.444909150585891,
+          "jpeg_hz": 0.0,
+          "cpu_ms_per_processed_image": 32.11640211640208
+        }
+      }
+    }
+  ],
+  "component": {
+    "path": "/home/hong/camrod_ws/build/camrod_perception/libapriltag_parking_detector_component.so",
+    "sha256": "6250bc8dadcf202169c4c07cbae1fdf120a8551aa72091a9e3a7e9f64dab582c"
+  },
+  "git_head": "662ccb1dfd6ee065f779f60924d5a4792836e7da",
+  "input": {
+    "first": {
+      "time": 3461941.45711405,
+      "width": 960,
+      "height": 720,
+      "encoding": "bgra8"
+    },
+    "last": {
+      "time": 3461946.486571027,
+      "width": 960,
+      "height": 720,
+      "encoding": "bgra8"
+    },
+    "count": 49,
+    "wall_hz": 9.543773854991604
+  },
+  "parameters": {
+    "1": {
+      "quad_decimate": 1.0,
+      "n_threads": 2,
+      "roi_full_search_interval": 30,
+      "roi_scale": 3.0,
+      "debug_jpeg_quality": 80,
+      "publish_debug_image": true,
+      "image_topic": "/carla/ego_vehicle/rgb_rear/image",
+      "camera_info_topic": "/carla/ego_vehicle/rgb_rear/camera_info",
+      "target_tag_id": 3,
+      "tag_size": 0.16,
+      "tag_family": "tag36h11",
+      "publish_tf": false
+    },
+    "2": {
+      "quad_decimate": 2.0,
+      "n_threads": 2,
+      "roi_full_search_interval": 30,
+      "roi_scale": 3.0,
+      "debug_jpeg_quality": 80,
+      "publish_debug_image": true,
+      "image_topic": "/carla/ego_vehicle/rgb_rear/image",
+      "camera_info_topic": "/carla/ego_vehicle/rgb_rear/camera_info",
+      "target_tag_id": 3,
+      "tag_size": 0.16,
+      "tag_family": "tag36h11",
+      "publish_tf": false
+    }
+  }
+}

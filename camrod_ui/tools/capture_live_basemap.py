@@ -27,7 +27,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     snapshot = fetch(args.url.rstrip("/") + "/api/driving")
-    if snapshot["mission"]["active"]:
+    control = fetch(args.url.rstrip("/") + "/ui/state")
+    if snapshot["mission"]["active"] or control.get("engaged"):
         raise RuntimeError("Refusing to reload UI during an active mission")
     page = next(item for item in fetch(f"http://127.0.0.1:{args.debug_port}/json")
                 if item.get("type") == "page" and item.get("url") == args.url)
@@ -35,24 +36,27 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     def click(selector):
-        location = client.evaluate("""(() => {
+        # HH_261002 - Use the scoped read-only control directly; a display resize
+        # between coordinate lookup and pointer injection must not dismiss it.
+        clicked = client.evaluate("""(() => {
           const el = document.querySelector(%s); if (!el) return null;
-          const r = el.getBoundingClientRect();
-          return {x:r.x+r.width/2,y:r.y+r.height/2};
+          el.click(); return true;
         })()""" % json.dumps(selector))
-        if location is None:
+        if not clicked:
             raise RuntimeError(f"Missing read-only UI control: {selector}")
-        for event in ("mousePressed", "mouseReleased"):
-            client.call("Input.dispatchMouseEvent", {"type": event, **location,
-                        "button": "left", "clickCount": 1})
 
     def state():
         return client.evaluate("JSON.parse(document.querySelector('canvas[data-navigation-state]')"
                                "?.dataset.navigationState || 'null')")
 
     try:
+        if client.evaluate("document.querySelector('[data-ui=manual-drive-panel]')?.dataset.armed") == 'true':
+            raise RuntimeError("Refusing to reload UI during manual control")
+        client.call("Runtime.discardConsoleEntries")
+        client.call("Runtime.enable")
         client.call("Network.enable")
         client.call("Page.reload", {"ignoreCache": True})
+        client.call("Page.bringToFront")
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if client.evaluate("Boolean(document.querySelector('[data-ui=open-idle-navigation-map]'))"):
@@ -79,6 +83,15 @@ def main():
                   "autonomous_driving_test": False, "mission_before": snapshot["mission"],
                   "normal_view": state(), "url": args.url,
                   "scripts": client.evaluate("Array.from(document.scripts).map(s=>s.src).filter(Boolean)")}
+        # HH_261002 - Prove every configured polygon/name reaches both map layers.
+        area_ids = sorted(area['id'] for area in snapshot.get('base_map', {}).get('areas', []))
+        report['configured_area_ids'] = area_ids
+        report['minimap_area_ids'] = client.evaluate(
+            "[...document.querySelectorAll('[data-testid=driving-map-area]')].map(e=>e.dataset.areaId).sort()")
+        report['minimap_area_labels'] = client.evaluate(
+            "[...document.querySelectorAll('[data-testid=driving-map-area-label]')].map(e=>e.textContent)")
+        assert report['minimap_area_ids'] == area_ids
+        assert sorted(current.get('serviceAreaIds', [])) == area_ids
         with tempfile.TemporaryDirectory(prefix="camrod-basemap-capture-") as temp:
             for index in range(24):
                 if index in (4, 14):
@@ -95,10 +108,14 @@ def main():
                 "-loop", "0", str(args.output / "idle_filled_roads_camera_views.gif"),
             ], check=True)
         report["normal_view_final"] = state()
+        assert report['normal_view_final']['cameraMode'] == 'navigation-follow'
         report["mission_after"] = fetch(args.url.rstrip("/") + "/api/driving")["mission"]
         report["mutating_http_requests"] = [event["params"]["request"]["url"]
             for event in client.events if event.get("method") == "Network.requestWillBeSent"
             and event["params"]["request"]["method"] in {"POST", "PUT", "PATCH", "DELETE"}]
+        report['runtime_exceptions'] = [event['params'] for event in client.events
+            if event.get('method') == 'Runtime.exceptionThrown']
+        assert not report['mutating_http_requests'] and not report['runtime_exceptions']
         (args.output / "idle_filled_roads_capture.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=2))
