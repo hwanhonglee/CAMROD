@@ -6,6 +6,8 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -989,15 +991,34 @@ process.stdout.write(JSON.stringify({robot, guest, urgent}));
         self.assertIn("evidence-trip-more", self.service_evidence_source)
 
     def test_frontend_entry_document_is_never_served_from_stale_cache(self) -> None:
+        # HH_261006 - The serving policy moved into a ROS-independent helper;
+        # validate real responses plus backend wiring rather than old local names.
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        sys.path.insert(0, str(UI_BACKEND_SOURCE.parents[1]))
+        from camrod_ui.frontend_serving import register_frontend_routes
+
         self.assertIn(
-            '"Cache-Control": "no-store, no-cache, must-revalidate"',
+            "register_frontend_routes(app, node._resolve_frontend_dir())",
             self.backend_source,
         )
-        self.assertIn("if real == index_real", self.backend_source)
-        self.assertIn(
-            "return FileResponse(str(index_real), headers=no_store_headers)",
-            self.backend_source,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "index.html").write_text("<!doctype html><title>CAMROD</title>")
+            (root / "static").mkdir()
+            (root / "static/main.hash.js").write_text("/* hashed bundle */")
+            app = FastAPI()
+            register_frontend_routes(app, root)
+            client = TestClient(app)
+            for path in ("/", "/index.html", "/navigation"):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.headers["cache-control"], "no-store, no-cache, must-revalidate")
+                    self.assertEqual(response.headers["pragma"], "no-cache")
+                    self.assertIn("text/html", response.headers["content-type"])
+            self.assertIn("immutable", client.get("/static/main.hash.js").headers["cache-control"])
 
     def test_evidence_modal_merges_live_summary_into_bounded_history(self) -> None:
         self.assertIn("...detailData", self.service_evidence_source)

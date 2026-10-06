@@ -1,8 +1,48 @@
 import os
+from pathlib import Path
+import runpy
 # HJ_260601: Added ui_guest_node entry point and guest_frontend assets.
 from setuptools import find_packages, setup
+from setuptools.command.build_py import build_py
+from setuptools.command.develop import develop
+from setuptools.command.install import install
+from distutils.errors import DistutilsSetupError
 
 package_name = "camrod_ui"
+
+
+def _verify_frontend_for_install():
+    # HH_261006 - Fail actual build/install commands when a direct colcon call
+    # would package a missing model or absent React build. Keep metadata-only
+    # discovery (including colcon list on a fresh clone) side-effect free.
+    root = Path(__file__).resolve().parent
+    frontend = root / "camrod_ui_robot/assets/frontend"
+    verifier = runpy.run_path(str(root / "scripts/verify_frontend_assets.py"))
+    try:
+        verifier["verify_assets"](frontend, frontend / "build")
+    except (OSError, ValueError) as exc:
+        raise DistutilsSetupError(
+            f"CAMROD UI assets are incomplete: {exc}. "
+            "Build using ./colcon_build.sh --packages-select camrod_ui first."
+        ) from exc
+
+
+class VerifiedBuildPy(build_py):
+    def run(self):
+        _verify_frontend_for_install()
+        super().run()
+
+
+class VerifiedDevelop(develop):
+    def run(self):
+        _verify_frontend_for_install()
+        super().run()
+
+
+class VerifiedInstall(install):
+    def run(self):
+        _verify_frontend_for_install()
+        super().run()
 
 
 def _collect_data_files(src_dir: str, dst_base: str):
@@ -21,6 +61,7 @@ def _collect_data_files(src_dir: str, dst_base: str):
 setup(
     name=package_name,
     version="0.0.1",
+    cmdclass={"build_py": VerifiedBuildPy, "develop": VerifiedDevelop, "install": VerifiedInstall},
     packages=find_packages(where="runtime/python"),
     package_dir={"": "runtime/python"},
     data_files=[

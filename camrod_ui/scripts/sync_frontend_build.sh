@@ -86,6 +86,11 @@ if [[ ! -s "$SRC/index.html" || ! -d "$SRC/static" ]]; then
   exit 1
 fi
 
+# HH_261006 - Validate all model/image bytes before publishing any file, so an
+# incomplete copied build cannot replace a working navigation screen.
+python3 "$(dirname "${BASH_SOURCE[0]}")/verify_frontend_assets.py" \
+  --frontend "$FRONTEND_DIR" --build "$SRC"
+
 # HH_261002 - A staged build updates the source build as another publication
 # target; failed compilation never reaches this point or touches served files.
 if [[ "$(realpath "$SRC")" != "$(realpath -m "$FRONTEND_DIR/build")" ]]; then

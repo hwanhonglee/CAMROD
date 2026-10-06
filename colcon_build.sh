@@ -137,42 +137,48 @@ cd "${WS_ROOT}"
 # HH_260616 - Scope-aware cleanup for generated artifacts. Package-selected builds
 # must not delete artifacts owned by packages that are not being rebuilt.
 _build_scope_includes_pkg() {
-  local pkg="$1" token
+  local pkg="$1" token selected
   shift
-  # HH_260702 - Colcon selectors accept multiple package names after one option.
-  # Keep scanning selector arguments until the next option so camrod_ui is
-  # recognized even when it is not the first package in --packages-select.
-  local in_selector=0
-  local in_skip_selector=0
-  local saw_selector=0
-  local matched_selector=0
+  # HH_261006 - Resolve every selector with colcon's graph, including regex,
+  # dependency and build-result filters. Cache UI selection before cleanup so
+  # deleting a build directory cannot change a state-dependent selection later.
+  if [[ "${pkg}" == camrod_ui && -n "${CAMROD_UI_BUILD_SCOPE:-}" ]]; then
+    return "${CAMROD_UI_BUILD_SCOPE}"
+  fi
+  local collecting=0
+  local selection_args=()
   for token in "$@"; do
     case "${token}" in
-      --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
-        saw_selector=1
-        in_selector=1
-        in_skip_selector=0
-        continue
-        ;;
-      --packages-skip)
-        in_selector=0
-        in_skip_selector=1
+      --packages-*|--base-paths|--base-paths=*|--paths|--paths=*|--metas|--metas=*|--build-base|--build-base=*|--ignore-user-meta)
+        selection_args+=("${token}")
+        collecting=1
         continue
         ;;
       --*)
-        in_selector=0
-        in_skip_selector=0
+        collecting=0
         ;;
     esac
-    if [[ "${in_skip_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
-      return 1
-    fi
-    if [[ "${in_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
-      matched_selector=1
-    fi
+    [[ "${collecting}" -eq 0 ]] || selection_args+=("${token}")
   done
-  [[ "${saw_selector}" -eq 0 || "${matched_selector}" -eq 1 ]]
+  if ! selected="$(colcon list --base-paths "${SRC_ROOT}" \
+      --build-base "${SRC_ROOT}/../build" "${selection_args[@]}" --names-only)"; then
+    echo "[colcon_build] ERROR: cannot resolve package selection; refusing to skip UI preparation" >&2
+    return 2
+  fi
+  while IFS= read -r token; do
+    [[ "${token}" != "${pkg}" ]] || return 0
+  done <<< "${selected}"
+  return 1
 }
+
+# HH_261006 - A failed graph query is an error, not an excluded UI package.
+unset CAMROD_UI_BUILD_SCOPE
+if _build_scope_includes_pkg camrod_ui "$@"; then
+  CAMROD_UI_BUILD_SCOPE=0
+else
+  CAMROD_UI_BUILD_SCOPE=$?
+  [[ "${CAMROD_UI_BUILD_SCOPE}" -eq 1 ]] || exit "${CAMROD_UI_BUILD_SCOPE}"
+fi
 
 # HH_260611 - Remove stale per-package CMake build directories whose cached source
 # path no longer exists. This handles external repo moves without requiring a full
@@ -197,8 +203,21 @@ _clean_stale_cmake_build_dirs
 # next rebuild, leaving the robot UI launch missing from install.
 _clean_stale_install_artifacts() {
   if _build_scope_includes_pkg camrod_ui "$@"; then
-    rm -rf "${WS_ROOT}/build/camrod_ui" "${WS_ROOT}/install/camrod_ui"
-    log "removed camrod_ui build/install prefixes for a clean UI reinstall"
+    local token preserve_selection_state=0
+    for token in "$@"; do
+      case "${token}" in
+        --packages-select-build-failed|--packages-skip-build-finished|--packages-select-test-failures|--packages-skip-test-passed)
+          preserve_selection_state=1 ;;
+      esac
+    done
+    # HH_261006 - Colcon evaluates status selectors again during build. Keep
+    # their result files intact or deleting the build prefix changes scope.
+    if [[ "${preserve_selection_state}" -eq 1 ]]; then
+      log "preserving UI build/install prefixes for state-dependent selection"
+    else
+      rm -rf "${WS_ROOT}/build/camrod_ui" "${WS_ROOT}/install/camrod_ui"
+      log "removed camrod_ui build/install prefixes for a clean UI reinstall"
+    fi
   fi
 
   # HH_260611 - Remove stale isolated install prefixes for packages that are no
@@ -234,7 +253,8 @@ _build_camrod_ui_frontend() {
   _build_scope_includes_pkg camrod_ui "$@" || return 0
 
   local frontend_dir="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend"
-  [[ -f "${frontend_dir}/package.json" ]] || { log "camrod_ui frontend not found, skip npm build"; return 0; }
+  # HH_261006 - An explicitly selected UI package must not silently skip assets.
+  [[ -f "${frontend_dir}/package.json" ]] || { log "ERROR: selected camrod_ui frontend is missing" >&2; return 1; }
 
   if ! command -v npm >/dev/null 2>&1; then
     log "ERROR: npm not found but camrod_ui requires a frontend build (install Node.js/npm)" >&2
@@ -301,6 +321,12 @@ _verify_camrod_ui_frontend_install() {
     log "ERROR: frontend install mismatch (source=${source_bundle:-missing}, install=${installed_bundle:-missing})" >&2
     return 1
   fi
+  # HH_261006 - A valid JS bundle alone does not prove that the robot and its
+  # livery/images were installed. Compare every public asset byte-for-byte.
+  python3 "${SRC_ROOT}/camrod_ui/scripts/verify_frontend_assets.py" \
+    --frontend "${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend" \
+    --build "${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend/build" \
+    --installed "${WS_ROOT}/install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build"
   log "camrod_ui frontend verified: ${installed_bundle}"
 }
 

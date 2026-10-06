@@ -14,9 +14,18 @@ def fixture_workspace(tmp_path):
     package = workspace / "src/camrod_ui"
     scripts = package / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("build_frontend.sh", "sync_frontend_build.sh"):
+    for name in ("build_frontend.sh", "sync_frontend_build.sh", "verify_frontend_assets.py"):
         shutil.copy2(SCRIPTS / name, scripts / name)
     frontend = package / "camrod_ui_robot/assets/frontend"
+    # HH_261006 - Every publication fixture includes the portable navigation
+    # assets; an index alone must no longer qualify as a complete UI build.
+    models = frontend / "public/models"
+    models.mkdir(parents=True)
+    for name in (
+        "ranger-navigation.glb", "woraksan-side-wrap.png",
+        "woraksan-front-wrap.png", "woraksan-rear-wrap.png", "ranger-driving-rear.png",
+    ):
+        (models / name).write_bytes(b"test-asset")
     source = frontend / "build"
     installed = workspace / "install/camrod_ui/share/camrod_ui/camrod_ui_robot/assets/frontend/build"
     for directory in (source, installed):
@@ -29,12 +38,13 @@ def fixture_workspace(tmp_path):
 
 
 def test_staged_publication_preserves_images_and_old_open_tabs(tmp_path):
-    scripts, _, source, installed = fixture_workspace(tmp_path)
+    scripts, frontend, source, installed = fixture_workspace(tmp_path)
     stage = tmp_path / "stage"
     (stage / "static/js").mkdir(parents=True)
     (stage / "index.html").write_text('<script src="/static/js/main.new.js"></script>')
     (stage / "static/js/main.new.js").write_text("new-bundle")
     (stage / "photo.png").write_bytes(b"complete-new-image")
+    shutil.copytree(frontend / "public/models", stage / "models")
     result = subprocess.run(
         ["bash", str(scripts / "sync_frontend_build.sh")],
         env={**os.environ, "CAMROD_FRONTEND_BUILD_SOURCE": str(stage)},
@@ -72,3 +82,22 @@ def test_compilation_uses_temporary_output_before_publication():
     assert source.index('BUILD_PATH="${build_stage}" node ') < source.index(
         'CAMROD_FRONTEND_BUILD_SOURCE="${build_stage}" bash ')
     assert "set -euo pipefail" in source
+
+
+def test_missing_model_never_replaces_running_frontend(tmp_path):
+    scripts, frontend, source, installed = fixture_workspace(tmp_path)
+    stage = tmp_path / "incomplete-model"
+    (stage / "static/js").mkdir(parents=True)
+    (stage / "index.html").write_text('<script src="/static/js/main.new.js"></script>')
+    (stage / "static/js/main.new.js").write_text("new-bundle")
+    shutil.copytree(frontend / "public/models", stage / "models")
+    (stage / "models/ranger-navigation.glb").unlink()
+    result = subprocess.run(
+        ["bash", str(scripts / "sync_frontend_build.sh")],
+        env={**os.environ, "CAMROD_FRONTEND_BUILD_SOURCE": str(stage)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "ranger-navigation.glb" in result.stderr
+    assert (source / "index.html").read_text() == "old-index"
+    assert (installed / "index.html").read_text() == "old-index"

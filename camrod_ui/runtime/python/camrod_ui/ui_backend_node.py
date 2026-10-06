@@ -60,7 +60,7 @@ from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 # HH_260721 - Keep only the FastAPI symbols used by the runtime backend.
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import JSONResponse, Response
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path as NavPath
 from nav2_msgs.action import NavigateToPose
@@ -91,6 +91,9 @@ from camrod_ui.driving_snapshot import (
     MAP_AREA_MAX_COUNT, MAP_AREA_MAX_VERTICES,
     DrivingSnapshotCache, sample_indices,
     transform_detection_orientation, transform_detection_point,
+)
+from camrod_ui.frontend_serving import (
+    configured_frontend_path, find_frontend_directory, register_frontend_routes,
 )
 from camrod_ui.mission_recording_bridge import (
     MissionRecordingEmitter,
@@ -620,7 +623,10 @@ class UiBackendNode(Node):
         self.host = str(self.declare_parameter("host", "0.0.0.0").value)
         self.port = int(self.declare_parameter("port", 8000).value)
         self.enable_http_server = bool(self.declare_parameter("enable_http_server", True).value)
-        self.frontend_dir = Path(str(self.declare_parameter("frontend_dir", "").value))
+        # HH_261006 - Preserve the empty default without interpreting it as CWD.
+        self.frontend_dir = configured_frontend_path(
+            str(self.declare_parameter("frontend_dir", "").value)
+        )
         # HH_261002 - Keep per-mission CAN-derived telemetry in an independent
         # recorder. Never repoint or migrate the existing service metrics DB.
         self.mission_records_root = str(self.declare_parameter(
@@ -9107,24 +9113,17 @@ class UiBackendNode(Node):
     # ── FastAPI server ────────────────────────────────────────────────────────
 
     def _resolve_frontend_dir(self) -> Optional[Path]:
-        def realdir(p: Path) -> Path:
-            # Resolve symlinks so Starlette's security check (commonprefix) passes.
-            return Path(os.path.realpath(str(p)))
-
-        if self.frontend_dir and self.frontend_dir.exists():
-            return realdir(self.frontend_dir)
+        # HH_261006 - A directory alone is not a build; require its index.html.
+        candidates = [self.frontend_dir]
         try:
             share = Path(get_package_share_directory("camrod_ui"))
-            candidate = share / "camrod_ui_robot" / "assets" / "frontend" / "build"
-            if candidate.exists():
-                return realdir(candidate)
+            candidates.append(share / "camrod_ui_robot" / "assets" / "frontend" / "build")
         except PackageNotFoundError:
             pass
         # parents[3] = package root (runtime/python/camrod_ui → runtime/python → runtime → pkg)
         source_candidate = Path(__file__).resolve().parents[3] / "camrod_ui_robot" / "assets" / "frontend" / "build"
-        if source_candidate.exists():
-            return realdir(source_candidate)
-        return None
+        candidates.append(source_candidate)
+        return find_frontend_directory(candidates)
 
     def _start_fastapi_server(self) -> None:
         node = self
@@ -9614,41 +9613,9 @@ class UiBackendNode(Node):
             return JSONResponse(result, status_code=200 if result.get("success") else 400)
 
         # ── Static frontend serving ───────────────────────────────────────────
-        # Starlette 0.18 StaticFiles rejects symlinked files (commonprefix check
-        # fails when realpath(file) points outside realpath(directory) due to
-        # --symlink-install chains).  Serve all static assets manually so symlinks
-        # are followed transparently.
-
-        frontend_dir = node._resolve_frontend_dir()
-        if frontend_dir and frontend_dir.exists():
-            index_html = frontend_dir / "index.html"
-            index_real = Path(os.path.realpath(str(index_html)))
-            no_store_headers = {
-                "Cache-Control": "no-store, no-cache, must-revalidate",
-                "Pragma": "no-cache",
-            }
-
-            @app.get("/{full_path:path}")
-            async def serve_spa(full_path: str) -> FileResponse:
-                candidate = frontend_dir / full_path
-                real = Path(os.path.realpath(str(candidate)))
-                if real.is_file():
-                    if real == index_real:
-                        headers = no_store_headers
-                    elif full_path.startswith("static/"):
-                        # Create React App fingerprints files below static/.
-                        headers = {"Cache-Control": "public, max-age=31536000, immutable"}
-                    else:
-                        # Site photos and other root assets keep stable names.
-                        headers = {"Cache-Control": "no-cache"}
-                    return FileResponse(str(real), headers=headers)
-                # SPA routes all return index.html. It must be fetched on each
-                # launch because it selects the current hashed JavaScript file.
-                return FileResponse(str(index_real), headers=no_store_headers)
-        else:
-            @app.get("/")
-            async def serve_fallback() -> JSONResponse:
-                return JSONResponse({"message": "frontend not available"}, status_code=503)
+        # HH_261006 - Keep colcon symlinks working, but expose absent assets as
+        # HTTP 404 and support HEAD probes instead of returning the SPA as GLB/PNG.
+        register_frontend_routes(app, node._resolve_frontend_dir())
 
         # ── Server thread ─────────────────────────────────────────────────────
 

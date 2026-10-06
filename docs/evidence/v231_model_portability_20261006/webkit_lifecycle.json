@@ -1,0 +1,394 @@
+{
+  "real_driving": false,
+  "evidence_type": "production_WebKit_synthetic_UI_lifecycle",
+  "url": "http://127.0.0.1:8030/?driving_preview=1",
+  "webgl_setting_events": [
+    false,
+    true,
+    false,
+    true,
+    false,
+    true,
+    false
+  ],
+  "checks": {
+    "navigation": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 62,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": 6.862870069168623,
+            "y": 0
+          },
+          "modelYawRad": 0,
+          "cameraYawRad": 0,
+          "wheelRollRad": 1.3406012210902438,
+          "motionKind": "forward",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 1.3406012210902438
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 1.3406012210902438
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 1.3406012210902438
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 1.3406012210902438
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -1.1313665171123085e-17,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 621,
+          "pointCount": 0,
+          "baseMapVertices": 256,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 0,
+          "visibleAreaLabels": 0,
+          "serviceAreaIds": [],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 1236,
+          "renderedTriangles": 129276,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": true,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-physical-geometry",
+          "illustratedRoadCount": 1,
+          "illustrativeShrubs": 10,
+          "illustrativeTrees": 2,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_rear",
+            "wrap_left",
+            "wrap_right",
+            "wrap_front"
+          ],
+          "visibleObjectLabels": 3,
+          "observedObjectBoxes": 2,
+          "objectVisualCount": 3,
+          "renderCalls": 69,
+          "renderTriangles": 129276,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\nCAMROD\n월악산 국립공원\n현재 미션\n배달 서비스\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n15:24\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\nB7 사이트로 이동하고 있습니다.\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n시연 감지 데이터 표시\nperson\n4.2 m\n시연 크기 0.55 × 0.65 × 1.70 m\ncar\n8.7 m\n시연 크기 4.20 × 1.80 × 1.50 m\n미분류\n13.6 m\n크기 미확인 · 분류 아이콘\n외관 보기\n시연 경로\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 4m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n28m\n예상 소요\n31초\n경로 진행률\n9%\n수신한 경로 기반 추정치입니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n"
+      }
+    },
+    "home_restored": {
+      "enabled": false,
+      "snapshot": {
+        "status": null,
+        "navigation": {},
+        "errors": [],
+        "idleEntry": true,
+        "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\n국립공원공단 · WORAKSAN NATIONAL PARK\n월악산 국립공원 배송 로봇\n주행 지도 보기\nWIFI\n82%\n2026년 10월 6일 (화)\n오후 03:24:35\n시스템\n시스템 정상\n임무\n주행 준비 완료\n주차\n대기·충전 장소 주차 완료\n배터리\n임무 가능 · 배터리 82%\n\n실증 운행 현황\n기록 없음\n상세 보기 ›\n최근 서비스\n기록 없음\n오늘 누적\n기록 없음\n오늘 완료\n기록 없음\n전체 누적\n기록 없음\n\n\n서비스 선택\n\n\n로봇 이용 방법\n\n\n시설 안내\n\n\n탐방로\n"
+      }
+    },
+    "navigation_reopened": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 66,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": 6.442158628128309,
+            "y": 0
+          },
+          "modelYawRad": 0,
+          "cameraYawRad": 0,
+          "wheelRollRad": 2.8877348226609203,
+          "motionKind": "forward",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 2.8877348226609203
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 2.8877348226609203
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 2.8877348226609203
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 2.8877348226609203
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -1.1313665171123087e-17,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 621,
+          "pointCount": 0,
+          "baseMapVertices": 256,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 0,
+          "visibleAreaLabels": 0,
+          "serviceAreaIds": [],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 1236,
+          "renderedTriangles": 129316,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": true,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-physical-geometry",
+          "illustratedRoadCount": 1,
+          "illustrativeShrubs": 10,
+          "illustrativeTrees": 2,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_left",
+            "wrap_right",
+            "wrap_front",
+            "wrap_rear"
+          ],
+          "visibleObjectLabels": 3,
+          "observedObjectBoxes": 2,
+          "objectVisualCount": 3,
+          "renderCalls": 70,
+          "renderTriangles": 129316,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\nCAMROD\n월악산 국립공원\n현재 미션\n배달 서비스\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n15:24\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\nB7 사이트로 이동하고 있습니다.\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n시연 감지 데이터 표시\nperson\n4.5 m\n시연 크기 0.55 × 0.65 × 1.70 m\ncar\n9.1 m\n시연 크기 4.20 × 1.80 × 1.50 m\n미분류\n13.9 m\n크기 미확인 · 분류 아이콘\n외관 보기\n시연 경로\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 4m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n29m\n예상 소요\n32초\n경로 진행률\n8%\n수신한 경로 기반 추정치입니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n"
+      }
+    },
+    "navigation_reloaded": {
+      "enabled": true,
+      "snapshot": {
+        "status": "ready",
+        "navigation": {
+          "renderedFrames": 65,
+          "motionValid": true,
+          "poseFresh": true,
+          "modelPositionMeters": {
+            "x": 6.416348727710309,
+            "y": 0
+          },
+          "modelYawRad": 0,
+          "cameraYawRad": 0,
+          "wheelRollRad": 3.0564269822556946,
+          "motionKind": "forward",
+          "wheels": [
+            {
+              "name": "fl",
+              "steerRad": 0,
+              "rollRad": 3.0564269822556946
+            },
+            {
+              "name": "fr",
+              "steerRad": 0,
+              "rollRad": 3.0564269822556946
+            },
+            {
+              "name": "rl",
+              "steerRad": 0,
+              "rollRad": 3.0564269822556946
+            },
+            {
+              "name": "rr",
+              "steerRad": 0,
+              "rollRad": 3.0564269822556946
+            }
+          ],
+          "cameraSideOffsetMeters": 0,
+          "robotProjectedXNdc": -1.1313665171123085e-17,
+          "wheelAngleSource": "estimated-from-received-body-pose",
+          "steeringAngleSource": "estimated-from-received-body-pose",
+          "wheelNodes": 4,
+          "metricRobotLength": 1.5638338327407837,
+          "modelScale": [
+            1,
+            1,
+            1
+          ],
+          "routeVertices": 621,
+          "pointCount": 0,
+          "baseMapVertices": 256,
+          "baseMapVisible": true,
+          "baseMapSource": "/map/markers",
+          "serviceAreaCount": 0,
+          "visibleAreaLabels": 0,
+          "serviceAreaIds": [],
+          "baseMapBoundaryColor": "#1ea65a",
+          "baseMapBoundaryWidthMeters": 0.1,
+          "boundaryVisualMaxDeviationMeters": 0.12,
+          "baseMapBoundaryPaintVertices": 1236,
+          "renderedTriangles": 129316,
+          "cameraMode": "navigation-follow",
+          "detailAngleRad": 0,
+          "detailAngleIndex": 0,
+          "demoEnvironmentVisible": true,
+          "illustrativeEnvironmentVisible": true,
+          "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-physical-geometry",
+          "illustratedRoadCount": 1,
+          "illustrativeShrubs": 10,
+          "illustrativeTrees": 2,
+          "cargoPreviewVisible": true,
+          "shelfPreviewVisible": false,
+          "wrapFacesLoaded": [
+            "wrap_left",
+            "wrap_right",
+            "wrap_front",
+            "wrap_rear"
+          ],
+          "visibleObjectLabels": 3,
+          "observedObjectBoxes": 2,
+          "objectVisualCount": 3,
+          "renderCalls": 70,
+          "renderTriangles": 129316,
+          "renderPixelRatio": 1.5
+        },
+        "errors": [],
+        "idleEntry": false,
+        "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\nCAMROD\n월악산 국립공원\n현재 미션\n배달 서비스\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n15:24\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\nB7 사이트로 이동하고 있습니다.\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n시연 감지 데이터 표시\nperson\n4.5 m\n시연 크기 0.55 × 0.65 × 1.70 m\ncar\n9.0 m\n시연 크기 4.20 × 1.80 × 1.50 m\n미분류\n13.8 m\n크기 미확인 · 분류 아이콘\n외관 보기\n시연 경로\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 4m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n29m\n예상 소요\n32초\n경로 진행률\n8%\n수신한 경로 기반 추정치입니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n"
+      }
+    }
+  },
+  "webkit_version": [
+    2,
+    50,
+    4
+  ],
+  "last_snapshot": {
+    "status": "ready",
+    "navigation": {
+      "renderedFrames": 65,
+      "motionValid": true,
+      "poseFresh": true,
+      "modelPositionMeters": {
+        "x": 6.416348727710309,
+        "y": 0
+      },
+      "modelYawRad": 0,
+      "cameraYawRad": 0,
+      "wheelRollRad": 3.0564269822556946,
+      "motionKind": "forward",
+      "wheels": [
+        {
+          "name": "fl",
+          "steerRad": 0,
+          "rollRad": 3.0564269822556946
+        },
+        {
+          "name": "fr",
+          "steerRad": 0,
+          "rollRad": 3.0564269822556946
+        },
+        {
+          "name": "rl",
+          "steerRad": 0,
+          "rollRad": 3.0564269822556946
+        },
+        {
+          "name": "rr",
+          "steerRad": 0,
+          "rollRad": 3.0564269822556946
+        }
+      ],
+      "cameraSideOffsetMeters": 0,
+      "robotProjectedXNdc": -1.1313665171123085e-17,
+      "wheelAngleSource": "estimated-from-received-body-pose",
+      "steeringAngleSource": "estimated-from-received-body-pose",
+      "wheelNodes": 4,
+      "metricRobotLength": 1.5638338327407837,
+      "modelScale": [
+        1,
+        1,
+        1
+      ],
+      "routeVertices": 621,
+      "pointCount": 0,
+      "baseMapVertices": 256,
+      "baseMapVisible": true,
+      "baseMapSource": "/map/markers",
+      "serviceAreaCount": 0,
+      "visibleAreaLabels": 0,
+      "serviceAreaIds": [],
+      "baseMapBoundaryColor": "#1ea65a",
+      "baseMapBoundaryWidthMeters": 0.1,
+      "boundaryVisualMaxDeviationMeters": 0.12,
+      "baseMapBoundaryPaintVertices": 1236,
+      "renderedTriangles": 129316,
+      "cameraMode": "navigation-follow",
+      "detailAngleRad": 0,
+      "detailAngleIndex": 0,
+      "demoEnvironmentVisible": true,
+      "illustrativeEnvironmentVisible": true,
+      "illustrativeEnvironmentSource": "base_map-aligned-art-not-sensor-or-physical-geometry",
+      "illustratedRoadCount": 1,
+      "illustrativeShrubs": 10,
+      "illustrativeTrees": 2,
+      "cargoPreviewVisible": true,
+      "shelfPreviewVisible": false,
+      "wrapFacesLoaded": [
+        "wrap_left",
+        "wrap_right",
+        "wrap_front",
+        "wrap_rear"
+      ],
+      "visibleObjectLabels": 3,
+      "observedObjectBoxes": 2,
+      "objectVisualCount": 3,
+      "renderCalls": 70,
+      "renderTriangles": 129316,
+      "renderPixelRatio": 1.5
+    },
+    "errors": [],
+    "idleEntry": false,
+    "text": "CAMROD · 3D 주행 화면 시연\n시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음\n기존 홈\n배송\n호출\n복귀\n안전 정지\n시연: 수신 지연\n연결 끊김\n\n다크 모드\n시연 애니메이션 정지\n\nCAMROD\n월악산 국립공원\n현재 미션\n배달 서비스\nUI 시연 · 실제 주행 아님\n연결됨\nGNSS\n시연 입력\n82%\n15:24\n서비스 화면\n현재 속도\n3.3\nkm/h\n로봇 기준 주행 속도\n주행 상태\n목적지로 이동 중\nB7 사이트로 이동하고 있습니다.\n목적지\nB7\n센서 상태\n3/3 수신\nLiDAR\n시연 입력\nCamera\n시연 입력\nRadar\n시연 입력\n시연 감지 데이터 표시\nperson\n4.5 m\n시연 크기 0.55 × 0.65 × 1.70 m\ncar\n9.0 m\n시연 크기 4.20 × 1.80 × 1.50 m\n미분류\n13.8 m\n크기 미확인 · 분류 아이콘\n외관 보기\n시연 경로\n시연 경로 · 예시 배경\n다음 이동 안내\n좌측 경로로 진행\n약 4m 앞 · 수신한 경로 형상 기준\n시연 경로 지도\n↑ 전방\n시연 위치\n수신 경로 기준\n남은 거리\n29m\n예상 소요\n32초\n경로 진행률\n8%\n수신한 경로 기반 추정치입니다\n일반 화면을 터치하면 서비스 화면으로 돌아갑니다\nESC\n"
+  },
+  "reload_document_finished": 2,
+  "passed": true
+}

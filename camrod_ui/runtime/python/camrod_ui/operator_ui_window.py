@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -16,6 +18,7 @@ import threading
 from typing import Any, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 
 DEFAULT_URL = "http://127.0.0.1:8010"
@@ -258,6 +261,54 @@ def _load_gtk() -> tuple[Any, Any, Any, Any]:
     return Gdk, GLib, Gtk, WebKit2
 
 
+class NavigationGraphicsLease:
+    """HH_261006 - Grant WebGL to navigation while our UI is the top-level page.
+
+    The legacy kiosk engine/settings stay unchanged. An explicit frontend lease
+    enables graphics before renderer creation; unmount/reload restores the old
+    disabled state. Tokens prevent a stale React cleanup disabling a newer view.
+    This bridge has no robot, network, filesystem or command authority.
+    """
+
+    def __init__(self, settings: Any, url: str):
+        self.settings = settings
+        self.origin = self._origin(url)
+        self.tokens: set[str] = set()
+
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str | None, int | None]:
+        parsed = urlsplit(url)
+        return (parsed.scheme, parsed.hostname,
+                parsed.port or (443 if parsed.scheme == "https" else 80))
+
+    def reset(self) -> None:
+        self.tokens.clear()
+        self.settings.set_enable_webgl(False)
+
+    def receive(self, message: str, uri: str) -> dict[str, Any] | None:
+        try:
+            if (len(message) > 512 or self.origin[0] not in {"http", "https"}
+                    or self._origin(uri) != self.origin):
+                return None
+            request = json.loads(message)
+            token = request.get("id")
+            active = request.get("active")
+            if (not isinstance(token, str)
+                    or re.fullmatch(r"nav-[a-f0-9]{16}-[0-9]{1,8}", token) is None
+                    or not isinstance(active, bool)):
+                return None
+        except (ValueError, TypeError, AttributeError):
+            return None
+        if active:
+            if len(self.tokens) >= 4 and token not in self.tokens:
+                return {"id": token, "enabled": False}
+            self.tokens.add(token)
+        else:
+            self.tokens.discard(token)
+        self.settings.set_enable_webgl(bool(self.tokens))
+        return {"id": token, "enabled": active and token in self.tokens}
+
+
 def _run_webkit(args: argparse.Namespace) -> int:
     try:
         Gdk, GLib, Gtk, WebKit2 = _load_gtk()
@@ -281,8 +332,9 @@ def _run_webkit(args: argparse.Namespace) -> int:
         window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         web_view = WebKit2.WebView()
         settings = web_view.get_settings()
-        # HH_260805 - Keep GPU compositing active for the kiosk. WebGL stays off
-        # because this UI does not use it.
+        # HH_260805 - Keep GPU compositing active for the legacy kiosk.
+        # HH_261006 - Preserve WebGL-off as the default; only a mounted 3D
+        # navigation view may acquire the scoped graphics lease below.
         # HJ_260922 - Smooth scrolling is off: WebKitGTK animates every scroll
         # step over a fixed easing period, so long modals such as the usage
         # guide drift on after the touch ends. Kiosk scrolling must track the
@@ -316,6 +368,24 @@ def _run_webkit(args: argparse.Namespace) -> int:
     window.add(web_view)
     if args.fullscreen:
         window.fullscreen()
+
+    # HH_261006 - Register before loading React so navigation can wait for the
+    # native acknowledgement rather than trying WebGL while still disabled.
+    graphics = NavigationGraphicsLease(settings, args.url)
+    manager = web_view.get_user_content_manager()
+
+    def on_navigation_graphics(_manager: Any, result: Any) -> None:
+        # HH_261006 - This validates the top-level UI origin, not iframe identity.
+        # The bridge grants only bounded graphics leases and no robot authority.
+        reply = graphics.receive(result.get_js_value().to_string(), web_view.get_uri() or "")
+        if reply is not None:
+            web_view.run_javascript(
+                "window.dispatchEvent(new CustomEvent('camrod-navigation-graphics',"
+                "{detail:" + json.dumps(reply) + "}));", None, None, None,
+            )
+
+    manager.connect("script-message-received::camrodNavigationGraphics", on_navigation_graphics)
+    manager.register_script_message_handler("camrodNavigationGraphics")
 
     # HH_260805 - Probe uvicorn on a worker thread before the first WebKit load.
     # This avoids rendering a network error page and then reloading it every
@@ -367,6 +437,7 @@ def _run_webkit(args: argparse.Namespace) -> int:
         if window_closed:
             return
         if load_event == WebKit2.LoadEvent.STARTED:
+            graphics.reset()
             load_in_progress = True
             return
         if load_event != WebKit2.LoadEvent.FINISHED:
@@ -506,6 +577,7 @@ def _run_webkit(args: argparse.Namespace) -> int:
     def quit_main_loop(*_unused: object) -> None:
         nonlocal window_closed
         window_closed = True
+        graphics.reset()
         readiness_stop.set()
         Gtk.main_quit()
 
