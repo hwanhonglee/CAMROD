@@ -35,7 +35,7 @@ CHECKER_NODE_SPECS = (
     ("planning", "planning_costmap_checker_node", "planning_costmap_checker", "planning_costmap_checker.yaml"),
     ("planning", "planning_nav_status_checker_node", "planning_nav_status_checker", "planning_nav_status_checker.yaml"),
     ("planning", "planning_path_checker_node", "planning_path_checker", "planning_path_checker.yaml"),
-    # HH_260617: PlanningState semantic health is checked as part of system readiness.
+    # HH_260617 - PlanningState semantic health is checked as part of system readiness.
     ("planning", "planning_state_checker_node", "planning_state_checker", "planning_state_checker.yaml"),
 )
 
@@ -664,7 +664,7 @@ def generate_launch_description():
             description='Comma-separated optional graph topics excluded from readiness',
         ),
 
-        # HH_260527: Main diagnostics stack is fully inline
+        # HH_260527 - Main diagnostics stack is fully inline
         # Retired system_diagnostics/component launch files were removed.
         OpaqueFunction(function=_build_diagnostics_inline),
 
@@ -687,7 +687,7 @@ def generate_launch_description():
                         LaunchConfiguration('system_checker_param_file'),
                         {
                             'diagnostic_topic': 'diagnostics',
-                            # HH_260618: Keep a debug-only exclusion hook, while
+                            # HH_260618 - Keep a debug-only exclusion hook, while
                             # normal bringup requires exactly one final-parking graph.
                             'disabled_modules_csv': LaunchConfiguration('system_checker_disabled_modules'),
                             'disabled_nodes_csv': LaunchConfiguration('system_checker_disabled_nodes'),
@@ -706,7 +706,7 @@ def generate_launch_description():
                         # filtered aggregate stream so profile ignored_names
                         # do not reappear as SYSTEM errors.
                         'source_diagnostic_topic': 'diagnostics_agg',
-                        # HH_260617: Publish stable system status topics consumed by UI/voice/diagnostics.
+                        # HH_260617 - Publish stable system status topics consumed by UI/voice/diagnostics.
                         'system_status_topic': 'status',
                         'avg_system_msgs_topic': 'msgs',
                         'publish_period_s': 0.5,

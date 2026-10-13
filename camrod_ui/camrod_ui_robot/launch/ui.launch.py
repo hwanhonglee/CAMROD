@@ -347,6 +347,12 @@ def generate_launch_description():
         default_value='0.20',
         description='Server-owned maximum operator crab Twist speed',
     )
+    # HH_261007 - Keep the ordinary UI lateral cap unchanged without CARLA opt-in.
+    manual_drive_allow_carla_lateral_2mps_arg = DeclareLaunchArgument(
+        'manual_drive_allow_carla_lateral_2mps',
+        default_value='false',
+        description='CARLA-only opt-in to permit a manual lateral limit up to 2 m/s',
+    )
     manual_drive_angular_limit_radps_arg = DeclareLaunchArgument(
         'manual_drive_angular_limit_radps',
         default_value='0.20',
@@ -563,6 +569,10 @@ def generate_launch_description():
                 LaunchConfiguration('manual_drive_lateral_limit_mps'),
                 value_type=float,
             ),
+            'manual_drive_allow_carla_lateral_2mps': ParameterValue(
+                LaunchConfiguration('manual_drive_allow_carla_lateral_2mps'),
+                value_type=bool,
+            ),
             'manual_drive_angular_limit_radps': ParameterValue(
                 LaunchConfiguration('manual_drive_angular_limit_radps'),
                 value_type=float,
@@ -754,6 +764,7 @@ def generate_launch_description():
         manual_mission_resume_enabled_arg,
         manual_drive_linear_limit_mps_arg,
         manual_drive_lateral_limit_mps_arg,
+        manual_drive_allow_carla_lateral_2mps_arg,
         manual_drive_angular_limit_radps_arg,
         manual_drive_deadman_timeout_s_arg,
         platform_drive_enable_topic_arg,

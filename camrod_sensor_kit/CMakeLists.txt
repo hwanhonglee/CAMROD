@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 project(camrod_sensor_kit)
-# HH_260109 Sensor kit package (URDF/TF/specs) renamed from the old package name.
+# HH_260109 - Sensor kit package (URDF/TF/specs) renamed from the old package name.
 
 ###############################################
 # 1. Find packages
@@ -15,7 +15,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_msgs REQUIRED)
-ament_export_include_directories(include)  # HH_260109 export headers for downstream packages
+ament_export_include_directories(include)  # HH_260109 - export headers for downstream packages
 
 ###############################################
 # 2. Include directories
@@ -27,7 +27,7 @@ include_directories(
 ###############################################
 # 3. Build shared robot params library
 ###############################################
-# HH_260109 Provide reusable robot params helper without requiring robot_info_node.
+# HH_260109 - Provide reusable robot params helper without requiring robot_info_node.
 add_library(camrod_sensor_kit_lib
   src/robot_params.cpp
 )
@@ -39,18 +39,18 @@ target_include_directories(camrod_sensor_kit_lib PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-# HH_260224 Robot visualization node moved to camrod_platform package.
+# HH_260224 - Robot visualization node moved to camrod_platform package.
 
 ###############################################
 # 4. Install
 ###############################################
 install(
   TARGETS camrod_sensor_kit_lib
-  EXPORT camrod_sensor_kit_lib_targets  # HH_260109 export for downstream find_package
-  DESTINATION lib  # HH_260109 install to standard lib/ so export can resolve it.
+  EXPORT camrod_sensor_kit_lib_targets  # HH_260109 - export for downstream find_package
+  DESTINATION lib  # HH_260109 - install to standard lib/ so export can resolve it.
 )
 
-# HH_260109 Install export set so ament can resolve the library target.
+# HH_260109 - Install export set so ament can resolve the library target.
 install(
   EXPORT camrod_sensor_kit_lib_targets
   NAMESPACE ${PROJECT_NAME}::
@@ -77,7 +77,7 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-# HH_260326: Removed status-node install from default runtime path.
+# HH_260326 - Removed status-node install from default runtime path.
 ###############################################
-ament_export_targets(camrod_sensor_kit_lib_targets)  # HH_260109 expose export set.
+ament_export_targets(camrod_sensor_kit_lib_targets)  # HH_260109 - expose export set.
 ament_package()

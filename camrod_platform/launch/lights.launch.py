@@ -8,7 +8,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# 260708: Exterior lights — light_controller (lamp mode decision) and
+# HH_260708 - Exterior lights — light_controller (lamp mode decision) and
 # mcu_serial_bridge (JSON serial to the Arduino Nano light MCU).
 # Decision rules and wire protocol: docs/lights-design-doc.html.
 def generate_launch_description():

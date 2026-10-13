@@ -329,7 +329,8 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
             and value.get("panelVisible") is True
             and value.get("connected") is True
             and value.get("armed") is True
-            and value.get("stateText") == "ARMED"
+            # HH_261007 - Lease authority is data-armed, not a localized badge
+            # that now also displays the independent final-gate safety state.
         )
         if not accepted:
             raise MatrixError(f"Robot UI liveness failed during {description}: {value!r}")
@@ -672,7 +673,7 @@ class ManualDriveBrowser(BASE.OperatorBrowserClient):
         self.clear_probe()
         self._click('[data-ui="manual-drive-arm"]', "ARM manual drive")
         armed = self.wait_snapshot(
-            lambda item: item.get("armed") and item.get("stateText") == "ARMED",
+            lambda item: item.get("armed") is True,
             "ARMED manual-drive state",
         )
         frames = self.wait_for_frames(
@@ -1889,7 +1890,7 @@ def command_setup(args: argparse.Namespace) -> int:
         frames = browser.probe().get("websocket", [])
         arm_frame = _control_frame(frames, "arm")
         snapshot = browser.snapshot()
-        if not snapshot.get("armed") or snapshot.get("stateText") != "ARMED":
+        if snapshot.get("armed") is not True:
             raise MatrixError(f"manual-drive ARM did not remain latched: {snapshot!r}")
         status_topic = "/carla/ego_vehicle/physical_four_wheel_status"
         if observer.counts.get(status_topic, 0) < 1:
@@ -2009,7 +2010,6 @@ def command_scenario(args: argparse.Namespace) -> int:
             not snapshot_before.get("panelVisible")
             or not snapshot_before.get("connected")
             or not snapshot_before.get("armed")
-            or snapshot_before.get("stateText") != "ARMED"
         ):
             raise MatrixError(
                 "scenario requires the setup-owned connected ARMED Robot UI: "
@@ -2072,7 +2072,7 @@ def command_scenario(args: argparse.Namespace) -> int:
         ]
         ui_checks = validate_ui_frames(websocket_records, spec, phases, args.hold_s)
         snapshot_after = browser.snapshot()
-        if not snapshot_after.get("armed") or snapshot_after.get("stateText") != "ARMED":
+        if snapshot_after.get("armed") is not True:
             raise MatrixError(f"manual-drive authority was lost during scenario: {snapshot_after!r}")
         provisional = {
             "phases": phases,

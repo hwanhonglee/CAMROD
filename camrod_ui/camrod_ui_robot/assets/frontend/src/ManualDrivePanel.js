@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { manualDriveGateStatus } from './manualDriveGateStatus';
 
 const EMPTY_STATE = Object.freeze({
   available: false,
@@ -97,6 +98,8 @@ export default function ManualDrivePanel() {
   const [scale, setScale] = useState(1.0);
   const [transportError, setTransportError] = useState('');
   const [inputError, setInputError] = useState('');
+  const [gatePayloadAgeMs, setGatePayloadAgeMs] = useState(0);
+  const gatePayloadReceivedRef = useRef(null);
   const socketRef = useRef(null);
   const sequenceRef = useRef(0);
   const pressedRef = useRef(new Set());
@@ -108,6 +111,10 @@ export default function ManualDrivePanel() {
   const manualEnabled = manual.available || manual.connected;
 
   const applyState = useCallback(next => {
+    // HH_261007 - A live socket is not proof of fresh gate telemetry. Expire
+    // the display locally too if the backend or its status responses stall.
+    gatePayloadReceivedRef.current = performance.now();
+    setGatePayloadAgeMs(0);
     const merged = {
       ...EMPTY_STATE,
       ...(next || {}),
@@ -298,6 +305,15 @@ export default function ManualDrivePanel() {
   }, [manualEnabled, sendDrive]);
 
   useEffect(() => {
+    if (!manualEnabled || !manual.armed) return undefined;
+    const timer = setInterval(() => {
+      setGatePayloadAgeMs(gatePayloadReceivedRef.current == null
+        ? Infinity : performance.now() - gatePayloadReceivedRef.current);
+    }, 250);
+    return () => clearInterval(timer);
+  }, [manualEnabled, manual.armed]);
+
+  useEffect(() => {
     // Keep the ordinary develop UI completely inert when the CARLA-only
     // backend topic is absent. In particular, do not consume Space/Escape or
     // install a 10 Hz heartbeat timer for a panel that is not rendered.
@@ -406,12 +422,14 @@ export default function ManualDrivePanel() {
       ? { axis: 'Y', value: requestedLateralMps, unit: 'm/s' }
       : { axis: 'X', value: requestedLinearMps, unit: 'm/s' });
   const activeModeLabel = DRIVE_MODES.find(mode => mode.id === driveMode)?.label || driveMode;
+  const gateStatus = manualDriveGateStatus(manual, gatePayloadAgeMs);
   return (
     <section
       className={`telemetry-section manual-drive-panel ${collapsed ? 'collapsed' : 'expanded'}`}
       data-ui="manual-drive-panel"
       data-connected={manual.connected ? 'true' : 'false'}
       data-armed={manual.armed ? 'true' : 'false'}
+      data-gate-state={gateStatus.state}
       data-mode={driveMode}
       data-linear-limit-mps={Number(manual.limits?.linear_x_mps || 0)}
       data-lateral-limit-mps={Number(manual.limits?.lateral_y_mps || 0)}
@@ -421,7 +439,8 @@ export default function ManualDrivePanel() {
       <div className="manual-drive-header">
         <div className="manual-drive-title">
           <h3>CARLA 수동주행</h3>
-          <p>수동 시작 한 번으로 기존 목표를 취소하고 CAMROD safety gate를 통해 조작합니다.</p>
+          {/* HH_261007 - Keep internal package names out of operator-facing copy. */}
+          <p>수동 시작 한 번으로 기존 목표를 취소하고 안전 게이트를 통해 조작합니다.</p>
         </div>
         <div className="manual-drive-compact-status" aria-label="접힌 수동주행 상태">
           <strong>{activeModeLabel}</strong>
@@ -431,10 +450,10 @@ export default function ManualDrivePanel() {
         </div>
         <div className="manual-drive-header-actions">
           <div
-            className={`manual-drive-state ${manual.armed ? 'armed' : (armPending ? 'pending' : '')}`}
+            className={`manual-drive-state ${manual.armed ? gateStatus.state : (armPending ? 'pending' : '')}`}
             data-ui="manual-drive-state"
           >
-            <span />{manual.armed ? 'ARMED' : (armPending ? 'ARMING' : (manual.connected ? 'STANDBY' : 'OFFLINE'))}
+            <span />{manual.armed ? `ARMED · ${gateStatus.label}` : (armPending ? 'ARMING' : (manual.connected ? 'STANDBY' : 'OFFLINE'))}
           </div>
           <div className="manual-drive-compact-actions">
             <button
@@ -464,6 +483,16 @@ export default function ManualDrivePanel() {
           </button>
         </div>
       </div>
+
+      {/* HH_261007 - Keep the actual blocking reason visible even in the
+          collapsed dock. ARMED continues to describe only the input lease. */}
+      {manual.armed && gateStatus.state !== 'enabled' && (
+        <div className={`manual-drive-gate-message ${gateStatus.state}`}
+          data-ui="manual-drive-gate-message" role="status">
+          <strong>{gateStatus.message}</strong>
+          {gateStatus.detail && <small>{gateStatus.detail}</small>}
+        </div>
+      )}
 
       <div
         id="manual-drive-expanded-controls"
@@ -542,6 +571,7 @@ export default function ManualDrivePanel() {
           <p className="manual-drive-hint">
             W/S + A/D: 직진·조향 · A/D 단독: 제자리회전 · Z/C 단독: Crab · 모드 변경 시 자동 ZERO
           </p>
+          <p className="manual-drive-hint">ARMED는 입력 활성화입니다. X/Y/Yaw는 요청값이며 실제 이동량이 아닙니다.</p>
           <p className={`manual-drive-message ${transportError || inputError ? 'error' : ''}`}>
             {transportError || inputError || manual.reason || '명령 대기'}
           </p>

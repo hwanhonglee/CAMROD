@@ -27,6 +27,7 @@ import SnapshotControl from './SnapshotControl';
 import DrivingDisplay from './DrivingDisplay';
 import useDrivingDisplay from './useDrivingDisplay';
 import ManualMissionResume, { manualResumeFromSnapshot } from './ManualMissionResume';
+import { SERVICE_BRAND, SERVICE_COMPANY, SERVICE_LOCATION } from './serviceBranding';
 import './DrivingIntegration.css';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
@@ -2848,8 +2849,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
               </div>
               <div className="wh-title-block">
-                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+                {/* HH_261007 - Preserve park identity and service controls while
+                    presenting the public robot service and company names. */}
+                <span className="wh-subtitle">{SERVICE_LOCATION} · {SERVICE_COMPANY}</span>
+                <span className="wh-main-title">{SERVICE_BRAND} <em>배송 로봇</em></span>
                 {guestAdmissionStatus}
               </div>
             </div>
@@ -2998,8 +3001,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
               </div>
               <div className="ch-title-block">
-                <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-                <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+                <span className="wh-subtitle">{SERVICE_LOCATION} · {SERVICE_COMPANY}</span>
+                <span className="wh-main-title">{SERVICE_BRAND} <em>배송 로봇</em></span>
               </div>
             </div>
             <div className="ch-right">
@@ -3200,8 +3203,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               <img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" />
             </div>
             <div className="ch-title-block">
-              <span className="wh-subtitle">국립공원공단 · Woraksan National Park</span>
-              <span className="wh-main-title">월악산 <em>국립공원</em> 배송 로봇</span>
+              <span className="wh-subtitle">{SERVICE_LOCATION} · {SERVICE_COMPANY}</span>
+              <span className="wh-main-title">{SERVICE_BRAND} <em>배송 로봇</em></span>
               {guestAdmissionStatus}
             </div>
           </div>

@@ -14,6 +14,7 @@
 #include "avg_msgs/msg/avg_occupancy_grid.hpp"
 #include "avg_msgs/msg/avg_path.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
+#include "camrod_control/manual_service_area.hpp"
 
 namespace camrod_control
 {
@@ -218,6 +219,15 @@ public:
     std::string campsite_phase,
     std::string parking_phase = "");
 
+  // HH_261007 - Caller must authorize the dedicated manual owner first.
+  // Never spoof CRAB_IN or modify shared grids to recover a failed site entry.
+  // Optional access polygons authorize only one exact site/access union over
+  // the current and predicted output sweep; road-map clear space remains valid.
+  std::optional<MotionCostStopDecision> evaluateManualServiceAreaCommand(
+    const avg_msgs::msg::AvgTwist & command, double now_sec,
+    const std::vector<ManualServiceArea> & areas,
+    const std::string & frame_id = "map", bool map_hold_active = false);
+
   MotionCostStopDecision evaluate(const avg_msgs::msg::AvgTwist & command, double now_sec);
   // HH_260729 - A stopped Nav2 action no longer emits a useful command, so the
   // gate periodically revalidates the saved route direction through this
@@ -235,6 +245,17 @@ public:
     double now_sec,
     double probe_distance_m,
     double pose_max_age_s);
+  // HH_261006 - Hypothetical candidates use identical safety checks without
+  // changing live obstacle latches, clear evidence, pose, or hold deadlines.
+  // Actual commands must still use the stateful evaluator above.
+  MotionCostStopDecision probeRouteRecoveryCommand(
+    const avg_msgs::msg::AvgTwist & command,
+    double now_sec,
+    double probe_distance_m,
+    double pose_max_age_s) const;
+  // HH_261006 - Advance only an existing live hazard's fresh-evidence window.
+  // This command-independent recheck cannot create a new obstacle latch.
+  MotionCostStopDecision recheckLatchedHazard(double now_sec);
   bool latched() const;
   double holdUntilSec() const;
   const std::string & latchReason() const;
@@ -353,13 +374,15 @@ private:
   GridHit samplePhysicalBody(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     int threshold,
-    bool stop_on_unknown) const;
+    bool stop_on_unknown,
+    const ManualServiceArea * permitted_area = nullptr) const;
   GridHit samplePolygonFootprint(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     int threshold,
     bool stop_on_unknown,
     const std::vector<std::pair<double, double>> & local_polygon,
-    bool edge_cell_contact) const;
+    bool edge_cell_contact,
+    const ManualServiceArea * permitted_area = nullptr) const;
   PathSample samplePathCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double lookahead_m,
@@ -417,6 +440,8 @@ private:
   std::string drop_zone_phase_;
   std::string campsite_phase_;
   std::string parking_phase_;
+  // HH_261007 - Exists only inside a proven single-command evaluation.
+  bool manual_service_area_scope_{false};
   bool latch_active_{false};
   std::optional<LatchContext> latch_context_;
   std::optional<double> clear_since_sec_;

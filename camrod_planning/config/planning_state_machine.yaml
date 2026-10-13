@@ -17,7 +17,7 @@
     return_start_vehicle_pose_topic: "/localization/pose"
     return_start_pose_max_distance_m: 1.5
     return_start_pose_stale_timeout_s: 1.0
-    # HH_260617: Canonical goal naming used in logs/docs:
+    # HH_260617 - Canonical goal naming used in logs/docs:
     #   mission_key = semantic site/key name on mission_key_topic (e.g. camping_site_1)
     #   site_goal   = raw UI/mission site-center pose on /planning/site_goal_pose_ros
     #   route_goal  = lanelet-snapped PoseStamped consumed by Nav2
@@ -35,10 +35,10 @@
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
 
-    # HH_260528 Scenario contract for UI integration:
+    # HH_260528 - Scenario contract for UI integration:
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
-    # HH_260617: UI/ops command topic. Send avg_msgs/PlanningScenario.
+    # HH_260617 - UI/ops command topic. Send avg_msgs/PlanningScenario.
     scenario_command_topic: "/planning/state_machine/scenario_command"
 
     # =========================================================================
@@ -95,11 +95,11 @@
     # =========================================================================
     # 6. STARTUP AND ERROR BEHAVIOR
     # =========================================================================
-    # HH_260616: Do not enqueue a Nav2 startup goal before the operator/UI chooses
+    # HH_260616 - Do not enqueue a Nav2 startup goal before the operator/UI chooses
     # a mission. The old startup goal kept NavigateToPose active and could swallow
     # the first UI camping-site request as a preemption race.
     auto_startup_goal: false
-    # HH_260616: Diagnostics WARN at startup must not enqueue a recovery goal
+    # HH_260616 - Diagnostics WARN at startup must not enqueue a recovery goal
     # before an operator/UI mission is selected; it races the first UI request.
     auto_warn_recovery_goal: false
     auto_estop_on_error: true
@@ -110,7 +110,7 @@
     # =========================================================================
     # 7. DIAGNOSTICS IGNORE LISTS
     # =========================================================================
-    # HH_260625: Keep operator/system diagnostics visible without letting
+    # HH_260625 - Keep operator/system diagnostics visible without letting
     # non-motion-critical health checks force planning ERROR_STOP. Localization
     # mode, platform graph, and explicit mission/state errors still participate
     # in the state level calculation.
@@ -166,10 +166,10 @@
     goal_reached_dwell_s: 10.0
     # Distance tolerance for associating a manual goal with a keypoint (auto-return eligibility).
     mission_key_match_distance_m: 1.5
-    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # HH_260618 - Preserve drop_zone semantic key for return route-goal echoes
     # that are lanelet-snap poses rather than the exact station center.
     return_goal_key_preserve_distance_m: 5.0
-    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    # HH_260618 - Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
     site_goal_key_preserve_distance_m: 2.0
     # HH_260619 - UI sends mission_key before raw campsite goal. Keep that key
     # authoritative for the next snapped route goal to avoid drop_zone mis-match.

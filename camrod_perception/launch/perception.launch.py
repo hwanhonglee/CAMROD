@@ -142,7 +142,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('enable_lidar_obstacle',  default_value='true'),
         DeclareLaunchArgument('enable_yolo',            default_value='true'),
-        # HH_260522: unified selector for perception pipeline.
+        # HH_260522 - unified selector for perception pipeline.
         #   auto: camera if available, fallback to lidar_only
         #   lidar_only: force LiDAR-only pipeline
         #   camera_lidar: require camera-lidar pipeline

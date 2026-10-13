@@ -1,0 +1,2732 @@
+diff --git a/bootstrap/76_create_physical_gate.sh b/bootstrap/76_create_physical_gate.sh
+index a49d50b5027ef9bdf2f71ae063d0c6584fd77d4e..2a27a0536e6589d5dc086e6613597e1811a0cb03 100755
+--- a/bootstrap/76_create_physical_gate.sh
++++ b/bootstrap/76_create_physical_gate.sh
+@@ -41,6 +41,10 @@ artifact_assignments=(
+ source_assignments=(
+   "backend_contract_source=${control_package}/src/carla_extended_ackermann_control/backend_contract.py"
+   "controller_source=${control_package}/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py"
++  # HH_261007 - Bind the opt-in yaw helper with the controller that imports it.
++  "experimental_crab_yaw_hold_source=${control_package}/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py"
++  # HH_261008 - Bind the experimental ZERO_TURN helper even when disabled.
++  "experimental_zero_turn_yaw_integral_source=${control_package}/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py"
+   "control_message_source=${message_package}/msg/PhysicalFourWheelControl.msg"
+   "four_wheel_steering_source=${control_package}/src/carla_extended_ackermann_control/four_wheel_steering.py"
+   "full_stack_launch_source=${control_package}/launch/full_stack.launch.py"
+diff --git a/ros_ws/src/carla_extended_ackermann_control/launch/carla_extended_ackermann_control.launch.py b/ros_ws/src/carla_extended_ackermann_control/launch/carla_extended_ackermann_control.launch.py
+index 7ba889ee39f6c6c087a0308495b10646583dd97c..d44caa69bffe4728cec4355abae619de52aff27c 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/launch/carla_extended_ackermann_control.launch.py
++++ b/ros_ws/src/carla_extended_ackermann_control/launch/carla_extended_ackermann_control.launch.py
+@@ -25,6 +25,16 @@ def generate_launch_description():
+         launch.actions.DeclareLaunchArgument(
+             name='rotation_recovery_breakaway_enable',
+             default_value='false'),
++        # HH_261007 - Controller-alone launch also remains explicitly opt-in.
++        launch.actions.DeclareLaunchArgument(
++            name='extreme_crab_curb_boost_enable', default_value='false'),
++        launch.actions.DeclareLaunchArgument(
++            name='experimental_crab_yaw_hold_enabled', default_value='false'),
++        # HH_261008 - Same default-off, bounded PI candidate as full_stack.
++        launch.actions.DeclareLaunchArgument(
++            name='experimental_zero_turn_yaw_integral_enabled', default_value='false'),
++        launch.actions.DeclareLaunchArgument(
++            name='experimental_zero_turn_yaw_integral_gain_nm_per_rad', default_value='2.0'),
+         launch_ros.actions.Node(
+             package='carla_extended_ackermann_control',
+             executable='carla_extended_ackermann_control_node',
+@@ -55,6 +65,18 @@ def generate_launch_description():
+                         launch.substitutions.LaunchConfiguration(
+                             'rotation_recovery_breakaway_enable'),
+                         value_type=bool),
++                    'extreme_crab_curb_boost_enable': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'extreme_crab_curb_boost_enable'), value_type=bool),
++                    'experimental_crab_yaw_hold_enabled': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_crab_yaw_hold_enabled'), value_type=bool),
++                    'experimental_zero_turn_yaw_integral_enabled': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_zero_turn_yaw_integral_enabled'), value_type=bool),
++                    'experimental_zero_turn_yaw_integral_gain_nm_per_rad': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_zero_turn_yaw_integral_gain_nm_per_rad'), value_type=float),
+                 },
+             ]),
+     ])
+diff --git a/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py b/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py
+index 59a688f0e66eb2253d5cd330169d640b45a24750..d0795e11e0a018a1cdb6c6f64879a710f23a0f2d 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py
++++ b/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py
+@@ -17,6 +17,10 @@ def generate_launch_description():
+             'port', default_value='2000'),
+         launch.actions.DeclareLaunchArgument(
+             'control_loop_rate', default_value='0.02'),
++        # HH_261007 - Explicit CARLA manual envelope only; defaults and the
++        # Ranger settings file remain 1 m/s. No torque/steering change.
++        launch.actions.DeclareLaunchArgument(
++            'crab_speed_cap', default_value='1.0', choices=['1.0', '2.0']),
+         launch.actions.DeclareLaunchArgument(
+             'verified_baseline_manifest',
+             default_value=launch.substitutions.EnvironmentVariable(
+@@ -32,6 +36,18 @@ def generate_launch_description():
+             'extended_mode_backend', default_value='DISABLED'),
+         launch.actions.DeclareLaunchArgument(
+             'rotation_recovery_breakaway_enable', default_value='false'),
++        # HH_261007 - Explicit experimental CARLA-only curb torque profile;
++        # ordinary settings and the independent 20 N*m bridge cap stay intact.
++        launch.actions.DeclareLaunchArgument(
++            'extreme_crab_curb_boost_enable', default_value='false'),
++        # HH_261007 - Same explicit trial flag at both ends; default is strict.
++        launch.actions.DeclareLaunchArgument(
++            'experimental_crab_yaw_hold_enabled', default_value='false'),
++        # HH_261008 - Controller-only PI trial; P5/2 Nm and bridge caps remain.
++        launch.actions.DeclareLaunchArgument(
++            'experimental_zero_turn_yaw_integral_enabled', default_value='false'),
++        launch.actions.DeclareLaunchArgument(
++            'experimental_zero_turn_yaw_integral_gain_nm_per_rad', default_value='2.0'),
+         launch.actions.DeclareLaunchArgument(
+             'physical_command_timeout_sec', default_value='0.25'),
+         launch.actions.DeclareLaunchArgument(
+@@ -59,6 +75,9 @@ def generate_launch_description():
+                     'control_loop_rate':
+                         launch.substitutions.LaunchConfiguration(
+                             'control_loop_rate'),
++                    'crab_speed_cap': ParameterValue(
++                        launch.substitutions.LaunchConfiguration('crab_speed_cap'),
++                        value_type=float),
+                     'verified_baseline_manifest':
+                         launch.substitutions.LaunchConfiguration(
+                             'verified_baseline_manifest'),
+@@ -75,6 +94,19 @@ def generate_launch_description():
+                         launch.substitutions.LaunchConfiguration(
+                             'rotation_recovery_breakaway_enable'),
+                         value_type=bool),
++                    'extreme_crab_curb_boost_enable': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'extreme_crab_curb_boost_enable'),
++                        value_type=bool),
++                    'experimental_crab_yaw_hold_enabled': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_crab_yaw_hold_enabled'), value_type=bool),
++                    'experimental_zero_turn_yaw_integral_enabled': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_zero_turn_yaw_integral_enabled'), value_type=bool),
++                    'experimental_zero_turn_yaw_integral_gain_nm_per_rad': ParameterValue(
++                        launch.substitutions.LaunchConfiguration(
++                            'experimental_zero_turn_yaw_integral_gain_nm_per_rad'), value_type=float),
+                 },
+             ]),
+ 
+@@ -118,6 +150,9 @@ def generate_launch_description():
+                 'wheel_torque_safety_cap_nm':
+                     launch.substitutions.LaunchConfiguration(
+                         'wheel_torque_safety_cap_nm'),
++                'experimental_crab_yaw_hold_enabled': ParameterValue(
++                    launch.substitutions.LaunchConfiguration(
++                        'experimental_crab_yaw_hold_enabled'), value_type=bool),
+             }]),
+     ])
+ 
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py
+index 4c057e131b5d25fe9363c9163ac261e31bd9d6a4..25c566b542c8010f7adab8af1b8880c67fe22273 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py
+@@ -67,12 +67,19 @@ from carla_extended_ackermann_control.wheel_torque_control import (
+     compute_grade_compensation_wheel_torque_nm,
+     compute_bounded_speed_wheel_torques,
+     compute_bounded_wheel_torques,
++    configure_extreme_crab_curb_boost,
+     motion_target_is_active,
+     physical_propulsion_is_active,
+     physical_stock_neutral_is_allowed,
+     project_body_velocity_onto_heading,
+     resolve_yaw_rate_target,
+ )
++from carla_extended_ackermann_control.experimental_crab_yaw_hold import (
++    CrabYawHoldConfig, ExperimentalCrabYawHold, quaternion_yaw,
++)
++from carla_extended_ackermann_control.experimental_zero_turn_yaw_integral import (
++    ExperimentalZeroTurnYawIntegral, ZeroTurnYawIntegralConfig,
++)
+ 
+ ROS_VERSION = roscomp.get_ros_version()
+ 
+@@ -195,6 +202,34 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 "invalid physical 4WS geometry: {}".format(exc))
+ 
+         try:
++            # HH_261008 - Small ZERO_TURN PI candidate; accepted P5/2 Nm stays.
++            self.experimental_zero_turn_yaw_integral_enabled = self.get_param(
++                "experimental_zero_turn_yaw_integral_enabled", False)
++            if type(self.experimental_zero_turn_yaw_integral_enabled) is not bool:
++                raise ValueError("experimental_zero_turn_yaw_integral_enabled must be boolean")
++            self._zero_turn_yaw_integral_config = ZeroTurnYawIntegralConfig(
++                integral_gain_nm_per_rad=self.get_param(
++                    "experimental_zero_turn_yaw_integral_gain_nm_per_rad", 2.0))
++            # HH_261007 - Explicit CARLA-site experiment, never implicit truthiness.
++            self.extreme_crab_curb_boost_enable = self.get_param(
++                "extreme_crab_curb_boost_enable", False)
++            if type(self.extreme_crab_curb_boost_enable) is not bool:
++                raise ValueError("extreme_crab_curb_boost_enable must be boolean")
++            # HH_261007 - Isolated CARLA trial, disabled unless explicitly selected.
++            self.experimental_crab_yaw_hold_enabled = self.get_param(
++                "experimental_crab_yaw_hold_enabled", False)
++            if type(self.experimental_crab_yaw_hold_enabled) is not bool:
++                raise ValueError("experimental_crab_yaw_hold_enabled must be boolean")
++            if self.experimental_crab_yaw_hold_enabled and not self.extreme_crab_curb_boost_enable:
++                raise ValueError("experimental CRAB yaw hold requires explicit curb boost profile")
++            self._crab_yaw_hold_config = CrabYawHoldConfig(**{
++                name: self.get_param("experimental_crab_yaw_hold_" + name,
++                                     getattr(CrabYawHoldConfig(), name))
++                for name in (
++                    "heading_gain_nm_per_rad", "rate_gain_nm_per_radps",
++                    "maximum_reduction_fraction", "maximum_heading_error_deg",
++                    "maximum_yaw_rate_degps", "stall_timeout_sec",
++                    "stall_progress_mps", "odometry_timeout_sec", "torque_limit_nm")})
+             self.control_loop_rate = float(self.get_param(
+                 "control_loop_rate", 0.05))
+             self.physical_status_timeout_sec = float(self.get_param(
+@@ -586,6 +621,11 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 raise ValueError(
+                     "odometry_timeout_sec must be finite in (0, 0.25]")
+         except (TypeError, ValueError) as exc:
++            self.experimental_zero_turn_yaw_integral_enabled = False
++            self._zero_turn_yaw_integral_config = ZeroTurnYawIntegralConfig()
++            self.extreme_crab_curb_boost_enable = False
++            self.experimental_crab_yaw_hold_enabled = False
++            self._crab_yaw_hold_config = CrabYawHoldConfig()
+             self.control_loop_rate = 0.05
+             self.physical_status_timeout_sec = 0.25
+             self.min_accel = 1.0
+@@ -734,6 +774,12 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+         self._recovery_breakaway_authorized = False
+         self._rotation_recovery_breakaway_authorized = False
+         self._last_recovery_authority_rejection = ""
++        self._experimental_crab_yaw_hold = ExperimentalCrabYawHold(
++            self._crab_yaw_hold_config)
++        self._last_crab_yaw_hold_diag_time = None
++        self._experimental_zero_turn_yaw_integral = ExperimentalZeroTurnYawIntegral(
++            self._zero_turn_yaw_integral_config)
++        self._last_zero_turn_yaw_integral_diag_time = None
+         self._translation_breakaway_tracker = TranslationBreakawayTracker(
+             TranslationBreakawayConfig(
+                 first_floor_torque_nm=(
+@@ -753,7 +799,9 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 torque_limit_nm=self.translation_wheel_torque_limit_nm,
+             )
+         )
+-        self._extreme_crab_breakaway_tracker = ExtremeCrabBreakawayTracker(
++        # HH_261007 - Keep declared/accepted 7/8/8 parameters unchanged.  The
++        # visible opt-in selects an effective experimental 12/16/16 profile.
++        self._extreme_crab_breakaway_config = configure_extreme_crab_curb_boost(
+             ExtremeCrabBreakawayConfig(
+                 first_floor_torque_nm=(
+                     self.extreme_crab_breakaway_first_floor_torque_nm),
+@@ -772,7 +820,11 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 release_progress_mps=(
+                     self.extreme_crab_breakaway_release_progress_mps),
+                 torque_limit_nm=self.extreme_crab_wheel_torque_limit_nm,
+-            )
++            ),
++            self.extreme_crab_curb_boost_enable,
++        )
++        self._extreme_crab_breakaway_tracker = ExtremeCrabBreakawayTracker(
++            self._extreme_crab_breakaway_config
+         )
+         self._recovery_breakaway_tracker = RecoveryBreakawayTracker(
+             RecoveryBreakawayConfig(
+@@ -893,6 +945,17 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 self.breakaway_target_minimum_mps,
+                 self.breakaway_full_speed_mps,
+                 self.breakaway_release_speed_mps))
++        self.loginfo(
++            "extreme CRAB curb profile={} (enable={}, effective cap={:.1f}N*m, "
++            "total floors={:.1f}/{:.1f}N*m, Kp={:.1f}; "
++            "bridge cap=20N*m unchanged; B1 curb clearance not validated)".format(
++                "EXPERIMENTAL_UNVALIDATED" if self.extreme_crab_curb_boost_enable
++                else "ACCEPTED_DEFAULT",
++                self.extreme_crab_curb_boost_enable,
++                self._extreme_crab_breakaway_config.torque_limit_nm,
++                self._extreme_crab_breakaway_config.first_floor_torque_nm,
++                self._extreme_crab_breakaway_config.second_floor_torque_nm,
++                self.extreme_crab_speed_torque_kp))
+         self.loginfo(
+             "automatic translation stall breakaway configured "
+             "(target>={:.2f}m/s, stall<={:.3f}m/s, "
+@@ -924,6 +987,7 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+     # ------------------------------------------------------------------
+     def _on_extended_cmd(self, msg):
+         previous_mode = self._active_mode
++        previous_target_yaw_rate = self._target_yaw_rate
+         previous_target_speed = self._target_speed
+         previous_target_crab = self._target_crab
+         previous_recovery_authorized = (
+@@ -939,6 +1003,25 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+             self._reject_command(route.reason)
+             return
+ 
++        # HH_261008 - A stop or changed rotation episode must discard PI state
++        # even when it arrives between two physical control ticks.
++        if (requested_mode != DriveMode.ZERO_TURN
++                or requested_mode != previous_mode
++                or not math.isfinite(float(msg.yaw_rate_cmd))
++                or not 1.0e-4 < abs(float(msg.yaw_rate_cmd)) <= 0.2
++                or float(msg.yaw_rate_cmd) * previous_target_yaw_rate < 0.0
++                or abs(float(msg.speed)) > 1.0e-6
++                or bool(getattr(msg, "recovery_breakaway_authorized", False))):
++            self._reset_zero_turn_yaw_integral()
++
++        # HH_261007 - Only a received zero or new motion episode clears a
++        # yaw/stall fault. Internal stop zeroing must not auto-rearm a heartbeat.
++        if (requested_mode != DriveMode.CRAB or requested_mode != previous_mode
++                or abs(float(msg.speed)) <= 1e-6
++                or float(msg.speed)*previous_target_speed < 0.
++                or float(msg.crab_angle)*previous_target_crab < 0.):
++            self._reset_crab_yaw_hold(clear_fault=True)
++
+         if self._has_accepted_command and requested_mode != self._active_mode:
+             self._publish_physical_reset()
+             self.fws.reset()
+@@ -1020,6 +1103,8 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+ 
+     def _on_legacy_cmd(self, msg):
+         """Backward-compatible AckermannDrive input -> ACKERMANN mode."""
++        # HH_261008 - Legacy commands also end any between-tick PI episode.
++        self._reset_zero_turn_yaw_integral()
+         route = route_mode(
+             DriveMode.ACKERMANN,
+             self.physical_gate,
+@@ -1027,6 +1112,7 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+         if not route.allowed:
+             self._reject_command(route.reason)
+             return
++        self._reset_crab_yaw_hold(clear_fault=True)
+ 
+         if (self._has_accepted_command
+                 and self._active_mode != DriveMode.ACKERMANN):
+@@ -1159,6 +1245,9 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+             else:
+                 motion_requested = motion_target_is_active(
+                     self._target_yaw_rate, self._target_steer)
++            if not self._physical_command_armed:
++                self._reset_crab_yaw_hold()
++                self._reset_zero_turn_yaw_integral()
+             wheel_torques_nm = (
+                 self._compute_wheel_torques(solution)
+                 if self._physical_command_armed
+@@ -1324,9 +1413,80 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+             self._recovery_breakaway_tracker.reset()
+         if hasattr(self, "_rotation_recovery_breakaway_tracker"):
+             self._rotation_recovery_breakaway_tracker.reset()
++        self._reset_zero_turn_yaw_integral()
++
++    def _reset_zero_turn_yaw_integral(self):
++        if hasattr(self, "_experimental_zero_turn_yaw_integral"):
++            self._experimental_zero_turn_yaw_integral.reset()
++
++    def _zero_turn_yaw_integral_torque(self, solution, target, current, age):
++        if not getattr(self, "experimental_zero_turn_yaw_integral_enabled", False):
++            self._reset_zero_turn_yaw_integral()
++            return 0.0
++        now = self.get_time()
++        integral = self._experimental_zero_turn_yaw_integral.update(
++            now=now, enabled=True, drive_mode=int(self._active_mode),
++            armed=bool(self._physical_command_armed and self._has_accepted_command),
++            backend_accepted=bool(
++                self.physical_gate.accepted and self._active_route.allowed
++                and self._active_route.backend == Backend.PHYSX_FOUR_WHEEL_STEERING),
++            steering_converged=bool(solution.steering_converged),
++            target_yaw_rate_radps=target, current_yaw_rate_radps=current,
++            target_translation_mps=self._target_speed, odometry_age_s=age,
++            command_age_s=now - self._last_cmd_time,
++            recovery_authorized=bool(self._rotation_recovery_breakaway_authorized))
++        diagnostic = self._experimental_zero_turn_yaw_integral.last_result
++        last = getattr(self, "_last_zero_turn_yaw_integral_diag_time", None)
++        if last is None or now < last or now - last >= 0.5:
++            self.loginfo(
++                "experimental ZERO_TURN yaw integral target_radps={:.5f} "
++                "current_radps={:.5f} error_radps={:.5f} integrated_error_rad={:.5f} "
++                "integral_nm={:.5f} proportional_nm={:.5f} scalar_nm={:.5f} "
++                "reason={} unqualified=true".format(
++                    diagnostic.target_radps, diagnostic.current_radps,
++                    diagnostic.error_radps, diagnostic.integrated_error_rad,
++                    diagnostic.integral_torque_nm, diagnostic.proportional_torque_nm,
++                    diagnostic.scalar_torque_nm, diagnostic.reason))
++            self._last_zero_turn_yaw_integral_diag_time = now
++        return integral
++
++    def _reset_crab_yaw_hold(self, clear_fault=False):
++        if hasattr(self, "_experimental_crab_yaw_hold"):
++            self._experimental_crab_yaw_hold.reset(clear_fault=clear_fault)
++
++    def _apply_experimental_crab_yaw_hold(self, torques, solution, signed_speed, age):
++        if not getattr(self, "experimental_crab_yaw_hold_enabled", False):
++            return torques
++        orientation = self._odometry.pose.pose.orientation
++        try:
++            result = self._experimental_crab_yaw_hold.update(
++                torques, now=self.get_time(), enabled=True,
++                drive_mode=int(self._active_mode), armed=self._physical_command_armed,
++                steering_converged=bool(solution.steering_converged),
++                crab_angle_ros_rad=float(self._target_crab),
++                target_speed_mps=float(self._target_speed), signed_speed_mps=signed_speed,
++                heading_ros_rad=quaternion_yaw(orientation.x,orientation.y,orientation.z,orientation.w),
++                yaw_rate_ros_radps=self._odometry.twist.twist.angular.z,
++                odometry_age_s=age)
++        except (TypeError, ValueError):
++            self._reset_crab_yaw_hold()
++            raise
++        diagnostic = self._experimental_crab_yaw_hold.last_result
++        now = self.get_time()
++        previous = getattr(self, "_last_crab_yaw_hold_diag_time", None)
++        if diagnostic is not None and (previous is None or now-previous >= 1.):
++            self.loginfo("HH_261007 experimental_crab_yaw_hold ref_deg={:.3f} "
++                "error_deg={:.3f} reduced_axle={} reduction_nm={:.3f} "
++                "torques_nm={} unqualified=true".format(
++                    math.degrees(diagnostic.reference_yaw_rad),
++                    math.degrees(diagnostic.heading_error_rad),
++                    diagnostic.reduced_axle, diagnostic.reduction_nm, result))
++            self._last_crab_yaw_hold_diag_time = now
++        return result
+ 
+     def _publish_physical_reset(self):
+         self._reset_breakaway_trackers()
++        self._reset_crab_yaw_hold()
+         if not hasattr(self, "physical_command_pub"):
+             return
+         # A controller-only restart must first seed its uint64 sequence from a
+@@ -1350,16 +1510,20 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+     def _compute_wheel_torques(self, solution):
+         if not solution.steering_converged:
+             self._reset_breakaway_trackers()
++            self._reset_crab_yaw_hold()
+             return (0.0, 0.0, 0.0, 0.0)
+         if self._odometry is None or self._odometry_time is None:
+             self._reset_breakaway_trackers()
++            self._reset_crab_yaw_hold()
+             raise ValueError("fresh signed /odometry feedback is missing")
+         age = self.get_time() - self._odometry_time
+         if (not math.isfinite(age) or age < 0.0
+                 or age > self.odometry_timeout_sec):
+             self._reset_breakaway_trackers()
++            self._reset_crab_yaw_hold()
+             raise ValueError("signed /odometry feedback is stale")
+         if self._active_mode in (DriveMode.ACKERMANN, DriveMode.CRAB):
++            self._reset_zero_turn_yaw_integral()
+             self._rotation_recovery_breakaway_tracker.reset()
+             body_vx = float(self._odometry.twist.twist.linear.x)
+             body_vy = float(self._odometry.twist.twist.linear.y)
+@@ -1423,7 +1587,7 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                 and abs(math.degrees(self._target_crab))
+                 >= self.extreme_crab_breakaway_minimum_angle_deg)
+             active_translation_torque_limit_nm = (
+-                self.extreme_crab_wheel_torque_limit_nm
++                self._extreme_crab_breakaway_config.torque_limit_nm
+                 if extreme_crab_command
+                 else self.translation_wheel_torque_limit_nm)
+             orientation = self._odometry.pose.pose.orientation
+@@ -1469,13 +1633,16 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+                             extreme_crab_breakaway_floor_nm,
+                             recovery_breakaway_floor_nm))))
+             if not all(abs(float(value)) > 1.0e-6 for value in torques):
++                self._reset_crab_yaw_hold()
+                 return (0.0, 0.0, 0.0, 0.0)
+-            return torques
++            return self._apply_experimental_crab_yaw_hold(
++                torques, solution, signed_speed, age)
+         self._translation_breakaway_tracker.reset()
+         self._extreme_crab_breakaway_tracker.reset()
+         self._recovery_breakaway_tracker.reset()
+         current_yaw_rate_ros = float(self._odometry.twist.twist.angular.z)
+         if not math.isfinite(current_yaw_rate_ros):
++            self._reset_zero_turn_yaw_integral()
+             raise ValueError("/odometry yaw-rate feedback is non-finite")
+         target_yaw_rate_ros = resolve_yaw_rate_target(
+             self._target_yaw_rate,
+@@ -1508,6 +1675,8 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+             if rotation_recovery_floor_nm > 0.0
+             else self.rotation_wheel_torque_limit_nm
+         )
++        integral_torque_nm = self._zero_turn_yaw_integral_torque(
++            solution, target_yaw_rate, current_yaw_rate, age)
+         torques = compute_bounded_wheel_torques(
+             target_yaw_rate,
+             current_yaw_rate,
+@@ -1515,6 +1684,7 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+             active_rotation_limit_nm,
+             solution.drive_signs,
+             solution.wheel_speed_scales,
++            feedforward_torque_nm=integral_torque_nm,
+             minimum_torque_floor_nm=rotation_recovery_floor_nm)
+         if not all(abs(float(value)) > 1.0e-6 for value in torques):
+             return (0.0, 0.0, 0.0, 0.0)
+@@ -1554,6 +1724,7 @@ class CarlaExtendedAckermannControl(CompatibleNode):
+         self._recovery_breakaway_authorized = False
+         self._rotation_recovery_breakaway_authorized = False
+         self._reset_breakaway_trackers()
++        self._reset_crab_yaw_hold()
+         self._has_accepted_command = False
+         if not self._stop_latched:
+             self._publish_physical_reset()
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py
+index 126d775bdbfa457a41d7eb3946c75372af665116..ddf830a25275c482f4d4a548b428a97f82516e26 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py
+@@ -46,6 +46,14 @@ MAX_COMMAND_TIMEOUT_SEC = 0.25
+ RANGER_MAX_WHEEL_TORQUE_NM = 20.0
+ TORQUE_ZERO_EPSILON_NM = 1.0e-6
+ TORQUE_FACTOR_RELATIVE_TOLERANCE = 1.0e-4
++# HH_261007 - Experimental CRAB validation is opt-in and narrower than the
++# physical API envelope. Tolerances only accommodate float32 ROS fields.
++EXPERIMENTAL_CRAB_MIN_ANGLE_DEGREES = 80.0
++EXPERIMENTAL_CRAB_MAX_ANGLE_DEGREES = 88.0
++EXPERIMENTAL_CRAB_ANGLE_TOLERANCE_DEGREES = 1.0e-4
++EXPERIMENTAL_CRAB_MAX_TORQUE_NM = 16.0
++EXPERIMENTAL_CRAB_MIN_AXLE_FACTOR = 0.6
++EXPERIMENTAL_CRAB_FACTOR_TOLERANCE = 1.0e-6
+ EMERGENCY_BRAKE_MAX_ATTEMPTS = 3
+ EMERGENCY_BRAKE_FRAME_TIMEOUT_SEC = 1.0
+ EMERGENCY_BRAKE_TOTAL_TIMEOUT_SEC = 3.5
+@@ -265,12 +273,48 @@ def _is_forward_sequence(previous, current):
+     return 0 < delta < UINT64_HALF_RANGE
+ 
+ 
++def _is_bounded_crab_yaw_hold_pattern(
++        mode, angles_degrees, torques_nm, normalized, tolerance):
++    """HH_261007 - Recognize only a same-sign, one-axle reduction envelope.
++
++    The unchanged axle defines the scalar baseline observable on the wire.
++    No pre-trim scalar is transmitted: the controller must independently prove
++    that its allocation only reduces magnitudes from the actual baseline.
++    This exception provides no steering-convergence or odometry authority.
++    """
++    if mode != Mode.CRAB:
++        return False
++    angle_tolerance = EXPERIMENTAL_CRAB_ANGLE_TOLERANCE_DEGREES
++    if (max(angles_degrees) - min(angles_degrees) > angle_tolerance
++            or any(abs(angle) < EXPERIMENTAL_CRAB_MIN_ANGLE_DEGREES
++                   - angle_tolerance
++                   or abs(angle) > EXPERIMENTAL_CRAB_MAX_ANGLE_DEGREES
++                   + angle_tolerance for angle in angles_degrees)):
++        return False
++    if (any(abs(torque) > EXPERIMENTAL_CRAB_MAX_TORQUE_NM
++            for torque in torques_nm)
++            or any((value > 0.0) != (normalized[0] > 0.0)
++                   for value in normalized)):
++        return False
++    if (abs(normalized[0] - normalized[1]) > tolerance
++            or abs(normalized[2] - normalized[3]) > tolerance):
++        return False
++    magnitudes = tuple(abs(value) for value in normalized)
++    factor = min(magnitudes) / max(magnitudes)
++    return factor >= (EXPERIMENTAL_CRAB_MIN_AXLE_FACTOR
++                      - EXPERIMENTAL_CRAB_FACTOR_TOLERANCE)
++
++
+ def validate_physical_command(
+         msg, gate_result, selected_backend,
+         independent_wheel_drive_available, previous_sequence=None,
+-        max_wheel_torque_nm=RANGER_MAX_WHEEL_TORQUE_NM):
++        max_wheel_torque_nm=RANGER_MAX_WHEEL_TORQUE_NM,
++        experimental_crab_yaw_hold_enabled=False):
+     """Validate an untrusted ROS command before any CARLA RPC is called."""
+ 
++    # HH_261007 - Never accidentally opt in through a truthy string or integer.
++    if type(experimental_crab_yaw_hold_enabled) is not bool:
++        raise ValueError("experimental_crab_yaw_hold_enabled must be boolean")
+     sequence = int(msg.sequence)
+     if not _is_forward_sequence(previous_sequence, sequence):
+         raise ValueError(
+@@ -365,14 +409,21 @@ def validate_physical_command(
+         normalized = tuple(
+             torque / float(sign * scale)
+             for torque, sign, scale in zip(torques_nm, signs, scales))
++        if not all(math.isfinite(value) for value in normalized):
++            raise ValueError("normalized wheel torques must be finite")
+         magnitude = max(abs(value) for value in normalized)
+         tolerance = max(
+             TORQUE_ZERO_EPSILON_NM,
+             magnitude * TORQUE_FACTOR_RELATIVE_TOLERANCE)
+         if max(normalized) - min(normalized) > tolerance:
+-            raise ValueError(
+-                "wheel torques must equal one scalar times drive_sign and "
+-                "speed_scale")
++            if not (experimental_crab_yaw_hold_enabled
++                    and _is_bounded_crab_yaw_hold_pattern(
++                        mode, angles_degrees, torques_nm,
++                        normalized, tolerance)):
++                raise ValueError(
++                    "wheel torques must equal one scalar times drive_sign and "
++                    "speed_scale, or an explicitly enabled bounded CRAB "
++                    "yaw-hold axle reduction")
+     return PhysicalSteeringRequest(
+         sequence, mode, angles_degrees, torques_nm, False)
+ 
+@@ -399,6 +450,9 @@ class PhysicalFourWheelBridge(CompatibleNode):
+             "physical_command_timeout_sec", MAX_COMMAND_TIMEOUT_SEC))
+         self.wheel_torque_safety_cap_nm = float(self.get_param(
+             "wheel_torque_safety_cap_nm", RANGER_MAX_WHEEL_TORQUE_NM))
++        # HH_261007 - Must agree with the controller's explicit experiment flag.
++        self.experimental_crab_yaw_hold_enabled = self.get_param(
++            "experimental_crab_yaw_hold_enabled", False)
+ 
+         self.physical_gate = validate_physical_four_wheel_manifest(
+             self.verified_physical_four_wheel_manifest,
+@@ -442,6 +496,9 @@ class PhysicalFourWheelBridge(CompatibleNode):
+ 
+         startup_stop_result = None
+         try:
++            if type(self.experimental_crab_yaw_hold_enabled) is not bool:
++                raise RuntimeError(
++                    "experimental_crab_yaw_hold_enabled must be boolean")
+             backend = normalize_extended_backend(self.extended_mode_backend)
+             if backend != Backend.PHYSX_FOUR_WHEEL_STEERING:
+                 raise RuntimeError(
+@@ -586,7 +643,9 @@ class PhysicalFourWheelBridge(CompatibleNode):
+                 msg, self.physical_gate, self.extended_mode_backend,
+                 self._independent_wheel_drive_available,
+                 self._last_sequence,
+-                self.wheel_torque_safety_cap_nm)
++                self.wheel_torque_safety_cap_nm,
++                experimental_crab_yaw_hold_enabled=(
++                    self.experimental_crab_yaw_hold_enabled))
+             if request.reset:
+                 reset_ok, brake_ok = self._best_effort_safe_stop()
+                 if not reset_ok or not brake_ok:
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py
+index 2a7c5ab6aeabc17ddd6e9e3cb0f0c0ef827274c0..eb219e05cf39f6383bb8966a20b7df1c29f812e3 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py
+@@ -60,6 +60,12 @@ REQUIRED_ARTIFACTS = tuple(sorted(
+ REQUIRED_SOURCE_LABELS = (
+     "backend_contract_source",
+     "controller_source",
++    # HH_261007 - The imported experimental allocator must be hash-bound too;
++    # changing a helper cannot retain authorization from an older gate.
++    "experimental_crab_yaw_hold_source",
++    # HH_261008 - The default-off ZERO_TURN helper is mandatory source evidence;
++    # old gates without this binding must not authorize the revised controller.
++    "experimental_zero_turn_yaw_integral_source",
+     "control_message_source",
+     "four_wheel_steering_source",
+     "full_stack_launch_source",
+@@ -91,6 +97,9 @@ LIVE_WHEEL_NAMES = (
+ LIVE_ALLOWED_MAP_SUFFIXES = (
+     "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+     "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v11",
++    # HH_261007 - Match the freshly surveyed current-world acceptance runner;
++    # no physics, contact, motion, cleanup or evidence requirement is relaxed.
++    "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone",
+ )
+ LIVE_TRANSLATION_TORQUE_NM = 12.0
+ LIVE_EXTREME_CRAB_TORQUE_NM = 8.0
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py
+index 0239ee4891458f418b1dff076d34c9dca258ae9c..a9c78a00087750764bc8db357eafe99e68c0d03a 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py
+@@ -1,5 +1,6 @@
+ """Pure bounded yaw-rate controller for independent Ranger wheel torque."""
+-from dataclasses import dataclass
++from collections import deque
++from dataclasses import dataclass, replace
+ import math
+ 
+ 
+@@ -79,6 +80,10 @@ class TranslationBreakawayConfig:
+     second_dwell_sec: float = 1.0
+     release_progress_mps: float = 0.045
+     torque_limit_nm: float = 12.0
++    # HH_261006 - Ordinary translation observes sustained signed progress,
++    # not one oscillating rigid-body velocity sample at a stationary contact.
++    progress_window_sec: float = 0.5
++    maximum_sample_gap_sec: float = 0.25
+ 
+     def __post_init__(self):
+         values = tuple(float(value) for value in (
+@@ -90,6 +95,8 @@ class TranslationBreakawayConfig:
+             self.second_dwell_sec,
+             self.release_progress_mps,
+             self.torque_limit_nm,
++            self.progress_window_sec,
++            self.maximum_sample_gap_sec,
+         ))
+         if not all(math.isfinite(value) for value in values):
+             raise ValueError(
+@@ -115,6 +122,10 @@ class TranslationBreakawayConfig:
+         if not 0.0 < self.first_dwell_sec <= self.second_dwell_sec:
+             raise ValueError(
+                 "translation breakaway dwell envelope is invalid")
++        if not (0.0 < self.progress_window_sec <= self.first_dwell_sec
++                and 0.0 < self.maximum_sample_gap_sec
++                <= min(0.25, self.progress_window_sec)):
++            raise ValueError("translation progress window/freshness envelope is invalid")
+ 
+ 
+ @dataclass(frozen=True)
+@@ -138,8 +149,12 @@ class ExtremeCrabBreakawayConfig:
+     second_dwell_sec: float = 1.0
+     release_progress_mps: float = 0.15
+     torque_limit_nm: float = 8.0
++    # HH_261007 - Opt-in CARLA curb experiment; never a new accepted default.
++    curb_boost_enable: bool = False
+ 
+     def __post_init__(self):
++        if type(self.curb_boost_enable) is not bool:
++            raise ValueError("extreme CRAB curb boost enable must be boolean")
+         values = tuple(float(value) for value in (
+             self.first_floor_torque_nm,
+             self.second_floor_torque_nm,
+@@ -153,11 +168,16 @@ class ExtremeCrabBreakawayConfig:
+         ))
+         if not all(math.isfinite(value) for value in values):
+             raise ValueError("extreme CRAB breakaway configuration is non-finite")
++        if self.curb_boost_enable and (
++                self.first_floor_torque_nm,
++                self.second_floor_torque_nm,
++                self.torque_limit_nm) != (12.0, 16.0, 16.0):
++            raise ValueError("experimental extreme CRAB profile must be 12/16/16 N*m")
+         if not (
+             0.0 < self.first_floor_torque_nm
+             <= self.second_floor_torque_nm
+             <= self.torque_limit_nm
+-            <= 8.0
++            <= (16.0 if self.curb_boost_enable else 8.0)
+         ):
+             raise ValueError("extreme CRAB torque envelope is invalid")
+         if not 0.0 < self.minimum_abs_crab_angle_deg < 89.0:
+@@ -173,6 +193,29 @@ class ExtremeCrabBreakawayConfig:
+             raise ValueError("extreme CRAB dwell envelope is invalid")
+ 
+ 
++def configure_extreme_crab_curb_boost(config, enabled=False):
++    """HH_261007 - Select one explicit, unvalidated CARLA-only curb profile.
++
++    The base configuration must remain the accepted 7/8/8 N*m profile.  Only
++    torque magnitudes change: angle, target, dwell, progress and release guards
++    are retained.  The independent physical bridge's 20 N*m cap is untouched.
++    """
++    if type(enabled) is not bool:
++        raise ValueError("extreme_crab_curb_boost_enable must be boolean")
++    if not isinstance(config, ExtremeCrabBreakawayConfig):
++        raise ValueError("extreme CRAB base configuration is required")
++    if config.curb_boost_enable or (
++            config.first_floor_torque_nm,
++            config.second_floor_torque_nm,
++            config.torque_limit_nm) != (7.0, 8.0, 8.0):
++        raise ValueError("extreme CRAB curb boost requires accepted 7/8/8 base")
++    if not enabled:
++        return config
++    return replace(
++        config, curb_boost_enable=True, first_floor_torque_nm=12.0,
++        second_floor_torque_nm=16.0, torque_limit_nm=16.0)
++
++
+ @dataclass(frozen=True)
+ class RotationRecoveryBreakawayConfig:
+     """Explicit campsite-only static-scrub authority for yaw recovery.
+@@ -554,6 +597,74 @@ class TranslationBreakawayTracker:
+         self._stall_start_sec = None
+         self._last_update_sec = None
+         self._active = False
++        self._progress_samples = deque()
++        self._last_floor_nm = 0.0
++
++    def _windowed_progress(self, now, progress):
++        """HH_261006 - Trapezoidal signed progress over a fully covered window."""
++        self._progress_samples.append((now, progress))
++        cutoff = now - self.config.progress_window_sec
++        while len(self._progress_samples) > 1 and self._progress_samples[1][0] <= cutoff:
++            self._progress_samples.popleft()
++        if self._progress_samples[0][0] > cutoff:
++            return None
++        integral = 0.0
++        previous = self._progress_samples[0]
++        for current in list(self._progress_samples)[1:]:
++            start, start_speed = previous
++            end, end_speed = current
++            left = max(start, cutoff)
++            if end > left:
++                left_speed = start_speed + (end_speed - start_speed) * (left - start) / (end - start)
++                integral += 0.5 * (left_speed + end_speed) * (end - left)
++            previous = current
++        return integral / self.config.progress_window_sec
++
++    def _update_ordinary_translation(self, now, key, signed_progress):
++        # HH_261006 - Missing time cannot qualify a stall. Repeated timestamps
++        # neither integrate velocity nor accrue dwell; downstream raw-speed
++        # overspeed/braking checks still execute independently of this floor.
++        if self._last_update_sec is not None:
++            gap = now - self._last_update_sec
++            if gap < 0.0 or gap > self.config.maximum_sample_gap_sec:
++                self.reset()
++                return 0.0
++            if gap == 0.0 and self._key == key:
++                return self._last_floor_nm
++        if self._key != key:
++            self.reset()
++            self._key = key
++            self._last_update_sec = now
++            self._progress_samples.append((now, signed_progress))
++            if signed_progress <= self.config.stall_progress_maximum_mps:
++                self._stall_start_sec = now
++            return 0.0
++        self._last_update_sec = now
++        sustained_progress = self._windowed_progress(now, signed_progress)
++        if sustained_progress is None:
++            self._last_floor_nm = 0.0
++            return 0.0
++        if (sustained_progress >= self.config.release_progress_mps
++                or (not self._active
++                    and sustained_progress > self.config.stall_progress_maximum_mps)):
++            # Retain fresh progress history, but discard all qualified stall
++            # dwell. A genuinely moving vehicle must requalify from scratch.
++            self._stall_start_sec = None
++            self._active = False
++            self._last_floor_nm = 0.0
++            return 0.0
++        if self._stall_start_sec is None:
++            self._stall_start_sec = now
++        elapsed = now - self._stall_start_sec
++        if elapsed < self.config.first_dwell_sec:
++            self._last_floor_nm = 0.0
++            return 0.0
++        self._active = True
++        # HH_261006 - Only the detector/floor taper uses sustained progress.
++        # The speed controller still receives the original instantaneous speed.
++        self._last_floor_nm = compute_translation_breakaway_torque_floor_nm(
++            self.config, elapsed, sustained_progress)
++        return self._last_floor_nm
+ 
+     def update(
+             self, now_sec, authorized, mode, ackermann_mode, crab_mode,
+@@ -584,6 +695,10 @@ class TranslationBreakawayTracker:
+         direction = math.copysign(1.0, target)
+         signed_progress = direction * current
+         key = (mode_value, int(direction))
++        if mode_value == int(ackermann_mode):
++            return self._update_ordinary_translation(now, key, signed_progress)
++        # HH_261006 - Preserve the existing CRAB helper behavior; the runtime
++        # already authorizes this ordinary tracker only in ACKERMANN mode.
+         if self._last_update_sec is not None and now < self._last_update_sec:
+             self.reset()
+             return 0.0
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_bridge.py b/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_bridge.py
+index c60398bfe9952e1fabbcb3fe0a207b59da83cd96..4b5b9b90f00b7074cc14933440366db6b09966e7 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_bridge.py
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_bridge.py
+@@ -5,6 +5,7 @@ import json
+ import math
+ import os
+ import shutil
++import struct
+ import sys
+ import types
+ from pathlib import Path
+@@ -236,6 +237,157 @@ def test_api_limit_is_strictly_below_89_degrees(bridge_module):
+             bridge_module.Backend.PHYSX_FOUR_WHEEL_STEERING, True)
+ 
+ 
++# HH_261007 - Offline qualification of the bridge's opt-in CRAB exception;
++# these tests do not establish physical yaw-hold acceptance.
++def _crab_yaw_hold_command(module, front_factor=0.6, rear_factor=1.0,
++                           sign=1.0, angle_degrees=88.0, scalar=16.0):
++    msg = _command(module, mode=module.Mode.CRAB)
++    msg.independent_wheel_torque_active = True
++    for wheel, scale, factor in zip(
++            ("front_left", "front_right", "rear_left", "rear_right"),
++            (1.0, 0.9, 0.8, 0.7),
++            (front_factor, front_factor, rear_factor, rear_factor)):
++        setattr(msg, wheel + "_steer", math.radians(angle_degrees))
++        setattr(msg, wheel + "_wheel_torque_nm", sign * scalar * scale * factor)
++    return msg
++
++
++def _validate_crab_yaw_hold(module, msg, **kwargs):
++    return module.validate_physical_command(
++        msg, _gate(module), module.Backend.PHYSX_FOUR_WHEEL_STEERING,
++        True, **kwargs)
++
++
++@pytest.mark.parametrize("enabled", [None, False])
++def test_crab_yaw_hold_axle_reduction_is_rejected_by_default(
++        bridge_module, enabled):
++    kwargs = {} if enabled is None else {
++        "experimental_crab_yaw_hold_enabled": enabled}
++    with pytest.raises(ValueError, match="one scalar"):
++        _validate_crab_yaw_hold(
++            bridge_module, _crab_yaw_hold_command(bridge_module), **kwargs)
++
++
++@pytest.mark.parametrize("sign", [-1.0, 1.0])
++@pytest.mark.parametrize("angle", [-88.0, -80.0, 80.0, 88.0])
++@pytest.mark.parametrize("front,rear", [(0.6, 1.0), (1.0, 0.6), (0.85, 1.0)])
++def test_crab_yaw_hold_accepts_only_bounded_same_sign_axle_pattern(
++        bridge_module, sign, angle, front, rear):
++    msg = _crab_yaw_hold_command(bridge_module, front, rear, sign, angle)
++    request = _validate_crab_yaw_hold(
++        bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++    assert request.torques_nm == pytest.approx((
++        sign * 16.0 * front, sign * 14.4 * front,
++        sign * 12.8 * rear, sign * 11.2 * rear))
++
++
++@pytest.mark.parametrize("angle", [-88.0, -80.0, 80.0, 88.0])
++def test_crab_yaw_hold_accepts_ros_float32_wire_precision(bridge_module, angle):
++    msg = _crab_yaw_hold_command(bridge_module, angle_degrees=angle)
++    for key, value in vars(msg).items():
++        if isinstance(value, float):
++            setattr(msg, key, struct.unpack("f", struct.pack("f", value))[0])
++    _validate_crab_yaw_hold(
++        bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("value", ["false", "true", 0, 1, None])
++def test_crab_yaw_hold_flag_requires_actual_boolean(bridge_module, value):
++    with pytest.raises(ValueError, match="must be boolean"):
++        _validate_crab_yaw_hold(
++            bridge_module, _crab_yaw_hold_command(bridge_module),
++            experimental_crab_yaw_hold_enabled=value)
++
++
++@pytest.mark.parametrize("angle", [-88.01, -79.99, 0.0, 79.99, 88.01, 89.0])
++def test_crab_yaw_hold_rejects_angles_outside_experimental_envelope(
++        bridge_module, angle):
++    with pytest.raises(ValueError):
++        _validate_crab_yaw_hold(
++            bridge_module,
++            _crab_yaw_hold_command(bridge_module, angle_degrees=angle),
++            experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("field,value", [
++    ("front_left_steer", math.radians(87.9)),
++    ("rear_right_steer", math.radians(-88.0)),
++    ("front_left_wheel_torque_nm", 9.61),
++    ("rear_left_wheel_torque_nm", 12.79),
++    ("front_left_wheel_torque_nm", -9.6),
++    ("rear_right_wheel_torque_nm", 0.0),
++    ("front_left_wheel_torque_nm", math.nan),
++    ("front_left_wheel_torque_nm", math.inf),
++    ("front_left_speed_scale", 0.0),
++    ("front_left_speed_scale", 1.0e-320),
++    ("independent_wheel_torque_active", False),
++    ("physical_manifest_sha256", "b" * 64),
++    ("physical_gate_accepted", False),
++    ("requires_independent_wheel_drive", False),
++])
++def test_crab_yaw_hold_does_not_bypass_existing_or_axle_constraints(
++        bridge_module, field, value):
++    msg = _crab_yaw_hold_command(bridge_module)
++    setattr(msg, field, value)
++    with pytest.raises(ValueError):
++        _validate_crab_yaw_hold(
++            bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("factor", [0.0, 0.599, -0.6])
++def test_crab_yaw_hold_rejects_excessive_axle_reduction(bridge_module, factor):
++    msg = _crab_yaw_hold_command(bridge_module, front_factor=factor)
++    with pytest.raises(ValueError):
++        _validate_crab_yaw_hold(
++            bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("scalar", [16.01, 20.0, 20.01])
++def test_crab_yaw_hold_relaxation_never_exceeds_16_nm(bridge_module, scalar):
++    msg = _crab_yaw_hold_command(
++        bridge_module, front_factor=1.0, rear_factor=0.6, scalar=scalar)
++    with pytest.raises(ValueError):
++        _validate_crab_yaw_hold(
++            bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("mode", [0, 2, 3])
++def test_crab_yaw_hold_never_relaxes_other_modes(bridge_module, mode):
++    msg = _crab_yaw_hold_command(bridge_module)
++    msg.drive_mode.mode = mode
++    if mode in (2, 3):
++        msg.front_right_drive_sign = -1
++        msg.rear_right_drive_sign = -1
++        msg.front_right_wheel_torque_nm *= -1
++        msg.rear_right_wheel_torque_nm *= -1
++    with pytest.raises(ValueError, match="one scalar"):
++        _validate_crab_yaw_hold(
++            bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++
++
++def test_crab_yaw_hold_retains_sequence_and_independent_drive_guards(
++        bridge_module):
++    msg = _crab_yaw_hold_command(bridge_module)
++    with pytest.raises(ValueError, match="sequence"):
++        _validate_crab_yaw_hold(
++            bridge_module, msg, previous_sequence=msg.sequence,
++            experimental_crab_yaw_hold_enabled=True)
++    with pytest.raises(ValueError, match="independent wheel drive"):
++        bridge_module.validate_physical_command(
++            msg, _gate(bridge_module),
++            bridge_module.Backend.PHYSX_FOUR_WHEEL_STEERING, False,
++            experimental_crab_yaw_hold_enabled=True)
++
++
++@pytest.mark.parametrize("reset", [False, True])
++def test_crab_yaw_hold_retains_zero_torque_and_reset_stop(bridge_module, reset):
++    msg = _command(bridge_module, mode=1, reset=reset)
++    request = _validate_crab_yaw_hold(
++        bridge_module, msg, experimental_crab_yaw_hold_enabled=True)
++    assert request.reset is reset
++    assert request.torques_nm == (() if reset else (0.0, 0.0, 0.0, 0.0))
++
++
+ def _control(**overrides):
+     values = {
+         "throttle": 0.4, "steer": 0.2, "brake": 0.0,
+@@ -360,6 +512,7 @@ def _bare_bridge(bridge_module, vehicle):
+     bridge._physx_substep_high_count = 0
+     bridge._physx_substep_world_frame = None
+     bridge.wheel_torque_safety_cap_nm = 20.0
++    bridge.experimental_crab_yaw_hold_enabled = False
+     bridge.command_timeout_sec = 0.25
+     bridge._publish_status = lambda: None
+     bridge.logerr = lambda _message: None
+@@ -654,6 +807,29 @@ def test_every_mode_dispatches_one_atomic_eight_argument_rpc(
+     assert len(vehicle.combined_calls[0]) == 8
+ 
+ 
++@pytest.mark.parametrize("enabled", [False, True])
++def test_crab_yaw_hold_node_forwards_opt_in_and_retains_watchdog_stop(
++        bridge_module, monkeypatch, enabled):
++    vehicle = _FakeVehicle()
++    bridge = _bare_bridge(bridge_module, vehicle)
++    bridge.experimental_crab_yaw_hold_enabled = enabled
++    monkeypatch.setattr(bridge_module.time, "monotonic", lambda: 10.0)
++    bridge._on_command(_crab_yaw_hold_command(bridge_module))
++    assert len(vehicle.combined_calls) == int(enabled)
++    if enabled:
++        assert vehicle.reset_calls == 0
++        assert bridge._active is True
++        monkeypatch.setattr(bridge_module.time, "monotonic", lambda: 10.26)
++        bridge._watchdog()
++    else:
++        assert bridge._armed is False
++        assert bridge._ready is False
++    assert bridge._active is False
++    assert vehicle.reset_calls == 1
++    assert vehicle.apply_calls == 1
++    assert vehicle.get_control().brake == 1.0
++
++
+ def test_bridge_never_calls_visual_or_body_transform_apis():
+     tree = ast.parse(BRIDGE_PATH.read_text(encoding="utf-8"))
+     calls = {
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_steering.py b/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_steering.py
+index dfb4c6dba70240b6c13acd18a6df848dcea1050a..6c0d1439bdb94c0fa245aacb9c2154592402e757 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_steering.py
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_steering.py
+@@ -33,6 +33,7 @@ from carla_extended_ackermann_control.wheel_torque_control import (
+     RotationRecoveryBreakawayTracker,
+     TranslationBreakawayConfig,
+     TranslationBreakawayTracker,
++    configure_extreme_crab_curb_boost,
+ )
+ 
+ 
+@@ -387,8 +388,10 @@ def _bare_command_controller(controller_module):
+     controller._last_recovery_authority_rejection = ""
+     controller._translation_breakaway_tracker = TranslationBreakawayTracker(
+         TranslationBreakawayConfig())
++    controller.extreme_crab_curb_boost_enable = False
++    controller._extreme_crab_breakaway_config = ExtremeCrabBreakawayConfig()
+     controller._extreme_crab_breakaway_tracker = ExtremeCrabBreakawayTracker(
+-        ExtremeCrabBreakawayConfig())
++        controller._extreme_crab_breakaway_config)
+     controller._recovery_breakaway_tracker = RecoveryBreakawayTracker(
+         RecoveryBreakawayConfig())
+     controller._rotation_recovery_breakaway_tracker = (
+@@ -557,6 +560,11 @@ def test_repeated_legacy_callbacks_preserve_translation_stall_dwell(
+     # A normal 50 Hz command refresh must not restart the physical stall
+     # timer.  The first stage is therefore still reached at elapsed 0.5 s.
+     controller._on_legacy_cmd(message)
++    # HH_261006 - Supply the fresh controller samples implied by this fixture.
++    for now in (0.1, 0.2, 0.3, 0.4):
++        controller._on_legacy_cmd(message)
++        tracker.update(now, True, Mode.ACKERMANN, Mode.ACKERMANN, Mode.CRAB,
++                       True, -0.20, 0.0)
+     assert tracker.update(
+         0.5, True, Mode.ACKERMANN, Mode.ACKERMANN, Mode.CRAB,
+         True, -0.20, 0.0) == 10.0
+@@ -572,6 +580,10 @@ def test_controller_fail_closed_paths_reset_translation_stall(
+     tracker.update(
+         0.0, True, Mode.ACKERMANN, Mode.ACKERMANN, Mode.CRAB,
+         True, -0.20, 0.0)
++    # HH_261006 - An unobserved half-second is not fresh stall evidence.
++    for now in (0.1, 0.2, 0.3, 0.4):
++        tracker.update(now, True, Mode.ACKERMANN, Mode.ACKERMANN, Mode.CRAB,
++                       True, -0.20, 0.0)
+     assert tracker.update(
+         0.5, True, Mode.ACKERMANN, Mode.ACKERMANN, Mode.CRAB,
+         True, -0.20, 0.0) == 10.0
+@@ -643,6 +655,9 @@ def test_controller_applies_b12_total_floor_only_after_fresh_stall_dwell(
+ 
+     initial = sample(10.0)
+     assert initial[0] == pytest.approx(-3.767067, abs=1.0e-6)
++    # HH_261006 - Preserve expected floors with realistic fresh-loop coverage.
++    for now in (10.1, 10.2):
++        sample(now)
+     # Repeated valid command traffic cannot reset the timer.
+     clock[0] = 10.25
+     controller._on_legacy_cmd(SimpleNamespace(
+@@ -650,7 +665,11 @@ def test_controller_applies_b12_total_floor_only_after_fresh_stall_dwell(
+         acceleration=0.0,
+         steering_angle=0.0,
+     ))
++    for now in (10.3, 10.4):
++        sample(now)
+     assert sample(10.5) == pytest.approx((-10.0,) * 4)
++    for now in (10.6, 10.7, 10.8, 10.9):
++        sample(now)
+     assert sample(11.0) == pytest.approx((-12.0,) * 4)
+ 
+     # Stale odometry fails closed and discards the active exception.
+@@ -660,9 +679,18 @@ def test_controller_applies_b12_total_floor_only_after_fresh_stall_dwell(
+     assert controller._translation_breakaway_tracker.active is False
+ 
+ 
++@pytest.mark.parametrize("boost, first, second", [
++    (False, 7.0, 8.0), (True, 12.0, 16.0),
++])
+ def test_controller_selects_extreme_crab_gain_then_stages(
+-        controller_module):
++        controller_module, boost, first, second):
+     controller = _bare_command_controller(controller_module)
++    # HH_261007 - Same runtime controller path for default and explicit boost.
++    controller.extreme_crab_curb_boost_enable = boost
++    controller._extreme_crab_breakaway_config = configure_extreme_crab_curb_boost(
++        ExtremeCrabBreakawayConfig(), boost)
++    controller._extreme_crab_breakaway_tracker = ExtremeCrabBreakawayTracker(
++        controller._extreme_crab_breakaway_config)
+     clock = [20.0]
+     controller.get_time = lambda: clock[0]
+     controller._on_extended_cmd(_extended_command(0.667, False))
+@@ -700,8 +728,14 @@ def test_controller_selects_extreme_crab_gain_then_stages(
+         return controller._compute_wheel_torques(selected_solution)
+ 
+     assert sample(20.0) == pytest.approx((5.336,) * 4)
+-    assert sample(20.5) == pytest.approx((7.0,) * 4)
+-    assert sample(21.0) == pytest.approx((8.0,) * 4)
++    assert sample(20.5) == pytest.approx((first,) * 4)
++    assert sample(21.0) == pytest.approx((second,) * 4)
++
++    # Stale feedback discards the experimental floor exactly like the default.
++    clock[0] = 21.3
++    with pytest.raises(ValueError, match="stale"):
++        controller._compute_wheel_torques(solution)
++    assert controller._extreme_crab_breakaway_tracker.active is False
+ 
+     # Angle leaving the explicit >=80-degree envelope resets that authority.
+     controller._target_crab = math.radians(79.0)
+@@ -712,6 +746,37 @@ def test_controller_selects_extreme_crab_gain_then_stages(
+     assert controller._extreme_crab_breakaway_tracker.active is False
+ 
+ 
++def test_controller_curb_boost_command_watchdog_removes_floor_and_brakes(
++        controller_module):
++    # HH_261007 - Exercise the real _tick -> _publish_stop watchdog path.
++    controller = _bare_command_controller(controller_module)
++    controller._on_extended_cmd(_extended_command(0.667, False))
++    config = configure_extreme_crab_curb_boost(ExtremeCrabBreakawayConfig(), True)
++    controller._extreme_crab_breakaway_config = config
++    tracker = controller._extreme_crab_breakaway_tracker = ExtremeCrabBreakawayTracker(config)
++    args = (True, Mode.CRAB, Mode.CRAB, True, 0.667, 0.0, math.radians(88.0))
++    assert tracker.update(0.0, *args) == 0.0
++    assert tracker.update(0.5, *args) == 12.0
++    assert tracker.update(1.0, *args) == 16.0
++    controller.control_loop_rate = 0.02
++    controller._last_solver_time = None
++    controller._last_cmd_time = 9.4
++    controller._stop_latched = True
++    commands = []
++    controller.control_pub = SimpleNamespace(publish=commands.append)
++    controller._publish_info = lambda *_args: None
++    controller.vehicle_status = SimpleNamespace(
++        velocity=0.0, acceleration=SimpleNamespace(linear=SimpleNamespace(x=0.0)))
++    controller._tick()
++    assert tracker.active is False
++    assert tracker.stall_started is False
++    assert controller._target_speed == 0.0
++    assert controller._has_accepted_command is False
++    assert controller._interlock_reason == "command watchdog expired"
++    assert len(commands) == 1
++    assert commands[0].brake == 1.0 and commands[0].hand_brake is True
++
++
+ def test_controller_left_to_right_crab_resets_recovery_stall_timer(
+         controller_module):
+     controller = _bare_command_controller(controller_module)
+@@ -776,3 +841,40 @@ def test_full_stack_defaults_remain_disabled_and_fail_closed():
+     assert "'RANGER_BASELINE_MANIFEST', default_value=''" in source
+     assert "'RANGER_PHYSICAL_MANIFEST', default_value=''" in source
+     assert "'PYTHON_EGG_CACHE', default_value=''" in source
++
++
++def test_full_stack_manual_crab_cap_is_typed_bounded_and_default_one():
++    tree = ast.parse(FULL_STACK_LAUNCH_PATH.read_text(encoding="utf-8"))
++    declarations = [node for node in ast.walk(tree)
++                    if isinstance(node, ast.Call)
++                    and isinstance(node.func, ast.Attribute)
++                    and node.func.attr == "DeclareLaunchArgument"
++                    and node.args and isinstance(node.args[0], ast.Constant)
++                    and node.args[0].value == "crab_speed_cap"]
++    assert len(declarations) == 1
++    options = {item.arg: ast.literal_eval(item.value)
++               for item in declarations[0].keywords}
++    assert options["default_value"] == "1.0"
++    assert options["choices"] == ["1.0", "2.0"]
++    caps = []
++    for node in ast.walk(tree):
++        if isinstance(node, ast.Dict):
++            caps.extend(value for key, value in zip(node.keys, node.values)
++                        if isinstance(key, ast.Constant) and key.value == "crab_speed_cap")
++    assert len(caps) == 1
++    cap = caps[0]
++    assert isinstance(cap, ast.Call) and isinstance(cap.func, ast.Name)
++    assert cap.func.id == "ParameterValue"
++    assert ast.unparse(cap.args[0]) == "launch.substitutions.LaunchConfiguration('crab_speed_cap')"
++    assert any(item.arg == "value_type" and isinstance(item.value, ast.Name)
++               and item.value.id == "float" for item in cap.keywords)
++
++    ordinary = FourWheelSteering(FourWSParams(crab_speed_cap=1.0))
++    manual = FourWheelSteering(FourWSParams(crab_speed_cap=2.0))
++    for requested in (-3.0, -2.0, -0.666667, 0.666667, 2.0, 3.0):
++        assert ordinary.speed_cap_for_mode(DriveMode.CRAB, requested) == pytest.approx(
++            max(-1.0, min(1.0, requested)))
++        assert manual.speed_cap_for_mode(DriveMode.CRAB, requested) == pytest.approx(
++            max(-2.0, min(2.0, requested)))
++    settings = (PACKAGE_ROOT / "config" / "settings_ranger.yaml").read_text(encoding="utf-8")
++    assert "crab_speed_cap:      1.0" in settings
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_portable_gate_contract.py b/ros_ws/src/carla_extended_ackermann_control/test/test_portable_gate_contract.py
+index ea5b3788c62fe1124a57251ed9b7fb0387acc98c..8d5d6cc8d0b4f1e44b9845f4c7cc629121447fe6 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/test/test_portable_gate_contract.py
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_portable_gate_contract.py
+@@ -27,6 +27,8 @@ def test_v27_portable_live_translation_envelope_is_exact():
+     assert gate.LIVE_ALLOWED_MAP_SUFFIXES == (
+         "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+         "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v11",
++        # HH_261007 - Preserve exact runtime constants while adding the surveyed map.
++        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone",
+     )
+ 
+ 
+@@ -463,6 +465,32 @@ def test_any_bound_file_mutation_fails_closed(portable_manifest, kind):
+     assert "SHA-256 mismatch" in result.reason_text
+ 
+ 
++def test_experimental_yaw_helper_mutation_fails_closed(portable_manifest):
++    # HH_261007 - A controller import cannot escape the portable source gate.
++    manifest, _, artifacts, sources = portable_manifest
++    sources["experimental_crab_yaw_hold_source"].write_bytes(b"changed helper\n")
++    result = _validate(manifest, artifacts)
++    assert result.accepted is False
++    assert "SHA-256 mismatch" in result.reason_text
++
++
++def test_experimental_zero_turn_helper_mutation_fails_closed(portable_manifest):
++    # HH_261008 - A helper edit invalidates even a default-disabled gate.
++    manifest, _, artifacts, sources = portable_manifest
++    sources["experimental_zero_turn_yaw_integral_source"].write_bytes(b"changed PI helper\n")
++    result = _validate(manifest, artifacts)
++    assert result.accepted is False
++    assert "SHA-256 mismatch" in result.reason_text
++
++
++def test_old_gate_without_zero_turn_helper_binding_is_rejected(portable_manifest):
++    # HH_261008 - Never grandfather a gate created before the imported helper.
++    manifest, payload, artifacts, _ = portable_manifest
++    del payload["sources"]["experimental_zero_turn_yaw_integral_source"]
++    _write_json(manifest, payload)
++    assert _validate(manifest, artifacts).accepted is False
++
++
+ def test_wrong_live_acceptance_report_schema_fails_closed(portable_manifest):
+     manifest, payload, artifacts, _ = portable_manifest
+     report_path = artifacts["production_authorization"]
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_wheel_torque_control.py b/ros_ws/src/carla_extended_ackermann_control/test/test_wheel_torque_control.py
+index 3a9b02b1ee1c66e9c96068e992ea72c7f9a503a6..e3cd48d0e328f9ab39222a3527f75adfc61832bb 100644
+--- a/ros_ws/src/carla_extended_ackermann_control/test/test_wheel_torque_control.py
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_wheel_torque_control.py
+@@ -19,6 +19,7 @@ from carla_extended_ackermann_control.wheel_torque_control import (
+     compute_translation_breakaway_torque_floor_nm,
+     compute_bounded_speed_wheel_torques,
+     compute_bounded_wheel_torques,
++    configure_extreme_crab_curb_boost,
+     motion_target_is_active,
+     project_body_velocity_onto_heading,
+     physical_propulsion_is_active,
+@@ -176,28 +177,95 @@ def test_extreme_crab_stages_are_seven_then_eight_and_release_continuously():
+         config, 1.0, config.release_progress_mps) == 0.0
+ 
+ 
++def test_extreme_crab_curb_boost_is_explicit_fixed_and_preserves_guards():
++    # HH_261007 - Source acceptance does not claim the curb experiment passed.
++    base = ExtremeCrabBreakawayConfig()
++    assert configure_extreme_crab_curb_boost(base) is base
++    boosted = configure_extreme_crab_curb_boost(base, True)
++    assert boosted.curb_boost_enable is True
++    assert (boosted.first_floor_torque_nm, boosted.second_floor_torque_nm,
++            boosted.torque_limit_nm) == (12.0, 16.0, 16.0)
++    for name in (
++            "minimum_abs_crab_angle_deg", "target_minimum_mps",
++            "stall_progress_maximum_mps", "first_dwell_sec",
++            "second_dwell_sec", "release_progress_mps"):
++        assert getattr(boosted, name) == getattr(base, name)
++    assert compute_extreme_crab_breakaway_torque_floor_nm(
++        boosted, 0.499, 0.0) == 0.0
++    assert compute_extreme_crab_breakaway_torque_floor_nm(
++        boosted, 0.5, 0.0) == 12.0
++    assert compute_extreme_crab_breakaway_torque_floor_nm(
++        boosted, 1.0, 0.020) == 16.0
++    assert compute_extreme_crab_breakaway_torque_floor_nm(
++        boosted, 1.0, 0.085) == pytest.approx(8.0)
++    assert compute_extreme_crab_breakaway_torque_floor_nm(
++        boosted, 1.0, 0.15) == 0.0
++
++
++@pytest.mark.parametrize("enabled", (None, "false", "true", 0, 1, math.nan))
++def test_extreme_crab_curb_boost_rejects_nonboolean_opt_in(enabled):
++    with pytest.raises(ValueError, match="boolean"):
++        configure_extreme_crab_curb_boost(ExtremeCrabBreakawayConfig(), enabled)
++    with pytest.raises(ValueError, match="boolean"):
++        ExtremeCrabBreakawayConfig(curb_boost_enable=enabled)
++
++
++@pytest.mark.parametrize("changes", [
++    {"torque_limit_nm": 16.0},
++    {"curb_boost_enable": True},
++    {"curb_boost_enable": True, "first_floor_torque_nm": 12.0,
++     "second_floor_torque_nm": 16.0, "torque_limit_nm": 20.0},
++    {"curb_boost_enable": True, "first_floor_torque_nm": 17.0,
++     "second_floor_torque_nm": 16.0, "torque_limit_nm": 16.0},
++    {"curb_boost_enable": True, "first_floor_torque_nm": math.nan,
++     "second_floor_torque_nm": 16.0, "torque_limit_nm": 16.0},
++])
++def test_extreme_crab_curb_boost_cannot_widen_or_bypass_fixed_profile(changes):
++    with pytest.raises(ValueError):
++        ExtremeCrabBreakawayConfig(**changes)
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_extreme_crab_curb_boost_keeps_exact_stop_braking_and_sixteen_cap(direction):
++    common = (8.0, 16.0, (1, 1, 1, 1), (1.0,) * 4)
++    assert compute_bounded_speed_wheel_torques(
++        0.0, direction * 0.2, *common,
++        authorized_breakaway_torque_floor_nm=16.0) == (0.0,) * 4
++    braking = compute_bounded_speed_wheel_torques(
++        direction * 0.667, direction * 0.8, *common,
++        authorized_breakaway_torque_floor_nm=16.0)
++    assert braking == pytest.approx((-direction * 1.064,) * 4)
++    assert compute_bounded_speed_wheel_torques(
++        direction * 0.667, 0.0, *common,
++        authorized_breakaway_torque_floor_nm=16.0) == (direction * 16.0,) * 4
++
++
+ @pytest.mark.parametrize("angle_deg", (-88.0, 88.0))
+ @pytest.mark.parametrize("target_mps", (-0.667, 0.667))
+-def test_extreme_crab_tracker_is_bidirectional(angle_deg, target_mps):
+-    tracker = ExtremeCrabBreakawayTracker(ExtremeCrabBreakawayConfig())
++@pytest.mark.parametrize("boost, first, second", [(False, 7.0, 8.0), (True, 12.0, 16.0)])
++def test_extreme_crab_tracker_is_bidirectional(angle_deg, target_mps, boost, first, second):
++    tracker = ExtremeCrabBreakawayTracker(configure_extreme_crab_curb_boost(
++        ExtremeCrabBreakawayConfig(), boost))
+     common = (
+         True, 1, 1, True, target_mps, 0.0, math.radians(angle_deg))
+     assert tracker.update(0.0, *common) == 0.0
+-    assert tracker.update(0.5, *common) == 7.0
+-    assert tracker.update(1.0, *common) == 8.0
++    assert tracker.update(0.5, *common) == first
++    assert tracker.update(1.0, *common) == second
+ 
+ 
+ @pytest.mark.parametrize("disqualifier", [
+     "unauthorized", "wrong_mode", "steering", "angle", "target",
+     "progress", "nonfinite", "time_regression",
+ ])
+-def test_extreme_crab_tracker_resets_every_interlock(disqualifier):
+-    tracker = ExtremeCrabBreakawayTracker(ExtremeCrabBreakawayConfig())
++@pytest.mark.parametrize("boost, first", [(False, 7.0), (True, 12.0)])
++def test_extreme_crab_tracker_resets_every_interlock(disqualifier, boost, first):
++    tracker = ExtremeCrabBreakawayTracker(configure_extreme_crab_curb_boost(
++        ExtremeCrabBreakawayConfig(), boost))
+     tracker.update(0.0, True, 1, 1, True, 0.667, 0.0,
+                    math.radians(88.0))
+     assert tracker.update(
+         0.5, True, 1, 1, True, 0.667, 0.0,
+-        math.radians(88.0)) == 7.0
++        math.radians(88.0)) == first
+     args = {
+         "now_sec": 0.6,
+         "authorized": True,
+@@ -417,8 +485,13 @@ def test_b11_translation_stall_stages_reach_measured_required_authority():
+     tracker = TranslationBreakawayTracker(config)
+     common = (True, 0, 0, 1, True, -0.20, 0.0)
+     assert tracker.update(0.0, *common) == 0.0
++    # HH_261006 - Dwell requires fresh intermediate controller samples.
++    for now in (0.1, 0.2, 0.3, 0.4):
++        assert tracker.update(now, *common) == 0.0
+     assert tracker.update(0.499, *common) == 0.0
+     assert tracker.update(0.5, *common) == 10.0
++    for now in (0.6, 0.7, 0.8, 0.9):
++        assert tracker.update(now, *common) == 10.0
+     assert tracker.update(0.999, *common) == 10.0
+     assert tracker.update(1.0, *common) == 12.0
+ 
+@@ -464,6 +537,9 @@ def test_translation_stall_tracker_is_forward_reverse_symmetric():
+         0.0, True, 0, 0, 1, True, 0.20, 0.0) == 0.0
+     assert negative.update(
+         0.0, True, 0, 0, 1, True, -0.20, 0.0) == 0.0
++    for index in range(1, 10):
++        positive.update(index / 10.0, True, 0, 0, 1, True, 0.20, 0.0)
++        negative.update(index / 10.0, True, 0, 0, 1, True, -0.20, 0.0)
+     assert positive.update(
+         1.0, True, 0, 0, 1, True, 0.20, 0.0) == 12.0
+     assert negative.update(
+@@ -486,6 +562,8 @@ def test_translation_stall_tracker_authorizes_only_translation_modes(mode):
+     tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
+     assert tracker.update(
+         0.0, True, mode, 0, 1, True, 0.20, 0.0) == 0.0
++    for now in (0.1, 0.2, 0.3, 0.4):
++        tracker.update(now, True, mode, 0, 1, True, 0.20, 0.0)
+     assert tracker.update(
+         0.5, True, mode, 0, 1, True, 0.20, 0.0) == 10.0
+ 
+@@ -512,26 +590,32 @@ def test_translation_stall_floor_preserves_stop_overspeed_and_twelve_nm_cap():
+     assert saturated == (12.0, 12.0, 12.0, 12.0)
+ 
+ 
+-def test_translation_stall_requires_continuous_authorized_low_progress():
++def test_translation_stall_rejects_single_spike_but_releases_sustained_progress():
+     tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
+     common = (True, 0, 0, 1, True, 0.20)
+     assert tracker.update(0.0, *common, 0.0) == 0.0
++    for now in (0.1, 0.2, 0.3, 0.4):
++        assert tracker.update(now, *common, 0.0) == 0.0
+     assert tracker.update(0.49, *common, 0.0) == 0.0
+-    # Progress above the qualification threshold cancels the pending timer.
+-    assert tracker.update(0.50, *common, 0.016) == 0.0
++    # HH_261006 - One instantaneous crossing is not sustained translation.
++    assert tracker.update(0.50, *common, 0.016) == 10.0
++    assert tracker.stall_started is True
++    for now in (0.6, 0.7, 0.8):
++        floor = tracker.update(now, *common, 0.10)
++    assert floor == 0.0
+     assert tracker.stall_started is False
+-    assert tracker.update(0.60, *common, 0.0) == 0.0
+-    assert tracker.update(1.09, *common, 0.0) == 0.0
+-    assert tracker.update(1.10, *common, 0.0) == 10.0
++    assert tracker.active is False
+ 
+ 
+ @pytest.mark.parametrize("reset_kind", [
+     "authorization", "mode", "steering", "target", "sign",
+-    "progress", "nonfinite", "time_regression",
++    "nonfinite", "time_regression", "sample_gap", "zero_target",
+ ])
+ def test_translation_stall_resets_on_every_interlock_change(reset_kind):
+     tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
+     tracker.update(0.0, True, 0, 0, 1, True, -0.20, 0.0)
++    for now in (0.1, 0.2, 0.3, 0.4):
++        tracker.update(now, True, 0, 0, 1, True, -0.20, 0.0)
+     assert tracker.update(0.5, True, 0, 0, 1, True, -0.20, 0.0) == 10.0
+     arguments = {
+         "now_sec": 0.6,
+@@ -553,12 +637,14 @@ def test_translation_stall_resets_on_every_interlock_change(reset_kind):
+         arguments["target_speed_mps"] = -0.099
+     elif reset_kind == "sign":
+         arguments["target_speed_mps"] = 0.20
+-    elif reset_kind == "progress":
+-        arguments["current_speed_mps"] = -0.045
+     elif reset_kind == "nonfinite":
+         arguments["current_speed_mps"] = math.nan
+     elif reset_kind == "time_regression":
+         arguments["now_sec"] = 0.4
++    elif reset_kind == "sample_gap":
++        arguments["now_sec"] = 0.750001
++    elif reset_kind == "zero_target":
++        arguments["target_speed_mps"] = 0.0
+     assert tracker.update(**arguments) == 0.0
+     assert tracker.active is False
+ 
+@@ -576,6 +662,127 @@ def test_invalid_translation_stall_configuration_fails_closed(values):
+         TranslationBreakawayConfig(*values)
+ 
+ 
++# HH_261006 - Immutable observed B13 excerpt: 008_B13_roadside_retry/
++# physical_wheels.jsonl, 2026-10-06T09:36:54.952459Z onward. Time is world-frame
++# delta * 0.05 s; progress is negative body-forward velocity for the reverse
++# request, projected from actual CARLA velocity/yaw and rounded to 6 decimals.
++B13_OSCILLATING_PROGRESS = (
++    (0.0, 0.016089), (0.05, 0.010394), (0.15, -0.003925),
++    (0.25, -0.034698), (0.35, -0.033427), (0.45, -0.050216),
++    (0.55, -0.059747), (0.65, -0.015584), (0.75, 0.091241),
++    (0.85, 0.074205), (0.95, 0.046275), (1.05, 0.028081),
++    (1.15, 0.002178), (1.2, -0.007515), (1.3, -0.038154),
++    (1.4, -0.048385), (1.5, -0.058458), (1.6, -0.081049),
++    (1.7, -0.072920), (1.8, 0.061467), (1.9, 0.098371),
++    (1.95, 0.090934), (2.05, 0.063843), (2.15, 0.031003),
++    (2.25, -0.003801), (2.35, -0.003214), (2.45, -0.032833),
++    (2.55, -0.040843), (2.65, -0.064829), (2.75, -0.081918),
++    (2.8, -0.077084), (2.9, 0.041847), (3.0, 0.094427),
++    (3.1, 0.065620), (3.2, 0.031781), (3.3, 0.021146),
++    (3.4, -0.018076), (3.5, -0.020063), (3.55, -0.037120),
++    (3.65, -0.051214), (3.75, -0.064447),
++)
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_b13_measured_oscillation_reaches_existing_twelve_nm_stage(direction):
++    tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    floors = [tracker.update(now, True, 0, 0, 1, True,
++                             direction * 0.2, direction * progress)
++              for now, progress in B13_OSCILLATING_PROGRESS]
++    assert any(progress >= 0.045 for _, progress in B13_OSCILLATING_PROGRESS)
++    assert 12.0 in floors
++    assert all(0.0 <= floor <= 12.0 for floor in floors)
++    # The same observed samples do not become a new CRAB recovery algorithm.
++    legacy_crab = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    crab_floors = [legacy_crab.update(now, True, 1, 0, 1, True,
++                                     direction * 0.2, direction * progress)
++                  for now, progress in B13_OSCILLATING_PROGRESS]
++    assert max(crab_floors) < 12.0
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_sustained_motion_releases_within_window_and_raw_overspeed_still_brakes(direction):
++    tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    for index in range(21):
++        floor = tracker.update(index * 0.05, True, 0, 0, 1, True, direction * 0.2, 0.0)
++    assert floor == 12.0
++    # HH_261006 - The very first overspeed sample still brakes downstream,
++    # even before enough temporal evidence exists to release the stall floor.
++    first = tracker.update(1.05, True, 0, 0, 1, True, direction * 0.2, direction * 0.3)
++    torques = compute_bounded_speed_wheel_torques(
++        direction * 0.2, direction * 0.3, 2.0, 12.0,
++        (1, 1, 1, 1), (1.0,) * 4,
++        authorized_breakaway_torque_floor_nm=first)
++    assert all(direction * torque < 0 for torque in torques)
++    for index in range(22, 31):
++        floor = tracker.update(index * 0.05, True, 0, 0, 1, True, direction * 0.2, direction * 0.1)
++    assert floor == 0.0
++    assert tracker.active is False
++    assert tracker.stall_started is False
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_genuine_progress_from_startup_never_qualifies_stall(direction):
++    tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    for index in range(61):
++        assert tracker.update(index * 0.05, True, 0, 0, 1, True,
++                              direction * 0.2, direction * 0.1) == 0.0
++    assert tracker.active is False
++    assert tracker.stall_started is False
++
++
++@pytest.mark.parametrize("times", ((0.0, 0.5), (0.0, 1.0), (0.0, 0.1, 0.350001)))
++def test_missing_time_never_qualifies_a_translation_stall(times):
++    tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    for now in times:
++        assert tracker.update(now, True, 0, 0, 1, True, 0.2, 0.0) == 0.0
++    assert tracker.stall_started is False
++
++
++def test_duplicate_timestamps_never_manufacture_progress_or_dwell():
++    tracker = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    for _ in range(100):
++        assert tracker.update(0.0, True, 0, 0, 1, True, 0.2, 0.0) == 0.0
++    for index in range(1, 11):
++        floor = tracker.update(index / 10.0, True, 0, 0, 1, True, 0.2, 0.0)
++    assert floor == 12.0
++    for _ in range(100):
++        assert tracker.update(1.0, True, 0, 0, 1, True, 0.2, 0.2) == 12.0
++    # Immediate loss of authority wins even at the same timestamp.
++    assert tracker.update(1.0, False, 0, 0, 1, True, 0.2, 0.0) == 0.0
++    assert tracker.active is False
++
++
++def test_progress_window_weights_time_not_callback_count():
++    sparse = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    dense = TranslationBreakawayTracker(TranslationBreakawayConfig())
++    for index in range(11):
++        now = index / 10.0
++        sparse.update(now, True, 0, 0, 1, True, 0.2, 0.0)
++        dense.update(now, True, 0, 0, 1, True, 0.2, 0.0)
++    # Both observations describe the same linearly increasing physical speed.
++    for now in (1.1, 1.2, 1.3):
++        left = sparse.update(now, True, 0, 0, 1, True, 0.2, (now - 1.0) * 0.4)
++    for index in range(1, 31):
++        now = 1.0 + index / 100.0
++        right = dense.update(now, True, 0, 0, 1, True, 0.2, (now - 1.0) * 0.4)
++    assert left == pytest.approx(right)
++    # Integral 0.5 * 0.12 m/s * 0.3 s / 0.5 s = 0.036 m/s;
++    # the unchanged continuous taper gives 12*(0.045-0.036)/0.030 = 3.6 N*m.
++    assert left == pytest.approx(3.6)
++
++
++@pytest.mark.parametrize("changes", (
++    {"progress_window_sec": 0.0}, {"progress_window_sec": math.nan},
++    {"progress_window_sec": 0.500001}, {"maximum_sample_gap_sec": 0.0},
++    {"maximum_sample_gap_sec": math.inf}, {"maximum_sample_gap_sec": 0.250001},
++    {"progress_window_sec": 0.1, "maximum_sample_gap_sec": 0.2}))
++def test_invalid_translation_progress_window_configuration(changes):
++    with pytest.raises(ValueError):
++        TranslationBreakawayConfig(**changes)
++
++
+ def test_recovery_speed_below_target_threshold_keeps_original_authority():
+     result = compute_bounded_speed_wheel_torques(
+         0.05, 0.0, 2.0, 6.0,
+diff --git a/tools/carla_portable_live_acceptance.py b/tools/carla_portable_live_acceptance.py
+index e6d4ca132ba13342833ac778cba3aa86c32588c2..de3c21b9f54dd62caf58931884b93dcedb86faa4 100755
+--- a/tools/carla_portable_live_acceptance.py
++++ b/tools/carla_portable_live_acceptance.py
+@@ -26,6 +26,9 @@ BLUEPRINT = "vehicle.ranger.default"
+ MAP_SUFFIXES = (
+     "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+     "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v11",
++    # HH_261007 - The unchanged acceptance pad was re-surveyed by finite
++    # read-only ground/body-height rays; every existing mode guard stays exact.
++    "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone",
+ )
+ WHEELS = ("front_left", "front_right", "rear_left", "rear_right")
+ MODES = ("ACKERMANN", "CRAB", "ZERO_TURN", "PIVOT")
+diff --git a/tools/tests/test_carla_portable_live_acceptance.py b/tools/tests/test_carla_portable_live_acceptance.py
+index 3ed0afd823c3c2e77be8fdb6195ee6727a2595da..22881e25124296a2c9e5a587ff937f9ef9e995c5 100644
+--- a/tools/tests/test_carla_portable_live_acceptance.py
++++ b/tools/tests/test_carla_portable_live_acceptance.py
+@@ -15,10 +15,12 @@ TARGET = importlib.util.module_from_spec(SPEC)
+ SPEC.loader.exec_module(TARGET)
+ 
+ 
+-def test_acceptance_map_allowlist_is_exact_and_includes_active_v11():
++def test_acceptance_map_allowlist_is_exact_and_includes_surveyed_v224():
+     assert TARGET.MAP_SUFFIXES == (
+         "Woraksan_v1_0_3_parking_lot_hegiht_fit",
+         "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v11",
++        # HH_261007 - Only the finite-surveyed current world is added.
++        "Woraksan_camrod_b2_b4_clearance_b3safe_tag_tilt10_v224_dropzone",
+     )
+ 
+ 
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/crab_yaw_torque_balance.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/crab_yaw_torque_balance.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d59bc35d225580e9c0da81162cc2f035de90a77d
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/crab_yaw_torque_balance.py
+@@ -0,0 +1,135 @@
++"""HH_261006 - Pure, unqualified CRAB torque allocation; no runtime authority.
++
++This explicit front/rear allocation is NOT the existing scalar-times-speed-scale
++contract. Nothing imports or activates it in the controller or physical bridge.
++Offline algebra tests do not establish physical acceptance or a safe tuned gain.
++"""
++
++from dataclasses import dataclass
++import math
++
++
++CRAB_MODE = 1
++MINIMUM_CRAB_ANGLE_RAD = math.radians(80.0)
++PHYSICAL_STEER_LIMIT_RAD = math.radians(89.0)
++MAXIMUM_EXTREME_CRAB_TORQUE_NM = 8.0
++MAXIMUM_TRIM_FRACTION = 0.4
++MAXIMUM_ODOMETRY_AGE_S = 0.25
++
++
++@dataclass(frozen=True)
++class CrabYawTorqueAllocation:
++    """Explicit FL/FR/RL/RR baseline, signed axle trim and resulting torques."""
++
++    baseline_torques_nm: tuple
++    torques_nm: tuple
++    requested_trim_nm: float
++    applied_trim_nm: float
++    limited: bool
++    reason: str
++
++
++def _finite_number(value, name):
++    if isinstance(value, bool):
++        raise ValueError("{} must be a finite number, not boolean".format(name))
++    try:
++        number = float(value)
++    except (TypeError, ValueError, OverflowError) as error:
++        raise ValueError("{} must be a finite number".format(name)) from error
++    if not math.isfinite(number):
++        raise ValueError("{} must be finite".format(name))
++    return number
++
++
++def allocate_crab_yaw_balanced_torques(
++        baseline_torques_nm, *, drive_mode, crab_angle_ros_rad,
++        measured_yaw_rate_ros_radps, odometry_age_s, steering_converged,
++        gain_nm_per_radps, maximum_trim_fraction, torque_limit_nm,
++        odometry_timeout_s):
++    """Allocate a bounded zero-sum front/rear trim around existing torques.
++
++    Inputs use ROS body axes: positive beta is left, positive yaw is CCW.
++    All tuning/envelope parameters are explicit; no gain is selected here.
++    FL/FR receive +trim and RL/RR receive -trim, where the unsaturated trim is
++    -gain * measured_yaw / sin(beta), targeting zero yaw rate. Baseline sign
++    does not multiply this expression: it also applies to reverse/braking torque.
++
++    Non-CRAB and non-extreme CRAB retain the baseline unchanged. An all-zero
++    baseline remains exactly zero, including during stale/unconverged stops.
++    Nonzero extreme CRAB requires fresh odometry, converged steering, all four
++    same-sign nonzero baseline torques and the existing <=8 N*m envelope.
++    Invalid or ineligible active inputs raise ValueError; a future caller must
++    choose its fail-closed stop behavior, never silently activate this helper.
++    """
++    try:
++        baseline = tuple(_finite_number(value, "baseline torque")
++                         for value in baseline_torques_nm)
++    except TypeError as error:
++        raise ValueError("baseline must contain exactly FL/FR/RL/RR") from error
++    if len(baseline) != 4:
++        raise ValueError("baseline must contain exactly FL/FR/RL/RR")
++    if type(drive_mode) is not int or drive_mode not in (0, 1, 2, 3):
++        raise ValueError("drive mode must be a known integer mode")
++    if type(steering_converged) is not bool:
++        raise ValueError("steering_converged must be boolean")
++
++    beta = _finite_number(crab_angle_ros_rad, "ROS crab angle")
++    yaw_rate = _finite_number(measured_yaw_rate_ros_radps, "ROS yaw rate")
++    age = _finite_number(odometry_age_s, "odometry age")
++    gain = _finite_number(gain_nm_per_radps, "yaw-rate gain")
++    fraction = _finite_number(maximum_trim_fraction, "maximum trim fraction")
++    limit = _finite_number(torque_limit_nm, "torque limit")
++    timeout = _finite_number(odometry_timeout_s, "odometry timeout")
++    if gain < 0.0:
++        raise ValueError("yaw-rate gain must be nonnegative")
++    if not 0.0 <= fraction <= MAXIMUM_TRIM_FRACTION:
++        raise ValueError("maximum trim fraction must be in [0, 0.4]")
++    if not 0.0 < limit <= MAXIMUM_EXTREME_CRAB_TORQUE_NM:
++        raise ValueError("extreme CRAB torque limit must be in (0, 8] N*m")
++    if not 0.0 < timeout <= MAXIMUM_ODOMETRY_AGE_S:
++        raise ValueError("odometry timeout must be in (0, 0.25] seconds")
++
++    def unchanged(reason):
++        return CrabYawTorqueAllocation(baseline, baseline, 0.0, 0.0, False, reason)
++
++    # HH_261006 - Do not modify other modes or turn an explicit stop into thrust.
++    if drive_mode != CRAB_MODE:
++        return unchanged("non_crab")
++    if all(value == 0.0 for value in baseline):
++        return unchanged("zero_baseline")
++    if abs(beta) >= PHYSICAL_STEER_LIMIT_RAD:
++        raise ValueError("CRAB angle must remain strictly below 89 degrees")
++    if abs(beta) < MINIMUM_CRAB_ANGLE_RAD:
++        return unchanged("not_near_orthogonal")
++    if not steering_converged:
++        raise ValueError("nonzero extreme CRAB requires converged steering")
++    if not 0.0 <= age <= timeout:
++        raise ValueError("nonzero extreme CRAB requires fresh odometry")
++    if (any(value == 0.0 or abs(value) > limit for value in baseline)
++            or any((value > 0.0) != (baseline[0] > 0.0) for value in baseline)):
++        raise ValueError("extreme CRAB baseline must be same-sign, nonzero and within cap")
++
++    requested = -gain * yaw_rate / math.sin(beta)
++    if not math.isfinite(requested):
++        raise ValueError("requested CRAB trim overflowed")
++    # HH_261006 - Intersect each wheel's signed torque bounds. With f<=0.4,
++    # every output retains at least 60% of its own baseline magnitude, never
++    # crosses zero, and stays within the pre-existing extreme-CRAB torque cap.
++    lower_trim, upper_trim = -math.inf, math.inf
++    axle_directions = (1.0, 1.0, -1.0, -1.0)
++    for base, axle in zip(baseline, axle_directions):
++        magnitude = abs(base)
++        lower_magnitude = (1.0 - fraction) * magnitude
++        upper_magnitude = min((1.0 + fraction) * magnitude, limit)
++        low, high = ((lower_magnitude, upper_magnitude) if base > 0.0
++                     else (-upper_magnitude, -lower_magnitude))
++        wheel_bounds = ((low - base) / axle, (high - base) / axle)
++        lower_trim = max(lower_trim, min(wheel_bounds))
++        upper_trim = min(upper_trim, max(wheel_bounds))
++    applied = max(lower_trim, min(upper_trim, requested))
++    torques = tuple(base + axle * applied for base, axle in zip(baseline, axle_directions))
++    if any(not math.isfinite(value) or value == 0.0 or abs(value) > limit
++           or (value > 0.0) != (base > 0.0) for value, base in zip(torques, baseline)):
++        raise ValueError("allocated CRAB torque failed the signed envelope")
++    return CrabYawTorqueAllocation(
++        baseline, torques, requested, applied, applied != requested, "allocated")
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed3f8019e92ad965d12a2208c12a324559099a3d
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py
+@@ -0,0 +1,201 @@
++"""HH_261007 - Opt-in CARLA-only axle-reduction yaw hold, not acceptance proof.
++
++Unlike the unused 8 Nm zero-sum allocator, this experiment never increases a
++wheel torque. One axle can lose up to 40% of its baseline magnitude, leaving
++all four wheels driven with the same sign even at the experimental 16 Nm cap.
++"""
++from dataclasses import dataclass
++import math
++
++
++def finite(value, name):
++    if isinstance(value, bool):
++        raise ValueError(name + " must be finite, not boolean")
++    try:
++        result = float(value)
++    except (TypeError, ValueError, OverflowError) as exc:
++        raise ValueError(name + " must be finite") from exc
++    if not math.isfinite(result):
++        raise ValueError(name + " must be finite")
++    return result
++
++
++def wrap_angle(value):
++    return math.atan2(math.sin(value), math.cos(value))
++
++
++def quaternion_yaw(x, y, z, w):
++    q = [finite(v, "odometry quaternion") for v in (x, y, z, w)]
++    norm = math.sqrt(sum(v*v for v in q))
++    if not 0.5 <= norm <= 1.5:
++        raise ValueError("odometry quaternion norm is invalid")
++    x, y, z, w = [v/norm for v in q]
++    return math.atan2(2*(w*z+x*y), 1-2*(y*y+z*z))
++
++
++@dataclass(frozen=True)
++class CrabYawHoldConfig:
++    # HH_261007 - At 5 deg error and 0.1 rad/s drift, request ~2.30 Nm
++    # reduction, not an immediate maximum trim. These are trial gains only.
++    heading_gain_nm_per_rad: float = 8.0
++    rate_gain_nm_per_radps: float = 16.0
++    maximum_reduction_fraction: float = 0.40
++    maximum_heading_error_deg: float = 12.0
++    maximum_yaw_rate_degps: float = 18.0
++    stall_timeout_sec: float = 4.0
++    stall_progress_mps: float = 0.05
++    odometry_timeout_sec: float = 0.25
++    torque_limit_nm: float = 16.0
++
++    def __post_init__(self):
++        bounds = {
++            "heading_gain_nm_per_rad": (0., 16.),
++            "rate_gain_nm_per_radps": (0., 32.),
++            "maximum_reduction_fraction": (0., .40),
++            "maximum_heading_error_deg": (0., 15.),
++            "maximum_yaw_rate_degps": (0., 30.),
++            "stall_timeout_sec": (0., 5.),
++            "stall_progress_mps": (0., .10),
++            "odometry_timeout_sec": (0., .25),
++        }
++        for name, (low, high) in bounds.items():
++            value = finite(getattr(self, name), name)
++            if not low < value <= high:
++                raise ValueError(name + " is outside experimental bounds")
++            object.__setattr__(self, name, value)
++        if finite(self.torque_limit_nm, "torque_limit_nm") != 16.:
++            raise ValueError("experimental yaw hold requires the 16 Nm cap")
++        object.__setattr__(self, "torque_limit_nm", 16.)
++
++
++@dataclass(frozen=True)
++class CrabYawHoldResult:
++    torques_nm: tuple
++    reference_yaw_rad: float
++    heading_error_rad: float
++    requested_difference_nm: float
++    reduced_axle: str
++    reduction_nm: float
++    reason: str
++
++
++class ExperimentalCrabYawHold:
++    """Heading reference and bounded stall supervisor for one CRAB episode.
++
++    Faults latch until an explicit zero/mode-changing command clears them.
++    Internal unarm/reset only discards reference/timing, never auto-rearms a
++    fault against a continuously repeated nonzero upstream command.
++    """
++    def __init__(self, config=None):
++        self.config = config or CrabYawHoldConfig()
++        if not isinstance(self.config, CrabYawHoldConfig):
++            raise ValueError("CrabYawHoldConfig required")
++        self.fault_reason = ""
++        self.reset()
++
++    def reset(self, clear_fault=False):
++        self.reference_yaw_rad = None
++        self.last_time = None
++        self.stall_since = None
++        self.direction_key = None
++        self.last_result = None
++        if clear_fault:
++            self.fault_reason = ""
++
++    def _fault(self, reason):
++        self.reset()
++        self.fault_reason = "experimental CRAB yaw hold: " + reason
++        raise ValueError(self.fault_reason)
++
++    def update(self, baseline_torques_nm, *, now, enabled, drive_mode,
++               armed, steering_converged, crab_angle_ros_rad,
++               target_speed_mps, signed_speed_mps, heading_ros_rad,
++               yaw_rate_ros_radps, odometry_age_s):
++        for name, value in (("enabled", enabled), ("armed", armed),
++                            ("steering_converged", steering_converged)):
++            if type(value) is not bool:
++                self._fault(name + " must be boolean")
++        try:
++            baseline = tuple(finite(v, "baseline torque") for v in baseline_torques_nm)
++            if len(baseline) != 4:
++                raise ValueError("four FL/FR/RL/RR torques required")
++            if type(drive_mode) is not int or drive_mode not in (0, 1, 2, 3):
++                raise ValueError("unknown drive mode")
++            beta = finite(crab_angle_ros_rad, "crab angle")
++            target = finite(target_speed_mps, "target speed")
++        except (TypeError, ValueError) as exc:
++            self._fault(str(exc))
++        if not enabled or drive_mode != 1 or abs(beta) < math.radians(80.):
++            self.reset(clear_fault=True)
++            return baseline
++        if abs(target) <= 1e-6:
++            self.reset(clear_fault=True)
++            return (0.,)*4
++        if not armed or not steering_converged:
++            self.reset()
++            return (0.,)*4
++        if self.fault_reason:
++            raise ValueError(self.fault_reason)
++        if all(v == 0. for v in baseline):
++            self.reset()
++            return baseline
++        try:
++            t = finite(now, "time")
++            heading = finite(heading_ros_rad, "heading")
++            rate = finite(yaw_rate_ros_radps, "yaw rate")
++            speed = finite(signed_speed_mps, "signed speed")
++            age = finite(odometry_age_s, "odometry age")
++            if not 0. <= age <= self.config.odometry_timeout_sec:
++                raise ValueError("stale odometry")
++            # HH_261007 - ExtendedAckermannDrive is float32 on the wire;
++            # match the bridge's 0.0001-degree representation tolerance.
++            if abs(beta) > math.radians(88. + 1e-4):
++                raise ValueError("CRAB steering exceeds 88 degrees")
++            if any(v == 0. or abs(v) > self.config.torque_limit_nm for v in baseline):
++                raise ValueError("all four nonzero torques must be within 16 Nm")
++            if any((v > 0.) != (baseline[0] > 0.) for v in baseline):
++                raise ValueError("all four torques must have the same sign")
++            if max(abs(v-baseline[0]) for v in baseline) > 1e-6:
++                raise ValueError("extreme CRAB baseline must be a common scalar")
++            if self.last_time is not None and (t < self.last_time or t-self.last_time > .25):
++                raise ValueError("time discontinuity")
++        except (TypeError, ValueError) as exc:
++            self._fault(str(exc))
++        direction = (target > 0., beta > 0.)
++        if self.direction_key is not None and direction != self.direction_key:
++            self.reset()
++        self.direction_key = direction
++        self.last_time = t
++        if self.reference_yaw_rad is None:
++            self.reference_yaw_rad = heading
++        error = wrap_angle(heading-self.reference_yaw_rad)
++        if abs(error) > math.radians(self.config.maximum_heading_error_deg):
++            self._fault("heading drift exceeded {:.1f} degrees".format(self.config.maximum_heading_error_deg))
++        if abs(rate) > math.radians(self.config.maximum_yaw_rate_degps):
++            self._fault("yaw rate exceeded {:.1f} deg/s".format(self.config.maximum_yaw_rate_degps))
++        progress = math.copysign(1., target)*speed
++        threshold = min(self.config.stall_progress_mps, .25*abs(target))
++        if progress < threshold:
++            if self.stall_since is None:
++                self.stall_since = t
++            elif t-self.stall_since >= self.config.stall_timeout_sec:
++                self._fault("signed progress stalled for {:.1f} seconds".format(self.config.stall_timeout_sec))
++        else:
++            self.stall_since = None
++        # HH_261007 - Desired signed (front minus rear) torque difference.
++        # Reducing positive front torque or negative rear torque both produce
++        # a negative difference; this handles reverse and beta +/- correctly.
++        requested = -(self.config.heading_gain_nm_per_rad*error +
++                      self.config.rate_gain_nm_per_radps*rate)/math.sin(beta)
++        magnitude = min(abs(requested), self.config.maximum_reduction_fraction*abs(baseline[0]))
++        front = requested*baseline[0] < 0.
++        axle = (0, 1) if front else (2, 3)
++        torques = list(baseline)
++        for index in axle:
++            torques[index] -= math.copysign(magnitude, baseline[index])
++        result = tuple(torques)
++        if any(abs(v) > abs(b) or v*b <= 0. for v,b in zip(result,baseline)):
++            self._fault("reduction violated same-sign baseline bounds")
++        self.last_result = CrabYawHoldResult(result,self.reference_yaw_rad,error,
++            requested,"front" if front else "rear",magnitude,"experimental_unqualified")
++        return result
+diff --git a/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..10d09acfac8e97502dba8207377119a583d6617a
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py
+@@ -0,0 +1,140 @@
++"""HH_261008 - Default-off CARLA yaw tracking experiment, not physical proof.
++
++The ordinary proportional controller and its 2 N*m wheel ceiling are unchanged.
++This helper adds only accumulated, signed yaw-rate error for small ZERO_TURN
++commands. It is not a minimum torque or an expansion of recovery authority.
++"""
++from dataclasses import dataclass
++import math
++
++
++def _finite(value, name):
++    if isinstance(value, bool):
++        raise ValueError(name + " must be finite, not boolean")
++    try:
++        result = float(value)
++    except (ValueError, TypeError, OverflowError) as exc:
++        raise ValueError(name + " must be finite") from exc
++    if not math.isfinite(result):
++        raise ValueError(name + " must be finite")
++    return result
++
++
++@dataclass(frozen=True)
++class ZeroTurnYawIntegralConfig:
++    # Integral of yaw-rate error has units rad; Ki therefore has units N*m/rad.
++    # At a persistent 0.1 rad/s error this candidate adds 0.2 N*m each second.
++    integral_gain_nm_per_rad: float = 2.0
++
++    def __post_init__(self):
++        value = _finite(self.integral_gain_nm_per_rad, "integral gain")
++        if not 0.0 < value <= 2.0:
++            raise ValueError("experimental yaw integral gain must be in (0, 2]")
++        object.__setattr__(self, "integral_gain_nm_per_rad", value)
++
++
++@dataclass(frozen=True)
++class ZeroTurnYawIntegralResult:
++    target_radps: float
++    current_radps: float
++    error_radps: float
++    integrated_error_rad: float
++    integral_torque_nm: float
++    proportional_torque_nm: float
++    scalar_torque_nm: float
++    reason: str
++
++
++class ExperimentalZeroTurnYawIntegral:
++    """Bounded integral addition with immediate brake/stop/interlock reset.
++
++    HH_261008 - All rates share one signed frame (CARLA at the node hook).
++    Projection onto instantaneous proportional headroom is anti-windup: no
++    hidden integral can accumulate beyond the unchanged 2 N*m scalar limit.
++    Reaching the target discards the integral, retaining exact P-only braking.
++    """
++    def __init__(self, config=None):
++        self.config = config or ZeroTurnYawIntegralConfig()
++        if not isinstance(self.config, ZeroTurnYawIntegralConfig):
++            raise ValueError("ZeroTurnYawIntegralConfig required")
++        self.reset()
++
++    def reset(self):
++        self.integrated_error_rad = 0.0
++        self.last_time = None
++        self.direction = None
++        self.last_result = None
++
++    def update(self, *, now, enabled, drive_mode, armed, backend_accepted,
++               steering_converged, target_yaw_rate_radps,
++               current_yaw_rate_radps, target_translation_mps,
++               odometry_age_s, command_age_s, recovery_authorized=False):
++        try:
++            for name, value in (
++                    ("enabled", enabled), ("armed", armed),
++                    ("backend accepted", backend_accepted),
++                    ("steering converged", steering_converged),
++                    ("recovery authorized", recovery_authorized)):
++                if type(value) is not bool:
++                    raise ValueError(name + " must be boolean")
++            if type(drive_mode) is not int or drive_mode not in (0, 1, 2, 3):
++                raise ValueError("unknown drive mode")
++            t, target, current, translation, age, command_age = (
++                _finite(value, name) for value, name in (
++                    (now, "time"), (target_yaw_rate_radps, "yaw target"),
++                    (current_yaw_rate_radps, "yaw feedback"),
++                    (target_translation_mps, "translation target"),
++                    (odometry_age_s, "odometry age"),
++                    (command_age_s, "command age")))
++            if enabled and not (0.0 <= age <= 0.25 and
++                                0.0 <= command_age <= 0.5):
++                raise ValueError("experimental yaw integral feedback/command stale")
++        except (ValueError, TypeError):
++            self.reset()
++            raise
++
++        error = target - current
++        proportional = (max(-2.0, min(2.0, 5.0 * error))
++                        if abs(target) > 1.0e-4 else 0.0)
++        reason = "experimental_unqualified"
++        if not enabled:
++            reason = "disabled"
++        elif not armed or not backend_accepted or not steering_converged:
++            reason = "interlock"
++        elif (drive_mode != 2 or abs(translation) > 1.0e-6 or
++              recovery_authorized):
++            reason = "outside_zero_turn_episode"
++        elif not 1.0e-4 < abs(target) <= 0.2:
++            reason = "outside_small_yaw_target"
++        elif math.copysign(1.0, target) * error <= 0.0:
++            reason = "target_reached_or_overspeed"
++
++        if reason != "experimental_unqualified":
++            self.reset()
++        else:
++            direction = math.copysign(1.0, target)
++            if self.direction is not None and direction != self.direction:
++                self.reset()
++                reason = "direction_reset"
++            if self.last_time is not None:
++                dt = t - self.last_time
++                if dt < 0.0 or dt > 0.25:
++                    self.reset()
++                    reason = "time_discontinuity_reset"
++                else:
++                    self.integrated_error_rad += error * dt
++            # HH_261008 - Project state itself, not just output, onto remaining
++            # proportional headroom. A changed target cannot release windup.
++            headroom_nm = max(0.0, 2.0 - direction * proportional)
++            magnitude_rad = min(
++                max(0.0, direction * self.integrated_error_rad),
++                headroom_nm / self.config.integral_gain_nm_per_rad)
++            self.integrated_error_rad = direction * magnitude_rad
++            self.last_time = t
++            self.direction = direction
++
++        integral = self.config.integral_gain_nm_per_rad * self.integrated_error_rad
++        self.last_result = ZeroTurnYawIntegralResult(
++            target, current, error, self.integrated_error_rad, integral,
++            proportional, max(-2.0, min(2.0, proportional + integral)), reason)
++        return integral
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_crab_yaw_torque_balance.py b/ros_ws/src/carla_extended_ackermann_control/test/test_crab_yaw_torque_balance.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7471cf1b539a4ef634a18f36ffc47b011b5d8e68
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_crab_yaw_torque_balance.py
+@@ -0,0 +1,163 @@
++"""HH_261006 - Offline allocation algebra only, never physical acceptance."""
++
++import math
++
++import pytest
++
++from carla_extended_ackermann_control.crab_yaw_torque_balance import (
++    allocate_crab_yaw_balanced_torques,
++)
++
++
++def allocate(baseline=(5.0,) * 4, **overrides):
++    parameters = dict(
++        drive_mode=1, crab_angle_ros_rad=math.radians(88.0),
++        measured_yaw_rate_ros_radps=0.1, odometry_age_s=0.1,
++        steering_converged=True, gain_nm_per_radps=2.0,
++        maximum_trim_fraction=0.4, torque_limit_nm=8.0,
++        odometry_timeout_s=0.25)
++    parameters.update(overrides)
++    return allocate_crab_yaw_balanced_torques(baseline, **parameters)
++
++
++@pytest.mark.parametrize("beta_sign", (-1, 1))
++@pytest.mark.parametrize("yaw_sign", (-1, 1))
++@pytest.mark.parametrize("baseline_sign", (-1, 1))
++def test_trim_opposes_ros_yaw_for_both_crab_and_baseline_signs(
++        beta_sign, yaw_sign, baseline_sign):
++    beta = beta_sign * math.radians(88.0)
++    yaw = yaw_sign * 0.1
++    baseline = [baseline_sign * 5.0] * 4
++    original = list(baseline)
++    result = allocate(baseline, crab_angle_ros_rad=beta, measured_yaw_rate_ros_radps=yaw)
++    expected_trim = -2.0 * yaw / math.sin(beta)
++    assert result.applied_trim_nm == pytest.approx(expected_trim)
++    assert result.requested_trim_nm == pytest.approx(expected_trim)
++    assert result.torques_nm == pytest.approx((baseline[0] + expected_trim,) * 2
++                                            + (baseline[0] - expected_trim,) * 2)
++    # HH_261006 - The positive geometry factor 4*a/R is omitted; the yaw-moment
++    # sign must reject yaw even when the baseline is reverse/braking torque.
++    assert yaw * result.applied_trim_nm * math.sin(beta) < 0.0
++    assert sum(result.torques_nm) == pytest.approx(sum(baseline))
++    assert result.torques_nm[0] == result.torques_nm[1]
++    assert result.torques_nm[2] == result.torques_nm[3]
++    assert baseline == original
++    assert result.limited is False
++
++
++@pytest.mark.parametrize("baseline_sign", (-1, 1))
++@pytest.mark.parametrize("yaw_sign", (-1, 1))
++def test_fraction_saturation_preserves_signed_translation(baseline_sign, yaw_sign):
++    result = allocate((baseline_sign * 5.0,) * 4, measured_yaw_rate_ros_radps=yaw_sign * 100.0)
++    assert abs(result.applied_trim_nm) == pytest.approx(2.0)
++    assert sorted(abs(value) for value in result.torques_nm) == pytest.approx([3, 3, 7, 7])
++    assert all(value * baseline_sign > 0 for value in result.torques_nm)
++    assert sum(result.torques_nm) == pytest.approx(baseline_sign * 20.0)
++    assert result.limited is True
++
++
++@pytest.mark.parametrize("baseline_sign", (-1, 1))
++@pytest.mark.parametrize("yaw_sign", (-1, 1))
++def test_eight_nm_cap_limits_remaining_authority(baseline_sign, yaw_sign):
++    result = allocate((baseline_sign * 7.5,) * 4, measured_yaw_rate_ros_radps=yaw_sign * 100)
++    assert abs(result.applied_trim_nm) == pytest.approx(0.5)
++    assert sorted(abs(value) for value in result.torques_nm) == pytest.approx([7, 7, 8, 8])
++    assert result.limited is True
++
++
++@pytest.mark.parametrize("baseline", ((8.0,) * 4, (-8.0,) * 4))
++def test_cap_saturated_baseline_has_no_trim_authority(baseline):
++    result = allocate(baseline)
++    assert result.torques_nm == baseline
++    assert result.applied_trim_nm == 0.0
++    assert result.limited is True
++
++
++@pytest.mark.parametrize("baseline", ((2, 3, 6, 7), (-2, -3, -6, -7)))
++@pytest.mark.parametrize("yaw", (-100.0, 100.0))
++def test_unequal_baseline_uses_tightest_wheel_without_changing_translation(baseline, yaw):
++    result = allocate(baseline, measured_yaw_rate_ros_radps=yaw)
++    changes = [new - old for new, old in zip(result.torques_nm, baseline)]
++    assert changes == pytest.approx([result.applied_trim_nm] * 2 + [-result.applied_trim_nm] * 2)
++    assert sum(result.torques_nm) == pytest.approx(sum(baseline))
++    for new, old in zip(result.torques_nm, baseline):
++        assert new * old > 0
++        assert abs(new - old) <= 0.4 * abs(old) + 1e-12
++        assert abs(new) <= 8.0
++        assert abs(new) >= 0.6 * abs(old) - 1e-12
++
++
++@pytest.mark.parametrize("overrides", (
++    {"measured_yaw_rate_ros_radps": 0.0}, {"gain_nm_per_radps": 0.0},
++    {"maximum_trim_fraction": 0.0}, {"crab_angle_ros_rad": math.radians(79.999)},
++    {"crab_angle_ros_rad": 0.0}))
++def test_no_correction_preserves_baseline_exactly(overrides):
++    assert allocate(**overrides).torques_nm == (5.0,) * 4
++
++
++@pytest.mark.parametrize("mode", (0, 2, 3))
++def test_other_modes_preserve_baseline_including_mixed_signs_and_higher_torque(mode):
++    baseline = (12.0, -12.0, 10.0, -10.0)
++    result = allocate(baseline, drive_mode=mode, odometry_age_s=1.0, steering_converged=False)
++    assert result.torques_nm == baseline
++    assert result.applied_trim_nm == 0.0
++    assert result.reason == "non_crab"
++
++
++@pytest.mark.parametrize("age, converged", ((0.0, True), (10.0, False), (-1.0, False)))
++def test_zero_baseline_remains_zero_even_during_ineligible_stop(age, converged):
++    result = allocate((0.0,) * 4, odometry_age_s=age, steering_converged=converged)
++    assert result.torques_nm == (0.0,) * 4
++    assert result.applied_trim_nm == 0.0
++    assert result.reason == "zero_baseline"
++
++
++@pytest.mark.parametrize("beta", (math.radians(80.0), -math.radians(80.0)))
++def test_exact_minimum_angle_and_timeout_are_eligible(beta):
++    assert allocate(crab_angle_ros_rad=beta, odometry_age_s=0.25).applied_trim_nm != 0
++
++
++@pytest.mark.parametrize("overrides", (
++    {"odometry_age_s": -0.001}, {"odometry_age_s": 0.250001},
++    {"steering_converged": False}, {"steering_converged": 1},
++    {"drive_mode": True}, {"drive_mode": 4}, {"drive_mode": 1.0},
++    {"crab_angle_ros_rad": math.radians(89)},
++    {"crab_angle_ros_rad": -math.radians(89)},
++    {"gain_nm_per_radps": -1}, {"maximum_trim_fraction": -0.001},
++    {"maximum_trim_fraction": 0.400001}, {"torque_limit_nm": 8.00001},
++    {"torque_limit_nm": 0}, {"odometry_timeout_s": 0},
++    {"odometry_timeout_s": 0.250001}))
++def test_invalid_active_inputs_require_caller_fail_closed_handling(overrides):
++    with pytest.raises(ValueError):
++        allocate(**overrides)
++
++
++@pytest.mark.parametrize("field", (
++    "crab_angle_ros_rad", "measured_yaw_rate_ros_radps", "odometry_age_s",
++    "gain_nm_per_radps", "maximum_trim_fraction", "torque_limit_nm", "odometry_timeout_s"))
++@pytest.mark.parametrize("value", (math.nan, math.inf, -math.inf, True))
++def test_nonfinite_or_boolean_numeric_inputs_are_rejected(field, value):
++    with pytest.raises(ValueError):
++        allocate(**{field: value})
++
++
++@pytest.mark.parametrize("baseline", (
++    None, (), (1, 1, 1), (1, 1, 1, 1, 1), (0, 1, 1, 1),
++    (1, -1, 1, 1), (8.001,) * 4, (math.nan,) * 4, (math.inf,) * 4, (True,) * 4))
++def test_invalid_baseline_rejected(baseline):
++    with pytest.raises(ValueError):
++        allocate(baseline)
++
++
++def test_smaller_explicit_envelope_is_honored():
++    result = allocate((4.0,) * 4, torque_limit_nm=5.0, maximum_trim_fraction=0.1,
++                      measured_yaw_rate_ros_radps=100.0, odometry_timeout_s=0.1)
++    assert abs(result.applied_trim_nm) == pytest.approx(0.4)
++    assert max(abs(value) for value in result.torques_nm) <= 5.0
++    with pytest.raises(ValueError):
++        allocate(odometry_age_s=0.100001, odometry_timeout_s=0.1)
++
++
++def test_finite_inputs_that_overflow_trim_are_rejected():
++    with pytest.raises(ValueError, match="overflowed"):
++        allocate(gain_nm_per_radps=1e308, measured_yaw_rate_ros_radps=1e308)
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_crab_yaw_hold.py b/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_crab_yaw_hold.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec9336a089e0de43de47e51c5dbf0e0639d045ae
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_crab_yaw_hold.py
+@@ -0,0 +1,202 @@
++"""HH_261007 - Algebra/interlock tests only, not physical qualification."""
++import math
++import struct
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from carla_extended_ackermann_control.experimental_crab_yaw_hold import (
++    CrabYawHoldConfig, ExperimentalCrabYawHold, quaternion_yaw,
++)
++from carla_extended_ackermann_control.wheel_torque_control import (
++    ExtremeCrabBreakawayConfig, ExtremeCrabBreakawayTracker,
++    configure_extreme_crab_curb_boost,
++)
++from test_physical_four_wheel_steering import (
++    controller_module, _bare_command_controller, _extended_command,
++)
++
++
++def sample(tracker, baseline=(16.,)*4, **changes):
++    args = dict(now=0., enabled=True, drive_mode=1, armed=True,
++                steering_converged=True, crab_angle_ros_rad=math.radians(88.),
++                target_speed_mps=.667, signed_speed_mps=.2,
++                heading_ros_rad=0., yaw_rate_ros_radps=0., odometry_age_s=0.)
++    args.update(changes)
++    return tracker.update(baseline, **args)
++
++
++@pytest.mark.parametrize("torque_sign", (-1.,1.))
++@pytest.mark.parametrize("beta_sign", (-1.,1.))
++@pytest.mark.parametrize("yaw_sign", (-1.,1.))
++def test_reduction_counteracts_yaw_forward_reverse_left_right(torque_sign,beta_sign,yaw_sign):
++    tracker = ExperimentalCrabYawHold()
++    baseline = (16.*torque_sign,)*4
++    result = sample(tracker,baseline,crab_angle_ros_rad=beta_sign*math.radians(88.),
++                    target_speed_mps=torque_sign*.667,signed_speed_mps=torque_sign*.2,
++                    yaw_rate_ros_radps=yaw_sign*.1)
++    # Signed front-minus-rear torque maps to yaw by sin(beta), independent
++    # of the sign of translation or braking torque.
++    yaw_moment_proxy = (result[0]+result[1]-result[2]-result[3])*beta_sign
++    assert yaw_moment_proxy*yaw_sign < 0.
++    assert (result[:2] == baseline[:2]) != (result[2:] == baseline[2:])
++    assert result[0] == result[1] and result[2] == result[3]
++    assert all(.6*abs(b) <= abs(v) <= abs(b) and v*b>0 for v,b in zip(result,baseline))
++
++
++def test_heading_reference_persists_and_wraps_at_pi():
++    tracker=ExperimentalCrabYawHold()
++    sample(tracker,heading_ros_rad=math.radians(179.))
++    result=sample(tracker,now=.1,heading_ros_rad=math.radians(-179.))
++    assert tracker.last_result.heading_error_rad == pytest.approx(math.radians(2.))
++    assert result[0] < result[2] == 16.
++    assert tracker.reference_yaw_rad == pytest.approx(math.radians(179.))
++
++
++def test_maximum_reduction_is_forty_percent_and_never_cap_increase():
++    tracker=ExperimentalCrabYawHold(CrabYawHoldConfig(rate_gain_nm_per_radps=32.))
++    result=sample(tracker,yaw_rate_ros_radps=math.radians(17.))
++    assert result == pytest.approx((9.6,9.6,16.,16.))
++
++
++@pytest.mark.parametrize("changes", [
++    {"enabled":False},{"drive_mode":0},{"crab_angle_ros_rad":math.radians(79.)},
++])
++def test_disabled_and_other_modes_keep_original_scalar_contract(changes):
++    tracker=ExperimentalCrabYawHold()
++    assert sample(tracker,**changes) == (16.,)*4
++    assert tracker.reference_yaw_rad is None
++
++
++@pytest.mark.parametrize("changes", [{"armed":False},{"steering_converged":False},
++                                     {"target_speed_mps":0.}])
++def test_ineligible_active_motion_returns_all_zero_and_resets(changes):
++    tracker=ExperimentalCrabYawHold();sample(tracker)
++    assert sample(tracker,now=.1,**changes) == (0.,)*4
++    assert tracker.reference_yaw_rad is None
++
++
++def test_zero_baseline_never_creates_thrust():
++    tracker=ExperimentalCrabYawHold();sample(tracker)
++    assert sample(tracker,(0.,)*4,now=.1,yaw_rate_ros_radps=.1) == (0.,)*4
++    assert tracker.reference_yaw_rad is None
++
++
++@pytest.mark.parametrize("changes,reason", [
++    ({"odometry_age_s":.251},"stale"),
++    ({"odometry_age_s":-1.},"stale"),
++    ({"yaw_rate_ros_radps":float("nan")},"finite"),
++    ({"heading_ros_rad":float("inf")},"finite"),
++    ({"crab_angle_ros_rad":math.radians(88.1)},"88 degrees"),
++    ({"enabled":"true"},"boolean"),
++    ({"yaw_rate_ros_radps":math.radians(18.1)},"yaw rate exceeded"),
++])
++def test_bad_feedback_fails_closed_and_latches(changes,reason):
++    tracker=ExperimentalCrabYawHold()
++    with pytest.raises(ValueError,match=reason):sample(tracker,**changes)
++    assert tracker.reference_yaw_rad is None
++    with pytest.raises(ValueError):sample(tracker,now=.1)
++    tracker.reset()  # Internal stop/unarm does not clear the fault.
++    with pytest.raises(ValueError):sample(tracker,now=.2)
++    assert sample(tracker,now=.3,target_speed_mps=0.) == (0.,)*4
++    assert sample(tracker,now=.4) == (16.,)*4
++
++
++def test_heading_drift_stops_instead_of_driving_until_ninety_degrees():
++    tracker=ExperimentalCrabYawHold();sample(tracker)
++    with pytest.raises(ValueError,match="heading drift"):
++        sample(tracker,now=.1,heading_ros_rad=math.radians(12.1))
++
++
++def test_stall_timeout_and_progress_release():
++    tracker=ExperimentalCrabYawHold()
++    for i in range(20):sample(tracker,now=i*.2,signed_speed_mps=0.)
++    with pytest.raises(ValueError,match="stalled"):
++        sample(tracker,now=4.,signed_speed_mps=0.)
++    tracker.reset(clear_fault=True)
++    for i in range(35):
++        sample(tracker,now=i*.2,signed_speed_mps=.2 if i==15 else 0.)
++    assert not tracker.fault_reason
++
++
++@pytest.mark.parametrize("baseline", [(17.,)*4,(16.,16.,-16.,-16.),(0.,16.,16.,16.),(12.,12.,16.,16.)])
++def test_baseline_must_be_common_same_sign_within_experimental_cap(baseline):
++    with pytest.raises(ValueError):sample(ExperimentalCrabYawHold(),baseline)
++
++
++@pytest.mark.parametrize("key,value", [
++    ("maximum_reduction_fraction",.401),("torque_limit_nm",20.),
++    ("heading_gain_nm_per_rad",float("nan")),("rate_gain_nm_per_radps",True),
++    ("maximum_heading_error_deg",16.),("maximum_yaw_rate_degps",31.),
++    ("stall_timeout_sec",6.),("odometry_timeout_sec",.3),
++])
++def test_configuration_is_strictly_bounded(key,value):
++    with pytest.raises(ValueError):CrabYawHoldConfig(**{key:value})
++
++
++def test_time_discontinuity_and_direction_change_reset_reference():
++    tracker=ExperimentalCrabYawHold();sample(tracker)
++    with pytest.raises(ValueError,match="time discontinuity"):sample(tracker,now=1.)
++    tracker.reset(clear_fault=True);sample(tracker)
++    sample(tracker,(-16.,)*4,now=.1,target_speed_mps=-.667,signed_speed_mps=-.2,
++           heading_ros_rad=.1)
++    assert tracker.reference_yaw_rad == .1
++
++
++def test_quaternion_is_validated_and_normalized():
++    assert quaternion_yaw(0,0,math.sin(.2),math.cos(.2)) == pytest.approx(.4)
++    for q in ((0,0,0,0),(0,0,float("nan"),1),(0,0,False,1)):
++        with pytest.raises(ValueError):quaternion_yaw(*q)
++
++
++def test_float32_wire_eighty_eight_degrees_is_not_a_false_interlock():
++    angle=struct.unpack("f",struct.pack("f",math.radians(88.)))[0]
++    assert angle > math.radians(88.)
++    assert sample(ExperimentalCrabYawHold(),crab_angle_ros_rad=angle) == (16.,)*4
++
++
++def test_real_controller_path_reduces_saturated_front_axle_and_zero_clears_fault(controller_module):
++    controller=_bare_command_controller(controller_module)
++    controller.experimental_crab_yaw_hold_enabled=True
++    controller._experimental_crab_yaw_hold=ExperimentalCrabYawHold()
++    controller.loginfo=lambda _message:None
++    controller.extreme_crab_curb_boost_enable=True
++    controller._extreme_crab_breakaway_config=configure_extreme_crab_curb_boost(ExtremeCrabBreakawayConfig(),True)
++    controller._extreme_crab_breakaway_tracker=ExtremeCrabBreakawayTracker(controller._extreme_crab_breakaway_config)
++    clock=[20.];controller.get_time=lambda:clock[0]
++    controller._on_extended_cmd(_extended_command(.667,False))
++    controller._physical_command_armed=True
++    for key,value in dict(odometry_timeout_sec=.25,speed_torque_kp=4.,
++        translation_wheel_torque_limit_nm=12.,extreme_crab_wheel_torque_limit_nm=8.,
++        ranger_vehicle_mass_kg=100.,ranger_wheel_radius_m=.153,gravity_mps2=9.80665,
++        driven_wheel_count=4,grade_compensation_limit_nm=12.,minimum_breakaway_torque_nm=3.,
++        breakaway_target_minimum_mps=.10,breakaway_full_speed_mps=.05,breakaway_release_speed_mps=.15).items():
++        setattr(controller,key,value)
++    orientation=SimpleNamespace(x=0.,y=0.,z=0.,w=1.)
++    angular=SimpleNamespace(z=0.)
++    controller._odometry=SimpleNamespace(twist=SimpleNamespace(twist=SimpleNamespace(
++        linear=SimpleNamespace(x=0.,y=0.),angular=angular)),
++        pose=SimpleNamespace(pose=SimpleNamespace(orientation=orientation)))
++    solution=controller.fws.compute(1,0.,-math.radians(88.),0.,1.)
++    for i in range(11):
++        clock[0]=20.+i*.1;controller._odometry_time=clock[0]
++        result=controller._compute_wheel_torques(solution)
++    assert result == pytest.approx((16.,)*4)
++    angular.z=.1;clock[0]=21.1;controller._odometry_time=clock[0]
++    result=controller._compute_wheel_torques(solution)
++    assert 9.6 <= result[0] == result[1] < result[2] == result[3] == 16.
++    orientation.z=math.sin(math.radians(13.)/2);orientation.w=math.cos(math.radians(13.)/2)
++    clock[0]=21.2;controller._odometry_time=clock[0]
++    with pytest.raises(ValueError,match="heading drift"):
++        controller._compute_wheel_torques(solution)
++    controller._on_extended_cmd(_extended_command(.667,False))
++    assert controller._experimental_crab_yaw_hold.fault_reason
++    controller._on_extended_cmd(_extended_command(0.,False))
++    assert not controller._experimental_crab_yaw_hold.fault_reason
++
++
++def test_both_full_stack_nodes_receive_same_default_false_opt_in():
++    launch=(Path(__file__).resolve().parents[1]/"launch/full_stack.launch.py").read_text()
++    assert "'experimental_crab_yaw_hold_enabled', default_value='false'" in launch
++    assert launch.count("'experimental_crab_yaw_hold_enabled': ParameterValue(") == 2
+diff --git a/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_zero_turn_yaw_integral.py b/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_zero_turn_yaw_integral.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1935c11f4f16c8fc7e2cb9a108ee8b23d69e963d
+--- /dev/null
++++ b/ros_ws/src/carla_extended_ackermann_control/test/test_experimental_zero_turn_yaw_integral.py
+@@ -0,0 +1,239 @@
++"""HH_261008 - Offline PI algebra/interlocks, not B4 physical acceptance."""
++import math
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from carla_extended_ackermann_control.experimental_zero_turn_yaw_integral import (
++    ExperimentalZeroTurnYawIntegral, ZeroTurnYawIntegralConfig,
++)
++from carla_extended_ackermann_control.wheel_torque_control import compute_bounded_wheel_torques
++from test_physical_four_wheel_steering import (
++    controller_module, _bare_command_controller, _extended_command,
++)
++
++
++def sample(tracker, **changes):
++    args = dict(now=0.0, enabled=True, drive_mode=2, armed=True,
++                backend_accepted=True, steering_converged=True,
++                target_yaw_rate_radps=0.1, current_yaw_rate_radps=0.0,
++                target_translation_mps=0.0, odometry_age_s=0.0,
++                command_age_s=0.0, recovery_authorized=False)
++    args.update(changes)
++    return tracker.update(**args)
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_integral_has_correct_units_and_same_sign_without_initial_floor(direction):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    assert sample(tracker, target_yaw_rate_radps=direction*0.1) == 0.0
++    for index in range(1, 11):
++        result = sample(tracker, now=index*0.1,
++                        target_yaw_rate_radps=direction*0.1)
++    assert tracker.integrated_error_rad == pytest.approx(direction*0.1)
++    assert result == pytest.approx(direction*0.2)
++    assert tracker.last_result.scalar_torque_nm == pytest.approx(direction*0.7)
++
++
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_saturation_projects_integral_state_and_cannot_release_hidden_windup(direction):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    for index in range(1000):
++        sample(tracker, now=index*0.05, target_yaw_rate_radps=direction*0.1)
++    assert tracker.integrated_error_rad == pytest.approx(direction*0.75)
++    assert tracker.last_result.scalar_torque_nm == direction*2.0
++    # A larger error consumes P headroom and projects stored integral down.
++    sample(tracker, now=50.0, target_yaw_rate_radps=direction*0.2)
++    assert tracker.integrated_error_rad == pytest.approx(direction*0.5)
++    sample(tracker, now=50.05, target_yaw_rate_radps=direction*0.1)
++    assert tracker.last_result.scalar_torque_nm == pytest.approx(direction*1.51)
++
++
++@pytest.mark.parametrize("current", (0.1, 0.12, 0.4))
++@pytest.mark.parametrize("direction", (-1.0, 1.0))
++def test_reaching_or_exceeding_target_immediately_preserves_p_only_braking(current, direction):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker, target_yaw_rate_radps=direction*0.1)
++    assert sample(tracker, now=0.1, target_yaw_rate_radps=direction*0.1) != 0.0
++    addition = sample(tracker, now=0.2, target_yaw_rate_radps=direction*0.1,
++                      current_yaw_rate_radps=direction*current)
++    assert addition == 0.0
++    assert tracker.integrated_error_rad == 0.0
++    factors = ((1, -1, 1, -1), (1.0,)*4)
++    assert compute_bounded_wheel_torques(
++        direction*0.1, direction*current, 5.0, 2.0, *factors,
++        feedforward_torque_nm=addition) == compute_bounded_wheel_torques(
++        direction*0.1, direction*current, 5.0, 2.0, *factors)
++
++
++@pytest.mark.parametrize("changes", [
++    {"enabled": False}, {"armed": False}, {"backend_accepted": False},
++    {"steering_converged": False}, {"drive_mode": 0}, {"drive_mode": 1},
++    {"drive_mode": 3}, {"target_yaw_rate_radps": 0.0},
++    {"target_yaw_rate_radps": 1.0e-4}, {"target_yaw_rate_radps": 0.201},
++    {"target_translation_mps": 0.01}, {"recovery_authorized": True},
++])
++def test_ineligible_episode_discards_integral_immediately(changes):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker)
++    assert sample(tracker, now=0.1) > 0.0
++    assert sample(tracker, now=0.2, **changes) == 0.0
++    assert tracker.integrated_error_rad == 0.0
++    assert tracker.last_time is None
++
++
++@pytest.mark.parametrize("changes", [
++    {"now": math.nan}, {"current_yaw_rate_radps": math.inf},
++    {"target_yaw_rate_radps": math.nan}, {"target_translation_mps": math.nan},
++    {"odometry_age_s": -0.1}, {"odometry_age_s": 0.251},
++    {"command_age_s": -0.1}, {"command_age_s": 0.501},
++    {"enabled": "true"}, {"armed": 1}, {"backend_accepted": 1},
++    {"drive_mode": True}, {"drive_mode": 4}, {"current_yaw_rate_radps": True},
++])
++def test_invalid_or_stale_input_resets_then_raises(changes):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker)
++    sample(tracker, now=0.1)
++    with pytest.raises(ValueError):
++        sample(tracker, **changes)
++    assert tracker.integrated_error_rad == 0.0
++    assert tracker.last_time is None
++
++
++@pytest.mark.parametrize("next_time", (0.05, 0.351))
++def test_time_regression_or_gap_cannot_integrate_unobserved_time(next_time):
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker)
++    sample(tracker, now=0.1)
++    assert sample(tracker, now=next_time) == 0.0
++    assert tracker.last_result.reason == "time_discontinuity_reset"
++
++
++def test_duplicate_timestamp_neither_accumulates_nor_loses_state():
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker)
++    value = sample(tracker, now=0.1)
++    assert sample(tracker, now=0.1) == value
++
++
++def test_direction_change_restarts_without_old_torque():
++    tracker = ExperimentalZeroTurnYawIntegral()
++    sample(tracker)
++    sample(tracker, now=0.1)
++    assert sample(tracker, now=0.2, target_yaw_rate_radps=-0.1) == 0.0
++    assert sample(tracker, now=0.3, target_yaw_rate_radps=-0.1) < 0.0
++
++
++@pytest.mark.parametrize("gain", (0.0, -1.0, 2.01, math.nan, math.inf, True, "bad"))
++def test_gain_configuration_is_bounded(gain):
++    with pytest.raises(ValueError):
++        ZeroTurnYawIntegralConfig(gain)
++
++
++def rotation_controller(module):
++    controller = _bare_command_controller(module)
++    controller.experimental_zero_turn_yaw_integral_enabled = True
++    controller._experimental_zero_turn_yaw_integral = ExperimentalZeroTurnYawIntegral()
++    controller.loginfo = lambda message: None
++    clock = [20.0]
++    controller.get_time = lambda: clock[0]
++    command = _extended_command(0.0, False, mode=2)
++    command.yaw_rate_cmd = 0.1
++    controller._on_extended_cmd(command)
++    controller._physical_command_armed = True
++    controller.odometry_timeout_sec = 0.25
++    controller.rotation_wheel_torque_limit_nm = 2.0
++    controller.rotation_recovery_breakaway_torque_limit_nm = 4.0
++    controller.yaw_rate_torque_kp = 5.0
++    controller.zero_turn_fallback_yaw_rate_radps = 0.3
++    controller.max_physical_yaw_rate_radps = 1.0
++    controller._odometry = SimpleNamespace(twist=SimpleNamespace(
++        twist=SimpleNamespace(angular=SimpleNamespace(z=0.0))))
++    controller._odometry_time = clock[0]
++    solution = SimpleNamespace(steering_converged=True,
++        drive_signs=(1, -1, 1, -1), wheel_speed_scales=(1.0,)*4)
++    return controller, clock, command, solution
++
++
++def test_real_node_hook_adds_signed_integral_under_same_two_nm_cap(controller_module):
++    controller, clock, command, solution = rotation_controller(controller_module)
++    assert controller._compute_wheel_torques(solution) == (-0.5, 0.5, -0.5, 0.5)
++    for index in range(1, 201):
++        clock[0] = 20.0 + index*0.05
++        controller._on_extended_cmd(command)
++        controller._odometry_time = clock[0]
++        torques = controller._compute_wheel_torques(solution)
++        assert max(abs(v) for v in torques) <= 2.0
++    assert torques == (-2.0, 2.0, -2.0, 2.0)
++    controller._odometry.twist.twist.angular.z = 0.15
++    assert controller._compute_wheel_torques(solution) == pytest.approx((0.25, -0.25, 0.25, -0.25))
++    assert controller._experimental_zero_turn_yaw_integral.integrated_error_rad == 0.0
++
++
++def test_real_node_default_disabled_preserves_p_path(controller_module):
++    controller, clock, command, solution = rotation_controller(controller_module)
++    controller.experimental_zero_turn_yaw_integral_enabled = False
++    for index in range(10):
++        clock[0] = 20.0 + index*0.05
++        controller._on_extended_cmd(command)
++        controller._odometry_time = clock[0]
++        assert controller._compute_wheel_torques(solution) == (-0.5, 0.5, -0.5, 0.5)
++
++
++@pytest.mark.parametrize("action", (
++    "stop", "sign", "unconverged", "stale", "reset", "large_target", "recovery"))
++def test_real_node_resets_at_command_and_feedback_boundaries(controller_module, action):
++    controller, clock, command, solution = rotation_controller(controller_module)
++    controller._compute_wheel_torques(solution)
++    clock[0] += 0.1
++    controller._compute_wheel_torques(solution)
++    tracker = controller._experimental_zero_turn_yaw_integral
++    assert tracker.integrated_error_rad != 0.0
++    if action in ("stop", "sign"):
++        command.yaw_rate_cmd = 0.0 if action == "stop" else -0.1
++        controller._on_extended_cmd(command)
++    elif action == "large_target":
++        command.yaw_rate_cmd = 0.3
++        controller._on_extended_cmd(command)
++    elif action == "recovery":
++        command.recovery_breakaway_authorized = True
++        controller._on_extended_cmd(command)
++    elif action == "unconverged":
++        solution.steering_converged = False
++        assert controller._compute_wheel_torques(solution) == (0.0,)*4
++    elif action == "stale":
++        clock[0] += 0.3
++        with pytest.raises(ValueError, match="stale"):
++            controller._compute_wheel_torques(solution)
++    else:
++        controller._publish_physical_reset()
++    assert tracker.integrated_error_rad == 0.0
++
++
++def test_enable_is_explicitly_default_off_and_caps_are_unchanged():
++    source = (Path(__file__).parents[1] / "src/carla_extended_ackermann_control/"
++              "carla_extended_ackermann_control_node.py").read_text()
++    assert '"experimental_zero_turn_yaw_integral_enabled", False)' in source
++    assert "RANGER_ACCEPTED_ROTATION_TORQUE_LIMIT_NM = 2.0" in source
++    assert "RANGER_ACCEPTED_YAW_RATE_TORQUE_KP = 5.0" in source
++
++
++@pytest.mark.parametrize("filename", (
++    "full_stack.launch.py", "carla_extended_ackermann_control.launch.py"))
++def test_launch_passes_default_off_and_typed_gain_to_controller_only(filename):
++    # HH_261008 - No bridge policy change is needed below its existing cap.
++    source = (Path(__file__).parents[1] / "launch" / filename).read_text()
++    assert "'experimental_zero_turn_yaw_integral_enabled', default_value='false'" in source
++    assert "'experimental_zero_turn_yaw_integral_gain_nm_per_rad', default_value='2.0'" in source
++    assert source.count("'experimental_zero_turn_yaw_integral_enabled': ParameterValue(") == 1
++    assert source.count("'experimental_zero_turn_yaw_integral_gain_nm_per_rad': ParameterValue(") == 1
++    assert "'experimental_zero_turn_yaw_integral_enabled'), value_type=bool)" in source
++    assert "'experimental_zero_turn_yaw_integral_gain_nm_per_rad'), value_type=float)" in source
++
++
++def test_gate_bootstrap_binds_the_imported_helper():
++    root = Path(__file__).resolve().parents[4]
++    source = (root / "bootstrap/76_create_physical_gate.sh").read_text()
++    assert ('experimental_zero_turn_yaw_integral_source=${control_package}'
++            '/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py') in source

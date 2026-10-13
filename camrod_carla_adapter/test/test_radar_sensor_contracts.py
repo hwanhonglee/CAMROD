@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from camrod_carla_adapter.runtime_sensor_mount import calibrate_gnss_mount
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = PACKAGE_ROOT.parent
@@ -85,7 +86,25 @@ def test_spawn_mounts_are_ros_coordinates_matching_canonical_robot_params():
         )
 
     gnss_spawn = sensors['gnss']['spawn_point']
-    gnss = params['gnss']
+    # HH_261013 - Radar mounts retain the field calibration, but simulated GNSS
+    # uses its authored mount through the launch-local calibration overlay.
+    # Keep the physical antenna at x=0.65 m and never rewrite its shared YAML.
+    assert params['gnss']['x'] == pytest.approx(0.65)
+    input_params = yaml.safe_load(
+        (PACKAGE_ROOT / 'config' / 'camrod_input_adapter_carla.yaml').read_text(
+            encoding='utf-8'
+        )
+    )
+    localization, simulated_robot = calibrate_gnss_mount(
+        input_params, {'/**': {'ros__parameters': params}},
+        json.loads(SPAWN.read_text(encoding='utf-8')),
+    )
+    gnss = simulated_robot['/**']['ros__parameters']['gnss']
+    assert (gnss['x'], gnss['y']) == pytest.approx((0.0, 0.45))
+    assert params['gnss']['x'] == pytest.approx(0.65)
+    calibrated_input = localization['/**']['ros__parameters']
+    assert calibrated_input['gnss_antenna_offset_x_m'] == gnss['x']
+    assert calibrated_input['gnss_antenna_offset_y_m'] == gnss['y']
     assert (
         gnss_spawn['x'],
         gnss_spawn['y'],

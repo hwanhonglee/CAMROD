@@ -322,7 +322,7 @@ def generate_launch_description():
         cmd=[
             'bash',
             '-lc',
-            # HH_260618: Match both ROS node token and script name, then
+            # HH_260618 - Match both ROS node token and script name, then
             # escalate after a short grace period so standalone sim reruns do
             # not leave fake_sensor_publisher consuming CPU.
             '_pids=""; '

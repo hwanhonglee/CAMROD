@@ -91,6 +91,25 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test('public service brand preserves the park logo and does not send control commands', async () => {
+  // HH_261007 - Brand both idle and active service screens without touching
+  // mission admission, navigation ownership or deployment asset paths.
+  await renderApp();
+  expect(host.querySelector('.wh-main-title').textContent).toContain('CAM-Geni');
+  expect(host.querySelector('.wh-subtitle').textContent).toContain('AVGenius');
+  expect(host.querySelector('.wh-subtitle').textContent).toContain('월악산 국립공원');
+  expect(host.querySelector('.wh-logo img').getAttribute('src')).toBe('/월악산_국립공원_로고.jpg');
+  expect(host.textContent).not.toContain('CAMROD');
+  await act(async () => {
+    sockets[0].onopen();
+    emit(missionFrame());
+  });
+  expect(host.querySelector('.control-header').textContent).toContain('CAM-Geni');
+  expect(host.querySelector('.dd-brand').textContent).toContain('AVGenius');
+  expect(host.textContent).not.toContain('CAMROD');
+  expectNoCommands();
+});
+
 test('actual App driving overlay dismisses onto the same existing header and site controls', async () => {
   await startMission();
   const display = host.querySelector('[data-testid="driving-display"]');

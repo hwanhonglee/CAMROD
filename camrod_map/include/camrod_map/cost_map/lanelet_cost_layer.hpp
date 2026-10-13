@@ -1,4 +1,4 @@
-// HH_251231: Lanelet-based cost layer header for Nav2
+// HH_251231 - Lanelet-based cost layer header for Nav2
 #pragma once
 
 #include <nav2_costmap_2d/costmap_layer.hpp>
@@ -12,7 +12,7 @@
 namespace camrod_map::cost_map
 {
 // Nav2 layer that consumes an OccupancyGrid (map frame) and writes lanelet-aware costs.
-// HH_251230: Simple layer that consumes an OccupancyGrid (map frame) and writes costs
+// HH_251230 - Simple layer that consumes an OccupancyGrid (map frame) and writes costs
 class LaneletCostLayer : public nav2_costmap_2d::Layer
 {
 public:

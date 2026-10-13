@@ -198,7 +198,7 @@ private:
     } else {
       // 미매칭: grace period 내 → WARN, 초과 → ERROR
       if (since_start < grace_period_s_) {
-        // HH_260617: Sim profile can keep startup grace at OK so localization
+        // HH_260617 - Sim profile can keep startup grace at OK so localization
         // dummy data does not block planning/control smoke tests.
         lvl = warn_during_grace_ ? diagnostic_msgs::msg::DiagnosticStatus::WARN : diagnostic_msgs::msg::DiagnosticStatus::OK;
         char buf[80];
@@ -248,7 +248,7 @@ private:
     std::snprintf(tmp, sizeof(tmp), "%.1f", since_start);
     stat.add("since_node_start_s", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.1f", grace_period_s_);
-    // HH_260617: Publish diagnostic detail keys with canonical `_s` time suffix.
+    // HH_260617 - Publish diagnostic detail keys with canonical `_s` time suffix.
     stat.add("grace_period_s",  std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed_since_msg);
     stat.add("last_msg_age_s",  std::string(tmp));

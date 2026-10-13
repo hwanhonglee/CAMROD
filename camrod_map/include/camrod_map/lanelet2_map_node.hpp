@@ -44,7 +44,7 @@ struct Lanelet2MapNodeConfig
   std::string world_frame_id{"world"};
   // Lanelet map frame used by all map markers.
   std::string map_frame_id{"map"};
-  // HH_260103 arrow scaling parameters
+  // HH_260103 - arrow scaling parameters
   double dir_body_scale{0.55};
   double dir_head_scale{0.35};
   double dir_width_scale{0.18};
@@ -117,7 +117,7 @@ private:
   static std_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a = 1.0f);
   geometry_msgs::msg::Point makePoint(double x, double y, double z) const;
   geometry_msgs::msg::Point makeMapPoint(double x, double y, double z) const;  // HH_260623 - Project OSM geometry onto the configured visualization ground plane.
-  static geometry_msgs::msg::Point computeCentroid(const lanelet::ConstLineString3d & line_string);  // HH_260114 Compute semantic centroid.
+  static geometry_msgs::msg::Point computeCentroid(const lanelet::ConstLineString3d & line_string);  // HH_260114 - Compute semantic centroid.
   bool isNearVisualizationCenter(double x, double y) const;
   bool isLineStringNear(const lanelet::ConstLineString3d & line_string) const;
   bool isLaneletNear(const lanelet::ConstLanelet & lanelet) const;
@@ -129,7 +129,7 @@ private:
     geometry_msgs::msg::Point & tail_right,
     geometry_msgs::msg::Point & head_point) const;
   double laneWidthAt(const lanelet::ConstLanelet & lanelet, std::size_t idx) const;
-  void addTrafficLightBulbs(  // HH_260114 Render tri-color traffic light bulbs.
+  void addTrafficLightBulbs(  // HH_260114 - Render tri-color traffic light bulbs.
     const geometry_msgs::msg::Point & base_center,
     const std::string & bulb_namespace,
     visualization_msgs::msg::MarkerArray & markers,
@@ -170,7 +170,7 @@ private:
   std::string progressive_visualization_pose_topic_{"/localization/pose"};
   std::string progressive_visualization_fallback_pose_topic_{""};
   const VisualizationFilter * active_visualization_filter_{nullptr};
-  // HH_260413: Optional periodic re-publish period for static map markers.
+  // HH_260413 - Optional periodic re-publish period for static map markers.
   // 0.0 disables timer and publishes once (transient_local keeps late subscribers synced).
   double visualization_republish_period_s_{0.0};
   visualization_msgs::msg::MarkerArray cached_markers_;

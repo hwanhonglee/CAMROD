@@ -5726,6 +5726,38 @@ h1 {
   box-shadow: 0 0 0 4px rgba(77, 131, 186, 0.16);
 }
 
+/* HH_261007 - Separate an active input lease from blocked or stale motion
+   admission; never use an enabled appearance for missing gate telemetry. */
+.manual-drive-state.blocked, .manual-drive-gate-message.blocked {
+  border-color: #d2938c;
+  color: #983a30;
+  background: #fff2ef;
+}
+
+.manual-drive-state.unknown, .manual-drive-gate-message.unknown,
+.manual-drive-state.limited, .manual-drive-gate-message.limited {
+  border-color: #d3b269;
+  color: #785714;
+  background: #fff8e8;
+}
+
+.manual-drive-state.enabled {
+  border-color: #99bca4;
+  color: #245c38;
+  background: #edf7f0;
+}
+
+.manual-drive-gate-message {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
 .manual-drive-layout {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(340px, 1.2fr);

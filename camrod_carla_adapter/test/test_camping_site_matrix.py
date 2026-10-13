@@ -467,7 +467,29 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     )
     charger = "/carla_charging_contact_emulator"
     detector = "/perception/apriltag_parking_detector"
-    assert set(site) == set(parity) | {charger}
+    physical_bridge = "/physical_four_wheel_bridge"
+    extended_control = "/carla_extended_ackermann_control"
+    assert set(site) == set(parity) | {
+        charger, extended_control, physical_bridge,
+    }
+    # HH_261013 - Both physical-control processes must retain the explicit
+    # CARLA-only yaw-hold opt-in; neither process belongs to develop parity.
+    assert extended_control not in parity
+    assert physical_bridge not in parity
+    assert site[extended_control] == {
+        "crab_speed_cap": 2.0,
+        "experimental_crab_yaw_hold_enabled": True,
+        "experimental_zero_turn_yaw_integral_enabled": True,
+        "experimental_zero_turn_yaw_integral_gain_nm_per_rad": 2.0,
+    }
+    assert site[physical_bridge] == {
+        "experimental_crab_yaw_hold_enabled": True,
+    }
+    # HH_261007 - Detect a stale 0.2 UI or 1.0 backend clamp before site motion.
+    assert site["/ui_backend"]["manual_drive_lateral_limit_mps"] == 2.0
+    assert site["/ui_backend"]["manual_drive_allow_carla_lateral_2mps"] is True
+    assert site[command_adapter]["max_crab_speed_mps"] == 2.0
+    assert site[command_adapter]["allow_carla_site_manual_crab_speed_2mps"] is True
     recovery_nodes = {
         "/control/cmd_vel_safety_gate",
         "/control/route_safety_recovery_controller",
@@ -592,13 +614,13 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     ] == ""
     assert site["/planning/goal_snapper"][
         "reverse_auxiliary_input_goal_topic"
-    ] == "/planning/auto_reverse_goal_raw"
+    ] == ""
     assert parity["/planning/nav2_selector_latch"][
         "reverse_controller_id"
     ] == "RPP"
     assert site["/planning/nav2_selector_latch"][
         "reverse_controller_id"
-    ] == "RPPReverse"
+    ] == "RPP"
     assert site["/planning/controller_server"]["controller_plugins"] == [
         "RPP", "RPPReverse", "RotationShim"
     ]
@@ -654,7 +676,8 @@ def test_runtime_profile_signatures_differ_only_in_proven_carla_adaptations():
     assert parity[controller]["max_angular_speed_radps"] == 0.35
     assert site[controller]["max_angular_speed_radps"] == 0.45
     assert parity[controller]["roadside_reverse_return_enable"] is False
-    assert site[controller]["roadside_reverse_return_enable"] is True
+    # HH_261007 - Roadside return loops stay forward; parking may still reverse.
+    assert site[controller]["roadside_reverse_return_enable"] is False
     assert site[controller]["roadside_reverse_handoff_distance_m"] == 0.03
     assert site[controller]["entry_position_tolerance_m"] == 0.05
     assert site[controller]["rotate_entry_centering_max_initial_error_m"] == 0.65
@@ -1946,10 +1969,13 @@ def _operator_client_with_fake_visible_dom(probe):
     client._interactions = []
     client._typed_value = ""
     client._fake_safety_gate_visible = False
+    client._fake_idle_map_visible = False
     client.cdp_calls = []
     client._install_transport_probe = lambda: None
 
     def element(selector):
+        if selector == '[data-ui="idle-navigation-map"] .dd-back-action' and not client._fake_idle_map_visible:
+            return {"count": 0, "visibleCount": 0}
         if selector in ('[data-ui="service-safety-gate"]', '[data-ui="usage-safety-confirm"]') and not client._fake_safety_gate_visible:
             return {"count": 0, "visibleCount": 0}
         return {
@@ -2154,6 +2180,30 @@ def test_operator_service_menu_acknowledges_visible_safety_notice_before_site_ch
     client._click = click
     client.open_service_menu()
     assert clicked == ['[data-ui="usage-safety-confirm"]']
+    assert not any(method == "Runtime.evaluate" for method, _ in client.cdp_calls)
+
+
+def test_operator_service_menu_closes_idle_map_using_its_real_home_button():
+    # HH_261006 - The idle map is a real overlay, not permission to force a
+    # hidden service card click or programmatically change frontend state.
+    client = _operator_client_with_fake_visible_dom({})
+    client._fake_idle_map_visible = True
+    clicked = []
+    original_click = client._click
+
+    def click(selector, description):
+        result = original_click(selector, description)
+        clicked.append(selector)
+        if selector == '[data-ui="idle-navigation-map"] .dd-back-action':
+            client._fake_idle_map_visible = False
+        return result
+
+    client._click = click
+    client.open_service_menu()
+    assert clicked == [
+        '[data-ui="idle-navigation-map"] .dd-back-action',
+        '[data-ui="operator-open-destination"]',
+    ]
     assert not any(method == "Runtime.evaluate" for method, _ in client.cdp_calls)
 
 

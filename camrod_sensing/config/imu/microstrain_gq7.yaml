@@ -36,7 +36,7 @@ microstrain_inertial_driver:
     # Timestamp source:
     #   0 = ROS time
     #   1 = GPS time
-    # HH_260415: Keep ROS timeline coherent across sensors to prevent TF extrapolation in RViz.
+    # HH_260415 - Keep ROS timeline coherent across sensors to prevent TF extrapolation in RViz.
     #   2 = Hybrid may diverge from host time when PPS/GNSS timing is unstable.
     timestamp_source: 0
 
@@ -52,7 +52,7 @@ microstrain_inertial_driver:
     # Use your robot base frame here.
     mount_frame_id: "sensor_kit_base_link"
 
-    # HH_260220: imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
+    # HH_260220 - imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
     publish_mount_to_frame_id_transform: false
 
     # TF mode:

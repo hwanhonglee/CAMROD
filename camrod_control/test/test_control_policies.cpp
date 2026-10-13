@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <limits>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1020,6 +1022,26 @@ avg_msgs::msg::AvgTwist command(const double x, const double y = 0.0,
   return output;
 }
 
+// HH_261006 - Probe isolation must preserve the complete safety decision,
+// including diagnostic contact geometry, not just its blocked flag.
+void expectSameMotionCostDecision(const MotionCostStopDecision &actual,
+                                  const MotionCostStopDecision &expected) {
+  EXPECT_EQ(actual.blocked, expected.blocked);
+  EXPECT_EQ(actual.dynamic_obstacle, expected.dynamic_obstacle);
+  EXPECT_EQ(actual.lanelet_violation, expected.lanelet_violation);
+  EXPECT_EQ(actual.stale_grid, expected.stale_grid);
+  EXPECT_EQ(actual.reason, expected.reason);
+  EXPECT_EQ(actual.lanelet_contact_valid, expected.lanelet_contact_valid);
+  EXPECT_DOUBLE_EQ(actual.lanelet_pose_x, expected.lanelet_pose_x);
+  EXPECT_DOUBLE_EQ(actual.lanelet_pose_y, expected.lanelet_pose_y);
+  EXPECT_DOUBLE_EQ(actual.lanelet_pose_yaw, expected.lanelet_pose_yaw);
+  EXPECT_DOUBLE_EQ(actual.lanelet_hit_world_x, expected.lanelet_hit_world_x);
+  EXPECT_DOUBLE_EQ(actual.lanelet_hit_world_y, expected.lanelet_hit_world_y);
+  EXPECT_DOUBLE_EQ(actual.lanelet_hit_body_x, expected.lanelet_hit_body_x);
+  EXPECT_DOUBLE_EQ(actual.lanelet_hit_body_y, expected.lanelet_hit_body_y);
+  EXPECT_EQ(actual.lanelet_hit_cost, expected.lanelet_hit_cost);
+}
+
 } // namespace
 
 TEST(RobotBoundaryGeometry,
@@ -1450,7 +1472,7 @@ TEST(RouteSafetyRecovery, PreservesTriggerDirectionUntilContinuousClear) {
   EXPECT_TRUE(recovery.active());
   EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);
 
-  // HH_260729 / TODOLIST 11-12 - Later zero or lateral commands cannot replace
+  // HH_260729 - TODO list 11-12: Later zero or lateral commands cannot replace
   // the saved forward trigger that defines route-clear evidence.
   EXPECT_FALSE(recovery.observeViolation(violation, command(0.0, 0.2), 10.1));
   EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);
@@ -2616,6 +2638,318 @@ TEST(MotionCostStop, RouteRecoveryUsesIndependentLaneletGridAge) {
           .blocked);
   EXPECT_EQ(cost_stop.evaluateLaneletRecovery(command(0.2), 13.1, 3.0).reason,
             "lanelet_recovery_grid_stale");
+}
+
+TEST(MotionCostStop, SpeculativeRecoveryProbesAreOrderIndependent) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.latch_enabled = true;
+  config.require_dynamic_source = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  const auto left_obstacle = makeGrid({{0.0, 0.6, 90}});
+  cost_stop.setMergedGrid(left_obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", left_obstacle, 1.0);
+  const auto original = cost_stop;
+  const std::array<avg_msgs::msg::AvgTwist, 5> candidates{
+      command(0.0, 0.1), command(0.0, -0.1), command(-0.1),
+      command(-0.1, 0.0, 0.1), command(-0.1, 0.0, -0.1)};
+  std::array<MotionCostStopDecision, 5> expected;
+  for (std::size_t index = 0; index < candidates.size(); ++index) {
+    auto isolated_actual = original;
+    expected[index] = isolated_actual.evaluateRouteRecoveryCommand(
+        candidates[index], 1.0, 0.3, 0.5);
+  }
+  ASSERT_TRUE(expected.front().dynamic_obstacle);
+  ASSERT_FALSE(expected[1].blocked);
+
+  // HH_261006 - Match the gate's five projections in both orders. A rejected
+  // left candidate must not poison later right/reverse candidates or manual
+  // motion; the const reference also enforces the API's read-only contract.
+  const MotionCostStop &probe = cost_stop;
+  for (const auto &order : {std::array<std::size_t, 5>{0, 1, 2, 3, 4},
+                            std::array<std::size_t, 5>{4, 3, 2, 1, 0}}) {
+    for (const auto index : order) {
+      SCOPED_TRACE(index);
+      expectSameMotionCostDecision(
+          probe.probeRouteRecoveryCommand(candidates[index], 1.0, 0.3, 0.5),
+          expected[index]);
+      EXPECT_FALSE(cost_stop.latched());
+      EXPECT_TRUE(cost_stop.latchReason().empty());
+      EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), original.holdUntilSec());
+    }
+  }
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, -0.1), 1.0).blocked);
+  const auto actual = cost_stop.evaluateRouteRecoveryCommand(
+      candidates.front(), 1.0, 0.3, 0.5);
+  expectSameMotionCostDecision(actual, expected.front());
+  EXPECT_TRUE(cost_stop.latched());
+  EXPECT_EQ(cost_stop.latchReason(), "dynamic_left:radar");
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 1.0 + config.stop_hold_s);
+}
+
+TEST(MotionCostStop, SpeculativeRecoveryProbeDoesNotChangeTransientHold) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.stale_stop_enabled = true;
+  config.latch_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 2.2});
+  cost_stop.setLaneletGrid(makeGrid(), 2.2);
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  auto actual = cost_stop;
+  const auto expected = actual.evaluateRouteRecoveryCommand(
+      command(-0.1), 2.2, 0.3, 0.5);
+  ASSERT_EQ(expected.reason, "merged_cost_grid_stale");
+  expectSameMotionCostDecision(
+      cost_stop.probeRouteRecoveryCommand(command(-0.1), 2.2, 0.3, 0.5),
+      expected);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 0.0);
+  EXPECT_DOUBLE_EQ(actual.holdUntilSec(), 2.2 + config.stop_hold_s);
+}
+
+TEST(MotionCostStop, SpeculativeRecoveryProbeDoesNotStartLatchClearWindow) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 0.5;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  const auto obstacle = makeGrid({{-0.3, 0.0, 90}});
+  cost_stop.setMergedGrid(obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", obstacle, 1.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(-0.1), 1.0).blocked);
+  const double original_hold = cost_stop.holdUntilSec();
+  const auto original_reason = cost_stop.latchReason();
+  cost_stop.setMergedGrid(makeGrid(), 1.1);
+  cost_stop.setSourceGrid("radar", makeGrid(), 1.1);
+  auto actual = cost_stop;
+  expectSameMotionCostDecision(
+      cost_stop.probeRouteRecoveryCommand(command(-0.1), 1.1, 0.3, 1.0),
+      actual.evaluateRouteRecoveryCommand(command(-0.1), 1.1, 0.3, 1.0));
+  EXPECT_TRUE(cost_stop.latched());
+  EXPECT_EQ(cost_stop.latchReason(), original_reason);
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), original_hold);
+
+  // HH_261006 - The first real clear evaluation starts at 1.7, not at the
+  // hypothetical 1.1 probe. Otherwise this fresh frame would release early.
+  cost_stop.setMergedGrid(makeGrid(), 1.7);
+  cost_stop.setSourceGrid("radar", makeGrid(), 1.7);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 1.7).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+  cost_stop.setMergedGrid(makeGrid(), 2.3);
+  cost_stop.setSourceGrid("radar", makeGrid(), 2.3);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 2.3).blocked);
+}
+
+TEST(MotionCostStop, SpeculativeRecoveryProbeDoesNotResetOrReleaseLiveLatch) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 0.5;
+  config.lanelet_recovery_stale_timeout_s = 5.0;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  const auto obstacle = makeGrid({{-0.3, 0.0, 90}});
+  cost_stop.setMergedGrid(obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", obstacle, 1.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(-0.1), 1.0).blocked);
+  cost_stop.setMergedGrid(makeGrid(), 1.1);
+  cost_stop.setSourceGrid("radar", makeGrid(), 1.1);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.0), 1.1).blocked);
+  const double original_hold = cost_stop.holdUntilSec();
+  const auto original_reason = cost_stop.latchReason();
+
+  // HH_261006 - An occupied probe would reset the in-progress clear window;
+  // stale trigger evidence would do the same. Neither may mutate live state.
+  cost_stop.setMergedGrid(obstacle, 1.2);
+  cost_stop.setSourceGrid("radar", obstacle, 1.2);
+  for (const double probe_time : {1.2, 2.4}) {
+    auto actual = cost_stop;
+    const auto expected = actual.evaluateRouteRecoveryCommand(
+        command(-0.1), probe_time, 0.3, 5.0);
+    ASSERT_TRUE(expected.blocked);
+    expectSameMotionCostDecision(
+        cost_stop.probeRouteRecoveryCommand(command(-0.1), probe_time, 0.3, 5.0),
+        expected);
+    EXPECT_TRUE(cost_stop.latched());
+    EXPECT_EQ(cost_stop.latchReason(), original_reason);
+    EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), original_hold);
+  }
+
+  // HH_261006 - Fresh advanced clear evidence now releases an isolated real
+  // evaluator, but probing it must retain the live latch and original hold.
+  cost_stop.setMergedGrid(makeGrid(), 2.5);
+  cost_stop.setSourceGrid("radar", makeGrid(), 2.5);
+  auto actual = cost_stop;
+  const auto released = actual.evaluateRouteRecoveryCommand(
+      command(-0.1), 2.5, 0.3, 5.0);
+  ASSERT_FALSE(released.blocked);
+  ASSERT_FALSE(actual.latched());
+  expectSameMotionCostDecision(
+      cost_stop.probeRouteRecoveryCommand(command(-0.1), 2.5, 0.3, 5.0),
+      released);
+  EXPECT_TRUE(cost_stop.latched());
+  EXPECT_EQ(cost_stop.latchReason(), original_reason);
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), original_hold);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 2.5).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 2.5 + config.stop_hold_s);
+}
+
+TEST(MotionCostStop, SpeculativeRecoveryProbePreservesSweptContactDecision) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_body_hard_stop_enabled = true;
+  config.body_front_m = 0.20;
+  config.body_rear_m = 0.20;
+  config.body_left_m = 0.10;
+  config.body_right_m = 0.10;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{-0.399, 0.051, 100}}, 0.05), 1.0);
+  auto actual = cost_stop;
+  const auto expected = actual.evaluateRouteRecoveryCommand(
+      command(-0.1, 0.0, 0.1), 1.0, 0.3, 0.5);
+  ASSERT_EQ(expected.reason, "route_recovery_swept_physical_body_cost");
+  ASSERT_TRUE(expected.lanelet_contact_valid);
+  expectSameMotionCostDecision(
+      cost_stop.probeRouteRecoveryCommand(command(-0.1, 0.0, 0.1), 1.0, 0.3, 0.5),
+      expected);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 0.0);
+}
+
+TEST(MotionCostStop, LiveLatchRecheckNeverCreatesNewLatchOrHold) {
+  auto config = baseCostConfig();
+  config.latch_enabled = true;
+  config.stale_stop_enabled = true;
+  auto cost_stop = makeMotionCostStop(config);
+  EXPECT_FALSE(cost_stop.recheckLatchedHazard(1.0).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 0.0);
+  const auto obstacle = makeGrid({{0.5, 0.0, 90}});
+  cost_stop.setMergedGrid(obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", obstacle, 1.0);
+  EXPECT_FALSE(cost_stop.recheckLatchedHazard(1.0).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 0.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.1), 1.0).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+}
+
+TEST(MotionCostStop, LiveLatchRecheckProgressesWithoutAuthorizedRecoveryCommand) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.footprint_front_m = 0.2;
+  config.footprint_rear_m = 0.2;
+  config.footprint_left_m = 0.2;
+  config.footprint_right_m = 0.2;
+  config.latch_enabled = true;
+  config.clear_required_s = 0.5;
+  MotionCostStop cost_stop(config);
+  const auto boundary = makeGrid({{0.0, 0.15, 100}});
+  const auto obstacle = makeGrid({{0.0, -0.6, 90}});
+  const auto clear = makeGrid();
+  const auto inward = command(0.0, -0.1);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setLaneletGrid(boundary, 1.0);
+  cost_stop.setMergedGrid(obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", obstacle, 1.0);
+  RouteSafetyRecovery route_recovery;
+  ASSERT_TRUE(route_recovery.observeViolation(
+      cost_stop.evaluate(command(0.1), 1.0), command(0.1), 1.0));
+  ASSERT_TRUE(cost_stop.evaluateRouteRecoveryCommand(inward, 1.0, 0.3, 0.5)
+                  .dynamic_obstacle);
+  ASSERT_TRUE(cost_stop.latched());
+
+  // HH_261006 - Model periodic maintenance before candidate selection while
+  // route authorization rejects every raw zero. No real command evaluation
+  // occurs between the obstacle trigger and sensor-proven latch release.
+  const auto tick = [&](const double now_sec,
+                        const avg_msgs::msg::AvgOccupancyGrid &radar,
+                        const double radar_receive_sec,
+                        const bool expect_blocked) {
+    cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", now_sec});
+    cost_stop.setLaneletGrid(boundary, now_sec);
+    cost_stop.setMergedGrid(radar, now_sec);
+    cost_stop.setSourceGrid("radar", radar, radar_receive_sec);
+    const auto decision = cost_stop.recheckLatchedHazard(now_sec);
+    EXPECT_EQ(decision.blocked, expect_blocked) << decision.reason;
+    EXPECT_EQ(cost_stop.latched(), expect_blocked);
+    const double hold_after_maintenance = cost_stop.holdUntilSec();
+    const auto reason_after_maintenance = cost_stop.latchReason();
+    const auto projected =
+        cost_stop.probeRouteRecoveryCommand(inward, now_sec, 0.3, 0.5);
+    EXPECT_EQ(projected.blocked, expect_blocked) << projected.reason;
+    EXPECT_EQ(cost_stop.latched(), expect_blocked);
+    EXPECT_EQ(cost_stop.latchReason(), reason_after_maintenance);
+    EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), hold_after_maintenance);
+    EXPECT_TRUE(route_recovery.active());
+    EXPECT_FALSE(route_recovery.permitsProjectedRecoveryCandidate(command(0.0)));
+    return decision;
+  };
+  EXPECT_EQ(tick(1.1, obstacle, 1.1, true).reason, "dynamic_right:radar");
+  tick(1.2, clear, 1.2, true);
+  EXPECT_NE(tick(2.3, clear, 1.2, true).reason.find("trigger_evidence_not_fresh"),
+            std::string::npos);
+  tick(2.4, clear, 2.4, true);
+  EXPECT_EQ(tick(2.6, obstacle, 2.6, true).reason, "dynamic_right:radar");
+  tick(2.7, clear, 2.7, true);
+  tick(3.0, clear, 3.0, true);
+  tick(3.3, clear, 3.3, false);
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 3.3 + config.stop_hold_s);
+  // HH_261006 - Maintenance does not clear the route hold or authorize motion;
+  // the same actual command must still pass its complete projected evaluator.
+  EXPECT_FALSE(cost_stop.evaluateRouteRecoveryCommand(inward, 3.3, 0.3, 0.5)
+                   .blocked);
+  EXPECT_TRUE(route_recovery.active());
+  EXPECT_FALSE(route_recovery.recoveryMotionObserved());
+}
+
+TEST(MotionCostStop, LiveLatchRecheckKeepsSavedPathAndRequiresAdvancedEvidence) {
+  auto config = baseCostConfig();
+  config.latch_enabled = true;
+  config.dynamic_front_use_local_path = true;
+  config.require_dynamic_source = true;
+  config.clear_required_s = 0.5;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto obstacle = makeGrid({{1.8, 0.0, 90}});
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+  cost_stop.setMergedGrid(obstacle, 1.0);
+  cost_stop.setSourceGrid("radar", obstacle, 1.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.1), 1.0).blocked);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {0.5, 0.8}, {2.0, 0.8}}));
+  cost_stop.setMergedGrid(obstacle, 1.1);
+  cost_stop.setSourceGrid("radar", obstacle, 1.1);
+  EXPECT_EQ(cost_stop.recheckLatchedHazard(1.1).reason,
+            "dynamic_front_path:radar");
+
+  auto clear = makeGrid();
+  setGridStamp(clear, 1.2);
+  cost_stop.setMergedGrid(clear, 1.2);
+  cost_stop.setSourceGrid("radar", clear, 1.2);
+  EXPECT_TRUE(cost_stop.recheckLatchedHazard(1.2).blocked);
+  // HH_261006 - Timer callbacks and replayed clear payloads cannot substitute
+  // for advanced source evidence, even after the clear duration has elapsed.
+  cost_stop.setMergedGrid(clear, 1.8);
+  cost_stop.setSourceGrid("radar", clear, 1.8);
+  EXPECT_NE(cost_stop.recheckLatchedHazard(1.8).reason.find(
+                "clear_evidence_not_advanced"),
+            std::string::npos);
+  EXPECT_TRUE(cost_stop.latched());
+  setGridStamp(clear, 1.9);
+  cost_stop.setMergedGrid(clear, 1.9);
+  cost_stop.setSourceGrid("radar", clear, 1.9);
+  EXPECT_FALSE(cost_stop.recheckLatchedHazard(1.9).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_DOUBLE_EQ(cost_stop.holdUntilSec(), 1.9 + config.stop_hold_s);
 }
 
 TEST(MotionCostStop, RouteRecoveryBoundsReverseYawRate) {
@@ -4195,6 +4529,45 @@ TEST(MotionCostStop, ConfiguredCampsitePhasesBypassLaneletButKeepDynamicStop) {
       dynamic_stop.evaluate(command(0.0, 0.2), 0.0);
   EXPECT_TRUE(dynamic_decision.blocked);
   EXPECT_TRUE(dynamic_decision.dynamic_obstacle) << dynamic_decision.reason;
+}
+
+TEST(MotionCostStop, ManualAccessRepresentativeSweepRuntime) {
+  auto config = baseCostConfig();
+  config.lanelet_enabled = config.lanelet_body_hard_stop_enabled = true;
+  config.body_front_m = .70837; config.body_rear_m = .68323;
+  config.body_left_m = .53505; config.body_right_m = .53495;
+  config.require_dynamic_source = true;
+  config.dynamic_source_labels = {"radar"};
+  config.stale_timeout_s = 1;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0,0,0,"map","test",100});
+  auto lanelet = makeGrid({}, .1);
+  for (unsigned y = 0; y < lanelet.info.height; ++y)
+    for (unsigned x = 0; x < lanelet.info.width; ++x)
+      if (-4.0 + (x + .5) * .1 >= .8)
+        lanelet.data[y * lanelet.info.width + x] = 100;
+  cost_stop.setLaneletGrid(lanelet,100);
+  cost_stop.setMergedGrid(makeGrid(),100);
+  cost_stop.setSourceGrid("radar",makeGrid(),100);
+  std::vector<ManualServiceArea> areas;
+  for (int i = 0; i < 13; ++i) {
+    const double y = i * 10.0;
+    areas.push_back({"site_" + std::to_string(i),
+      {{1.2,y-1},{3,y-1},{3,y+1},{1.2,y+1}},
+      {{{.75,y-1},{1.25,y-1},{1.25,y+1},{.75,y+1}}}});
+  }
+  double total_ms = 0, max_ms = 0;
+  for (int i = 0; i < 10; ++i) {
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = cost_stop.evaluateManualServiceAreaCommand(command(2),100,areas);
+    const double ms = std::chrono::duration<double,std::milli>(
+      std::chrono::steady_clock::now() - start).count();
+    total_ms += ms; max_ms = std::max(max_ms,ms);
+    ASSERT_TRUE(result); ASSERT_FALSE(result->blocked) << result->reason;
+  }
+  std::cout << "manual_access_sweep body=1.3916x1.07m grid=.1m speed=2mps sites=13 "
+            << "mean_ms=" << total_ms / 10 << " max_ms=" << max_ms << '\n';
+  EXPECT_LT(total_ms / 10, 350.0);  // Existing command watchdog, not a timing promise.
 }
 
 } // namespace camrod_control

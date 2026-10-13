@@ -69,6 +69,20 @@ def test_map_name_normalization_is_exact():
     )
 
 
+@pytest.mark.parametrize("plugin", ["RPP", "RotationShim"])
+def test_site_cruise_readback_rejects_old_two_kph_target(plugin):
+    """HH_261007 - Prevent a restart from silently restoring the stale cruise."""
+    node = "/planning/controller_server"
+    key = f"{plugin}.desired_linear_vel"
+    expected = {node: {key: audit.DEVELOP_SITE_GEOMETRY_PARAMETERS[node][key]}}
+    assert expected[node][key] == pytest.approx(4.0 / 3.6, abs=1e-6)
+    with pytest.raises(audit.AuditError, match="runtime parameter profile mismatch"):
+        audit.select_and_validate_parameters({node: {key: 0.555556}}, expected)
+    assert audit.DEVELOP_SITE_GEOMETRY_PARAMETERS["/ui_backend"][
+        "manual_drive_linear_limit_mps"
+    ] == 2.0
+
+
 def test_source_identity_is_clean_current_develop_and_excludes_protected_file(
     tmp_path,
 ):
@@ -436,7 +450,23 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
 
     charger = "/carla_charging_contact_emulator"
     detector = "/perception/apriltag_parking_detector"
-    assert set(site) == set(parity) | {charger}
+    assert set(site) == set(parity) | {
+        charger, "/carla_extended_ackermann_control", "/physical_four_wheel_bridge"
+    }
+    # HH_261007 - Verify all three independent sideways limits, not only UI.
+    assert site["/carla_extended_ackermann_control"] == {
+        "crab_speed_cap": 2.0, "experimental_crab_yaw_hold_enabled": True,
+        # HH_261012 - Audit actual controller parameters, not an outer flag.
+        "experimental_zero_turn_yaw_integral_enabled": True,
+        "experimental_zero_turn_yaw_integral_gain_nm_per_rad": 2.0,
+    }
+    assert site["/physical_four_wheel_bridge"] == {
+        "experimental_crab_yaw_hold_enabled": True
+    }
+    assert site["/ui_backend"]["manual_drive_lateral_limit_mps"] == 2.0
+    assert site["/ui_backend"]["manual_drive_allow_carla_lateral_2mps"] is True
+    assert site["/camrod_twist_to_4ws"]["max_crab_speed_mps"] == 2.0
+    assert site["/camrod_twist_to_4ws"]["allow_carla_site_manual_crab_speed_2mps"] is True
     command_adapter = "/camrod_twist_to_4ws"
     recovery_nodes = {
         "/control/cmd_vel_safety_gate",
@@ -604,18 +634,20 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
     ] == ""
     assert site["/planning/goal_snapper"][
         "reverse_auxiliary_input_goal_topic"
-    ] == "/planning/auto_reverse_goal_raw"
+    ] == ""
     assert parity["/planning/nav2_selector_latch"][
         "reverse_controller_id"
     ] == "RPP"
     assert site["/planning/nav2_selector_latch"][
         "reverse_controller_id"
-    ] == "RPPReverse"
+    ] == "RPP"
     assert parity["/planning/planning_state_machine"] == {
         "return_goal_reached_distance_m": 0.30,
+        "reverse_auto_goal_snapper_input_topic": "",
     }
     assert site["/planning/planning_state_machine"] == {
         "return_goal_reached_distance_m": 0.35,
+        "reverse_auto_goal_snapper_input_topic": "",
     }
     assert site["/planning/controller_server"]["controller_plugins"] == [
         "RPP", "RPPReverse", "RotationShim"
@@ -676,7 +708,6 @@ def test_site_geometry_profile_changes_only_the_proven_carla_parameters():
     }
     assert changed == {
         "max_angular_speed_radps": 0.45,
-        "roadside_reverse_return_enable": True,
         "crab_approach_slowdown_distance_m": 1.0,
         "crab_approach_min_speed_mps": 0.12,
         "rotate_180_timeout_s": 90.0,
@@ -777,6 +808,16 @@ def test_selected_parameter_contract_rejects_tuned_values():
             "parking_status_topic",
             "/parking/reverse_parking_controller/status",
         ),
+        (
+            "/carla_extended_ackermann_control",
+            "experimental_zero_turn_yaw_integral_enabled",
+            False,
+        ),
+        (
+            "/carla_extended_ackermann_control",
+            "experimental_zero_turn_yaw_integral_gain_nm_per_rad",
+            1.0,
+        ),
     ),
 )
 def test_carla_plant_boundary_parameters_fail_closed(
@@ -784,7 +825,7 @@ def test_carla_plant_boundary_parameters_fail_closed(
 ):
     profile = (
         audit.DEVELOP_SITE_GEOMETRY_PARAMETERS
-        if node == "/carla_charging_contact_emulator"
+        if node in ("/carla_charging_contact_emulator", "/carla_extended_ackermann_control")
         else audit.DEVELOP_PARITY_PARAMETERS
     )
     expected = {node: profile[node]}

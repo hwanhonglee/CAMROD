@@ -181,7 +181,7 @@ private:
     std::lock_guard<std::mutex> lock(costmap.mtx);
 
     if (!costmap.has_msg) {
-      // HH_260703: Field Nav2 costmap publication can be event-like under high
+      // HH_260703 - Field Nav2 costmap publication can be event-like under high
       // CPU load. Let config decide whether missing/stale costmaps are fatal
       // diagnostics; cmd_vel safety still uses live sensor cost grids directly.
       stat.summary(

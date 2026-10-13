@@ -1,4 +1,4 @@
-// HH_260729 / TODOLIST 11-12 - Verify that route recovery refreshes a retained
+// HH_260729 - TODO list 11-12: Verify that route recovery refreshes a retained
 // active or aborted Nav2 goal, cannot restart a terminal goal, and remains
 // delayed/bounded per goal.
 

@@ -744,7 +744,7 @@ private:
       return;
     }
 
-    // HH_260708: Build the heavy Lanelet2 map/routing graph in the background
+    // HH_260708 - Build the heavy Lanelet2 map/routing graph in the background
     // so Nav2 lifecycle activation is not blocked by the full C-track graph.
     initialization_thread_ = std::thread([this]() {runInitialization();});
     RCLCPP_INFO(
@@ -900,7 +900,7 @@ private:
     const double max_snap_distance_sq = max_snap_distance_m_ * max_snap_distance_m_;
 
     for (const auto & lanelet : map_->laneletLayer) {
-      // HH_260629: Avoid forcing lazy centerline generation for every lanelet
+      // HH_260629 - Avoid forcing lazy centerline generation for every lanelet
       // during start/goal snapping. Bounds are loaded cheaply and reject most
       // unrelated or opposite-side lanelets before projection.
       if (!laneletBoundsWithinSnapDistance(lanelet, x, y)) {

@@ -1696,7 +1696,7 @@ static int ch9344_get(int clockRate, int bval, unsigned char *bd1, unsigned char
 	return 0;
 }
 
-// HH_260220
+// HH_260220 - Keep the radar-data conversion helper local to this driver.
 // void cal_outdata(char *buffer, u8 rol, u8 xor)
 static void cal_outdata(char *buffer, u8 rol, u8 xor)
 {
@@ -1726,7 +1726,7 @@ static void cal_outdata(char *buffer, u8 rol, u8 xor)
 	}
 }
 
-// HH_260220
+// HH_260220 - Keep the receive-timeout helper local to this driver.
 // u8 cal_recv_tmt(__le32 bd)
 static u8 cal_recv_tmt(__le32 bd)
 {

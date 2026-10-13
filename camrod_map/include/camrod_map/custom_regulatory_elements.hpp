@@ -7,7 +7,7 @@
 namespace camrod::map
 {
 
-// HH_251217 Minimal stub so that Lanelet parser accepts speed_bump regulatory elements.
+// HH_251217 - Minimal stub so that Lanelet parser accepts speed_bump regulatory elements.
 class SpeedBumpRegulatoryElement : public lanelet::RegulatoryElement
 {
 public:
@@ -31,6 +31,6 @@ public:
 
 }  // namespace camrod::map
 
-// HH_251231: Register globally so Lanelet2 loader can construct "speed_bump".
+// HH_251231 - Register globally so Lanelet2 loader can construct "speed_bump".
 using SpeedBumpElement = camrod::map::SpeedBumpRegulatoryElement;
 inline const lanelet::RegisterRegulatoryElement<SpeedBumpElement> reg_speed_bump{};

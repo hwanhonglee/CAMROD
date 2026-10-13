@@ -1,0 +1,241 @@
+{
+  "base_commit": "10af3fcaf8137c7552486a7ba7e2000c203a0fe3",
+  "exclusions": [
+    "terrain",
+    "maps",
+    ".work",
+    "raw logs",
+    "runtime authorization"
+  ],
+  "files": [
+    {
+      "after": {
+        "bytes": 8647,
+        "mode": "100755",
+        "sha256": "bfcb3ae625c37496542e4d9b4f79e26d5745c6d1d97dfed182df7e35704f1aaf"
+      },
+      "before": {
+        "bytes": 8226,
+        "mode": "100755",
+        "sha256": "dbc4dee863a2c3587adcaff829517c63c04d37118400b15d9bec113ab3d19de5"
+      },
+      "path": "bootstrap/76_create_physical_gate.sh"
+    },
+    {
+      "after": {
+        "bytes": 4519,
+        "mode": "100644",
+        "sha256": "1d5a67af743c46be1b6cb0208e5365be5af966fefcb4d6910d30553d6f5a5953"
+      },
+      "before": {
+        "bytes": 2900,
+        "mode": "100644",
+        "sha256": "acdbb3c9e050c88438f6761977bd51e60303d2d3146dc812800dfc640b7d3ac3"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/launch/carla_extended_ackermann_control.launch.py"
+    },
+    {
+      "after": {
+        "bytes": 8417,
+        "mode": "100644",
+        "sha256": "418d8f7d0fd5ae50b225c901ea6324d80e6d0f8d83f7bbc41b51fe29216c5df9"
+      },
+      "before": {
+        "bytes": 5969,
+        "mode": "100644",
+        "sha256": "bd64d39a1e8560aa2d0f78775f725abfaa39568f9382217f3c261642755121ff"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py"
+    },
+    {
+      "after": {
+        "bytes": 92777,
+        "mode": "100644",
+        "sha256": "5c27143d984fca480854db08177b21cb576dd0c7ac6c4100151b1221fb0909e6"
+      },
+      "before": {
+        "bytes": 82425,
+        "mode": "100644",
+        "sha256": "ff4d3454a2e1a0100f266f7ea912ddaa55fe7957e9b6c0260cc1eae35b571812"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py"
+    },
+    {
+      "after": {
+        "bytes": 38420,
+        "mode": "100644",
+        "sha256": "48e299a3b365a0594511c8dd4d0f42a5c1305cc29c19301a532abcb3ab59503d"
+      },
+      "before": {
+        "bytes": 35260,
+        "mode": "100644",
+        "sha256": "fce834513648a0740aa6fabe188bd9351502ee9d30d14cb11623e6941cff4b50"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py"
+    },
+    {
+      "after": {
+        "bytes": 47465,
+        "mode": "100644",
+        "sha256": "abfd0384adc20205b2cabff3d7ae50bb550ef64f7be34ccf909e34f619061114"
+      },
+      "before": {
+        "bytes": 46835,
+        "mode": "100644",
+        "sha256": "2f30d23ab0995f502d833548712b242af8f7ab41139f33b535b8fdd1f3e60945"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py"
+    },
+    {
+      "after": {
+        "bytes": 45947,
+        "mode": "100644",
+        "sha256": "40836e1417f4ffc4b01961a0155a21461ca45d96945a1d4e9ed819789123afce"
+      },
+      "before": {
+        "bytes": 40128,
+        "mode": "100644",
+        "sha256": "d4c7eb4f98a4247e9e481aa7b9657725e0fee164850d4a7f725c248378945c20"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py"
+    },
+    {
+      "after": {
+        "bytes": 43334,
+        "mode": "100644",
+        "sha256": "f8ad3ad10bfdb4fb73e6b451ae1c4b8b4342a32547a718afa89c28cf038f5594"
+      },
+      "before": {
+        "bytes": 35825,
+        "mode": "100644",
+        "sha256": "b130d327b26ceefa6ef5b28bc32084bc98bc3b1d7ff104d3d9517726778b3ca2"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_bridge.py"
+    },
+    {
+      "after": {
+        "bytes": 35643,
+        "mode": "100644",
+        "sha256": "1768de5d73b787697a4f8d5d41312c822bb9a8689fba347112c1c9877097bd94"
+      },
+      "before": {
+        "bytes": 30373,
+        "mode": "100644",
+        "sha256": "89527b405238f518da295f61573b2c4a24132c99fcc8336a6ba4f28cafd18811"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_physical_four_wheel_steering.py"
+    },
+    {
+      "after": {
+        "bytes": 25919,
+        "mode": "100644",
+        "sha256": "830a15b6ac7a332e59241ec11037702da5b19e30baaacc31dace2b0fea87fe9a"
+      },
+      "before": {
+        "bytes": 24506,
+        "mode": "100644",
+        "sha256": "82b4edc6243981ba00a7962129bea8903ad55eb34a430d9a8156d4812b6337ce"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_portable_gate_contract.py"
+    },
+    {
+      "after": {
+        "bytes": 46392,
+        "mode": "100644",
+        "sha256": "6e260194108b3ba470ca6764d12990e88d6a06e0255edb831f473717b9c67d6e"
+      },
+      "before": {
+        "bytes": 36185,
+        "mode": "100644",
+        "sha256": "4fdc782c123e3de2147adc221233c00c19abacfc14b39378958d6e4926453ef5"
+      },
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_wheel_torque_control.py"
+    },
+    {
+      "after": {
+        "bytes": 39832,
+        "mode": "100755",
+        "sha256": "ac8fc182d9ae768384f97322bf06705499f4c240168895310472fc7e0d306cf9"
+      },
+      "before": {
+        "bytes": 39608,
+        "mode": "100755",
+        "sha256": "35fa695875b494bde536a81593385309e2871134da31eb379be663f22e93ff43"
+      },
+      "path": "tools/carla_portable_live_acceptance.py"
+    },
+    {
+      "after": {
+        "bytes": 8598,
+        "mode": "100644",
+        "sha256": "6926d932b67a4a02738752c2f6ae869d6781838533723ac8ae35734f575a18e5"
+      },
+      "before": {
+        "bytes": 8449,
+        "mode": "100644",
+        "sha256": "ed4fe2aa28cbc8859380a5e33707feaace24797a5b0fa0fc575545d8ecd01722"
+      },
+      "path": "tools/tests/test_carla_portable_live_acceptance.py"
+    },
+    {
+      "after": {
+        "bytes": 6550,
+        "mode": "100644",
+        "sha256": "2340dbfef33e7b418f30acadbcaf576fe4878cca7703072855b18b505c3de5d0"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/crab_yaw_torque_balance.py"
+    },
+    {
+      "after": {
+        "bytes": 9043,
+        "mode": "100644",
+        "sha256": "c56fd936fa37af2e37f0337906cc2358154edd0b111607f4ffe1cbc0dc8ba839"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py"
+    },
+    {
+      "after": {
+        "bytes": 6056,
+        "mode": "100644",
+        "sha256": "b2593f398066d040e894a1b295d4fa9c7c4884d33135c62372db6fac25481356"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py"
+    },
+    {
+      "after": {
+        "bytes": 7431,
+        "mode": "100644",
+        "sha256": "16c1f8b921126b28e19f0fdcbf409d19418c3f9633fbe7d9b1583272de554735"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_crab_yaw_torque_balance.py"
+    },
+    {
+      "after": {
+        "bytes": 9704,
+        "mode": "100644",
+        "sha256": "0860069a484283e777df2e809db78a4dccf15ab0caf84f2e592926105c332f6a"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_experimental_crab_yaw_hold.py"
+    },
+    {
+      "after": {
+        "bytes": 11211,
+        "mode": "100644",
+        "sha256": "47fb317e308f6d1672fcc613f9c4ad74d9cb9789bbed778bebe6901f201e9194"
+      },
+      "before": null,
+      "path": "ros_ws/src/carla_extended_ackermann_control/test/test_experimental_zero_turn_yaw_integral.py"
+    }
+  ],
+  "patch_bytes": 138779,
+  "patch_sha256": "b8419a9d9a80eddf5ef19d39ebd942f68310b9786cd08144ac97b92be29da61e",
+  "schema": "camrod.ranger_controller_companion.v1",
+  "upstream": "https://github.com/hwanhonglee/ranger-carla-4ws-pipeline.git",
+  "upstream_status": "Unpublished local companion; not an upstream commit",
+  "validation": "temporary-index forward check and source-worktree reverse check passed"
+}

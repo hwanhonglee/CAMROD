@@ -37,7 +37,7 @@
     # Timestamp source for ROS messages:
     # 0 = ROS receive time (simple, less accurate)
     # 1 = device GPS time (most accurate but jumps when GPS lock appears; AHRS has no GNSS -> not useful)
-    # HH_260415: Use ROS receive time to keep IMU/TF timeline aligned with lidar/map in bringup.
+    # HH_260415 - Use ROS receive time to keep IMU/TF timeline aligned with lidar/map in bringup.
     # 2 = Hybrid can drift against host clock in this platform and trigger TF extrapolation.
     timestamp_source: 0
 
@@ -59,7 +59,7 @@
     # This is the frame you want as the TF parent of imu_link.
     mount_frame_id: "sensor_kit_base_link"
 
-    # HH_260220: imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
+    # HH_260220 - imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
     publish_mount_to_frame_id_transform: false
 
     # Static transform as quaternion [x, y, z, qi, qj, qk, qw].

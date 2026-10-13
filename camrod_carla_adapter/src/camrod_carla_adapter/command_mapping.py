@@ -23,6 +23,9 @@ RANGER_MAX_ACKERMANN_SPEED_MPS = 1.4
 # mapping/default remains 1.4; this does not set an autonomous target speed.
 RANGER_SIMULATOR_MANUAL_MAX_ACKERMANN_SPEED_MPS = 2.0
 RANGER_MAX_CRAB_SPEED_MPS = 1.0
+# HH_261007 - Separate simulator-only lateral ceiling; no automatic target,
+# stopping-distance validation, steering or torque authority is implied.
+RANGER_SIMULATOR_MANUAL_MAX_CRAB_SPEED_MPS = 2.0
 RANGER_MAX_YAW_RATE_RADPS = 0.7853
 RANGER_MAX_INPUT_TIMEOUT_SEC = 0.35
 RANGER_MIN_WATCHDOG_RATE_HZ = 50.0
@@ -48,6 +51,9 @@ CAMPSITE_ROTATION_RECOVERY_MODULE = "control"
 CAMPSITE_ROTATION_RECOVERY_TOKENS = {
     "CRAB_OUT": "crab_out_yaw_recovery_active=true",
     "ROTATE_180": "phase=ROTATE_180",
+    # HH_261007 - B1/B2 restore nominal yaw while externally still CRAB_IN.
+    # Only this stationary substate may use the existing stall-qualified lease.
+    "CRAB_IN": "crab_body_yaw_alignment=restore_nominal_before_rotation",
 }
 RECOVERY_BREAKAWAY_OPERATING_STATES = frozenset((
     "CRAB_LEFT",
@@ -113,11 +119,15 @@ class MappingConfig:
             raise ValueError("speed and yaw-rate limits must be > 0")
 
 
-def validate_ranger_contract(config, *, allow_carla_site_manual_speed_2mps=False):
+def validate_ranger_contract(
+        config, *, allow_carla_site_manual_speed_2mps=False,
+        allow_carla_site_manual_crab_speed_2mps=False):
     """Reject overrides that change CAMROD semantics or widen accepted limits."""
 
     if not isinstance(config, MappingConfig):
         raise TypeError("config must be a MappingConfig")
+    if type(allow_carla_site_manual_crab_speed_2mps) is not bool:
+        raise ValueError("allow_carla_site_manual_crab_speed_2mps must be a bool")
 
     fixed_values = (
         ("lateral_deadband_mps", RANGER_LATERAL_DEADBAND_MPS),
@@ -147,7 +157,10 @@ def validate_ranger_contract(config, *, allow_carla_site_manual_speed_2mps=False
             RANGER_SIMULATOR_MANUAL_MAX_ACKERMANN_SPEED_MPS
             if allow_carla_site_manual_speed_2mps
             else RANGER_MAX_ACKERMANN_SPEED_MPS)),
-        ("max_crab_speed_mps", RANGER_MAX_CRAB_SPEED_MPS),
+        ("max_crab_speed_mps", (
+            RANGER_SIMULATOR_MANUAL_MAX_CRAB_SPEED_MPS
+            if allow_carla_site_manual_crab_speed_2mps
+            else RANGER_MAX_CRAB_SPEED_MPS)),
         ("max_yaw_rate_radps", RANGER_MAX_YAW_RATE_RADPS),
     )
     for name, accepted_maximum in upper_limits:
@@ -347,8 +360,8 @@ def rotation_recovery_breakaway_is_authorized(
     The existing message bit is intentionally reused, but this predicate is
     disjoint from the route-safety CRAB lease: it requires a stationary
     ZERO_TURN/PIVOT command and a fresh healthy campsite-controller status.
-    The exact state/token pair permits either the directed ROTATE_180 or the
-    already-bounded CRAB_OUT yaw correction.  Substrings, stale samples,
+    The exact state/token pair permits directed ROTATE_180, bounded CRAB_OUT
+    yaw correction, or CRAB_IN's nominal-yaw restoration. Substrings, stale samples,
     unrelated rotation, and commands carrying translation fail closed.
     """
 
@@ -367,8 +380,16 @@ def rotation_recovery_breakaway_is_authorized(
     expected_token = CAMPSITE_ROTATION_RECOVERY_TOKENS.get(state)
     if numeric_level != 0 or expected_token is None:
         return False
-    if expected_token not in str(status_message).split():
+    tokens = str(status_message).split()
+    if expected_token not in tokens:
         return False
+    if state == "CRAB_IN":
+        # HH_261007 - Reject duplicate/conflicting phase and substate fields;
+        # ordinary crab translation and entry precompensation gain no lease.
+        for prefix, expected in (("phase=", "phase=CRAB_IN"),
+                                 ("crab_body_yaw_alignment=", expected_token)):
+            if [token for token in tokens if token.startswith(prefix)] != [expected]:
+                return False
     try:
         received = float(status_receive_monotonic)
         now = float(now_monotonic)

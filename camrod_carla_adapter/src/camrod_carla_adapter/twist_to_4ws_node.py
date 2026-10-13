@@ -111,8 +111,13 @@ class TwistToFourWSNode(Node):
         # alone must not silently change the already validated mapping object.
         allow_site_manual_speed = bool(self.declare_parameter(
             "allow_carla_site_manual_speed_2mps", False).value)
+        # Keep this opt-in strict: strings and numeric truthy values cannot
+        # authorize a wider lateral envelope, independently of forward speed.
+        allow_site_manual_crab_speed = self.declare_parameter(
+            "allow_carla_site_manual_crab_speed_2mps", False).value
         validate_ranger_contract(
-            self.config, allow_carla_site_manual_speed_2mps=allow_site_manual_speed)
+            self.config, allow_carla_site_manual_speed_2mps=allow_site_manual_speed,
+            allow_carla_site_manual_crab_speed_2mps=allow_site_manual_crab_speed)
         self._validate_timing()
 
         self.command_publisher = self.create_publisher(

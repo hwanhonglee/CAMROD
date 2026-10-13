@@ -38,9 +38,9 @@
     # 4. RUNTIME
     # =========================================================================
     # Runtime
-    # HH_260618: Match Nav2 local-costmap cadence; 10 Hz was redundant for a 6 Hz consumer.
+    # HH_260618 - Match Nav2 local-costmap cadence; 10 Hz was redundant for a 6 Hz consumer.
     publish_rate_hz: 6.0
-    # HH_260707: Reuse cached merged grids for small pose changes.
+    # HH_260707 - Reuse cached merged grids for small pose changes.
     # 0.0 republishes cached output every timer tick, preserving diagnostic Hz.
     rebuild_min_pose_delta_m: 0.05
     rebuild_min_yaw_delta_rad: 0.03
@@ -49,7 +49,7 @@
     # =========================================================================
     # 5. INPUT TOPICS AND STALENESS
     # =========================================================================
-    # HH_260424: Inputs merged cell-wise (max). Order doesn't matter.
+    # HH_260424 - Inputs merged cell-wise (max). Order doesn't matter.
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)
     #   radar:        sensor obstacle costs (0=free, up to 95=obstacle)
     #   global_path:  route-strip bias (low on active path ~10-40, high outside ~80)
@@ -61,7 +61,7 @@
       - "/sensing/cost_grid/radar"
       - "/planning/cost_grid/global_path"
 
-    # HH_260422: Per-input staleness limit. lanelet/global_path update slowly;
+    # HH_260422 - Per-input staleness limit. lanelet/global_path update slowly;
     #   sensor grids update at ~10-20 Hz. Must match order of input_topics above.
     input_max_ages_s:
       - 5.0    # lanelet: static map, rarely changes

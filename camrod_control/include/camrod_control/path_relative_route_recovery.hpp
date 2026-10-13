@@ -33,7 +33,8 @@ struct PathRelativeRouteRelation {
   bool valid{false};
   // CAMROD path-tracking convention: positive is left of the ordered path.
   double signed_cte_m{0.0};
-  // CAMROD path-tracking convention: robot yaw minus path tangent yaw.
+  // HH_261006 - Robot yaw minus the episode's chassis-heading target; reverse
+  // episodes face against the ordered tangent without changing CTE geometry.
   double heading_error_rad{0.0};
   double distance_m{0.0};
   double tangent_x{1.0};
@@ -100,10 +101,29 @@ inline double normalizePathRelativeAngle(const double angle) {
   return std::atan2(std::sin(angle), std::cos(angle));
 }
 
+inline bool pathRelativeTwistIsFinite(const avg_msgs::msg::AvgTwist &command) {
+  return std::isfinite(command.linear.x) && std::isfinite(command.linear.y) &&
+         std::isfinite(command.linear.z) && std::isfinite(command.angular.x) &&
+         std::isfinite(command.angular.y) && std::isfinite(command.angular.z);
+}
+
+// HH_261006 - Only an active episode's stored, longitudinally dominant reverse
+// trigger changes the chassis-heading target. Never choose whichever heading
+// happens to be closer, or infer reverse from a crab/zero/recovery command.
+inline bool pathRelativeReverseHeadingFromTrigger(
+    const avg_msgs::msg::AvgTwist &trigger, const bool episode_active,
+    const double minimum_translation_mps = 0.02) {
+  return episode_active && pathRelativeTwistIsFinite(trigger) &&
+         std::isfinite(minimum_translation_mps) &&
+         trigger.linear.x < -std::max(0.0, minimum_translation_mps) &&
+         std::abs(trigger.linear.x) > std::abs(trigger.linear.y);
+}
+
 inline PathRelativeRouteRelation
 nearestPathRelativeRouteRelation(const avg_msgs::msg::AvgPath &path,
                                  const PlanarPose &pose,
-                                 const double maximum_relation_distance_m) {
+                                 const double maximum_relation_distance_m,
+                                 const bool reverse_heading = false) {
   PathRelativeRouteRelation relation;
   if (!std::isfinite(pose.x) || !std::isfinite(pose.y) ||
       !std::isfinite(pose.yaw)) {
@@ -154,8 +174,11 @@ nearestPathRelativeRouteRelation(const avg_msgs::msg::AvgPath &path,
     // lateral error and can command a false multi-metre crab. Keep the clamped
     // Euclidean distance independently for the maximum-relation fail-close.
     relation.signed_cte_m = std::abs(cross) <= 1.0e-9 ? 0.0 : cross / length;
+    // HH_261006 - Ordered tangent/normal/CTE stay identical in reverse travel.
+    const double chassis_heading = std::atan2(vy, vx) +
+        (reverse_heading ? 3.14159265358979323846 : 0.0);
     relation.heading_error_rad =
-        normalizePathRelativeAngle(pose.yaw - std::atan2(vy, vx));
+        normalizePathRelativeAngle(pose.yaw - chassis_heading);
     relation.distance_m = distance;
     relation.tangent_x = vx / length;
     relation.tangent_y = vy / length;
@@ -430,12 +453,6 @@ pathRelativeCandidateCommandExactlyMatches(const RouteRecoveryCandidate &lhs,
                                            const RouteRecoveryCandidate &rhs) {
   return lhs.kind == rhs.kind &&
          pathRelativeTwistExactlyMatches(lhs.command, rhs.command);
-}
-
-inline bool pathRelativeTwistIsFinite(const avg_msgs::msg::AvgTwist &command) {
-  return std::isfinite(command.linear.x) && std::isfinite(command.linear.y) &&
-         std::isfinite(command.linear.z) && std::isfinite(command.angular.x) &&
-         std::isfinite(command.angular.y) && std::isfinite(command.angular.z);
 }
 
 struct PathRelativeRecoveryCommandAuthorization {

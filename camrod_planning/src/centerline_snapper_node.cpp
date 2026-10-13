@@ -18,7 +18,7 @@
 #include <lanelet2_projection/LocalCartesian.h>
 #include <rclcpp/rclcpp.hpp>
 
-#include "camrod_map/custom_regulatory_elements.hpp"  // HH_260114 Register speed_bump rule.
+#include "camrod_map/custom_regulatory_elements.hpp"  // HH_260114 - Register speed_bump rule.
 
 namespace
 {
@@ -84,7 +84,7 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   CenterlineSnapperNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : rclcpp::Node("centerline_snapper")
   {
     // Parameters
@@ -92,13 +92,13 @@ public:
     cfg_.offset_lat = declare_parameter<double>("offset_lat", 0.0);
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
-    // HH_260109 Default to fused localization pose and publish lanelet constraint pose.
+    // HH_260109 - Default to fused localization pose and publish lanelet constraint pose.
     input_pose_topic_ = declare_parameter<std::string>("input_pose_topic", "/localization/pose");
     input_pose_cov_topic_ =
       declare_parameter<std::string>("input_pose_cov_topic", "/localization/pose_with_covariance");
     output_pose_topic_ = declare_parameter<std::string>(
       "output_pose_topic", "/localization/centerline_pose");
-    // HH_260317-00:00 Publish ROS-native lanelet pose for TF/Nav2 helpers.
+    // HH_260317 - Publish ROS-native lanelet pose for TF/Nav2 helpers.
     output_pose_topic_ros_ = declare_parameter<std::string>(
       "output_pose_topic_ros", "/planning/lanelet_pose_ros");
     output_pose_cov_topic_ = declare_parameter<std::string>(
@@ -110,7 +110,7 @@ public:
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
-    // HH_260629: Prefer yaw-aligned centerlines only while localization yaw covariance is healthy.
+    // HH_260629 - Prefer yaw-aligned centerlines only while localization yaw covariance is healthy.
     heading_filter_enable_ = declare_parameter<bool>("heading_filter_enable", true);
     max_heading_error_deg_ = declare_parameter<double>("max_heading_error_deg", 100.0);
     heading_filter_max_yaw_variance_ =
@@ -119,13 +119,13 @@ public:
     // but it must never jump far away after an in-place 180-degree maneuver.
     heading_filter_max_extra_distance_m_ =
       declare_parameter<double>("heading_filter_max_extra_distance_m", 2.0);
-    // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
+    // HH_260526 - Replace use_map_z/flatten_to_ground booleans with one explicit mode.
     // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
     centerline_z_mode_ = normalizeModeToken(
       declare_parameter<std::string>("centerline_z_mode", "ground"));
-    map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);    // HH_260114 Extra z offset applied to map elevation.
-    // HH_260413: Throttle nearest-centerline search under high-rate localization streams.
+    map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);    // HH_260114 - Extra z offset applied to map elevation.
+    // HH_260413 - Throttle nearest-centerline search under high-rate localization streams.
     min_update_period_s_ = declare_parameter<double>("min_update_period_s", 0.05);
     min_input_displacement_m_ = declare_parameter<double>("min_input_displacement_m", 0.05);
     if (
@@ -165,7 +165,7 @@ public:
       pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
-    // HH_260305-00:00 Use reliable/latest-only pose QoS.
+    // HH_260305 - Use reliable/latest-only pose QoS.
     // Best-effort drop under load makes snapped pose lag and causes downstream local-path jitter.
     sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       input_pose_topic_, rclcpp::QoS(1).reliable(),
@@ -221,7 +221,7 @@ private:
       get_clock()->now() :
       rclcpp::Time(msg->header.stamp);
 
-    // HH_260413: Skip map projection when both time and displacement thresholds are not met.
+    // HH_260413 - Skip map projection when both time and displacement thresholds are not met.
     if (has_last_publish_) {
       const double dt = (stamp - last_publish_stamp_).seconds();
       const double moved = std::hypot(px - last_input_x_, py - last_input_y_);
@@ -248,7 +248,7 @@ private:
     out_pose.header = msg->header;
     out_pose.pose.position.x = nearest.nearest_point.x();
     out_pose.pose.position.y = nearest.nearest_point.y();
-    // HH_260526: Keep z-selection explicit by mode instead of coupled booleans.
+    // HH_260526 - Keep z-selection explicit by mode instead of coupled booleans.
     double snapped_z = pz;
     if (centerline_z_mode_ == "map") {
       snapped_z = nearest.nearest_point.z() + map_z_offset_;
@@ -366,7 +366,7 @@ private:
         if (dist2 < best.sq_dist && dist2 < max_sq) {
           best.sq_dist = dist2;
           best.valid = true;
-          const double proj_z = p0.z() + t * (p1.z() - p0.z());  // HH_260114 Interpolate z along segment.
+          const double proj_z = p0.z() + t * (p1.z() - p0.z());  // HH_260114 - Interpolate z along segment.
           best.nearest_point = lanelet::Point3d(lanelet::InvalId, proj_x, proj_y, proj_z);
           best.heading = heading;
         }

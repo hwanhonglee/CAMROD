@@ -1,4 +1,4 @@
-# 260708: CAMROD exterior light command (headlight relay + WS2815 turn indicators).
+# HH_260708 - CAMROD exterior light command (headlight relay + WS2815 turn indicators).
 # Published by camrod_platform/light_controller_node, consumed by mcu_serial_bridge_node.
 avg_msgs/AvgHeader header
 

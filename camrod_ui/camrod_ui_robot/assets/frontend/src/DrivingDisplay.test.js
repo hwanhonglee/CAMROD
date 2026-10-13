@@ -291,7 +291,11 @@ describe('display interactions', () => {
     expect(display.getAttribute('role')).toBe('region');
     expect(display.hasAttribute('aria-modal')).toBe(false);
     expect(host.querySelector('.dd-header')).not.toBeNull();
-    expect(host.querySelector('.dd-header').textContent).toContain('CAMROD');
+    // HH_261007 - Public names change without replacing navigation or park assets.
+    expect(host.querySelector('.dd-header').textContent).toContain('CAM-Geni');
+    expect(host.querySelector('.dd-header').textContent).toContain('AVGenius');
+    expect(host.querySelector('.dd-header').textContent).toContain('월악산 국립공원');
+    expect(host.querySelector('.dd-header').textContent).not.toContain('CAMROD');
     expect(host.textContent).not.toContain('DRIVING VIEW');
     expect(host.querySelector('[data-testid="driving-ranger-schematic"]')).toBeNull();
     expect(host.querySelector('[data-testid="ranger-navigation-scene"]').getAttribute('data-model-url'))

@@ -30,7 +30,7 @@
     # =========================================================================
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
-    # HH_260528 Scenario contract for UI integration:
+    # HH_260528 - Scenario contract for UI integration:
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
     scenario_command_topic: "/planning/state_machine/scenario_command"
@@ -53,7 +53,7 @@
     # msg.data = camping site name (e.g. "camping_site_3"); triggers return to return_mission_key.
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
-    # HH_260617: Use mission-key naming for semantic destination commands.
+    # HH_260617 - Use mission-key naming for semantic destination commands.
     return_mission_key: "drop_zone"
     # HH_260624 - Select the map-exported drop-zone area used for return goals.
     drop_zone_id: "drop_zone"
@@ -76,7 +76,7 @@
     # to avoid host-specific absolute path hardcoding.
     keypoints_yaml: ""
     camping_sites_yaml: ""
-    # HH_260617: Startup/warn keys use the same mission-key contract as UI.
+    # HH_260617 - Startup/warn keys use the same mission-key contract as UI.
     startup_mission_key: "drop_zone"
     warn_mission_key: "garage"
 
@@ -93,15 +93,15 @@
     # Fast validation profile for auto-return tests.
     # After reaching camping_site_*, wait briefly then return to drop_zone automatically.
     enable_auto_return_on_site_goal: true
-    # HH_260617: Auto-return matches semantic campsite mission keys.
+    # HH_260617 - Auto-return matches semantic campsite mission keys.
     site_mission_key_prefix: "camping_site_"
     # Test-only dwell to avoid 10-minute waits during CI/dev checks.
     goal_reached_dwell_s: 15.0
     mission_key_match_distance_m: 1.5
-    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # HH_260618 - Preserve drop_zone semantic key for return route-goal echoes
     # that are lanelet-snap poses rather than the exact station center.
     return_goal_key_preserve_distance_m: 5.0
-    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    # HH_260618 - Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
     site_goal_key_preserve_distance_m: 2.0
     # HH_260619 - UI mission_key is authoritative for the immediately following
     # snapped route goal, even if stale geometry matches another keypoint.

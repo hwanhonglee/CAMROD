@@ -59,7 +59,7 @@ public:
   : rclcpp::Node("diagnostics_agg", options)
   {
     declare_parameter("config_file", std::string(""));
-    // HH_260408: Keep aggregated status in topic by default, without periodic console spam.
+    // HH_260408 - Keep aggregated status in topic by default, without periodic console spam.
     declare_parameter("enable_summary_log", false);
     std::string config_path = get_parameter("config_file").as_string();
     enable_summary_log_ = get_parameter("enable_summary_log").as_bool();
@@ -72,7 +72,7 @@ public:
       RCLCPP_WARN(get_logger(), "config_file parameter is not set. Using defaults.");
     }
 
-    // HH_260617: Use relative diagnostics topics so the system namespace owns the
+    // HH_260617 - Use relative diagnostics topics so the system namespace owns the
     // public `/system/diagnostics*` API instead of relying on absolute-topic remaps.
     sub_ = create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
       "diagnostics", 10,
@@ -141,7 +141,7 @@ private:
     }
 
     RCLCPP_INFO(get_logger(), "config loaded: %s", config_path.c_str());
-    // HH_260617: Drop explicitly ignored diagnostics from the state-machine
+    // HH_260617 - Drop explicitly ignored diagnostics from the state-machine
     // aggregate stream. This prevents planning/system summary self-loops while
     // keeping raw checker statuses available on /system/diagnostics.
     for (const auto & name : ignored_names_) {

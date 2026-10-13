@@ -531,14 +531,18 @@ def _build_collection(
         selected_live_parameters["/carla_ros_bridge"] = {
             "town": validator.CURRENT_CARLA_MAP,
         }
-        selected_live_parameters["/physical_four_wheel_bridge"] = {
+        # HH_261013 - Merge live identity bindings into the producer's complete
+        # static signature so the fixture cannot erase a newly audited opt-in.
+        selected_live_parameters.setdefault(
+            "/physical_four_wheel_bridge", {}
+        ).update({
             "host": "127.0.0.1",
             "port": 2000,
             "role_name": validator.EXPECTED_ROLE_NAME,
             "expected_blueprint_id": validator.EXPECTED_TYPE_ID,
             "extended_mode_backend": validator.EXPECTED_BACKEND,
             "use_sim_time": True,
-        }
+        })
         runtime_audit = {
             "schema": validator.RUNTIME_AUDIT_SCHEMA,
             "status": "PASS",

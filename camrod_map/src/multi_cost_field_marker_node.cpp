@@ -170,7 +170,7 @@ private:
     bool show_unknown{false};
     bool clear_on_empty_grid{true};
     bool grid_qos_transient_local{true};
-    // HH_260617: Keep internal duration fields aligned with canonical `_s` naming.
+    // HH_260617 - Keep internal duration fields aligned with canonical `_s` naming.
     double stale_timeout_s{0.0};
     double min_publish_period_s{0.0};
     double republish_period_s{0.0};

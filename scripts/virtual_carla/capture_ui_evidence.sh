@@ -380,7 +380,9 @@ capture_evidence() {
     -i "${DISPLAY_VALUE}+${CAPTURE_X},${CAPTURE_Y}"
     -t "${DURATION_SECONDS}" -an
     -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2:color=black"
-    -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p
+    # HH_261007 - Bound encoder buffering on the shared 32 GiB simulator host;
+    # source resolution, timestamps and visible-window checks stay unchanged.
+    -c:v libx264 -threads 2 -preset veryfast -crf 20 -pix_fmt yuv420p
     -movflags +faststart "${video}"
   )
   if ! run_and_log_command "${commands}" "${capture_command[@]}"; then

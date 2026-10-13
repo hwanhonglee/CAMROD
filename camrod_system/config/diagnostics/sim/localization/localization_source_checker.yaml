@@ -5,7 +5,7 @@
 
     # --- Monitored source topic and source names ---
     source_topic: "/localization/pose_source"
-    # HH_260617: EKF sim pose_selector publishes primary_filter; this is OK.
+    # HH_260617 - EKF sim pose_selector publishes primary_filter; this is OK.
     primary_source: "primary_filter"
     fallback_source: "fallback_source"
 

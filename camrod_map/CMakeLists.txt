@@ -2,14 +2,14 @@ cmake_minimum_required(VERSION 3.8)
 project(camrod_map)
 
 #---------------------------------------------
-# HH_260114 Base setup: use C++17.
+# HH_260114 - Base setup: use C++17.
 #---------------------------------------------
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
 #---------------------------------------------
-# HH_260114 Find required ROS2 / Lanelet2 packages.
+# HH_260114 - Find required ROS2 / Lanelet2 packages.
 #---------------------------------------------
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -29,20 +29,20 @@ find_package(lanelet2_io REQUIRED)
 find_package(lanelet2_projection REQUIRED)
 
 #---------------------------------------------
-# HH_260114 Include directories for libraries/nodes.
+# HH_260114 - Include directories for libraries/nodes.
 #---------------------------------------------
 include_directories(
   include
 )
 
 #---------------------------------------------
-# HH_260114 Lanelet2 Map Loader library (shared across nodes).
+# HH_260114 - Lanelet2 Map Loader library (shared across nodes).
 #---------------------------------------------
 add_library(camrod_map_lib
   src/lanelet2_map_loader.cpp
 )
 
-# HH_260114 Library dependencies.
+# HH_260114 - Library dependencies.
 ament_target_dependencies(camrod_map_lib
   rclcpp
   lanelet2_core
@@ -51,18 +51,18 @@ ament_target_dependencies(camrod_map_lib
 )
 
 #---------------------------------------------
-# HH_260114 Executable node: lanelet2_map_node.
+# HH_260114 - Executable node: lanelet2_map_node.
 #---------------------------------------------
 add_executable(lanelet2_map_node
   src/lanelet2_map_node.cpp
 )
 
-# HH_260114 Link node to Map Loader library.
+# HH_260114 - Link node to Map Loader library.
 target_link_libraries(lanelet2_map_node
   camrod_map_lib
 )
 
-# HH_260114 Node dependencies.
+# HH_260114 - Node dependencies.
 ament_target_dependencies(lanelet2_map_node
   avg_msgs
   rclcpp
@@ -76,7 +76,7 @@ ament_target_dependencies(lanelet2_map_node
   lanelet2_projection
 )
 
-# HH_251230: Nav2 costmap layer plugin
+# HH_251230 - Nav2 costmap layer plugin
 add_library(lanelet_cost_layer SHARED
   src/cost_map/lanelet_cost_layer.cpp
 )
@@ -94,9 +94,9 @@ target_include_directories(lanelet_cost_layer PUBLIC
 )
 pluginlib_export_plugin_description_file(nav2_costmap_2d plugin_cost_map.xml)
 
-# HH_260109 Removed cost_grid_publisher (test-only, replaced by lanelet_cost_grid_node).
+# HH_260109 - Removed cost_grid_publisher (test-only, replaced by lanelet_cost_grid_node).
 
-# HH_260114 Lanelet-based OccupancyGrid generator (no LiDAR required).
+# HH_260114 - Lanelet-based OccupancyGrid generator (no LiDAR required).
 add_executable(lanelet_cost_grid_node
   src/cost_map/lanelet_cost_grid_node.cpp
 )
@@ -177,7 +177,7 @@ ament_target_dependencies(marker_array_aggregator_node
 )
 
 #---------------------------------------------
-# HH_260114 Install executables and libraries.
+# HH_260114 - Install executables and libraries.
 #---------------------------------------------
 install(TARGETS
   camrod_map_lib
@@ -193,7 +193,7 @@ install(TARGETS
 )
 
 #---------------------------------------------
-# HH_260114 Install headers (include/${PROJECT_NAME}/... per ROS2 convention).
+# HH_260114 - Install headers (include/${PROJECT_NAME}/... per ROS2 convention).
 #---------------------------------------------
 install(
   DIRECTORY include/
@@ -201,14 +201,14 @@ install(
 )
 
 #---------------------------------------------
-# HH_260114 Export include dirs so downstream packages can find custom rules.
+# HH_260114 - Export include dirs so downstream packages can find custom rules.
 #---------------------------------------------
 ament_export_include_directories(include)
 
 #---------------------------------------------
-# HH_260114 Install config / launch / rviz directories (optional to avoid failures).
+# HH_260114 - Install config / launch / rviz directories (optional to avoid failures).
 #---------------------------------------------
-# HH_260109 Install directories and plugin XML separately (XML is a file, not a directory).
+# HH_260109 - Install directories and plugin XML separately (XML is a file, not a directory).
 install(DIRECTORY
   config
   launch
@@ -223,6 +223,6 @@ install(FILES
 )
 
 #---------------------------------------------
-# HH_260114 Declare ROS2 package.
+# HH_260114 - Declare ROS2 package.
 #---------------------------------------------
 ament_package()

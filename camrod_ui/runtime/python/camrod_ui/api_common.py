@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260329: Shared helpers/constants for CAMROD plugin API nodes.
+# HH_260329 - Shared helpers/constants for CAMROD plugin API nodes.
 
 from __future__ import annotations
 

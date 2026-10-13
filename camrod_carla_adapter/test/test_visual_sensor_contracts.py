@@ -41,12 +41,14 @@ CAMROD_LIDAR_COST_GRID = (
     REPO_ROOT / "camrod_bringup" / "config" / "sensing" / "lidar" / "cost_grid.yaml"
 )
 DROP_ZONE_PARKED_SPAWN = {
-    "x": -18.3106592128,
-    "y": 30.5999291974,
+    # HH_261013 - Pin the accepted station-aligned pose shipped in both spawn
+    # profiles; the previous test literal preceded the station-axis alignment.
+    "x": -15.425818967767528,
+    "y": 30.900826848323675,
     "z": -0.4365966,
     "roll": 0.0,
     "pitch": 0.0,
-    "yaw": 97.7872533451,
+    "yaw": 91.78725334512895,
 }
 
 

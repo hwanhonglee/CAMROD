@@ -213,6 +213,56 @@ std::string phaseFromStatus(const std::string &message) {
   return {};
 }
 
+// HH_261007 - Optional exact connectors belong to one already-authored site.
+// Validate transactionally: malformed or ambiguous catalogs grant no scope.
+void loadManualServiceAccess(const YAML::Node &catalog,
+                             const std::string &frame,
+                             std::vector<ManualServiceArea> &areas) {
+  if (!catalog.IsMap() || !catalog["frame_id"] ||
+      catalog["frame_id"].as<std::string>() != frame)
+    throw std::invalid_argument("manual service access frame mismatch/missing");
+  const auto entries = catalog["service_access"];
+  if (!entries.IsSequence() || entries.size() == 0)
+    throw std::invalid_argument("manual service access must be a nonempty sequence");
+  auto candidate = areas;
+  std::set<std::string> sites;
+  for (const auto &entry : entries) {
+    const auto site = entry["site"].as<std::string>();
+    if (site.empty() || !sites.insert(site).second)
+      throw std::invalid_argument("manual service access duplicate/empty site");
+    const auto found = std::find_if(candidate.begin(), candidate.end(),
+        [&](const auto &area) { return area.id == site; });
+    if (found == candidate.end() || !found->access_polygons.empty())
+      throw std::invalid_argument("manual service access unknown/duplicate site: " + site);
+    if (entry["frame_id"] && entry["frame_id"].as<std::string>() != frame)
+      throw std::invalid_argument("manual service access polygon frame mismatch");
+    const auto lanelets = entry["lanelet_ids"];
+    if (!lanelets.IsSequence() || lanelets.size() == 0)
+      throw std::invalid_argument("manual service access requires lanelet provenance");
+    std::set<int64_t> lanelet_ids;
+    for (const auto &lanelet : lanelets) {
+      const auto id = lanelet.as<int64_t>();
+      if (id <= 0 || !lanelet_ids.insert(id).second)
+        throw std::invalid_argument("manual service access invalid/duplicate lanelet ID");
+    }
+    const auto corners = entry["corners"];
+    if (!corners.IsSequence())
+      throw std::invalid_argument("manual service access corners must be a sequence");
+    ManualServicePolygon polygon;
+    for (const auto &point : corners)
+      polygon.emplace_back(point["x"].as<double>(), point["y"].as<double>());
+    found->access_polygons.push_back(std::move(polygon));
+    if (!validManualServiceArea(*found))
+      throw std::invalid_argument("manual service access must be finite convex and touch its site: " + site);
+  }
+  for (std::size_t i = 0; i < candidate.size(); ++i)
+    for (std::size_t j = i + 1; j < candidate.size(); ++j)
+      if (manualServiceAreasOverlap(candidate[i], candidate[j]))
+        throw std::invalid_argument("manual service access creates ambiguous site unions: " +
+                                    candidate[i].id + "," + candidate[j].id);
+  areas = std::move(candidate);
+}
+
 } // namespace
 
 struct YawAlignmentZone {
@@ -304,6 +354,10 @@ public:
   }
 
 private:
+#ifdef CAMROD_CONTROL_MANUAL_RECOVERY_TEST
+  // HH_261007 - Exercise production callbacks on an isolated test DDS domain.
+  friend class CmdVelSafetyGateManualRecoveryTest;
+#endif
   void loadGatePolicyConfig() {
     require_platform_drive_enable_ =
         declare_parameter<bool>("require_platform_drive_enable", true);
@@ -876,6 +930,43 @@ private:
           "[0, 10]");
     }
     input_timeout_s_ = declare_parameter<double>("input_timeout_s", 0.35);
+    // HH_261007 - Explicit simulator opt-in; production defaults stay disabled.
+    manual_service_area_enabled_ = declare_parameter<bool>("manual_service_area_enabled", false);
+    const auto manual_area_file = declare_parameter<std::string>("manual_service_areas_file", "");
+    const auto manual_access_file = declare_parameter<std::string>("manual_service_access_file", "");
+    manual_service_area_frame_ = declare_parameter<std::string>("manual_service_area_frame", "map");
+    if (manual_service_area_enabled_) {
+      if (manual_input_topic_.empty() || manual_area_file.empty() || manual_service_area_frame_.empty())
+        throw std::invalid_argument("manual service areas require dedicated manual topic, map file and frame");
+      const auto catalog = YAML::LoadFile(manual_area_file);
+      // HH_261007 - Unstated catalog frames inherit the configured map frame;
+      // explicitly foreign coordinates must never become a drive permission.
+      if (catalog["frame_id"] && catalog["frame_id"].as<std::string>() != manual_service_area_frame_)
+        throw std::invalid_argument("manual service catalog frame mismatch");
+      const auto sites = catalog["camping_sites"];
+      if (!sites.IsSequence()) throw std::invalid_argument("manual service areas: camping_sites must be a sequence");
+      std::set<std::string> ids;
+      for (const auto & site : sites) {
+        if (site["frame_id"] && site["frame_id"].as<std::string>() != manual_service_area_frame_)
+          throw std::invalid_argument("manual service polygon frame mismatch");
+        ManualServiceArea area;
+        area.id = site["type"].as<std::string>();
+        for (const auto & point : site["corners"])
+          area.polygon.emplace_back(point["x"].as<double>(), point["y"].as<double>());
+        if (area.id.empty() || !validManualServiceArea(area) || !ids.insert(area.id).second)
+          throw std::invalid_argument("invalid/duplicate authored manual service polygon: " + area.id);
+        manual_service_areas_.push_back(std::move(area));
+      }
+      if (manual_service_areas_.empty()) throw std::invalid_argument("manual service areas cannot be empty");
+      if (!manual_access_file.empty()) {
+        loadManualServiceAccess(YAML::LoadFile(manual_access_file),
+                                manual_service_area_frame_, manual_service_areas_);
+        RCLCPP_INFO(get_logger(), "loaded exact manual service access from %s",
+                    manual_access_file.c_str());
+      }
+      RCLCPP_INFO(get_logger(), "loaded %zu authored manual service areas from %s",
+        manual_service_areas_.size(), manual_area_file.c_str());
+    }
     if (manual_charging_departure_authorization_.config().enabled &&
         (input_timeout_s_ <= 0.0 ||
          manual_charging_departure_authorization_.config().command_timeout_s >
@@ -1256,6 +1347,34 @@ private:
     }
   }
 
+  bool refreshMotionCostStopLatch(const double now_sec) {
+    if (!motion_cost_stop_.latched()) {
+      return false;
+    }
+    // HH_261006 - Real sensor evidence advances the saved hazard independently
+    // of hypothetical candidates and command-authorization early returns.
+    const auto latch_decision = motion_cost_stop_.recheckLatchedHazard(now_sec);
+    updatePolicyCostState();
+    if (latch_decision.blocked) {
+      resume_after_hold_voice_pending_ = false;
+      resume_after_hold_voice_gate_.reset();
+      publishZero();
+      logMotionCostStopDecision(latch_decision, now_sec);
+      return true;
+    }
+    // HH_261006 - Preserve the release edge even when the state timer sees it
+    // first. Only fresh sensor evidence clears the latch; the optional voice
+    // wait can still delay actual output through onCommand's unchanged gate.
+    if (!motion_cost_stop_.latched() && enable_resume_after_hold_voice_gate_ &&
+        !resume_after_hold_voice_pending_) {
+      resume_after_hold_voice_pending_ = true;
+      resume_after_hold_voice_gate_.arm(
+          resume_after_hold_voice_key_, now_sec,
+          resume_after_hold_voice_timeout_s_);
+    }
+    return false;
+  }
+
   void onCommand(avg_msgs::msg::AvgTwist command,
                  const CommandInputSource input_source) {
     const double now_sec = nowSec();
@@ -1274,6 +1393,7 @@ private:
     }
     if (input_source == CommandInputSource::kManual) {
       activateManualChargingDepartureAuthorization(now_sec);
+      manual_service_area_block_reason_.clear();
     }
     // HH_260806 - A command intentionally held during the finite ownership
     // handoff is still a fresh input. Refresh the watchdog before publishing
@@ -1298,16 +1418,57 @@ private:
     }
     bool opposite_route_recovery = false;
     bool path_relative_exact_route_recovery = false;
+    bool manual_yaw_alignment_checked = false;
     std::optional<PathRelativeRecoveryCommandAuthorization>
         path_relative_command_authorization;
     refreshMotionCostStopPose();
+
+    // HH_261007 - A cancelled CRAB_IN owner becomes IDLE, but its physical
+    // campsite does not become forbidden road space. Prove a dedicated manual
+    // command against road UNION one authored site, independently of phases.
+    // Never revive raw maneuver authority or clear a live obstacle latch.
+    if (manual_service_area_enabled_ && input_source == CommandInputSource::kManual &&
+      !resume_after_hold_voice_pending_ &&
+      (route_safety_recovery_.active() ? effectiveEnabledForRouteRecovery(now_sec) : effectiveEnabled(now_sec))) {
+      if (refreshMotionCostStopLatch(now_sec)) return;
+      if (!resume_after_hold_voice_pending_) {
+        // HH_261007 - Fixed yaw-zone locks remain authoritative for manual
+        // control. Project the exact transformed command, never the old input.
+        if (const auto yaw_override = applyYawAlignment(command); yaw_override) {
+          command = *yaw_override;
+        }
+        manual_yaw_alignment_checked = true;
+        auto evaluated_manual = scaleCommand(command);
+        if (const auto decision = motion_cost_stop_.evaluateManualServiceAreaCommand(
+            evaluated_manual, now_sec, manual_service_areas_, manual_service_area_frame_,
+            route_safety_recovery_.active())) {
+          manual_service_area_last_reason_ = decision->reason;
+          manual_service_area_last_command_sec_ = now_sec;
+          if (decision->blocked) {
+            manual_service_area_block_reason_ = decision->reason;
+            publishZero();
+            logMotionCostStopDecision(*decision, now_sec);
+            return;
+          }
+          // Only a fully checked command releases a semantic route hold.
+          // Obstacle latches, platform faults and the input watchdog remain.
+          route_safety_recovery_.reset();
+          latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+          route_safety_triggered_by_navigation_ = false;
+          resetPathRelativeRecoveryState();
+          motion_cost_stop_.clearTransientHold();
+          publishCommand(evaluated_manual);
+          return;
+        }
+      }
+    }
 
     // HH_260729 - Do not let a zero or changed Nav2 command redefine the route
     // that must become safe. An explicitly opposite command may still recover
     // the vehicle, but it passes the complete ordinary safety evaluation below.
     if (route_safety_recovery_.active()) {
       refreshRouteSafetyRecovery(now_sec);
-      // HH_260803 / TODOLIST 12 - While the bounded owner uses the raw command
+      // HH_260803 - TODO list 12: While the bounded owner uses the raw command
       // input, ignore the stopped Nav2 stream instead of alternating its zero
       // output with a validated recovery command.
       if (route_safety_recovery_.active() && navigation_source &&
@@ -1316,7 +1477,14 @@ private:
         return;
       }
       if (route_safety_recovery_.active() &&
-          path_relative_recovery_config_.enabled) {
+          path_relative_recovery_config_.enabled &&
+          input_source != CommandInputSource::kManual) {
+        // HH_261007 - The exact path candidate belongs to autonomous recovery.
+        // A dedicated, arbiter-authorized manual input instead uses the
+        // opposite/orthogonal rule below and the SAME stateful swept-body,
+        // endpoint, dynamic-obstacle and platform checks before publication.
+        // Requiring an autonomous candidate for a manual-triggered hold
+        // deadlocks: that trigger deliberately creates no automatic candidate.
         // Path-relative recovery may have a positive dot product with the
         // original trigger. It is admitted only as the exact, fresh command
         // whose full projection was latched by publishRouteSafetyCandidate().
@@ -1348,8 +1516,8 @@ private:
       } else if (route_safety_recovery_.active() &&
                  !route_safety_recovery_.permitsProjectedRecoveryCandidate(
                      command)) {
-        // Preserve the generic route-recovery opposite/orthogonal rule when
-        // path-relative recovery is disabled.
+        // HH_261007 - Preserve the opposite/orthogonal admission rule for
+        // dedicated manual inputs and for profiles without path recovery.
         publishZero();
         logRouteSafetyHold(now_sec);
         return;
@@ -1357,34 +1525,10 @@ private:
       opposite_route_recovery = route_safety_recovery_.active();
     }
 
-    // HH_260721 - Re-evaluate a latched obstacle before authorization so clear
-    // time can advance.
-    if (motion_cost_stop_.latched()) {
-      const auto latch_decision =
-          motion_cost_stop_.evaluate(scaleCommand(command), now_sec);
-      updatePolicyCostState();
-      if (latch_decision.blocked) {
-        resume_after_hold_voice_pending_ = false;
-        resume_after_hold_voice_gate_.reset();
-        publishZero();
-        logMotionCostStopDecision(latch_decision, now_sec);
-        return;
-      }
-      // HH_260910 - The hold itself just cleared (evaluate() above already
-      // released motion_cost_stop_'s own latch as a side effect, so
-      // `latched()` will read false on the very next tick regardless of what
-      // we do here). Arm a short, separate wait for the "thank you" cue
-      // before letting this tick's normal command evaluation resume motion.
-      // This only ever extends the sensor-driven hold, never shortens or
-      // replaces it: a genuinely new hazard on a later tick still latches
-      // normally, since the checks below still run once this wait clears.
-      if (enable_resume_after_hold_voice_gate_ &&
-          !resume_after_hold_voice_pending_) {
-        resume_after_hold_voice_pending_ = true;
-        resume_after_hold_voice_gate_.arm(
-            resume_after_hold_voice_key_, now_sec,
-            resume_after_hold_voice_timeout_s_);
-      }
+    // HH_261006 - Share the timer's saved-hazard recheck and release/voice
+    // transition; actual command geometry is still evaluated below.
+    if (refreshMotionCostStopLatch(now_sec)) {
+      return;
     }
     if (resume_after_hold_voice_pending_) {
       resume_after_hold_voice_gate_.tick(now_sec);
@@ -1414,7 +1558,7 @@ private:
     // Path-relative selection already owns both lateral and heading stages.
     // Applying a generic alignment override here would turn a projected exact
     // command into a different, unprojected one.
-    if (!path_relative_exact_route_recovery) {
+    if (!path_relative_exact_route_recovery && !manual_yaw_alignment_checked) {
       if (const auto yaw_override = applyYawAlignment(command);
           yaw_override.has_value()) {
         command = *yaw_override;
@@ -1666,9 +1810,16 @@ private:
     if (pose->frame_id.empty() || pose->frame_id != path_frame) {
       return fail("path_relative_pose_frame_mismatch");
     }
+    // HH_261006 - Keep reverse-return chassis yaw opposite the ordered path.
+    // The saved trigger, not a later crab or yaw command, owns this decision;
+    // all current path/pose freshness and frame checks above remain required.
+    const bool reverse_heading = pathRelativeReverseHeadingFromTrigger(
+        route_safety_recovery_.triggerCommand(), route_safety_recovery_.active(),
+        motion_cost_stop_config_.min_translation_mps);
     const auto relation = nearestPathRelativeRouteRelation(
         *latest_full_route_, *pose,
-        path_relative_recovery_config_.maximum_relation_distance_m);
+        path_relative_recovery_config_.maximum_relation_distance_m,
+        reverse_heading);
     if (!relation.valid) {
       return fail(relation.reason);
     }
@@ -1701,7 +1852,11 @@ private:
   }
 
   bool pathRelativeHandoffReady(const double now_sec) {
-    if (!path_relative_recovery_config_.enabled) {
+    if (!path_relative_recovery_config_.enabled ||
+        command_source_arbiter_.manualSourceActive()) {
+      // HH_261007 - Manual escape has no autonomous route/centering stage.
+      // updateProbe still requires actual validated recovery motion followed
+      // by continuous fresh lanelet clearance; ARM alone cannot release it.
       return true;
     }
     const auto evidence = currentPathRelativeEvidence(now_sec);
@@ -1938,7 +2093,11 @@ private:
 
   bool effectiveEnabledConsideringRouteRecovery(const double now_sec) {
     if (route_safety_recovery_.active() &&
-        route_safety_triggered_by_navigation_) {
+        (route_safety_triggered_by_navigation_ ||
+         command_source_arbiter_.manualSourceActive())) {
+      // HH_261007 - Interlock callbacks must not interleave transient-map-dwell
+      // zeros with a fully checked manual escape. All non-route faults remain
+      // authoritative in effectiveEnabledForRouteRecovery().
       return effectiveEnabledForRouteRecovery(now_sec);
     }
     return effectiveEnabled(now_sec);
@@ -1949,6 +2108,12 @@ private:
     auto reasons = gate_policy_.blockReasons(
         now_sec, charging_mission_override_.charging(),
         chargingMotionOverrideActive(now_sec));
+    // HH_261007 - ARMED must not look like an allowed output when the actual
+    // manual service sweep was rejected. Expire this with the command lease.
+    if (command_source_arbiter_.manualSourceActive() &&
+      now_sec - manual_service_area_last_command_sec_ <= input_timeout_s_ &&
+      !manual_service_area_block_reason_.empty())
+      reasons.push_back(manual_service_area_block_reason_);
     if (route_safety_recovery_.active()) {
       const std::string label = route_safety_recovery_.automaticReleaseBlocked()
                                     ? "route_safety_retry_latched="
@@ -2014,6 +2179,11 @@ private:
 
   void publishState() {
     const double now_sec = nowSec();
+    // HH_261006 - Blocked/zero recovery candidates cannot reach onCommand's
+    // latch recheck. Maintain only the saved live hazard before selecting any
+    // candidate, so fresh clear evidence can progress without a motion lease.
+    refreshMotionCostStopPose();
+    refreshMotionCostStopLatch(now_sec);
     // HH_260729 - Continue route-clear evaluation after Nav2 stops publishing
     // commands. This is what lets command_enabled pause and later resume the
     // engage-aware progress checker without restarting any node.
@@ -2095,6 +2265,11 @@ private:
         " recovery_candidate=" +
         routeRecoveryCandidateName(recovery_candidate.kind) +
         " recovery_reason=" + recovery_candidate.reason;
+    // HH_261007 - Surface spatial manual authorization without claiming that
+    // a cancelled campsite mission resumed or completed.
+    if (command_source_arbiter_.manualSourceActive() &&
+      now_sec - manual_service_area_last_command_sec_ <= input_timeout_s_)
+      status.message += " manual_service_area=" + manual_service_area_last_reason_;
     if (route_safety_recovery_.active() &&
         path_relative_recovery_config_.enabled) {
       status.message +=
@@ -2152,6 +2327,18 @@ private:
 
   RouteRecoveryCandidate publishRouteSafetyCandidate(const double now_sec) {
     RouteRecoveryCandidate selected;
+    if (route_safety_recovery_.active() &&
+        command_source_arbiter_.manualSourceActive()) {
+      // HH_261007 - Only the operator's fresh command may move a manual owner.
+      // Stop the autonomous recovery controller with a zero candidate, but do
+      // not inject a final-output zero on every status tick after a separately
+      // validated manual command. Deadman/interlock callbacks still stop it.
+      selected.reason = "manual_projected_recovery";
+      latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+      resetPathRelativeRecoveryState();
+      route_safety_candidate_publisher_->publish(selected.command);
+      return selected;
+    }
     if (route_safety_auto_candidate_enabled_ &&
         route_safety_recovery_.active() &&
         route_safety_triggered_by_navigation_ &&
@@ -2232,7 +2419,9 @@ private:
       const auto evaluate = [this,
                              now_sec](const avg_msgs::msg::AvgTwist &command,
                                       const double probe_distance_m) {
-        return motion_cost_stop_.evaluateRouteRecoveryCommand(
+        // HH_261006 - These five projections are hypothetical. Only the
+        // actual command gate may update the shared obstacle latch or hold.
+        return motion_cost_stop_.probeRouteRecoveryCommand(
             command, now_sec, probe_distance_m,
             route_safety_recovery_.poseMaxAge());
       };
@@ -3219,6 +3408,12 @@ private:
   std::string input_topic_;
   std::string navigation_input_topic_;
   std::string manual_input_topic_;
+  bool manual_service_area_enabled_{false};
+  std::string manual_service_area_frame_{"map"};
+  std::vector<ManualServiceArea> manual_service_areas_;
+  double manual_service_area_last_command_sec_{-1e9};
+  std::string manual_service_area_last_reason_;
+  std::string manual_service_area_block_reason_;
   std::string output_topic_;
   std::string ros_output_topic_;
   std::string engage_topic_;
@@ -3418,6 +3613,7 @@ private:
 
 } // namespace camrod_control
 
+#ifndef CAMROD_CONTROL_MANUAL_RECOVERY_TEST
 int main(int argc, char **argv) {
   // HH_260721 - Run the final command safety gate as a conventional rclcpp
   // node.
@@ -3426,3 +3622,4 @@ int main(int argc, char **argv) {
   rclcpp::shutdown();
   return 0;
 }
+#endif

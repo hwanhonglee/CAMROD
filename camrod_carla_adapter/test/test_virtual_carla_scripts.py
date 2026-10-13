@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -47,6 +48,12 @@ VIRTUAL_ENV_KEYS = (
     "CAMROD_CARLA_YOLO_MODEL_PATH",
     "CAMROD_CARLA_YOLO_DEVICE",
     "CAMROD_CARLA_YOLO_WORKSPACE_MIB",
+    "CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES",
+    "CAMROD_CARLA_CAMPING_SITES_YAML",
+    # HH_261008 - A parent's experimental session cannot contaminate fixtures.
+    "CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL",
+    # HH_261012 - A host profiler workaround must not alter default fixtures.
+    "CAMROD_CARLA_DISABLE_GPU_PROFILER",
     "YOLOV9_MODEL_PATH",
     "CAMROD_DEVELOP_LANELET_MAP",
     "CAMROD_WORAKSAN_TUNED_LANELET_MAP",
@@ -269,6 +276,25 @@ def test_manual_4ws_collection_rolls_back_partial_publish_and_can_emit_fail(
     assert "manual_4ws_summary.json" in hashes
     assert "manual_4ws_summary.csv" in hashes
     assert "manual_4ws_report.md" in hashes
+
+
+@pytest.mark.parametrize("badge", ["ARMED", "ARMED · 명령 허용", "ARMED · 경계 탈출 제한"])
+def test_manual_4ws_authority_uses_lease_not_localized_gate_badge(badge: str) -> None:
+    # HH_261007 - A safety label must not break UI evidence collection; an
+    # unarmed lease still fails even if the text misleadingly says ARMED.
+    module = _load_manual_4ws_evidence_module()
+    browser = object.__new__(module.ManualDriveBrowser)
+    browser.operator_ui_url = "http://127.0.0.1:8010"
+    snapshot = dict(ready="complete", visibility="visible", href=browser.operator_ui_url,
+                    title="Robot UI", panelVisible=True, connected=True,
+                    armed=True, stateText=badge)
+    browser._evaluate = lambda _: snapshot
+    browser._bound_x11 = {"verified": True}
+    browser._bound_x11_inspect = lambda: "Robot UI\nMap State: IsViewable"
+    assert browser.assert_motion_liveness("offline regression")["armed"] is True
+    snapshot["armed"] = False
+    with pytest.raises(module.MatrixError, match="liveness failed"):
+        browser.assert_motion_liveness("offline regression")
 
 
 def test_manual_4ws_already_disarmed_cleanup_requires_durable_zero_proof() -> None:
@@ -2426,6 +2452,189 @@ def test_nullrhi_disables_camera_yolo_while_rendered_carla_keeps_it() -> None:
     )[0]
     assert "yolov9mit_ros" in doctor_body
     assert "validate_carla_yolo_engine" in doctor_body
+
+
+def _gpu_profiler_command_preview(tmp_path, render_mode, enabled=None):
+    # HH_261012 - Exercise only the inert printer; no UE process or ROS/API call.
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in VIRTUAL_ENV_KEYS}
+    environment.update(RANGER_CARLA_ROOT=str(tmp_path),
+                       RANGER_ENV_FILE=str(tmp_path / "absent.env"),
+                       CARLA_RENDER_MODE=render_mode, CARLA_RENDER_MAX_FPS="17")
+    if enabled is not None:
+        environment["CAMROD_CARLA_DISABLE_GPU_PROFILER"] = enabled
+    return subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "commands"], cwd="/tmp",
+        env=environment, capture_output=True, text=True)
+
+
+def _previewed_server_arguments(result):
+    assert result.returncode == 0, result.stderr
+    return shlex.split(next(line for line in result.stdout.splitlines()
+                            if "-quality-level=Low" in line))
+
+
+@pytest.mark.parametrize("render_mode", ["onscreen", "offscreen"])
+@pytest.mark.parametrize("enabled", [None, "false", "true"])
+def test_gpu_profiler_opt_in_preserves_rendered_server_command(
+    tmp_path, render_mode, enabled,
+):
+    # HH_261012 - Keep one ExecCmds argument and the exact old FPS/render/physics
+    # arguments. The optional suffix disables statistics, not Vulkan rendering.
+    baseline = _previewed_server_arguments(
+        _gpu_profiler_command_preview(tmp_path, render_mode))
+    arguments = _previewed_server_arguments(
+        _gpu_profiler_command_preview(tmp_path, render_mode, enabled))
+    baseline_exec = "-ExecCmds=t.MaxFPS 17"
+    selected_exec = baseline_exec + (
+        ",r.GPUStatsEnabled 0" if enabled == "true" else "")
+    assert [arg for arg in arguments if arg.startswith("-ExecCmds=")] == [selected_exec]
+    assert arguments == [selected_exec if arg == baseline_exec else arg
+                         for arg in baseline]
+    assert ("-RenderOffScreen" in arguments) == (render_mode == "offscreen")
+    assert "-nullrhi" not in arguments
+    if enabled != "true":
+        assert arguments == baseline
+        assert not any("GPUStatsEnabled" in arg for arg in arguments)
+
+
+@pytest.mark.parametrize("enabled", [None, "false", "true"])
+def test_gpu_profiler_switch_does_not_change_nullrhi_mode(tmp_path, enabled):
+    # HH_261012 - NullRHI keeps its no-FPS legacy command; explicit opt-in only
+    # adds the same statistics CVar and cannot enable rendering or new physics.
+    baseline = _previewed_server_arguments(
+        _gpu_profiler_command_preview(tmp_path, "nullrhi"))
+    arguments = _previewed_server_arguments(
+        _gpu_profiler_command_preview(tmp_path, "nullrhi", enabled))
+    assert "-nullrhi" in arguments
+    assert "-RenderOffScreen" not in arguments
+    assert arguments == baseline + (
+        ["-ExecCmds=r.GPUStatsEnabled 0"] if enabled == "true" else [])
+    assert not any("t.MaxFPS" in arg for arg in arguments)
+
+
+@pytest.mark.parametrize("enabled", ["", "True", "FALSE", "1", "0", "yes", "true ", " false"])
+def test_gpu_profiler_switch_rejects_nonliteral_boolean(tmp_path, enabled):
+    result = _gpu_profiler_command_preview(tmp_path, "onscreen", enabled)
+    assert result.returncode != 0
+    assert "CAMROD_CARLA_DISABLE_GPU_PROFILER must be true or false" in result.stderr
+    assert "-quality-level=Low" not in result.stdout
+
+
+@pytest.mark.parametrize("quota_bytes", (None, "4194304", "1073741824"))
+def test_commands_mission_recorder_quota_is_explicit_opt_in(
+    tmp_path: Path, quota_bytes,
+) -> None:
+    # HH_261006 - Printing commands is inert and must preserve every default.
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in VIRTUAL_ENV_KEYS}
+    environment.update(RANGER_CARLA_ROOT=str(tmp_path),
+                       RANGER_ENV_FILE=str(tmp_path / "absent.env"))
+    if quota_bytes is not None:
+        environment["CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES"] = quota_bytes
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "commands"], cwd="/tmp",
+        env=environment, check=True, capture_output=True, text=True,
+    )
+    if quota_bytes is None:
+        assert "mission_recorder_quota_bytes:=" not in result.stdout
+    else:
+        # Full, site-geometry and tuned commands all share this explicit option.
+        assert result.stdout.count(
+            "mission_recorder_quota_bytes:=" + quota_bytes) == 3
+
+
+@pytest.mark.parametrize("quota_bytes", (
+    "", "0", "-1", "4194303", "4.5", "1GiB", "1073741824 ", "04194304",
+))
+def test_commands_reject_invalid_mission_recorder_quota(
+    tmp_path: Path, quota_bytes: str,
+) -> None:
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in VIRTUAL_ENV_KEYS}
+    environment.update(RANGER_CARLA_ROOT=str(tmp_path),
+                       RANGER_ENV_FILE=str(tmp_path / "absent.env"),
+                       CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES=quota_bytes)
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "commands"], cwd="/tmp",
+        env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "positive integer >= 4194304" in result.stderr
+    assert "mission_recorder_quota_bytes:=" not in result.stdout
+
+
+@pytest.mark.parametrize("catalog_kind", ["unset", "file", "missing", "relative", "directory"])
+def test_simulator_site_catalog_is_scoped_and_validated(tmp_path, catalog_kind):
+    # HH_261007 - Only the explicit site overlay receives a service pose copy.
+    environment = {k: v for k, v in os.environ.items() if k not in VIRTUAL_ENV_KEYS}
+    environment.update(RANGER_CARLA_ROOT=str(tmp_path),
+                       RANGER_ENV_FILE=str(tmp_path / "absent.env"))
+    catalog = tmp_path / "sites.yaml"
+    if catalog_kind == "file":
+        catalog.write_text("camping_sites: []\n")
+    if catalog_kind != "unset":
+        environment["CAMROD_CARLA_CAMPING_SITES_YAML"] = (
+            "sites.yaml" if catalog_kind == "relative" else
+            str(tmp_path) if catalog_kind == "directory" else str(catalog))
+    result = subprocess.run([str(SCRIPT_ROOT / "run.sh"), "commands"],
+                            cwd="/tmp", env=environment, capture_output=True, text=True)
+    if catalog_kind in ("unset", "file"):
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("planning_state_machine_camping_sites_yaml:=") == (
+            1 if catalog_kind == "file" else 0)
+    else:
+        assert result.returncode != 0
+        assert "absolute regular file" in result.stderr
+
+
+@pytest.mark.parametrize("enabled", (None, "true", "false"))
+def test_zero_turn_yaw_integral_runner_opt_in_is_site_geometry_only(tmp_path, enabled):
+    # HH_261008 - Exercise only the inert command printer, never ROS or CARLA.
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in VIRTUAL_ENV_KEYS}
+    environment.update(RANGER_CARLA_ROOT=str(tmp_path),
+                       RANGER_ENV_FILE=str(tmp_path / "absent.env"))
+    if enabled is not None:
+        environment["CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL"] = enabled
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "commands"], cwd="/tmp",
+        env=environment, check=True, capture_output=True, text=True)
+    argument = "experimental_zero_turn_yaw_integral_enabled:="
+    if enabled is None:
+        assert argument not in result.stdout
+        return
+    parity_command = result.stdout.split(
+        "# Expanded develop-parity CAMROD command;", 1
+    )[1].split("# Expanded develop-parity + CARLA campsite", 1)[0]
+    site_command = result.stdout.split(
+        "# Expanded develop-parity + CARLA campsite", 1
+    )[1].split("# Expanded historical Woraksan-tuned", 1)[0]
+    tuned_command = result.stdout.split(
+        "# Expanded historical Woraksan-tuned", 1
+    )[1].split("# Expanded spectator command", 1)[0]
+    assert argument not in parity_command
+    assert argument not in tuned_command
+    assert argument + enabled in site_command
+    assert result.stdout.count(argument) == 1
+
+
+@pytest.mark.parametrize("enabled", ("", "True", "FALSE", "1", "0", "yes", "true ", " false"))
+def test_zero_turn_yaw_integral_runner_rejects_nonliteral_boolean(tmp_path, enabled):
+    # HH_261008 - No truthiness, case folding, whitespace or numeric opt-ins.
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in VIRTUAL_ENV_KEYS}
+    environment.update(
+        RANGER_CARLA_ROOT=str(tmp_path),
+        RANGER_ENV_FILE=str(tmp_path / "absent.env"),
+        CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL=enabled)
+    result = subprocess.run(
+        [str(SCRIPT_ROOT / "run.sh"), "commands"], cwd="/tmp",
+        env=environment, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert ("CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL must be true or false"
+            in result.stderr)
+    assert "experimental_zero_turn_yaw_integral_enabled:=" not in result.stdout
 
 
 def test_commands_prints_all_explicit_lifecycle_stages(tmp_path: Path) -> None:

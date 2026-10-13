@@ -34,9 +34,9 @@ def generate_launch_description():
         # HH_260720 - Keep the platform namespace independent from nested module arguments.
         DeclareLaunchArgument("platform_namespace",        default_value="platform"),
         DeclareLaunchArgument("sensor_kit_namespace",      default_value="sensor_kit"),
-        # HH_260527: Removed unused compatibility args
+        # HH_260527 - Removed unused compatibility args
         # (enable_module_validator, system_namespace).
-        # HH_260528: Select platform type profile.
+        # HH_260528 - Select platform type profile.
         #   ranger: launch Ranger CAN driver path
         #   rmp401: skip Ranger CAN path, keep external /rmp401 topics
         DeclareLaunchArgument("platform_type",             default_value="ranger"),
@@ -50,15 +50,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "ranger_dummy_publish_rate_hz", default_value="5.0"
         ),
-        # HH_260528: Toggle Ranger status bridge independently from CAN driver.
+        # HH_260528 - Toggle Ranger status bridge independently from CAN driver.
         DeclareLaunchArgument("ranger_bridge_enable",      default_value="true"),
         DeclareLaunchArgument("ranger_auto_setup_can",     default_value="true"),
         DeclareLaunchArgument("ranger_can_bitrate",        default_value="500000"),
         DeclareLaunchArgument("ranger_can_restart_ms",     default_value="100"),
         DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_driver.yaml"))),
-        # HH_260528: Keep sensor_kit bridge optional for debug.
+        # HH_260528 - Keep sensor_kit bridge optional for debug.
         DeclareLaunchArgument("sensor_kit_bridge_enable",  default_value="true"),
-        # 260708: Exterior lights (headlight relay + WS2815 indicators via MCU).
+        # HH_260708 - Exterior lights (headlight relay + WS2815 indicators via MCU).
         DeclareLaunchArgument("lights_enable",             default_value="true"),
         DeclareLaunchArgument("lights_mcu_bridge_enable",  default_value="true"),
         DeclareLaunchArgument("lights_param_file",         default_value=plat(os.path.join("config", "lights.yaml"))),

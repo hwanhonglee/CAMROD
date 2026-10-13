@@ -26,7 +26,7 @@
     # =========================================================================
     # 3. INPUT TIMEOUTS
     # =========================================================================
-    # HH_260625: Live GNSS pose stamps can arrive ~2s behind node time while
+    # HH_260625 - Live GNSS pose stamps can arrive ~2s behind node time while
     # RTK is otherwise healthy. Keep the monitor tolerant enough to avoid
     # false DR_ONLY->NORMAL recovery holds from timestamp jitter.
     gnss_timeout_s: 4.0
@@ -39,7 +39,7 @@
     gnss_innovation_warn: 3.0
     gnss_innovation_fail: 6.0
 
-    # HH_260625: Outdoor RTK covariance trace was observed around 0.30-0.45
+    # HH_260625 - Outdoor RTK covariance trace was observed around 0.30-0.45
     # during stable fixes. 0.3 caused repeated false GNSS_BAD transitions.
     gnss_cov_trace_fail: 1.0
     gnss_jump_fail_m: 1.0
@@ -57,7 +57,7 @@
     # =========================================================================
     # 6. DR LIMITS
     # =========================================================================
-    # HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
+    # HH_260507 - DR timeout — stop robot if DR continues too long or covariance grows too large.
     # 0.0 disables each check independently.
     # HH_260720 - Covariance timeout applies only when filter_status_mode is stream.
     dr_max_duration_s: 30.0
@@ -66,7 +66,7 @@
     # =========================================================================
     # 7. MODE DEBOUNCE
     # =========================================================================
-    # HH_260626: Worsening modes publish immediately; recovery to NORMAL must
+    # HH_260626 - Worsening modes publish immediately; recovery to NORMAL must
     # stay stable briefly to avoid GNSS timestamp/rate jitter causing repeated
     # DR_ONLY->NORMAL recovery holds in planning.
     mode_degrade_debounce_s: 0.0

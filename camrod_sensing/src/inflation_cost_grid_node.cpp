@@ -35,7 +35,7 @@ public:
     height_ = declare_parameter<int>("height", 120);
     origin_x_ = declare_parameter<double>("origin_x", -6.0);
     origin_y_ = declare_parameter<double>("origin_y", -6.0);
-    // HH_260618: Keep the OccupancyGrid map-axis aligned for Nav2/gate
+    // HH_260618 - Keep the OccupancyGrid map-axis aligned for Nav2/gate
     // consumers, but mask merged costs by robot-frame extents so rear and
     // side cost visualization/control load do not grow unnecessarily.
     enable_robot_frame_window_ =
@@ -44,14 +44,14 @@ public:
     rear_extent_m_ = declare_parameter<double>("rear_extent_m", 1.2);
     side_extent_m_ = declare_parameter<double>("side_extent_m", 1.4);
     free_value_ = declare_parameter<int>("free_value", 0);
-    // HH_260422: ego_clear_radius clears the robot footprint so the planner
+    // HH_260422 - ego_clear_radius clears the robot footprint so the planner
     // start cell is never lethal.
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.50);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
-    // HH_260618: Default to 6 Hz to match Nav2 local costmap cadence and reduce
+    // HH_260618 - Default to 6 Hz to match Nav2 local costmap cadence and reduce
     // merge load.
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 6.0);
-    // HH_260707: Reuse the last merged grid when neither input grids nor robot
+    // HH_260707 - Reuse the last merged grid when neither input grids nor robot
     // pose changed enough to affect planning. This keeps the output topic alive
     // without rebuilding every cell on every timer tick.
     rebuild_min_pose_delta_m_ =
@@ -61,7 +61,7 @@ public:
     cached_republish_period_s_ =
         declare_parameter<double>("cached_republish_period_s", 0.0);
 
-    // HH_260424: Default inputs — lanelet centerline, lidar, radar, global_path
+    // HH_260424 - Default inputs — lanelet centerline, lidar, radar, global_path
     // route bias.
     input_topics_ = declare_parameter<std::vector<std::string>>(
         "input_topics",
@@ -69,7 +69,7 @@ public:
             "/map/cost_grid/lanelet", "/sensing/cost_grid/lidar",
             "/sensing/cost_grid/radar", "/planning/cost_grid/global_path"});
 
-    // HH_260422: Per-input max age override. lanelet / global_path update
+    // HH_260422 - Per-input max age override. lanelet / global_path update
     // slowly;
     //   sensor grids update at ~10-20 Hz. If shorter than input list, global
     //   fallback is used.
@@ -93,7 +93,7 @@ public:
     }
 
     for (std::size_t i = 0; i < n; ++i) {
-      // HH_260422: Use VOLATILE durability so subscriptions are compatible with
+      // HH_260422 - Use VOLATILE durability so subscriptions are compatible with
       // both
       //   TRANSIENT_LOCAL publishers (sensor grids) and VOLATILE publishers
       //   (planning grids).
@@ -261,7 +261,7 @@ private:
           // footprint, but preserve live LiDAR/Radar hits for safety stops.
           if (ego_static_clear && !isDynamicInputTopic(i))
             continue;
-          // HH_260422: Use per-input age limit when configured; fall back to
+          // HH_260422 - Use per-input age limit when configured; fall back to
           // global limit.
           const double age_limit =
               (i < input_max_ages_s_.size() && input_max_ages_s_[i] > 0.0)

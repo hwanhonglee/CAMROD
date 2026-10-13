@@ -54,6 +54,8 @@ send a Nav2 goal; pacer only controls simulation time.
 CARLA_RENDER_MODE is one of offscreen (default), onscreen, or nullrhi.
 Rendered modes default to the aligned checked-in full-sensor profile. NullRHI
 defaults to the control-only smoke profile and cannot validate camera output.
+CAMROD_CARLA_DISABLE_GPU_PROFILER=true disables only GPU statistics profiling;
+it defaults to false and does not change the rendering or physics mode.
 EOF
 }
 
@@ -84,6 +86,17 @@ print_command() {
 }
 
 server_command() {
+  # HH_261012 - Optional simulator workaround for the observed GPU-profiler
+  # query crash path, not a GPU root-cause fix or a renderer/physics change.
+  local disable_gpu_profiler="${CAMROD_CARLA_DISABLE_GPU_PROFILER-false}"
+  if [[ "${disable_gpu_profiler}" != true && "${disable_gpu_profiler}" != false ]]; then
+    virtual_carla_die "CAMROD_CARLA_DISABLE_GPU_PROFILER must be true or false"
+    return 1
+  fi
+  local rendered_exec_commands="t.MaxFPS ${CARLA_RENDER_MAX_FPS}"
+  if [[ "${disable_gpu_profiler}" == true ]]; then
+    rendered_exec_commands+=",r.GPUStatsEnabled 0"
+  fi
   SERVER_COMMAND=(
     "${UE_EDITOR}"
     "${CARLA_UPROJECT}"
@@ -102,13 +115,18 @@ server_command() {
     offscreen)
       SERVER_COMMAND+=(
         -RenderOffScreen
-        "-ExecCmds=t.MaxFPS ${CARLA_RENDER_MAX_FPS}"
+        "-ExecCmds=${rendered_exec_commands}"
       )
       ;;
     onscreen)
-      SERVER_COMMAND+=( "-ExecCmds=t.MaxFPS ${CARLA_RENDER_MAX_FPS}" )
+      SERVER_COMMAND+=( "-ExecCmds=${rendered_exec_commands}" )
       ;;
-    nullrhi) SERVER_COMMAND+=( -nullrhi ) ;;
+    nullrhi)
+      SERVER_COMMAND+=( -nullrhi )
+      if [[ "${disable_gpu_profiler}" == true ]]; then
+        SERVER_COMMAND+=( "-ExecCmds=r.GPUStatsEnabled 0" )
+      fi
+      ;;
     *)
       virtual_carla_die \
         "CARLA_RENDER_MODE must be offscreen, onscreen, or nullrhi (got ${CARLA_RENDER_MODE})"
@@ -183,6 +201,42 @@ camrod_command() {
     "rviz:=${CAMROD_ENABLE_RVIZ}"
     "enable_voice:=${CAMROD_ENABLE_VOICE}"
   )
+  # HH_261007 - A simulator-only service catalog may select an existing lower
+  # B1 entrance. Never inject it into the develop-parity or historical profile.
+  if [[ "${launch_file}" == "camrod_carla_develop_site_geometry.launch.py" &&
+        -v CAMROD_CARLA_CAMPING_SITES_YAML ]]; then
+    local site_catalog="${CAMROD_CARLA_CAMPING_SITES_YAML}"
+    if [[ "${site_catalog}" != /* || ! -f "${site_catalog}" ]]; then
+      virtual_carla_die "CAMROD_CARLA_CAMPING_SITES_YAML must be an absolute regular file"
+      return 1
+    fi
+    CAMROD_COMMAND+=("planning_state_machine_camping_sites_yaml:=${site_catalog}")
+  fi
+  # HH_261006 - Endurance capture may opt in to a larger simulator-only quota;
+  # leave the nested UI launch default unchanged when no override was provided.
+  if [[ -v CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES ]]; then
+    local quota_bytes="${CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES}"
+    if [[ ! "${quota_bytes}" =~ ^[1-9][0-9]*$ ]] || ! python3 -c \
+      'import sys; sys.exit(0 if int(sys.argv[1]) >= 4 * 1024 * 1024 else 1)' \
+      "${quota_bytes}"; then
+      virtual_carla_die \
+        "CAMROD_CARLA_MISSION_RECORDER_QUOTA_BYTES must be a positive integer >= 4194304 (the default rotation size)"
+      return 1
+    fi
+    CAMROD_COMMAND+=("mission_recorder_quota_bytes:=${quota_bytes}")
+  fi
+  # HH_261008 - A candidate session may explicitly enable bounded yaw tracking
+  # only in the simulator site profile; ordinary/develop defaults remain OFF.
+  if [[ -v CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL ]]; then
+    local integral_enabled="${CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL}"
+    if [[ "${integral_enabled}" != true && "${integral_enabled}" != false ]]; then
+      virtual_carla_die "CAMROD_CARLA_EXPERIMENTAL_ZERO_TURN_YAW_INTEGRAL must be true or false"
+      return 1
+    fi
+    if [[ "${launch_file}" == "camrod_carla_develop_site_geometry.launch.py" ]]; then
+      CAMROD_COMMAND+=("experimental_zero_turn_yaw_integral_enabled:=${integral_enabled}")
+    fi
+  fi
   if [[ "${launch_file}" == "camrod_carla_full.launch.py" ]]; then
     CAMROD_COMMAND+=(
       "carla_apriltag_param_file:=${CAMROD_WS_ROOT}/install/camrod_carla_adapter/share/camrod_carla_adapter/config/apriltag_parking_detector_carla.yaml"
@@ -1264,6 +1318,10 @@ case "${subcommand}" in
 
     printf '# Export once in every terminal (adjust overrides as needed)\n'
     printf 'export RANGER_CARLA_ROOT=%q\n' "${RANGER_CARLA_ROOT}"
+    if [[ -v CAMROD_CARLA_DISABLE_GPU_PROFILER ]]; then
+      printf 'export CAMROD_CARLA_DISABLE_GPU_PROFILER=%q\n' \
+        "${CAMROD_CARLA_DISABLE_GPU_PROFILER}"
+    fi
     printf 'export CAMROD_CARLA_MAP_PROFILE=%q\n' \
       "${CAMROD_CARLA_MAP_PROFILE}"
     printf 'export CARLA_UE_MAP=%q\n' "${CARLA_UE_MAP}"

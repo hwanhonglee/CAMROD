@@ -76,6 +76,8 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
         "rotation_recovery_breakaway_status_timeout_sec": 0.30,
     },
     "/control/cmd_vel_safety_gate": {
+        # HH_261007 - Authored service-area manual control is simulator opt-in.
+        "manual_service_area_enabled": False,
         "parking_dispatcher_status_topic": "/parking/status",
         "speed_scale": 0.5,
         "navigation_minimum_ackermann_turn_radius_m": 0.0,
@@ -198,6 +200,10 @@ DEVELOP_PARITY_RUNTIME_SIGNATURE: dict[str, dict[str, Any]] = {
     "/planning/nav2_selector_latch": {
         "reverse_controller_id": "RPP",
     },
+    # HH_261007 - Reject reverse goal wiring even with roadside mode disabled.
+    "/planning/planning_state_machine": {
+        "reverse_auto_goal_snapper_input_topic": "",
+    },
     "/ui_backend": {
         "parking_method": "auto",
         "telemetry_raw_lidar_bbox_overlay_enabled": False,
@@ -238,12 +244,16 @@ def _with_site_geometry_runtime_signature(
         "telemetry_docking_rear_camera_fallback_enabled"
     ] = True
     result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
+    result["/control/cmd_vel_safety_gate"]["manual_service_area_enabled"] = True
+    # HH_261007 - Audit manual 2 m/s independently from automatic 4 km/h cruise.
+    result["/ui_backend"]["manual_drive_linear_limit_mps"] = 2.0
+    # HH_261007 - Reject the stale 2 km/h overlay before a site trial moves.
     result["/planning/controller_server"].update({
         "controller_plugins": ["RPP", "RPPReverse", "RotationShim"],
-        "RPP.desired_linear_vel": 0.555556,
+        "RPP.desired_linear_vel": 1.111111,
         "RPP.min_approach_linear_velocity": 0.138889,
         "RPP.regulated_linear_scaling_min_speed": 0.166667,
-        "RotationShim.desired_linear_vel": 0.555556,
+        "RotationShim.desired_linear_vel": 1.111111,
         "RotationShim.min_approach_linear_velocity": 0.138889,
         "RotationShim.regulated_linear_scaling_min_speed": 0.166667,
         "RPPReverse.allow_reversing": True,
@@ -283,10 +293,11 @@ def _with_site_geometry_runtime_signature(
     ] = "/localization/pose"
     result["/planning/goal_snapper"][
         "reverse_auxiliary_input_goal_topic"
-    ] = "/planning/auto_reverse_goal_raw"
+    ] = ""
+    # HH_261007 - Verify forward road-return selection independently of parking.
     result["/planning/nav2_selector_latch"][
         "reverse_controller_id"
-    ] = "RPPReverse"
+    ] = "RPP"
     result["/parking/apriltag_parking_controller"].update({
         "heading_gain": 1.5,
         "lateral_to_heading_gain": 2.7,
@@ -308,7 +319,7 @@ def _with_site_geometry_runtime_signature(
     })
     result["/control/camping_site_maneuver_controller"].update({
         "max_angular_speed_radps": 0.45,
-        "roadside_reverse_return_enable": True,
+        "roadside_reverse_return_enable": False,
         "crab_approach_slowdown_distance_m": 1.0,
         "crab_approach_min_speed_mps": 0.12,
         "rotate_180_timeout_s": 90.0,
@@ -2438,6 +2449,12 @@ class OperatorBrowserClient(GuestBrowserClient):
         """
         safety_gate = '[data-ui="service-safety-gate"]'
         service_screen = '[data-ui="operator-service-selection-screen"]'
+        # HH_261006 - The idle navigation map overlays the waiting screen.
+        # Use its real Home button before clicking the obscured service card;
+        # never dismiss an active mission's navigation or bypass hit testing.
+        idle_home = '[data-ui="idle-navigation-map"] .dd-back-action'
+        if self._element(idle_home).get("visibleCount") == 1:
+            self._click(idle_home, "close idle map through Home")
         # HH_261002 - The production waiting screen now requires a safety
         # notice acknowledgement before the service chooser appears.  Click
         # its visible confirmation through the same pointer path as every

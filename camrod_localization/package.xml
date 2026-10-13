@@ -37,7 +37,7 @@
   <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
-    <!-- HH_260113 Explicitly mark ament_cmake build to generate correct env hooks. -->
+    <!-- HH_260113 - Explicitly mark ament_cmake build to generate correct env hooks. -->
     <build_type>ament_cmake</build_type>
   </export>
 </package>

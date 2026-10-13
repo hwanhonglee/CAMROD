@@ -1,27 +1,32 @@
 # CARLA-only runtime overlay for constrained roadside returns.
 #
-# The production vehicle profile intentionally remains forward-only. Woraksan
-# B11-B13 do not contain Ranger's 180-degree swept envelope, so the simulator
-# composition keeps the outbound body yaw and retraces the inverted Lanelet2
-# route in reverse. The CARLA final gate intentionally stays at unity so manual
-# and low-speed reverse commands retain torque authority. Therefore ordinary
-# forward RPP linear limits are pre-scaled here to the same physical values as
-# production RPP behind its 0.5 gate. Only a source-tagged return goal selects
-# the separate RPPReverse plugin.
+# HH_261007 - The current site-geometry profile uses forward road returns and
+# disables reverse-goal selection. This overlay still supplies its existing
+# forward speed limits; RPPReverse remains available only to historical opt-in
+# profiles. Keeping the plugin registered does not select it for road returns.
+# Final reverse parking is handled by a separate parking controller.
+#
+# HH_261007 - Use a 4 km/h nominal road cruise within the requested 3--5 km/h
+# operating range. The former 0.555556 m/s pre-scale silently kept this profile
+# at 2 km/h even though its final gate already uses unity scale. These values
+# are targets, not minimum speeds: curvature, collision and final-approach
+# regulation may reduce them. Preserve parking/crab limits and manual 2 m/s.
+# Historical reverse opt-in profiles retain their separate slow RPPReverse;
+# the current forward-only site profile never selects that controller.
 controller_server:
   ros__parameters:
     controller_plugins: ["RPP", "RPPReverse", "RotationShim"]
     RPP:
-      # Production-equivalent physical cruise: 1.111111 * 0.5.
-      desired_linear_vel: 0.555556
+      # HH_261007 - 1.111111 m/s * 3.6 = 4 km/h, with a unity CARLA gate.
+      desired_linear_vel: 1.111111
       # Preserve the production final-approach and curvature-floor speeds.
       min_approach_linear_velocity: 0.138889
       regulated_linear_scaling_min_speed: 0.166667
     RotationShim:
       # Keep every forward Nav2 controller at the same physical cruise limit.
       # The campsite CRAB/ROTATE controller is a separate node, so these
-      # pre-limits do not reduce its unity-gate maneuver commands.
-      desired_linear_vel: 0.555556
+      # road target does not change its unity-gate maneuver commands.
+      desired_linear_vel: 1.111111
       min_approach_linear_velocity: 0.138889
       regulated_linear_scaling_min_speed: 0.166667
     RPPReverse:

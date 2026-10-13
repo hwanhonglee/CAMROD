@@ -11,7 +11,7 @@ wheel_odometry_checker:
 
     # --- Per-wheel settings: main ---
     main:
-      # HH_260410: Unified wheel odometry topic consumed by localization filters.
+      # HH_260410 - Unified wheel odometry topic consumed by localization filters.
       # HH_260721 - Monitor the canonical localization adapter output.
       topic: "/localization/input/wheel_odometry"
       # HH_260729 - Platform hardware false is an explicit degraded source.

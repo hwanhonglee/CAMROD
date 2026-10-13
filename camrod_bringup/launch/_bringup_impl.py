@@ -1153,6 +1153,12 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_enable', True),
             'Enable the control cmd_vel safety gate',
         ),
+        # HH_261007 - Disabled for real robots; CARLA may opt into authored-site manual recovery.
+        ('control_cmd_vel_gate_manual_service_area_enabled', False,
+         'Allow dedicated manual commands in a swept, authored campsite region'),
+        # HH_261007 - Optional simulator access geometry; production loads none.
+        ('control_cmd_vel_gate_manual_service_access_file', '',
+         'Explicit road-to-site access polygons for the manual swept-body check'),
         (
             'control_cmd_vel_raw_topic',
             cfg_get(launch_cfg, 'control/cmd_vel_raw_topic', '/control/cmd_vel_raw'),
@@ -1187,6 +1193,12 @@ def generate_launch_description():
             'control_manual_drive_lateral_limit_mps',
             cfg_get(launch_cfg, 'control/manual_drive_lateral_limit_mps', 0.20),
             'Maximum operator crab speed before the final safety gate',
+        ),
+        (
+            # HH_261007 - Only the CARLA site profile enables the wider UI cap.
+            'control_manual_drive_allow_carla_lateral_2mps',
+            False,
+            'CARLA-only opt-in to permit a manual lateral limit up to 2 m/s',
         ),
         (
             'control_manual_drive_angular_limit_radps',
@@ -3263,6 +3275,8 @@ def generate_launch_description():
     set_if_not_empty(planning_args, 'local_path_extractor_param_file', planning_overrides['local_path_extractor_param_file'])
     # HH_260720 - Build the camrod_control safety-gate argument contract.
     safety_gate_args = {
+        # HH_261007 - Share the authoritative map file; do not keep a second set of site polygons.
+        'cmd_vel_gate_manual_service_areas_file': lc['planning_state_machine_camping_sites_yaml'],
         'module_namespace': lc['control_namespace'],
         # Auto has a single public parking authority; private owners stay isolated.
         'parking_method': parking_method_resolved,
@@ -3540,6 +3554,9 @@ def generate_launch_description():
         ],
         'manual_drive_lateral_limit_mps': lc[
             'control_manual_drive_lateral_limit_mps'
+        ],
+        'manual_drive_allow_carla_lateral_2mps': lc[
+            'control_manual_drive_allow_carla_lateral_2mps'
         ],
         'manual_drive_angular_limit_radps': lc[
             'control_manual_drive_angular_limit_radps'

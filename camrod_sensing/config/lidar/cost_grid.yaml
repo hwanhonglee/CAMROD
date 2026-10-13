@@ -62,7 +62,7 @@
     cloud_min_z_m: -0.55
     cloud_max_z_m: 1.00
 
-    # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
+    # HH_260630 - Keep ego clearing close to the vehicle half-width so side/rear
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55
 
@@ -88,7 +88,7 @@
     # tolerance covers transient scheduling jitter, not a reduced input rate.
     max_message_age_s: 1.50
     publish_rate_hz: 10.0
-    # HH_260707: Keep the 10 Hz output fresh, but reuse the last built grid
+    # HH_260707 - Keep the 10 Hz output fresh, but reuse the last built grid
     # while inputs and rolling-grid origin remain effectively unchanged.
     rebuild_min_pose_delta_m: 0.05
     publish_lidar_status: false

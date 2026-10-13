@@ -2,6 +2,7 @@
 // This is a visual acceptance preview, not driving or perception evidence.
 import React, { useEffect, useMemo, useState } from 'react';
 import App from './App';
+import { SERVICE_BRAND } from './serviceBranding';
 import './DrivingPreview.css';
 
 const DEMO_SPEED = 0.92;
@@ -172,7 +173,8 @@ export default function DrivingPreview() {
   };
   return <div className="driving-preview-shell" data-theme={theme}>
     <header className="driving-preview-toolbar">
-      <div><strong>CAMROD · 3D 주행 화면 시연</strong><small>시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음</small></div>
+      {/* HH_261007 - Preview labels use the same public service brand as live UI. */}
+      <div><strong>{SERVICE_BRAND} · 3D 주행 화면 시연</strong><small>시연 상태·테마 선택용 개발 패널 · 로봇 명령 전송 없음</small></div>
       <nav aria-label="시연 상태 선택">
         {[['idle', '기존 홈'], ['delivery', '배송'], ['recall', '호출'], ['return', '복귀'], ['stop', '안전 정지'], ['stale', '시연: 수신 지연'], ['offline', '연결 끊김']].map(([value, label]) =>
           <button key={value} data-preview={value} aria-pressed={mode === value} onClick={() => choose(value)}>{label}</button>)}

@@ -1,8 +1,11 @@
 """Contracts for the virtual-only Woraksan CARLA Lanelet2 cohort."""
 
+import hashlib
 import importlib.util
+import json
 import math
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -17,10 +20,21 @@ from lanelet2.projection import LocalCartesianProjector
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = PACKAGE_ROOT.parent
-PRODUCTION_MAP = SOURCE_ROOT / "lanelet2_maps.osm"
 VIRTUAL_MAP = PACKAGE_ROOT / "config" / "woraksan_carla_lanelet2.osm"
 GENERATOR = (
     PACKAGE_ROOT / "tools" / "generate_woraksan_carla_lanelet_map.py"
+)
+BASELINE_PROVENANCE = (
+    PACKAGE_ROOT
+    / "test"
+    / "fixtures"
+    / "woraksan_carla_lanelet2_v27_baseline.json"
+)
+BASELINE_MAP = (
+    PACKAGE_ROOT
+    / "test"
+    / "fixtures"
+    / "woraksan_carla_lanelet2_v27_baseline.osm"
 )
 TARGET_WAYS = {
     6304,
@@ -41,6 +55,86 @@ PRESERVED_BOUNDARY_WAYS = {
     2716,
 }
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
+
+
+@pytest.fixture(scope="module")
+def virtual_map_baseline():
+    """Validate and return the self-contained immutable map-v27 source."""
+    provenance = json.loads(BASELINE_PROVENANCE.read_text(encoding="utf-8"))
+    assert set(provenance) == {
+        "schema",
+        "source_commit",
+        "source_path",
+        "git_blob",
+        "sha256",
+        "map_version",
+        "maximum_element_id",
+        "element_counts",
+        "generated_virtual_sha256",
+    }
+    assert provenance["schema"] == (
+        "camrod.virtual_carla.woraksan_map_baseline.v1"
+    )
+    assert provenance["element_counts"] == {
+        "node": 1660,
+        "way": 237,
+        "relation": 69,
+    }
+
+    source = BASELINE_MAP.read_bytes()
+    assert hashlib.sha256(source).hexdigest() == provenance["sha256"]
+
+    root = ET.fromstring(source)
+    metadata = root.find("MetaInfo")
+    assert metadata is not None
+    assert metadata.attrib["map_version"] == provenance["map_version"]
+    assert {
+        element_type: len(root.findall(element_type))
+        for element_type in ("node", "way", "relation")
+    } == provenance["element_counts"]
+    assert max(
+        int(element.attrib["id"])
+        for element in root
+        if element.tag in {"node", "way", "relation"}
+    ) == provenance["maximum_element_id"]
+    assert hashlib.sha256(VIRTUAL_MAP.read_bytes()).hexdigest() == (
+        provenance["generated_virtual_sha256"]
+    )
+
+    object_name = (
+        f'{provenance["source_commit"]}:{provenance["source_path"]}'
+    )
+    # HH_261013 - The XML fixture is authoritative in shallow clones and
+    # source archives. When the historical Git object is locally available,
+    # cross-check both its blob identity and bytes without making Git a fallback.
+    commit_object = f'{provenance["source_commit"]}^{{commit}}'
+    git_executable = shutil.which("git")
+    commit_available = (
+        git_executable is not None
+        and subprocess.run(
+            [git_executable, "cat-file", "-e", commit_object],
+            cwd=SOURCE_ROOT,
+            capture_output=True,
+        ).returncode == 0
+    )
+    if commit_available:
+        blob = subprocess.run(
+            [git_executable, "rev-parse", object_name],
+            cwd=SOURCE_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert blob == provenance["git_blob"]
+        historical_source = subprocess.run(
+            [git_executable, "show", object_name],
+            cwd=SOURCE_ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert historical_source == source
+
+    return BASELINE_MAP
 
 
 def _load_generator_module():
@@ -122,14 +216,16 @@ def _distance_to_linestring(point, line_string):
     )
 
 
-def test_virtual_map_is_a_reproducible_generated_artifact(tmp_path):
+def test_virtual_map_is_a_reproducible_generated_artifact(
+    tmp_path, virtual_map_baseline
+):
     regenerated = tmp_path / VIRTUAL_MAP.name
     subprocess.run(
         [
             sys.executable,
             str(GENERATOR),
             "--source",
-            str(PRODUCTION_MAP),
+            str(virtual_map_baseline),
             "--output",
             str(regenerated),
         ],
@@ -140,8 +236,10 @@ def test_virtual_map_is_a_reproducible_generated_artifact(tmp_path):
     assert regenerated.read_bytes() == VIRTUAL_MAP.read_bytes()
 
 
-def test_virtual_map_changes_only_the_authorized_centerline_surface():
-    production_root = ET.parse(PRODUCTION_MAP).getroot()
+def test_virtual_map_changes_only_the_authorized_centerline_surface(
+    virtual_map_baseline,
+):
+    production_root = ET.parse(virtual_map_baseline).getroot()
     virtual_root = ET.parse(VIRTUAL_MAP).getroot()
     production_nodes = _by_id(production_root, "node")
     virtual_nodes = _by_id(virtual_root, "node")
@@ -186,9 +284,13 @@ def test_virtual_map_changes_only_the_authorized_centerline_surface():
         )
 
 
-def test_corrected_connector_is_continuous_inside_lanelets_and_smooth():
+def test_corrected_connector_is_continuous_inside_lanelets_and_smooth(
+    virtual_map_baseline,
+):
     virtual = load(str(VIRTUAL_MAP), LocalCartesianProjector(ORIGIN))
-    production = load(str(PRODUCTION_MAP), LocalCartesianProjector(ORIGIN))
+    production = load(
+        str(virtual_map_baseline), LocalCartesianProjector(ORIGIN)
+    )
 
     corrected = []
     for lanelet_id in (2757, 2285):
@@ -252,9 +354,11 @@ def test_corrected_centerlines_retain_the_frozen_xodr_samples():
             assert nearest < 2.0e-6
 
 
-def test_b12_authored_replacement_is_preserved_without_reviving_deleted_geometry():
+def test_b12_authored_replacement_is_preserved_without_reviving_deleted_geometry(
+    virtual_map_baseline,
+):
     generator = _load_generator_module()
-    production_root = ET.parse(PRODUCTION_MAP).getroot()
+    production_root = ET.parse(virtual_map_baseline).getroot()
     virtual_root = ET.parse(VIRTUAL_MAP).getroot()
     assert not generator._legacy_b12_adjustment_enabled(production_root)
     assert virtual_root.find("way[@id='6975']") is None
@@ -292,9 +396,11 @@ def test_generator_recognizes_legacy_b12_only_with_its_original_samples():
         generator._legacy_b12_adjustment_enabled(root)
 
 
-def test_generator_rejects_unknown_replacement_without_inventing_geometry(tmp_path):
+def test_generator_rejects_unknown_replacement_without_inventing_geometry(
+    tmp_path, virtual_map_baseline
+):
     generator = _load_generator_module()
-    tree = ET.parse(PRODUCTION_MAP)
+    tree = ET.parse(virtual_map_baseline)
     relation = tree.getroot().find("relation[@id='2744']")
     for member in relation.findall("member"):
         if member.get("role") == "centerline":
@@ -307,9 +413,11 @@ def test_generator_rejects_unknown_replacement_without_inventing_geometry(tmp_pa
     assert not output.exists()
 
 
-def test_generated_ids_do_not_collide_with_later_authored_primitive_ids(tmp_path):
+def test_generated_ids_do_not_collide_with_later_authored_primitive_ids(
+    tmp_path, virtual_map_baseline
+):
     generator = _load_generator_module()
-    tree = ET.parse(PRODUCTION_MAP)
+    tree = ET.parse(virtual_map_baseline)
     ET.SubElement(tree.getroot(), "relation", {"id": "1000000"})
     source = tmp_path / "higher_relation_id.osm"
     output = tmp_path / "generated.osm"

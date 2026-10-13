@@ -32,7 +32,7 @@ public:
     enabled_ = declare_parameter<bool>("enabled", true);
     goal_topic_ = declare_parameter<std::string>("goal_topic", "/planning/goal_pose");
     start_topic_ = declare_parameter<std::string>("start_topic", "/planning/lanelet_pose");
-    // HH_260522: Canonical start selector only.
+    // HH_260522 - Canonical start selector only.
     // Supported values:
     // - robot_center_link (robot_base_link remains a compatibility alias)
     // - lanelet_pose
@@ -73,7 +73,7 @@ public:
     }
     action_name_ = declare_parameter<std::string>("action_name", "/planning/compute_path_to_pose");
     planner_id_ = declare_parameter<std::string>("planner_id", "Smac2D");
-    // HH_260528: One-shot planner fallback for robust path generation on planner-specific failures.
+    // HH_260528 - One-shot planner fallback for robust path generation on planner-specific failures.
     fallback_planner_id_ = declare_parameter<std::string>("fallback_planner_id", "NavFn");
     retry_with_fallback_planner_ =
       declare_parameter<bool>("retry_with_fallback_planner", true);
@@ -85,22 +85,22 @@ public:
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
     enable_periodic_replan_ = declare_parameter<bool>("enable_periodic_replan", false);
-    // HH_260309-00:00 Prevent compute-path request storms.
+    // HH_260309 - Prevent compute-path request storms.
     min_request_interval_s_ = declare_parameter<double>("min_request_interval_s", 0.25);
-    // HH_260309-00:00 When NavigateToPose BT is running, planner_server already computes paths.
+    // HH_260309 - When NavigateToPose BT is running, planner_server already computes paths.
     // Pause this helper to avoid action contention/abort storms.
     pause_when_navigate_active_ = declare_parameter<bool>("pause_when_navigate_active", true);
     navigate_status_topic_ = declare_parameter<std::string>(
       "navigate_status_topic", "/planning/navigate_to_pose/_action/status");
-    // HH_260306-00:00 Default to event-driven mode.
+    // HH_260306 - Default to event-driven mode.
     replan_rate_hz_ = declare_parameter<double>("replan_rate_hz", 0.0);
-    // HH_260306-00:00 Set <=0 to disable timeout-based cancellation.
+    // HH_260306 - Set <=0 to disable timeout-based cancellation.
     request_timeout_s_ = declare_parameter<double>("request_timeout_s", 0.0);
-    // HH_260306-00:00 Backoff interval after failed/canceled planner result.
+    // HH_260306 - Backoff interval after failed/canceled planner result.
     retry_after_failure_s_ = declare_parameter<double>("retry_after_failure_s", 0.8);
     start_replan_distance_ = declare_parameter<double>("start_replan_distance", 0.4);
     goal_replan_distance_ = declare_parameter<double>("goal_replan_distance", 0.1);
-    // HH_260309-00:00 Ignore repeated equivalent goal messages (same XY/yaw) to avoid
+    // HH_260309 - Ignore repeated equivalent goal messages (same XY/yaw) to avoid
     // action churn when upstream goal relays republish identical snapped goals.
     ignore_duplicate_goal_messages_ =
       declare_parameter<bool>("ignore_duplicate_goal_messages", true);
@@ -108,11 +108,11 @@ public:
       declare_parameter<double>("duplicate_goal_xy_epsilon_m", 0.05);
     duplicate_goal_yaw_epsilon_deg_ =
       declare_parameter<double>("duplicate_goal_yaw_epsilon_deg", 4.0);
-    // HH_260309-00:00 Debounce transient inactive blips from navigate status topic.
+    // HH_260309 - Debounce transient inactive blips from navigate status topic.
     navigate_inactive_grace_s_ = declare_parameter<double>("navigate_inactive_grace_s", 0.8);
     start_replan_yaw_deg_ = declare_parameter<double>("start_replan_yaw_deg", 10.0);
     replan_on_start_change_ = declare_parameter<bool>("replan_on_start_change", false);
-    // HH_260306-00:00 Stop replanning after reaching goal until a new goal is received.
+    // HH_260306 - Stop replanning after reaching goal until a new goal is received.
     stop_replan_after_goal_reached_ =
       declare_parameter<bool>("stop_replan_after_goal_reached", true);
     // HH_260623 - Replanner-only completion follows center-based arrival.
@@ -386,7 +386,7 @@ private:
       static_cast<unsigned long>(goal_msg_counter_),
       latest_goal_.pose.position.x, latest_goal_.pose.position.y,
       latest_goal_.header.frame_id.c_str());
-    // HH_260306-00:00 New goal always re-enables replanning.
+    // HH_260306 - New goal always re-enables replanning.
     goal_reached_latched_ = false;
     force_tf_start_once_ = false;
     tf_start_fallback_used_for_goal_ = false;
@@ -394,7 +394,7 @@ private:
     fallback_planner_used_for_goal_ = false;
     last_request_used_fallback_planner_ = false;
     next_allowed_request_time_ = now();
-    // HH_260306-00:00 New goal must force a fresh request immediately.
+    // HH_260306 - New goal must force a fresh request immediately.
     if (in_flight_) {
       if (active_goal_handle_) {
         (void)action_client_->async_cancel_goal(active_goal_handle_);
@@ -430,7 +430,7 @@ private:
       return;
     }
     if (immediate_replan_on_start_) {
-      // HH_260307-00:00 Avoid request storms on high-rate start pose updates.
+      // HH_260307 - Avoid request storms on high-rate start pose updates.
       // - Always trigger once after startup (first valid start pose)
       // - Trigger on every start update only when start-change replanning is enabled
       // - Do not trigger repeatedly just because last request failed/cleared
@@ -608,7 +608,7 @@ private:
           tf_start_fallback_used_for_goal_ = false;
           return;
         }
-        // HH_260528: Retry once with fallback planner when primary planner fails.
+        // HH_260528 - Retry once with fallback planner when primary planner fails.
         if (retry_with_fallback_planner_ && !last_request_used_fallback_planner_ &&
           !fallback_planner_used_for_goal_ && !fallback_planner_id_.empty() &&
           fallback_planner_id_ != planner_id_ && has_goal_)
@@ -624,7 +624,7 @@ private:
           onTimer();
           return;
         }
-        // HH_260306-00:00 If explicit topic-start is rejected (often due lethal/unknown start cell),
+        // HH_260306 - If explicit topic-start is rejected (often due lethal/unknown start cell),
         // retry once using TF start (map->robot_center_link) for this goal.
         if (use_topic_start_pose_ && !last_request_used_tf_start_ &&
           !tf_start_fallback_used_for_goal_ && has_goal_)
@@ -640,7 +640,7 @@ private:
           onTimer();
           return;
         }
-        // HH_260309-00:00 In goal-event mode, do not auto-retry forever on the same failed goal.
+        // HH_260309 - In goal-event mode, do not auto-retry forever on the same failed goal.
         // Wait for a truly new goal (or explicit start-change replanning mode) to avoid action storms.
         const bool allow_automatic_retry = enable_periodic_replan_ || replan_on_start_change_;
         if (!allow_automatic_retry) {

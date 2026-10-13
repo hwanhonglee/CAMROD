@@ -648,6 +648,22 @@ public:
   }
 
 private:
+  // HH_261012 - V4 used four bounded pauses before about 100 degrees of yaw.
+  // Permit ten within the same immutable position and 90 s overall limits.
+  static constexpr int kSiteForwardReturnRecenteringLimit = 10;
+  // HH_261012 - Explicit per-site budgets may consume only the unchanged
+  // overall deadline; twenty is an absolute ceiling, never the native default.
+  static constexpr int kSiteForwardReturnRecenteringAbsoluteLimit = 20;
+
+  // HH_261012 - Optional catalog values are mission-local, not new native
+  // defaults. NaN preserves malformed/partial opt-ins for fail-closed admission.
+  struct SiteForwardReturnProfile {
+    double centering_tolerance_m{std::numeric_limits<double>::quiet_NaN()};
+    double recenter_trigger_m{std::numeric_limits<double>::quiet_NaN()};
+    std::optional<double> steering_settle_s;
+    std::optional<int> recentering_limit;
+  };
+
   friend class CampingSiteManeuverControllerTest;
 
   bool isActivePhase() const {
@@ -738,6 +754,8 @@ private:
   void loadCampingSites() {
     camping_site_goals_.clear();
     camping_site_service_modes_.clear();
+    camping_site_return_route_policies_.clear();
+    camping_site_forward_return_profiles_.clear();
     if (camping_sites_yaml_.empty()) {
       return;
     }
@@ -773,6 +791,50 @@ private:
                                  : "turnaround";
         const CampsiteServiceMode service_mode =
             serviceModeFromName(configured_mode);
+        // HH_261012 - Return routing is independent of the required service
+        // turnaround. Only an explicit simulator catalog may opt a site in;
+        // omitted fields preserve the native controller/planner contract.
+        const std::string return_route_policy =
+            item["return_route_policy"]
+                ? item["return_route_policy"].as<std::string>() : "native";
+        std::optional<SiteForwardReturnProfile> forward_return_profile;
+        if (item["forward_return_centering_tolerance_m"] ||
+            item["forward_return_recenter_trigger_m"] ||
+            item["forward_return_steering_settle_s"] ||
+            item["forward_return_recentering_limit"]) {
+          forward_return_profile.emplace();
+          // HH_261012 - An explicit malformed dwell must not disappear into
+          // the omitted/native case if any conversion in this row throws.
+          if (item["forward_return_steering_settle_s"]) {
+            forward_return_profile->steering_settle_s =
+                std::numeric_limits<double>::quiet_NaN();
+          }
+          // HH_261012 - Invalid integer syntax retains a rejected sentinel,
+          // even when another explicit profile field fails conversion first.
+          if (item["forward_return_recentering_limit"]) {
+            forward_return_profile->recentering_limit = 0;
+          }
+          try {
+            forward_return_profile->centering_tolerance_m =
+                item["forward_return_centering_tolerance_m"].as<double>();
+            forward_return_profile->recenter_trigger_m =
+                item["forward_return_recenter_trigger_m"].as<double>();
+            if (forward_return_profile->steering_settle_s.has_value()) {
+              forward_return_profile->steering_settle_s =
+                  item["forward_return_steering_settle_s"].as<double>();
+            }
+            if (forward_return_profile->recentering_limit.has_value()) {
+              forward_return_profile->recentering_limit =
+                  item["forward_return_recentering_limit"].as<int>();
+            }
+          } catch (const YAML::Exception &error) {
+            // HH_261012 - Keep this row invalid without dropping later sites
+            // or silently converting an explicit opt-in to legacy defaults.
+            RCLCPP_WARN(get_logger(),
+                        "invalid forward return profile at site row %zu: %s",
+                        index, error.what());
+          }
+        }
         if (configured_mode != "turnaround" &&
             configured_mode != "roadside_stop") {
           RCLCPP_WARN(get_logger(),
@@ -785,6 +847,13 @@ private:
             if (!key.empty()) {
               camping_site_goals_[key] = pose;
               camping_site_service_modes_[key] = service_mode;
+              camping_site_return_route_policies_[key] = return_route_policy;
+              if (forward_return_profile.has_value()) {
+                camping_site_forward_return_profiles_[key] =
+                    *forward_return_profile;
+              } else {
+                camping_site_forward_return_profiles_.erase(key);
+              }
             }
           }
         }
@@ -1156,6 +1225,7 @@ private:
         std::max(0.01, activeCrabSpeedMps() * crab_timeout_speed_scale_);
     crab_duration_s_ = offset > 0.0 ? offset / effective_speed : 0.0;
     battery_urgent_return_source_.clear();
+    clearSiteForwardReturn();
     recall_final_return_requested_ = false;
     return_requested_ = false;
     pending_return_source_.clear();
@@ -1188,6 +1258,169 @@ private:
     return configured_mode == camping_site_service_modes_.end()
                ? CampsiteServiceMode::kTurnaround
                : configured_mode->second;
+  }
+
+  std::string returnRoutePolicyForKey(const std::string &key) const {
+    const auto configured = camping_site_return_route_policies_.find(key);
+    return configured == camping_site_return_route_policies_.end()
+               ? "native" : configured->second;
+  }
+
+  void clearSiteForwardReturn() {
+    if (site_forward_return_centering_active_) {
+      rotate_entry_centering_active_ = false;
+    }
+    if (site_forward_return_active_) {
+      // HH_261012 - Precise departure centering is mission-local; restore the
+      // native entry sequencer before cancel, restart, or battery evacuation.
+      rotate_entry_centering_sequencer_.setConfig(
+          camrod_control::CampsiteCrabReturnConfig{
+              return_lateral_transition_tolerance_m_,
+              return_lateral_hysteresis_m_, return_steering_settle_s_});
+    }
+    site_forward_return_active_ = false;
+    site_forward_return_centering_active_ = false;
+    site_forward_return_yaw_ready_ = false;
+    site_forward_return_handoff_verified_ = false;
+    site_forward_return_recentering_count_ = 0;
+    active_site_forward_return_profile_.reset();
+  }
+
+  double siteForwardReturnTurnPositionLimitM() const {
+    return rotate_entry_max_position_error_m_ > 0.0
+        ? rotate_entry_max_position_error_m_ : entry_position_tolerance_m_;
+  }
+
+  double siteForwardReturnCenteringToleranceM() const {
+    // HH_261012 - Reserve most of the unchanged pivot envelope for physical
+    // drift. V2 B4 began at 0.0426 m and exhausted its 0.05 m guard mid-turn.
+    return active_site_forward_return_profile_.has_value()
+        ? active_site_forward_return_profile_->centering_tolerance_m
+        : std::min(0.01, 0.2 * siteForwardReturnTurnPositionLimitM());
+  }
+
+  double siteForwardReturnRecenterTriggerM() const {
+    return active_site_forward_return_profile_.has_value()
+        ? active_site_forward_return_profile_->recenter_trigger_m
+        : 0.5 * siteForwardReturnTurnPositionLimitM();
+  }
+
+  double siteForwardReturnSteeringSettleS() const {
+    return active_site_forward_return_profile_.has_value() &&
+           active_site_forward_return_profile_->steering_settle_s.has_value()
+        ? *active_site_forward_return_profile_->steering_settle_s
+        : return_steering_settle_s_;
+  }
+
+  int siteForwardReturnRecenteringLimit() const {
+    return active_site_forward_return_profile_.has_value() &&
+           active_site_forward_return_profile_->recentering_limit.has_value()
+        ? *active_site_forward_return_profile_->recentering_limit
+        : kSiteForwardReturnRecenteringLimit;
+  }
+
+  bool configureSiteForwardReturnProfile() {
+    active_site_forward_return_profile_.reset();
+    const auto configured =
+        camping_site_forward_return_profiles_.find(site_goal_key_);
+    const double guard_m = siteForwardReturnTurnPositionLimitM();
+    const double target_m = configured == camping_site_forward_return_profiles_.end()
+        ? siteForwardReturnCenteringToleranceM()
+        : configured->second.centering_tolerance_m;
+    const double trigger_m = configured == camping_site_forward_return_profiles_.end()
+        ? siteForwardReturnRecenterTriggerM()
+        : configured->second.recenter_trigger_m;
+    // HH_261012 - B9/B10 may reserve a different centering margin, but never
+    // enlarge the actual hard guard or accept a partial/non-finite profile.
+    if (!std::isfinite(rotate_entry_max_position_error_m_) ||
+        !std::isfinite(guard_m) || !std::isfinite(target_m) ||
+        !std::isfinite(trigger_m) || !(0.0 < target_m && target_m < trigger_m &&
+                                     trigger_m < guard_m)) {
+      return false;
+    }
+    if (configured != camping_site_forward_return_profiles_.end()) {
+      // HH_261012 - B10 may shorten only its departure-centering dwell after
+      // measured wheel settling. Never accept zero, non-finite, or a value
+      // longer than the configured native dwell; all motion guards persist.
+      const auto &settle_s = configured->second.steering_settle_s;
+      if (settle_s.has_value() &&
+          (!std::isfinite(*settle_s) || *settle_s <= 0.0 ||
+           !std::isfinite(return_steering_settle_s_) ||
+           *settle_s > return_steering_settle_s_)) {
+        return false;
+      }
+      const auto &limit = configured->second.recentering_limit;
+      if (limit.has_value() &&
+          (*limit < 1 || *limit > kSiteForwardReturnRecenteringAbsoluteLimit)) {
+        return false;
+      }
+      active_site_forward_return_profile_ = configured->second;
+    }
+    return true;
+  }
+
+  double siteForwardReturnCenteringPositionLimitM() const {
+    // HH_261012 - Initial service settling may use the existing admission
+    // envelope. Once a pivot has begun, no correction may escape its guard.
+    return site_forward_return_recentering_count_ > 0
+        ? std::min(rotate_entry_centering_max_initial_error_m_,
+                   siteForwardReturnTurnPositionLimitM())
+        : rotate_entry_centering_max_initial_error_m_;
+  }
+
+  bool siteForwardReturnCenteredForTurn() const {
+    const double tolerance_m = siteForwardReturnCenteringToleranceM();
+    return poseIsFresh() && std::isfinite(tolerance_m) && tolerance_m > 0.0 &&
+           std::isfinite(rotationEntryPositionErrorM()) &&
+           rotationEntryPositionErrorM() <= tolerance_m;
+  }
+
+  bool siteForwardReturnTurnPositionValid() const {
+    // HH_261012 - The second heading change must stay at the serviced bay,
+    // never migrate to the narrow road. Reuse the existing entry turn bound;
+    // even profiles without that optional bound retain the entry tolerance.
+    const double maximum_error_m = siteForwardReturnTurnPositionLimitM();
+    return poseIsFresh() && std::isfinite(maximum_error_m) &&
+           maximum_error_m > 0.0 &&
+           std::isfinite(rotationEntryPositionErrorM()) &&
+           rotationEntryPositionErrorM() <= maximum_error_m;
+  }
+
+  void beginSiteForwardReturnRecentering() {
+    // HH_261012 - V3 physically drifted more than 5 cm despite a precise
+    // start. Pause at the validated profile trigger (half guard by default),
+    // never widen the immutable guard.
+    publishZero();
+    if (!siteForwardReturnTurnPositionValid()) {
+      setError("forward_loop recenter pause outside immutable turn guard");
+      return;
+    }
+    if (site_forward_return_recentering_count_ >=
+        siteForwardReturnRecenteringLimit()) {
+      setError("forward_loop recenter recovery limit reached: " +
+               std::to_string(site_forward_return_recentering_count_) + "/" +
+               std::to_string(siteForwardReturnRecenteringLimit()) +
+               "; immutable turn guard retained");
+      return;
+    }
+    ++site_forward_return_recentering_count_;
+    site_forward_return_centering_active_ = true;
+    if (!beginRotationEntryCentering()) {
+      return;
+    }
+    yaw_alignment_settling_.reset();
+    phase_detail_ = "forward_loop pivot paused for bounded recenter recovery=" +
+                    std::to_string(site_forward_return_recentering_count_) +
+                    "/" + std::to_string(siteForwardReturnRecenteringLimit()) +
+                    " error_m=" + fixed(rotationEntryPositionErrorM(), 3) +
+                    " target_m=" + fixed(siteForwardReturnCenteringToleranceM(), 3) +
+                    " trigger_m=" + fixed(siteForwardReturnRecenterTriggerM(), 3) +
+                    " steering_settle_s=" + fixed(siteForwardReturnSteeringSettleS(), 3) +
+                    "; preserve remaining yaw target and overall phase deadline";
+    RCLCPP_INFO(get_logger(), "%s", phase_detail_.c_str());
+    // Do not setPhase: the 90 s steady deadline includes every pause, and
+    // target_yaw_ remains the original outbound direction throughout.
+    publishStatus(true);
   }
 
   double activeCrabSpeedMps() const {
@@ -1598,6 +1831,7 @@ private:
     }
     recall_turnaround_return_active_ = false;
     battery_urgent_return_source_.clear();
+    clearSiteForwardReturn();
     recall_final_return_requested_ = false;
     if (occupiedSiteBlocksCurrentMission(site_goal_key_)) {
       publishZero();
@@ -1873,6 +2107,9 @@ private:
       publishZero();
       if (poseIsFresh()) {
         beginReturnExit("return=" + source + "; final loading confirmation accepted");
+        if (phase_ == CampingSiteManeuverPhase::kError) {
+          return {false, phase_detail_};
+        }
       } else {
         publishServiceState("final loading confirmation accepted; waiting for fresh pose");
         publishStatus(true);
@@ -1943,6 +2180,9 @@ private:
       pending_return_source_ = source;
       beginReturnExit("return=" + source);
       pending_return_source_.clear();
+      if (phase_ == CampingSiteManeuverPhase::kError) {
+        return {false, phase_detail_};
+      }
       return {true, "site maneuver return started"};
     }
     if (phase_ == CampingSiteManeuverPhase::kIdle ||
@@ -1993,6 +2233,9 @@ private:
     }
     publishZero();
     battery_urgent_return_source_ = source;
+    // HH_261012 - Urgent battery evacuation keeps its existing per-site
+    // semantics; a normal-service route preference cannot authorize it.
+    clearSiteForwardReturn();
     if (!poseIsFresh() || !std::isfinite(start_yaw_) ||
         !std::isfinite(return_anchor_x_) || !std::isfinite(return_anchor_y_)) {
       setError("battery_urgent_return requires fresh finite exit geometry");
@@ -2102,6 +2345,60 @@ private:
   }
 
   void beginReturnExit(const std::string &reason) {
+    if (battery_urgent_return_source_.empty()) {
+      const std::string policy = returnRoutePolicyForKey(site_goal_key_);
+      if (policy != "native" && policy != "forward_loop") {
+        setError("unsupported per-site return_route_policy=" + policy);
+        return;
+      }
+      if (policy == "forward_loop") {
+        // HH_261012 - Preserve the completed service turn and loading waits.
+        // Only the accepted departure restores outbound yaw, while still at
+        // the serviced bay. Never substitute a road-side 180-degree turn.
+        if (active_service_mode_ != CampsiteServiceMode::kTurnaround ||
+            (site_entry_mode_ != "crab" && !recall_turnaround_return_active_) ||
+            !poseIsFresh() ||
+            !std::isfinite(start_yaw_) ||
+            !std::isfinite(rotate_180_timeout_s_) || rotate_180_timeout_s_ <= 0.0) {
+          setError("forward_loop requires a fresh centered crab-turnaround "
+                   "site pose and a finite positive turn timeout");
+          return;
+        }
+        if (!configureSiteForwardReturnProfile()) {
+          setError("invalid forward_loop centering profile: require finite "
+                   "0 < centering tolerance < recenter trigger < turn guard; "
+                   "optional dwell must be finite, positive and <= native dwell; "
+                   "optional recentering limit must be an integer in [1,20]");
+          return;
+        }
+        site_forward_return_active_ = true;
+        site_forward_return_yaw_ready_ = false;
+        site_forward_return_handoff_verified_ = false;
+        if (!siteForwardReturnCenteredForTurn()) {
+          // HH_261012 - A completed first pivot can leave centimetres of
+          // settling error. Reuse the existing bounded in-site centering
+          // sequence before the second pivot, without enlarging its envelope.
+          if (!beginRotationEntryCentering()) {
+            return;
+          }
+          site_forward_return_centering_active_ = true;
+        }
+        target_yaw_ = start_yaw_;
+        publishZero();
+        setPhase(CampingSiteManeuverPhase::kAlignRetraceYaw,
+                 reason + "; return_route_policy=forward_loop; restore "
+                     "outbound heading inside serviced site before crab exit; "
+                     "centering_tolerance_m=" +
+                     fixed(siteForwardReturnCenteringToleranceM(), 3) +
+                     " recenter_trigger_m=" +
+                     fixed(siteForwardReturnRecenterTriggerM(), 3) +
+                     " steering_settle_s=" +
+                     fixed(siteForwardReturnSteeringSettleS(), 3) +
+                     " recentering_limit=" +
+                     std::to_string(siteForwardReturnRecenteringLimit()));
+        return;
+      }
+    }
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
       // HH_260830 - Always leave B11-B13 at the original heading. Production
       // requests its forward loop at the shared lane anchor; the CARLA-only
@@ -2518,6 +2815,10 @@ private:
     phase_start_wall_time_ = std::chrono::steady_clock::now();
     phase_detail_ = detail;
     yaw_alignment_settling_.reset();
+    if (phase_ == CampingSiteManeuverPhase::kIdle ||
+        phase_ == CampingSiteManeuverPhase::kError) {
+      clearSiteForwardReturn();
+    }
     return_lanelet_handoff_candidate_ = false;
     return_lanelet_handoff_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     if (phase_ == CampingSiteManeuverPhase::kIdle ||
@@ -2920,12 +3221,26 @@ private:
 
   bool beginRotationEntryCentering() {
     const double initial_error_m = rotationEntryPositionErrorM();
+    const double maximum_initial_error_m = site_forward_return_active_
+        ? siteForwardReturnCenteringPositionLimitM()
+        : rotate_entry_centering_max_initial_error_m_;
     if (!std::isfinite(initial_error_m) ||
-        initial_error_m > rotate_entry_centering_max_initial_error_m_) {
+        initial_error_m > maximum_initial_error_m) {
       setError("ROTATE_180 centering rejected outside recovery envelope: " +
                rotationEntryPoseDetail() + " centering_max_initial_error=" +
-               fixed(rotate_entry_centering_max_initial_error_m_, 3) + "m");
+               fixed(maximum_initial_error_m, 3) + "m");
       return false;
+    }
+    if (site_forward_return_active_) {
+      // HH_261012 - A 0.02 m lateral latch cannot reach a 0.01 m radial
+      // target. Tighten only this optional second-pivot episode; retain the
+      // native dwell unless the validated site profile explicitly overrides
+      // it. Hysteresis, speed, timeout, and the native helper stay unchanged.
+      rotate_entry_centering_sequencer_.setConfig(
+          camrod_control::CampsiteCrabReturnConfig{
+              std::min(return_lateral_transition_tolerance_m_,
+                       0.5 * siteForwardReturnCenteringToleranceM()),
+              return_lateral_hysteresis_m_, siteForwardReturnSteeringSettleS()});
     }
     rotate_entry_centering_active_ = true;
     rotate_entry_centering_start_wall_time_ = std::chrono::steady_clock::now();
@@ -2959,8 +3274,41 @@ private:
     const double body_longitudinal_error =
         std::cos(yaw) * dx + std::sin(yaw) * dy;
     const double body_lateral_error = -std::sin(yaw) * dx + std::cos(yaw) * dy;
+    const double centering_now_s = now().seconds();
+    const double precise_target_m = siteForwardReturnCenteringToleranceM();
+    const double lateral_latch_limit_m =
+        std::min(return_lateral_transition_tolerance_m_,
+                 0.5 * precise_target_m) + return_lateral_hysteresis_m_;
+    // HH_261012 - B3/B9 retained lateral drift after longitudinal became
+    // close; B10 then oscillated beyond its unchanged active pivot guard.
+    // Revisit lateral only when longitudinal alone cannot reach the radial
+    // goal. Never erase a latch fault or renew either steady deadline/count.
+    if (site_forward_return_active_ && site_forward_return_centering_active_ &&
+        rotate_entry_centering_sequencer_.stage() ==
+            camrod_control::CampsiteCrabReturnStage::kLongitudinal &&
+        std::isfinite(rotate_entry_max_position_error_m_) &&
+        std::isfinite(siteForwardReturnTurnPositionLimitM()) &&
+        std::isfinite(precise_target_m) && precise_target_m > 0.0 &&
+        std::isfinite(body_longitudinal_error) &&
+        std::isfinite(body_lateral_error) && std::isfinite(centering_now_s) &&
+        std::isfinite(return_lateral_transition_tolerance_m_) &&
+        std::isfinite(return_lateral_hysteresis_m_) &&
+        std::isfinite(lateral_latch_limit_m) &&
+        std::isfinite(rotate_entry_centering_max_speed_mps_) &&
+        std::isfinite(return_translation_gain_) &&
+        !siteForwardReturnCenteredForTurn() &&
+        std::abs(body_longitudinal_error) <= precise_target_m &&
+        std::abs(body_lateral_error) > precise_target_m &&
+        std::abs(body_lateral_error) <= lateral_latch_limit_m) {
+      rotate_entry_centering_sequencer_.reset(centering_now_s);
+      RCLCPP_INFO(get_logger(),
+                  "forward_loop precise centering lateral realign: "
+                  "longitudinal_error=%.6fm lateral_error=%.6fm target=%.6fm; "
+                  "preserve centering/phase deadlines and pivot count",
+                  body_longitudinal_error, body_lateral_error, precise_target_m);
+    }
     const auto command_result = rotate_entry_centering_sequencer_.update(
-        body_longitudinal_error, body_lateral_error, now().seconds(),
+        body_longitudinal_error, body_lateral_error, centering_now_s,
         rotate_entry_centering_max_speed_mps_, return_translation_gain_);
     if (command_result.invalid_input) {
       setError("non-finite ROTATE_180 entry centering geometry");
@@ -3246,7 +3594,12 @@ private:
 
   std::string returnRequestSource(const std::string &reason) const {
     if (battery_urgent_return_source_.empty()) {
-      return "camping_site_maneuver_controller:" + reason;
+      // HH_261012 - Reuse the existing planner's authenticated controller
+      // marker only after this mission has proved the forward exit handoff.
+      // The catalog field alone, or a user-provided return reason, is not it.
+      return "camping_site_maneuver_controller:" + reason +
+             (site_forward_return_handoff_verified_
+                  ? ":site_policy_roadside_forward" : "");
     }
     // The planner selects B11–B13's legal one-way route from roadside_forward.
     // B1–B10 urgent recalls began in roadside mode but must not inherit that
@@ -3259,6 +3612,25 @@ private:
   void publishReturnRequest(const std::string &reason) {
     if (!request_return_to_drop_zone_on_done_ || return_acknowledged_) {
       return;
+    }
+    if (site_forward_return_active_ &&
+        !site_forward_return_handoff_verified_) {
+      // HH_261012 - The ordinary live-lanelet/settled-lateral branches own
+      // arrival here. Fail closed on lost heading instead of asking Nav2 to
+      // perform the missing turn on a narrow road. Retries keep this proof.
+      const double heading_error = poseIsFresh()
+          ? std::abs(camrod_control::normalizeAngle(
+                camrod_control::yawFromPose(*last_pose_) - start_yaw_))
+          : std::numeric_limits<double>::infinity();
+      if (phase_ != CampingSiteManeuverPhase::kDone ||
+          !site_forward_return_yaw_ready_ ||
+          !std::isfinite(heading_error) ||
+          heading_error > rotate_yaw_tolerance_deg_ * M_PI / 180.0) {
+        setError("forward_loop handoff requires completed in-site yaw "
+                 "alignment and fresh outbound road heading");
+        return;
+      }
+      site_forward_return_handoff_verified_ = true;
     }
     const rclcpp::Time current_time = now();
     if (return_published_ && return_request_retry_period_s_ > 0.0 &&
@@ -3288,6 +3660,23 @@ private:
       setError("fresh finite motion pose unavailable during " +
                phaseName(phase_));
       publishStatus(false);
+      return;
+    }
+    if (site_forward_return_active_ &&
+        phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw &&
+        ((!site_forward_return_centering_active_ &&
+          !siteForwardReturnTurnPositionValid()) ||
+         (site_forward_return_centering_active_ &&
+          (!std::isfinite(rotationEntryPositionErrorM()) ||
+           rotationEntryPositionErrorM() > siteForwardReturnCenteringPositionLimitM() ||
+           (rotate_entry_centering_timeout_s_ > 0.0 &&
+            rotationEntryCenteringWallElapsedSeconds() >=
+                rotate_entry_centering_timeout_s_))) ||
+         phaseWallElapsedSeconds() > rotate_180_timeout_s_)) {
+      // HH_261012 - Opt-in heading preparation is position- and wall-clock
+      // bounded independently of a stalled ROS clock or repeated Return.
+      setError("forward_loop in-site heading preparation exceeded site "
+               "position bound or steady centering/turn timeout");
       return;
     }
     if (!battery_urgent_return_source_.empty() &&
@@ -3568,9 +3957,37 @@ private:
         beginReturnExit("recall_final_return confirmed; fresh pose recovered");
       }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw) {
-      if (publishRotate()) {
+      if (site_forward_return_active_ && site_forward_return_centering_active_) {
+        if (camrod_control::campsiteCrabReturnReadyForRoute(
+                rotate_entry_centering_sequencer_.stage()) &&
+            siteForwardReturnCenteredForTurn()) {
+          publishZero();
+          rotate_entry_centering_active_ = false;
+          site_forward_return_centering_active_ = false;
+          yaw_alignment_settling_.reset();
+          phase_detail_ = "forward_loop precise site center restored; error_m=" +
+                          fixed(rotationEntryPositionErrorM(), 3) +
+                          " tolerance_m=" +
+                          fixed(siteForwardReturnCenteringToleranceM(), 3) +
+                          " recenter_recoveries=" +
+                          std::to_string(site_forward_return_recentering_count_) +
+                          "/" + std::to_string(siteForwardReturnRecenteringLimit()) +
+                          "; align outbound yaw before crab exit";
+        } else {
+          publishRotationEntryCentering();
+        }
+      } else if (site_forward_return_active_ &&
+                 rotationEntryPositionErrorM() >
+                     siteForwardReturnRecenterTriggerM()) {
+        beginSiteForwardReturnRecentering();
+      } else if (publishRotate()) {
+        if (site_forward_return_active_) {
+          site_forward_return_yaw_ready_ = true;
+        }
         setPhase(CampingSiteManeuverPhase::kCrabOut,
-                 "entry-lanelet retrace yaw confirmed");
+                 site_forward_return_active_
+                     ? "forward_loop outbound yaw confirmed inside site; crab exit"
+                     : "entry-lanelet retrace yaw confirmed");
       }
     } else if (phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw) {
       if (publishRotate()) {
@@ -3723,6 +4140,21 @@ private:
         "phase=" + phaseName(phase_) +
         " site=" + site_goal_key_ +
         " service_mode=" + serviceModeName(active_service_mode_) +
+        " return_route_policy=" + returnRoutePolicyForKey(site_goal_key_) +
+        " site_forward_return_active=" +
+        (site_forward_return_active_ ? "true" : "false") +
+        " site_forward_return_centering=" +
+        (site_forward_return_centering_active_ ? "true" : "false") +
+        " site_forward_return_recenter_count=" +
+        std::to_string(site_forward_return_recentering_count_) +
+        " site_forward_return_recenter_limit=" +
+        std::to_string(siteForwardReturnRecenteringLimit()) +
+        " site_forward_return_centering_tolerance_m=" +
+        fixed(siteForwardReturnCenteringToleranceM(), 3) +
+        " site_forward_return_recenter_trigger_m=" +
+        fixed(siteForwardReturnRecenterTriggerM(), 3) +
+        " site_forward_return_steering_settle_s=" +
+        fixed(siteForwardReturnSteeringSettleS(), 3) +
         " roadside_return=" +
         (roadsideForwardLoopActive()     ? "forward_loop"
          : roadsideReverseReturnActive() ? "reverse_without_turnaround"
@@ -3778,6 +4210,18 @@ private:
             {"phase_detail", phase_detail_},
             {"phase_ros_elapsed_s", fixed(phase_ros_elapsed_s, 2)},
             {"phase_wall_elapsed_s", fixed(phase_wall_elapsed_s, 2)},
+            {"site_forward_return_recenter_count",
+             std::to_string(site_forward_return_recentering_count_)},
+            {"site_forward_return_recenter_limit",
+             std::to_string(siteForwardReturnRecenteringLimit())},
+            {"site_forward_return_centering_tolerance_m",
+             fixed(siteForwardReturnCenteringToleranceM(), 3)},
+            {"site_forward_return_recenter_trigger_m",
+             fixed(siteForwardReturnRecenterTriggerM(), 3)},
+            {"site_forward_return_steering_settle_s",
+             fixed(siteForwardReturnSteeringSettleS(), 3)},
+            {"site_forward_return_centering_position_limit_m",
+             fixed(siteForwardReturnCenteringPositionLimitM(), 3)},
             {"current_yaw_deg", yaw_available
                                     ? fixed(current_yaw * 180.0 / M_PI, 3)
                                     : "unavailable"},
@@ -4050,6 +4494,14 @@ private:
   bool active_recall_wait_mission_{false};
   bool recall_turnaround_return_active_{false};
   bool recall_final_return_requested_{false};
+  // HH_261012 - Mission-local proof is not inherited by cancel/restart/urgent
+  // evacuation or by another site's default/native return.
+  bool site_forward_return_active_{false};
+  bool site_forward_return_centering_active_{false};
+  bool site_forward_return_yaw_ready_{false};
+  bool site_forward_return_handoff_verified_{false};
+  int site_forward_return_recentering_count_{0};
+  std::optional<SiteForwardReturnProfile> active_site_forward_return_profile_;
   std::string battery_urgent_return_source_;
   double battery_urgent_lane_yaw_{0.0};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_pose_;
@@ -4137,6 +4589,8 @@ private:
   rclcpp::Time last_status_publish_time_{0, 0, RCL_ROS_TIME};
   std::map<std::string, avg_msgs::msg::AvgPoseStamped> camping_site_goals_;
   std::map<std::string, CampsiteServiceMode> camping_site_service_modes_;
+  std::map<std::string, std::string> camping_site_return_route_policies_;
+  std::map<std::string, SiteForwardReturnProfile> camping_site_forward_return_profiles_;
   std::set<std::string> occupied_mission_keys_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;

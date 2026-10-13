@@ -58,10 +58,10 @@ struct NavStatusState
   int8_t current_status{action_msgs::msg::GoalStatus::STATUS_UNKNOWN};
   bool current_abort_suppressed{false};
 
-  // HH_260727: Deduplicate retained Nav2 terminal statuses by goal UUID.
+  // HH_260727 - Deduplicate retained Nav2 terminal statuses by goal UUID.
   camrod_system::diagnostics::PlanningNavStatusTracker status_tracker;
 
-  // HH_260727: Service maneuvers intentionally clear prior Nav2 abort history.
+  // HH_260727 - Service maneuvers intentionally clear prior Nav2 abort history.
   // Keep the cleared UUIDs separately so retained GoalStatusArray entries do
   // not get reintroduced into the fresh tracker after suppression ends.
   std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
@@ -196,7 +196,7 @@ private:
     state_.has_msg        = true;
     state_.current_status = dominant;
 
-    // HH_260727: GoalStatusArray keeps terminal entries across publications.
+    // HH_260727 - GoalStatusArray keeps terminal entries across publications.
     // Feed every eligible UUID/state pair to the tracker, which records each
     // aborted goal once instead of incrementing once per array callback.
     bool has_aborted_status = false;
@@ -214,7 +214,7 @@ private:
         }
       }
 
-      // HH_260727: A terminal status retained from a service-owned maneuver
+      // HH_260727 - A terminal status retained from a service-owned maneuver
       // remains ignored after the maneuver, while genuinely new goal UUIDs
       // continue to contribute to the rolling abort count.
       if (
@@ -229,7 +229,7 @@ private:
       state_.status_tracker.observe(
         s.goal_info.goal_id.uuid, s.status, now.nanoseconds());
     }
-    // HH_260727: A service-owned ABORTED entry can remain in Nav2's retained
+    // HH_260727 - A service-owned ABORTED entry can remain in Nav2's retained
     // array after the service state returns to idle. Keep that same UUID from
     // turning the single-status summary back into WARN after suppression ends.
     state_.current_abort_suppressed =
@@ -272,12 +272,12 @@ private:
     const auto now = this->now();
     std::lock_guard<std::mutex> lock(state_.mtx);
 
-    // HH_260727: Expire the rolling window even if Nav2 is idle and no new
+    // HH_260727 - Expire the rolling window even if Nav2 is idle and no new
     // GoalStatusArray callback arrives.
     state_.status_tracker.prune(now.nanoseconds());
 
     if (!state_.has_msg) {
-      // HH_260617: Before the first Nav2 goal, the action status topic may not
+      // HH_260617 - Before the first Nav2 goal, the action status topic may not
       // publish anything. Lifecycle checks cover server liveness; this checker
       // should report abort/status quality, not force ERROR while idle.
       if (idle_ok_without_status_) {
@@ -293,7 +293,7 @@ private:
 
     double elapsed = (now - state_.last_msg_time).seconds();
     if (stale_timeout_ > 0.0 && elapsed > stale_timeout_) {
-      // HH_260618: Nav2 action status is event-driven enough that it can stop
+      // HH_260618 - Nav2 action status is event-driven enough that it can stop
       // publishing after SUCCEEDED/CANCELED. Treat terminal stale as normal idle;
       // lifecycle checkers still verify server liveness, and abort history remains
       // handled below when new status samples arrive.

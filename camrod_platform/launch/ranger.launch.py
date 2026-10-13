@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260428: Ranger platform launch — starts ranger_base_node and ranger_platform_bridge_node.
+# HH_260428 - Ranger platform launch — starts ranger_base_node and ranger_platform_bridge_node.
 # ranger_base_node  : reads CAN bus (port_name) and publishes /odom, /system_state,
 #                     /actuator_state, /battery_state. Subscribes to /control/cmd_vel_ros
 #                     (remapped from its internal /cmd_vel) for final motion commands.
@@ -87,7 +87,7 @@ def _setup_can_interface(context, params: dict) -> None:
             f'then verify `ip link show {port_name}`. For a non-hardware run, launch with `sim:=true`.'
         )
 
-    # HH_260629: Bring SocketCAN up before ranger_base_node opens it. `sudo -n`
+    # HH_260629 - Bring SocketCAN up before ranger_base_node opens it. `sudo -n`
     # avoids a hidden password prompt inside ros2 launch; configure sudoers or
     # run `sudo -v` before launch if this fails on a freshly booted system.
     quoted_port = shlex.quote(port_name)
@@ -115,7 +115,7 @@ def _launch_setup(context, *args, **kwargs):
     p = _load_ros_params(params_file)
     _setup_can_interface(context, p)
 
-    # HH_260428: ranger_base odom output is hardcoded to /odom so it never collides
+    # HH_260428 - ranger_base odom output is hardcoded to /odom so it never collides
     # with substitute-platform topics (e.g. /rmp401/odom).
     # The bridge subscribes to odom_topic_name from params_file (default /odom) and
     # falls back to odom_fallback_topic (default /rmp401/odom) when /odom is silent.
@@ -124,7 +124,7 @@ def _launch_setup(context, *args, **kwargs):
         executable='ranger_base_node',
         output='screen',
         emulate_tty=True,
-        # HH_260528: Ranger CAN node runs only for ranger platform type
+        # HH_260528 - Ranger CAN node runs only for ranger platform type
         # and when explicitly enabled.
         condition=IfCondition(PythonExpression([
             "'",
@@ -138,7 +138,7 @@ def _launch_setup(context, *args, **kwargs):
             'port_name':       p.get('port_name', 'can0'),
             'odom_frame':      p.get('odom_frame', 'odom'),
             'base_frame':      p.get('base_frame', 'robot_center_link'),
-            'odom_topic_name': '/odom',          # HH_260428: hardcoded; not from params_file
+            'odom_topic_name': '/odom',          # HH_260428 - hardcoded; not from params_file
             'simulated_robot': p.get('simulated_robot', False),
             'publish_odom_tf': p.get('publish_odom_tf', False),
             'update_rate':     int(p.get('update_rate', 50)),
@@ -208,9 +208,9 @@ def _launch_setup(context, *args, **kwargs):
         package='camrod_platform',
         executable='ranger_platform_bridge_node',
         output='screen',
-        # HH_260528: Keep bridge independently controllable from Ranger base.
+        # HH_260528 - Keep bridge independently controllable from Ranger base.
         condition=IfCondition(LaunchConfiguration("enable_ranger_bridge_node")),
-        parameters=[params_file],  # HH_260428: reads odom_topic_name, odom_fallback_topic, etc.
+        parameters=[params_file],  # HH_260428 - reads odom_topic_name, odom_fallback_topic, etc.
     )
 
     return [ranger_base_node, ranger_dummy_node, bridge_node]
@@ -224,9 +224,9 @@ def generate_launch_description():
                 'camrod_platform', os.path.join('config', 'ranger_driver.yaml')),
             description='YAML parameter file for ranger_base and platform bridge nodes',
         ),
-        # HH_260528: Platform type selector propagated from platform.launch.py.
+        # HH_260528 - Platform type selector propagated from platform.launch.py.
         DeclareLaunchArgument('platform_type', default_value='ranger'),
-        # HH_260528: Independent toggles for Ranger CAN and bridge.
+        # HH_260528 - Independent toggles for Ranger CAN and bridge.
         DeclareLaunchArgument('enable_ranger_base_node', default_value='true'),
         DeclareLaunchArgument(
             'enable_ranger_dummy_when_disabled',

@@ -1,5 +1,13 @@
 # CAMROD
 
+<!-- HH_261013 - Link the current virtual branch release without relabelling historical field evidence. -->
+**Current `virtual/carla` checkpoint (2026-10-13):**
+[changes, dependencies and execution guide](docs/virtual_carla_release_20261013.md) ·
+[B1–B13 measurements and PNG/GIF](docs/evidence/virtual_carla/releases/20261013/README.md).
+This checkpoint builds on the v2.3.1 virtual integration. It does not update
+`develop` or any version tag. The release descriptions and value tables below
+are historical snapshots, not overrides of the current CARLA profile.
+
 <!-- HH_260806 - Use the fabrication-inclusive measured body as the active
 hard-stop envelope and retain earlier reduced-boundary runs as historical evidence. -->
 <!-- HH_260806 - Replace the GNSS center placeholder with the measured

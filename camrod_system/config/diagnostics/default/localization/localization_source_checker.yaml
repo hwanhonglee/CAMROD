@@ -5,7 +5,7 @@ localization_source_checker:
 
     # --- Monitored topic and source labels ---
     source_topic:    "/localization/pose_source"
-    # HH_260625: pose_selector publishes primary_filter as its nominal source label.
+    # HH_260625 - pose_selector publishes primary_filter as its nominal source label.
     primary_source:  "primary_filter"
     fallback_source: "fallback_source"
 

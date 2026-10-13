@@ -1,6 +1,6 @@
 /system/velocity_converter_checker:
   ros__parameters:
-    # HH_260617: Sim fake sensors can start before the converter and TF settle;
+    # HH_260617 - Sim fake sensors can start before the converter and TF settle;
     # keep the same topics but allow a slightly larger startup/stale window.
     publish_rate_hz: 1.0
 

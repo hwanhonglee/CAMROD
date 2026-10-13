@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(camrod_planning)
 
-# HH_260105: Planning package now wraps Nav2 nodes/BT configs only.
+# HH_260105 - Planning package now wraps Nav2 nodes/BT configs only.
 # Legacy in-house planner/controller sources have been removed.
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -29,7 +29,7 @@ find_package(lanelet2_projection REQUIRED)
 find_package(lanelet2_routing REQUIRED)
 find_package(lanelet2_traffic_rules REQUIRED)
 
-# HH_260112 Add goal snapper node for lanelet-constrained goals.
+# HH_260112 - Add goal snapper node for lanelet-constrained goals.
 add_executable(goal_snapper_node src/goal_snapper_node.cpp)
 ament_target_dependencies(goal_snapper_node
   avg_msgs
@@ -83,7 +83,7 @@ ament_target_dependencies(local_path_extractor_node
   nav_msgs
 )
 
-# HH_260619: Nav2 global-planner plugin that produces lanelet centerline
+# HH_260619 - Nav2 global-planner plugin that produces lanelet centerline
 # routes. This is the primary planner for campground lane-following; Smac/NavFn
 # remain selectable fallbacks for free-space diagnostics and recovery tests.
 add_library(lanelet_route_planner SHARED
@@ -111,7 +111,7 @@ target_include_directories(lanelet_route_planner PUBLIC
 )
 pluginlib_export_plugin_description_file(nav2_core global_planner_plugins.xml)
 
-# HH_260330: Publish lateral/heading tracking error against local/global path.
+# HH_260330 - Publish lateral/heading tracking error against local/global path.
 add_executable(path_tracking_error_node src/path_tracking_error_node.cpp)
 ament_target_dependencies(path_tracking_error_node
   avg_msgs
@@ -127,7 +127,7 @@ ament_target_dependencies(nav2_lifecycle_startup_retry_node
   std_srvs
 )
 
-# HH_260618: Keep Nav2 FollowPath active while operators inspect a route before engage.
+# HH_260618 - Keep Nav2 FollowPath active while operators inspect a route before engage.
 add_library(engage_aware_progress_checker SHARED
   src/engage_aware_progress_checker.cpp
 )
@@ -154,7 +154,7 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# HH_260618: Install engage-aware Nav2 progress checker plugin library.
+# HH_260618 - Install engage-aware Nav2 progress checker plugin library.
 install(
   TARGETS engage_aware_progress_checker
   ARCHIVE DESTINATION lib
@@ -162,7 +162,7 @@ install(
   RUNTIME DESTINATION bin
 )
 
-# HH_260619: Install LaneletRoutePlanner plugin library for Nav2 planner_server.
+# HH_260619 - Install LaneletRoutePlanner plugin library for Nav2 planner_server.
 install(
   TARGETS lanelet_route_planner
   ARCHIVE DESTINATION lib
@@ -170,7 +170,7 @@ install(
   RUNTIME DESTINATION bin
 )
 
-# HH_260312-00:00 Install planning status_stream + state machine scripts.
+# HH_260312 - Install planning status_stream + state machine scripts.
 install(
   PROGRAMS
     scripts/planning_state_machine_node.py

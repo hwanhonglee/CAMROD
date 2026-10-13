@@ -1,0 +1,49 @@
+{
+  "created_at_utc": "2026-10-12T07:50:31Z",
+  "creator": "create_portable_verification_report",
+  "files": {
+    "audit_tests": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/test/test_runtime_profile_audit.py",
+      "sha256": "2480d879b700712c553576bbd1390d3784f5bb3e6ebb4e61eaaa2f85bffeb67e"
+    },
+    "candidate_env": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/runtime/site_completion_20261012_v9_restart1/candidate.env",
+      "sha256": "8a0718ef133ce6fe6080372f16e78b4c9766b7bf8bf738b7c9fd0776261651eb"
+    },
+    "control_test_output": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v9_restart1/verification/initial/control_tests.log",
+      "sha256": "e1eff11e5b17deb7c7187bebb014d2e1018249973ed50298bd09f9fd58ffb4bd"
+    },
+    "control_tests": {
+      "path": "/home/hong/camrod_ws/src/camrod_control/test/test_camping_site_recall_return.cpp",
+      "sha256": "7629f7c61e6b4cd673b78574ced5aefdea6dd2aa3c78432b9726624a67f41178"
+    },
+    "launch_tests": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/test/test_full_launch_contracts.py",
+      "sha256": "71936d617f9c946460f883dc315f7121490fc4db8265f00daf7598b81c80b9ec"
+    },
+    "parking_tests": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/test/test_site_parking_approach_config.py",
+      "sha256": "c2e3bb3c3f4d4cd2a40e133c66f70966be0487a390fd1da55429bf395ba7eb8a"
+    },
+    "runtime_env": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/runtime/site_completion_20261012_v9_restart1/runtime.env",
+      "sha256": "f88c15b33f1e75a3e76d1e1f1f6b65048d66ec32b51057c0ad1e59bedf089396"
+    },
+    "script_tests": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/test/test_virtual_carla_scripts.py",
+      "sha256": "9b79423c7dc50438cf38722c639d9989aa43419a43358953f5d4294739c7caeb"
+    },
+    "suite_junit": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v9_restart1/verification/initial/offline.xml",
+      "sha256": "76c35c3b2d8a2b227cf3134e05fe1a3fcd53e4cf732c31c39b356894bec483dc"
+    },
+    "suite_output": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v9_restart1/verification/initial/offline.log",
+      "sha256": "352a5c1052bc3e31e9d0c6497e5cb6061e512ca2973349fda8961f20927e9776"
+    }
+  },
+  "operation": "VERIFY",
+  "schema": "carla.ranger.portable_offline_tests.v1",
+  "status": "PASS"
+}

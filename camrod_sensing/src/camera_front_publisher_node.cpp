@@ -98,7 +98,7 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   this->declare_parameter<int>("image_width", 640);
   this->declare_parameter<int>("image_height", 480);
   this->declare_parameter<int>("fps", 30);
-  // HH_260526: Replace use_custom_intrinsics toggle with explicit source mode.
+  // HH_260526 - Replace use_custom_intrinsics toggle with explicit source mode.
   // intrinsics_source options: none | custom.
   this->declare_parameter<std::string>("intrinsics_source", "none");
   this->declare_parameter<std::vector<double>>("camera_matrix", std::vector<double>{});

@@ -1,0 +1,140 @@
+{
+  "api_version": "carla.physx_four_wheel_steer_torque.v2",
+  "artifacts": {
+    "carla_plugin_binary": {
+      "path": "/home/hong/carla/Unreal/CarlaUE4/Plugins/Carla/Binaries/Linux/libUE4Editor-Carla.so",
+      "sha256": "72ecfa2c74a6a4815630e1bf608efab4840b1e020950df22946a8a213606ceda"
+    },
+    "libcarla_binary": {
+      "path": "/home/hong/carla/PythonAPI/carla/build/lib.linux-x86_64-3.10/carla/libcarla.cpython-310-x86_64-linux-gnu.so",
+      "sha256": "bcd1d943e99476abfdd6d2c3170e1b1bd08b5471707553b3cfbae2017dae09b9"
+    },
+    "offline_test_report": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v5/offline_tests.json",
+      "sha256": "33530b8346d9686c126e53927e11b6d1f9f510ee2e09670b98069f4f99df11e6"
+    },
+    "physx_vehicle_profile_archive": {
+      "path": "/home/hong/UnrealEngine_4.26/Engine/Source/ThirdParty/PhysX3/Lib/Linux/x86_64-unknown-linux-gnu/libPhysX3VehiclePROFILE.a",
+      "sha256": "5c27b5ea17d070dd5bc0531faaae0ff7158311c0a8e039bc3ca0ea0935f421b4"
+    },
+    "production_authorization": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v4_restart1/portable_live_4ws_acceptance.json",
+      "sha256": "e0c7730e351c3f9e9338895ee873cbb61acbea2d1dfea5e0c4a2cfce12e18cb2"
+    },
+    "python_api_egg": {
+      "path": "/home/hong/carla/PythonAPI/carla/dist/carla-0.9.15-py3.10-linux-x86_64.egg",
+      "sha256": "328e90242236b8f0529e6c9526694934bf20c27dc1e7348ba46eaf79061e6617"
+    },
+    "ros_build_report": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v5/ros_build.json",
+      "sha256": "d1709cd8b306cb1769f44777d9a7eda05b8e5042497b67bf21785752849cec18"
+    },
+    "source_baseline": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/ranger_ros_backend_gate.json",
+      "sha256": "8778ea54729e0e69766567956b926d17a257ce9e3c5c4c33b21107c76862ea7c"
+    },
+    "ue_engine_binary": {
+      "path": "/home/hong/UnrealEngine_4.26/Engine/Binaries/Linux/libUE4Editor-Engine.so",
+      "sha256": "f7606f0c8afb8faaa711c0f6c5fd37ffab92654a9901c13fd3984a2bceec67c1"
+    },
+    "ue_physx_vehicles_binary": {
+      "path": "/home/hong/UnrealEngine_4.26/Engine/Plugins/Runtime/PhysXVehicles/Binaries/Linux/libUE4Editor-PhysXVehicles.so",
+      "sha256": "a6f8b263d620d60f0d1b9be882fcb297249b8a424a5500d9a3c631bbe01f06a8"
+    }
+  },
+  "blueprint_id": "vehicle.ranger.default",
+  "checks": {
+    "all_artifacts_rehashed": true,
+    "all_sources_rehashed": true,
+    "baseline_gate_accepted": true,
+    "fresh_build_runtime_bound": true,
+    "offline_suite_passed": true,
+    "portable_live_all_modes_passed": true,
+    "ros_build_passed": true
+  },
+  "created_at_utc": "2026-10-12T03:31:21Z",
+  "creator": "create_portable_physical_four_wheel_gate",
+  "operation": "VERIFY",
+  "schema": "carla.ranger.physical_four_wheel_acceptance_gate.v4",
+  "source_aggregate_sha256": "faf5fe2afbaddf96d322284f7dbefa73d8cec1b44aa0d7f5dab57846230322b1",
+  "sources": {
+    "backend_contract_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/backend_contract.py",
+      "sha256": "1d9f2a4d162af670f580f1d31f3af21121e88962c723c44594043fa6c8674acf"
+    },
+    "control_message_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_msgs/msg/PhysicalFourWheelControl.msg",
+      "sha256": "6100065b064b4911f228e65799208f9dca892a9b85391ea0c66fb6ddf02db6a6"
+    },
+    "controller_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py",
+      "sha256": "5c27143d984fca480854db08177b21cb576dd0c7ac6c4100151b1221fb0909e6"
+    },
+    "experimental_crab_yaw_hold_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_crab_yaw_hold.py",
+      "sha256": "c56fd936fa37af2e37f0337906cc2358154edd0b111607f4ffe1cbc0dc8ba839"
+    },
+    "experimental_zero_turn_yaw_integral_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py",
+      "sha256": "b2593f398066d040e894a1b295d4fa9c7c4884d33135c62372db6fac25481356"
+    },
+    "four_wheel_steering_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/four_wheel_steering.py",
+      "sha256": "ad3edecdd065f6ba8d17687a8318f61bb8cef309915b9abe79741c577233d276"
+    },
+    "full_stack_launch_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py",
+      "sha256": "418d8f7d0fd5ae50b225c901ea6324d80e6d0f8d83f7bbc41b51fe29216c5df9"
+    },
+    "physical_bridge_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py",
+      "sha256": "48e299a3b365a0594511c8dd4d0f42a5c1305cc29c19301a532abcb3ab59503d"
+    },
+    "physical_gate_contract_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_gate_contract.py",
+      "sha256": "d2db029fe1b3fbf8215e019036ab827311abe9cdab1ce87509227fad4f42de7f"
+    },
+    "portable_gate_contract_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_gate_contract.py",
+      "sha256": "abfd0384adc20205b2cabff3d7ae50bb550ef64f7be34ccf909e34f619061114"
+    },
+    "portable_live_acceptance_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/tools/carla_portable_live_acceptance.py",
+      "sha256": "ac8fc182d9ae768384f97322bf06705499f4c240168895310472fc7e0d306cf9"
+    },
+    "portable_physx_authorizer_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/portable_physx_authorizer.py",
+      "sha256": "e5579b6a0b45cf310f8e772f7046216a8cb9021b0091eff1fdca053a5c84ce4a"
+    },
+    "ros_actor_factory_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/ros-bridge-ws/src/ros-bridge/carla_ros_bridge/src/carla_ros_bridge/actor_factory.py",
+      "sha256": "901b00c666b157efb1ae9e455fcdea5690c187b0aeabb449631de849db3df3e2"
+    },
+    "ros_bridge_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/ros-bridge-ws/src/ros-bridge/carla_ros_bridge/src/carla_ros_bridge/bridge.py",
+      "sha256": "4674fdb92ae85975a77edda1cc1b00c7fef532cafe3928a46da765c7f9ffac75"
+    },
+    "ros_ego_vehicle_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/ros-bridge-ws/src/ros-bridge/carla_ros_bridge/src/carla_ros_bridge/ego_vehicle.py",
+      "sha256": "0aedc48a46a8dae4d70585c19da2017a458b26aa3de3f7cc7ff73e4e407f9224"
+    },
+    "ros_lifecycle_evidence_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/ros-bridge-ws/src/ros-bridge/carla_ros_bridge/src/carla_ros_bridge/ranger_physx_lifecycle_evidence.py",
+      "sha256": "d972302ae3a1c388d01c77bb0787a41ae90e8fbd70f89ded06b2e25db6880184"
+    },
+    "status_message_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_msgs/msg/PhysicalFourWheelStatus.msg",
+      "sha256": "f2224104e43f13df12a82a3a2866ff2f850dde465be4259c798653d6f5519bd0"
+    },
+    "wheel_torque_control_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/wheel_torque_control.py",
+      "sha256": "40836e1417f4ffc4b01961a0155a21461ca45d96945a1d4e9ed819789123afce"
+    }
+  },
+  "status": "VERIFIED",
+  "substep_control": {
+    "high_forward_speed_substep_count": 1,
+    "low_forward_speed_substep_count": 9,
+    "threshold_longitudinal_speed_mps": 5.0
+  }
+}

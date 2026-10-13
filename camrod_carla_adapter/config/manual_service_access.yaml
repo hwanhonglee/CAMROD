@@ -1,0 +1,46 @@
+# HH_261007 - CARLA-only semantic access connectors, not a terrain/obstacle map.
+# Only the exact road-facing site edge is connected; side/rear boundaries stay
+# unchanged. No site policy, maneuver phase, speed, or shared map is overridden.
+frame_id: map
+source_map: lanelet2_maps.osm
+source_map_sha256: cf5490cbf2067b4ce7dc703f80e75095366cacd364097cbad431131e7b435c8d
+source_sites: camrod_planning/config/camping_sites.yaml
+source_sites_sha256: a12ff6a2c6f730e6b0ef47a0850138c0567f03e4a90c4bd0be5bc049cfa6c07f
+service_access:
+  - site: camping_site_1
+    lanelet_ids: ['2193', '2219']
+    site_edge_corner_indices: [1, 2]
+    road_overlap_m: 0.10
+    provenance:
+      site_area_relation_id: '1353'
+      road_boundary_role: left
+      road_boundary_way_ids: ['2181', '2209']
+      derivation: nearest_local_xy_boundary_projection_then_roadward_extension
+      # HH_261007 - The two exported site corners remain exact. Each opposite
+      # corner extends its nearest OSM local-XY road-boundary projection by
+      # 0.10 m along the same site-to-road ray, into existing road only.
+      projected_site_corner_1: {x: 23.65093498310203, y: -7.600332177491932}
+      projected_site_corner_2: {x: 21.909983885575794, y: -3.9855581462264005}
+    corners:
+      - {x: 24.0359, y: -7.39992}
+      - {x: 22.3207, y: -3.8}
+      - {x: 21.818852939816487, y: -4.026730354389361}
+      - {x: 23.562235039249067, y: -7.646509227641129}
+  - site: camping_site_11
+    lanelet_ids: ['2136']
+    site_edge_corner_indices: [1, 2]
+    road_overlap_m: 0.10
+    provenance:
+      site_area_relation_id: '1293'
+      road_boundary_role: left
+      road_boundary_way_ids: ['2131']
+      derivation: nearest_local_xy_boundary_projection_then_roadward_extension
+      projected_site_corner_1: {x: 12.223590904848193, y: 19.414563398430644}
+      projected_site_corner_2: {x: 11.122247000626817, y: 22.89447212845823}
+    # HH_261007 - Manual spatial access does not change B11 roadside_stop or
+    # its autonomous 0.30 m service offset/no-turnaround contract.
+    corners:
+      - {x: 12.6512, y: 19.5665}
+      - {x: 11.4788, y: 22.9716}
+      - {x: 11.024507585067843, y: 22.873329596769945}
+      - {x: 12.129362330029306, y: 19.381082423420928}

@@ -22,7 +22,7 @@
 # ── Front camera (camera_front_publisher_node: VPI VIC + NvJPEG GPU pipeline) ─
 # FQN is always /sensing/camera/econ_front/camera_front_publisher in both launch modes:
 #   - sensing.launch.py / bringup: PushRosNamespace("sensing") adds the /sensing prefix
-#   - standalone camera.launch.py: camera_namespace defaults to 'sensing/camera' (HH_260629)
+# HH_260629 - Standalone camera.launch.py defaults camera_namespace to 'sensing/camera'.
 /sensing/camera/econ_front/camera_front_publisher:
   ros__parameters:
     camera_name: "camera"

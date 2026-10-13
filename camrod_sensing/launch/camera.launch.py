@@ -1,4 +1,4 @@
-# HH_260528: Econ dual-camera launch — front (/dev/video0) and rear (/dev/video1).
+# HH_260528 - Econ dual-camera launch — front (/dev/video0) and rear (/dev/video1).
 # Both cameras are the same econ product but run different nodes:
 #   Front: camera_front_publisher_node  (VPI VIC fisheye undistortion + NvJPEG GPU encoding)
 #   Rear:  camera_rear_publisher_node   (OpenCV GStreamer + CPU JPEG; publishes image_raw for Isaac ROS AprilTag)
@@ -85,7 +85,7 @@ def _resolve_camera_enables(context, *args, **kwargs):
         actions.append(LogInfo(
             msg='[camera.launch] rear camera disabled: camera_rear_publisher_node is not installed.'
         ))
-    # HH_260617: Camera publishers are installed only when their CMake dependencies
+    # HH_260617 - Camera publishers are installed only when their CMake dependencies
     # are available (Jetson/VPI/NvJPEG for the front camera). Keep standalone launch
     # from failing on x86_64 by disabling unavailable executables at launch time.
     return [
@@ -131,7 +131,7 @@ def generate_launch_description():
             default_value='__yaml__',
             description='Enable rear camera node. Default: read from camera_launch_config.yaml.',
         ),
-        # HH_260629: base namespace for camera nodes. Standalone default includes the
+        # HH_260629 - base namespace for camera nodes. Standalone default includes the
         # /sensing prefix; sensing.launch.py passes 'camera' (PushRosNamespace adds /sensing).
         DeclareLaunchArgument(
             'camera_namespace',

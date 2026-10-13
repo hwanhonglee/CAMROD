@@ -127,7 +127,7 @@ def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: st
     for anchor in anchors:
         for filename in filenames:
             candidates.append(os.path.join(anchor, filename))
-    # HH_260407: Relative lookup around package share / config path.
+    # HH_260407 - Relative lookup around package share / config path.
     for anchor in (map_share, os.path.dirname(map_info_file)):
         cur = os.path.abspath(anchor)
         for _ in range(8):
@@ -172,7 +172,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_cost_field",                  default_value="false"),
         DeclareLaunchArgument("enable_cost_grids",                  default_value="true"),
         DeclareLaunchArgument("module_namespace",                   default_value="map"),
-        # HH_260527: Removed unused map-origin launch args.
+        # HH_260527 - Removed unused map-origin launch args.
         # (enable_module_validator, system_namespace).
 
         _inc(lanelet2_map_launch,

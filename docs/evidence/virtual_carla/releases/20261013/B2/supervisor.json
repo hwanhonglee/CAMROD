@@ -1,0 +1,18 @@
+{
+  "site": "B2",
+  "started_utc": "2026-10-12T05:42:29.039605+00:00",
+  "status": "finished",
+  "diagnostic_stop_reason": null,
+  "actor_id": 300,
+  "trial_exit_code": 0,
+  "capture_exit_code": 0,
+  "result_status": "COMPLETED_OBSERVED",
+  "finished_utc": "2026-10-12T05:50:53.528090+00:00",
+  "fixed_profile": {
+    "yaw_pi": true,
+    "parking_approach_tolerance_m": 0.05,
+    "basis": "configured profile, not a live parameter read",
+    "freeze_manifest": "/home/hong/camrod_ws/src/docs/evidence/virtual_carla/site_completion_20261012_v6/frozen_inputs.json",
+    "old_evidence_modified": false
+  }
+}

@@ -115,7 +115,7 @@ def _resolve_map_path(map_share: str, map_param_file: str, requested_map_path: s
         else:
             candidates.append(os.path.abspath(configured))
             if map_param_file:
-                # HH_260629: Standalone launch resolves map_info-relative OSM paths
+                # HH_260629 - Standalone launch resolves map_info-relative OSM paths
                 # before the C++ node checks filesystem existence.
                 candidates.append(os.path.abspath(
                     os.path.join(os.path.dirname(map_param_file), configured)))

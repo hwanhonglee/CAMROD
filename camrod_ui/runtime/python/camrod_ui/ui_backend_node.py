@@ -834,6 +834,10 @@ class UiBackendNode(Node):
                     "manual_drive_angular_limit_radps", 0.20
                 ).value
             ),
+            # HH_261007 - Pass the typed opt-in unchanged for strict validation.
+            allow_carla_lateral_2mps=self.declare_parameter(
+                "manual_drive_allow_carla_lateral_2mps", False
+            ).value,
         )
         self.manual_drive_deadman_timeout_s = float(
             self.declare_parameter(
@@ -2502,7 +2506,42 @@ class UiBackendNode(Node):
     def _manual_drive_state_payload(self) -> Dict[str, Any]:
         with self._manual_drive_transition_lock:
             state = self._manual_drive_policy.snapshot()
+        state["safety_gate"] = UiBackendNode._manual_drive_gate_snapshot(self)
         return {"type": "state", "manual_drive": state}
+
+    def _manual_drive_gate_snapshot(self) -> Dict[str, Any]:
+        # HH_261007 - An armed WebSocket lease is not proof that the gate permits
+        # motion. Report the existing low-rate gate stream without changing any
+        # command authority or enabling high-bandwidth operator telemetry.
+        observation = getattr(self, "_manual_drive_gate_observation", None)
+        timeout_s = 1.5  # Three missed 2 Hz gate status frames are stale.
+        if observation is None:
+            return {"fresh": False, "blocked": None, "operating_state": "UNKNOWN",
+                    "message": "", "reasons": [], "level": None,
+                    "receipt_age_s": None, "source_age_s": None,
+                    "freshness_timeout_s": timeout_s}
+        values, received_s = observation
+        receipt_age_s = time.monotonic() - received_s
+        source_age_s = self._now_s() - values["source_stamp_s"]
+        fresh = (
+            values["source_stamp_s"] > 0.0
+            and math.isfinite(source_age_s)
+            and 0.0 <= receipt_age_s <= timeout_s
+            and -0.1 <= source_age_s <= timeout_s
+        )
+        state = str(values["operating_state"]).strip().upper()
+        message = str(values["message"])
+        reason_match = re.search(r"(?:^|\s)reasons=([^\s]+)", message)
+        recovery_match = re.search(r"(?:^|\s)recovery_reason=([^\s]+)", message)
+        reasons = reason_match.group(1).split(",") if reason_match else []
+        allowed = state in {"ENABLED", "DEPARTING_CHARGER"} and values["level"] == 0
+        return {"fresh": fresh, "blocked": not allowed if fresh else None,
+                "operating_state": state, "message": message,
+                "reasons": [reason for reason in reasons if reason != "none"],
+                "recovery_reason": recovery_match.group(1) if recovery_match else "",
+                "level": values["level"], "receipt_age_s": max(0.0, receipt_age_s),
+                "source_age_s": _finite_or_none(source_age_s),
+                "freshness_timeout_s": timeout_s}
 
     def _publish_manual_drive_command(
         self, command: ManualDriveCommand
@@ -2524,6 +2563,13 @@ class UiBackendNode(Node):
     ) -> None:
         """Serialize all handler and ROS-timer sends for one WebSocket."""
         async with transport.send_lock:
+            # HH_261007 - Enrich every ARM/drive/error/deadman response at send
+            # time so an old ENABLED observation cannot appear current.
+            if isinstance(payload.get("manual_drive"), dict):
+                payload = {**payload, "manual_drive": {
+                    **payload["manual_drive"],
+                    "safety_gate": UiBackendNode._manual_drive_gate_snapshot(self),
+                }}
             await transport.websocket.send_json(payload)
 
     def _schedule_manual_drive_payload(
@@ -5759,6 +5805,13 @@ class UiBackendNode(Node):
         )
 
     def _on_control_gate_status(self, msg: ModuleState) -> None:
+        # HH_261007 - Replace one immutable observation atomically; the manual
+        # WS thread can read it without reversing the runtime/lease lock order.
+        self._manual_drive_gate_observation = ({
+            "level": int(msg.level), "operating_state": str(msg.operating_state),
+            "message": str(msg.message),
+            "source_stamp_s": float(msg.stamp.sec) + float(msg.stamp.nanosec) * 1e-9,
+        }, time.monotonic())
         self._update_runtime_state(
             lambda: self._runtime_policy.update_gate(
                 level=int(msg.level),

@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
-    # HH_260406: Robust map_info parser for key-layout differences.
+    # HH_260406 - Robust map_info parser for key-layout differences.
     if not isinstance(map_info_cfg, dict):
         return {}
     wildcard = map_info_cfg.get('/**')
@@ -37,7 +37,7 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # HH_260330: Standalone planning launch uses package-local config by default.
+    # HH_260330 - Standalone planning launch uses package-local config by default.
     default_cost_grid_param = os.path.join(
         get_package_share_directory('camrod_planning'),
         'config', 'path_cost_grids.yaml')
@@ -60,7 +60,7 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
-    # HH_260409: Keep helper launch resilient when map_info map_path is empty.
+    # HH_260409 - Keep helper launch resilient when map_info map_path is empty.
     if not str(map_path_default).strip():
         for candidate in (
             os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
@@ -96,7 +96,7 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     module_namespace = LaunchConfiguration('module_namespace')
 
-    # HH_260123 Path-focused grid for global costmap (Nav2 planner).
+    # HH_260123 - Path-focused grid for global costmap (Nav2 planner).
     lanelet_cost_grid_global = Node(
         package='camrod_map',
         executable='lanelet_cost_grid_node',
@@ -110,7 +110,7 @@ def generate_launch_description():
                 'offset_lat': origin_lat,
                 'offset_lon': origin_lon,
                 'offset_alt': origin_alt,
-                # HH_260311-00:00 Hard overrides for stable realtime global path-cost refresh.
+                # HH_260311 - Hard overrides for stable realtime global path-cost refresh.
                 # Keep this in launch so behavior is deterministic even with stale YAML installs.
                 'pose_topic': '/planning/lanelet_pose',
                 # HH_260619 - Consume the actual published route. Nav2 SmoothPath
@@ -126,40 +126,40 @@ def generate_launch_description():
                 # This prevents empty-grid publish and RViz marker disappearance.
                 'allow_build_without_path': True,
                 'path_use_lateral_gradient': True,
-                # HH_260316-00:00 Centerline-first tuning:
+                # HH_260316 - Centerline-first tuning:
                 # lateral(centerline) term must dominate pose-distance term.
                 'path_pose_cost_weight': 0.05,
                 'path_lateral_cost_weight': 0.95,
-                # HH_260318-00:00 Slightly relax lanelet matching so global
+                # HH_260318 - Slightly relax lanelet matching so global
                 # path updates are accepted at curved endpoints after goal change.
                 'path_lanelet_match_max_dist': 0.45,
                 'path_lanelet_allow_nearest_fallback': True,
                 'path_lanelet_sample_step': 0.05,
                 'primary_path_timeout_s': 6.0,
-                # HH_260315-00:00 Problem fix:
+                # HH_260315 - Problem fix:
                 # Keep latest global route cost strip until a new route is published.
                 'stale_path_timeout_s': 0.0,
-                # HH_260318-00:00 Robustness-first:
+                # HH_260318 - Robustness-first:
                 # strict "fresh-path-after-goal" filtering can reject valid replans when
                 # goal/path publishers have small timing/frame mismatches. Disabling the
                 # filter prevents global-path marker freeze after a new goal.
                 'drop_stale_path_after_goal': False,
                 'path_goal_stamp_slack_s': 0.20,
                 'fresh_path_goal_match_tolerance_m': 4.0,
-                # HH_260330: Global-path helper grid is visualization/constraint aid.
+                # HH_260330 - Global-path helper grid is visualization/constraint aid.
                 # Rebuild only on path updates to avoid continuous full-map CPU load.
                 'rebuild_on_pose': False,
                 'rebuild_on_path': True,
                 'rebuild_on_timer': False,
-                # HH_260618: Path-cost helper uses primary output_topic directly.
+                # HH_260618 - Path-cost helper uses primary output_topic directly.
                 # The shared lanelet_cost_grid_node disables primary output by
                 # default for map-secondary mode, so force it on here.
                 'primary_enable': True,
-                # HH_260618: Keep global helper event-driven and reduce heartbeat CPU.
+                # HH_260618 - Keep global helper event-driven and reduce heartbeat CPU.
                 # YAML sets the same value; launch override is kept for stale installs.
                 'min_rebuild_period_s': 0.20,
                 'republish_period_s': 0.25,
-                # HH_260330: Bound global helper grid window around pose to keep
+                # HH_260330 - Bound global helper grid window around pose to keep
                 # CPU predictable and prevent planner/controller starvation.
                 'width': 600,
                 'height': 600,
@@ -171,7 +171,7 @@ def generate_launch_description():
         ],
     )
 
-    # HH_260123 Path-focused grid for local costmap (Nav2 controller local plan).
+    # HH_260123 - Path-focused grid for local costmap (Nav2 controller local plan).
     lanelet_cost_grid_local = Node(
         package='camrod_map',
         executable='lanelet_cost_grid_node',
@@ -185,27 +185,27 @@ def generate_launch_description():
                 'offset_lat': origin_lat,
                 'offset_lon': origin_lon,
                 'offset_alt': origin_alt,
-                # HH_260311-00:00 Hard overrides for low-latency local route refresh.
+                # HH_260311 - Hard overrides for low-latency local route refresh.
                 # Keep previous local-path cost through transient extractor/controller gaps.
                 'pose_topic': '/planning/lanelet_pose',
                 'path_topic': '/planning/local_path',
                 'goal_topic': '/planning/goal_pose_snapped',
-                # HH_260316-00:00 Switch local-path strip immediately on goal handoff.
+                # HH_260316 - Switch local-path strip immediately on goal handoff.
                 # Prevent stale local-route cells from remaining after a new goal.
                 'clear_path_on_goal': True,
                 'ignore_empty_path': True,
-                # HH_260316-00:00 Keep local grid publisher alive during transient
+                # HH_260316 - Keep local grid publisher alive during transient
                 # local-path extractor/controller gaps.
                 'allow_build_without_path': True,
                 'path_use_lateral_gradient': True,
-                # HH_260316-00:00 Centerline-first tuning:
+                # HH_260316 - Centerline-first tuning:
                 # keep local path center-biased unless obstacle/risk costs force avoidance.
                 'path_pose_cost_weight': 0.20,
                 'path_lateral_cost_weight': 0.80,
                 'path_lanelet_match_max_dist': 0.35,
                 'path_lanelet_sample_step': 0.06,
                 'primary_path_timeout_s': 2.5,
-                # HH_260315-00:00 Problem fix:
+                # HH_260315 - Problem fix:
                 # Keep short hold to avoid blink but still purge stale local route quickly.
                 'stale_path_timeout_s': 0.6,
                 # Local path endpoint is near current robot pose (not goal endpoint),
@@ -213,13 +213,13 @@ def generate_launch_description():
                 'drop_stale_path_after_goal': False,
                 'rebuild_on_pose': True,
                 'rebuild_on_path': True,
-                # HH_260330: Disable timer-only rebuild loop to reduce controller
+                # HH_260330 - Disable timer-only rebuild loop to reduce controller
                 # contention; pose/path callbacks remain the primary trigger.
                 'rebuild_on_timer': False,
-                # HH_260618: Path-cost helper uses primary output_topic directly.
+                # HH_260618 - Path-cost helper uses primary output_topic directly.
                 # Without this override, /planning/cost_grid/local_path has no publisher.
                 'primary_enable': True,
-                # HH_260618: Reduce local helper heartbeat. Pose/path callbacks still
+                # HH_260618 - Reduce local helper heartbeat. Pose/path callbacks still
                 # rebuild immediately, so control path freshness is preserved.
                 'min_rebuild_period_s': 0.10,
                 'republish_period_s': 0.20,
@@ -243,10 +243,10 @@ def generate_launch_description():
             'marker_topic': '/planning/cost_grid/global_path_markers',
             'min_value': 0,
             'max_value': 100,
-            # HH_260311-00:00 Increase opacity so high-cost (red) segments are visible.
+            # HH_260311 - Increase opacity so high-cost (red) segments are visible.
                 'alpha': 0.60,
                 'z_offset': 0.03,
-                # HH_260313-00:00 Shrink marker cubes to avoid visual spill over lane boundaries.
+                # HH_260313 - Shrink marker cubes to avoid visual spill over lane boundaries.
                 'cell_scale_ratio': 0.70,
                 'palette': 'pastel_purple_red',
                 'show_unknown': False,
@@ -256,11 +256,11 @@ def generate_launch_description():
                 'stale_timeout_s': 0.0,
             # 2026-02-27: Path cost grids are transient_local; consume latched path immediately.
             'grid_qos_transient_local': True,
-            # HH_260618: Global path markers are RViz-only; decimate and throttle
+            # HH_260618 - Global path markers are RViz-only; decimate and throttle
             # conversion to reduce CPU/GPU load without changing OccupancyGrid math.
             'sample_stride': 2,
             'min_publish_period_s': 0.20,
-            # HH_260318-00:00 Disable periodic stale-cache republish.
+            # HH_260318 - Disable periodic stale-cache republish.
             # Keep marker updates purely input-driven from /planning/cost_grid/global_path.
             'republish_period_s': 0.0,
         }],
@@ -277,20 +277,20 @@ def generate_launch_description():
             'marker_topic': '/planning/cost_grid/local_path_markers',
             'min_value': 0,
             'max_value': 100,
-            # HH_260311-00:00 Increase opacity so local high-cost cells stand out.
+            # HH_260311 - Increase opacity so local high-cost cells stand out.
                 'alpha': 0.66,
                 'z_offset': 0.05,
-                # HH_260313-00:00 Shrink marker cubes to avoid visual spill over lane boundaries.
+                # HH_260313 - Shrink marker cubes to avoid visual spill over lane boundaries.
                 'cell_scale_ratio': 0.70,
                 'palette': 'pastel_cyan_red',
                 'show_unknown': False,
-            # HH_260311-00:00 Keep last valid marker set during transient empty local windows.
+            # HH_260311 - Keep last valid marker set during transient empty local windows.
             'clear_on_empty_grid': False,
-            # HH_260311-00:00 Disable stale clear to avoid flicker from brief extractor gaps.
+            # HH_260311 - Disable stale clear to avoid flicker from brief extractor gaps.
             'stale_timeout_s': 0.0,
             # 2026-02-27: Path cost grids are transient_local; consume latched path immediately.
             'grid_qos_transient_local': True,
-            # HH_260618: Local path markers are RViz-only; throttle marker conversion
+            # HH_260618 - Local path markers are RViz-only; throttle marker conversion
             # while keeping the local OccupancyGrid publish path unchanged.
             'sample_stride': 2,
             'min_publish_period_s': 0.15,

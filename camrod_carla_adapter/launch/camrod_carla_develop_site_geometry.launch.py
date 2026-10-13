@@ -14,7 +14,10 @@ observed real walker from lower-confidence scenery false positives, without
 claiming a general obstacle-safety certification.
 HH_261002 additionally selects a 2.0 m/s manual forward/reverse limit and an
 explicit command-adapter cap overlay only for this simulator site profile.
-It does not change automatic requested speeds, lateral/yaw manual limits,
+HH_261007 - Extends the requested manual envelope to lateral CRAB at 2.0 m/s,
+including the independent adapter and backend caps. This is an experimental
+simulator ceiling, not a physical stopping-distance validation.
+It does not change automatic requested speeds or yaw manual limits,
 steering, safety authorization or watchdogs; full/develop defaults stay intact.
 Ordinary `camrod` retains develop's `0.50` value and only applies the CARLA
 camera-to-LiDAR extrinsic.  It also selects the campsite-geometry
@@ -32,9 +35,10 @@ bounded limit, leaving the robot safely stopped at the lanelet edge.
 The current develop return contract is also preserved explicitly for ordinary
 and turnaround sites: after ``CRAB_OUT`` the controller accepts a fresh live
 lanelet projection, holds zero for 1.20 s, and asks LaneletRoute to plan from
-the robot's current XY.  B11--B13 are the scoped CARLA exception: their
-roadside exit must first reach the 0.03 m lanelet band, retain outbound yaw,
-and select the separately tagged RPPReverse route.  The former CARLA entry-
+the robot's current XY.  HH_261007 - B11--B13 also use forward road returns,
+including a longer forward loop where required; the simulator no longer
+tags return goals for RPPReverse. Final reverse parking remains separate.
+The former CARLA entry-
 anchor centering lease remains pinned off; enabling it before the maneuver
 would defeat develop's current-pose arrival behavior.
 
@@ -95,30 +99,47 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration
+from launch.actions import IncludeLaunchDescription, LogInfo, SetLaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from nav2_common.launch import RewrittenYaml
 
 
 # Keep this mapping explicit and host-independent: the live runtime auditor
 # checks the corresponding ROS parameters before a campsite matrix may move.
 DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
+    # HH_261007 - Requested B1 curb experiment: extreme crab only, cap 8->16
+    # and stalled-wheel floors 7/8->12/16 N*m. Speed and zero-turn are unchanged.
+    "extreme_crab_curb_boost_enable": "true",
+    # HH_261007 - Experimental axle torque reduction counters measured CRAB
+    # yaw drift without raising the existing 16 N*m experimental torque cap.
+    "experimental_crab_yaw_hold_enabled": "true",
+    # HH_261012 - Use the tested bounded small-yaw correction throughout the
+    # CARLA site profile; the ordinary controller/full launch still default OFF.
+    "experimental_zero_turn_yaw_integral_enabled": "true",
     # HH_261002 - Preserve an interrupted road mission for explicit UI resume;
     # manual release alone still leaves the vehicle stopped.
     "manual_mission_resume_enabled": "true",
-    # HH_261002 - Simulator manual forward/reverse alone may request 2.0 m/s.
-    # Automatic target speeds, lateral/yaw manual limits, watchdogs and safety
-    # gates remain unchanged; ordinary develop/full retain their 0.20 defaults.
+    # HH_261007 - Manual translation includes sideways CRAB, not only +/-X.
+    # Automatic requested speeds, yaw, watchdogs and obstacle checks stay exact;
+    # ordinary develop/full retain their 0.20 m/s UI and 1.0 m/s backend caps.
     "manual_drive_linear_limit_mps": "2.0",
+    "manual_drive_lateral_limit_mps": "2.0",
+    # HH_261007 - Explicitly admit the site-only wider UI lateral envelope.
+    "manual_drive_allow_carla_lateral_2mps": "true",
+    "carla_backend_crab_speed_cap": "2.0",
+    # HH_261007 - Cancel/ERROR must not strand manual control at a service-area
+    # road boundary. Only authored-site swept geometry receives this exception.
+    "carla_manual_service_area_enabled": "true",
     # CARLA publishes a real rear RGB stream, but the AprilTag debug JPEG is
     # intentionally event-driven and can be stale before acquisition.  Only
     # this simulator evidence profile may show the live rear stream in that
     # empty docking slot; full/develop/production launches remain fail-closed.
     "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
-    # Do not halve campsite CRAB/ROTATE commands in the final gate. Ordinary
-    # Nav2 is independently pre-limited by the CARLA runtime overlay to the
-    # same 0.555556 m/s physical cruise produced by develop's 1.111111 * 0.5.
-    # This keeps B11 on its tight route while preserving the B10-v22-proven
-    # maneuver dynamics and accepted extreme-crab Kp=8.
+    # HH_261007 - Keep unity scale for CRAB/ROTATE and manual 2 m/s commands.
+    # The CARLA Nav2 overlay now requests 1.111111 m/s (4 km/h) on clear roads,
+    # within the requested 3--5 km/h range; it no longer pre-halves cruise to
+    # 2 km/h. Curvature/collision/approach regulation and maneuver limits stay.
     "carla_cmd_vel_gate_speed_scale": "1.0",
     # The simulated charger has no hardware undock handshake.  Permit only
     # the authenticated manual owner (mission off, drive-enable on, SOC ready)
@@ -173,17 +194,16 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
     # 0.15 m site-only re-entry band admits that still fully projected inward
     # correction while retaining a hard stop at 0.10 m regression from best.
     "carla_route_safety_path_center_reentry_m": "0.15",
-    # B11 v13 reached the ordinary 0.15 m live-lanelet handoff while still
-    # 0.41 m from its inbound anchor. The resulting forward loop immediately
-    # put the physical body on a cost-100 edge, then Nav2 recovery rotated the
-    # front radar to 0.16 m. Keep the develop current-pose policy everywhere
-    # else, but make the existing roadside-only CARLA exception atomic: crab
-    # to the 0.03 m band, retain outbound yaw, tag the goal as reverse, select
-    # RPPReverse, and enforce the reverse lanelet corridor.
-    "carla_roadside_reverse_return_enable": "true",
+    # HH_261007 - Restore forward road returns, including roadside loops.
+    # Clear BOTH the maneuver exception and reverse goal/controller wiring:
+    # the state machine otherwise tags every return goal for reverse driving,
+    # independently of the roadside flag. Keep final reverse parking, manual
+    # control and all live obstacle stops unchanged. A blocked forward route
+    # must fail visibly instead of silently falling back to road reversing.
+    "carla_roadside_reverse_return_enable": "false",
     "carla_roadside_reverse_handoff_distance_m": "0.03",
-    "carla_nav2_reverse_controller": "RPPReverse",
-    "carla_reverse_goal_topic": "/planning/auto_reverse_goal_raw",
+    "carla_nav2_reverse_controller": "",
+    "carla_reverse_goal_topic": "",
     "carla_lanelet_safety_check_reverse": "true",
     # ALIGN_OUTBOUND_LANE_YAW is a CARLA roadside-return geometry lease, not a
     # develop safety default. Command ownership remains production-equivalent;
@@ -276,6 +296,16 @@ DEVELOP_SITE_GEOMETRY_ARGUMENTS = {
 def develop_site_geometry_arguments(adapter_share):
     """Bind the proven site profile to its CARLA-only sensor/plant configs."""
     arguments = dict(DEVELOP_SITE_GEOMETRY_ARGUMENTS)
+    # HH_261012 - Resolve the simulator service catalog in the installed package
+    # while preserving an explicitly supplied catalog launch argument.
+    arguments["planning_state_machine_camping_sites_yaml"] = LaunchConfiguration(
+        "planning_state_machine_camping_sites_yaml",
+            default=os.path.join(adapter_share, "config", "camping_sites_carla_forward_return.yaml"),
+    )
+    # HH_261007 - Bridge only the authored B1/B11 road-to-site gaps. This is
+    # manual semantic-map permission, not a terrain edit or obstacle bypass.
+    arguments["carla_manual_service_access_file"] = os.path.join(
+        adapter_share, "config", "manual_service_access.yaml")
     # HH_261002 - Lift only this simulator adapter's longitudinal clipping cap
     # to match its explicit manual UI limit; never accelerate automatic targets.
     arguments["carla_command_runtime_override_param_file"] = os.path.join(
@@ -311,8 +341,27 @@ def develop_site_geometry_yolo_labels(adapter_share):
     return os.path.join(adapter_share, "config", "yolo_coco80.txt")
 
 
+def develop_site_geometry_control_params(control_share):
+    """HH_261008 - Isolate the experimental pre-parking correction to CARLA."""
+    # Forward-loop arrivals stop on the opposite side of the snapped point
+    # from short returns. Their accepted 0.19 m road-direction residual adds
+    # to the parking-axis offset before the physical quarter-turn. Correct
+    # that residual more closely, without changing the native 0.20 m profile,
+    # reverse controller, final 0.25 m XY disk, speed or safety bounds.
+    # This remains experimental until both return directions are validated.
+    return RewrittenYaml(
+        source_file=os.path.join(control_share, "config", "control.yaml"),
+        param_rewrites={
+            "/control/drop_zone_maneuver_controller.ros__parameters."
+            "parking_approach_position_tolerance_m": "0.05",
+        },
+        convert_types=True,
+    )
+
+
 def generate_launch_description():
     adapter_share = get_package_share_directory("camrod_carla_adapter")
+    control_share = get_package_share_directory("camrod_control")
     full_launch = os.path.join(
         adapter_share, "launch", "camrod_carla_full.launch.py"
     )
@@ -323,6 +372,17 @@ def generate_launch_description():
         SetLaunchConfiguration(
             "yolo_labels_path", develop_site_geometry_yolo_labels(adapter_share)
         ),
+        # HH_261008 - The existing bringup argument inherits this generated
+        # file before its default is declared; ordinary/full launches retain
+        # the package YAML. Log the selected file for runtime provenance.
+        SetLaunchConfiguration(
+            "control_param_file", develop_site_geometry_control_params(control_share)
+        ),
+        LogInfo(msg=[
+            "CARLA site-only experimental drop-zone approach tolerance=0.05 m; "
+            "control_param_file=",
+            LaunchConfiguration("control_param_file"),
+        ]),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(full_launch),
             launch_arguments=develop_site_geometry_arguments(

@@ -73,9 +73,9 @@ def _launch_setup(context, *args, **kwargs):
     if pose is not None:
       sensors[name] = pose
 
-  # HH_260528: Dual econ cameras — nested under camera: front/rear (same pattern as radar).
+  # HH_260528 - Dual econ cameras — nested under camera: front/rear (same pattern as radar).
   # Drives econ_camera_link xacro macro (body frame + optical child frame).
-  # HH_260606: Use only canonical nested camera config; flat camera_* aliases were removed.
+  # HH_260606 - Use only canonical nested camera config; flat camera_* aliases were removed.
   for cam_name in ["front", "rear"]:
     key = f"camera_{cam_name}"
     pose = _sensor_pose(_nested_sensor_cfg(params, ("camera", cam_name)))
@@ -85,9 +85,9 @@ def _launch_setup(context, *args, **kwargs):
   # ---------------------------------------------------------
   # 2. Nested radar sensors
   # ---------------------------------------------------------
-  # HH_260507: Radar sensors are directly attached to sensor_kit_base_link.
+  # HH_260507 - Radar sensors are directly attached to sensor_kit_base_link.
   # There is no intermediate radar base frame anymore.
-  # HH_260606: Use only canonical nested radar config; flat radar_* aliases were removed.
+  # HH_260606 - Use only canonical nested radar config; flat radar_* aliases were removed.
   # HH_260623 - Keep YAML keys aligned with the seven SEN0592 TF frames used by sensing/radar.
   for radar_name in ["front1", "front2", "left1", "left2", "right1", "right2", "rear"]:
     key = f"radar_{radar_name}"
@@ -126,7 +126,7 @@ def _launch_setup(context, *args, **kwargs):
     " rear_axle_offset_x:=",
     f"{rear_axle_offset_x}",
   ]
-  # HH_260625: Missing YAML must not zero sensor TFs; leave xacro defaults intact.
+  # HH_260625 - Missing YAML must not zero sensor TFs; leave xacro defaults intact.
   if robot_cfg:
     command_args.extend([
       " base_length:=",
@@ -163,7 +163,7 @@ def _launch_setup(context, *args, **kwargs):
     output="screen",
   )
 
-  # HH_260326: Removed sensor_kit status runtime node as requested.
+  # HH_260326 - Removed sensor_kit status runtime node as requested.
   return [rsp_node]
 
 
@@ -199,6 +199,6 @@ def generate_launch_description():
       default_value="sensor_kit_base_link",
       description="Sensor kit frame coincident with robot_center_link",
     ),
-    # HH_260527: Removed unused args (map_frame_id, enable_status).
+    # HH_260527 - Removed unused args (map_frame_id, enable_status).
     OpaqueFunction(function=_launch_setup),
   ])

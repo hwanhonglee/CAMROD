@@ -288,6 +288,185 @@ MotionCostStopDecision MotionCostStop::evaluateLaneletRecovery(
   return evaluateLanelet(command, now_sec, false);
 }
 
+std::optional<MotionCostStopDecision> MotionCostStop::evaluateManualServiceAreaCommand(
+  const avg_msgs::msg::AvgTwist & command, const double now_sec,
+  const std::vector<ManualServiceArea> & areas, const std::string & frame_id,
+  const bool map_hold_active)
+{
+  // HH_261007 - Restart-safe spatial context is not a reconstructed mission.
+  // Permit only lethal road-map cells within ONE authored site/access union.
+  // Current/swept samples outside that exact union retain ordinary map checks.
+  if (areas.empty() || !config_.enabled || !config_.lanelet_enabled ||
+    !config_.lanelet_body_hard_stop_enabled) return std::nullopt;
+  const double speed = std::hypot(command.linear.x, command.linear.y);
+  if (speed <= config_.min_translation_mps &&
+    std::abs(command.angular.z) <= config_.min_translation_mps) return std::nullopt;
+  const auto blocked = [](const std::string & reason) {
+      return MotionCostStopDecision{true, false, true, false, reason};
+    };
+  if (!std::isfinite(speed) || !std::isfinite(command.angular.z))
+    return blocked("manual_service_area_command_limit");
+  if (!pose_ || !std::isfinite(pose_->x) || !std::isfinite(pose_->y) ||
+    !std::isfinite(pose_->yaw) || pose_->observation_sec <= 0.0 ||
+    now_sec - pose_->observation_sec > 0.5 || now_sec < pose_->observation_sec)
+    return blocked("manual_service_area_pose_stale");
+  if (!lanelet_grid_.available || !validGrid(lanelet_grid_.grid) ||
+    pose_->frame_id != frame_id || lanelet_grid_.grid.header.frame_id != frame_id)
+    return blocked("manual_service_area_map_or_frame_invalid");
+  const double grid_timeout = config_.lanelet_recovery_stale_timeout_s > 0.0 ?
+    config_.lanelet_recovery_stale_timeout_s : config_.stale_timeout_s;
+  if (grid_timeout <= 0 || now_sec - lanelet_grid_.receive_sec > grid_timeout ||
+      now_sec < lanelet_grid_.receive_sec)
+    return blocked("manual_service_area_grid_stale");
+  const auto & grid = lanelet_grid_.grid;
+  const auto initial = samplePhysicalBody(grid, config_.lanelet_body_hard_stop_threshold, true);
+  // HH_261007 - A rear lookahead hold must not deadlock a now-clear body.
+  // Admit ONLY an exact, swept pure rotation here; the same reverse command
+  // retains its full directional lookahead and cannot release its own hazard.
+  const bool clear_body_rotation = !initial.blocked && map_hold_active &&
+    speed <= 1e-6 && std::abs(command.angular.z) > config_.min_translation_mps;
+  const bool access_configured = std::any_of(areas.begin(), areas.end(),
+    [](const auto & area) { return !area.access_polygons.empty(); });
+  if ((!initial.blocked && !clear_body_rotation && !access_configured) ||
+    (initial.blocked && initial.detail != "cost")) return std::nullopt;
+  // HH_261007 - After leaving the site polygon, a body can still straddle the
+  // road seam. Complete the same bounded monotonic escape with NO masked area,
+  // rather than dropping back to the too-short ordinary recovery projection.
+  // An empty polygon grants no geographic permission and rejects unknown cells.
+  const ManualServiceArea road_only{"road_reentry", {}};
+  const PlanarPose original = *pose_;
+  const auto project = [&](const double t) {
+    const double a = command.angular.z * t;
+    double x = command.linear.x * t, y = command.linear.y * t;
+    if (std::abs(command.angular.z) > 1e-6) {
+      x = (command.linear.x * std::sin(a) + command.linear.y * (std::cos(a) - 1)) / command.angular.z;
+      y = (command.linear.x * (1 - std::cos(a)) + command.linear.y * std::sin(a)) / command.angular.z;
+    }
+    pose_->x = original.x + std::cos(original.yaw) * x - std::sin(original.yaw) * y;
+    pose_->y = original.y + std::sin(original.yaw) * x + std::cos(original.yaw) * y;
+    pose_->yaw = original.yaw + a;
+  };
+  const auto sweep_steps = [&](const double duration) {
+    return std::max({1,
+      static_cast<int>(std::ceil(speed * duration / std::max(0.01, grid.info.resolution * 0.5))),
+      static_cast<int>(std::ceil(std::abs(command.angular.z * duration) / (2 * kPi / 180)))});
+  };
+  std::set<std::pair<int, int>> swept_contacts;
+  // HH_261007 - Select a clear-road approach from the exact output sweep,
+  // before its first boundary contact. No access means legacy selection.
+  if (access_configured && speed <= 2.000001 && std::abs(command.angular.z) <= 0.200001) {
+    const double duration = speed > config_.min_translation_mps ?
+      std::max(0.5, 0.25 / speed) : 0.5;
+    const int steps = sweep_steps(duration);
+    for (int i = 0; i <= steps; ++i) {
+      project(duration * i / steps);
+      const auto collect = [&](const GridHit & hit) -> std::optional<MotionCostStopDecision> {
+        if (hit.blocked && hit.detail != "cost")
+          return laneletContactDecision("manual_service_area_approach_" + hit.detail, hit);
+        swept_contacts.insert(hit.lethal_cells.begin(), hit.lethal_cells.end());
+        return std::nullopt;
+      };
+      auto failure = collect(samplePhysicalBody(
+        grid, config_.lanelet_body_hard_stop_threshold, true, &road_only));
+      if (!failure && config_.lanelet_footprint_enabled) {
+        const auto & polygon = footprint_polygon_local_.size() >= 3 ?
+          footprint_polygon_local_ : fallback_footprint_polygon_local_;
+        failure = collect(samplePolygonFootprint(
+          grid, config_.lanelet_footprint_threshold, true, polygon, false, &road_only));
+      }
+      if (failure) {
+        *pose_ = original;
+        return failure;
+      }
+    }
+    *pose_ = original;
+  }
+  const ManualServiceArea * selected = nullptr;
+  for (const auto & area : areas) {
+    if (!validManualServiceArea(area)) {
+      if (!area.access_polygons.empty()) return blocked("manual_service_area_invalid_access");
+      continue;
+    }
+    const auto contains_contact = [&](const auto & cell) {
+      const auto world = gridToWorld(grid, cell.first, cell.second);
+      return manualServiceAreaContains(area, world.first, world.second);
+    };
+    const bool touches = std::any_of(initial.lethal_cells.begin(), initial.lethal_cells.end(),
+      contains_contact) || (!area.access_polygons.empty() &&
+      std::any_of(swept_contacts.begin(), swept_contacts.end(), contains_contact));
+    if (!touches) continue;
+    if (selected) return blocked("manual_service_area_ambiguous");
+    selected = &area;
+  }
+  if (!selected && !initial.blocked && !clear_body_rotation) return std::nullopt;
+  if (!selected) selected = &road_only;
+  // HH_261007 - These are limits on the geographic exception, not new limits
+  // on ordinary manual driving where no authored-site permission is needed.
+  if (speed > 2.000001 || std::abs(command.angular.z) > 0.200001)
+    return blocked("manual_service_area_command_limit");
+
+  // HH_261007 - A failed entry may straddle the road/site seam already. Do not
+  // turn that existing contact into a permanent deadlock: reuse the strict
+  // monotonic escape rule, now against road UNION the selected authored site.
+  // No new outside-site cell may be touched, and the projected body must clear
+  // all existing outside-site contact. Unknown space is never escapable cost.
+  const auto outside = samplePhysicalBody(
+    grid, config_.lanelet_body_hard_stop_threshold, true, selected);
+  if (outside.blocked && outside.detail != "cost")
+    return laneletContactDecision("manual_service_area_initial_" + outside.detail, outside);
+  std::set<std::pair<int, int>> previous_outside{
+    outside.lethal_cells.begin(), outside.lethal_cells.end()};
+  const double escape_distance = outside.blocked ? 2.0 : 0.25;
+  // Half a second of the EXACT output, with a 0.25 m minimum translation
+  // sweep (a bounded 2 m SEARCH only for existing contact escape); rotations
+  // sample at <=2 degrees. Stop at the first fully clear body pose: projecting
+  // past it can falsely reject escape by reaching the opposite road boundary.
+  // The search is not a timed drive command, permission radius, or map dilation.
+  const double duration = speed > config_.min_translation_mps ?
+    std::max(0.5, escape_distance / speed) : 0.5;
+  const int steps = sweep_steps(duration);
+  for (int i = 0; i <= steps; ++i) {
+    project(duration * i / steps);
+    auto hit = samplePhysicalBody(grid, config_.lanelet_body_hard_stop_threshold, true, selected);
+    bool escape_cleared = false;
+    if (outside.blocked && (!hit.blocked || hit.detail == "cost")) {
+      const std::set<std::pair<int, int>> current_outside{
+        hit.lethal_cells.begin(), hit.lethal_cells.end()};
+      const bool contained = std::includes(
+        previous_outside.begin(), previous_outside.end(),
+        current_outside.begin(), current_outside.end());
+      if (contained && (i < steps || current_outside.empty())) {
+        previous_outside = current_outside;
+        hit.blocked = false;
+        escape_cleared = current_outside.empty();
+      }
+    }
+    if (!hit.blocked && config_.lanelet_footprint_enabled) {
+      const auto & polygon = footprint_polygon_local_.size() >= 3 ?
+        footprint_polygon_local_ : fallback_footprint_polygon_local_;
+      hit = samplePolygonFootprint(grid, config_.lanelet_footprint_threshold,
+        true, polygon, false, selected);
+    }
+    if (hit.blocked) {
+      auto decision = laneletContactDecision("manual_service_area_sweep_outside:" + selected->id, hit);
+      *pose_ = original;
+      return decision;
+    }
+    if (escape_cleared) break;
+  }
+  *pose_ = original;
+  // Run the SAME stateful obstacle/latch evaluator; only the already-proven
+  // semantic road boundary is exempt for this call. RAII prevents leakage.
+  struct Scope {
+    bool & value;
+    explicit Scope(bool & v) : value(v) { value = true; }
+    ~Scope() { value = false; }
+  } scope(manual_service_area_scope_);
+  auto decision = evaluate(command, now_sec);
+  if (!decision.blocked) decision.reason = "manual_service_area:" + selected->id;
+  return decision;
+}
+
 MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   const avg_msgs::msg::AvgTwist & command,
   const double now_sec,
@@ -505,6 +684,30 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   return evaluateLatch(now_sec);
 }
 
+MotionCostStopDecision MotionCostStop::probeRouteRecoveryCommand(
+  const avg_msgs::msg::AvgTwist & command,
+  const double now_sec,
+  const double probe_distance_m,
+  const double pose_max_age_s) const
+{
+  // HH_261006 - Isolate all evaluator state, including saved trigger geometry
+  // and clear-window evidence. An unselected candidate may neither create nor
+  // release a live latch, and cannot affect the next candidate's decision.
+  MotionCostStop probe = *this;
+  return probe.evaluateRouteRecoveryCommand(
+    command, now_sec, probe_distance_m, pose_max_age_s);
+}
+
+MotionCostStopDecision MotionCostStop::recheckLatchedHazard(const double now_sec)
+{
+  // HH_261006 - Latch maintenance must not depend on recovery selection or
+  // inspect an unauthorized command. Preserve the exact saved trigger checks.
+  if (!config_.enabled || !latch_active_) {
+    return {};
+  }
+  return evaluateLatchedHazard(now_sec);
+}
+
 bool MotionCostStop::latched() const
 {
   return latch_active_;
@@ -539,6 +742,8 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
   const double now_sec,
   const bool update_hold)
 {
+  // HH_261007 - Only evaluateManualServiceAreaCommand can establish this scope.
+  if (manual_service_area_scope_) return {};
   if (!config_.lanelet_enabled || !lanelet_grid_.available ||
     !validGrid(lanelet_grid_.grid) || !pose_.has_value())
   {
@@ -1328,12 +1533,12 @@ MotionCostStop::GridHit MotionCostStop::sampleFootprint(
 MotionCostStop::GridHit MotionCostStop::samplePhysicalBody(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const int threshold,
-  const bool stop_on_unknown) const
+  const bool stop_on_unknown, const ManualServiceArea * permitted_area) const
 {
   // HH_260807 - Any lethal raster cell touched by a body edge is an ordinary
   // hard stop and contributes to the monotonic bounded-escape overlap proof.
   return samplePolygonFootprint(
-    grid, threshold, stop_on_unknown, physical_body_polygon_local_, true);
+    grid, threshold, stop_on_unknown, physical_body_polygon_local_, true, permitted_area);
 }
 
 MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
@@ -1341,7 +1546,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
   const int threshold,
   const bool stop_on_unknown,
   const std::vector<std::pair<double, double>> & local_polygon,
-  const bool edge_cell_contact) const
+  const bool edge_cell_contact, const ManualServiceArea * permitted_area) const
 {
   GridHit hit;
   if (!pose_.has_value() || !validGrid(grid) || local_polygon.size() < 3) {
@@ -1364,6 +1569,16 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
   std::set<std::pair<int, int>> contact_indices;
   bool out_of_grid = false;
   const auto record_contact = [&](const int grid_x, const int grid_y, const int cost) {
+      if (permitted_area && cost < 0) {
+        hit.blocked = true; hit.detail = "unknown"; hit.cost = cost;
+        return;
+      }
+      // HH_261007 - Mask only this call's authored semantic service-area cells;
+      // raw grid data and every dynamic-source grid remain untouched.
+      if (permitted_area) {
+        const auto cell = gridToWorld(grid, grid_x, grid_y);
+        if (manualServiceAreaContains(*permitted_area, cell.first, cell.second)) return;
+      }
       if (!contact_indices.insert({grid_x, grid_y}).second) {
         return;
       }
@@ -1395,7 +1610,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       }
       const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
       ++hit.total_cells;
-      if (edge_cell_contact && cost >= threshold) {
+      if (edge_cell_contact && (cost >= threshold || (permitted_area && cost < 0))) {
         record_contact(grid_x, grid_y, cost);
       }
     };
@@ -1459,7 +1674,7 @@ MotionCostStop::GridHit MotionCostStop::samplePolygonFootprint(
       }
       const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
       ++hit.total_cells;
-      if (cost >= threshold) {
+      if (cost >= threshold || (permitted_area && cost < 0)) {
         record_contact(grid_x, grid_y, cost);
       }
     }

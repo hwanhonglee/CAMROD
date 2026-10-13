@@ -1,0 +1,15 @@
+{
+  "schema": "camrod.virtual_carla.woraksan_map_baseline.v1",
+  "source_commit": "fd53f7e6bd0204fe2e936e6cedd9701bc1ad08be",
+  "source_path": "lanelet2_maps.osm",
+  "git_blob": "ce2f2d5f44662d8d5f00ad480f824f971be2322d",
+  "sha256": "57cd044cb714f3f4c899868b5287c6c435e14395422e4f75eb66fd8eaa091fbb",
+  "map_version": "27",
+  "maximum_element_id": 7020,
+  "element_counts": {
+    "node": 1660,
+    "way": 237,
+    "relation": 69
+  },
+  "generated_virtual_sha256": "add38a6932e4c049868b00f415d788a4622a92a1cd24650f1664142b5ed5bfa8"
+}

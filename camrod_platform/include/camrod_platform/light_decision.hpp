@@ -1,4 +1,4 @@
-// 260708 - Pure decision logic for exterior lights (no ROS dependency).
+// HH_260708 - Pure decision logic for exterior lights (no ROS dependency).
 // Priority: HAZARD (estop) > crab direction > lanelet turn window > OFF.
 // Kept header-only so gtest can exercise every branch deterministically,
 // mirroring the planning cmd_vel gate test approach.

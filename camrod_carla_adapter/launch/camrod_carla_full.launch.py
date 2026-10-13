@@ -229,6 +229,18 @@ def generate_launch_description():
             "port", default_value=os.environ.get("CARLA_PORT", "2000")
         ),
         DeclareLaunchArgument("launch_vehicle_control", default_value="true"),
+        # HH_261007 - Only the simulator site profile requests the experimental
+        # 16 N*m extreme-crab curb boost; ordinary/develop launch stays disabled.
+        DeclareLaunchArgument("extreme_crab_curb_boost_enable", default_value="false"),
+        # HH_261007 - Keep bounded axle-reduction yaw feedback simulator-only
+        # and opt-in; this does not increase torque or bypass obstacle checks.
+        DeclareLaunchArgument("experimental_crab_yaw_hold_enabled", default_value="false"),
+        # HH_261008 - Opt-in simulator yaw tracking experiment; the physical
+        # controller retains its existing 2 N*m ceiling and all interlocks.
+        DeclareLaunchArgument("experimental_zero_turn_yaw_integral_enabled", default_value="false"),
+        # HH_261007 - Preserve the backend's 1 m/s CRAB cap unless the simulator
+        # site profile explicitly selects the requested 2 m/s manual envelope.
+        DeclareLaunchArgument("carla_backend_crab_speed_cap", default_value="1.0"),
         # HH_261002 - Default empty keeps the ordinary command boundary exact;
         # only the explicit CARLA site wrapper selects the manual-speed overlay.
         DeclareLaunchArgument("carla_command_runtime_override_param_file", default_value=""),
@@ -359,6 +371,12 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            # HH_261007 - Generic CARLA retains the ordinary 1 m/s lateral cap.
+            "manual_drive_allow_carla_lateral_2mps",
+            default_value="false",
+            description="CARLA-only opt-in for the site manual 2 m/s lateral envelope",
+        ),
+        DeclareLaunchArgument(
             "manual_drive_angular_limit_radps",
             default_value=os.environ.get(
                 "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS", "0.20"
@@ -409,6 +427,10 @@ def generate_launch_description():
                 "production 0.5 scale"
             ),
         ),
+        # HH_261007 - Only the site-geometry simulator wrapper opts in.
+        DeclareLaunchArgument("carla_manual_service_area_enabled", default_value="false"),
+        # HH_261007 - Keep extra road-to-site permissions out of parity launches.
+        DeclareLaunchArgument("carla_manual_service_access_file", default_value=""),
         DeclareLaunchArgument(
             "carla_navigation_minimum_ackermann_turn_radius_m",
             default_value=os.environ.get(
@@ -960,6 +982,16 @@ def generate_launch_description():
                     "accepted_carla_python_egg"
                 ),
                 "python_egg_cache": LaunchConfiguration("python_egg_cache"),
+                "extreme_crab_curb_boost_enable": LaunchConfiguration(
+                    "extreme_crab_curb_boost_enable"
+                ),
+                "experimental_crab_yaw_hold_enabled": LaunchConfiguration(
+                    "experimental_crab_yaw_hold_enabled"
+                ),
+                "experimental_zero_turn_yaw_integral_enabled": LaunchConfiguration(
+                    "experimental_zero_turn_yaw_integral_enabled"
+                ),
+                "crab_speed_cap": LaunchConfiguration("carla_backend_crab_speed_cap"),
                 "rotation_recovery_breakaway_enable": LaunchConfiguration(
                     "rotation_recovery_breakaway_enable"
                 ),
@@ -1189,6 +1221,9 @@ def generate_launch_description():
                 "control_manual_drive_lateral_limit_mps": LaunchConfiguration(
                     "manual_drive_lateral_limit_mps"
                 ),
+                "control_manual_drive_allow_carla_lateral_2mps": LaunchConfiguration(
+                    "manual_drive_allow_carla_lateral_2mps"
+                ),
                 "control_manual_drive_angular_limit_radps": LaunchConfiguration(
                     "manual_drive_angular_limit_radps"
                 ),
@@ -1401,6 +1436,13 @@ def generate_launch_description():
                 # Parity mode resolves to the production 0.5 scale. The tuned
                 # wrapper alone selects unity for its historical reverse-return
                 # profile, without mutating the shared control configuration.
+                # HH_261007 - Explicit site wrapper opt-in; parity remains disabled.
+                "control_cmd_vel_gate_manual_service_area_enabled": LaunchConfiguration(
+                    "carla_manual_service_area_enabled", default="false"
+                ),
+                "control_cmd_vel_gate_manual_service_access_file": LaunchConfiguration(
+                    "carla_manual_service_access_file", default=""
+                ),
                 "control_cmd_vel_gate_speed_scale": LaunchConfiguration(
                     "carla_cmd_vel_gate_speed_scale"
                 ),

@@ -37,38 +37,38 @@
 #include <lanelet2_projection/LocalCartesian.h>
 #include <lanelet2_projection/UTM.h>
 
-#include "camrod_map/custom_regulatory_elements.hpp"  // HH_260101 register speed_bump
+#include "camrod_map/custom_regulatory_elements.hpp"  // HH_260101 - register speed_bump
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 
-// HH_251231 Simple lanelet-based OccupancyGrid publisher for Nav2 costmap layer.
+// HH_251231 - Simple lanelet-based OccupancyGrid publisher for Nav2 costmap layer.
 // Marks lanelet interior as low cost (0), outside as lethal (100).
 // No LiDAR dependency; intended for localization/keep-out visualization.
 class LaneletCostGridNode : public rclcpp::Node
 {
 public:
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   LaneletCostGridNode() : Node("lanelet_cost_grid")
   {
-    // HH_260128 require explicit map_path (YAML/launch); empty -> error.
+    // HH_260128 - require explicit map_path (YAML/launch); empty -> error.
     map_path_ = declare_parameter<std::string>("map_path", "");
     frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     resolution_ = declare_parameter<double>("resolution", 0.5);
-    window_width_ = declare_parameter<int>("width", 400);   // HH_260102 window size around robot/path (cells)
+    window_width_ = declare_parameter<int>("width", 400);   // HH_260102 - window size around robot/path (cells)
     window_height_ = declare_parameter<int>("height", 400);
-    origin_x_ = declare_parameter<double>("origin_x", -50.0);   // HH_251231 initial origin
+    origin_x_ = declare_parameter<double>("origin_x", -50.0);   // HH_251231 - initial origin
     origin_y_ = declare_parameter<double>("origin_y", -50.0);
-    centerline_half_width_ = declare_parameter<double>("centerline_half_width", 1.5);  // HH_260101 corridor half width (m)
-    // HH_260316-00:00 Keep centerline corridor inside lanelet polygon by default.
+    centerline_half_width_ = declare_parameter<double>("centerline_half_width", 1.5);  // HH_260101 - corridor half width (m)
+    // HH_260316 - Keep centerline corridor inside lanelet polygon by default.
     // This avoids planner-base strips leaking outside lane bounds at sharp corners.
     centerline_clip_to_lanelet_ = declare_parameter<bool>("centerline_clip_to_lanelet", true);
-    // HH_260316-00:00 Optional lanelet interior base cost for centerline mode.
+    // HH_260316 - Optional lanelet interior base cost for centerline mode.
     // -1 disables lanelet fill (centerline strip only).
     // >=0 enables robust traversable connectivity while keeping centerline as lowest cost.
     centerline_lanelet_fill_value_ = declare_parameter<int>("centerline_lanelet_fill_value", -1);
-    origin_lat_ = declare_parameter<double>("offset_lat", 0.0);   // HH_260101 map origin for projection
+    origin_lat_ = declare_parameter<double>("offset_lat", 0.0);   // HH_260101 - map origin for projection
     origin_lon_ = declare_parameter<double>("offset_lon", 0.0);
     origin_alt_ = declare_parameter<double>("offset_alt", 0.0);
-    // HH_260316-00:00 Keep lanelet projector selectable.
+    // HH_260316 - Keep lanelet projector selectable.
     // Use LocalCartesian by default so this node matches:
     // - lanelet2_map_loader
     // - planning goal/centerline snappers
@@ -104,9 +104,9 @@ public:
     debug_coverage_stride_ = declare_parameter<int>("debug_coverage_stride", 3);
     debug_coverage_min_value_ = declare_parameter<int>("debug_coverage_min_value", 0);
     outside_value_ = declare_parameter<int>("outside_value", -1);
-    direction_penalty_ = declare_parameter<int>("direction_penalty", 80);  // HH_260101 penalty for opposite heading (raise to make opposite lane expensive)
-    backward_penalty_ = declare_parameter<int>("backward_penalty", 60);  // HH_260102 penalize behind-robot cells to discourage reverse
-    gradient_range_ = declare_parameter<double>("gradient_range", 30.0);  // HH_260101 decay distance for cost (m)
+    direction_penalty_ = declare_parameter<int>("direction_penalty", 80);  // HH_260101 - penalty for opposite heading (raise to make opposite lane expensive)
+    backward_penalty_ = declare_parameter<int>("backward_penalty", 60);  // HH_260102 - penalize behind-robot cells to discourage reverse
+    gradient_range_ = declare_parameter<double>("gradient_range", 30.0);  // HH_260101 - decay distance for cost (m)
     // 2026-02-11: For static centerline corridor maps, keep in-lane cost flat by default.
     centerline_use_distance_gradient_ = declare_parameter<bool>("centerline_use_distance_gradient", false);
     // 2026-02-11: Path-mode grids can be rendered only inside lanelet areas (no rectangular background fill).
@@ -116,7 +116,7 @@ public:
     // 2026-02-24: Local path mode can mask only lanelets that the path traverses.
     path_lanelet_only_ = declare_parameter<bool>("path_lanelet_only", false);
     path_lanelet_match_max_dist_ = declare_parameter<double>("path_lanelet_match_max_dist", 5.0);
-    // HH_260305-00:00 Optional nearest-lanelet fallback for sparse/off-lane path samples.
+    // HH_260305 - Optional nearest-lanelet fallback for sparse/off-lane path samples.
     // Disable for strict path-only masking to prevent remote/stray lanelet patches.
     path_lanelet_allow_nearest_fallback_ =
       declare_parameter<bool>("path_lanelet_allow_nearest_fallback", true);
@@ -127,21 +127,21 @@ public:
     // Keep disabled for local-path grids so only path-distance matters there.
     path_use_pose_distance_gradient_ =
       declare_parameter<bool>("path_use_pose_distance_gradient", false);
-    // HH_260313-00:00 Path strip can keep centerline as lowest-cost band.
+    // HH_260313 - Path strip can keep centerline as lowest-cost band.
     path_use_lateral_gradient_ = declare_parameter<bool>("path_use_lateral_gradient", true);
-    // HH_260313-00:00 Path-strip blend weights (pose-distance vs lateral-distance terms).
+    // HH_260313 - Path-strip blend weights (pose-distance vs lateral-distance terms).
     path_pose_cost_weight_ = std::max(0.0, declare_parameter<double>("path_pose_cost_weight", 0.7));
     path_lateral_cost_weight_ = std::max(
       0.0, declare_parameter<double>("path_lateral_cost_weight", 0.3));
-    grid_yaw_ = declare_parameter<double>("grid_yaw", 0.0);  // HH_260103 manual yaw (rad) for OccupancyGrid orientation
-    // HH_260526: Replace use_path_bbox/lock_window/use_map_bbox booleans with one window mode.
+    grid_yaw_ = declare_parameter<double>("grid_yaw", 0.0);  // HH_260103 - manual yaw (rad) for OccupancyGrid orientation
+    // HH_260526 - Replace use_path_bbox/lock_window/use_map_bbox booleans with one window mode.
     // window_mode options: robot_centered | path_bbox | fixed | map_bbox.
     window_mode_ = toLower(declare_parameter<std::string>("window_mode", "robot_centered"));
-    ignore_invalid_map_ = declare_parameter<bool>("ignore_invalid_map", false);  // HH_260127 allow loading maps with OSM validation warnings
-    // HH_260109 default to fused localization pose for lanelet-guided cost grid.
+    ignore_invalid_map_ = declare_parameter<bool>("ignore_invalid_map", false);  // HH_260127 - allow loading maps with OSM validation warnings
+    // HH_260109 - default to fused localization pose for lanelet-guided cost grid.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
-    path_topic_ = declare_parameter<std::string>("path_topic", "/planning/global_path");  // HH_260103 focus cost along planned path
-    // HH_260619: Route-aware lanelet filtering uses the exact lanelet IDs from
+    path_topic_ = declare_parameter<std::string>("path_topic", "/planning/global_path");  // HH_260103 - focus cost along planned path
+    // HH_260619 - Route-aware lanelet filtering uses the exact lanelet IDs from
     // LaneletRoutePlanner, avoiding unrelated merge/branch boundaries in the active planning cost.
     route_lanelet_ids_topic_ =
       declare_parameter<std::string>("route_lanelet_ids_topic", "/planning/route_lanelet_ids");
@@ -166,13 +166,13 @@ public:
     goal_fallback_holdoff_s_ = declare_parameter<double>("goal_fallback_holdoff_s", 0.6);
     // 2026-02-26: Optional stale path auto-clear (<=0 disables).
     stale_path_timeout_s_ = declare_parameter<double>("stale_path_timeout_s", 0.0);
-    // HH_260317-00:00 Guard against stale route reuse after a new goal is received.
+    // HH_260317 - Guard against stale route reuse after a new goal is received.
     // When enabled, path messages older than latest goal timestamp are ignored.
     drop_stale_path_after_goal_ =
       declare_parameter<bool>("drop_stale_path_after_goal", true);
-    // HH_260317-00:00 Allow small timestamp skew between goal/path publishers.
+    // HH_260317 - Allow small timestamp skew between goal/path publishers.
     path_goal_stamp_slack_s_ = declare_parameter<double>("path_goal_stamp_slack_s", 0.10);
-    // HH_260317-00:00 Prefer geometric freshness check:
+    // HH_260317 - Prefer geometric freshness check:
     // accept only paths that terminate near the latest goal.
     // This is more robust than header-stamp-only checks across mixed publishers.
     fresh_path_goal_match_tolerance_m_ =
@@ -191,28 +191,28 @@ public:
       declare_parameter<bool>("skip_unchanged_path_rebuild", true);
     path_change_epsilon_m_ = std::max(
       0.0, declare_parameter<double>("path_change_epsilon_m", 0.05));
-    // HH_260625: GNSS reattach can move localization from the EKF startup seed
+    // HH_260625 - GNSS reattach can move localization from the EKF startup seed
     // to the real map pose after the first placeholder grid was already built.
     rebuild_when_pose_exits_grid_ =
       declare_parameter<bool>("rebuild_when_pose_exits_grid", true);
     rebuild_pose_grid_margin_m_ = std::max(
       0.0, declare_parameter<double>("rebuild_pose_grid_margin_m", 5.0));
-    // HH_260305-00:00 Allow path-mode grid baseline build (lanelet mask + pose gradient)
+    // HH_260305 - Allow path-mode grid baseline build (lanelet mask + pose gradient)
     // even when no valid path has been received yet.
     allow_build_without_path_ = declare_parameter<bool>("allow_build_without_path", false);
-    // HH_260305-00:00 Debug counters for rebuild trigger/skip reasons.
+    // HH_260305 - Debug counters for rebuild trigger/skip reasons.
     debug_rebuild_stats_ = declare_parameter<bool>("debug_rebuild_stats", false);
     debug_build_timing_ = declare_parameter<bool>("debug_build_timing", false);
-    // HH_260305-00:00 Inside-hit threshold for cellMostlyInsidePolygon (9-point sampling).
+    // HH_260305 - Inside-hit threshold for cellMostlyInsidePolygon (9-point sampling).
     // Base(default) threshold.
     cell_inside_min_hits_ = std::clamp(
       static_cast<int>(declare_parameter<int>("cell_inside_min_hits", 5)), 1, 9);
-    // HH_260305-00:00 Path/centerline strip threshold.
+    // HH_260305 - Path/centerline strip threshold.
     // Lower than boundary threshold to keep curved segments contiguous.
     cell_inside_min_hits_path_ = std::clamp(
       static_cast<int>(declare_parameter<int>("cell_inside_min_hits_path", cell_inside_min_hits_)),
       1, 9);
-    // HH_260305-00:00 Boundary strip threshold.
+    // HH_260305 - Boundary strip threshold.
     // Keep stricter to prevent outward bleed across sharp corners.
     cell_inside_min_hits_boundary_ = std::clamp(
       static_cast<int>(
@@ -220,13 +220,13 @@ public:
       1, 9);
     // 2026-02-27: Allow latched path consumption when path publishers are transient_local.
     path_qos_transient_local_ = declare_parameter<bool>("path_qos_transient_local", false);
-    // HH_260617: Use canonical `_s` suffix for duration parameters.
+    // HH_260617 - Use canonical `_s` suffix for duration parameters.
     republish_period_s_ = declare_parameter<double>("republish_period_s", 1.0);
-    // HH_260311-00:00 Optional timer-driven rebuild.
+    // HH_260311 - Optional timer-driven rebuild.
     // Enables deterministic realtime gradient refresh even when path/pose callbacks are sparse.
     rebuild_on_timer_ = declare_parameter<bool>("rebuild_on_timer", false);
-    output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 allow multiple cost grids
-    // HH_260424: primary_enable=false by default — secondary (centerline) carries all planning cost.
+    output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 - allow multiple cost grids
+    // HH_260424 - primary_enable=false by default — secondary (centerline) carries all planning cost.
     // Primary (bounds mode) was unused; disabling saves one full raster build per cycle.
     primary_enable_ = declare_parameter<bool>("primary_enable", false);
     // 2026-04-06: Secondary profile parameters.
@@ -260,7 +260,7 @@ public:
       declare_parameter<double>("secondary.route_boundary_clearance_half_width_m", 0.75);
     secondary_route_boundary_clearance_clip_to_lanelet_ =
       declare_parameter<bool>("secondary.route_boundary_clearance_clip_to_lanelet", true);
-    // HH_260617: Secondary profile feeds /map/cost_grid/lanelet, so keep lane-change clearance separately tunable.
+    // HH_260617 - Secondary profile feeds /map/cost_grid/lanelet, so keep lane-change clearance separately tunable.
     secondary_lane_change_clearance_enable_ =
       declare_parameter<bool>("secondary.lane_change_clearance_enable", false);
     secondary_lane_change_clearance_value_ =
@@ -333,11 +333,11 @@ public:
       const lanelet::Origin origin(lanelet::GPSPoint{origin_lat_, origin_lon_, origin_alt_});
       const std::string projector_norm = toLower(projector_type_);
       if (projector_norm == "utm") {
-        // HH_260316-00:00 Optional UTM mode for projection tests.
+        // HH_260316 - Optional UTM mode for projection tests.
         lanelet::projection::UtmProjector projector(origin);
         map_ = lanelet::load(map_path_, projector, &errors);
       } else {
-        // HH_260316-00:00 Default projector aligned with map/snapper nodes.
+        // HH_260316 - Default projector aligned with map/snapper nodes.
         lanelet::projection::LocalCartesianProjector projector(origin);
         map_ = lanelet::load(map_path_, projector, &errors);
       }
@@ -368,9 +368,9 @@ public:
       last_build_time_ = now();
     }
 
-    // HH_251231 subscribe to robot pose and build grid around robot
+    // HH_251231 - subscribe to robot pose and build grid around robot
     using std::placeholders::_1;
-    // HH_260305-00:00 Use reliable/latest-only pose QoS for deterministic rebuild timing.
+    // HH_260305 - Use reliable/latest-only pose QoS for deterministic rebuild timing.
     // Best-effort drops can leave local/global path cost grids stale at old poses.
     // HH_260720 - Consume the canonical localization pose through its generated CAMROD type.
     pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
@@ -401,7 +401,7 @@ public:
     }
     RCLCPP_DEBUG(get_logger(), "waiting pose on %s to build cost grid", pose_topic_.c_str());
 
-    // HH_260125 TF listener to align incoming poses/paths to map_frame_ if frame_id differs.
+    // HH_260125 - TF listener to align incoming poses/paths to map_frame_ if frame_id differs.
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
@@ -421,7 +421,7 @@ public:
         path_received_ = false;
         path_.poses.clear();
         invalidatePathLaneletCache();
-        // HH_260305-00:00 Path-mode baseline is optional.
+        // HH_260305 - Path-mode baseline is optional.
         // - allow_build_without_path=true : rebuild lanelet-mask baseline immediately.
         // - false                        : clear stale path grid.
         if (cost_mode_ == "path" && allow_build_without_path_ && has_pose_) {
@@ -456,7 +456,7 @@ private:
     return value;
   }
 
-  // HH_260617: Reads Lanelet2 attributes defensively because historical OSM exports mix key casing.
+  // HH_260617 - Reads Lanelet2 attributes defensively because historical OSM exports mix key casing.
   template<typename PrimitiveT>
   static std::string attributeCaseInsensitive(
     const PrimitiveT & primitive,
@@ -533,7 +533,7 @@ private:
     }
     current_pose_ = pose_in_map;
     has_pose_ = true;
-    // HH_260305-00:00 In path mode, optionally allow baseline lanelet build without path.
+    // HH_260305 - In path mode, optionally allow baseline lanelet build without path.
     if (
       cost_mode_ == "path" &&
       (!path_received_ || path_.poses.size() < 2) &&
@@ -582,7 +582,7 @@ private:
     (void)onPathCommon(msg);
   }
 
-  // HH_260619: Receive the exact LaneletRoutePlanner lanelet sequence. This is
+  // HH_260619 - Receive the exact LaneletRoutePlanner lanelet sequence. This is
   // more reliable than re-inferring route lanelets from centerline points at merge polygons.
   void onRouteLaneletIds(const avg_msgs::msg::RouteLaneletIds::ConstSharedPtr msg)
   {
@@ -738,7 +738,7 @@ private:
     }
     if (drop_stale_path_after_goal_ && waiting_fresh_path_after_goal_) {
       bool accepted_as_fresh = false;
-      // HH_260317-00:00 Primary freshness gate:
+      // HH_260317 - Primary freshness gate:
       // the latest path endpoint must match the latest goal pose.
       if (has_latest_goal_pose_) {
         const auto & end = path_map.poses.back().pose.position;
@@ -754,7 +754,7 @@ private:
           return false;
         }
       }
-      // HH_260317-00:00 Secondary fallback:
+      // HH_260317 - Secondary fallback:
       // use timestamp ordering only when goal geometry is not available.
       if (
         !accepted_as_fresh &&
@@ -1109,32 +1109,32 @@ private:
     const double cy = std::cos(yaw * 0.5);
     const double sy = std::sin(yaw * 0.5);
 
-    // HH_260114 If path exists, use path bounding box to fix grid size (avoid flicker).
+    // HH_260114 - If path exists, use path bounding box to fix grid size (avoid flicker).
     double min_x = current_pose_.pose.position.x;
     double max_x = current_pose_.pose.position.x;
     double min_y = current_pose_.pose.position.y;
     double max_y = current_pose_.pose.position.y;
     if (window_mode_ == "fixed") {
-      // HH_260526: Fixed window anchored at configured origin/size (map frame).
+      // HH_260526 - Fixed window anchored at configured origin/size (map frame).
       min_x = origin_x_;
       min_y = origin_y_;
       max_x = origin_x_ + window_width_ * resolution_;
       max_y = origin_y_ + window_height_ * resolution_;
     } else if (window_mode_ == "map_bbox" && map_bounds_valid_) {
-      // HH_260526: Full map bounds with margin for stable global window.
+      // HH_260526 - Full map bounds with margin for stable global window.
       const double margin = computeRasterPadding();
       min_x = map_min_x_ - margin;
       min_y = map_min_y_ - margin;
       max_x = map_max_x_ + margin;
       max_y = map_max_y_ + margin;
     } else if (window_mode_ == "map_bbox" && !map_bounds_valid_) {
-      // HH_260526: Keep previous fallback behavior when map bounds are not ready.
+      // HH_260526 - Keep previous fallback behavior when map bounds are not ready.
       min_x = origin_x_;
       min_y = origin_y_;
       max_x = origin_x_ + window_width_ * resolution_;
       max_y = origin_y_ + window_height_ * resolution_;
     } else if (window_mode_ == "path_bbox" && path_received_ && path_.poses.size() > 1) {
-      // HH_260125 Fixed window: derive solely from path, not current pose, to avoid drift.
+      // HH_260125 - Fixed window: derive solely from path, not current pose, to avoid drift.
       min_x = path_.poses.front().pose.position.x;
       max_x = min_x;
       min_y = path_.poses.front().pose.position.y;
@@ -1151,7 +1151,7 @@ private:
       min_y -= margin;
       max_y += margin;
     } else {
-      // HH_260114 If no path, keep robot-centered window.
+      // HH_260114 - If no path, keep robot-centered window.
       const double win_half_x = 0.5 * window_width_ * resolution_;
       const double win_half_y = 0.5 * window_height_ * resolution_;
       min_x = current_pose_.pose.position.x - win_half_x;
@@ -1188,16 +1188,16 @@ private:
         ? -1
         : (path_received_ ? lethal_value_ : free_value_);
     } else if (cost_mode_ == "bounds") {
-      // HH_260305-00:00 Boundary mode should visualize only lane boundaries by default.
+      // HH_260305 - Boundary mode should visualize only lane boundaries by default.
       // Keep non-boundary cells unknown so marker output is not a full filled lane polygon.
       default_cell = -1;
     }
     grid.data.assign(grid_w * grid_h, default_cell);
-    // HH_260101 keep origin for rasterization
+    // HH_260101 - keep origin for rasterization
     origin_x_ = grid.info.origin.position.x;
     origin_y_ = grid.info.origin.position.y;
 
-    // HH_260101 fill free cells along lanelet centerlines only (narrow corridor)
+    // HH_260101 - fill free cells along lanelet centerlines only (narrow corridor)
     const double robot_yaw = has_pose_ ? yawFromPose(current_pose_) : 0.0;
     const double robot_cos = std::cos(robot_yaw);
     const double robot_sin = std::sin(robot_yaw);
@@ -1216,7 +1216,7 @@ private:
           if (!cached_path_lanelet_polys_.empty()) {
             path_lanelet_polys_ptr = &cached_path_lanelet_polys_;
           } else {
-            // HH_260318-00:00 Robustness fallback:
+            // HH_260318 - Robustness fallback:
             // When route-lanelet matching fails temporarily after a goal update,
             // do not freeze old markers. Fall back to all lanelets so the new
             // global path strip can still be rasterized, while clip-to-lanelet
@@ -1230,7 +1230,7 @@ private:
       }
       const std::vector<lanelet::BasicPolygon2d> * path_clip_polys_ptr =
         path_clip_to_lanelet_ ? path_lanelet_polys_ptr : nullptr;
-      // HH_260313-00:00 Safety guard:
+      // HH_260313 - Safety guard:
       // If path-lanelet-only clipping is requested but no lanelets are matched,
       // never paint the strip outside lane boundaries.
       const bool no_clip_lanelet_available =
@@ -1287,7 +1287,7 @@ private:
         }
       }
 
-      // HH_260527: Optional lane-boundary margin overlay for path mode.
+      // HH_260527 - Optional lane-boundary margin overlay for path mode.
       // This keeps route generation inside lanelet boundaries by adding a
       // high-cost strip near left/right bounds while still allowing detours
       // when obstacle costs force avoidance.
@@ -1459,7 +1459,7 @@ private:
 
       for (const auto & ll : *lanelets_to_render) {
         lanelet::BasicPolygon2d lane_poly;
-        // HH_260625: The startup centerline profile disables lanelet fill,
+        // HH_260625 - The startup centerline profile disables lanelet fill,
         // boundary overlay, and centerline clipping. Skip polygon creation in
         // that case; building every lanelet polygon dominated first-grid time.
         const bool needs_lane_poly =
@@ -1468,7 +1468,7 @@ private:
           lanelet_boundary_value_ >= 0;
         const bool has_lane_poly = needs_lane_poly && buildLaneletPolygon(ll, lane_poly);
         if (has_lane_poly && centerline_lanelet_fill_value_ >= 0) {
-          // HH_260316-00:00 Fill lanelet interior with soft base cost so global
+          // HH_260316 - Fill lanelet interior with soft base cost so global
           // connectivity is preserved even when centerline strips get sparse at bends.
           const int lane_base_cost = std::clamp(
             centerline_lanelet_fill_value_, free_value_, lethal_value_);
@@ -1504,7 +1504,7 @@ private:
             (centerline_clip_to_lanelet_ && has_lane_poly) ? &lane_poly : nullptr);
         }
 
-        // HH_260527: Optional lane-boundary margin overlay for centerline mode.
+        // HH_260527 - Optional lane-boundary margin overlay for centerline mode.
         // Higher boundary cost penalizes paths near lane edges and keeps
         // nominal planning centered unless obstacle avoidance is required.
         if (lanelet_boundary_value_ >= 0 && has_lane_poly) {
@@ -1529,7 +1529,7 @@ private:
       }
     }
 
-    // HH_260617: Open mapped lane-change boundaries after all normal boundary overlays.
+    // HH_260617 - Open mapped lane-change boundaries after all normal boundary overlays.
     // This prevents duplicated/shared lanelet bounds from re-blocking the allowed crossing section.
     if (!route_wait_placeholder) {
       applyLaneChangeClearance(grid);
@@ -1923,7 +1923,7 @@ private:
   {
     std::vector<lanelet::ConstLanelet> filtered;
     filtered.reserve(lanelets.size());
-    // HH_260625: Route IDs are not available before the first LaneletRoute plan.
+    // HH_260625 - Route IDs are not available before the first LaneletRoute plan.
     // Limit the bootstrap raster to the current robot-centered grid window so
     // startup does not spend tens of seconds painting far-away lanelets.
     for (const auto & ll : lanelets) {
@@ -1974,7 +1974,7 @@ private:
           if (has_pose_ && opposite_heading) {
             cost = std::clamp(cost + direction_penalty_, free_value_, lethal_value_);
           }
-          // HH_260102 penalize cells behind robot heading to discourage reverse driving
+          // HH_260102 - penalize cells behind robot heading to discourage reverse driving
           if (has_pose_) {
             const double vx = wx - current_pose_.pose.position.x;
             const double vy = wy - current_pose_.pose.position.y;
@@ -2004,7 +2004,7 @@ private:
     if (len < 1e-3) {
       return;
     }
-    // HH_260618: Lane-change clearance can use a wider strip than regular boundary painting.
+    // HH_260618 - Lane-change clearance can use a wider strip than regular boundary painting.
     const double effective_half_width =
       half_width_override_m > 0.0 ? half_width_override_m : boundary_half_width_;
     const double nx = -dy / len * effective_half_width;
@@ -2038,7 +2038,7 @@ private:
           continue;
         }
         ++boundary_candidates_;
-        // HH_260305-00:00 Use center-point containment for clip checks.
+        // HH_260305 - Use center-point containment for clip checks.
         // This avoids one-cell outward bleed on tight corners/boundaries.
         if (clip_poly && !lanelet::geometry::within(lanelet::BasicPoint2d(wx, wy), *clip_poly)) {
           ++boundary_rejected_clip_;
@@ -2050,7 +2050,7 @@ private:
     }
   }
 
-  // HH_260617: Decides whether a boundary should be opened for lateral lane-change traversal.
+  // HH_260617 - Decides whether a boundary should be opened for lateral lane-change traversal.
   bool isLaneChangeClearanceBoundary(const lanelet::ConstLineString3d & boundary) const
   {
     if (!lane_change_clearance_enable_) {
@@ -2069,7 +2069,7 @@ private:
     return line_type == "virtual" || subtype == "dashed";
   }
 
-  // HH_260617: Repaints lane-change-enabled boundary segments with low cost after high boundary overlay.
+  // HH_260617 - Repaints lane-change-enabled boundary segments with low cost after high boundary overlay.
   int64_t clearLaneChangeBoundary(
     const lanelet::ConstLineString3d & boundary,
     const int clear_value,
@@ -2090,7 +2090,7 @@ private:
     return cleared_segments;
   }
 
-  // HH_260617: Applies OSM lane_change=yes clearance to every lanelet boundary after normal cost painting.
+  // HH_260617 - Applies OSM lane_change=yes clearance to every lanelet boundary after normal cost painting.
   void applyLaneChangeClearance(avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     if (!lane_change_clearance_enable_ || !map_) {
@@ -2141,7 +2141,7 @@ private:
   // buildLaneletPolygon: Builds precomputed structures used by fast runtime updates.
   bool buildLaneletPolygon(const lanelet::ConstLanelet & ll, lanelet::BasicPolygon2d & poly) const
   {
-    // HH_260317-00:00 Use lanelet-native polygon2d() instead of manual
+    // HH_260317 - Use lanelet-native polygon2d() instead of manual
     // left/right stitching. This avoids winding/order inconsistencies and
     // stabilizes lanelet-inside checks for clipping/coverage validation.
     const auto lane_poly = ll.polygon2d();
@@ -2243,7 +2243,7 @@ private:
         if (contained) {
           continue;
         }
-        // HH_260305-00:00 Keep fallback matching conservative to avoid
+        // HH_260305 - Keep fallback matching conservative to avoid
         // unrelated lanelets appearing as sparse remote cost patches.
         if (path_lanelet_allow_nearest_fallback_) {
           const auto nearest = lanelet::geometry::findNearest(map_->laneletLayer, p, 1);
@@ -2263,7 +2263,7 @@ private:
     return result;
   }
 
-  // HH_260619: Select route lanelets from exact planner IDs first, with path
+  // HH_260619 - Select route lanelets from exact planner IDs first, with path
   // sampling as fallback for non-LaneletRoute planner diagnostics.
   std::vector<lanelet::ConstLanelet> collectActiveRouteLanelets() const
   {
@@ -2349,12 +2349,12 @@ private:
           continue;
         }
         if (path_clip_to_lanelet_ && clip_polys && !clip_polys->empty()) {
-          // HH_260313-00:00 Strict multi-sample clip prevents strip bleed outside boundaries.
+          // HH_260313 - Strict multi-sample clip prevents strip bleed outside boundaries.
           if (!cellMostlyInsideAnyPolygon(wx, wy, *clip_polys, cell_inside_min_hits_boundary_)) {
             continue;
           }
         }
-        // HH_260313-00:00 Blend pose-distance and lateral-distance costs.
+        // HH_260313 - Blend pose-distance and lateral-distance costs.
         // This keeps centerline cheapest while preserving realtime pose updates.
         double weighted_norm_sum = 0.0;
         double weight_sum = 0.0;
@@ -2398,7 +2398,7 @@ private:
     }
   }
 
-  // HH_260619: Re-open the active route corridor after static lane boundary
+  // HH_260619 - Re-open the active route corridor after static lane boundary
   // overlays. This removes merge/internal boundary blockers while sensor grids
   // still retain obstacle authority in the later inflation max-merge.
   void fillRouteClearanceStrip(
@@ -2575,7 +2575,7 @@ private:
         const double wy = origin_y_ + (iy + 0.5) * resolution_;
         double lateral_dist = 0.0;
         if (fast_unclipped_strip && vlen2 > 1e-6) {
-          // HH_260625: Fast path for startup centerline grids. Distance to the
+          // HH_260625 - Fast path for startup centerline grids. Distance to the
           // segment replaces the 9-sample polygon containment check and keeps
           // local map startup responsive.
           const double t =
@@ -2590,7 +2590,7 @@ private:
           if (!cellMostlyInsidePolygon(poly, wx, wy, cell_inside_min_hits_path_)) {
             continue;
           }
-          // HH_260316-00:00 Keep centerline strip strictly lanelet-internal.
+          // HH_260316 - Keep centerline strip strictly lanelet-internal.
           if (clip_poly && !lanelet::geometry::within(lanelet::BasicPoint2d(wx, wy), *clip_poly)) {
             continue;
           }
@@ -2811,7 +2811,7 @@ private:
     return std::atan2(siny_cosp, cosy_cosp);
   }
 
-  // HH_260125 Transform helper: ensure all poses are in map frame.
+  // HH_260125 - Transform helper: ensure all poses are in map frame.
   bool transformToMap(
     const geometry_msgs::msg::PoseStamped & in,
     geometry_msgs::msg::PoseStamped & out)

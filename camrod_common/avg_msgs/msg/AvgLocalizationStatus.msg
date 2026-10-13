@@ -1,4 +1,4 @@
-# HH_260311-00:00 Supervisor-facing localization status migrated to avg_msgs.
+# HH_260311 - Supervisor-facing localization status migrated to avg_msgs.
 avg_msgs/AvgHeader header
 avg_msgs/AvgLocalizationMode mode
 float32 confidence

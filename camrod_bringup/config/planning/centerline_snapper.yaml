@@ -33,7 +33,7 @@
     # =========================================================================
     # 4. HEADING FILTER
     # =========================================================================
-    # HH_260629: Use localization yaw only while yaw covariance is healthy.
+    # HH_260629 - Use localization yaw only while yaw covariance is healthy.
     # Invalid GNSS heading can seed bad yaw; then snapping falls back to nearest geometry.
     heading_filter_enable: true
     max_heading_error_deg: 100.0
@@ -45,7 +45,7 @@
     # =========================================================================
     # 5. Z HANDLING
     # =========================================================================
-    # HH_260527: centerline_z_mode options:
+    # HH_260527 - centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
     #   ground: force Z=0 + map_z_offset

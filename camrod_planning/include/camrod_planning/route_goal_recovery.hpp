@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260729 / TODOLIST 11-12 - Reissue a retained Nav2 goal after an explicit
+// HH_260729 - TODO list 11-12: Reissue a retained Nav2 goal after an explicit
 // route-safety hold clears. The shared develop policy requires ABORTED; an
 // external-simulator profile may explicitly allow ACCEPTED/EXECUTING to rebuild
 // the controller/path context from the corrected robot pose.

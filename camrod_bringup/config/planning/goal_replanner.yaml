@@ -26,7 +26,7 @@
     # If topic-start is selected but start_topic has no data yet:
     # - true  -> fallback to TF start (map->robot_center_link)
     # - false -> wait until topic start is available
-    # HH_260527: Keep start anchored to lanelet snap (disable TF fallback).
+    # HH_260527 - Keep start anchored to lanelet snap (disable TF fallback).
     # This prevents occasional free-space diagonal plans when start_topic is stale.
     start_topic_fallback_to_tf: false
 
@@ -34,7 +34,7 @@
     # 2. PLANNER ACTION AND PLANNER IDS
     # =========================================================================
     action_name: "/planning/compute_path_to_pose"
-    # HH_260629: Prefer connected Lanelet2 routes for replanner-only path
+    # HH_260629 - Prefer connected Lanelet2 routes for replanner-only path
     # previews; use Smac2D only as a fallback when a lanelet route is unavailable.
     planner_id: "LaneletRoute"
     fallback_planner_id: "Smac2D"
@@ -71,7 +71,7 @@
     min_request_interval_s: 0.25
     # Event-driven mode is more stable than periodic churn.
     replan_rate_hz: 0.0
-    # HH_260528: Keep event-driven replans responsive under no-path cases.
+    # HH_260528 - Keep event-driven replans responsive under no-path cases.
     # This timeout only affects goal_replanner requests (not Nav2 BT actions).
     request_timeout_s: 1.5
     # Prevent retry storm when planner reports ABORTED.

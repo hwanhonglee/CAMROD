@@ -1,4 +1,4 @@
-# HH_260617: CAMROD mission/state-machine status payload.
+# HH_260617 - CAMROD mission/state-machine status payload.
 avg_msgs/AvgHeader header
 
 uint8 INIT=0

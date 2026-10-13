@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import MissionRecords from './MissionRecords';
+import { SERVICE_BRAND, SERVICE_COMPANY } from './serviceBranding';
 import './ServiceEvidence.css';
 
 const SUMMARY_ENDPOINT = '/api/service-metrics/summary';
@@ -653,7 +654,8 @@ export function ServiceEvidenceDashboard({ summaryData, summaryLoading, summaryE
     <div className="service-evidence-dashboard">
       <div className="evidence-dashboard-head">
         <div>
-          <span className="evidence-summary-eyebrow">CAMROD FIELD OPERATION</span>
+          {/* HH_261007 - Brand the display without renaming historical records. */}
+          <span className="evidence-summary-eyebrow">{SERVICE_BRAND} · {SERVICE_COMPANY} FIELD OPERATION</span>
           <h2>실증 운행 누적 현황</h2>
           <p>서비스 한 건의 실제 이동 거리와 날짜별 누적 결과를 확인합니다.</p>
         </div>

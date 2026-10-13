@@ -14,12 +14,12 @@
     # =========================================================================
     # 2. RESET OUTPUTS
     # =========================================================================
-    # HH_260527: reset_target_mode options:
+    # HH_260527 - reset_target_mode options:
     #   ekf_topic: publish geometry_msgs reset to /localization/set_pose
     #   avg_pose_topic: publish avg_msgs reset to avg_pose_reset_topic
     #   both: publish both outputs
     reset_target_mode: "both"
-    # HH_260528: Match robot_localization ekf_node set_pose subscriber.
+    # HH_260528 - Match robot_localization ekf_node set_pose subscriber.
     ekf_set_pose_topic: "/localization/set_pose"
     # HH_260720 - Keep generated reset requests independent of a filter implementation name.
     avg_pose_reset_topic: "/localization/filter/set_pose"
@@ -32,7 +32,7 @@
     detach_hold_s: 0.5
     reattach_cooldown_s: 3.0
 
-    # HH_260625: Allow static startup recovery. Requiring motion kept EKF at (0,0)
+    # HH_260625 - Allow static startup recovery. Requiring motion kept EKF at (0,0)
     # while valid GNSS pose was already available and the vehicle was intentionally blocked.
     require_motion_after_detach: false
     motion_distance_threshold_m: 0.4
@@ -56,24 +56,24 @@
     max_gnss_yaw_covariance: 100.0
     min_reset_cov_xy: 0.05
     reset_cov_yaw: 0.5
-    # HH_260625: Reattach uses GNSS dual heading instead of preserving
+    # HH_260625 - Reattach uses GNSS dual heading instead of preserving
     # an EKF yaw that may have been seeded by unaided IMU yaw.
     use_localization_yaw: false
 
     # =========================================================================
     # 6. MANUAL INITIALPOSE RESET
     # =========================================================================
-    # HH_260527: Manual RViz 2D Pose Estimate (/localization/initialpose) bridge.
+    # HH_260527 - Manual RViz 2D Pose Estimate (/localization/initialpose) bridge.
     enable_initialpose_reset: true
     initialpose_topic: "/localization/initialpose"
-    # HH_260528: Also accept RViz default initial pose topic.
+    # HH_260528 - Also accept RViz default initial pose topic.
     enable_initialpose_fallback_topic: true
     initialpose_topic_fallback: "/initialpose"
-    # HH_260528: Keep manual initialpose as authoritative by default.
+    # HH_260528 - Keep manual initialpose as authoritative by default.
     # Set true only when you intentionally want far clicks to snap back to GNSS.
     initialpose_snap_to_gnss: false
     initialpose_snap_distance_m: 1.0
-    # HH_260527: initialpose_yaw_source options:
+    # HH_260527 - initialpose_yaw_source options:
     #   input: use RViz arrow yaw
     #   localization: keep current filter yaw
     #   gnss: use GNSS yaw when available

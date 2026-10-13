@@ -119,7 +119,7 @@ def _resolve_map_path(map_share: str, map_info_file: str, requested_map_path: st
         else:
             candidates.append(os.path.abspath(configured))
             if map_info_file:
-                # HH_260629: Keep standalone cost-grid launch aligned with
+                # HH_260629 - Keep standalone cost-grid launch aligned with
                 # map_info-relative OSM paths.
                 candidates.append(os.path.abspath(
                     os.path.join(os.path.dirname(map_info_file), configured)))

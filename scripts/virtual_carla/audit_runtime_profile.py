@@ -113,6 +113,8 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
         "rotation_recovery_breakaway_status_timeout_sec": 0.30,
     },
     "/control/cmd_vel_safety_gate": {
+        # HH_261007 - Field/develop defaults retain ordinary road-map safety.
+        "manual_service_area_enabled": False,
         "parking_dispatcher_status_topic": "/parking/status",
         "speed_scale": 0.5,
         "allow_manual_departure_while_charging": False,
@@ -258,6 +260,8 @@ DEVELOP_PARITY_PARAMETERS: dict[str, dict[str, Any]] = {
     },
     "/planning/planning_state_machine": {
         "return_goal_reached_distance_m": 0.30,
+        # HH_261007 - A nonempty publisher independently enables road reversing.
+        "reverse_auto_goal_snapper_input_topic": "",
     },
     "/localization/pose_selector": {
         "primary_pose_cov_topic": "/localization/primary/pose_with_covariance",
@@ -299,15 +303,17 @@ def _with_site_geometry(
     )
     result["/perception/yolov9mit"]["min_confidence"] = 0.80
     result["/control/cmd_vel_safety_gate"]["speed_scale"] = 1.0
+    result["/control/cmd_vel_safety_gate"]["manual_service_area_enabled"] = True
     result["/control/cmd_vel_safety_gate"][
         "allow_manual_departure_while_charging"
     ] = True
+    # HH_261007 - Read back the 4 km/h road target, not the old 2 km/h pre-scale.
     result["/planning/controller_server"].update({
         "controller_plugins": ["RPP", "RPPReverse", "RotationShim"],
-        "RPP.desired_linear_vel": 0.555556,
+        "RPP.desired_linear_vel": 1.111111,
         "RPP.min_approach_linear_velocity": 0.138889,
         "RPP.regulated_linear_scaling_min_speed": 0.166667,
-        "RotationShim.desired_linear_vel": 0.555556,
+        "RotationShim.desired_linear_vel": 1.111111,
         "RotationShim.min_approach_linear_velocity": 0.138889,
         "RotationShim.regulated_linear_scaling_min_speed": 0.166667,
         "RPPReverse.allow_reversing": True,
@@ -317,6 +323,27 @@ def _with_site_geometry(
         "RPPReverse.use_collision_detection": True,
     })
     result["/ui_backend"]["return_site_exit_rearm_enabled"] = True
+    # HH_261007 - Road cruise changes must not reset the separate manual limit.
+    result["/ui_backend"]["manual_drive_linear_limit_mps"] = 2.0
+    # HH_261007 - Sideways manual requests must not silently retain 0.20 m/s.
+    result["/ui_backend"]["manual_drive_lateral_limit_mps"] = 2.0
+    # HH_261007 - Prove that the UI constructor accepted the site-only envelope.
+    result["/ui_backend"]["manual_drive_allow_carla_lateral_2mps"] = True
+    result["/camrod_twist_to_4ws"]["max_crab_speed_mps"] = 2.0
+    result["/camrod_twist_to_4ws"]["allow_carla_site_manual_crab_speed_2mps"] = True
+    # HH_261007 - Both ends must explicitly agree on the bounded CRAB
+    # axle-reduction contract; a permissive bridge alone is not sufficient.
+    result["/carla_extended_ackermann_control"] = {
+        "crab_speed_cap": 2.0,
+        "experimental_crab_yaw_hold_enabled": True,
+        # HH_261012 - Every CARLA site run must read back the promoted small
+        # ZERO_TURN setting and bounded gain; ordinary develop stays unchanged.
+        "experimental_zero_turn_yaw_integral_enabled": True,
+        "experimental_zero_turn_yaw_integral_gain_nm_per_rad": 2.0,
+    }
+    result["/physical_four_wheel_bridge"] = {
+        "experimental_crab_yaw_hold_enabled": True,
+    }
     result["/ui_backend"][
         "telemetry_docking_rear_camera_fallback_enabled"
     ] = True
@@ -369,10 +396,11 @@ def _with_site_geometry(
     ] = "/localization/pose"
     result["/planning/goal_snapper"][
         "reverse_auxiliary_input_goal_topic"
-    ] = "/planning/auto_reverse_goal_raw"
+    ] = ""
+    # HH_261007 - Verify forward road-return selection independently of parking.
     result["/planning/nav2_selector_latch"][
         "reverse_controller_id"
-    ] = "RPPReverse"
+    ] = "RPP"
     result["/planning/planning_state_machine"][
         "return_goal_reached_distance_m"
     ] = 0.35
@@ -401,7 +429,7 @@ def _with_site_geometry(
     })
     result["/control/camping_site_maneuver_controller"].update({
         "max_angular_speed_radps": 0.45,
-        "roadside_reverse_return_enable": True,
+        "roadside_reverse_return_enable": False,
         "crab_approach_slowdown_distance_m": 1.0,
         "crab_approach_min_speed_mps": 0.12,
         "rotate_180_timeout_s": 90.0,
@@ -1488,6 +1516,13 @@ def run_audit(args: argparse.Namespace) -> dict[str, Any]:
         ].items()
     }
     if audited_profile == "develop-plus-carla-site-geometry-v27":
+        # HH_261007 - Reject a stale site launch that omitted the installed
+        # B1/B11 manual access file, even when its enable flag is already true.
+        expected_parameters["/control/cmd_vel_safety_gate"]["manual_service_access_file"] = str(
+            args.install_root.expanduser().resolve()
+            / "camrod_carla_adapter" / "share" / "camrod_carla_adapter"
+            / "config" / "manual_service_access.yaml"
+        )
         # HH_261002 - Reject a live 81-name detector even if the other CARLA
         # parameters match: the engine emits 80 logits per anchor, so a label
         # count mismatch changes the meaning of every detection after anchor 0.

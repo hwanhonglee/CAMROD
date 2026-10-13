@@ -7,7 +7,7 @@
 # =========================================================================
 planner_server:
   ros__parameters:
-    # HH_260527: use_sim_time options:
+    # HH_260527 - use_sim_time options:
     #   True: follow /clock (simulation/replay)
     #   False: use system ROS time (real hardware default)
     use_sim_time: False
@@ -22,17 +22,17 @@ planner_server:
     # 0.0 = wait forever, >0 = timeout seconds.
     # Give global costmap more settle time before timeout warning.
     # Allow extra settle time for layered global costmap current-state.
-    # HH_260528: Reduce costmap wait to improve plan response latency.
+    # HH_260528 - Reduce costmap wait to improve plan response latency.
     # Large timeout (12s) caused slow recoveries after global-costmap clear.
     costmap_wait_timeout_sec: 2.5
     # HH_260720 - Runtime-selectable planner IDs use /planning/planner_selector_ros.
-    # HH_260626: Load LaneletRoute by default so normal plans follow connected
+    # HH_260626 - Load LaneletRoute by default so normal plans follow connected
     # lanelet successors before any grid fallback planner is tried.
     planner_plugins: ["LaneletRoute", "Smac2D", "NavFn", "ThetaStar", "SmacHybrid", "SmacLattice"]
 
     LaneletRoute:
       plugin: "camrod_planning::LaneletRoutePlanner"
-      # HH_260626: Exact lanelet-centerline route planner. Keep lane changes
+      # HH_260626 - Exact lanelet-centerline route planner. Keep lane changes
       # disabled by default to avoid adjacent-lane shortcuts on parallel lanes.
       map_path: ""
       offset_lat: 0.0
@@ -58,19 +58,19 @@ planner_server:
       reverse_lanelet_start_heading_threshold_deg: 120.0
       # HH_260707 - Keep LaneletRoute output on the 2D planning plane.
       flatten_path_z: true
-      # HH_260708: Build the heavy Lanelet2 map/routing graph in the background.
+      # HH_260708 - Build the heavy Lanelet2 map/routing graph in the background.
       # This keeps Nav2 lifecycle bringup responsive; the first plan waits here
       # if it arrives before the route graph is ready.
       async_initialization: true
       async_initialization_plan_wait_timeout_s: 60.0
-      # HH_260619: Exact route lanelet IDs feed route-aware cost grids at merge areas.
+      # HH_260619 - Exact route lanelet IDs feed route-aware cost grids at merge areas.
       route_lanelet_ids_topic: "/planning/route_lanelet_ids"
 
     NavFn:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
-      # HH_260527: use_astar options:
+      # HH_260527 - use_astar options:
       #   True: A* search (heuristic-guided, usually faster/straighter)
       #   False: Dijkstra-style expansion
       use_astar: True
@@ -86,15 +86,15 @@ planner_server:
       tolerance: 0.5
       downsample_costmap: False
       downsampling_factor: 1
-      # HH_260618: Keep only parameters declared by Nav2 Humble SmacPlanner2D.
+      # HH_260618 - Keep only parameters declared by Nav2 Humble SmacPlanner2D.
       # Hybrid-A* parameters such as motion_model_for_search and angle bins are
       # ignored by this plugin and made planner tuning hard to reason about.
       use_final_approach_orientation: false
-      # HH_260513: Increase limits — lanelet map with inflation_radius 1.5m
+      # HH_260513 - Increase limits — lanelet map with inflation_radius 1.5m
       # requires more iterations than urban/open maps.
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      # HH_260528 - Cap Smac planning budget for faster failover to NavFn.
       max_planning_time: 1.2
 
     ThetaStar:
@@ -116,7 +116,7 @@ planner_server:
       analytic_expansion_ratio: 3.5
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      # HH_260528 - Cap Smac planning budget for faster failover to NavFn.
       max_planning_time: 1.2
       reverse_penalty: 2.0
       change_penalty: 0.0
@@ -132,12 +132,12 @@ planner_server:
       tolerance: 0.5
       downsample_costmap: False
       downsampling_factor: 1
-      # HH_260618: Match the bundled Ackermann lattice primitive file (1m_turning_radius)
+      # HH_260618 - Match the bundled Ackermann lattice primitive file (1m_turning_radius)
       # so curved lanelet bends are planned as feasible arcs, not straight shortcuts.
       minimum_turning_radius: 1.0
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      # HH_260528 - Cap Smac planning budget for faster failover to NavFn.
       max_planning_time: 1.2
       lookup_table_size: 20.0
       # HH_260720 - nav2_lanelet.launch.py replaces this marker with the installed package-share path.
@@ -193,7 +193,7 @@ controller_server:
     # HH_260720 - Controller IDs use /planning/controller_selector_ros:
     # RPP | DWB | MPPI | Graceful | RotationShim
     controller_plugins: ["RPP", "DWB", "MPPI", "Graceful", "RotationShim"]
-    # HH_260625: RPP is the real-platform default; MPPI remains selectable.
+    # HH_260625 - RPP is the real-platform default; MPPI remains selectable.
     default_controller: RPP
 
     progress_checker:
@@ -279,7 +279,7 @@ controller_server:
       stateful: True
 
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      # HH_260618: Keep DWB as a selectable fallback, but make obstacle cost
+      # HH_260618 - Keep DWB as a selectable fallback, but make obstacle cost
       # meaningful if used in narrow campground lanes.
       BaseObstacle.scale: 0.08
       PathAlign.scale: 24.0
@@ -341,7 +341,7 @@ controller_server:
       PathAngleCritic.enabled: True
       PreferForwardCritic.enabled: True
 
-      # HH_260618: Local avoidance tuning for long-duration campground operation.
+      # HH_260618 - Local avoidance tuning for long-duration campground operation.
       # CostCritic must dominate path-following when the reference path is blocked.
       CostCritic.cost_weight: 8.0
       CostCritic.critical_cost: 250.0
@@ -447,7 +447,7 @@ local_costmap:
       global_frame: odom
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_center_link
-      # HH_260618: Lower local costmap load; merged inflation grid now runs at 6 Hz.
+      # HH_260618 - Lower local costmap load; merged inflation grid now runs at 6 Hz.
       update_frequency: 5.0
       publish_frequency: 2.0
       rolling_window: True
@@ -473,7 +473,7 @@ global_costmap:
       global_frame: map
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_center_link
-      # HH_260618: Lower global rolling-costmap load; replans still update on BT/planner events.
+      # HH_260618 - Lower global rolling-costmap load; replans still update on BT/planner events.
       update_frequency: 1.0
       publish_frequency: 0.5
       # Keep planner global costmap centered on robot to prevent
@@ -486,7 +486,7 @@ global_costmap:
       # Expand rolling bounds to recover stable global-path generation.
       # enlarge global rolling window margin to reduce
       # near-edge planner aborts on long map-frame goals.
-      # HH_260617: 240 m rolling window keeps distant camping-site route goals inside the global planner costmap.
+      # HH_260617 - 240 m rolling window keeps distant camping-site route goals inside the global planner costmap.
       width: 240
       height: 240
       resolution: 0.10
@@ -494,7 +494,7 @@ global_costmap:
       # rolling_window mode ignores them at runtime.
       origin_x: -100.0
       origin_y: -50.0
-      # HH_260527: Keep unknown as unknown in global master.
+      # HH_260527 - Keep unknown as unknown in global master.
       # This prevents implicit free-space shortcuts when a layer does not explicitly
       # write cells (for example outside moving source windows).
       track_unknown_space: True

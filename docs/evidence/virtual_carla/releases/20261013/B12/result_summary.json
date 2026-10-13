@@ -1,0 +1,52 @@
+{
+  "schema": "camrod.public_evidence.derived_summary.v1",
+  "status": "COMPLETED_OBSERVED",
+  "roundtrip_verified": true,
+  "formal_acceptance": false,
+  "actor_id": 92,
+  "identity": {
+    "site": "B12",
+    "owner": "operator",
+    "intent": "delivery",
+    "generation": 1791777942795001
+  },
+  "elapsed_wall_s": 321.6698656170629,
+  "sampled_xy_m": 209.8327391639691,
+  "outbound": {
+    "elapsed_wall_s": 106.42640279000625,
+    "sampled_xy_m": 43.75561104349072
+  },
+  "return_leg": {
+    "elapsed_wall_s": 215.08154311962426,
+    "sampled_xy_m": 166.0771281204784
+  },
+  "sample_count": 1388,
+  "final_pose": {
+    "x_m": -8.657851592663912,
+    "y_m": 40.53447308216437,
+    "z_m": 0.0
+  },
+  "station_distance_m": 0.2334760546904374,
+  "collision_evidence": {
+    "topic": "/carla/ego_vehicle/collision",
+    "subscriber_created": true,
+    "publisher_count": 1,
+    "publisher_discovered": true,
+    "subscriber_and_publisher_discovered": true,
+    "event_count": 0,
+    "sampled_event_count": 0,
+    "omitted_event_count": 0,
+    "stale_queued_event_count": 0,
+    "maximum_normal_impulse_norm": 0.0,
+    "sample_policy": {
+      "maximum_samples": 256,
+      "preserved_first_samples": 64,
+      "preserved_recent_samples": 192
+    },
+    "events": []
+  },
+  "source_case": "B12_attempt02",
+  "site": "B12",
+  "version": "v5",
+  "original_trial_sha256": "4abf5781878a38066418d885d7e44b56b8d533437d0558e8ec6f5b6c788ae08c"
+}

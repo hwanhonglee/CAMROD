@@ -1,5 +1,5 @@
 // Nav2 costmap plugin that injects external lanelet occupancy-grid costs.
-// HH_251231: Lanelet-based cost layer implementation (OccupancyGrid input)
+// HH_251231 - Lanelet-based cost layer implementation (OccupancyGrid input)
 
 #include "camrod_map/cost_map/lanelet_cost_layer.hpp"
 
@@ -11,22 +11,22 @@ namespace camrod_map::cost_map
 // Constructor keeps defaults; runtime wiring happens in onInitialize().
 LaneletCostLayer::LaneletCostLayer()
 {
-  // HH_251231: default constructor
+  // HH_251231 - default constructor
 }
 
 // Reads plugin parameters and subscribes to the configured source OccupancyGrid.
 void LaneletCostLayer::onInitialize()
 {
   auto node = node_.lock();
-  // HH_260109 Default to map-prefixed cost grid topic.
+  // HH_260109 - Default to map-prefixed cost grid topic.
   declareParameter("source_topic", rclcpp::ParameterValue(std::string("/map/cost_grid/lanelet")));
   declareParameter("lethal_threshold", rclcpp::ParameterValue(65));
   declareParameter("unknown_value", rclcpp::ParameterValue(static_cast<int>(nav2_costmap_2d::NO_INFORMATION)));
-  // HH_260316-00:00 Control whether unknown input cells overwrite master costmap.
+  // HH_260316 - Control whether unknown input cells overwrite master costmap.
   // false: keep existing master values on unknown cells (safer for layered lanelet/path fusion).
   // true : write unknown_value into master on unknown cells.
   declareParameter("write_unknown", rclcpp::ParameterValue(false));
-  // HH_260528: Optional cold-start behavior.
+  // HH_260528 - Optional cold-start behavior.
   // false: wait for first source grid before reporting layer current (strict mode).
   // true : report current at startup and start applying data when first grid arrives.
   declareParameter("start_current", rclcpp::ParameterValue(false));
@@ -35,7 +35,7 @@ void LaneletCostLayer::onInitialize()
   node->get_parameter(name_ + ".source_topic", source_topic_);
   int lethal_tmp{};
   node->get_parameter(name_ + ".lethal_threshold", lethal_tmp);
-  // HH_260315-00:00 Keep full byte range for lethal threshold.
+  // HH_260315 - Keep full byte range for lethal threshold.
   // Many project overlays intentionally use 101 to treat 0~100 grids as non-lethal
   // "soft cost" layers. Clamping to 100 incorrectly turned value=100 into lethal.
   lethal_threshold_ = static_cast<unsigned char>(std::clamp(lethal_tmp, 0, 255));
@@ -75,7 +75,7 @@ void LaneletCostLayer::updateBounds(
     return;
   }
 
-  // HH_251231: use full grid bounds (simple, conservative)
+  // HH_251231 - use full grid bounds (simple, conservative)
   const auto & info = latest_grid_->info;
   // 2026-02-06 11:16: Avoid shrinking the master bounds; only expand to prevent
   // "Illegal bounds change" warnings when the input grid window shifts.
@@ -101,7 +101,7 @@ void LaneletCostLayer::updateCosts(
   const auto grid = latest_grid_;  // copy shared ptr
   const auto & info = grid->info;
 
-  // HH_251231: iterate only requested window
+  // HH_251231 - iterate only requested window
   for (int j = min_j; j < max_j; ++j) {
     for (int i = min_i; i < max_i; ++i) {
       double wx, wy;
@@ -116,7 +116,7 @@ void LaneletCostLayer::updateCosts(
       const auto idx = gx + gy * info.width;
       const auto val = grid->data[idx];
       if (val < 0) {
-        // HH_260316-00:00 Unknown-cell overwrite is layer-dependent.
+        // HH_260316 - Unknown-cell overwrite is layer-dependent.
         // Path/sensor layers commonly publish unknown outside valid regions; writing those
         // blindly can erase base lanelet costs and produce shortcut/straight paths.
         if (write_unknown_) {

@@ -119,7 +119,7 @@ def _resolve_map_path(map_share: str, map_info_file: str, requested_map_path: st
         else:
             candidates.append(os.path.abspath(configured))
             if map_info_file:
-                # HH_260629: Standalone visualization launch resolves
+                # HH_260629 - Standalone visualization launch resolves
                 # map_info-relative OSM paths.
                 candidates.append(os.path.abspath(
                     os.path.join(os.path.dirname(map_info_file), configured)))
@@ -216,7 +216,7 @@ def _launch_nodes(context, *_args, **_kwargs):
                     "/planning/cost_grid/global_path_markers",
                     "/planning/cost_grid/local_path_markers",
                 ],
-                # HH_260618: Aggregated inflation markers are debug-only; avoid
+                # HH_260618 - Aggregated inflation markers are debug-only; avoid
                 # a 20 Hz marker republish loop on resource-limited targets.
                 "republish_period_s": 0.20,
                 "min_publish_period_s": 0.10,

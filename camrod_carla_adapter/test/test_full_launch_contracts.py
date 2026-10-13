@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 
 from launch import LaunchContext
+from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration
 from launch.utilities import perform_substitutions
 import yaml
 
@@ -83,8 +84,17 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     source = DEVELOP_SITE_GEOMETRY_LAUNCH.read_text(encoding="utf-8")
 
     assert module.DEVELOP_SITE_GEOMETRY_ARGUMENTS == {
+        "extreme_crab_curb_boost_enable": "true",
+        "experimental_crab_yaw_hold_enabled": "true",
+        # HH_261012 - The complete CARLA site profile verifies bounded yaw PI.
+        "experimental_zero_turn_yaw_integral_enabled": "true",
         "manual_mission_resume_enabled": "true",
         "manual_drive_linear_limit_mps": "2.0",
+        "manual_drive_lateral_limit_mps": "2.0",
+        # HH_261007 - The site must explicitly select the wider UI lateral cap.
+        "manual_drive_allow_carla_lateral_2mps": "true",
+        "carla_backend_crab_speed_cap": "2.0",
+        "carla_manual_service_area_enabled": "true",
         "operator_telemetry_docking_rear_camera_fallback_enabled": "true",
         "carla_cmd_vel_gate_speed_scale": "1.0",
         "carla_allow_manual_departure_while_charging": "true",
@@ -99,10 +109,10 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
         "carla_goal_snapper_pose_jump_check_topic": "/localization/pose",
         "carla_route_safety_path_relative_recovery_enable": "true",
         "carla_route_safety_path_center_reentry_m": "0.15",
-        "carla_roadside_reverse_return_enable": "true",
+        "carla_roadside_reverse_return_enable": "false",
         "carla_roadside_reverse_handoff_distance_m": "0.03",
-        "carla_nav2_reverse_controller": "RPPReverse",
-        "carla_reverse_goal_topic": "/planning/auto_reverse_goal_raw",
+        "carla_nav2_reverse_controller": "",
+        "carla_reverse_goal_topic": "",
         "carla_lanelet_safety_check_reverse": "true",
         "carla_camping_site_maneuver_controller_static_bypass_phases": (
             "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,"
@@ -143,14 +153,29 @@ def test_develop_site_geometry_wrapper_is_the_exact_proven_carla_subset():
     assert "camrod_carla_full.launch.py" in source
     assert "camrod_carla_woraksan_tuned.launch.py" not in source
     resolved = module.develop_site_geometry_arguments("/adapter-share")
+    # HH_261007 - Install-relative access geometry must travel with the package.
+    assert resolved["carla_manual_service_access_file"] == (
+        "/adapter-share/config/manual_service_access.yaml"
+    )
     assert set(resolved) == {
         *module.DEVELOP_SITE_GEOMETRY_ARGUMENTS,
+        "carla_manual_service_access_file",
         "carla_command_runtime_override_param_file",
         "carla_perception_runtime_override_param_file",
         "carla_apriltag_param_file",
         "carla_parking_runtime_override_param_file",
         "carla_nav2_reverse_return_param_file",
+        "planning_state_machine_camping_sites_yaml",
     }
+    # HH_261012 - Fresh hosts get the installed CARLA catalog; operators can
+    # still explicitly select another catalog through the existing argument.
+    catalog = resolved["planning_state_machine_camping_sites_yaml"]
+    assert perform_substitutions(LaunchContext(), [catalog]) == (
+        "/adapter-share/config/camping_sites_carla_forward_return.yaml"
+    )
+    catalog_context = LaunchContext()
+    catalog_context.launch_configurations["planning_state_machine_camping_sites_yaml"] = "/explicit/sites.yaml"
+    assert perform_substitutions(catalog_context, [catalog]) == "/explicit/sites.yaml"
     assert resolved["carla_perception_runtime_override_param_file"] == (
         "/adapter-share/config/perception_carla_site_geometry.yaml"
     )
@@ -465,9 +490,22 @@ def test_full_and_site_launches_select_distinct_perception_overlays(monkeypatch)
     # verify the outer site action sets the launch configuration before include.
     monkeypatch.setattr(site, "get_package_share_directory", lambda _: "/adapter-share")
     actions = site.generate_launch_description().entities
-    assert len(actions) == 2
     context = LaunchContext()
-    actions[0].execute(context)
+    # HH_261008 - The parking experiment adds a control-file setter and
+    # provenance log; retain the precise YOLO-before-full-include contract.
+    yolo_setters = [
+        (index, action) for index, action in enumerate(actions)
+        if isinstance(action, SetLaunchConfiguration)
+        and perform_substitutions(context, action.name) == "yolo_labels_path"
+    ]
+    includes = [
+        index for index, action in enumerate(actions)
+        if isinstance(action, IncludeLaunchDescription)
+    ]
+    assert len(yolo_setters) == len(includes) == 1
+    index, setter = yolo_setters[0]
+    assert index < includes[0]
+    setter.execute(context)
     assert context.launch_configurations["yolo_labels_path"] == (
         "/adapter-share/config/yolo_coco80.txt"
     )
@@ -624,6 +662,10 @@ def test_vehicle_controller_tick_alignment_preserves_existing_safety_arguments()
         "verified_physical_four_wheel_manifest", "extended_mode_backend",
         "accepted_carla_python_egg", "python_egg_cache",
         "rotation_recovery_breakaway_enable",
+        "extreme_crab_curb_boost_enable",
+        "experimental_crab_yaw_hold_enabled",
+        "experimental_zero_turn_yaw_integral_enabled",
+        "crab_speed_cap",
     }
     assert set(values) == forwarded | {"control_loop_rate"}
     assert ast.literal_eval(values["control_loop_rate"]) == "0.05"
@@ -633,7 +675,32 @@ def test_vehicle_controller_tick_alignment_preserves_existing_safety_arguments()
         assert isinstance(value.func, ast.Name)
         assert value.func.id == "LaunchConfiguration"
         assert len(value.args) == 1
-        assert ast.literal_eval(value.args[0]) == name
+        # HH_261007 - The explicit simulator cap has a scoped parent name.
+        expected_name = "carla_backend_crab_speed_cap" if name == "crab_speed_cap" else name
+        assert ast.literal_eval(value.args[0]) == expected_name
+
+
+def test_zero_turn_yaw_integral_is_enabled_only_by_carla_site_wrapper():
+    # HH_261012 - The complete simulator site profile selects bounded PI while
+    # ordinary/full and the historical tuned launch retain their default OFF.
+    argument = "experimental_zero_turn_yaw_integral_enabled"
+    tree = ast.parse(FULL_LAUNCH.read_text(encoding="utf-8"))
+    declarations = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "DeclareLaunchArgument"
+        and node.args and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == argument
+    ]
+    assert len(declarations) == 1
+    defaults = [keyword.value for keyword in declarations[0].keywords
+                if keyword.arg == "default_value"]
+    assert len(defaults) == 1
+    assert ast.literal_eval(defaults[0]) == "false"
+    site_geometry = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    assert site_geometry.DEVELOP_SITE_GEOMETRY_ARGUMENTS[argument] == "true"
+    assert argument not in TUNED_LAUNCH.read_text(encoding="utf-8")
 
 
 def test_recovery_breakaway_authority_is_explicit_opt_in_only():
@@ -737,7 +804,7 @@ def test_full_launch_defaults_carla_route_heading_to_production_profile():
 
 
 def test_reverse_roadside_return_is_profile_scoped_and_not_a_full_default():
-    """Develop-parity stays forward-only; CARLA site wrappers opt in."""
+    """HH_261007 - Current site returns stay forward; legacy tuned is opt-in."""
     full_launch = FULL_LAUNCH.read_text(encoding="utf-8")
     tuned_launch = TUNED_LAUNCH.read_text(encoding="utf-8")
     site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
@@ -790,16 +857,16 @@ def test_reverse_roadside_return_is_profile_scoped_and_not_a_full_default():
     assert '"carla_lanelet_safety_check_reverse": "true"' in tuned_launch
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_roadside_reverse_return_enable"
-    ] == "true"
+    ] == "false"
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_roadside_reverse_handoff_distance_m"
     ] == "0.03"
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_nav2_reverse_controller"
-    ] == "RPPReverse"
+    ] == ""
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_reverse_goal_topic"
-    ] == "/planning/auto_reverse_goal_raw"
+    ] == ""
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[
         "carla_lanelet_safety_check_reverse"
     ] == "true"
@@ -1131,7 +1198,7 @@ def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
 
     assert controller["controller_plugins"] == ["RPP", "RPPReverse", "RotationShim"]
     assert controller["RPP"] == {
-        "desired_linear_vel": 0.555556,
+        "desired_linear_vel": 1.111111,
         "min_approach_linear_velocity": 0.138889,
         "regulated_linear_scaling_min_speed": 0.166667,
     }
@@ -1213,8 +1280,8 @@ def test_carla_reverse_return_overlay_is_slow_and_reverse_capable():
     ] == "/adapter-share/config/nav2_carla_reverse_return.yaml"
 
 
-def test_carla_runtime_overlay_prescales_forward_rpp_and_isolates_reverse():
-    """Unity gate keeps torque while forward RPP matches production speed."""
+def test_carla_runtime_overlay_uses_four_kph_and_isolates_reverse():
+    """HH_261007 - Road cruise must not regress to the old 2 km/h pre-scale."""
     production_vehicle = yaml.safe_load(
         (REPO_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml").read_text(
             encoding="utf-8"
@@ -1242,11 +1309,12 @@ def test_carla_runtime_overlay_prescales_forward_rpp_and_isolates_reverse():
     controller = merged["controller_server"]["ros__parameters"]
 
     assert controller["controller_plugins"] == ["RPP", "RPPReverse", "RotationShim"]
-    assert controller["RPP"]["desired_linear_vel"] == 0.555556
+    assert controller["RPP"]["desired_linear_vel"] == 1.111111
+    assert 3.0 <= controller["RPP"]["desired_linear_vel"] * 3.6 <= 5.0
     assert controller["RPP"]["min_approach_linear_velocity"] == 0.138889
     assert controller["RPP"]["regulated_linear_scaling_min_speed"] == 0.166667
     assert controller["RPP"]["allow_reversing"] is False
-    assert controller["RotationShim"]["desired_linear_vel"] == 0.555556
+    assert controller["RotationShim"]["desired_linear_vel"] == 1.111111
     assert controller["RotationShim"]["min_approach_linear_velocity"] == 0.138889
     assert (
         controller["RotationShim"]["regulated_linear_scaling_min_speed"]
@@ -1851,19 +1919,90 @@ def test_full_uses_develop_cost_thresholds_and_tuned_uses_hard_costs():
     assert '"carla_lanelet_safety_current_threshold": "100"' in tuned
 
 
-def test_site_manual_overlay_changes_only_explicit_longitudinal_envelope():
-    """HH_261002 - Preserve all shared limits and automatic producer configs."""
+def test_site_manual_overlay_changes_only_explicit_translation_envelope():
+    """HH_261007 - Cover UI, adapter and backend; preserve automatic targets."""
     site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
     base = yaml.safe_load((PACKAGE_ROOT / "config" / "command_adapter.yaml").read_text())["/**"]["ros__parameters"]
     overlay = yaml.safe_load((PACKAGE_ROOT / "config" / "command_adapter_carla_site_manual.yaml").read_text())["/**"]["ros__parameters"]
     assert base["max_ackermann_speed_mps"] == 1.4
-    assert overlay == {"max_ackermann_speed_mps": 2.0, "allow_carla_site_manual_speed_2mps": True}
+    assert base["max_crab_speed_mps"] == 1.0
+    assert overlay == {"max_ackermann_speed_mps": 2.0, "allow_carla_site_manual_speed_2mps": True,
+                       "max_crab_speed_mps": 2.0, "allow_carla_site_manual_crab_speed_2mps": True}
     assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS["manual_drive_linear_limit_mps"] == "2.0"
-    assert "manual_drive_lateral_limit_mps" not in site.DEVELOP_SITE_GEOMETRY_ARGUMENTS
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS["manual_drive_lateral_limit_mps"] == "2.0"
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS["carla_backend_crab_speed_cap"] == "2.0"
     assert "manual_drive_angular_limit_radps" not in site.DEVELOP_SITE_GEOMETRY_ARGUMENTS
     full = FULL_LAUNCH.read_text()
+    assert 'DeclareLaunchArgument("carla_backend_crab_speed_cap", default_value="1.0")' in full
+    assert '"crab_speed_cap": LaunchConfiguration("carla_backend_crab_speed_cap")' in full
     assert 'DeclareLaunchArgument("carla_command_runtime_override_param_file", default_value="")' in full
     assert '"command_runtime_override_param_file": LaunchConfiguration(' in full
+
+
+def test_manual_lateral_opt_in_is_default_false_and_typed_end_to_end():
+    """HH_261007 - Keep the CARLA-only opt-in explicit through every UI layer."""
+    ui_root = REPO_ROOT / "camrod_ui"
+    paths = {
+        "full": FULL_LAUNCH,
+        "bringup": REPO_ROOT / "camrod_bringup" / "launch" / "_bringup_impl.py",
+        "ui": ui_root / "camrod_ui_robot" / "launch" / "ui.launch.py",
+        "backend": ui_root / "runtime" / "python" / "camrod_ui" / "ui_backend_node.py",
+    }
+    # HH_261007 - Parse first so comments and formatting cannot satisfy wiring.
+    compact = {
+        name: "".join(ast.unparse(ast.parse(path.read_text(encoding="utf-8"))).split())
+        for name, path in paths.items()
+    }
+    argument = "manual_drive_allow_carla_lateral_2mps"
+    bringup_argument = f"control_{argument}"
+
+    for layer in ("full", "ui"):
+        assert (
+            f"DeclareLaunchArgument('{argument}',default_value='false'"
+            in compact[layer]
+        )
+    assert f"('{bringup_argument}',False," in compact["bringup"]
+    assert f"{argument}_arg," in compact["ui"]
+    assert (
+        f"'{bringup_argument}':LaunchConfiguration('{argument}')"
+        in compact["full"]
+    )
+    assert (
+        f"'{argument}':lc['{bringup_argument}']" in compact["bringup"]
+    )
+    assert (
+        f"'{argument}':ParameterValue(LaunchConfiguration('{argument}'),value_type=bool)"
+        in compact["ui"]
+    )
+    assert (
+        "allow_carla_lateral_2mps="
+        f"self.declare_parameter('{argument}',False).value"
+        in compact["backend"]
+    )
+
+    # HH_261007 - The explicit site permission must not raise ordinary defaults.
+    defaults = yaml.safe_load((
+        REPO_ROOT / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
+    ).read_text(encoding="utf-8"))["bringup"]["control"]
+    assert defaults.get(argument, False) is False
+    for speed_argument, environment_name in (
+        ("manual_drive_linear_limit_mps", "CAMROD_MANUAL_LINEAR_LIMIT_MPS"),
+        ("manual_drive_lateral_limit_mps", "CAMROD_MANUAL_LATERAL_LIMIT_MPS"),
+        ("manual_drive_angular_limit_radps", "CAMROD_MANUAL_ANGULAR_LIMIT_RADPS"),
+    ):
+        assert defaults[speed_argument] == 0.20
+        assert (
+            f"DeclareLaunchArgument('{speed_argument}',default_value='0.20'"
+            in compact["ui"]
+        )
+        assert (
+            f"DeclareLaunchArgument('{speed_argument}',"
+            f"default_value=os.environ.get('{environment_name}','0.20'))"
+            in compact["full"]
+        )
+    site = _load_module(DEVELOP_SITE_GEOMETRY_LAUNCH)
+    assert site.DEVELOP_SITE_GEOMETRY_ARGUMENTS[argument] == "true"
+    assert argument not in TUNED_LAUNCH.read_text(encoding="utf-8")
 
 
 def test_composition_launches_have_no_host_absolute_paths_and_use_env_gates():

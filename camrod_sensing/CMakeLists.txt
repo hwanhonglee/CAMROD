@@ -117,7 +117,7 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       REQUIRED
     )
 
-    # HH_260528: camera_publisher_component → camera_front_publisher_component (renamed with front node).
+    # HH_260528 - camera_publisher_component → camera_front_publisher_component (renamed with front node).
     add_library(camera_front_publisher_component SHARED src/camera_front_publisher_node.cpp)
     target_include_directories(camera_front_publisher_component PRIVATE include)
     target_include_directories(camera_front_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})

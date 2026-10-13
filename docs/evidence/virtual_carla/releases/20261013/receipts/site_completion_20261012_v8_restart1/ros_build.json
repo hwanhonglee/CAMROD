@@ -1,0 +1,49 @@
+{
+  "created_at_utc": "2026-10-12T06:47:09Z",
+  "creator": "create_portable_verification_report",
+  "files": {
+    "build_output": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/.work/evidence/site_completion_20261012_v8_restart1/verification/initial/build.log",
+      "sha256": "e38cde7429b61cfb0447257bc7b255b08a349adf8722f626f5f6fec75687645f"
+    },
+    "camrod_full_launch": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/launch/camrod_carla_full.launch.py",
+      "sha256": "ef1356770daf0bd1b3c9da27a08c26e9545e256f0dd6fb117a3d1ad6899bfa47"
+    },
+    "camrod_site_catalog": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/config/camping_sites_carla_forward_return.yaml",
+      "sha256": "c2c370a2c3763bc13e018dece8c399b7540fcf20eb1700c829e6b83baa8192a5"
+    },
+    "camrod_site_controller_binary": {
+      "path": "/home/hong/camrod_ws/build/camrod_control/camping_site_maneuver_controller_node",
+      "sha256": "8b77f27a4eb9baa0560509c379427e0edf59972605e1854c3d18aaa594f5ee7b"
+    },
+    "camrod_site_controller_source": {
+      "path": "/home/hong/camrod_ws/src/camrod_control/src/camping_site_maneuver_controller_node.cpp",
+      "sha256": "f4e6eccf9d5e5be0b5cd3a9762cdcaa9644ce2a73182a2d9588d7cb682b9ea17"
+    },
+    "camrod_site_launch": {
+      "path": "/home/hong/camrod_ws/src/camrod_carla_adapter/launch/camrod_carla_develop_site_geometry.launch.py",
+      "sha256": "0c08deee3c8b11178176caff39be224a380f3e1c51f2e52fffc6a7f834cccaf7"
+    },
+    "controller_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/carla_extended_ackermann_control_node.py",
+      "sha256": "5c27143d984fca480854db08177b21cb576dd0c7ac6c4100151b1221fb0909e6"
+    },
+    "launch": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/launch/full_stack.launch.py",
+      "sha256": "418d8f7d0fd5ae50b225c901ea6324d80e6d0f8d83f7bbc41b51fe29216c5df9"
+    },
+    "physical_bridge_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/physical_four_wheel_bridge.py",
+      "sha256": "48e299a3b365a0594511c8dd4d0f42a5c1305cc29c19301a532abcb3ab59503d"
+    },
+    "yaw_integral_source": {
+      "path": "/home/hong/Downloads/ranger-carla-4ws-pipeline/ros_ws/src/carla_extended_ackermann_control/src/carla_extended_ackermann_control/experimental_zero_turn_yaw_integral.py",
+      "sha256": "b2593f398066d040e894a1b295d4fa9c7c4884d33135c62372db6fac25481356"
+    }
+  },
+  "operation": "VERIFY",
+  "schema": "carla.ranger.portable_build_verification.v1",
+  "status": "PASS"
+}

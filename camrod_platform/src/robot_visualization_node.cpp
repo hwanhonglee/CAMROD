@@ -25,7 +25,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "camrod_sensor_kit/robot_boundary.hpp"
-#include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 renamed package
+#include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 - renamed package
 #include <visualization_msgs/msg/marker.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -44,7 +44,7 @@ std::string normalizeModeToken(std::string value)
   return value;
 }
 
-// HH_260114 Keep a single label scale so every TF text marker is consistent across sensors.
+// HH_260114 - Keep a single label scale so every TF text marker is consistent across sensors.
 constexpr double kLabelScale = 0.22;
 
 // Builds an avg_msgs color object using RGBA components in [0.0, 1.0].
@@ -111,28 +111,28 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   RobotVisualizationNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : Node("robot_visualization")
   {
     params_ = loadRobotParams(this);
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_center_link");
-    // HH_260304-00:00 // Platform ownership uses /platform/robot/* topics by default.
+    // HH_260304 - Platform ownership uses /platform/robot/* topics by default.
     marker_topic_ = declare_parameter<std::string>("marker_topic", "/platform/robot/markers");
     boundary_topic_ = declare_parameter<std::string>(
       "boundary_topic", "/platform/robot/planning_boundary");
     publish_platform_status_ = declare_parameter<bool>("publish_platform_status", false);
     platform_status_topic_ =
       declare_parameter<std::string>("platform_status_topic", "/platform/status");
-    // HH_260304-00:00 // Visualizer should not publish TF unless explicitly requested.
+    // HH_260304 - Visualizer should not publish TF unless explicitly requested.
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
-    // HH_260327: Platform marker follows localization pose by default.
+    // HH_260327 - Platform marker follows localization pose by default.
     // GNSS is optional fallback when localization pose is stale/missing.
     localization_pose_topic_ = declare_parameter<std::string>(
       "localization_pose_topic", "/localization/pose");
     gnss_pose_topic_ = declare_parameter<std::string>(
       "gnss_pose_topic", "/sensing/gnss/pose");
-    // HH_260526: Replace use_gnss_fallback toggle with explicit pose source mode.
+    // HH_260526 - Replace use_gnss_fallback toggle with explicit pose source mode.
     // pose_source_mode options:
     //   localization_only
     //   localization_with_gnss_fallback
@@ -140,16 +140,16 @@ public:
       declare_parameter<std::string>("pose_source_mode", "localization_with_gnss_fallback"));
     localization_pose_timeout_s_ = declare_parameter<double>(
       "localization_pose_timeout_s", 1.0);
-    // HH_260409: Optional heading offset for platform visualization alignment.
+    // HH_260409 - Optional heading offset for platform visualization alignment.
     // Negative value rotates clockwise in ROS yaw convention.
     heading_yaw_offset_deg_ = declare_parameter<double>("heading_yaw_offset_deg", 0.0);
     heading_yaw_offset_rad_ = heading_yaw_offset_deg_ * M_PI / 180.0;
-    // HH_260506: Keep RViz marker list compact and optionally hide body cube marker.
+    // HH_260506 - Keep RViz marker list compact and optionally hide body cube marker.
     show_chassis_marker_ = declare_parameter<bool>("show_chassis_marker", true);
     group_robot_marker_namespaces_ = declare_parameter<bool>(
       "group_robot_marker_namespaces", true);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
-    // HH_260618: Apply publish_rate_hz to both timer and pose-callback driven
+    // HH_260618 - Apply publish_rate_hz to both timer and pose-callback driven
     // marker updates. Previously localization callbacks could drive markers at
     // the localization rate, ignoring the configured visualization rate.
     marker_publish_period_s_ = publish_rate_hz > 0.0 ? 1.0 / publish_rate_hz : 1.0;
@@ -163,7 +163,7 @@ public:
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
     range_ring_radii_ = declare_parameter<std::vector<double>>(
       "range_ring_radii", std::vector<double>{2.0, 4.0, 6.0, 8.0});
-    // HH_260526: Replace use_map_ground_z toggle with explicit source mode.
+    // HH_260526 - Replace use_map_ground_z toggle with explicit source mode.
     // ground_z_source options: fixed_offset | lanelet_map.
     ground_z_source_ = normalizeModeToken(
       declare_parameter<std::string>("ground_z_source", "lanelet_map"));
@@ -177,7 +177,7 @@ public:
     base_pose_.roll = declare_parameter<double>("base_pose.roll", 0.0);
     base_pose_.pitch = declare_parameter<double>("base_pose.pitch", 0.0);
     base_pose_.yaw = declare_parameter<double>("base_pose.yaw", 0.0);
-    // HH_260409: Keep startup base yaw aligned with configured heading offset.
+    // HH_260409 - Keep startup base yaw aligned with configured heading offset.
     base_pose_.yaw = normalizeAngle(base_pose_.yaw + heading_yaw_offset_rad_);
     if (
       pose_source_mode_ != "localization_only" &&
@@ -243,7 +243,7 @@ public:
         publishMarkers(false);
       });
 
-    // HH_260304-00:00 // Keep startup logs quiet by default.
+    // HH_260304 - Keep startup logs quiet by default.
     RCLCPP_DEBUG(
       get_logger(),
       "robot visualization ready. Marker topic '%s', base frame '%s', map frame '%s'.",
@@ -472,13 +472,13 @@ private:
     boundary_pub_->publish(polygon_msg);
 
     const auto sensors = getSensorDictionary();
-    // HH_260114 Use only axes+label namespaces per sensor to simplify RViz toggles.
+    // HH_260114 - Use only axes+label namespaces per sensor to simplify RViz toggles.
     for (const auto & [name, pose] : sensors) {
       const std::string sensor_ns = "sensor/" + name;
       const auto sensor_position = transformLocal(pose.x, pose.y, pose.z);
       const auto sensor_orientation = composeOrientation(pose.roll, pose.pitch, pose.yaw);
 
-      // HH_260507: Keep one namespace row per sensor in RViz by sharing ns for axes+label.
+      // HH_260507 - Keep one namespace row per sensor in RViz by sharing ns for axes+label.
       markers.markers.emplace_back(
         createAxesMarker(
           sensor_ns, marker_id++, sensor_position, sensor_orientation, 0.5, now,
@@ -599,7 +599,7 @@ private:
     set_sensor_pose(params_.imu, msg.robot_info.imu);
     set_sensor_pose(params_.gnss, msg.robot_info.gnss);
     set_sensor_pose(params_.lidar, msg.robot_info.lidar);
-    // HH_260326: Canonical camera sensor pose.
+    // HH_260326 - Canonical camera sensor pose.
     set_sensor_pose(params_.camera, msg.robot_info.camera);
     avg_platform_pub_->publish(msg);
   }
@@ -639,11 +639,11 @@ private:
     tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
     base_pose_.roll = roll;
     base_pose_.pitch = pitch;
-    // HH_260409: Apply configurable platform heading offset (e.g., -90deg clockwise).
+    // HH_260409 - Apply configurable platform heading offset (e.g., -90deg clockwise).
     base_pose_.yaw = normalizeAngle(yaw + heading_yaw_offset_rad_);
     publishBaseTransform();
     publishMarkers();
-    // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
+    // HH_260304 - Suppress per-fix initial-pose spam while GNSS pose is streaming.
   }
 
   // HH_260720 - Convert the RViz initial-pose input once before internal processing.
@@ -659,7 +659,7 @@ private:
     auto converted = std::make_shared<avg_msgs::msg::AvgPoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
-    // HH_260408: Preserve latest localization yaw for GNSS fallback path.
+    // HH_260408 - Preserve latest localization yaw for GNSS fallback path.
     // GNSS pose often has identity orientation, so keep IMU/localization heading.
     last_localization_orientation_ = msg->pose.orientation;
     has_localization_orientation_ = true;
@@ -671,7 +671,7 @@ private:
   // Uses GNSS pose only as fallback when localization is stale or unavailable.
   void onGnssPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
-    // HH_260327: GNSS is fallback-only input for platform marker alignment.
+    // HH_260327 - GNSS is fallback-only input for platform marker alignment.
     // If localization pose is fresh, keep marker anchored to localization.
     if (pose_source_mode_ != "localization_with_gnss_fallback") {
       return;
@@ -685,7 +685,7 @@ private:
     auto converted = std::make_shared<avg_msgs::msg::AvgPoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
-    // HH_260408: Keep heading stable while using GNSS position fallback.
+    // HH_260408 - Keep heading stable while using GNSS position fallback.
     // Without this, marker yaw can snap back to identity orientation.
     if (has_localization_orientation_) {
       converted->pose.pose.orientation = last_localization_orientation_;

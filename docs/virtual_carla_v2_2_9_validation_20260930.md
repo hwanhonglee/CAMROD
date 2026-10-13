@@ -13,10 +13,18 @@
 | 기존 `virtual/carla` | `d3ea6c4eeafd9b4bb0a17d9366c7afdd01654364` |
 | 최신 develop 병합 커밋 | `0c7e20ef6` — 이후 연동 보정·증거 커밋을 추가 |
 
-로컬 develop 작업 폴더는 `../.codex-develop-20260904`, 실제 실행 소스는
+시험 당시 로컬 develop 작업 폴더는 `../.codex-develop-20260904`, 실제 실행 소스는
 `~/camrod_ws/src`의 `virtual/carla`이다. develop 작업 폴더를 CARLA 버전으로
 바꾸거나 CARLA 파일을 develop에 추가하지 않았다. 이번 작업은 로컬 갱신·검증이며
 원격 push 및 태그 이동은 하지 않았다.
+
+후속 정리에서 중복 develop 작업 폴더는 제거했다. develop 브랜치는 유지되며,
+실행 소스는 여전히 `~/camrod_ws/src`다. 아래 원본 로그·패치의 옛
+`_maintenance` 위치는 이제 `~/camrod_archive/past_work`에 해당한다.
+
+2026-10-01 추가 정리: 사용자 요청으로 위 보관함도 삭제했다. 원시 임시 로그와
+패치의 옛 경로는 더 이상 존재하지 않는다. 본 문서와 함께 `docs/evidence`에
+정리한 PNG/GIF/측정 결과 및 현재 실행 데이터는 유지했다.
 
 기존 미커밋 수정(virtual 29개, develop 27개)은 버리지 않고 다음 브랜치에 보존했다.
 최신 실행에는 과거 보정값을 덧씌우지 않고 v2.2.9 설정을 사용했다.
@@ -146,35 +154,43 @@ GIF는 입력 중 취득한 실제 프레임을 3 fps로 재생한다. 입력 �
 기존 실차 실증 DB의 SHA256은 이전 확인값과 동일하다:
 `43e292886f786f0c359675b88b8219af150ac24d8a4a171c205db48db5c46261`.
 시험 자료/스냅샷/SQLite는 `_maintenance/20260930_v229/state` 아래로 격리했다.
+이후 경로 정리 시 해당 시뮬레이션 상태를 `~/camrod_ws/state/virtual_carla`로
+이동했다. 실차 DB는 변경하지 않았으며 두 DB 모두 이동 전후 해시가 같다.
 
 ## 6. 이 PC에서 다시 실행
 
 현재 실행 중인 서버/bridge/spawn/CAMROD에 같은 명령을 중복 실행하지 않는다.
 화면만 보려면 `http://127.0.0.1:8010`으로 접속한다. 종료 후 재실행할 때는
-각 터미널에서 아래 공통 설정을 읽고, 명령을 순서대로 하나씩 실행한다.
+각 터미널에서 명령을 순서대로 하나씩 실행한다. 이제 이 PC에서는
+`~/camrod_ws/scripts/carla.sh`가 `~/camrod_ws/config/virtual_carla.env`를
+자동으로 읽으므로 특정 폴더로 cd하거나 날짜별 설정을 source할 필요가 없다.
 
 ```bash
-cd /home/hong/camrod_ws/src
-source /home/hong/camrod_ws/_maintenance/20260930_v229/runtime.env
+# 전체 명령 안내만 출력 (실행하지 않음)
+~/camrod_ws/scripts/carla.sh
 ```
 
 ```bash
 # 먼저 설정/설치 검사 (서버가 없어도 정적 검사는 가능)
-./scripts/virtual_carla/run.sh doctor
+~/camrod_ws/scripts/carla.sh doctor
 
-# 별도 터미널마다 공통 설정을 읽은 뒤, 아래 순서로 하나씩:
-./scripts/virtual_carla/run.sh server
-./scripts/virtual_carla/run.sh bridge
-./scripts/virtual_carla/run.sh pacer
-./scripts/virtual_carla/run.sh spawn
-./scripts/virtual_carla/run.sh camrod
+# 별도 터미널에서 아래 순서로 하나씩:
+~/camrod_ws/scripts/carla.sh server
+~/camrod_ws/scripts/carla.sh bridge
+~/camrod_ws/scripts/carla.sh pacer
+~/camrod_ws/scripts/carla.sh spawn
+~/camrod_ws/scripts/carla.sh camrod
 
 # 선택: 실제 Ranger 추적 시점 / 운영자 UI 창
-./scripts/virtual_carla/run.sh spectator
-./scripts/virtual_carla/run.sh operator-ui
+~/camrod_ws/scripts/carla.sh spectator
+~/camrod_ws/scripts/carla.sh operator-ui
 ```
 
 `pacer`의 ready와 `spawn`의 All objects spawned, CAMROD의 readiness ready를
 차례로 확인한다. 드롭존 안에서 수동 버튼으로 억지로 출차시키는 대신 정상
 사이트 미션을 요청하여 출차 제어 절차를 거친다. 이번 시작 설정은 이 PC의
 기존 설치·검증 자료 경로를 사용하므로 타 PC 전체 환경 설치 검증과는 다르다.
+
+로컬 경로와 보존 대상은 [워크스페이스 정리 기록](workspace_layout_20260930.md)을
+참고한다. 위 로컬 진입점/설정은 `src` Git 저장소 밖에 있으므로 자동으로
+커밋되지는 않는다. 실제 실행 구현은 기존 `src/scripts/virtual_carla/run.sh`다.

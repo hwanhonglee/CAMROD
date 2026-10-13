@@ -30,6 +30,9 @@ describe('local-only driving preview', () => {
   });
   test('always labels synthetic fixtures and never sends network requests', () => {
     act(() => root.render(<DrivingPreview />));
+    // HH_261007 - Preview and live service share the public name, not package branding.
+    expect(host.textContent).toContain('CAM-Geni');
+    expect(host.textContent).not.toContain('CAMROD');
     expect(host.textContent).toContain('시연 상태·테마 선택용 개발 패널');
     expect(host.querySelector('[data-testid=display]').dataset.demo).toBe('true');
     act(() => jest.advanceTimersByTime(1500));

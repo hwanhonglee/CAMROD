@@ -74,7 +74,7 @@ public:
   }
 
 private:
-  // HH_260527: Updates drop-zone match latch used by startup gating.
+  // HH_260527 - Updates drop-zone match latch used by startup gating.
   // HH_260720 - Accept immutable generated messages to use the current rclcpp callback API.
   void on_localization_ready(const avg_msgs::msg::AvgBool::ConstSharedPtr msg)
   {

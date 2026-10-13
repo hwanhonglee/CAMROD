@@ -79,7 +79,7 @@ ament_target_dependencies(drop_zone_maneuver_controller_node
 )
 target_link_libraries(drop_zone_maneuver_controller_node yaml-cpp)
 
-# HH_260803 / TODOLIST 12 - Keep bounded route recovery separate from the
+# HH_260803 - TODO list 12: Keep bounded route recovery separate from the
 # final safety gate and from campsite/drop-zone maneuver ownership.
 add_executable(route_safety_recovery_controller_node
   src/route_safety_recovery_controller_node.cpp
@@ -140,7 +140,10 @@ install(FILES README.md
 )
 
 if(BUILD_TESTING)
+  # HH_261007 - Keep authored manual-service geometry pure and independently tested.
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_manual_service_area test/test_manual_service_area.cpp)
+  target_include_directories(test_manual_service_area PRIVATE include)
   # HH_260721 - Run native gate, cost-stop, charging, and reverse-axis regression tests.
   ament_add_gtest(test_control_policies
     test/test_control_policies.cpp
@@ -148,6 +151,31 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_control_policies PRIVATE include)
   ament_target_dependencies(test_control_policies avg_msgs camrod_sensor_kit)
+
+  # HH_261006 - Reverse-return heading changes must not alter CTE or safety.
+  ament_add_gtest(test_path_relative_reverse_heading
+    test/test_path_relative_reverse_heading.cpp
+    src/motion_cost_stop.cpp
+  )
+  target_include_directories(test_path_relative_reverse_heading PRIVATE include)
+  ament_target_dependencies(test_path_relative_reverse_heading avg_msgs camrod_sensor_kit)
+
+  # HH_261007 - Test actual manual gate callbacks, including autonomous timer
+  # isolation, without sending commands to the simulator or field robot.
+  ament_add_gtest(test_manual_route_recovery
+    test/test_manual_route_recovery.cpp
+    src/motion_cost_stop.cpp
+  )
+  target_include_directories(test_manual_route_recovery PRIVATE include)
+  ament_target_dependencies(test_manual_route_recovery
+    rclcpp rcl_interfaces avg_msgs camrod_sensor_kit diagnostic_msgs
+    geometry_msgs tf2 tf2_ros
+  )
+  target_link_libraries(test_manual_route_recovery yaml-cpp)
+  target_compile_options(test_manual_route_recovery PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>)
+  set_tests_properties(test_manual_route_recovery PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=213;ROS_LOCALHOST_ONLY=1")
 
   ament_add_gtest(test_reverse_parking_axis test/test_reverse_parking_axis.cpp)
   target_include_directories(test_reverse_parking_axis PRIVATE include)

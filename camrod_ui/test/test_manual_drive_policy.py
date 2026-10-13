@@ -96,6 +96,94 @@ class ManualDriveValidationTest(unittest.TestCase):
                 self.assertEqual(command.linear_y, 0.0)
                 self.assertEqual(command.angular_z, 0.0)
 
+    def test_carla_lateral_opt_in_keeps_all_speed_defaults_unchanged(self) -> None:
+        # HH_261007 - Permission to widen the envelope never changes its defaults.
+        for options in ({}, {"allow_carla_lateral_2mps": False},
+                        {"allow_carla_lateral_2mps": True}):
+            with self.subTest(options=options):
+                limits = ManualDriveLimits(**options)
+                self.assertEqual(limits.as_dict(), {
+                    "linear_x_mps": 0.20,
+                    "lateral_y_mps": 0.20,
+                    "angular_z_radps": 0.20,
+                })
+        self.assertIs(ManualDriveLimits().allow_carla_lateral_2mps, False)
+
+    def test_lateral_limit_above_one_requires_explicit_carla_opt_in(self) -> None:
+        # HH_261007 - Default and explicit false retain the ordinary lateral cap.
+        for options in ({}, {"allow_carla_lateral_2mps": False}):
+            with self.subTest(options=options):
+                self.assertEqual(
+                    ManualDriveLimits(lateral_y_mps=1.0, **options).lateral_y_mps,
+                    1.0,
+                )
+                for invalid in (1.000001, 1.5, 2.0):
+                    with self.subTest(invalid=invalid):
+                        with self.assertRaises(ValueError):
+                            ManualDriveLimits(lateral_y_mps=invalid, **options)
+
+    def test_carla_lateral_opt_in_requires_an_actual_boolean(self) -> None:
+        # HH_261007 - Neither truthy nor falsy non-booleans may select this gate.
+        for invalid in (1, 0, 1.0, 0.0, "true", "false", "", None, [], [1], {}):
+            for lateral_limit in (0.20, 2.0):
+                with self.subTest(invalid=invalid, lateral_limit=lateral_limit):
+                    with self.assertRaises(ValueError):
+                        ManualDriveLimits(
+                            lateral_y_mps=lateral_limit,
+                            allow_carla_lateral_2mps=invalid,
+                        )
+
+    def test_carla_lateral_two_mps_scales_crab_in_both_directions(self) -> None:
+        # HH_261007 - The opt-in changes only the bounded lateral magnitude.
+        limits = ManualDriveLimits(
+            lateral_y_mps=2.0, allow_carla_lateral_2mps=True
+        )
+        self.assertIs(limits.allow_carla_lateral_2mps, True)
+        for direction in (-1, 1):
+            for scale in (0.10, 0.50, 1.00):
+                with self.subTest(direction=direction, scale=scale):
+                    _, command = validate_drive_frame(
+                        drive_frame(2, mode="crab", crab=direction, scale=scale),
+                        limits,
+                    )
+                    self.assertAlmostEqual(
+                        command.linear_y, direction * 2.0 * scale
+                    )
+                    self.assertEqual(command.linear_x, 0.0)
+                    self.assertEqual(command.angular_z, 0.0)
+
+    def test_carla_lateral_opt_in_still_rejects_invalid_speed_limits(self) -> None:
+        # HH_261007 - Simulator permission does not bypass finite bounded limits.
+        for invalid in (2.000001, -0.000001, math.nan, math.inf, -math.inf):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    ManualDriveLimits(
+                        lateral_y_mps=invalid, allow_carla_lateral_2mps=True
+                    )
+
+    def test_carla_lateral_opt_in_does_not_change_other_axis_limits(self) -> None:
+        # HH_261007 - Existing 2 m/s longitudinal support is independent of crab.
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                limits = ManualDriveLimits(
+                    linear_x_mps=2.0,
+                    angular_z_radps=0.7853,
+                    allow_carla_lateral_2mps=enabled,
+                )
+                for direction in (-1, 1):
+                    _, command = validate_drive_frame(
+                        drive_frame(2, forward=direction, scale=0.5), limits
+                    )
+                    self.assertAlmostEqual(command.linear_x, direction * 1.0)
+                for field, invalid in (
+                    ("linear_x_mps", 2.000001),
+                    ("angular_z_radps", 0.785301),
+                ):
+                    with self.assertRaises(ValueError):
+                        ManualDriveLimits(
+                            **{field: invalid}, allow_carla_lateral_2mps=enabled
+                        )
+
     def test_server_envelope_rejects_values_above_adapter_limits(self) -> None:
         for field, invalid in (
             ("linear_x_mps", 2.000001),

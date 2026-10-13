@@ -243,6 +243,44 @@ def test_site_manual_speed_opt_in_preserves_other_mapping_limits():
                 allow_carla_site_manual_speed_2mps=True)
 
 
+@pytest.mark.parametrize("requested", [-3.0, -2.0, -0.666667, 0.666667, 2.0, 3.0])
+def test_site_manual_crab_cap_is_separate_and_never_rescales_auto(requested):
+    site = replace(CFG, max_crab_speed_mps=2.0)
+    with pytest.raises(ValueError):
+        validate_ranger_contract(site)
+    with pytest.raises(ValueError):
+        validate_ranger_contract(site, allow_carla_site_manual_speed_2mps=True)
+    validate_ranger_contract(site, allow_carla_site_manual_crab_speed_2mps=True)
+    mapped = map_planar_twist(0.0, requested, 0.0, site)
+    ordinary = map_planar_twist(0.0, requested, 0.0, CFG)
+    assert mapped.mode == ordinary.mode == DriveMode.CRAB
+    assert mapped.speed == pytest.approx(min(2.0, abs(requested)))
+    assert ordinary.speed == pytest.approx(min(1.0, abs(requested)))
+    assert mapped.crab_angle == ordinary.crab_angle
+    assert mapped.crab_angle == pytest.approx(math.copysign(math.radians(88.0), requested))
+    assert mapped.yaw_rate_cmd == 0.0
+
+
+@pytest.mark.parametrize("invalid", [None, 0, 1, "true", "false", [], {}])
+def test_site_manual_crab_opt_in_requires_actual_boolean(invalid):
+    with pytest.raises(ValueError, match="must be a bool"):
+        validate_ranger_contract(CFG, allow_carla_site_manual_crab_speed_2mps=invalid)
+
+
+def test_site_manual_crab_opt_in_cannot_widen_any_other_limit_or_exceed_two():
+    site = replace(CFG, max_crab_speed_mps=2.0)
+    for field in ("max_crab_speed_mps", "max_ackermann_speed_mps",
+                  "max_yaw_rate_radps", "max_ackermann_steer_rad", "max_crab_angle_rad"):
+        with pytest.raises(ValueError):
+            validate_ranger_contract(
+                replace(site, **{field: math.nextafter(getattr(site, field), math.inf)}),
+                allow_carla_site_manual_crab_speed_2mps=True)
+    validate_ranger_contract(
+        replace(site, max_ackermann_speed_mps=2.0),
+        allow_carla_site_manual_speed_2mps=True,
+        allow_carla_site_manual_crab_speed_2mps=True)
+
+
 @pytest.mark.parametrize("requested", [-3.0, -2.0, -0.5, 0.5, 2.0, 3.0])
 def test_site_forward_reverse_cap_does_not_rescale_normal_requests(requested):
     """HH_261002 - Raise clipping only; do not multiply existing auto targets."""
@@ -293,6 +331,54 @@ def test_fresh_campsite_rotate_180_authorizes_stall_breakaway_only():
     status = "phase=ROTATE_180 yaw_error_deg=25.50"
     assert rotation_recovery_breakaway_is_authorized(
         command, "control", 0, "ROTATE_180", status, 10.0, 10.29) is True
+
+
+@pytest.mark.parametrize("yaw_rate", [-0.086, 0.086])
+def test_crab_in_nominal_yaw_restore_authorizes_existing_stall_lease(yaw_rate):
+    # HH_261007 - This remains a zero-translation, healthy, fresh rotation.
+    command = map_planar_twist(0.0, 0.0, yaw_rate, CFG)
+    status = "phase=CRAB_IN crab_body_yaw_alignment=restore_nominal_before_rotation"
+    assert command.mode == DriveMode.ZERO_TURN
+    assert command.yaw_rate_cmd == yaw_rate
+    assert rotation_recovery_breakaway_is_authorized(
+        command, "control", 0, "CRAB_IN", status, 10.0, 11.25) is True
+
+
+@pytest.mark.parametrize("status", [
+    "phase=CRAB_IN crab_body_yaw_alignment=inactive",
+    "phase=CRAB_IN crab_body_yaw_alignment=precompensate_entry",
+    "phase=CRAB_IN prefix_crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "phase=ROTATE_180 crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "phase=CRAB_IN phase=CRAB_IN crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "phase=CRAB_IN phase=ERROR crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "phase=CRAB_IN crab_body_yaw_alignment=restore_nominal_before_rotation "
+    "crab_body_yaw_alignment=restore_nominal_before_rotation",
+    "phase=CRAB_IN crab_body_yaw_alignment=restore_nominal_before_rotation "
+    "crab_body_yaw_alignment=inactive",
+])
+def test_crab_in_rotation_lease_rejects_wrong_ambiguous_or_duplicate_substate(status):
+    command = map_planar_twist(0.0, 0.0, 0.086, CFG)
+    assert rotation_recovery_breakaway_is_authorized(
+        command, "control", 0, "CRAB_IN", status, 10.0, 10.1) is False
+
+
+@pytest.mark.parametrize("linear_x,linear_y,yaw_rate,level,state,now", [
+    (0.001, 0.0, 0.086, 0, "CRAB_IN", 10.1),
+    (0.0, 0.001, 0.086, 0, "CRAB_IN", 10.1),
+    (0.0, 0.05, 0.086, 0, "CRAB_IN", 10.1),
+    (0.0, 0.0, 0.0, 0, "CRAB_IN", 10.1),
+    (0.0, 0.0, 0.086, 1, "CRAB_IN", 10.1),
+    (0.0, 0.0, 0.086, 0, "ALIGN_ENTRY_YAW", 10.1),
+    (0.0, 0.0, 0.086, 0, "CRAB_IN", 11.250001),
+    (0.0, 0.0, 0.086, 0, "CRAB_IN", 9.99),
+])
+def test_crab_in_rotation_lease_keeps_motion_health_and_freshness_guards(
+        linear_x, linear_y, yaw_rate, level, state, now):
+    command = map_planar_twist(linear_x, linear_y, yaw_rate, CFG)
+    status = "phase=CRAB_IN crab_body_yaw_alignment=restore_nominal_before_rotation"
+    assert rotation_recovery_breakaway_is_authorized(
+        command, "control", level, state, status, 10.0, now) is False
 
 
 @pytest.mark.parametrize(

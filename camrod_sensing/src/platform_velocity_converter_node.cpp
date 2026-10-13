@@ -20,16 +20,16 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   PlatformVelocityConverterNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
+  // HH_260112 - Use short node name; namespace applies the module prefix.
   : rclcpp::Node("platform_velocity_converter")
   {
-    // HH_260109 Use platform velocity + IMU to publish twist_with_covariance.
+    // HH_260109 - Use platform velocity + IMU to publish twist_with_covariance.
     velocity_topic_ = declare_parameter<std::string>("velocity_topic", "/platform/status/velocity");
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data_ros");
     imu_output_topic_ = declare_parameter<std::string>(
       "imu_output_topic", "/sensing/imu/data");
     output_topic_ = declare_parameter<std::string>(
-      // HH_260331: Keep IMU-derived platform velocity topic under /sensing/imu/*.
+      // HH_260331 - Keep IMU-derived platform velocity topic under /sensing/imu/*.
       "output_topic", "/sensing/platform_velocity_converter/twist_with_covariance");
     imu_status_topic_ = declare_parameter<std::string>(
       "imu_status_topic", "/sensing/imu/status");

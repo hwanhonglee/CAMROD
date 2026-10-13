@@ -59,7 +59,7 @@ struct RobotParams
   SensorPose imu;
   SensorPose gnss;
   SensorPose lidar;
-  // HH_260326: Canonical camera pose.
+  // HH_260326 - Canonical camera pose.
   SensorPose camera;
   // HH_260623 - Canonical dual-camera and seven-radar poses used by sensor_kit TF/RViz.
   SensorPose camera_front;

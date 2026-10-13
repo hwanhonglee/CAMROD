@@ -18,7 +18,7 @@
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
-    # HH_260527: centerline_z_mode options:
+    # HH_260527 - centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
     #   ground: force ground plane Z (0) + map_z_offset
@@ -41,11 +41,11 @@
     stable_count: 10
     publish_drop_zone_initial_pose: true
     publish_once: true
-    # HH_260527: drop_zone_center_mode options:
+    # HH_260527 - drop_zone_center_mode options:
     #   corners_mean: center = average of polygon corners
     #   yaml_center: center = zone center_x/center_y fields
     drop_zone_center_mode: corners_mean
-    # HH_260527: drop_zone_yaw_source options:
+    # HH_260527 - drop_zone_yaw_source options:
     #   zone: use zone yaw_deg from YAML
     #   input: keep current input pose yaw
     drop_zone_yaw_source: zone

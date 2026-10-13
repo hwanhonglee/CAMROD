@@ -4,6 +4,7 @@ import RangerNavigationScene from './RangerNavigationScene';
 import { RANGER_MODEL_URL } from './rangerModelAsset';
 import { areaIsDestination, areaLabelPoint, layoutAreaLabels, normalizeNavigationAreas } from './navigationAreas';
 import { displayBoundaryLines } from './navigationBoundaryCurves';
+import { SERVICE_BRAND, SERVICE_COMPANY, SERVICE_LOCATION } from './serviceBranding';
 
 // HH_261001 - Telemetry and geometry are read-only. The optional operator stop action calls
 // the existing App handler only after an explicit confirmation.
@@ -484,7 +485,9 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
           && !interactive(event.target)) { gesture.current = null; dismiss(event); }
       }}>
       <header className="dd-header">
-        <div className="dd-brand"><img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" /><div><strong>CAMROD</strong><small>월악산 국립공원</small></div></div>
+        {/* HH_261007 - Change public branding only; keep navigation telemetry,
+            Ranger assets and the existing national-park visual identity. */}
+        <div className="dd-brand"><img src="/월악산_국립공원_로고.jpg" alt="월악산 국립공원 로고" /><div><strong>{SERVICE_BRAND}</strong><small>{SERVICE_LOCATION}</small><small>{SERVICE_COMPANY}</small></div></div>
         <span className="dd-top-mission">현재 미션<strong>{serviceLabel}</strong></span>
         <div className="dd-header-chips">
           {demo && <span className="dd-demo-chip">UI 시연 · 실제 주행 아님</span>}

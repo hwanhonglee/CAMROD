@@ -1,4 +1,4 @@
-#include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 renamed package
+#include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 - renamed package
 #include <cmath>
 
 namespace camrod
@@ -80,7 +80,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
 
   load_pose("imu", params.imu);
   load_pose("gnss", params.gnss);
-  // HH_260326: Canonical camera pose.
+  // HH_260326 - Canonical camera pose.
   load_pose("camera", params.camera);
   // HH_260623 - Load canonical nested camera/radar poses used by sensor_kit.launch.py and xacro.
   load_pose("camera.front", params.camera_front);

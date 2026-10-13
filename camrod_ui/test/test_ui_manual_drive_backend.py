@@ -1,6 +1,7 @@
 """Backend ordering tests for the manual-drive ROS/WebSocket boundary."""
 
 from pathlib import Path
+import asyncio
 import sys
 import threading
 import time
@@ -86,6 +87,79 @@ class UiManualDriveBackendTest(unittest.TestCase):
             )
         )
         return backend, policy, lease, events
+
+    # HH_261007 - Gate telemetry annotates display state without changing the
+    # armed lease, safety checks, speed envelope or emitted command sequence.
+    def gate_backend(self, **changes):
+        backend, policy, lease, events = self.make_backend()
+        backend._now_s = lambda: 100.0
+        values = {"level": 0, "operating_state": "ENABLED",
+                  "message": "state=ENABLED reasons=none", "source_stamp_s": 99.8}
+        values.update(changes)
+        backend._manual_drive_gate_observation = (values, 49.8)
+        return backend, policy, lease, events
+
+    def test_gate_snapshot_distinguishes_fresh_admission_and_boundary_hold(self):
+        backend, policy, lease, events = self.gate_backend()
+        with mock.patch("camrod_ui.ui_backend_node.time.monotonic", return_value=50.0):
+            permitted = UiBackendNode._manual_drive_gate_snapshot(backend)
+            self.assertTrue(permitted["fresh"])
+            self.assertFalse(permitted["blocked"])
+            backend._manual_drive_gate_observation[0].update(
+                operating_state="ROUTE_SAFETY_HOLD", level=1,
+                message="state=ROUTE_SAFETY_HOLD reasons=lanelet_physical_body_cost "
+                        "recovery_reason=manual_projected_recovery")
+            held = UiBackendNode._manual_drive_gate_snapshot(backend)
+        self.assertTrue(held["blocked"])
+        self.assertEqual(held["reasons"], ["lanelet_physical_body_cost"])
+        self.assertEqual(held["recovery_reason"], "manual_projected_recovery")
+        self.assertFalse(policy.snapshot()["armed"])
+        self.assertEqual(events, [])
+
+    def test_gate_snapshot_missing_stale_invalid_and_future_are_unknown(self):
+        backend, *_ = self.make_backend()
+        self.assertIsNone(UiBackendNode._manual_drive_gate_snapshot(backend)["blocked"])
+        for stamp, received in [(99.8, 48.0), (98.0, 49.8), (0.0, 49.8),
+                                (101.0, 49.8), (float("nan"), 49.8)]:
+            with self.subTest(stamp=stamp, received=received):
+                backend, *_ = self.gate_backend(source_stamp_s=stamp)
+                values, _ = backend._manual_drive_gate_observation
+                backend._manual_drive_gate_observation = (values, received)
+                with mock.patch("camrod_ui.ui_backend_node.time.monotonic", return_value=50.0):
+                    snapshot = UiBackendNode._manual_drive_gate_snapshot(backend)
+                self.assertFalse(snapshot["fresh"])
+                self.assertIsNone(snapshot["blocked"])
+
+    def test_websocket_recomputes_gate_freshness_without_mutating_lease_payload(self):
+        backend, policy, lease, events = self.gate_backend()
+        policy.arm(lease, control_frame("arm", 1), 49.9)
+        payload = {"type": "state", "manual_drive": policy.snapshot()}
+        websocket = SimpleNamespace(send_json=mock.AsyncMock())
+        transport = SimpleNamespace(websocket=websocket, send_lock=asyncio.Lock())
+        with mock.patch("camrod_ui.ui_backend_node.time.monotonic", return_value=52.0):
+            asyncio.run(UiBackendNode._send_manual_drive_payload(backend, transport, payload))
+        sent = websocket.send_json.await_args.args[0]["manual_drive"]
+        self.assertTrue(sent["armed"])
+        self.assertFalse(sent["safety_gate"]["fresh"])
+        self.assertNotIn("safety_gate", payload["manual_drive"])
+        self.assertEqual(sent["limits"], policy.snapshot()["limits"])
+        self.assertEqual(events, [])
+
+    def test_gate_callback_records_status_without_operator_telemetry_session(self):
+        backend, *_ = self.make_backend()
+        backend._now_s = lambda: 100.0
+        backend._telemetry_capture_active = False
+        backend._runtime_policy = SimpleNamespace(update_gate=mock.Mock())
+        backend._update_runtime_state = lambda callback: callback()
+        message = SimpleNamespace(level=1, operating_state="ROUTE_SAFETY_HOLD",
+            message="reasons=lanelet_physical_body_cost recovery_reason=manual_projected_recovery",
+            stamp=SimpleNamespace(sec=99, nanosec=900000000))
+        with mock.patch("camrod_ui.ui_backend_node.time.monotonic", return_value=50.0):
+            UiBackendNode._on_control_gate_status(backend, message)
+            snapshot = UiBackendNode._manual_drive_gate_snapshot(backend)
+        self.assertTrue(snapshot["fresh"])
+        self.assertEqual(snapshot["recovery_reason"], "manual_projected_recovery")
+        backend._runtime_policy.update_gate.assert_called_once()
 
     def test_arm_orders_full_stop_mission_release_zero_then_engage(self) -> None:
         backend, policy, lease, events = self.make_backend()

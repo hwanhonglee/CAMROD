@@ -1,7 +1,11 @@
 /**:
   ros__parameters:
-    # HH_261002 - Explicit simulator-site manual forward/reverse envelope.
+    # HH_261007 - Explicit simulator-site manual forward/reverse/lateral envelope.
     # This is an upper clipping bound, not an automatic speed target. Base
-    # command_adapter.yaml retains 1.4; crab/yaw/steering/watchdog limits stay exact.
+    # command_adapter.yaml retains 1.4 forward/1.0 crab; yaw/steering/watchdog
+    # limits stay exact. The 2 m/s crab ceiling is experimental, not a measured
+    # lateral stopping-distance guarantee; radar/obstacle checks stay enabled.
     max_ackermann_speed_mps: 2.0
     allow_carla_site_manual_speed_2mps: true
+    max_crab_speed_mps: 2.0
+    allow_carla_site_manual_crab_speed_2mps: true

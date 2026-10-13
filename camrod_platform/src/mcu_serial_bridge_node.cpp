@@ -1,4 +1,4 @@
-// 260708 - Serial bridge between light_controller and the Arduino Nano light MCU.
+// HH_260708 - Serial bridge between light_controller and the Arduino Nano light MCU.
 // Wire protocol (115200 8N1, newline-terminated JSON, docs/lights-design-doc.html):
 //   PC -> MCU @ tx_rate_hz : {"h":0|1,"i":"O"|"L"|"R"|"H","q":<seq>}
 //   MCU -> PC @ ~1 Hz      : {"a":<last seq>,"h":0|1,"i":"...","e":<error code>}

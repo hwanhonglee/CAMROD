@@ -465,11 +465,11 @@ public:
     pubs_.resize(n);
     standard_ros_pubs_.resize(n);
     disabled_channel_dummy_active_pubs_.resize(n);
-    // HH_260414: Keep per-sensor publish stamps monotonic to avoid TF extrapolation
+    // HH_260414 - Keep per-sensor publish stamps monotonic to avoid TF extrapolation
     // bursts when system time jitters backwards briefly.
     last_range_pub_stamp_.assign(n, rclcpp::Time(0, 0, this->get_clock()->get_clock_type()));
 
-    // HH_260414: SensorDataQoS (best-effort, shallow queue) reduces stale backlog
+    // HH_260414 - SensorDataQoS (best-effort, shallow queue) reduces stale backlog
     // delivery to RViz/message_filters and helps suppress flicker/extrapolation spikes.
     auto range_qos = rclcpp::SensorDataQoS().keep_last(5);
 
@@ -970,7 +970,7 @@ private:
     msg.radiation_type = avg_msgs::msg::AvgRange::ULTRASOUND;
     msg.field_of_view = static_cast<float>(range_message_field_of_view_rad_);
     msg.min_range = static_cast<float>(software_min_range_m_);
-    // HH_260422: Use per-sensor max_range so cost grid node filters per direction automatically.
+    // HH_260422 - Use per-sensor max_range so cost grid node filters per direction automatically.
     msg.max_range = static_cast<float>(sensors_[idx].software_max_range_m);
     msg.range = range_m;
 
@@ -1182,7 +1182,7 @@ private:
       row2 += c2;
     }
 
-    // HH_260629: `log_status` is an explicit launch/debug opt-in, so keep the
+    // HH_260629 - `log_status` is an explicit launch/debug opt-in, so keep the
     // sensor-name + USB suffix + range/miss counters visible when it is enabled.
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row1.c_str());
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row2.c_str());

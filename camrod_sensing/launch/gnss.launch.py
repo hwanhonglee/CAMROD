@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260611: GNSS launch now uses ublox_gps_node for both SparkFun single-antenna
+# HH_260611 - GNSS launch now uses ublox_gps_node for both SparkFun single-antenna
 # and simpleRTK2B Heading dual-antenna modes. The old dGNSS fallback code was removed.
 # Python ntrip_ros.py remains the only NTRIP client because it provides GGA feedback
 # required for VRS/MAC networks like gnssdata.or.kr.
@@ -136,7 +136,7 @@ def _launch_setup(context, *args, **kwargs):
             # HH_260702 - Keep GNSS driver chatter out of the field console;
             # /system/status carries the operator-facing GNSS health.
             arguments=["--ros-args", "--log-level", gnss_log_level],
-            # HH_260408: Disable auto-respawn for clean Ctrl+C and no duplicate nodes.
+            # HH_260408 - Disable auto-respawn for clean Ctrl+C and no duplicate nodes.
             parameters=[ublox_param_file, ublox_inline_params],
             remappings=[
                 ("rtcm",  ublox_rtcm_topic),
@@ -203,7 +203,7 @@ def _base_rtcm_writer_node(
 
 
 def _ntrip_node(namespace: str, param_file: str, rtcm_topic: str, log_level: str) -> Node:
-    # HH_260408: Disable auto-respawn for clean Ctrl+C and no duplicate NTRIP nodes.
+    # HH_260408 - Disable auto-respawn for clean Ctrl+C and no duplicate NTRIP nodes.
     return Node(
         package="ntrip_client",
         executable="ntrip_ros.py",
@@ -289,7 +289,7 @@ def generate_launch_description():
                               default_value="sensing/gnss",
                               description="GNSS stack namespace"),
         DeclareLaunchArgument("rtcm_topic",
-                              # HH_260317-00:00 Relative default: namespace + rtcm -> /gnss/rtcm.
+                              # HH_260317 - Relative default: namespace + rtcm -> /gnss/rtcm.
                               default_value="rtcm",
                               description="RTCM correction topic (relative to gnss namespace)"),
         OpaqueFunction(function=_launch_setup),

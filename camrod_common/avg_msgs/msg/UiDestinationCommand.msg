@@ -1,4 +1,4 @@
-# HH_260617: Operator/guest UI destination command.
+# HH_260617 - Operator/guest UI destination command.
 avg_msgs/AvgHeader header
 
 string site

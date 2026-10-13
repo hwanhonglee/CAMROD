@@ -8,7 +8,13 @@ import subprocess
 
 import pytest
 from launch import LaunchContext, LaunchDescription
-from launch.actions import DeclareLaunchArgument, SetLaunchConfiguration, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    LogInfo,
+    SetEnvironmentVariable,
+    SetLaunchConfiguration,
+)
 import yaml
 
 
@@ -116,9 +122,36 @@ def test_profile_wrappers_inherit_shared_full_launch(filename, monkeypatch):
     monkeypatch.setattr(
         module, "get_package_share_directory", lambda name: str(ROOT / name))
     actions = module.generate_launch_description().entities
-    assert len(actions) == 1
-    include = actions[0]
     context = LaunchContext()
+    includes = [
+        action for action in actions
+        if isinstance(action, IncludeLaunchDescription)
+    ]
+    setters = [
+        action for action in actions
+        if isinstance(action, SetLaunchConfiguration)
+    ]
+    logs = [action for action in actions if isinstance(action, LogInfo)]
+    # HH_261013 - Site geometry may bind its two producer-owned inputs and log
+    # their provenance, but every wrapper must still have one shared full launch.
+    assert len(includes) == 1
+    assert all(isinstance(action, (
+        IncludeLaunchDescription, LogInfo, SetLaunchConfiguration,
+    )) for action in actions)
+    expected_setters = (
+        {"yolo_labels_path", "control_param_file"}
+        if filename == "camrod_carla_develop_site_geometry.launch.py"
+        else set()
+    )
+    setter_names = {
+        "".join(substitution.perform(context) for substitution in action.name)
+        for action in setters
+    }
+    assert setter_names == expected_setters
+    assert len(logs) == (1 if expected_setters else 0)
+    assert not any("record" in name.lower() for name in setter_names)
+
+    include = includes[0]
     source = include.launch_description_source
     monkeypatch.setattr(
         source, "_get_launch_description", lambda _path: LaunchDescription([]))
@@ -127,6 +160,7 @@ def test_profile_wrappers_inherit_shared_full_launch(filename, monkeypatch):
     arguments = dict(include.launch_arguments)
     assert "mission_records_root" not in arguments
     assert "mission_recorder_environment" not in arguments
+    assert not any("record" in str(name).lower() for name in arguments)
 
 
 @pytest.mark.parametrize("override", ("", "/separate/run-03"))

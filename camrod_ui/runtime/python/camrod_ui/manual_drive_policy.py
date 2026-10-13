@@ -24,6 +24,8 @@ MANUAL_DRIVE_DEFAULT_ANGULAR_LIMIT_RADPS = 0.20
 # keep the ordinary robot default at 0.20 m/s and retain the deadman limits.
 MANUAL_DRIVE_MAX_LINEAR_LIMIT_MPS = 2.00
 MANUAL_DRIVE_MAX_LATERAL_LIMIT_MPS = 1.00
+# HH_261007 - Only an explicit CARLA experiment may exceed the ordinary cap.
+MANUAL_DRIVE_CARLA_MAX_LATERAL_LIMIT_MPS = 2.00
 MANUAL_DRIVE_MAX_ANGULAR_LIMIT_RADPS = 0.7853
 MANUAL_DRIVE_MINIMUM_SCALE = 0.10
 MANUAL_DRIVE_MAXIMUM_SCALE = 1.00
@@ -45,11 +47,19 @@ class ManualDriveLimits:
     linear_x_mps: float = MANUAL_DRIVE_DEFAULT_LINEAR_LIMIT_MPS
     lateral_y_mps: float = MANUAL_DRIVE_DEFAULT_LATERAL_LIMIT_MPS
     angular_z_radps: float = MANUAL_DRIVE_DEFAULT_ANGULAR_LIMIT_RADPS
+    allow_carla_lateral_2mps: bool = False
 
     def __post_init__(self) -> None:
+        # HH_261007 - Reject truthy strings/numbers at the simulator opt-in boundary.
+        if type(self.allow_carla_lateral_2mps) is not bool:
+            raise ValueError("allow_carla_lateral_2mps must be a boolean")
         maxima = {
             "linear_x_mps": MANUAL_DRIVE_MAX_LINEAR_LIMIT_MPS,
-            "lateral_y_mps": MANUAL_DRIVE_MAX_LATERAL_LIMIT_MPS,
+            "lateral_y_mps": (
+                MANUAL_DRIVE_CARLA_MAX_LATERAL_LIMIT_MPS
+                if self.allow_carla_lateral_2mps
+                else MANUAL_DRIVE_MAX_LATERAL_LIMIT_MPS
+            ),
             "angular_z_radps": MANUAL_DRIVE_MAX_ANGULAR_LIMIT_RADPS,
         }
         for name, maximum in maxima.items():
