@@ -51,13 +51,15 @@ _EXPECTED_DRIVER_ARRAYS = {
         "radar_right2_link",
         "radar_rear_link",
     ],
+    # HH_261015 - Side channels were remapped after re-identifying the physical
+    # sensors on CAMROD unit 2; LEFT2 stays on USB5 and RIGHT2 takes USB4.
     "ports": [
         "/dev/ttyCH9344USB0",
         "/dev/ttyCH9344USB1",
-        "/dev/ttyCH9344USB4",
-        "/dev/ttyCH9344USB5",
         "/dev/ttyCH9344USB2",
+        "/dev/ttyCH9344USB5",
         "/dev/ttyCH9344USB3",
+        "/dev/ttyCH9344USB4",
         "/dev/ttyCH9344USB6",
     ],
     "topics": [

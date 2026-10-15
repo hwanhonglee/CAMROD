@@ -106,8 +106,10 @@ def test_active_yaml_supplies_seven_physical_standard_range_topics():
     assert all(spec.configured_enabled for spec in specs[:6])
     assert not specs[6].configured_enabled
     assert specs[0].topic == "/sensing/radar/front1/range_ros"
+    # HH_261015 - specs[3] is LEFT2 and keeps USB5; specs[5] is RIGHT2 and moved
+    # to USB4 with the side-channel remap.
     assert specs[3].port == "/dev/ttyCH9344USB5"
-    assert specs[5].port == "/dev/ttyCH9344USB3"
+    assert specs[5].port == "/dev/ttyCH9344USB4"
     assert tuple(spec.configured_max_m for spec in specs) == pytest.approx(
         (0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50)
     )

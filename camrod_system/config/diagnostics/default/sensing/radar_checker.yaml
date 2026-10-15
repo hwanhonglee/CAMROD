@@ -3,6 +3,9 @@
 # 진단 태스크 이름 형식: "radar_checker: /sensor/radar/<NAME>"
 # (diagnostic_updater 가 "<node_name>: <task_name>" 으로 자동 생성)
 # Layout: 1) publish rate, 2) monitored channels, 3) global dummy marker, 4) per-channel blocks.
+# HH_261015 - Side-channel ports follow the re-identified CH348L wiring on
+# CAMROD unit 2: LEFT1 USB2, LEFT2 USB5, RIGHT1 USB3, RIGHT2 USB4. Keep these
+# in sync with the ports list in config/radar/sen0592_radar.yaml.
 
 radar_checker:
   ros__parameters:
@@ -87,7 +90,7 @@ radar_checker:
       topic: "/sensing/radar/left1/range"
       location: "left_front"
       frame_id: "radar_left1_link"
-      port: "/dev/ttyCH9344USB4"
+      port: "/dev/ttyCH9344USB2"
       dummy_active_topic: "/sensing/radar/left1/dummy_active"
       dummy_active_timeout_s: 1.0
       expected_hz:         8.0
@@ -107,7 +110,7 @@ radar_checker:
       topic: "/sensing/radar/right2/range"
       location: "right_rear"
       frame_id: "radar_right2_link"
-      port: "/dev/ttyCH9344USB3"
+      port: "/dev/ttyCH9344USB4"
       dummy_active_topic: "/sensing/radar/right2/dummy_active"
       dummy_active_timeout_s: 1.0
       expected_hz:         8.0
@@ -127,7 +130,7 @@ radar_checker:
       topic: "/sensing/radar/right1/range"
       location: "right_front"
       frame_id: "radar_right1_link"
-      port: "/dev/ttyCH9344USB2"
+      port: "/dev/ttyCH9344USB3"
       dummy_active_topic: "/sensing/radar/right1/dummy_active"
       dummy_active_timeout_s: 1.0
       expected_hz:         8.0
