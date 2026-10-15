@@ -73,13 +73,19 @@
     # idx  sensor   port  enabled  angle  HW range  SW max
     #  0   FRONT1   USB0    yes      4       1      0.50 m
     #  1   FRONT2   USB1    yes      4       1      0.50 m
-    #  2   LEFT1    USB4    yes      4       1      0.50 m
+    #  2   LEFT1    USB2    yes      4       1      0.50 m
     #  3   LEFT2    USB5    yes      4       1      0.50 m
-    #  4   RIGHT1   USB2    yes      4       1      0.50 m
-    #  5   RIGHT2   USB3    yes      4       1      0.50 m
+    #  4   RIGHT1   USB3    yes      4       1      0.50 m
+    #  5   RIGHT2   USB4    yes      4       1      0.50 m
     #  6   REAR     USB6    no       4       1      0.50 m
     #
     # HH_260702 - LEFT/RIGHT USB numbers reflect the crossed field harness.
+    # HH_261015 - CAMROD unit 2 carries a CH348L eight-port adapter in place of
+    # the earlier board, and its side channels were re-identified against the
+    # physical sensors: the port previously read as RIGHT1 is LEFT1, and the
+    # port previously read as RIGHT2 is RIGHT1. LEFT2 keeps USB5, so RIGHT2
+    # takes the remaining USB4. Confirm each side on the robot before driving;
+    # a swapped side silently inverts the stop authority for that direction.
     sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
 
     frame_ids:
@@ -94,10 +100,10 @@
     ports:
       - "/dev/ttyCH9344USB0"
       - "/dev/ttyCH9344USB1"
-      - "/dev/ttyCH9344USB4"
-      - "/dev/ttyCH9344USB5"
       - "/dev/ttyCH9344USB2"
+      - "/dev/ttyCH9344USB5"
       - "/dev/ttyCH9344USB3"
+      - "/dev/ttyCH9344USB4"
       - "/dev/ttyCH9344USB6"
 
     # Generated CAMROD messages used by cost-grid and diagnostics.

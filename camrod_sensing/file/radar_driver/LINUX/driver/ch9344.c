@@ -837,9 +837,14 @@ static void ch9344_tty_close(struct tty_struct *tty, struct file *filp)
 	}
 }
 
-// HH_26220
-// static int ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
+// HH_261015 - tty_operations::write takes (int count) before kernel 6.6 and
+// (size_t count) from 6.6 on. Jetson L4T runs 5.15, so the hardcoded 6.6
+// prototype broke the build. Gate it by version instead of pinning one form.
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
 static ssize_t ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, size_t count)
+#else
+static int ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
+#endif
 {
 	struct ch9344 *ch9344 = tty->driver_data;
 	int stat;
