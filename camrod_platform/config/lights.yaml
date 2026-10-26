@@ -41,9 +41,12 @@
 
     # ---- Serial port ----
     # HH_260727 - The field WS2815 controller is connected through FT232R
-    # BG003YCF. Use its stable identity because ttyUSB indices are also shared
+    # BG003KJ3. Use its stable identity because ttyUSB indices are also shared
     # with GNSS and the Quectel modem and may change between boots.
-    serial_port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG003YCF-if00-port0"
+    # HH_261026 - This adapter serial is per-robot and therefore lives on
+    # the unit branch: unit 1 carries BG003YCF, unit 2 (this branch)
+    # carries BG003KJ3. Do not promote this line to a shared branch.
+    serial_port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG003KJ3-if00-port0"
     serial_baud: 115200
 
     # ---- Timing ----
