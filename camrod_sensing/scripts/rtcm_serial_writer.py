@@ -4,15 +4,16 @@
 HH_260722 - Field topology and correction ownership:
 
 * Input: ``/gnss/ntrip_client/rtcm`` from the CORS caster.
-* Output: the FTDI DN05Y9E7 stable by-id path at 460800 baud. This device is
-  currently ``/dev/ttyUSB0`` and reaches the Lite moving base on UART1 through
-  the board's POWER+XBEE connector.
+* Output: the FTDI DN03DF8V adapter at 460800 baud. On unit 2 it enumerates
+  as ``/dev/ttyUSB1`` and reaches the Lite moving base on UART1 through the
+  board's POWER+XBEE connector. That index moves when USB changes, so check
+  it against ``/dev/serial/by-id`` before blaming the hardware.
 * The moving base applies CORS, becomes absolute RTK fixed, and independently
   emits its moving-baseline 4072.0/MSM stream to the heading rover.
 
-This node deliberately does not write CORS to ``/dev/ttyACM0``. That device is
-the heading rover's native USB and is owned by ``ublox_gps_node`` for NAV-PVT
-and NAV-RELPOSNED output. Mixing CORS and moving-base reference streams on that
+This node deliberately does not write CORS to ``/dev/ttyACM1``. That device
+is the heading rover's native USB and is owned by ``ublox_gps_node`` for
+NAV-PVT and NAV-RELPOSNED output. Mixing CORS and moving-base reference streams on that
 receiver broke heading during the field A/B test.
 """
 

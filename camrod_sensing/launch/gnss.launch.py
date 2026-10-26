@@ -10,10 +10,10 @@
 #   NTRIP CORS
 #       -> /gnss/ntrip_client/rtcm
 #       -> moving_base_rtcm_writer
-#       -> FTDI DN05Y9E7 by-id (POWER+XBEE / Lite moving-base UART1)
+#       -> FTDI DN03DF8V = /dev/ttyUSB1 (POWER+XBEE / Lite moving-base UART1)
 #       -> Lite solves absolute RTK and emits 4072.0 + MSM7 + 1230
 #       -> board UART/XBee link
-#       -> /dev/ttyACM0 receiver UART2 (Budget heading rover)
+#       -> /dev/ttyACM1 receiver UART2 (Budget heading rover)
 #       -> rover USB publishes NAV-PVT and NAV-RELPOSNED to ROS
 #
 # Do not connect the CORS topic directly to the heading rover in the field

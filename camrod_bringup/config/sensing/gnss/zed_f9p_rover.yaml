@@ -12,15 +12,22 @@
     # =========================================================================
     # HH_260708 - Use the operator-verified ttyACM port for the field harness.
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
-    device: /dev/ttyACM0
+    # HH_261026 - Unit 2 enumerates the other way round: the Lord Microstrain
+    # IMU takes ttyACM0 and this receiver lands on ttyACM1, so the shared
+    # ttyACM0 path opened the IMU and the rover never produced NAV-PVT. Keep
+    # the ttyACM form and carry the index that matches this robot. The index
+    # is assigned at enumeration, so re-check it and update this line after
+    # any USB change; the receiver's stable identity is
+    # usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00.
+    device: /dev/ttyACM1
     # HH_260807 - This receiver measures at the physical antenna represented by
     # gnss_link. Changing the header does not move raw LLH; the localization
     # adapter remains the sole owner of the heading-rotated lever-arm correction.
     frame_id: gnss_link
     # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
-    # External CORS goes to the Lite moving base through FTDI DN05Y9E7
-    # by its stable by-id path; only the corrected moving-base stream reaches
-    # this receiver through UART2, regardless of ttyUSB enumeration.
+    # External CORS goes to the Lite moving base through FTDI DN03DF8V
+    # (currently /dev/ttyUSB1); only the corrected moving-base stream reaches
+    # this receiver through UART2.
     rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
@@ -99,14 +106,19 @@
 # =========================================================================
 /**/moving_base_rtcm_writer:
   ros__parameters:
-    # POWER+XBEE FTDI connected to the Lite moving-base UART1.
-    # Use this stable identity because the Quectel modem shares ttyUSB indices
-    # and must not receive RTCM.
+    # POWER+XBEE FTDI connected to the Lite moving-base UART1. The Quectel
+    # modem shares the ttyUSB range and must not receive RTCM, so confirm the
+    # index below belongs to the FTDI before starting NTRIP.
     # HH_260819 - The FTDI adapter was replaced (DN03DF8V -> DN05Y9E7). Always
-    # rediscover /dev/serial/by-id after a cable/adapter change; a stale path
-    # leaves NTRIP connected while silently delivering no CORS to the Lite.
+    # rediscover the port after a cable/adapter change; a stale path leaves
+    # NTRIP connected while silently delivering no CORS to the Lite.
+    # HH_261026 - That replacement was unit 1's; unit 2 still carries the
+    # original DN03DF8V, which enumerates as /dev/ttyUSB1 today. This index is
+    # NOT stable - plugging the light MCU renumbered every ttyUSB on this
+    # robot - so run `ls -l /dev/serial/by-id | grep DN03DF8V` and update this
+    # line whenever USB changes, or you land in the silent no-CORS case above.
     # This 460800 value controls only CORS -> Lite UART1. Lite -> rover UART2 is
     # a separate board-saved link and both endpoints must also match 460800 in
     # u-center. Verify RTCM message reception before blaming the GNSS hardware.
-    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0
+    device: /dev/ttyUSB1
     baud: 460800

@@ -100,15 +100,13 @@ def test_synced_gnss_config_owns_both_receiver_ports():
     rover = config["/**/ublox_gps_node"]["ros__parameters"]
     moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
 
-    assert rover["device"] == "/dev/ttyACM0"
+    assert rover["device"] == "/dev/ttyACM1"
     # HH_260819 - Lock the replacement FTDI identity, UART1 baud, and 100 ms
     # receiver cadence in the deployment mirror. nav_rate is an epoch divisor.
     assert rover["frame_id"] == "gnss_link"
     assert rover["rate"] == 10.0
     assert rover["nav_rate"] == 1
-    assert moving_base["device"] == (
-        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0"
-    )
+    assert moving_base["device"] == "/dev/ttyUSB1"
     assert moving_base["baud"] == 460800
 
 
