@@ -2110,12 +2110,14 @@ def generate_launch_description():
         'ranger_can_bitrate': lc['platform_ranger_can_bitrate'],
         'ranger_can_restart_ms': lc['platform_ranger_can_restart_ms'],
         'sensor_kit_bridge_enable': lc['platform_sensor_kit_bridge_enable'],
-        # HH_260708 - light_controller runs in sim too (topic-only, no hardware);
-        # the MCU serial bridge is hardware-facing so sim disables it.
+        # HH_260708 - light_controller runs in sim too (topic-only, no hardware).
+        # The MCU serial bridge is hardware-facing; it honours
+        # platform_lights_mcu_bridge_enable (default true) even in sim so a bench
+        # running the sim stack can still drive the real light MCU over serial.
+        # With no MCU connected it simply retries opening the port, harmlessly.
+        # Pass platform_lights_mcu_bridge_enable:=false for a pure sim run.
         'lights_enable': lc['platform_lights_enable'],
-        'lights_mcu_bridge_enable': sim_switch(
-            lc['sim'], 'false', lc['platform_lights_mcu_bridge_enable']
-        ),
+        'lights_mcu_bridge_enable': lc['platform_lights_mcu_bridge_enable'],
     }
     apply_cfg_overrides(platform_args, platform_overrides)
 
