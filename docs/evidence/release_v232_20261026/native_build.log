@@ -1,0 +1,70 @@
+[  2%] Building CXX object CMakeFiles/apriltag_parking_controller_node.dir/src/apriltag_parking_controller_node.cpp.o
+[  4%] Building CXX object CMakeFiles/reverse_parking_controller_node.dir/src/reverse_parking_controller_node.cpp.o
+[  7%] Building CXX object CMakeFiles/cmd_vel_safety_gate_node.dir/src/cmd_vel_safety_gate_node.cpp.o
+[  9%] Linking CXX executable reverse_parking_controller_node
+[  9%] Built target reverse_parking_controller_node
+[ 12%] Building CXX object CMakeFiles/cmd_vel_safety_gate_node.dir/src/motion_cost_stop.cpp.o
+[ 14%] Building CXX object CMakeFiles/parking_dispatcher_node.dir/src/parking_dispatcher_node.cpp.o
+[ 17%] Linking CXX executable apriltag_parking_controller_node
+[ 17%] Built target apriltag_parking_controller_node
+[ 19%] Building CXX object CMakeFiles/drop_zone_maneuver_controller_node.dir/src/drop_zone_maneuver_controller_node.cpp.o
+[ 21%] Linking CXX executable parking_dispatcher_node
+[ 21%] Built target parking_dispatcher_node
+[ 24%] Building CXX object CMakeFiles/route_safety_recovery_controller_node.dir/src/route_safety_recovery_controller_node.cpp.o
+[ 26%] Linking CXX executable drop_zone_maneuver_controller_node
+[ 26%] Built target drop_zone_maneuver_controller_node
+[ 29%] Building CXX object CMakeFiles/camping_site_maneuver_controller_node.dir/src/camping_site_maneuver_controller_node.cpp.o
+[ 31%] Linking CXX executable cmd_vel_safety_gate_node
+[ 31%] Built target cmd_vel_safety_gate_node
+[ 34%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[ 36%] Linking CXX static library libgtest_main.a
+[ 36%] Built target gtest_main
+[ 39%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[ 41%] Linking CXX static library libgtest.a
+[ 41%] Built target gtest
+[ 43%] Building CXX object CMakeFiles/test_recovery_hold_reset.dir/test/test_recovery_hold_reset.cpp.o
+[ 46%] Linking CXX executable route_safety_recovery_controller_node
+[ 46%] Built target route_safety_recovery_controller_node
+[ 48%] Building CXX object CMakeFiles/test_control_policies.dir/test/test_control_policies.cpp.o
+[ 51%] Building CXX object CMakeFiles/test_control_policies.dir/src/motion_cost_stop.cpp.o
+[ 53%] Linking CXX executable test_control_policies
+[ 53%] Built target test_control_policies
+[ 56%] Building CXX object CMakeFiles/test_reverse_parking_axis.dir/test/test_reverse_parking_axis.cpp.o
+[ 58%] Linking CXX executable test_reverse_parking_axis
+[ 58%] Built target test_reverse_parking_axis
+[ 60%] Building CXX object CMakeFiles/test_recovery_hold_reset.dir/src/motion_cost_stop.cpp.o
+[ 63%] Building CXX object CMakeFiles/test_drop_zone_exit_target_policy.dir/test/test_drop_zone_exit_target_policy.cpp.o
+[ 65%] Linking CXX executable test_drop_zone_exit_target_policy
+[ 65%] Built target test_drop_zone_exit_target_policy
+[ 68%] Building CXX object CMakeFiles/test_drop_zone_parking_approach.dir/test/test_drop_zone_parking_approach.cpp.o
+[ 70%] Linking CXX executable test_drop_zone_parking_approach
+[ 70%] Built target test_drop_zone_parking_approach
+[ 73%] Building CXX object CMakeFiles/test_camping_site_recall_return.dir/test/test_camping_site_recall_return.cpp.o
+[ 75%] Linking CXX executable camping_site_maneuver_controller_node
+[ 75%] Built target camping_site_maneuver_controller_node
+[ 78%] Building CXX object CMakeFiles/test_parking_selection_policy.dir/test/test_parking_selection_policy.cpp.o
+[ 80%] Linking CXX executable test_parking_selection_policy
+[ 80%] Built target test_parking_selection_policy
+[ 82%] Building CXX object CMakeFiles/test_parking_dispatcher.dir/test/test_parking_dispatcher.cpp.o
+[ 85%] Linking CXX executable test_recovery_hold_reset
+[ 85%] Built target test_recovery_hold_reset
+[ 87%] Building CXX object CMakeFiles/test_reverse_parking_completion.dir/test/test_reverse_parking_completion.cpp.o
+[ 90%] Linking CXX executable test_reverse_parking_completion
+[ 90%] Built target test_reverse_parking_completion
+[ 92%] Building CXX object CMakeFiles/test_reverse_parking_controller.dir/test/test_reverse_parking_controller.cpp.o
+[ 95%] Linking CXX executable test_parking_dispatcher
+[ 95%] Built target test_parking_dispatcher
+In file included from /tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/test_camping_site_recall_return.cpp:7:
+/tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/../src/camping_site_maneuver_controller_node.cpp:139:7: warning: ‘CampingSiteManeuverControllerNode’ has a field ‘CampingSiteManeuverControllerNode::phase_’ whose type uses the anonymous namespace [-Wsubobject-linkage]
+  139 | class CampingSiteManeuverControllerNode : public rclcpp::Node {
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/../src/camping_site_maneuver_controller_node.cpp:139:7: warning: ‘CampingSiteManeuverControllerNode’ has a field ‘CampingSiteManeuverControllerNode::active_service_mode_’ whose type uses the anonymous namespace [-Wsubobject-linkage]
+/tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/../src/camping_site_maneuver_controller_node.cpp:139:7: warning: ‘CampingSiteManeuverControllerNode’ has a field ‘CampingSiteManeuverControllerNode::camping_site_service_modes_’ whose type uses the anonymous namespace [-Wsubobject-linkage]
+[ 97%] Linking CXX executable test_camping_site_recall_return
+[ 97%] Built target test_camping_site_recall_return
+In file included from /tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/test_reverse_parking_controller.cpp:9:
+/tmp/camrod-develop-comments.5YTNjJB7/camrod_control/test/../src/reverse_parking_controller_node.cpp:70:7: warning: ‘ReverseParkingControllerNode’ has a field ‘ReverseParkingControllerNode::phase_’ whose type uses the anonymous namespace [-Wsubobject-linkage]
+   70 | class ReverseParkingControllerNode : public rclcpp::Node
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[100%] Linking CXX executable test_reverse_parking_controller
+[100%] Built target test_reverse_parking_controller

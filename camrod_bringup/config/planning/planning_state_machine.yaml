@@ -161,6 +161,8 @@
     # When true: arriving at a camping_site_* key starts a dwell timer; after
     # goal_reached_dwell_s the robot auto-returns to return_mission_key.
     # When false: robot waits until an external return command arrives.
+    # HH_261024 - Default guest usage has no automatic return deadline;
+    # goal_reached_dwell_s is inactive while this opt-in flag stays false.
     enable_auto_return_on_site_goal: false
     site_mission_key_prefix: "camping_site_"
     goal_reached_dwell_s: 10.0

@@ -166,6 +166,55 @@ test('existing reopen button changes only presentation and preserves active site
   expectNoCommands();
 });
 
+test('public service chooser does not return home after twenty minutes without input', async () => {
+  // HH_261024 - Guest loading time has no frontend idle deadline. Waiting on
+  // this screen must not dispatch Return, Stop, reset, or any motion command.
+  await renderApp();
+  await tap(host.querySelector('[data-ui="operator-open-destination"]'));
+  await tap(host.querySelector('[data-ui="usage-safety-confirm"]'));
+  expect(host.querySelector('[data-ui="operator-service-selection-screen"]')).not.toBeNull();
+  await act(async () => { jest.advanceTimersByTime(20 * 60 * 1000 + 1); });
+  expect(host.querySelector('[data-ui="operator-service-selection-screen"]')).not.toBeNull();
+  expect(host.querySelector('[data-ui="operator-waiting-screen"]')).toBeNull();
+  expectNoCommands();
+});
+
+test('safety reset is wired only to the authenticated administrator safety tab', async () => {
+  // HH_261024 - Exercise the real App login and prop chain. Merely opening
+  // diagnostics must not POST a reset or expose this control on public pages.
+  fetch.mockImplementation(async url => ({ ok: true, json: async () => {
+    if (url === '/api/diagnostics') return [];
+    if (url === '/api/admin/safety/reset') return { available: true, message: '초기화 가능' };
+    return {};
+  } }));
+  await renderApp();
+  expect(host.querySelector('[data-ui="admin-safety-reset"]')).toBeNull();
+  await act(async () => {
+    host.querySelector('[data-ui="operator-admin-entry"]')
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    jest.advanceTimersByTime(1600);
+  });
+  const setInput = (selector, value) => {
+    const input = host.querySelector(selector);
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  await act(async () => {
+    setInput('[data-ui="operator-admin-id"]', 'admin');
+    setInput('[data-ui="operator-admin-password"]', '1234');
+  });
+  await tap(host.querySelector('[data-ui="operator-admin-login"]'));
+  expect(host.querySelector('[data-ui="admin-safety-reset"]')).toBeNull();
+  await tap(host.querySelector('[data-ui="operator-diagnostic-tab-safety"]'));
+  expect(host.querySelector('[data-ui="admin-safety-reset"]')).not.toBeNull();
+  const calls = fetch.mock.calls.filter(([url]) => url === '/api/admin/safety/reset');
+  expect(calls).toHaveLength(1);
+  expect(calls[0][1]).toMatchObject({ method: 'GET',
+    headers: { Authorization: `Basic ${btoa('admin:1234')}` } });
+  await tap(host.querySelector('[data-ui="operator-diagnostic-tab-camera"]'));
+  expect(host.querySelector('[data-ui="admin-safety-reset"]')).toBeNull();
+});
+
 test('driving controls stay in view and confirmed stop uses the existing stop endpoint', async () => {
   await startMission();
   await tap(host.querySelector('.dd-theme-action'));

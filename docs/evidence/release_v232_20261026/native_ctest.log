@@ -1,0 +1,27 @@
+Internal ctest changing into directory: /tmp/camrod-v232-native-build.De3DKJ
+Test project /tmp/camrod-v232-native-build.De3DKJ
+    Start 1: test_recovery_hold_reset
+1/9 Test #1: test_recovery_hold_reset ............   Passed    0.27 sec
+    Start 2: test_control_policies
+2/9 Test #2: test_control_policies ...............   Passed    0.17 sec
+    Start 3: test_reverse_parking_axis
+3/9 Test #3: test_reverse_parking_axis ...........   Passed    0.17 sec
+    Start 4: test_drop_zone_exit_target_policy
+4/9 Test #4: test_drop_zone_exit_target_policy ...   Passed    0.15 sec
+    Start 5: test_drop_zone_parking_approach
+5/9 Test #5: test_drop_zone_parking_approach .....   Passed    0.15 sec
+    Start 6: test_camping_site_recall_return
+6/9 Test #6: test_camping_site_recall_return .....   Passed    0.40 sec
+    Start 7: test_parking_selection_policy
+7/9 Test #7: test_parking_selection_policy .......   Passed    0.16 sec
+    Start 8: test_parking_dispatcher
+8/9 Test #8: test_parking_dispatcher .............   Passed    0.29 sec
+    Start 9: test_reverse_parking_completion
+9/9 Test #9: test_reverse_parking_completion .....   Passed    0.15 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Label Time Summary:
+gtest    =   1.91 sec*proc (9 tests)
+
+Total Test time (real) =   1.91 sec

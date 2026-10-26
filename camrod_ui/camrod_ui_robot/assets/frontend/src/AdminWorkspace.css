@@ -1,0 +1,540 @@
+/* HH_261026 - Scope the grouped administrator layout to the existing workspace. */
+.modal-box:has(.admin-workspace) .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-box:has(.admin-workspace) .modal-body > .admin-workspace {
+  flex: 1;
+  height: auto;
+}
+
+.diag-monitor-wrap.admin-workspace {
+  display: grid;
+  grid-template-columns: 202px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: #f4f8f5;
+  color: #243c2e;
+  font-family: 'Noto Sans KR', Arial, sans-serif;
+}
+
+.admin-diagnostic-navigation {
+  min-width: 0;
+  padding: 18px 12px;
+  overflow-y: auto;
+  border-right: 1px solid #d7e4da;
+  background: #f6faf7;
+}
+
+.admin-navigation-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 10px 16px;
+}
+
+.admin-navigation-heading strong {
+  color: #21593a;
+  font-size: 1.05rem;
+}
+
+.admin-navigation-heading span {
+  color: #66786b;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.admin-navigation-groups {
+  display: grid;
+  gap: 15px;
+}
+
+.admin-navigation-group {
+  min-width: 0;
+}
+
+.admin-navigation-group h3 {
+  margin: 0 0 5px;
+  padding: 0 10px;
+  color: #687c6e;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.admin-navigation-group.is-current h3 {
+  color: #28673f;
+}
+
+.admin-navigation-tabs {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-workspace .diag-tab-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #43594b;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  touch-action: manipulation;
+}
+
+.admin-workspace .diag-tab-button:hover {
+  background: #e8f2eb;
+  color: #225b38;
+}
+
+.admin-workspace .diag-tab-button.active {
+  border-color: #c9dfcf;
+  background: #dff0e4;
+  color: #1f5d36;
+  box-shadow: inset 3px 0 #368657;
+}
+
+.admin-workspace button:focus-visible,
+.admin-workspace summary:focus-visible,
+.admin-workspace input:focus-visible {
+  outline: 3px solid #38855a;
+  outline-offset: 2px;
+}
+
+.admin-workspace-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-view-heading {
+  flex-shrink: 0;
+  padding: 17px 22px 15px;
+  border-bottom: 1px solid #d7e4da;
+  background: #fff;
+}
+
+.admin-view-category {
+  color: #60806b;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.admin-view-heading h2 {
+  margin: 3px 0 4px;
+  color: #205236;
+  font-size: 1.28rem;
+  line-height: 1.4;
+}
+
+.admin-view-heading p {
+  margin: 0;
+  color: #64746a;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.admin-system-view {
+  flex: 1;
+  min-height: 0;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.admin-system-controls,
+.admin-diagnostic-details {
+  border: 1px solid #d6e3d9;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.admin-system-controls {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.admin-section-heading {
+  padding: 15px 17px 12px;
+  border-bottom: 1px solid #e3ece6;
+}
+
+.admin-section-heading h3 {
+  margin: 0 0 4px;
+  color: #285b3b;
+  font-size: 0.98rem;
+}
+
+.admin-section-heading p {
+  margin: 0;
+  color: #69796f;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.admin-system-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.admin-system-controls .diag-control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dde8df;
+  border-radius: 9px;
+  background: #f7faf8;
+}
+
+.admin-system-controls .diag-control-label {
+  display: flex;
+  flex: 0 0 100%;
+  flex-direction: column;
+  gap: 2px;
+  color: #315e40;
+  letter-spacing: 0;
+}
+
+.admin-system-controls .diag-control-label strong {
+  font-size: 0.84rem;
+}
+
+.admin-system-controls .diag-control-label small {
+  color: #77887c;
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.admin-system-controls .manual-return-btn {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 9px 14px;
+  border: 1px solid #a9cdb4;
+  border-radius: 7px;
+  background: #e2f0e6;
+  color: #255c39;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.admin-system-controls .manual-return-btn:hover:not(:disabled) {
+  background: #d2e8d9;
+}
+
+.admin-system-controls .headlight-command-btn.headlight-on {
+  border-color: #b69e50;
+  background: #fff3c8;
+  color: #6e5a18;
+}
+
+.admin-system-controls .manual-motion-status {
+  flex-basis: 100%;
+  color: #63766a;
+  font-family: inherit;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.admin-system-controls .steering-tuning-card {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 14px 18px;
+  border-top: 1px solid #e1ebe3;
+  border-bottom: 0;
+  background: #fafcfb;
+}
+
+.admin-system-controls .steering-tuning-copy,
+.admin-system-controls .steering-tuning-control {
+  min-width: 0;
+}
+
+.admin-system-controls .steering-tuning-title {
+  font-size: 0.9rem;
+}
+
+.admin-system-controls .steering-tuning-help {
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.admin-system-controls .steering-tuning-slider {
+  min-height: 38px;
+  margin: 0;
+}
+
+.admin-diagnostic-details > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 52px;
+  padding: 12px 16px;
+  color: #2a5a3c;
+  font-size: 0.94rem;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+}
+
+.admin-diagnostic-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-diagnostic-details > summary::before {
+  content: '▸';
+  color: #4f8060;
+}
+
+.admin-diagnostic-details[open] > summary::before {
+  content: '▾';
+}
+
+.admin-diagnostic-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.admin-diagnostic-counts span {
+  padding: 3px 7px;
+  border: 1px solid #dce7df;
+  border-radius: 5px;
+  color: #617469;
+  font-size: 0.72rem;
+}
+
+.admin-diagnostic-counts .has-error {
+  border-color: #edc8c4;
+  color: #a73f36;
+  background: #fff5f3;
+}
+
+.admin-diagnostic-counts .has-warn {
+  border-color: #e8d9b1;
+  color: #8e6b20;
+  background: #fffaf0;
+}
+
+.admin-diagnostic-details .diag-monitor {
+  min-height: 320px;
+  max-height: 520px;
+  border-top: 1px solid #e0e9e2;
+  border-radius: 0 0 12px 12px;
+  font-size: 0.86rem;
+}
+
+.admin-diagnostic-details .diag-tree,
+.admin-diagnostic-details .diag-detail {
+  min-width: 0;
+}
+
+.admin-diagnostic-details .diag-tree-header {
+  padding: 11px 13px;
+  background: #edf5ef;
+  color: #315c40;
+  font-family: 'Noto Sans KR', Arial, sans-serif;
+  font-size: 0.8rem;
+}
+
+.admin-diagnostic-details .diag-count {
+  font-size: 0.72rem;
+}
+
+.admin-diagnostic-details .diag-group-header,
+.admin-diagnostic-details .diag-item {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-bottom: 1px solid #e3ebe5;
+  font-family: inherit;
+  font-size: 0.83rem;
+  text-align: left;
+}
+
+.admin-diagnostic-details .diag-item {
+  background: transparent;
+}
+
+.admin-diagnostic-details .diag-item:hover {
+  background: #e8f4ee;
+}
+
+.admin-diagnostic-details .diag-detail-header,
+.admin-diagnostic-details .diag-detail-status,
+.admin-diagnostic-details .diag-detail-msg,
+.admin-diagnostic-details .diag-kv-table,
+.admin-diagnostic-details .diag-empty {
+  font-size: 0.86rem;
+}
+
+.admin-diagnostic-details .diag-detail-label {
+  font-size: 0.73rem;
+}
+
+.admin-workspace-main > .telemetry-workspace,
+.admin-workspace-main > .snapshot-tab-view {
+  min-width: 0;
+}
+
+@media (max-width: 1000px) {
+  .diag-monitor-wrap.admin-workspace {
+    grid-template-columns: 174px minmax(0, 1fr);
+  }
+
+  .admin-system-command-grid,
+  .admin-system-controls .steering-tuning-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  /* HH_261026 - The kiosk root shrinks to 8px on phones; keep administrator
+     text readable without changing the public screens or their root scale. */
+  .admin-workspace {
+    font-size: 14px;
+  }
+
+  .diag-monitor-wrap.admin-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .admin-diagnostic-navigation {
+    padding: 10px;
+    border-right: 0;
+    border-bottom: 1px solid #d7e4da;
+    overflow: visible;
+  }
+
+  .admin-navigation-heading {
+    display: none;
+  }
+
+  .admin-navigation-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px 6px;
+  }
+
+  .admin-navigation-group h3 {
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  .admin-workspace .diag-tab-button {
+    padding: 8px;
+    font-size: 14px;
+  }
+
+  .admin-view-heading {
+    padding: 12px 15px;
+  }
+
+  .admin-view-heading h2 {
+    font-size: 18px;
+  }
+
+  .admin-view-category {
+    font-size: 12px;
+  }
+
+  .admin-view-heading p {
+    font-size: 13px;
+  }
+
+  .admin-workspace .telemetry-session-strip {
+    flex-wrap: wrap;
+    font-size: 10px;
+  }
+
+  .admin-section-heading h3,
+  .admin-system-controls .steering-tuning-title {
+    font-size: 15px;
+  }
+
+  .admin-section-heading p,
+  .admin-system-controls .steering-tuning-help,
+  .admin-system-controls .manual-return-btn {
+    font-size: 12px;
+  }
+
+  .admin-system-view {
+    padding: 12px;
+  }
+
+  .admin-system-command-grid {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-navigation-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-navigation-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-navigation-group:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .admin-navigation-group:nth-child(2) .admin-navigation-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-diagnostic-details .diag-monitor {
+    flex-direction: column;
+    max-height: none;
+  }
+
+  .admin-diagnostic-details .diag-tree {
+    flex: none;
+    max-height: 280px;
+    border-right: 0;
+    border-bottom: 1px solid #d0d5dd;
+  }
+
+  .admin-diagnostic-details .diag-detail {
+    min-height: 180px;
+  }
+
+  .admin-diagnostic-counts {
+    margin-left: 0;
+  }
+}
+
+@media (max-height: 620px) and (max-width: 760px) {
+  .diag-monitor-wrap.admin-workspace {
+    display: flex;
+    overflow-y: auto;
+  }
+
+  .admin-workspace-main {
+    flex: 1 0 auto;
+    overflow: visible;
+  }
+
+  .admin-system-view {
+    overflow: visible;
+  }
+}

@@ -1,0 +1,344 @@
+/* HH_261026 - Keep diagnostic cards within the existing green operator theme;
+   these styles do not mount views or change telemetry/control lifecycles. */
+.admin-workspace .telemetry-view {
+  gap: 14px;
+  padding: 18px;
+  background: #f4f8f5;
+}
+
+.admin-workspace .telemetry-section {
+  padding: 16px;
+  border-color: #d6e3d9;
+  border-radius: 12px;
+}
+
+.admin-workspace .telemetry-section-header {
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  min-height: 0;
+  padding-bottom: 11px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #dce8df;
+}
+
+.admin-workspace .telemetry-section-header h3 {
+  color: #285b3b;
+  font-size: 0.98rem;
+}
+
+.admin-workspace .telemetry-section-header span {
+  color: #69796f;
+  font-family: inherit;
+  font-size: 0.74rem;
+}
+
+.admin-workspace .telemetry-safety-view > .telemetry-section,
+.admin-workspace .telemetry-safety-layout {
+  flex: 0 0 auto;
+}
+
+.admin-workspace .telemetry-safety-layout {
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-section {
+  overflow: visible;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-metric-grid {
+  gap: 9px;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-metric {
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid #e2ebe5;
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-metric-label {
+  color: #66796d;
+  font-family: inherit;
+  font-size: 0.75rem;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-metric-value {
+  color: #294a35;
+  font-family: inherit;
+  font-size: 0.97rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.admin-workspace .telemetry-safety-view .telemetry-metric-warn .telemetry-metric-value {
+  color: #876018;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-banner {
+  gap: 14px;
+  padding: 13px 15px;
+  border-radius: 8px;
+  background: #f1f8f3;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-warn {
+  background: #fff8e9;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-error {
+  background: #fff0ef;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-unknown {
+  border-left-color: #89968e;
+  background: #f2f5f3;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-banner strong {
+  margin-top: 4px;
+  font-family: inherit;
+  font-size: 1.1rem;
+}
+
+.admin-workspace .telemetry-safety-view .safety-gate-banner small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  margin-top: 5px;
+  color: #68786e;
+  font-size: 0.7rem;
+}
+
+.admin-workspace .telemetry-safety-view .admin-safety-reason {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.admin-workspace .admin-safety-reason > span {
+  display: block;
+  margin-bottom: 4px;
+  font-family: 'Noto Sans KR', Arial, sans-serif;
+  font-size: 0.75rem;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-row {
+  gap: 16px;
+  padding: 13px 15px;
+  margin-top: 12px;
+  border: 1px solid #d8e5dc;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-copy {
+  gap: 4px;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-copy strong {
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-copy small {
+  color: #67796e;
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  border-color: #a9cdb4;
+  border-radius: 7px;
+  background: #e2f0e6;
+  color: #255c39;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-btn.engage-on {
+  border-color: #328452;
+  background: #328452;
+  color: #fff;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-btn:hover:not(:disabled) {
+  background: #d4e9db;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-btn.engage-on:hover:not(:disabled) {
+  background: #286a42;
+}
+
+.admin-workspace .telemetry-safety-view .safety-engage-btn:disabled {
+  border-color: #d2dcd6;
+  background: #eef2ef;
+  color: #89978e;
+}
+
+.admin-workspace .telemetry-safety-view .safety-reset-card {
+  margin-top: 12px;
+}
+
+.admin-workspace .admin-safety-details {
+  margin-top: 14px;
+  border-top: 1px solid #e2ebe5;
+}
+
+.admin-workspace .admin-safety-details > summary {
+  padding: 12px 2px 2px;
+  color: #42674e;
+  font-size: 0.79rem;
+  font-weight: 700;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.admin-workspace .admin-safety-details[open] > summary {
+  padding-bottom: 11px;
+}
+
+.admin-workspace .admin-safety-details-body {
+  min-width: 0;
+}
+
+.admin-workspace .admin-safety-details .telemetry-source-row {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.admin-workspace .admin-safety-details .telemetry-source {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.admin-workspace .telemetry-safety-view .safety-evidence-block {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #f4f7f5;
+}
+
+.admin-workspace .telemetry-safety-view .controller-status-row {
+  grid-template-columns: 0.6rem minmax(100px, 0.8fr) minmax(110px, 1fr) minmax(0, 2fr);
+}
+
+.admin-workspace .telemetry-safety-view .controller-status-row b code {
+  display: block;
+  margin-top: 4px;
+  color: #75837a;
+  font-size: 0.66rem;
+  font-weight: 400;
+}
+
+.admin-workspace .controller-level-unknown {
+  background: #929d96;
+}
+
+.admin-workspace .admin-safety-description {
+  margin: 12px 0 0;
+  color: #66796d;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.admin-workspace .admin-safety-raw-values {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.admin-workspace .admin-safety-raw-values > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.admin-workspace .admin-safety-raw-values dt {
+  color: #68796d;
+}
+
+.admin-workspace .admin-safety-raw-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-workspace .telemetry-safety-view .safety-missing-list {
+  padding: 11px;
+  margin-top: 12px;
+  border-radius: 7px;
+  background: #fff8e9;
+}
+
+.admin-workspace .telemetry-safety-view .safety-missing-list strong {
+  flex: 0 0 100%;
+  color: #876018;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 1100px) {
+  .admin-workspace .telemetry-safety-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-workspace .telemetry-safety-view .safety-gate-banner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-workspace .telemetry-view {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .admin-workspace .telemetry-section {
+    padding: 12px;
+  }
+
+  .admin-workspace .telemetry-safety-view .safety-engage-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-workspace .telemetry-safety-view .controller-status-row {
+    grid-template-columns: 0.6rem minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .admin-workspace .telemetry-safety-view .controller-status-row em {
+    grid-column: 2 / -1;
+  }
+}
+
+/* HH_261026 - Preserve readable safety labels despite the phone kiosk's
+   globally scaled rem unit; do not alter the public operating UI scale. */
+@media (max-width: 760px) {
+  .admin-workspace .telemetry-section-header h3 {
+    font-size: 15px;
+  }
+
+  .admin-workspace .telemetry-section-header span {
+    font-size: 12px;
+  }
+
+  .admin-workspace .telemetry-safety-view .safety-gate-banner strong {
+    font-size: 18px;
+  }
+
+  .admin-workspace .telemetry-safety-view .safety-gate-banner small,
+  .admin-workspace .telemetry-safety-view .admin-safety-reason,
+  .admin-workspace .admin-safety-reason > span,
+  .admin-workspace .telemetry-safety-view .safety-engage-copy small,
+  .admin-workspace .telemetry-safety-view .telemetry-metric-label,
+  .admin-workspace .admin-safety-details > summary {
+    font-size: 12px;
+  }
+
+  .admin-workspace .telemetry-safety-view .safety-engage-copy strong,
+  .admin-workspace .telemetry-safety-view .telemetry-metric-value {
+    font-size: 14px;
+  }
+}

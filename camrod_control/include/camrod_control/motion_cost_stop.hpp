@@ -227,6 +227,8 @@ public:
     double probe_distance_m,
     double pose_max_age_s);
   bool latched() const;
+  // HH_261026 - Recheck only the original sensor latch for a stop-only reset.
+  MotionCostStopDecision recheckLatchedHazard(double now_sec);
   double holdUntilSec() const;
   const std::string & latchReason() const;
   double frontLookahead() const;

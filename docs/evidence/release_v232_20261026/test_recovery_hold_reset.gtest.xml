@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="10" failures="0" disabled="0" errors="0" time="0.095" timestamp="2026-10-26T12:11:42" name="AllTests">
+  <testsuite name="RecoveryHoldResetPolicy" tests="3" failures="0" disabled="0" errors="0" time="0" timestamp="2026-10-26T12:11:42">
+    <testcase name="RequiresRevokedOwnersAndUnmodifiedHardInterlocks" status="run" result="completed" time="0" timestamp="2026-10-26T12:11:42" classname="camrod_control.RecoveryHoldResetPolicy" />
+    <testcase name="MissingStaleFutureAndNonfiniteFeedbackFailClosed" status="run" result="completed" time="0" timestamp="2026-10-26T12:11:42" classname="camrod_control.RecoveryHoldResetPolicy" />
+    <testcase name="CrabAndYawAreMeasuredNotOnlyForwardSpeed" status="run" result="completed" time="0" timestamp="2026-10-26T12:11:42" classname="camrod_control.RecoveryHoldResetPolicy" />
+  </testsuite>
+  <testsuite name="CmdVelSafetyGateRecoveryResetTest" tests="7" failures="0" disabled="0" errors="0" time="0.094" timestamp="2026-10-26T12:11:42">
+    <testcase name="ClearsSoftwareEpisodeWithoutEnablingMotion" status="run" result="completed" time="0.025" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="EngagedAndHardStopStatesCannotReset" status="run" result="completed" time="0.016" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="NeverClearsPhysicalEmergencyStop" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="NeverClearsPlanningEmergencyStop" status="run" result="completed" time="0.01" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="MovingAndMissingMeasurementCannotReset" status="run" result="completed" time="0.01" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="ActiveObstacleRemainsLatched" status="run" result="completed" time="0.012" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+    <testcase name="StaleObstacleEvidenceCannotBeAcknowledgedClear" status="run" result="completed" time="0.013" timestamp="2026-10-26T12:11:42" classname="camrod_control.CmdVelSafetyGateRecoveryResetTest" />
+  </testsuite>
+</testsuites>

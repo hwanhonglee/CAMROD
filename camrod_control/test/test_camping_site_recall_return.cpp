@@ -117,6 +117,22 @@ protected:
         10.0, 20.0, entry_yaw_, direction_, lateral);
     setPose(target.first, target.second, entry_yaw_ + 0.6);
   }
+  // HH_261026 - Use each native service mode rather than injecting a phase.
+  void completeDeliveryService(const int site) {
+    node_->auto_return_after_unload_wait_ = false;
+    beginDelivery(site);
+    setAlongSite(3.0);
+    tick();
+    if (site <= 10) {
+      ASSERT_EQ(phase(), Phase::kRotate180);
+      setAlongSite(3.0, true);
+      tick();
+    }
+    ASSERT_EQ(phase(), Phase::kUnloadWait);
+    elapsed(60.0);
+    tick();
+    ASSERT_EQ(phase(), Phase::kWaitReturn);
+  }
   void expirePose() {
     node_->last_pose_time_ = node_->now() - rclcpp::Duration::from_seconds(3.0);
   }
@@ -287,6 +303,49 @@ TEST_F(CampingSiteManeuverControllerTest, RecallNeverAutoReturnsAfterLoadingDwel
   EXPECT_EQ(phase(), Phase::kWaitReturn);
   EXPECT_FALSE(returnLatched());
   EXPECT_FALSE(returnPublished());
+}
+
+// HH_261024 - Guest loading/unloading may exceed twenty minutes or a day.
+// Advancing clocks or losing stationary localization is not return permission.
+TEST_F(CampingSiteManeuverControllerTest, DeliveryWaitHasNoTwentyMinuteOrDailyExpiry) {
+  for (int site = 1; site <= 13; ++site) {
+    SCOPED_TRACE(site);
+    completeDeliveryService(site);
+    for (const double wait_s : {1200.0, 86400.0}) {
+      elapsed(wait_s);
+      expirePose();
+      tick();
+      EXPECT_EQ(phase(), Phase::kWaitReturn);
+      EXPECT_FALSE(returnLatched());
+      EXPECT_FALSE(returnPublished());
+    }
+    setAlongSite(3.0, site <= 10);
+    ASSERT_TRUE(returnRequest().first);
+    EXPECT_NE(phase(), Phase::kWaitReturn);
+    EXPECT_NE(phase(), Phase::kError);
+  }
+}
+
+TEST_F(CampingSiteManeuverControllerTest, EveryRecallWaitHasNoTwentyMinuteOrDailyExpiry) {
+  enableAutoReturn();
+  for (int site = 1; site <= 13; ++site) {
+    SCOPED_TRACE(site);
+    startRecall(site);
+    elapsed(60.0);
+    tick();
+    ASSERT_EQ(phase(), Phase::kWaitReturn);
+    for (const double wait_s : {1200.0, 86400.0}) {
+      elapsed(wait_s);
+      expirePose();
+      tick();
+      EXPECT_EQ(phase(), Phase::kWaitReturn);
+      EXPECT_FALSE(returnLatched());
+      EXPECT_FALSE(returnPublished());
+    }
+    setAlongSite(0.30);
+    ASSERT_TRUE(returnRequest().first);
+    EXPECT_EQ(phase(), site <= 10 ? Phase::kRecallClearanceWait : Phase::kCrabOut);
+  }
 }
 
 TEST_F(CampingSiteManeuverControllerTest, ReturnBeforeArrivalCannotLatchLoadingCompletion) {

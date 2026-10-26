@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import SafetyResetControl from './SafetyResetControl';
+import './AdminTelemetry.css';
 
 // HH_260810 - These tabs consolidate the former GNSS, radar, velocity, path,
 // and RViz operator viewers without changing the underlying ROS authorities.
@@ -987,92 +989,191 @@ function MapPerceptionView({ telemetry, mapData }) {
 function levelClass(level) {
   if (level === 2) return 'error';
   if (level === 1) return 'warn';
-  return 'ok';
+  return level === 0 ? 'ok' : 'unknown';
 }
 
-function SafetyView({ telemetry, engageState = false, engageDisabled = false, onToggleEngage = null }) {
+// HH_261026 - Labels are presentation only. Unknown states stay explicit and
+// original backend values remain available without changing command authority.
+const SAFETY_STATE_LABELS = {
+  ENABLED: '명령 허용', STANDBY: '대기', IDLE: '대기',
+  FAULT_HOLD: '오류로 정지', SAFETY_HOLD: '안전 조건으로 정지',
+  ROUTE_SAFETY_HOLD: '경로 안전 정지', COST_STOP: '장애물 비용으로 정지',
+  LIMIT_HOLD: '복구 한도 도달', RETRY_WAIT: '재시도 대기',
+  CHARGING: '충전 중', DEPARTING_CHARGER: '충전 장소 출발',
+  INITIALIZING: '시스템 준비 중', PREPARING: '준비 중', READY: '준비 완료',
+  GOAL_RECEIVED: '목표 접수', PATH_PREPARING: '경로 준비 중',
+  DRIVING: '주행 중', SAFETY_STOP: '안전 정지', STOPPED: '정지', ARRIVED: '도착',
+  DROP_ZONE_WAIT: '대기·충전 장소 대기', MOVING_TO_SITE: '캠핑장 이동 중',
+  SITE_ARRIVED: '캠핑장 도착', RETURNING_TO_DROP_ZONE: '대기·충전 장소 복귀 중',
+  GUEST_RECALL_SERVICE: '회수 서비스', SITE_ENTRY: '캠핑장 진입 중',
+  UNLOAD_WAIT: '짐 내리기 대기', RECALL_TO_SITE_ROAD: '회수 장소 이동 중',
+  GUEST_LOADING_WAIT: '짐 싣기 대기', RETURN_WITH_CARGO: '짐과 함께 복귀 중',
+  DROP_ZONE_PARKING: '대기·충전 장소 주차 중',
+  WAITING_FOR_RETURN_REQUEST: '복귀 요청 대기', WAITING_FOR_CHARGING: '충전 연결 대기',
+  DEPARTING_DROP_ZONE: '대기·충전 장소 출발', OPERATOR_STOPPED: '운영자 정지',
+  ROAD_HANDOFF_READY: '도로 주행 인계 준비', WAITING_FOR_TAG: '도킹 태그 대기',
+  TAG_GUIDED_REVERSE: '태그 유도 후진 중', RETRY_FORWARD_EXIT: '재시도 전진 중',
+  FINAL_YAW_ALIGNMENT: '최종 방향 정렬 중', PARKED: '주차 완료',
+  OK: '정상', WARN: '주의', WARNING: '주의', ERROR: '오류', STARTING: '시작 중',
+};
+const MISSION_SOURCE_LABELS = {
+  none: '없음', manual: '수동 목표', ui: '운영 화면', guest: '이용객 요청',
+  return: '복귀 요청', recall: '회수 요청', delivery: '배송 요청',
+};
+
+function safetyStateLabel(value, labels = SAFETY_STATE_LABELS) {
+  return labels[value] || (value ? `미확인 상태 (${value})` : '미확인');
+}
+
+function booleanStateLabel(value, yes, no) {
+  return value === true ? yes : value === false ? no : '미확인';
+}
+
+function SafetyRawDetails({ summary, children, className = '' }) {
+  return (
+    <details className={`admin-safety-details ${className}`}>
+      <summary>{summary}</summary>
+      <div className="admin-safety-details-body">{children}</div>
+    </details>
+  );
+}
+
+function SafetyView({ telemetry, engageState = false, engageDisabled = false, onToggleEngage = null,
+  adminLoginId = '', adminLoginPw = '' }) {
   const gate = telemetry.safety?.gate || {};
   const controllers = telemetry.safety?.controllers || {};
   const mission = telemetry.mission || {};
   const controllerOrder = ['camping_site', 'drop_zone', 'route_recovery', 'reverse_parking', 'apriltag_parking'];
   const controllerLabel = {
-    camping_site: 'Camping site', drop_zone: 'Drop zone', route_recovery: 'Route recovery',
-    reverse_parking: 'Reverse parking', apriltag_parking: 'AprilTag parking',
+    camping_site: '캠핑장 진입·출발', drop_zone: '대기·충전 장소', route_recovery: '경로 복구',
+    reverse_parking: '후진 주차', apriltag_parking: '충전 도킹',
   };
+  const sources = [
+    { name: 'control.safety_gate', label: '명령 안전 게이트' },
+    { name: 'safety.radar_evidence', label: '레이더 판단 근거' },
+    { name: 'safety.obstacle_replan', label: '장애물 경로 재계획' },
+    ...controllerOrder.map(name => ({ name: `controller.${name}`, label: controllerLabel[name] })),
+  ];
+  const liveSourceCount = sources.filter(source => sourceState(telemetry, source.name).state === 'live').length;
+  const gateSource = sourceState(telemetry, 'control.safety_gate');
+  const gateTone = gateSource.state === 'live' ? levelClass(gate.level) : 'unknown';
+  const missingNodes = gate.missing_nodes || [];
+  const missingTopics = gate.missing_topics || [];
+  const missingCount = missingNodes.length + missingTopics.length;
+  // HH_261026 - Only fold structured diagnostic fields. Every actual blocking
+  // reason stays visible; an unstructured message is shown in full, never cut.
+  const gateReasons = String(gate.message || '').match(/(?:^|\s)reasons=([^\s]+)/)?.[1];
+  const gateReasonText = gateReasons === 'none' ? '없음 (none)'
+    : gateReasons || gate.message || '안전 게이트 상태 대기 중 · 정지 사유 미확인';
   return (
     <div className="telemetry-view telemetry-safety-view">
-      <div className="telemetry-source-row">
-        <SourcePill telemetry={telemetry} source="control.safety_gate" label="Safety gate" />
-        <SourcePill telemetry={telemetry} source="safety.radar_evidence" label="Radar evidence" />
-        <SourcePill telemetry={telemetry} source="safety.obstacle_replan" label="Obstacle replan" />
-        {controllerOrder.map(name => <SourcePill key={name} telemetry={telemetry} source={`controller.${name}`} label={controllerLabel[name]} />)}
-      </div>
-      <section className={`safety-gate-banner safety-gate-${levelClass(gate.level)}`}>
-        <div>
-          <span>Command safety gate</span>
-          <strong>{gate.operating_state || 'WAITING FOR STATUS'}</strong>
-        </div>
-        <p>{gate.message || '/control/cmd_vel_safety_gate/status 대기 중'}</p>
-      </section>
-      {onToggleEngage && (
-        <section className="safety-engage-row">
-          <div className="safety-engage-copy">
-            <span>Planning engage</span>
-            <strong>{engageState ? 'ENGAGED' : 'DISENGAGED'}</strong>
+      <section className="telemetry-section admin-safety-authority" aria-label="명령 권한">
+        <SectionHeader title="명령 권한" meta="안전 게이트 · 주행 허가 · 관리자 복구" />
+        <div className={`safety-gate-banner safety-gate-${gateTone}`}>
+          <div>
+            <span>명령 안전 게이트</span>
+            <strong>{gateSource.state === 'live' ? safetyStateLabel(gate.operating_state) : '현재 상태 미확인'}</strong>
+            <small>{gateSource.state === 'live' ? '실시간 상태' : gateSource.state === 'stale' ? '상태 수신 지연 · 마지막 수신값' : '상태 수신 대기'}
+              {gate.operating_state && <code>{gate.operating_state}</code>}</small>
           </div>
-          <button
-            type="button"
-            className={`safety-engage-btn ${engageState ? 'engage-on' : ''}`}
-            onClick={onToggleEngage}
-            disabled={engageDisabled}
-            title={engageDisabled
-              ? '복귀 중에는 engage를 변경할 수 없습니다'
-              : 'ENGAGE ON은 planning 주행 허가, OFF는 운영자 정지입니다'}
-          >
-            {engageState ? 'ENGAGE OFF' : 'ENGAGE ON'}
-          </button>
-        </section>
-      )}
-      <div className="telemetry-safety-layout">
-        <section className="telemetry-section">
-          <SectionHeader title="Motion owners" meta={mission.service_state_name || 'service state unavailable'} />
+          <p className="admin-safety-reason" data-ui="safety-gate-reason"><span>정지·제한 사유{gateSource.state === 'live' ? '' : ' (마지막 수신값)'}</span>{gateReasonText}</p>
+        </div>
+        {onToggleEngage && (
+          <section className="safety-engage-row">
+            <div className="safety-engage-copy">
+              <span>계획 주행 허가 · ENGAGE</span>
+              <strong>{engageState ? '허가 켜짐 · ENGAGED' : '허가 꺼짐 · DISENGAGED'}</strong>
+              <small>주행 허가와 실제 이동 가능 여부는 다릅니다. 안전 게이트가 최종 판단합니다.</small>
+            </div>
+            <button
+              type="button"
+              className={`safety-engage-btn ${engageState ? 'engage-on' : ''}`}
+              onClick={onToggleEngage}
+              disabled={engageDisabled}
+              title={engageDisabled
+                ? '복귀 중에는 engage를 변경할 수 없습니다'
+                : 'ENGAGE ON은 planning 주행 허가, OFF는 운영자 정지입니다'}
+            >
+              {engageState ? 'ENGAGE OFF' : 'ENGAGE ON'}
+            </button>
+          </section>
+        )}
+        {/* HH_261024 - Recovery acknowledgement is admin-only and never starts
+            motion or bypasses a live safety condition. The backend rechecks it. */}
+        {adminLoginId && adminLoginPw && (
+          <SafetyResetControl username={adminLoginId} password={adminLoginPw} />
+        )}
+        <SafetyRawDetails summary="안전 게이트 원문 · 제어기별 상태">
+          <div className="safety-evidence-block">
+            <span>안전 게이트 원문</span>
+            <code>{gate.message || '/control/cmd_vel_safety_gate/status 대기 중'}</code>
+          </div>
           <div className="controller-status-list">
             {controllerOrder.map(name => {
               const status = controllers[name] || {};
+              const fresh = sourceState(telemetry, `controller.${name}`).state === 'live';
               return (
                 <div key={name} className="controller-status-row">
-                  <span className={`controller-level controller-level-${levelClass(status.level)}`} />
+                  <span className={`controller-level controller-level-${fresh ? levelClass(status.level) : 'unknown'}`} />
                   <strong>{controllerLabel[name]}</strong>
-                  <b>{status.operating_state || 'NO DATA'}</b>
-                  <em>{status.message || '-'}</em>
+                  <b>{fresh ? safetyStateLabel(status.operating_state) : '현재 상태 미확인'}
+                    <code>{status.operating_state || '수신 대기'}</code></b>
+                  <em>{status.message || '상세 정보 미수신'}</em>
                 </div>
               );
             })}
           </div>
+        </SafetyRawDetails>
+      </section>
+      <div className="telemetry-safety-layout">
+        <section className="telemetry-section" aria-label="미션 상태">
+          <SectionHeader title="미션 상태" meta="현재 작업과 서비스 단계" />
+          <div className="telemetry-metric-grid telemetry-metric-grid-2">
+            <Metric label="미션 단계" value={safetyStateLabel(mission.phase)} />
+            <Metric label="요청 출처" value={safetyStateLabel(mission.source, MISSION_SOURCE_LABELS)} />
+            <Metric label="서비스 단계" value={safetyStateLabel(mission.service_state_name)} />
+            <Metric label="주행 허가 수신값" value={booleanStateLabel(mission.engaged, '켜짐', '꺼짐')} />
+          </div>
+          {mission.service_state_description && <p className="admin-safety-description">{mission.service_state_description}</p>}
+          <SafetyRawDetails summary="미션 상태 원문">
+            <dl className="admin-safety-raw-values">
+              <div><dt>미션 단계</dt><dd><code>{mission.phase || '미확인'}</code></dd></div>
+              <div><dt>요청 출처</dt><dd><code>{mission.source || '미확인'}</code></dd></div>
+              <div><dt>서비스 단계</dt><dd><code>{mission.service_state_name || '미확인'}</code></dd></div>
+            </dl>
+          </SafetyRawDetails>
         </section>
-        <section className="telemetry-section">
-          <SectionHeader title="Mission state" meta={mission.system_health || 'STARTING'} />
-          <div className="telemetry-metric-grid telemetry-metric-grid-3">
-            <Metric label="Mission phase" value={mission.phase || '-'} />
-            <Metric label="Mission source" value={mission.source || '-'} />
-            <Metric label="Service state" value={mission.service_state_name || '-'} />
-            <Metric label="Ready" value={mission.ready ? 'YES' : 'NO'} tone={mission.ready ? 'ok' : 'warn'} />
-            <Metric label="Engaged" value={mission.engaged ? 'YES' : 'NO'} tone={mission.engaged ? 'ok' : ''} />
-            <Metric label="System" value={mission.system_health || '-'} tone={mission.system_health === 'OK' ? 'ok' : 'warn'} />
+        <section className="telemetry-section" aria-label="진단 준비 상태">
+          <SectionHeader title="진단 준비 상태" meta="시스템 준비와 데이터 수신" />
+          <div className="telemetry-metric-grid telemetry-metric-grid-2">
+            <Metric label="시스템 준비" value={booleanStateLabel(mission.ready, '준비 완료', '준비 안 됨')}
+              tone={mission.ready === true ? 'ok' : mission.ready === false ? 'warn' : ''} />
+            <Metric label="시스템 진단" value={safetyStateLabel(mission.system_health)}
+              tone={mission.system_health === 'OK' ? 'ok' : mission.system_health ? 'warn' : ''} />
+            <Metric label="진단 데이터 수신" value={`실시간 ${liveSourceCount} / ${sources.length}`}
+              tone={liveSourceCount === sources.length ? 'ok' : 'warn'} />
+            <Metric label="필수 구성 요소" value={missingCount > 0 ? `${missingCount}개 누락`
+              : gateSource.state === 'live' && Array.isArray(gate.missing_nodes) && Array.isArray(gate.missing_topics)
+                ? '누락 없음' : '미확인'} tone={missingCount > 0 ? 'warn' : ''} />
           </div>
-          <div className="safety-evidence-block">
-            <span>Radar obstacle evidence</span>
-            <code>{telemetry.safety?.radar_evidence || 'NO DATA'}</code>
-          </div>
-          <div className="safety-evidence-block">
-            <span>Obstacle replan</span>
-            <code>{telemetry.safety?.obstacle_replan || 'NO DATA'}</code>
-          </div>
-          {(gate.missing_nodes?.length > 0 || gate.missing_topics?.length > 0) && (
+          {missingCount > 0 && (
             <div className="safety-missing-list">
-              {[...(gate.missing_nodes || []), ...(gate.missing_topics || [])].map(value => <code key={value}>{value}</code>)}
+              <strong>미수신 구성 요소</strong>
+              {[...missingNodes, ...missingTopics].map((value, index) => <code key={`${value}-${index}`}>{value}</code>)}
             </div>
           )}
+          <SafetyRawDetails summary="수신 상태 · 장애물 판단 근거 원문">
+            <div className="telemetry-source-row">
+              {sources.map(source => <SourcePill key={source.name} telemetry={telemetry} source={source.name} label={source.label} />)}
+            </div>
+            <div className="safety-evidence-block"><span>시스템 진단 원문</span><code>{mission.system_health || '미확인'}</code></div>
+            <div className="safety-evidence-block">
+              <span>레이더 장애물 근거</span><code>{telemetry.safety?.radar_evidence || '데이터 미수신'}</code>
+            </div>
+            <div className="safety-evidence-block">
+              <span>장애물 경로 재계획</span><code>{telemetry.safety?.obstacle_replan || '데이터 미수신'}</code>
+            </div>
+          </SafetyRawDetails>
         </section>
       </div>
     </div>
@@ -1243,6 +1344,8 @@ function DockingView({ telemetry, redockStatus = null, parkingPolicy = {}, servi
 
 export default function TelemetryWorkspace({
   activeTab,
+  adminLoginId = '',
+  adminLoginPw = '',
   redockStatus = null,
   parkingPolicy = {},
   serviceStateName = '',
@@ -1389,6 +1492,8 @@ export default function TelemetryWorkspace({
       return (
         <SafetyView
           telemetry={telemetry}
+          adminLoginId={adminLoginId}
+          adminLoginPw={adminLoginPw}
           engageState={engageState}
           engageDisabled={engageDisabled}
           onToggleEngage={onToggleEngage}

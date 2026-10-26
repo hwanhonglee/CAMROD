@@ -13,6 +13,8 @@
   <exec_depend>action_msgs</exec_depend>
   <depend>avg_msgs</depend>
   <exec_depend>std_msgs</exec_depend>
+  <!-- HH_261024 - Explicit stop-only administrator recovery reset service. -->
+  <exec_depend>std_srvs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <!-- HH_260810 - On-demand operator telemetry consumes standard sensor,
        route, map-marker, and u-blox status messages without republishing them. -->

@@ -1,0 +1,119 @@
+{
+  "recorded_at": "2026-10-26T12:12:37.914170+09:00",
+  "source_baseline": "e9876b1232efae8c57c90f5c12a6f871018f12e1",
+  "branch": "develop",
+  "scope": "native CAMROD control only; no CARLA code or live runtime execution",
+  "fresh_build_directory": "/tmp/camrod-v232-native-build.De3DKJ",
+  "build_type": "Release",
+  "parallel_jobs": 3,
+  "configure_success": true,
+  "full_control_build_success": true,
+  "compiler_warnings": {
+    "count": 4,
+    "kind": "existing test fixture anonymous-namespace -Wsubobject-linkage"
+  },
+  "build_commands": [
+    "source /opt/ros/humble/setup.bash",
+    "source /home/hong/camrod_ws/install/local_setup.bash",
+    "cmake -S /tmp/camrod-develop-comments.5YTNjJB7/camrod_control -B /tmp/camrod-v232-native-build.De3DKJ -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build /tmp/camrod-v232-native-build.De3DKJ --parallel 3"
+  ],
+  "test_command": "ROS_DOMAIN_ID=215 ROS_LOCALHOST_ONLY=1 ctest --test-dir /tmp/camrod-v232-native-build.De3DKJ --output-on-failure -E '^test_reverse_parking_controller$'",
+  "test_isolation": {
+    "outer_domain": 215,
+    "reset_fixture_domain": 214,
+    "campsite_fixture_domain": 187,
+    "dispatcher_fixture_domain": 189,
+    "localhost_only": true,
+    "live_domain_188_used": false
+  },
+  "ctest_suites_passed": 9,
+  "gtests_passed": 193,
+  "gtest_failures": 0,
+  "suites": [
+    {
+      "name": "test_camping_site_recall_return",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.228
+    },
+    {
+      "name": "test_control_policies",
+      "tests": 108,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.006
+    },
+    {
+      "name": "test_drop_zone_exit_target_policy",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.0
+    },
+    {
+      "name": "test_drop_zone_parking_approach",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.0
+    },
+    {
+      "name": "test_parking_dispatcher",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.121
+    },
+    {
+      "name": "test_parking_selection_policy",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.0
+    },
+    {
+      "name": "test_recovery_hold_reset",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.095
+    },
+    {
+      "name": "test_reverse_parking_axis",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.0
+    },
+    {
+      "name": "test_reverse_parking_completion",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "time_s": 0.0
+    }
+  ],
+  "excluded_tests": [
+    {
+      "name": "test_reverse_parking_controller",
+      "compiled": true,
+      "executed": false,
+      "reason": "Pre-existing fixture hardcodes domain188; excluded to avoid active CARLA runtime DDS."
+    }
+  ],
+  "pytest_wait_contract": {
+    "command": "python3 -m pytest -q camrod_bringup/test/test_campsite_indefinite_wait_contract.py",
+    "passed": 7
+  },
+  "binary_sha256": {
+    "cmd_vel_safety_gate_node": "a8387b68e6ae484c289bb23aaf7a8c1d766d3c1e060ee611299621af6f9eb441",
+    "test_recovery_hold_reset": "946cc3b801d1bd92288c2a59c0f10ccf2b94a79598afb8e03d32f261f89a909e",
+    "test_camping_site_recall_return": "04a8f7afd960e5f4b0bd49e3fc6894977e06f1f2a945c2766f04fcc0ad8249df"
+  },
+  "limitations": [
+    "These are isolated native compile/unit/contract results, not real-robot validation.",
+    "Long-obstacle permanent-stop complaint was not reproduced by the separate CARLA experiments; this report does not claim a field fix."
+  ]
+}

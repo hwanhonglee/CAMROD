@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="26" failures="0" disabled="0" errors="0" time="0.228" timestamp="2026-10-26T12:11:43" name="AllTests">
+  <testsuite name="CampingSiteManeuverControllerTest" tests="26" failures="0" disabled="0" errors="0" time="0.22" timestamp="2026-10-26T12:11:43">
+    <testcase name="FinishedVoiceCannotShortenClearanceFloor" status="run" result="completed" time="0.018" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="MissingVoiceWaitsForItsOwnTimeout" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="B1ThroughB10TurnInsideSiteThenReturnFromCurrentLanePose" status="run" result="completed" time="0.015" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="B11ThroughB13KeepRoadsideForwardLoopWithoutReentry" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="RecallNeverAutoReturnsAfterLoadingDwell" status="run" result="completed" time="0.005" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="DeliveryWaitHasNoTwentyMinuteOrDailyExpiry" status="run" result="completed" time="0.011" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="EveryRecallWaitHasNoTwentyMinuteOrDailyExpiry" status="run" result="completed" time="0.011" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="ReturnBeforeArrivalCannotLatchLoadingCompletion" status="run" result="completed" time="0.011" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="DuplicateReturnNeverRestartsAcceptedPhases" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="OccupancyExemptionEndsBeforeFullSiteReentry" status="run" result="completed" time="0.006" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="PoseMustBeFreshBeforeAndAfterClearance" status="run" result="completed" time="0.004" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="CancelStopsClearanceAndEveryReentryPhase" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="ReentryRequiresConfiguredFiniteSite" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="RoadsideReturnAcceptsOneClickWhilePoseRecovers" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="RecallUsesCrabTurnaroundEvenIfDeliveryUsesReverseEntry" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="RecallAdoptionPreservesRoadsideWaitAtOccupiedSite" status="run" result="completed" time="0.006" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="NextDeliveryCannotInheritRecallReturnAuthorization" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentReturnStopsIncompleteRecallEntryForEverySite" status="run" result="completed" time="0.015" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentReturnSkipsLoadingConfirmationAndSiteReentry" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentYawAlignmentTimesOutFailClosed" status="run" result="completed" time="0.006" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="SimilarSourceCannotAuthorizeUrgentRecallReturn" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentReturnPreemptsClearanceAndPartialRotation" status="run" result="completed" time="0.005" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentReturnStopsPartialDeliveryWithoutFinishingEntry" status="run" result="completed" time="0.008" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="BatteryUrgentDuplicateCancelAndStalePoseStayBounded" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="TurnedRecallWaitCannotBeBypassedByTimerOldClickOrLowBattery" status="run" result="completed" time="0.011" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+    <testcase name="FinalLoadingConfirmationWaitsForFreshPoseWithoutRepeatingTurn" status="run" result="completed" time="0.007" timestamp="2026-10-26T12:11:43" classname="camrod_control.CampingSiteManeuverControllerTest" />
+  </testsuite>
+</testsuites>

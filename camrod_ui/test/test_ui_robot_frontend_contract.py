@@ -123,7 +123,9 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         self.assertTrue((PUBLIC_ASSETS / "로봇안전안내.png").is_file())
 
         handler_start = self.source.index("const handleWaitingClick = () => {")
-        handler_end = self.source.index("const resetIdleTimer", handler_start)
+        # HH_261024 - Inactivity no longer expires the chooser; inspect the
+        # existing safety-confirmation handlers up to their next effect.
+        handler_end = self.source.index("  useEffect(() => {", handler_start)
         handler = self.source[handler_start:handler_end]
         self.assertIn("setShowServiceSafetyGate(true);", handler)
 
@@ -211,7 +213,8 @@ process.stdout.write(JSON.stringify(values));
     def test_destination_entry_opens_three_block_service_menu(self) -> None:
         # 대기 화면 → 안전 안내 → 서비스 선택까지가 한 흐름이다.
         handler_start = self.source.index("const handleWaitingClick = () => {")
-        handler_end = self.source.index("const resetIdleTimer", handler_start)
+        # HH_261024 - The removed idle timer is not a service-menu boundary.
+        handler_end = self.source.index("  useEffect(() => {", handler_start)
         handler = self.source[handler_start:handler_end]
         self.assertIn("setShowServiceSafetyGate(true);", handler)
         self.assertIn("setShowServiceSelection(true);", handler)

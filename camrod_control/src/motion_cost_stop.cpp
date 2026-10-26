@@ -505,6 +505,16 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   return evaluateLatch(now_sec);
 }
 
+MotionCostStopDecision MotionCostStop::recheckLatchedHazard(const double now_sec)
+{
+  // HH_261026 - Expose existing saved-trigger freshness/clear-window checks
+  // without introducing a command corridor or changing the ordinary evaluator.
+  if (!config_.enabled || !latch_active_) {
+    return {};
+  }
+  return evaluateLatchedHazard(now_sec);
+}
+
 bool MotionCostStop::latched() const
 {
   return latch_active_;

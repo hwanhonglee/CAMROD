@@ -2554,6 +2554,8 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait) {
       publishZero();
+      // HH_261024 - Minimum unloading time is not a usage timeout. Default
+      // delivery and all recall waits require explicit return permission.
       if (elapsed >= unload_wait_s_) {
         if ((!active_recall_wait_mission_ && auto_return_after_unload_wait_) ||
             return_requested_) {
@@ -2565,6 +2567,8 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       publishZero();
+      // HH_261024 - Stationary guest waiting has no deadline, even when pose
+      // data expires. The later return retains its normal fresh-pose checks.
       if (active_recall_wait_mission_ && return_requested_ && poseIsFresh()) {
         beginReturnExit("recall loading already complete; fresh pose recovered");
       }

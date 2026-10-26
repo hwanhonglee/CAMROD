@@ -40,11 +40,13 @@
 #include "camrod_control/ros_message_conversion.hpp"
 #include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
+#include "camrod_control/recovery_hold_reset_policy.hpp"
 #include "camrod_control/voice_announcement_gate.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/parameter_descriptor.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_srvs/srv/trigger.hpp"
 #include "tf2/time.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -254,6 +256,10 @@ public:
   }
 
 private:
+#ifdef CAMROD_CONTROL_RECOVERY_RESET_TEST
+  // HH_261026 - Exercise native reset callbacks on a separate test DDS domain.
+  friend class CmdVelSafetyGateRecoveryResetTest;
+#endif
   void loadGatePolicyConfig() {
     require_platform_drive_enable_ =
         declare_parameter<bool>("require_platform_drive_enable", true);
@@ -821,6 +827,13 @@ private:
         planning_engaged_topic_, state_qos);
     status_publisher_ =
         create_publisher<avg_msgs::msg::ModuleState>(status_topic_, state_qos);
+    // HH_261024 - A reset revokes no live safety condition and never grants motion.
+    reset_recovery_hold_service_ = create_service<std_srvs::srv::Trigger>(
+        "/control/cmd_vel_safety_gate/reset_recovery_hold",
+        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+          resetRecoveryHold(*response);
+        });
     route_safety_candidate_publisher_ =
         create_publisher<avg_msgs::msg::AvgTwist>(route_safety_candidate_topic_,
                                                   state_qos);
@@ -1418,6 +1431,69 @@ private:
     publishState();
   }
 
+  void resetRecoveryHold(std_srvs::srv::Trigger::Response &response) {
+    // HH_261024 - Stop-only and idempotent: every motion owner must already be
+    // cancelled, and fresh measured feedback must independently prove standstill.
+    publishZero();
+    const double now_sec = nowSec();
+    const auto &platform = gate_policy_.platformState();
+    RecoveryHoldResetContext context;
+    context.now_sec = now_sec;
+    context.manual_engaged = gate_policy_.manualEnabled();
+    context.mission_engaged = gate_policy_.missionEnabled();
+    context.maneuver_active = command_source_arbiter_.maneuverActive();
+    context.estop_active = gate_policy_.estopActive();
+    const auto reasons = gate_policy_.blockReasons(
+        now_sec, charging_mission_override_.charging(), false);
+    context.dr_timeout_active =
+        std::find(reasons.begin(), reasons.end(), "dr_timeout") != reasons.end();
+    context.platform_received = platform.received;
+    context.platform_received_sec = platform.received_sec;
+    context.vehicle_state = platform.vehicle_state;
+    context.platform_error_code = platform.error_code;
+    context.motion_received = reset_platform_motion_received_;
+    context.motion_received_sec = reset_platform_motion_received_sec_;
+    context.motion_stamp_sec = reset_platform_motion_stamp_sec_;
+    context.vx_mps = reset_platform_motion_.linear.x;
+    context.vy_mps = reset_platform_motion_.linear.y;
+    context.yaw_rate_rps = reset_platform_motion_.angular.z;
+    const auto rejection = recoveryHoldResetBlockReason(context);
+    if (!rejection.empty()) {
+      response.success = false;
+      response.message = rejection;
+      return;
+    }
+    refreshMotionCostStopPose();
+    // HH_261026 - Reuse the native saved-trigger evaluator and full fresh-clear
+    // window; software acknowledgement cannot bypass a remaining sensor hazard.
+    const auto hazard = motion_cost_stop_.recheckLatchedHazard(now_sec);
+    updatePolicyCostState();
+    if (hazard.blocked || motion_cost_stop_.latched()) {
+      response.success = false;
+      response.message = "active_or_stale_obstacle_hold:" + hazard.reason;
+      return;
+    }
+    route_safety_recovery_.reset();
+    latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+    route_safety_triggered_by_navigation_ = false;
+    route_safety_retry_latched_logged_ = false;
+    motion_cost_stop_.clearTransientHold();
+    last_input_command_sec_.reset();
+    command_input_stale_ = false;
+    route_heading_active_ = false;
+    resume_after_hold_voice_pending_ = false;
+    resume_after_hold_voice_gate_.reset();
+    charging_mission_override_.cancel();
+    // HH_261026 - Leaving ROUTE_SAFETY_HOLD clears the bounded controller's
+    // LIMIT_HOLD episode through its existing callback. Disarm still owns motion.
+    publishState();
+    publishZero();
+    response.success = true;
+    response.message = "recovery_hold_reset_motion_disarmed";
+    RCLCPP_WARN(get_logger(), "%s; live safety checks remain authoritative",
+                response.message.c_str());
+  }
+
   void
   onPlatformStatus(const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
     // HH_260721 - Consume normalized DBC state; this node never decodes raw CAN
@@ -1434,6 +1510,13 @@ private:
           static_cast<double>(message->battery_percentage), 0.0, 1.0);
     }
     gate_policy_.setPlatformState(state);
+    // HH_261024 - Receipt time and actual velocity source time must both be fresh.
+    reset_platform_motion_received_ = true;
+    reset_platform_motion_received_sec_ = state.received_sec;
+    reset_platform_motion_stamp_sec_ =
+        static_cast<double>(message->velocity.header.stamp.sec) +
+        static_cast<double>(message->velocity.header.stamp.nanosec) * 1.0e-9;
+    reset_platform_motion_ = message->velocity.twist;
     charging_mission_override_.setBatteryPercentage(state.battery_percentage);
     charging_mission_override_.setCharging(message->is_charging);
     if (!message->is_charging) {
@@ -2592,6 +2675,10 @@ private:
   double last_command_source_log_sec_{-1.0e9};
   double radar_obstacle_evidence_receive_sec_{-1.0e9};
   bool radar_obstacle_evidence_received_{false};
+  bool reset_platform_motion_received_{false};
+  double reset_platform_motion_received_sec_{0.0};
+  double reset_platform_motion_stamp_sec_{0.0};
+  avg_msgs::msg::AvgTwist reset_platform_motion_;
 
   std::vector<std::string> additional_estop_topics_;
   std::vector<std::string> cost_source_topics_;
@@ -2618,6 +2705,7 @@ private:
       route_safety_candidate_publisher_;
   rclcpp::TimerBase::SharedPtr state_timer_;
   rclcpp::TimerBase::SharedPtr command_timeout_timer_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_recovery_hold_service_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr
@@ -2676,6 +2764,7 @@ private:
 
 } // namespace camrod_control
 
+#ifndef CAMROD_CONTROL_RECOVERY_RESET_TEST
 int main(int argc, char **argv) {
   // HH_260721 - Run the final command safety gate as a conventional rclcpp
   // node.
@@ -2684,3 +2773,4 @@ int main(int argc, char **argv) {
   rclcpp::shutdown();
   return 0;
 }
+#endif

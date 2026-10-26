@@ -38,6 +38,8 @@ ament_target_dependencies(cmd_vel_safety_gate_node
   # HH_260721 - Resolve shared control diagnostics included by boundary helpers.
   diagnostic_msgs
   geometry_msgs
+  # HH_261024 - Stop-only administrator acknowledgement uses standard Trigger.
+  std_srvs
   tf2
   tf2_ros
 )
@@ -141,6 +143,22 @@ install(FILES README.md
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  # HH_261026 - Exercise native gate admission and reset callbacks, isolated
+  # from every real robot and simulator DDS domain.
+  ament_add_gtest(test_recovery_hold_reset
+    test/test_recovery_hold_reset.cpp
+    src/motion_cost_stop.cpp
+  )
+  target_include_directories(test_recovery_hold_reset PRIVATE include)
+  ament_target_dependencies(test_recovery_hold_reset
+    rclcpp rcl_interfaces avg_msgs camrod_sensor_kit diagnostic_msgs
+    geometry_msgs std_srvs tf2 tf2_ros
+  )
+  target_link_libraries(test_recovery_hold_reset yaml-cpp)
+  target_compile_options(test_recovery_hold_reset PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>)
+  set_tests_properties(test_recovery_hold_reset PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=214;ROS_LOCALHOST_ONLY=1")
   # HH_260721 - Run native gate, cost-stop, charging, and reverse-axis regression tests.
   ament_add_gtest(test_control_policies
     test/test_control_policies.cpp

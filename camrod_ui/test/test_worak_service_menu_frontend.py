@@ -24,7 +24,9 @@ def replay(script):
     start = SOURCE.index("const handleWaitingClick = () => {")
     # HH_261001 - The safety acknowledgement, not the initial home tap,
     # opens the chooser; replay both production handlers in order.
-    handlers = SOURCE[start:SOURCE.index("const resetIdleTimer", start)]
+    # HH_261026 - Guest inactivity no longer owns a reset timer; retain the
+    # same two real menu handlers up to the following lifecycle effect.
+    handlers = SOURCE[start:SOURCE.index("  useEffect(() => {", start)]
     start = SOURCE.index("const selectDestinationIntent = (intent) => {")
     handlers += SOURCE[start:SOURCE.index("const handleServiceDocking =", start)]
     setters = sorted(set(re.findall(r"\b(set[A-Z]\w*)\(", handler + handlers)))

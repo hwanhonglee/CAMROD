@@ -74,6 +74,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage, Image as RosImage, Imu, NavSatFix, PointCloud2, Range
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 from ublox_msgs.msg import NavCOV, NavPVT, NavRELPOSNED9
 from visualization_msgs.msg import Marker, MarkerArray
@@ -104,6 +105,8 @@ from camrod_ui.service_metrics import (
     ServiceMetricsTracker,
     default_service_metrics_path,
 )
+from camrod_ui.safety_reset import cancellations_complete, stationary_reset_blockers
+from camrod_ui.safety_reset_api import register_safety_reset_routes
 from camrod_ui.ui_state_policy import UiStatePolicy
 from camrod_ui.voice_departure_gate import VoiceDepartureGate
 
@@ -1380,6 +1383,11 @@ class UiBackendNode(Node):
         # Destination, Return, Stop, and controller-state reconciliation share
         # this boundary so a delayed request cannot overwrite a newer mission.
         self._destination_dispatch_lock = threading.RLock()
+        # HH_261024 - One explicit administrator transaction, with no periodic
+        # reset job, new motion owner, or automatic restart permission.
+        self._admin_safety_reset_pending = False
+        self._admin_safety_reset_cancel_futures = []
+        self._admin_safety_reset_result = None
         # A restarted backend cannot reconstruct ownership from volatile
         # controller topics.  Admission remains closed until cancel-all has
         # completed after discovery and every service writer has been stopped.
@@ -1707,6 +1715,11 @@ class UiBackendNode(Node):
         )
         self.set_ranger_parameters_client = self.create_client(
             SetParameters, f"{self.ranger_base_node_name}/set_parameters"
+        )
+        # HH_261024 - The gate owns hard safety checks; this client never
+        # disables a collision policy or forges an obstacle-clear observation.
+        self._safety_reset_client = self.create_client(
+            Trigger, "/control/cmd_vel_safety_gate/reset_recovery_hold"
         )
         self.snapshot_client = self.create_client(
             TriggerSnapshot, self.snapshot_service_name
@@ -4436,6 +4449,14 @@ class UiBackendNode(Node):
         )
 
     def _on_control_gate_status(self, msg: ModuleState) -> None:
+        # HH_261026 - Reuse the native low-rate gate subscription for reset
+        # admission; opening diagnostics does not start another subscriber.
+        self._admin_safety_reset_gate_observation = (
+            {"level": int(msg.level), "operating_state": str(msg.operating_state),
+             "message": str(msg.message),
+             "source_stamp_s": _ros_stamp_seconds(msg.stamp)},
+            time.monotonic(),
+        )
         self._update_runtime_state(
             lambda: self._runtime_policy.update_gate(
                 level=int(msg.level),
@@ -4545,6 +4566,17 @@ class UiBackendNode(Node):
                 ros_now_s=driving_now_s,
             )
         self._latest_platform_status_time_s = self._now_s()
+        # HH_261024 - Reset needs measured standstill from the existing
+        # platform stream, with distinct receipt and measurement timestamps.
+        self._safety_reset_motion_observation = {
+            "received_monotonic_s": time.monotonic(),
+            "source_stamp_s": _ros_stamp_seconds(msg.velocity.header.stamp),
+            "speed_mps": math.hypot(float(msg.velocity.twist.linear.x),
+                                    float(msg.velocity.twist.linear.y)),
+            "yaw_rate_radps": float(msg.velocity.twist.angular.z),
+            "estop": bool(msg.estop), "error_code": int(msg.error_code),
+            "vehicle_state": int(msg.vehicle_state),
+        }
         self._latest_platform_motion_ready = (
             control_mode == 1 and not bool(msg.estop)
             and int(msg.error_code) == 0 and int(msg.vehicle_state) == 0 and not charging
@@ -6724,6 +6756,14 @@ class UiBackendNode(Node):
         }
 
     def _startup_recovery_block(self) -> Optional[Dict[str, Any]]:
+        # HH_261024 - Existing destination/Return/docking entry points share
+        # this barrier, so none may re-arm during a stop-only reset.
+        if bool(getattr(self, "_admin_safety_reset_pending", False)):
+            return {
+                "blocked": True, "error": "admin_safety_reset_pending",
+                "message": "관리자 정지 초기화 중입니다. 완료 후 새 명령을 내려주세요.",
+                "retryable": True,
+            }
         if not bool(getattr(self, "_startup_recovery_pending", False)):
             return None
         return {
@@ -7155,7 +7195,11 @@ class UiBackendNode(Node):
             # HH_260804 - rclpy service clients expose call_async(); using the
             # rclcpp-style async_send_request() made /ui/stop return HTTP 500
             # before it could cancel Nav2 or publish the stopped service state.
-            client.call_async(request)
+            future = client.call_async(request)
+            # HH_261024 - Track cancel-all acknowledgements for this one
+            # transaction; an in-progress cancellation is not idle proof.
+            if source == "admin_safety_reset":
+                self._admin_safety_reset_cancel_futures.append(future)
             sent_topics.append(topic)
         if sent_topics:
             self.get_logger().info(
@@ -7380,6 +7424,9 @@ class UiBackendNode(Node):
                 destroy_timer(timer)
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
+        # HH_261024 - Concurrent policy echoes cannot re-arm during reset.
+        if enabled and bool(getattr(self, "_admin_safety_reset_pending", False)):
+            return
         if not self.publish_platform_drive_enable_with_engage:
             return
         msg = AvgBool()
@@ -7430,6 +7477,9 @@ class UiBackendNode(Node):
     def _publish_engage(
         self, enabled: bool, source: str, *, sync_drive_enable: bool = True
     ) -> None:
+        # HH_261024 - Preserve disarm while cancellation/reset is pending.
+        if enabled and bool(getattr(self, "_admin_safety_reset_pending", False)):
+            return
         msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_engage.publish(msg)
@@ -7446,6 +7496,9 @@ class UiBackendNode(Node):
         )
 
     def _publish_mission_engage(self, enabled: bool, source: str) -> None:
+        # HH_261024 - Reset permission grants no mission authority.
+        if enabled and bool(getattr(self, "_admin_safety_reset_pending", False)):
+            return
         msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_mission_engage.publish(msg)
@@ -8178,6 +8231,165 @@ class UiBackendNode(Node):
         return snapshot
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
+
+    def _admin_safety_reset_gate_snapshot(self) -> Dict[str, Any]:
+        # HH_261026 - Read the native gate heartbeat independently of any
+        # optional browser telemetry or simulator-only manual-drive feature.
+        timeout_s = 1.5
+        observation = getattr(self, "_admin_safety_reset_gate_observation", None)
+        result = {
+            "fresh": False, "blocked": None, "operating_state": "UNKNOWN",
+            "message": "", "reasons": [], "level": None,
+            "receipt_age_s": None, "source_age_s": None,
+            "freshness_timeout_s": timeout_s,
+        }
+        if observation is None:
+            return result
+        values, received_s = observation
+        receipt_age_s = time.monotonic() - received_s
+        stamp_s = values.get("source_stamp_s")
+        if stamp_s is None or not math.isfinite(stamp_s):
+            return result
+        source_age_s = self._now_s() - stamp_s
+        fresh = (
+            stamp_s > 0.0 and math.isfinite(source_age_s)
+            and 0.0 <= receipt_age_s <= timeout_s
+            and -0.1 <= source_age_s <= timeout_s
+        )
+        state = str(values["operating_state"]).strip().upper()
+        message = str(values["message"])
+        reason_match = re.search(r"(?:^|\s)reasons=([^\s]+)", message)
+        reasons = reason_match.group(1).split(",") if reason_match else []
+        allowed = state in {"ENABLED", "DEPARTING_CHARGER"} and values["level"] == 0
+        return {
+            "fresh": fresh, "blocked": not allowed if fresh else None,
+            "operating_state": state, "message": message,
+            "reasons": [reason for reason in reasons if reason != "none"],
+            "level": values["level"], "receipt_age_s": max(0.0, receipt_age_s),
+            "source_age_s": source_age_s if math.isfinite(source_age_s) else None,
+            "freshness_timeout_s": timeout_s,
+        }
+
+    def get_admin_safety_reset_status(self) -> Dict[str, Any]:
+        """HH_261024 - Read-only status, never clear a latch or cancel a goal."""
+        client = getattr(self, "_safety_reset_client", None)
+        available = bool(client is not None and client.service_is_ready())
+        blockers = stationary_reset_blockers(
+            getattr(self, "_safety_reset_motion_observation", None),
+            self._now_s(), time.monotonic())
+        return {
+            "available": available,
+            "busy": bool(getattr(self, "_admin_safety_reset_pending", False)),
+            "blockers": blockers,
+            "safety_gate": UiBackendNode._admin_safety_reset_gate_snapshot(self),
+            "last_result": getattr(self, "_admin_safety_reset_result", None),
+            "requires_explicit_start": True,
+            "message": ("현재 미션을 종료하고 정지 상태로 복구 기록만 초기화합니다. "
+                        "이동 중이면 먼저 운행 정지를 눌러 완전히 멈춰주세요. "
+                        "장애물·비상정지·장비 오류는 무시하지 않습니다."),
+        }
+
+    async def request_admin_safety_reset(self, confirm: Any = False) -> Dict[str, Any]:
+        """HH_261024 - Stop/cancel -> measured standstill -> gate-owned reset.
+
+        No success, failure or timeout path publishes engage=true, drive-enable
+        true, a goal or nonzero velocity. The current mission is intentionally
+        ended; the operator must explicitly start manual control or a new mission.
+        """
+        base = {"requires_explicit_start": True}
+        if confirm is not True:
+            return {**base, "success": False, "error": "explicit_confirmation_required",
+                    "message": "미션 종료와 정지 유지 확인이 필요합니다."}
+        with self._destination_dispatch_lock:
+            status = UiBackendNode.get_admin_safety_reset_status(self)
+            if status["busy"]:
+                return {**base, "success": False, "available": True, "busy": True,
+                        "message": "정지 초기화가 이미 진행 중입니다."}
+            if not status["available"]:
+                return {**base, "success": False, "available": False,
+                        "message": "제어기의 초기화 서비스가 없습니다. camrod_control 빌드·실행을 확인하세요."}
+            if status["blockers"]:
+                return {**base, "success": False, "available": True,
+                        "blockers": status["blockers"],
+                        "message": "초기화 불가: " + ", ".join(status["blockers"])}
+            if bool(getattr(self, "_startup_recovery_pending", False)):
+                return {**base, "success": False, "available": True,
+                        "message": "백엔드 시작 시 정지 확인이 끝난 뒤 다시 시도하세요."}
+            self._admin_safety_reset_pending = True
+            self._admin_safety_reset_cancel_futures = []
+            started = time.monotonic()
+            try:
+                self._stop_active_service(source="admin_safety_reset")
+            except Exception as exc:
+                self._admin_safety_reset_pending = False
+                failed = {**base, "success": False, "available": True,
+                          "error": "stop_not_confirmed",
+                          "message": "정지 명령 처리가 완료되지 않았습니다. 진단 상태를 확인하세요."}
+                self._admin_safety_reset_result = failed
+                self.get_logger().warning("administrator stop not confirmed: %s" % type(exc).__name__)
+                return failed
+        result = {**base, "success": False, "available": True}
+        try:
+            # HH_261024 - Allow cancellation, measured stop and status echoes
+            # to settle without blocking the ROS executor or holding its locks.
+            deadline = time.monotonic() + 5.0
+            next_cancel_query = time.monotonic() + 0.25
+            while True:
+                nav_status = getattr(getattr(self, "_runtime_policy", None), "nav_status", 0)
+                cancelled = cancellations_complete(
+                    self._admin_safety_reset_cancel_futures,
+                    len(self.nav2_cancel_clients), nav_status)
+                blockers = stationary_reset_blockers(
+                    getattr(self, "_safety_reset_motion_observation", None),
+                    self._now_s(), time.monotonic())
+                gate = UiBackendNode._admin_safety_reset_gate_snapshot(self)
+                observation = getattr(self, "_admin_safety_reset_gate_observation", None)
+                observed_after_stop = bool(observation and observation[1] >= started)
+                if cancelled and not blockers and gate["fresh"] and observed_after_stop:
+                    break
+                # HH_261024 - CANCELING is not completion. Query cancel-all
+                # again until each server replies with no remaining goals;
+                # never substitute a stale/global UNKNOWN status for that ACK.
+                futures = self._admin_safety_reset_cancel_futures
+                if (not cancelled and time.monotonic() >= next_cancel_query
+                        and len(futures) == len(self.nav2_cancel_clients)
+                        and all(future.done() for future in futures)):
+                    self._admin_safety_reset_cancel_futures = []
+                    self._request_nav2_cancel(source="admin_safety_reset")
+                    next_cancel_query = time.monotonic() + 0.25
+                if time.monotonic() >= deadline:
+                    result.update(error="stop_confirmation_timeout",
+                                  blockers=blockers)
+                    result["message"] = (
+                        "정지·Nav2 취소·최신 상태 확인이 끝나지 않았습니다. "
+                        "정지를 유지합니다. 진단 확인 후 다시 요청하세요.")
+                    return result
+                await asyncio.sleep(0.05)
+            # The native service repeats all hard checks atomically. A short
+            # DDS cancellation/diagnostic propagation delay can be retried;
+            # live sensor hazards are never cleared by the HTTP caller.
+            retryable = {"disengage_required", "maneuver_cancel_pending", "estop_active"}
+            while True:
+                response = await UiBackendNode._await_ros_future(
+                    self, self._safety_reset_client.call_async(Trigger.Request()),
+                    timeout_s=1.5, operation="administrator recovery reset")
+                message = str(response.message)
+                if response.success or message not in retryable or time.monotonic() >= deadline:
+                    result.update(success=bool(response.success), controller_message=message,
+                                  message=("복구 상태를 초기화했습니다. 로봇은 정지 상태입니다. "
+                                           "수동 제어 또는 새 미션을 직접 시작하세요."
+                                           if response.success else "제어기가 초기화를 거절했습니다: " + message))
+                    return result
+                await asyncio.sleep(0.1)
+        except Exception as exc:
+            result.update(error="reset_not_confirmed",
+                          message="제어기 초기화 결과를 확인하지 못했습니다. 정지를 유지합니다.")
+            self.get_logger().warning("administrator recovery reset not confirmed: %s" % type(exc).__name__)
+            return result
+        finally:
+            self._admin_safety_reset_result = dict(result)
+            self._admin_safety_reset_pending = False
+            self._schedule_broadcast({"admin_safety_reset": result})
 
     def set_manual_goal(self, x: Any, y: Any, yaw_deg: Any) -> Dict[str, Any]:
         """Publish one UI-selected manual goal, then authorize manual motion."""
@@ -9134,6 +9346,9 @@ class UiBackendNode(Node):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        # HH_261024 - Only explicit authenticated POST can request reset;
+        # reading the administrator page has no motion-side effect.
+        register_safety_reset_routes(app, node)
 
         # ── WebSocket endpoint ────────────────────────────────────────────────
 

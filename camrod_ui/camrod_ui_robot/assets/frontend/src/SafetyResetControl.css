@@ -1,0 +1,30 @@
+/* HH_261024 - Match the existing park-green administrator cards without
+   adding a floating control over the public driving display. */
+.safety-reset-card {
+  padding: 20px;
+  border: 1px solid #b9d4c5;
+  border-left: 5px solid #2b7051;
+  border-radius: 12px;
+  background: #f7fbf8;
+  color: #173d2d;
+}
+.safety-reset-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.safety-reset-heading span { font-size: 12px; color: #527363; }
+.safety-reset-heading h3 { margin: 4px 0 0; font-size: 20px; }
+.safety-reset-explanation, .safety-reset-explicit-start { font-size: 14px; line-height: 1.6; margin: 12px 0; }
+.safety-reset-explicit-start { font-weight: 700; }
+.safety-reset-card button { padding: 12px 18px; border: 1px solid #b9d4c5; border-radius: 9px; font: inherit; font-weight: 700; cursor: pointer; background: white; color: #23573f; }
+.safety-reset-card button.safety-reset-request { background: #286a4c; color: white; border-color: #286a4c; }
+.safety-reset-card button:disabled { opacity: .48; cursor: not-allowed; }
+.safety-reset-card button:focus-visible { outline: 3px solid #459bd1; outline-offset: 3px; }
+.safety-reset-message { padding: 12px; background: #e9f2ed; border-radius: 8px; font-size: 14px; margin: 12px 0; overflow-wrap: anywhere; }
+.safety-reset-error { color: #982e29; background: #fff0ee; }
+.safety-reset-blockers { font-size: 14px; line-height: 1.6; padding-left: 24px; }
+.safety-reset-confirm { padding: 16px; background: white; border: 1px solid #d5b572; border-radius: 10px; }
+.safety-reset-confirm p { font-size: 14px; line-height: 1.6; }
+.safety-reset-confirm > div { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+@media (max-width: 600px) {
+  .safety-reset-heading { align-items: flex-start; flex-direction: column; }
+  .safety-reset-card { padding: 16px; }
+  .safety-reset-card button { min-height: 44px; }
+}

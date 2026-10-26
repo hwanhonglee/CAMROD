@@ -27,6 +27,9 @@ import SnapshotControl from './SnapshotControl';
 import DrivingDisplay from './DrivingDisplay';
 import useDrivingDisplay from './useDrivingDisplay';
 import './DrivingIntegration.css';
+// HH_261026 - Organize native diagnostics without importing simulator controls.
+import AdminNavigation, { getAdminDiagnosticView } from './AdminNavigation';
+import './AdminWorkspace.css';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -40,19 +43,8 @@ const OPERATING_HOURS_GATE_ENABLED =
 const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_START, 3);
 const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
 
-const IDLE_STANDBY_RETURN_MS = 10000;
-// HH_260929 - Treat touch, pointer, wheel, and key input as activity so the
-// robot display does not fall back to standby during operator interaction.
-const IDLE_ACTIVITY_EVENTS = Object.freeze([
-  'pointerdown',
-  'pointerup',
-  'pointermove',
-  'touchstart',
-  'touchmove',
-  'wheel',
-  'keydown',
-]);
-const IDLE_ACTIVITY_THROTTLE_MS = 500;
+// HH_261024 - Guest screens have no inactivity deadline; explicit navigation
+// and completed missions return home without altering motion watchdogs.
 
 // HH_260721 - Mirror the platform-neutral service lifecycle used by backend and control.
 const SERVICE_STATE = Object.freeze({
@@ -452,7 +444,9 @@ function TrailCarousel({ title, images }) {
 }
 
 // ── 진단 모니터 컴포넌트 ──────────────────────────────────────────────────────
-function DiagnosticsMonitor({
+export function DiagnosticsMonitor({
+  adminLoginId = '',
+  adminLoginPw = '',
   redockStatus = null,
   parkingPolicy = {},
   serviceStateName = '',
@@ -613,39 +607,60 @@ function DiagnosticsMonitor({
   // HH_260721 - Operator diagnostics use one unambiguous three-level health scale.
   const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR' };
   const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a' };
-  const HEAD_COLOR = { 0: '#6ec86e', 1: '#e0b06c', 2: '#e06c6c' };
+  // HH_261026 - Keep severity colors readable against the existing light surfaces.
+  const HEAD_COLOR = { 0: '#287141', 1: '#91680d', 2: '#b13d36' };
 
   const groups = [
     { key: 'error', label: 'Error',  lvls: [2],    items: items.filter(i => i.level === 2) },
     { key: 'warn',  label: 'Warn',   lvls: [1],    items: items.filter(i => i.level === 1) },
     { key: 'ok',    label: 'OK',     lvls: [0],    items: items.filter(i => i.level === 0) },
   ].filter(g => g.items.length > 0);
+  // HH_261026 - Navigation changes only the visible existing view; commands stay explicit.
+  const activeView = getAdminDiagnosticView(activeTab);
 
   return (
-    <div className="diag-monitor-wrap">
-      <nav className="diag-tab-bar" aria-label="Operator diagnostics views">
-        {[
+    <div className="diag-monitor-wrap admin-workspace">
+      <AdminNavigation
+        activeTab={activeTab}
+        tabs={[
           { id: 'system', label: '시스템' },
           ...TELEMETRY_TABS,
           { id: 'snapshot', label: '스냅샷' },
-        ].map(tab => (
+        ]}
+        renderTab={tab => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            id={`operator-diagnostic-tab-${tab.id}`}
             data-ui={`operator-diagnostic-tab-${tab.id}`}
             className={`diag-tab-button ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
             aria-selected={activeTab === tab.id}
+            aria-controls="admin-diagnostic-view"
           >
             {tab.label}
           </button>
-        ))}
-      </nav>
+        )}
+      />
+      <section className="admin-workspace-main" id="admin-diagnostic-view" role="tabpanel"
+        aria-labelledby={`operator-diagnostic-tab-${activeTab}`}>
+        <header className="admin-view-heading">
+          <span className="admin-view-category">{activeView.category}</span>
+          <h2>{activeView.title}</h2>
+          <p>{activeView.help}</p>
+        </header>
       {activeTab === 'system' ? (
-        <>
+        <div className="admin-system-view">
+          <section className="admin-system-controls" aria-labelledby="admin-system-controls-title">
+            <div className="admin-section-heading">
+              <h3 id="admin-system-controls-title">운영 제어</h3>
+              <p>복귀·충전, 전조등과 조향 설정을 조작합니다. 아래 상태 진단과 구분해서 확인하세요.</p>
+            </div>
+            <div className="admin-system-command-grid">
       {/* ── 상단 컨트롤 바 ── */}
       <div className="diag-control-bar">
-        <span className="diag-control-label">Manual Motion</span>
+        <span className="diag-control-label"><strong>복귀·충전</strong><small>Manual Motion</small></span>
         <button
           type="button"
           className="manual-return-btn"
@@ -662,7 +677,7 @@ function DiagnosticsMonitor({
       {/* ── 전조등 컨트롤 패널 ── */}
       {onToggleHeadlight && (
         <div className="diag-control-bar light-control-bar">
-          <span className="diag-control-label">Light Control</span>
+          <span className="diag-control-label"><strong>전조등</strong><small>Light Control</small></span>
           <button
             type="button"
             className={`manual-return-btn headlight-command-btn ${headlightState ? 'headlight-on' : ''}`}
@@ -676,6 +691,7 @@ function DiagnosticsMonitor({
           </span>
         </div>
       )}
+            </div>
 
       <div className="steering-tuning-card">
         <div className="steering-tuning-copy">
@@ -711,36 +727,51 @@ function DiagnosticsMonitor({
           </div>
         </div>
       </div>
+          </section>
 
+      {/* HH_261026 - Collapsing details is presentation-only and leaves refresh policy unchanged. */}
+      <details className="admin-diagnostic-details" open>
+        <summary>
+          <strong>상태 진단 · 세부 정보</strong>
+          <span className="admin-diagnostic-counts">
+            <span className={groups.some(g => g.key === 'error') ? 'has-error' : ''}>오류 {items.filter(i => i.level === 2).length}</span>
+            <span className={groups.some(g => g.key === 'warn') ? 'has-warn' : ''}>경고 {items.filter(i => i.level === 1).length}</span>
+            <span>정상 {items.filter(i => i.level === 0).length}</span>
+          </span>
+        </summary>
     <div className="diag-monitor">
       {/* ── 왼쪽: 트리 패널 ── */}
       <div className="diag-tree">
         <div className="diag-tree-header">
-          Device groups
-          <span className="diag-count">{items.length} items</span>
+          장치 상태
+          <span className="diag-count">{items.length}개 항목</span>
         </div>
         {groups.map(g => {
           const lvl = g.lvls[0];
           const isOpen = expanded[g.key];
           return (
             <div key={g.key}>
-              <div
+              <button
+                type="button"
                 className="diag-group-header"
                 style={{ color: HEAD_COLOR[lvl] }}
                 onClick={() => setExpanded(e => ({ ...e, [g.key]: !e[g.key] }))}
+                aria-expanded={isOpen}
               >
                 <span className="diag-arrow">{isOpen ? '▼' : '▶'}</span>
                 {g.label} ({g.items.length})
-              </div>
+              </button>
               {isOpen && g.items.map((item, i) => (
-                <div
+                <button
+                  type="button"
                   key={i}
                   className={`diag-item ${selected === item ? 'diag-item-selected' : ''}`}
                   onClick={() => setSelected(item)}
+                  aria-pressed={selected === item}
                 >
                   <span className="diag-dot" style={{ background: DOT_COLOR[item.level] }} />
                   {item.name}
-                </div>
+                </button>
               ))}
             </div>
           );
@@ -755,20 +786,20 @@ function DiagnosticsMonitor({
       <div className="diag-detail">
         {selected ? (
           <>
-            <div className="diag-detail-header">Detail — {selected.name}</div>
+            <div className="diag-detail-header">상세 정보 — {selected.name}</div>
             <div className="diag-detail-status">
               <span className="diag-dot lg" style={{ background: DOT_COLOR[selected.level] }} />
               <span style={{ color: HEAD_COLOR[selected.level], fontWeight: 600 }}>
                 {LEVEL_STR[selected.level]} (level {selected.level})
               </span>
             </div>
-            <div className="diag-detail-label">Message:</div>
+            <div className="diag-detail-label">메시지</div>
             <div className="diag-detail-msg" style={{ borderColor: DOT_COLOR[selected.level] }}>
               {selected.message || '—'}
             </div>
             {selected.values && selected.values.length > 0 && (
               <>
-                <div className="diag-detail-label" style={{ marginTop: '0.8rem' }}>Key-value pairs:</div>
+                <div className="diag-detail-label" style={{ marginTop: '0.8rem' }}>세부 값</div>
                 <table className="diag-kv-table">
                   <tbody>
                     {selected.values.map((kv, i) => (
@@ -787,7 +818,8 @@ function DiagnosticsMonitor({
         )}
       </div>
     </div>
-        </>
+      </details>
+        </div>
       ) : activeTab === 'snapshot' ? (
         <div className="snapshot-tab-view">
           <SnapshotControl />
@@ -795,6 +827,8 @@ function DiagnosticsMonitor({
       ) : (
         <TelemetryWorkspace
           activeTab={activeTab}
+          adminLoginId={adminLoginId}
+          adminLoginPw={adminLoginPw}
           redockStatus={redockStatus}
           parkingPolicy={parkingPolicy}
           serviceStateName={serviceStateName}
@@ -803,6 +837,7 @@ function DiagnosticsMonitor({
           onToggleEngage={onToggleEngage}
         />
       )}
+      </section>
     </div>
   );
 }
@@ -1343,8 +1378,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const wsMountedRef = useRef(false);
   const wsGenerationRef = useRef(0);
   const wsReconnectTimerRef = useRef(null);
-  const idleTimerRef = useRef(null);                    // 마지막 조작 후 유휴 타이머
-  const lastIdleActivityRef = useRef(0);
+
   const [returnCompletionPending, setReturnCompletionPending] = useState(false);
 
   const [outsideHoursMsg, setOutsideHoursMsg] = useState(false); // 운영시간 외 안내 메시지
@@ -1650,59 +1684,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     setShowWaiting(false);
   };
 
-  // ── 모든 토글이 OFF이면 10초 후 대기 화면으로 복귀 ──────────────────────
-  const resetIdleTimer = useCallback(() => {
-    if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = null;
-    }
-    if (!anyOn && !manualDriveActive && !missionDispatch.active && !showWaiting && !isReturning) {
-      idleTimerRef.current = setTimeout(() => {
-        setShowWaiting(true);
-      }, IDLE_STANDBY_RETURN_MS);
-    }
-  }, [anyOn, manualDriveActive, missionDispatch.active, showWaiting, isReturning]);
 
-  useEffect(() => {
-    const onIdleActivity = () => {
-      const now = Date.now();
-      if (now - lastIdleActivityRef.current < IDLE_ACTIVITY_THROTTLE_MS) return;
-      lastIdleActivityRef.current = now;
-      resetIdleTimer();
-    };
-    const options = { capture: true, passive: true };
-    IDLE_ACTIVITY_EVENTS.forEach(type => {
-      document.addEventListener(type, onIdleActivity, options);
-    });
-    return () => {
-      IDLE_ACTIVITY_EVENTS.forEach(type => {
-        document.removeEventListener(type, onIdleActivity, { capture: true });
-      });
-    };
-  }, [resetIdleTimer]);
-
-  useEffect(() => {
-    if (anyOn || manualDriveActive || missionDispatch.active) {
-      // HH_261002 - An accepted mission cancels standby even when its site
-      // toggle briefly clears during recovery or a diagnostic outage.
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-    } else if (!showWaiting && !isReturning) {
-      // HH_260602 - Start the standby timer only with all outputs off and no return.
-      idleTimerRef.current = setTimeout(() => {
-        setShowWaiting(true);
-      }, IDLE_STANDBY_RETURN_MS);
-    } else if (isReturning && idleTimerRef.current) {
-      // HH_260602 - Cancel an existing standby timer during the return trip.
-      clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = null;
-    }
-    return () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [anyOn, manualDriveActive, missionDispatch.active, showWaiting, isReturning]);
 
   useEffect(() => {
     if (!returnCompletionPending || missionDispatch.active) return;
@@ -2700,9 +2682,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                   </div>
                   {KB_ROWS.map((row, ri) => (
                     <div key={ri} className="vkb-row">
-                      {row.map(key => (
+                      {/* HH_261024 - Both Shift keys need distinct React identities. */}
+                      {row.map((key, ki) => (
                         <button
-                          key={key + ri}
+                          key={`${ri}-${ki}`}
                           className={`vkb-key${key === '⌫' ? ' vkb-wide' : ''}${key === '⇧' ? ' vkb-wide' + (kbCaps ? ' vkb-caps-on' : '') : ''}`}
                           onClick={() => handleVirtualKey(key)}
                         >
@@ -2727,6 +2710,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               </div>
               <div className="modal-body">
                 <DiagnosticsMonitor
+                  adminLoginId={loginId}
+                  adminLoginPw={loginPw}
                   redockStatus={redockStatus}
                   parkingPolicy={parkingPolicy}
                   serviceStateName={serviceStateName}
@@ -2924,7 +2909,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   if (showServiceSelection) {
     const dockingAvailable = dockingAllowedAtServiceState(serviceStateName);
     return (
-      <div className="main-layout" data-ui="operator-service-selection-screen" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+      <div className="main-layout" data-ui="operator-service-selection-screen">
         {adminEntryZone}
 
         <div className="control-header">
@@ -3120,7 +3105,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   return (
     <div className={`main-layout${previewMode ? ' driving-preview-app' : ''}${drivingDisplay.visible ? ' main-layout-driving' : ''}`}
-      data-ui="operator-control-screen" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
+      data-ui="operator-control-screen">
       {adminEntryZone}
 
       {/* ── 상단 헤더 배너 ── */}

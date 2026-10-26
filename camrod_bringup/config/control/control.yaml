@@ -143,6 +143,9 @@
     reverse_entry_lateral_tolerance_m: 0.35
     reverse_entry_debug_period_s: 1.0
 
+    # HH_261024 - This is a minimum unloading hold, not a guest usage deadline.
+    # With automatic return disabled, wait for an explicit Return request;
+    # independent motion watchdogs and urgent-battery policy stay unchanged.
     unload_wait_s: 5.0
     auto_return_after_unload_wait: false
     reset_wait_return_on_site_goal: true
