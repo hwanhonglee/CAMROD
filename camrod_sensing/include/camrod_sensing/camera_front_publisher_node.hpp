@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -36,12 +37,21 @@ private:
   void publishThread();
   void loadCameraInfo();
   void initVpiRemap();
+  // HH_261028 - Build one VIC remap payload plus its NV12 destination. The
+  // detector output reuses the fisheye model at a reduced size, so the same
+  // pass that undistorts also downscales and no CPU resize is ever needed.
+  bool createVpiRemap(
+    int output_width, int output_height,
+    VPIPayload * payload, VPIImage * wrapper, cv::Mat * buffer);
+  void publishRectRaw(const std_msgs::msg::Header & header, std::int64_t stamp_ns);
   void initNvJpeg();
   void cleanupNvJpeg();
   bool encodeRectifiedJpeg();
 
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr rect_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_raw_pub_;
+  // HH_261028 - Rectified BGR for the YOLO detector, sized by rect_raw_width/height.
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr rect_raw_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
 
   cv::VideoCapture cap_;
@@ -80,6 +90,18 @@ private:
   VPIImage    vpi_nv12_out_wrapper_{nullptr};
   cv::Mat     nv12_rect_buf_;   // contiguous NV12 output buffer wrapped by vpi_nv12_out_wrapper_
   bool        vpi_ready_{false};
+
+  // HH_261028 - Detector-sized VIC remap. Separate payload and buffer so the
+  // full-resolution JPEG path for fusion and the operator UI is untouched.
+  VPIPayload  vpi_rect_raw_payload_{nullptr};
+  VPIImage    vpi_rect_raw_wrapper_{nullptr};
+  cv::Mat     nv12_rect_raw_buf_;
+  bool         rect_raw_ready_{false};
+  int          rect_raw_width_{0};
+  int          rect_raw_height_{0};
+  double       rect_raw_publish_rate_hz_{0.0};
+  std::int64_t rect_raw_period_ns_{0};
+  std::int64_t last_rect_raw_schedule_ns_{0};
 
   // Shared NV12 frame between captureThread and publishThread
   cv::Mat latest_nv12_frame_;

@@ -52,7 +52,11 @@ public:
         : min_iou_(min_iou), min_confidence_(min_confidence), num_classes_(num_classes)
     {
     }
-    virtual std::vector<Object> inference(const cv::Mat &frame) = 0;
+    // org_img_w/org_img_h are the coordinates detections are reported in. They
+    // are the frame's own size unless the camera delivers a rescaled copy of a
+    // larger rectified frame, in which case they are that larger frame.
+    virtual std::vector<Object> inference(const cv::Mat &frame, const int32_t org_img_w,
+                                          const int32_t org_img_h) = 0;
 
 private:
     inline float sigmoid(const float x) { return 1.0f / (1.0f + std::exp(-x)); }
@@ -71,7 +75,14 @@ protected:
 
     cv::Mat preprocess(const cv::Mat &img)
     {
-        cv::Mat output(input_h_, input_w_, CV_8UC3);
+        cv::Mat output;
+        if (img.cols == input_w_ && img.rows == input_h_)
+        {
+            // Camera already delivers the network's input size.
+            cv::cvtColor(img, output, cv::COLOR_BGR2RGB);
+            return output;
+        }
+        output.create(input_h_, input_w_, CV_8UC3);
         cv::resize(img, output, output.size());
         cv::cvtColor(output, output, cv::COLOR_BGR2RGB);
         return output;

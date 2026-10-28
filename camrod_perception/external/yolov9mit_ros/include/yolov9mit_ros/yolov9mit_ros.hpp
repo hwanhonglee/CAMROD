@@ -27,6 +27,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <vision_msgs/msg/detection2_d_array.hpp>
 
 #include "yolov9mit/utils.hpp"
@@ -47,12 +48,21 @@ private:
     const std::string window_name_ = "yolov9mit_ros";
     std::size_t max_compressed_payload_bytes_ = 16U * 1024U * 1024U;
 
+    // HH_261028 - Coordinates detections are published in. 0 means "whatever the
+    // incoming frame measures"; set it when the camera sends a downscaled copy
+    // of a larger rectified frame so downstream projection stays unchanged.
+    int32_t detection_reference_width_ = 0;
+    int32_t detection_reference_height_ = 0;
+
     // FPS throttle: skip frames when 0 < throttle_fps < camera FPS
     std::chrono::duration<double> throttle_interval_{0.0};
     std::chrono::steady_clock::time_point last_inference_time_{};
 
     // HJ_260529: direct CompressedImage subscriber (used when transport_hint=="compressed")
     rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr sub_compressed_;
+    // HH_261028 - Direct Image subscriber (used when transport_hint=="raw"), so a
+    // composed camera hands the frame over intra-process.
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_raw_;
     image_transport::Subscriber sub_image_;
     image_transport::Publisher pub_image_;
 

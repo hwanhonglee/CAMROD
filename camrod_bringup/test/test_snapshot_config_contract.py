@@ -142,21 +142,15 @@ def test_lanelet_contact_does_not_trigger_an_automatic_snapshot():
     assert "route_boundary_repeat_contact" not in auto_trigger["rule"]
 
 
-def test_platform_faults_capture_immediately_and_everywhere():
+# HH_261028 - A gate FAULT_HOLD repeats on a cadence set by EKF load rather
+# than by platform faults, so arming it spent the whole automatic bag budget
+# on one recurring condition. Disarmed the same way lanelet contact was: the
+# rules entry and the rule definition are commented out together.
+def test_gate_fault_hold_does_not_trigger_an_automatic_snapshot():
     auto_trigger = _auto_trigger()
-    rule = auto_trigger["rule"]["gate_fault_hold"]
 
-    # FAULT_HOLD is estop, an abnormal vehicle_state or a platform error.
-    # Those are hardware faults rather than ordinary holds, so one is already
-    # worth a bag and it is never traded against a contact count.
-    assert rule["operating_states"] == ["FAULT_HOLD"]
-    assert rule.get("min_occurrences", 1) == 1
-    # Deliberately unscoped: a platform fault inside a campsite or at the
-    # charger matters as much as one on the road.
-    assert "scope_topic" not in rule
-    assert "scope_active_states" not in rule
-
-    assert "gate_fault_hold" in auto_trigger["rules"]
+    assert "gate_fault_hold" not in auto_trigger["rules"]
+    assert "gate_fault_hold" not in auto_trigger["rule"]
 
 
 def test_every_counting_rule_declares_its_scope():

@@ -11,6 +11,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     # HH_260521 - Resolve the standalone detector parameters and installed model
     # assets from ROS package shares before constructing the optional YOLO node.
+    # HH_261028 - transport_hint comes from perception_params.yaml. It used to be
+    # pinned to 'compressed' here, which overrode the parameter file.
     default_param = os.path.join(
         get_package_share_directory('camrod_perception'),
         'config', 'perception_params.yaml',
@@ -45,7 +47,6 @@ def generate_launch_description():
                 {
                     'model_path':       LaunchConfiguration('yolo_model_path'),
                     'class_label_path': LaunchConfiguration('yolo_labels_path'),
-                    'transport_hint':   'compressed',  # HJ_260529: econ_front publishes CompressedImage
                 },
             ],
             condition=IfCondition(LaunchConfiguration('enable_yolo')),

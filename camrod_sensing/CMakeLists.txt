@@ -12,6 +12,7 @@ find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 # Project message layer
@@ -97,9 +98,10 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     find_package(OpenCV REQUIRED)
     find_package(CUDAToolkit REQUIRED)
-    # Rear camera uses cv_bridge; front constructs sensor_msgs/Image directly to
-    # avoid loading the system OpenCV ABI into its OpenCV 4.8 component process.
-    find_package(cv_bridge REQUIRED)
+    # HH_261028 - Neither camera links cv_bridge. It is built against
+    # opencv4_vendor while this package resolves OpenCV from /usr, so linking it
+    # mapped two libopencv_core builds into one process and the rear container
+    # segfaulted. Both publishers construct sensor_msgs/Image directly instead.
     find_package(vpi REQUIRED
       PATHS
         /opt/nvidia/vpi3/lib/aarch64-linux-gnu/cmake
@@ -160,7 +162,7 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       rclcpp
       rclcpp_components
       sensor_msgs
-      cv_bridge
+      std_msgs
     )
     target_include_directories(camera_rear_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(

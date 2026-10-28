@@ -31,6 +31,16 @@
     image_width: 1920
     image_height: 1080
 
+    # HH_261028 - Rectified BGR stream for the YOLO detector. A second VIC remap
+    # undistorts straight into this size, so the detector neither CPU-decodes the
+    # GPU-encoded JPEG nor resizes 1920x1080 itself. Detections stay in 1920x1080
+    # coordinates via the detector's detection_reference_* parameters.
+    # rect_raw_publish_rate_hz: 0.0 means every frame; the topic is
+    # subscriber-gated, so it costs nothing while nothing is listening.
+    rect_raw_width: 960
+    rect_raw_height: 540
+    rect_raw_publish_rate_hz: 0.0
+
     # Exposure time [µs] in manual mode.
     # ISX031 AE converges to ~33000 µs causing periodic fps drops.
     # 25000 µs leaves 8 ms margin for sensor overhead at 30 fps.
@@ -68,6 +78,12 @@
     device: "/dev/video1"
     width: 1920
     height: 1080
+    # HH_261028 - nvvidconv (hardware VIC) downscales before any CPU touches the
+    # frame, so cv::remap, the image_rect copy, the image_raw diagnostics stream
+    # and the AprilTag grayscale pass all shrink 4x. build_camera_info() rescales
+    # K and P by pub/calib, so the inline calibration below stays valid as-is.
+    publish_width: 960
+    publish_height: 540
     # HH_260630 - Rear compressed is monitoring-only; rate-limit CPU JPEG cost.
     compressed_publish_rate_hz: 2.0
     publish_compressed_without_subscribers: false

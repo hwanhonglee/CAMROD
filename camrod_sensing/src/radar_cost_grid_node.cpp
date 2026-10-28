@@ -422,9 +422,12 @@ private:
       return false;
     }
     if (!route_lanelet_mask_ || !route_lanelet_mask_has_allowed_cells_) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "route lanelet obstacle filter waiting for a valid active-route mask; passing costs through");
+      // HH_261028 - Silenced on the terminal. Costs still pass through
+      // unfiltered, which is the fail-open behaviour this branch has always
+      // had; only the repeated notice is gone.
+      // RCLCPP_WARN_THROTTLE(
+      //   get_logger(), *get_clock(), 5000,
+      //   "route lanelet obstacle filter waiting for a valid active-route mask; passing costs through");
       return false;
     }
     if (route_lanelet_mask_max_age_s_ > 0.0 &&
@@ -449,9 +452,12 @@ private:
     {
       // HH_260720 - Preserve unfiltered obstacle protection during deliberate
       // off-route campsite and parking maneuvers.
-      RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "robot is outside the active route lanelet corridor; passing obstacle costs through");
+      // HH_261028 - Silenced on the terminal: every campsite and parking
+      // maneuver drives off-corridor by design, so this reported intended
+      // behaviour. The pass-through below is unchanged.
+      // RCLCPP_INFO_THROTTLE(
+      //   get_logger(), *get_clock(), 5000,
+      //   "robot is outside the active route lanelet corridor; passing obstacle costs through");
       return false;
     }
     return true;
@@ -822,7 +828,12 @@ private:
         now_steady - last_obstacle_evidence_warn_at_).count() >=
       obstacle_evidence_warn_interval_s_;
     if (interval_elapsed) {
-      RCLCPP_WARN(get_logger(), "radar obstacle evidence: %s", evidence_text.c_str());
+      // HH_261028 - Silenced on the terminal. Normal driving keeps a hit in
+      // range of one of the six radars almost continuously, so this warned
+      // about ordinary obstacle presence rather than a fault and was the
+      // single loudest line in bringup. The same text still goes out on
+      // obstacle_evidence_topic above, so nothing is lost for diagnostics.
+      // RCLCPP_WARN(get_logger(), "radar obstacle evidence: %s", evidence_text.c_str());
       last_obstacle_evidence_warn_at_ = now_steady;
       obstacle_evidence_warned_ = true;
     }
@@ -937,19 +948,24 @@ private:
         evidence_candidates.push_back(std::move(evidence));
       }
     }
-    if (!dummy_suppressed_sensors.empty()) {
-      std::ostringstream suppressed;
-      for (std::size_t i = 0; i < dummy_suppressed_sensors.size(); ++i) {
-        if (i > 0U) {
-          suppressed << ",";
-        }
-        suppressed << dummy_suppressed_sensors[i];
-      }
-      RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "radar dummy-state barrier suppressing obstacle costs for %s",
-        suppressed.str().c_str());
-    }
+    // HH_261028 - Silenced on the terminal. A dummy/disabled radar channel is
+    // a deployment choice on this unit, not an event, so repeating it every
+    // five seconds only crowded out real messages. The suppression itself is
+    // unchanged; dummy_suppressed_sensors is still built so re-enabling this
+    // block needs no other edit.
+    // if (!dummy_suppressed_sensors.empty()) {
+    //   std::ostringstream suppressed;
+    //   for (std::size_t i = 0; i < dummy_suppressed_sensors.size(); ++i) {
+    //     if (i > 0U) {
+    //       suppressed << ",";
+    //     }
+    //     suppressed << dummy_suppressed_sensors[i];
+    //   }
+    //   RCLCPP_INFO_THROTTLE(
+    //     get_logger(), *get_clock(), 5000,
+    //     "radar dummy-state barrier suppressing obstacle costs for %s",
+    //     suppressed.str().c_str());
+    // }
 
     // HH_260720 - Clip fully-painted radar disks at the route lanelet margin,
     // preventing a hit in an adjacent lane from entering the driven corridor.

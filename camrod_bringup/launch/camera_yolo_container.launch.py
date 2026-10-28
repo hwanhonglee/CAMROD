@@ -42,6 +42,9 @@ def generate_launch_description():
 
         # HH_260707 - Opt-in component path for the front-camera->YOLO hot path.
         # The public node names and topics stay identical to the regular launches.
+        # HH_261028 - transport_hint is no longer overridden here. The launch used
+        # to pin "compressed", which silently won over perception_params.yaml and
+        # made the configured input transport unreachable.
         ComposableNodeContainer(
             package="rclcpp_components",
             executable="component_container_mt",
@@ -59,6 +62,7 @@ def generate_launch_description():
                     remappings=[
                         ("~/image_rect/compressed", "image_rect/compressed"),
                         ("~/image_raw", "image_raw"),
+                        ("~/image_rect_raw", "image_rect_raw"),
                         ("~/camera_info", "camera_info"),
                     ],
                     extra_arguments=[{"use_intra_process_comms": True}],
@@ -73,7 +77,6 @@ def generate_launch_description():
                         {
                             "model_path": LaunchConfiguration("yolo_model_path"),
                             "class_label_path": LaunchConfiguration("yolo_labels_path"),
-                            "transport_hint": "compressed",
                         },
                     ],
                     extra_arguments=[{"use_intra_process_comms": True}],

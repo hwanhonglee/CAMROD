@@ -159,7 +159,8 @@ YOLOV9MIT_TensorRT::~YOLOV9MIT_TensorRT()
     cuda_check(cudaFree(inference_buffers_[2]));
 }
 
-std::vector<Object> YOLOV9MIT_TensorRT::inference(const cv::Mat& frame)
+std::vector<Object> YOLOV9MIT_TensorRT::inference(const cv::Mat& frame, const int32_t org_img_w,
+                                                  const int32_t org_img_h)
 {
     const auto pr_img = preprocess(frame);
 
@@ -169,7 +170,7 @@ std::vector<Object> YOLOV9MIT_TensorRT::inference(const cv::Mat& frame)
     this->doInference(output_blob_classes_, output_blob_bbox_);
 
     const auto objects =
-        decode_outputs(output_blob_classes_, output_blob_bbox_, frame.cols, frame.rows);
+        decode_outputs(output_blob_classes_, output_blob_bbox_, org_img_w, org_img_h);
 
     return objects;
 }

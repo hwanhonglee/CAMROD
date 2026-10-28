@@ -65,7 +65,15 @@
       # and the first rule in this list that has tripped wins it.
       rules:
         - "system_error"
-        - "gate_fault_hold"
+        # HH_261028 - Disarm the platform-fault rule on this unit. FAULT_HOLD
+        # fired roughly every five minutes because an overloaded EKF keeps
+        # strobing the gate's localization recovery hold, not because the
+        # platform faulted. Thirty bags (5.1 GB) piled up while the offload
+        # target stayed unreachable, and every write clears the buffer and
+        # adds disk I/O to an already saturated CPU. The rule definition below
+        # is kept intact so re-arming is a one-line change once the EKF load
+        # is resolved.
+        # - "gate_fault_hold"
         # HH_260928 - Disable automatic snapshots for lanelet contact/recovery.
         # Manual snapshots and the system/platform fault rules remain active.
         # - "route_boundary_repeat_contact"
@@ -89,15 +97,18 @@
         # ROUTE_SAFETY_HOLD in the gate's own state chain, so it covers a
         # lanelet contact that coincides with a platform fault and would
         # otherwise be reported as FAULT_HOLD and missed by the rule below.
-        gate_fault_hold:
-          topic: "/control/cmd_vel_safety_gate/status"
-          kind: "module_state"
-          operating_states: ["FAULT_HOLD"]
-          hold_s: 2.0
-          # Deliberately unscoped: a platform fault inside a campsite or at
-          # the charger matters just as much as one on the road.
-          require_healthy_first: true
-          require_healthy_s: 5.0
+        # HH_261028 - Retained verbatim but commented out together with its
+        # rules entry above, the way route_boundary_repeat_contact is. Armed
+        # rules and rule definitions must stay the same set.
+        # gate_fault_hold:
+        #   topic: "/control/cmd_vel_safety_gate/status"
+        #   kind: "module_state"
+        #   operating_states: ["FAULT_HOLD"]
+        #   hold_s: 2.0
+        #   # Deliberately unscoped: a platform fault inside a campsite or at
+        #   # the charger matters just as much as one on the road.
+        #   require_healthy_first: true
+        #   require_healthy_s: 5.0
 
         # The former route_boundary_repeat_contact rule is intentionally
         # commented out above so ROUTE_SAFETY_HOLD never triggers a snapshot.

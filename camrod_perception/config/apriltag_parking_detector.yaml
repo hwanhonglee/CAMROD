@@ -13,13 +13,17 @@
     tag_size: 0.16                # HH_260720 - Measured black-border outer size in meters.
 
     # --- Detector settings ---
-    quad_decimate: 2.0            # HH_260720 - Reduce detector pixels for real-time operation.
+    # HH_261028 - The rear camera now publishes 960x540, so detection already runs
+    # on the pixel count this used to produce by decimating 1920x1080 by 2. Keep
+    # decimation off: VIC bilinear downscaling is sharper than apriltag's own
+    # subsampling, so tag range is preserved rather than traded away.
+    quad_decimate: 1.0
     n_threads: 2
 
     # --- ROI tracking and reacquisition ---
     # HH_260720 - Track a local ROI and periodically search the full frame for reacquisition.
     roi_scale: 3.0
-    roi_full_search_interval: 30
+    roi_full_search_interval: 60
     max_reproj_error_px: 2.0
 
     # --- Outputs ---

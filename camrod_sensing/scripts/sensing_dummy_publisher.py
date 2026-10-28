@@ -41,6 +41,10 @@ LIDAR_RAW_TOPIC = "/sensing/lidar/vanjee/points_raw"
 LIDAR_FILTERED_TOPIC = "/sensing/lidar/points_filtered"
 
 FRONT_CAMERA_RAW_TOPIC = "/sensing/camera/econ_front/image_raw"
+# HH_261028 - The YOLO detector consumes the rectified raw stream, so the dummy
+# has to stand in for it too; otherwise disabling the front camera silences
+# detections instead of degrading them.
+FRONT_CAMERA_RECT_RAW_TOPIC = "/sensing/camera/econ_front/image_rect_raw"
 FRONT_CAMERA_COMPRESSED_TOPIC = (
     "/sensing/camera/econ_front/image_rect/compressed"
 )
@@ -318,6 +322,9 @@ class SensingDummyPublisher(Node):
                 "front_camera_raw", Image, FRONT_CAMERA_RAW_TOPIC
             )
             self._add_publisher(
+                "front_camera_rect_raw", Image, FRONT_CAMERA_RECT_RAW_TOPIC
+            )
+            self._add_publisher(
                 "front_camera_compressed",
                 CompressedImage,
                 FRONT_CAMERA_COMPRESSED_TOPIC,
@@ -364,6 +371,9 @@ class SensingDummyPublisher(Node):
             )
         if "front_camera" in self._groups:
             self._data_publishers["front_camera_raw"].publish(
+                make_raw_camera_image(stamp, FRONT_CAMERA_FRAME_ID)
+            )
+            self._data_publishers["front_camera_rect_raw"].publish(
                 make_raw_camera_image(stamp, FRONT_CAMERA_FRAME_ID)
             )
             self._data_publishers["front_camera_compressed"].publish(

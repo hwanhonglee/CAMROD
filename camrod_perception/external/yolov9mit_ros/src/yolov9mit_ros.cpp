@@ -60,6 +60,24 @@ sensor_msgs::msg::Image::SharedPtr makeBgrImageMessage(
     return message;
 }
 
+std::vector<yolov9mit::Object> scaleObjects(
+    const std::vector<yolov9mit::Object> & objects,
+    const float scale_x,
+    const float scale_y)
+{
+    std::vector<yolov9mit::Object> scaled;
+    scaled.reserve(objects.size());
+    for (const auto & object : objects)
+    {
+        scaled.emplace_back(
+            cv::Rect2f(
+                object.rect.x * scale_x, object.rect.y * scale_y,
+                object.rect.width * scale_x, object.rect.height * scale_y),
+            object.class_id, object.confidence);
+    }
+    return scaled;
+}
+
 bool decodeRawImage(
     const sensor_msgs::msg::Image & message,
     cv::Mat & output,
@@ -157,6 +175,22 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
         this->declare_parameter("output_boundingbox_topic", "yolov9mit_ros/detections");
     this->imshow_ = this->declare_parameter("imshow", false);
     const auto throttle_fps = this->declare_parameter("throttle_fps", 0.0);
+    const auto detection_reference_width =
+        this->declare_parameter<int64_t>("detection_reference_width", 0);
+    const auto detection_reference_height =
+        this->declare_parameter<int64_t>("detection_reference_height", 0);
+    if (detection_reference_width < 0 || detection_reference_height < 0)
+    {
+        throw std::invalid_argument("detection_reference_width/height must not be negative");
+    }
+    if ((detection_reference_width > 0) != (detection_reference_height > 0))
+    {
+        throw std::invalid_argument(
+            "detection_reference_width and detection_reference_height must both be set, "
+            "or both be 0");
+    }
+    detection_reference_width_ = static_cast<int32_t>(detection_reference_width);
+    detection_reference_height_ = static_cast<int32_t>(detection_reference_height);
     const auto max_compressed_payload_bytes = this->declare_parameter<int64_t>(
         "max_compressed_payload_bytes",
         static_cast<int64_t>(max_compressed_payload_bytes_));
@@ -188,6 +222,8 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
                     output_boundingbox_topic.c_str());
         RCLCPP_INFO(this->get_logger(), " - imshow: %s", imshow_ ? "true" : "false");
         RCLCPP_INFO(this->get_logger(), " - throttle_fps: %f", throttle_fps);
+        RCLCPP_INFO(this->get_logger(), " - detection_reference: %ldx%ld (0 = input frame size)",
+                    detection_reference_width, detection_reference_height);
     }
 
     {
@@ -226,6 +262,14 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
                 input_image_topic + "/compressed",
                 qos,
                 std::bind(&YOLOV9MIT_Node::compressed_image_callback, this, std::placeholders::_1));
+        } else if (transport_hint == "raw") {
+            // HH_261028 - Subscribe directly rather than through image_transport so a
+            // camera composed in the same container delivers the frame by pointer and
+            // no 1920x1080 JPEG is decoded on the CPU just to undo a GPU encode.
+            this->sub_raw_ = this->create_subscription<sensor_msgs::msg::Image>(
+                input_image_topic,
+                qos,
+                std::bind(&YOLOV9MIT_Node::image_callback, this, std::placeholders::_1));
         } else {
             this->sub_image_ = image_transport::create_subscription(
                 this, input_image_topic,
@@ -263,18 +307,33 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
 
 void YOLOV9MIT_Node::process_image(const cv::Mat & image, const std_msgs::msg::Header & header)
 {
+    // HH_261028 - The camera may send a downscaled copy of the rectified frame.
+    // Report detections in the reference frame so camera_info-based fusion keeps
+    // projecting into the same pixel coordinates it always has.
+    const int32_t reference_width =
+        detection_reference_width_ > 0 ? detection_reference_width_ : image.cols;
+    const int32_t reference_height =
+        detection_reference_height_ > 0 ? detection_reference_height_ : image.rows;
+
     auto t0_inf = std::chrono::system_clock::now();
-    const auto objects = this->yolo_->inference(image);
+    const auto objects = this->yolo_->inference(image, reference_width, reference_height);
     auto t1_inf = std::chrono::system_clock::now();
 
     const auto bboxes = objects_to_bboxes(objects, header);
     this->pub_bboxes_->publish(*bboxes);
 
     const bool publish_image = this->pub_image_.getNumSubscribers() > 0 || this->imshow_;
+    // Overlays are drawn in the incoming image's pixels, not the reference frame.
+    const std::vector<yolov9mit::Object> overlay_objects =
+        publish_image
+            ? scaleObjects(
+                  objects, static_cast<float>(image.cols) / static_cast<float>(reference_width),
+                  static_cast<float>(image.rows) / static_cast<float>(reference_height))
+            : std::vector<yolov9mit::Object>{};
     if (publish_image)
     {
         cv::Mat draw = image.clone();
-        yolov9mit::utils::draw_objects(draw, objects, this->class_names_);
+        yolov9mit::utils::draw_objects(draw, overlay_objects, this->class_names_);
         // HH_260730 / TODOLIST 2 - Construct the ROS image directly so this
         // component does not pull the workspace OpenCV 4.5 cv_bridge into the
         // same process as the TensorRT/OpenCV 4.8 detector.
@@ -289,7 +348,7 @@ void YOLOV9MIT_Node::process_image(const cv::Mat & image, const std_msgs::msg::H
     if (this->imshow_)
     {
         cv::Mat draw = image.clone();
-        yolov9mit::utils::draw_objects(draw, objects, this->class_names_);
+        yolov9mit::utils::draw_objects(draw, overlay_objects, this->class_names_);
         cv::imshow(this->window_name_, draw);
         if (cv::waitKey(1) == 113) { cv::destroyWindow(this->window_name_); rclcpp::shutdown(); }
     }

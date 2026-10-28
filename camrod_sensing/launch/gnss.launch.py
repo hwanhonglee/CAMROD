@@ -10,10 +10,11 @@
 #   NTRIP CORS
 #       -> /gnss/ntrip_client/rtcm
 #       -> moving_base_rtcm_writer
-#       -> FTDI DN03DF8V = /dev/ttyUSB1 (POWER+XBEE / Lite moving-base UART1)
+#       -> FTDI DN05Y9E7 by-id (POWER+XBEE / Lite moving-base UART1)
 #       -> Lite solves absolute RTK and emits 4072.0 + MSM7 + 1230
 #       -> board UART/XBee link
-#       -> /dev/ttyACM1 receiver UART2 (Budget heading rover)
+#       -> rover receiver UART2 (Budget heading rover; its USB side is
+#          resolved by-id, not by ttyACM index)
 #       -> rover USB publishes NAV-PVT and NAV-RELPOSNED to ROS
 #
 # Do not connect the CORS topic directly to the heading rover in the field
@@ -136,7 +137,20 @@ def _launch_setup(context, *args, **kwargs):
             # HH_260702 - Keep GNSS driver chatter out of the field console;
             # /system/status carries the operator-facing GNSS health.
             arguments=["--ros-args", "--log-level", gnss_log_level],
-            # HH_260408 - Disable auto-respawn for clean Ctrl+C and no duplicate nodes.
+            # HH_260408 - Auto-respawn was disabled here for clean Ctrl+C and no
+            # duplicate nodes.
+            # HH_261028 - Re-enabled. The driver polls MON-VER once while opening
+            # the port and throws std::runtime_error("Failed to poll MonVER & set
+            # relevant settings") if the reply does not arrive in time, which
+            # aborts the process (SIGABRT) with no retry. On a cold boot that
+            # poll competes with the rest of the graph starting on a saturated
+            # CPU, and with whatever the receiver is emitting while the
+            # moving base re-converges, so a single slow reply left the robot
+            # with no GNSS node at all until someone relaunched by hand. The
+            # receiver itself was healthy throughout. Respawning matches the CV7
+            # IMU in imu.launch.py, which already recovers this way.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[ublox_param_file, ublox_inline_params],
             remappings=[
                 ("rtcm",  ublox_rtcm_topic),

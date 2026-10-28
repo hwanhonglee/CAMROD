@@ -293,13 +293,17 @@ def test_gnss_config_owns_distinct_rover_and_moving_base_ports():
     rover = config["/**/ublox_gps_node"]["ros__parameters"]
     moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
 
-    assert rover["device"] == "/dev/ttyACM1"
+    assert rover["device"] == (
+        "/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00"
+    )
     # HH_260819 - Raw receiver messages identify the antenna TF, while this
     # canonical file alone owns the 100 ms receiver cadence.
     assert rover["frame_id"] == "gnss_link"
     assert rover["rate"] == 10.0
     assert rover["nav_rate"] == 1
-    assert moving_base["device"] == "/dev/ttyUSB1"
+    assert moving_base["device"] == (
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN05Y9E7-if00-port0"
+    )
     assert moving_base["baud"] == 460800
     assert rover["device"] != moving_base["device"]
 

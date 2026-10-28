@@ -9,6 +9,13 @@
 // HH_260630 - Rate-limit rear CPU JPEG publishing and avoid frame deep-copy handoff.
 // HH_260801 - Move monitoring JPEG encoding off the raw publication path so a
 //             slow CPU encode cannot reduce the AprilTag image_raw cadence.
+// HH_261028 - Fill sensor_msgs/Image directly instead of going through cv_bridge.
+//             camrod_sensing resolves OpenCV from /usr while the workspace
+//             cv_bridge links opencv4_vendor, so this component mapped two
+//             libopencv_core builds into one process. Handing a cv::Mat across
+//             that boundary every frame corrupted the shared allocator and the
+//             rear container died with SIGSEGV minutes into every run. The front
+//             publisher already builds the message directly for the same reason.
 //
 // Publishes:
 //   ~/image_raw            (sensor_msgs/Image,           on demand)
@@ -20,8 +27,12 @@
 #include <array>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -32,15 +43,54 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 
-#include "cv_bridge/cv_bridge.h"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "std_msgs/msg/header.hpp"
 
 namespace camrod::sensing
 {
+
+namespace
+{
+
+sensor_msgs::msg::Image makeBgrImageMessage(
+  const cv::Mat & bgr,
+  const std_msgs::msg::Header & header)
+{
+  if (bgr.empty() || bgr.type() != CV_8UC3) {
+    throw std::invalid_argument("Rear camera image must be non-empty CV_8UC3");
+  }
+
+  const std::size_t row_bytes =
+    static_cast<std::size_t>(bgr.cols) * bgr.elemSize();
+  const std::size_t rows = static_cast<std::size_t>(bgr.rows);
+  if (row_bytes > std::numeric_limits<std::uint32_t>::max() ||
+    rows > std::numeric_limits<std::size_t>::max() / row_bytes)
+  {
+    throw std::length_error("Rear camera image exceeds sensor_msgs/Image limits");
+  }
+
+  sensor_msgs::msg::Image message;
+  message.header = header;
+  message.height = static_cast<std::uint32_t>(bgr.rows);
+  message.width = static_cast<std::uint32_t>(bgr.cols);
+  message.encoding = "bgr8";
+  message.is_bigendian = false;
+  message.step = static_cast<std::uint32_t>(row_bytes);
+  message.data.resize(rows * row_bytes);
+
+  for (int row = 0; row < bgr.rows; ++row) {
+    std::memcpy(
+      message.data.data() + static_cast<std::size_t>(row) * row_bytes,
+      bgr.ptr(row), row_bytes);
+  }
+  return message;
+}
+
+}  // namespace
 
 class CameraRearPublisherNode : public rclcpp::Node
 {
@@ -241,35 +291,38 @@ private:
         compressed_cv_.notify_one();
       }
 
-      // Raw image (only if someone subscribed — heavy ~1.5 MB, required by Isaac ROS AprilTag)
-      if (image_pub_->get_subscription_count() > 0) {
-        auto img_msg = cv_bridge::CvImage(
-          std_msgs::msg::Header(), "bgr8", frame).toImageMsg();
-        img_msg->header.stamp    = stamp;
-        img_msg->header.frame_id = frame_id_;
-        // HH_260805 - Move the raw payload into a unique message so an
-        // intra-process rectifier receives the frame without another vector copy.
-        auto unique_msg = std::make_unique<sensor_msgs::msg::Image>(
-          std::move(*img_msg));
-        image_pub_->publish(std::move(unique_msg));
-      }
+      std_msgs::msg::Header header;
+      header.stamp    = stamp;
+      header.frame_id = frame_id_;
 
-      // HH_260814 - Rectified image for AprilTag parking. Remap costs a full
-      // frame pass, so keep it subscriber-gated like the raw stream.
-      if (rect_pub_->get_subscription_count() > 0) {
-        cv::Mat rectified;
-        if (rect_maps_ready_) {
-          cv::remap(frame, rectified, rect_map1_, rect_map2_, cv::INTER_LINEAR);
-        } else {
-          // Uncalibrated fallback keeps the topic alive rather than silently empty.
-          rectified = frame;
+      try {
+        // Raw image (only if someone subscribed — heavy ~1.5 MB, required by Isaac ROS AprilTag)
+        if (image_pub_->get_subscription_count() > 0) {
+          // HH_260805 - Move the raw payload into a unique message so an
+          // intra-process rectifier receives the frame without another vector copy.
+          image_pub_->publish(
+            std::make_unique<sensor_msgs::msg::Image>(
+              makeBgrImageMessage(frame, header)));
         }
-        auto rect_msg = cv_bridge::CvImage(
-          std_msgs::msg::Header(), "bgr8", rectified).toImageMsg();
-        rect_msg->header.stamp    = stamp;
-        rect_msg->header.frame_id = frame_id_;
-        rect_pub_->publish(
-          std::make_unique<sensor_msgs::msg::Image>(std::move(*rect_msg)));
+
+        // HH_260814 - Rectified image for AprilTag parking. Remap costs a full
+        // frame pass, so keep it subscriber-gated like the raw stream.
+        if (rect_pub_->get_subscription_count() > 0) {
+          cv::Mat rectified;
+          if (rect_maps_ready_) {
+            cv::remap(frame, rectified, rect_map1_, rect_map2_, cv::INTER_LINEAR);
+          } else {
+            // Uncalibrated fallback keeps the topic alive rather than silently empty.
+            rectified = frame;
+          }
+          rect_pub_->publish(
+            std::make_unique<sensor_msgs::msg::Image>(
+              makeBgrImageMessage(rectified, header)));
+        }
+      } catch (const std::exception & error) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Rear raw/rectified publish skipped: %s", error.what());
       }
 
       // CameraInfo

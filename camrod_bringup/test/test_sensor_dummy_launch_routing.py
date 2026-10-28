@@ -390,11 +390,28 @@ def test_parking_detector_field_profile_preserves_validated_decimation():
     # HH_260907 - The recorded visible ID 3 failed at runtime 1.75. Preserve
     # the final field profile 2.0, independently replayed through the installed
     # detector with valid ID 3/pose; 1.5 was an earlier diagnostic comparison.
+    # HH_261028 - That profile pinned 1920x1080 capture at decimation 2.0, so what
+    # the field actually validated is 960x540 detection pixels. The rear camera now
+    # downscales on the VIC and the detector no longer decimates, which reaches the
+    # same detection resolution through sharper bilinear scaling. Assert the product
+    # rather than the decimation alone: pinning only one factor let the other be
+    # halved without any test noticing, which is exactly how tag range gets lost.
     package_config = SRC_ROOT / "camrod_perception/config/apriltag_parking_detector.yaml"
     bringup_config = BRINGUP_ROOT / "config/perception/apriltag_parking_detector.yaml"
     assert package_config.read_bytes() == bringup_config.read_bytes()
     params = yaml.safe_load(package_config.read_text())["/perception/apriltag_parking_detector"]["ros__parameters"]
-    assert params["quad_decimate"] == 2.0
+    camera = yaml.safe_load(
+        (SRC_ROOT / "camrod_sensing/config/camera/camera_params.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["/sensing/camera/econ_rear/camera_rear_publisher"]["ros__parameters"]
+    # publish_width/height default to the capture size in CameraRearPublisherNode.
+    published_width = camera.get("publish_width") or camera["width"]
+    published_height = camera.get("publish_height") or camera["height"]
+    assert (
+        published_width / params["quad_decimate"],
+        published_height / params["quad_decimate"],
+    ) == (960.0, 540.0)
     assert params["tag_family"] == "tag36h11"
     assert params["target_tag_id"] == 3
     assert params["max_reproj_error_px"] == 2.0

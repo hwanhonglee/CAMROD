@@ -46,6 +46,7 @@ camera_checker:
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5
       stale_timeout_s: 3.0
-      expected_width: 1920
-      expected_height: 1080
+      # HH_261028 - Rear publishes 960x540 (camera_params.yaml publish_width/height).
+      expected_width: 960
+      expected_height: 540
       expected_encoding: "bgr8"

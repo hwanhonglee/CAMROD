@@ -86,7 +86,7 @@ def test_production_defaults_use_working_ui_renderer_and_scope_shared_memory() -
     assert defaults["sensing"]["enable_lidar_cost_grid"] is True
     assert defaults["system"]["operator_ui_window_engine"] == "webkit"
     assert defaults["system"]["enable_operator_telemetry"] is True
-    assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 10.0
+    assert defaults["system"]["operator_telemetry_stream_rate_hz"] == 5.0
 
     bringup_source = BRINGUP_IMPL.read_text(encoding="utf-8")
     lidar_source = LIDAR_LAUNCH.read_text(encoding="utf-8")

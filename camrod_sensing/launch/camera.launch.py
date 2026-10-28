@@ -5,6 +5,7 @@
 #
 # Topic layout:
 #   /sensing/camera/econ_front/image_rect/compressed
+#   /sensing/camera/econ_front/image_rect_raw        (rectified BGR, for YOLO)
 #   /sensing/camera/econ_front/camera_info
 #   /sensing/camera/econ_rear/image_raw
 #   /sensing/camera/econ_rear/image_raw/compressed
@@ -159,6 +160,7 @@ def generate_launch_description():
             remappings=[
                 ('~/image_rect/compressed', 'image_rect/compressed'),
                 ('~/image_raw',             'image_raw'),
+                ('~/image_rect_raw',        'image_rect_raw'),
                 ('~/camera_info',           'camera_info'),
             ],
         ),

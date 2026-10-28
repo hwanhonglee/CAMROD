@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <sys/ioctl.h>
 #include <vpi/Status.h>
@@ -87,6 +88,15 @@ sensor_msgs::msg::Image makeBgrImageMessage(
   }
   return message;
 }
+
+std::unique_ptr<sensor_msgs::msg::Image> makeBgrImageMessageUnique(
+  const cv::Mat & bgr,
+  const std_msgs::msg::Header & header)
+{
+  // HH_261028 - Publishing a unique_ptr lets the composed detector take the
+  // payload by pointer; the shared_ptr/value overloads copy it instead.
+  return std::make_unique<sensor_msgs::msg::Image>(makeBgrImageMessage(bgr, header));
+}
 }  // namespace
 
 CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & options)
@@ -105,6 +115,11 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   this->declare_parameter<std::vector<double>>("distortion_coefficients", std::vector<double>{});
   this->declare_parameter<int>("exposure_time_us", 25000);
   this->declare_parameter<int>("jpeg_quality", 80);
+  // HH_261028 - Size of the rectified BGR stream the YOLO detector consumes.
+  // 0x0 keeps it at the full rectified size.
+  this->declare_parameter<int>("rect_raw_width", 0);
+  this->declare_parameter<int>("rect_raw_height", 0);
+  this->declare_parameter<double>("rect_raw_publish_rate_hz", 0.0);
 
   std::string camera_name;
   this->get_parameter("camera_name", camera_name);
@@ -120,6 +135,9 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   int exposure_time_us;
   this->get_parameter("exposure_time_us", exposure_time_us);
   this->get_parameter("jpeg_quality", jpeg_quality_);
+  this->get_parameter("rect_raw_width", rect_raw_width_);
+  this->get_parameter("rect_raw_height", rect_raw_height_);
+  this->get_parameter("rect_raw_publish_rate_hz", rect_raw_publish_rate_hz_);
   max_jpeg_payload_size_ =
     camera_front_contract::maxJpegPayloadBytes(image_width_, image_height_);
   if (max_jpeg_payload_size_ == 0U) {
@@ -132,6 +150,24 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   if (jpeg_quality_ < 1 || jpeg_quality_ > 100) {
     throw std::invalid_argument("Front camera jpeg_quality must be in [1, 100]");
   }
+  if (rect_raw_width_ == 0 && rect_raw_height_ == 0) {
+    rect_raw_width_ = image_width_;
+    rect_raw_height_ = image_height_;
+  }
+  if (rect_raw_width_ <= 0 || rect_raw_height_ <= 0 ||
+    rect_raw_width_ % 2 != 0 || rect_raw_height_ % 2 != 0)
+  {
+    throw std::invalid_argument(
+            "Front camera rect_raw_width/rect_raw_height must be positive, even NV12 dimensions");
+  }
+  // HH_261028 - Rejects NaN as well as negative rates.
+  if (!(rect_raw_publish_rate_hz_ >= 0.0)) {
+    throw std::invalid_argument("Front camera rect_raw_publish_rate_hz must be >= 0");
+  }
+  rect_raw_period_ns_ =
+    rect_raw_publish_rate_hz_ > 0.0
+      ? static_cast<std::int64_t>(1.0e9 / rect_raw_publish_rate_hz_)
+      : 0;
   if (intrinsics_source_ != "none" && intrinsics_source_ != "custom") {
     RCLCPP_WARN(
       this->get_logger(),
@@ -207,6 +243,8 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
     "~/image_rect/compressed", rclcpp::SensorDataQoS());
   image_raw_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
     "~/image_raw", rclcpp::SensorDataQoS());
+  rect_raw_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
+    "~/image_rect_raw", rclcpp::SensorDataQoS());
   camera_info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     "~/camera_info", rclcpp::SensorDataQoS());
 
@@ -246,6 +284,8 @@ CameraFrontPublisherNode::~CameraFrontPublisherNode()
   if (vpi_nv12_in_wrapper_)  { vpiImageDestroy(vpi_nv12_in_wrapper_); }
   if (vpi_nv12_out_wrapper_) { vpiImageDestroy(vpi_nv12_out_wrapper_); }
   if (vpi_remap_payload_)    { vpiPayloadDestroy(vpi_remap_payload_); }
+  if (vpi_rect_raw_wrapper_) { vpiImageDestroy(vpi_rect_raw_wrapper_); }
+  if (vpi_rect_raw_payload_) { vpiPayloadDestroy(vpi_rect_raw_payload_); }
   cleanupNvJpeg();
 }
 
@@ -642,6 +682,8 @@ void CameraFrontPublisherNode::publishThread()
           makeBgrImageMessage(bgr, compressed_msg_.header));
       }
 
+      publishRectRaw(compressed_msg_.header, timestamp.nanoseconds());
+
       if (!encodeRectifiedJpeg()) {
         continue;
       }
@@ -717,28 +759,29 @@ void CameraFrontPublisherNode::loadCameraInfo()
   }
 }
 
-void CameraFrontPublisherNode::initVpiRemap()
+bool CameraFrontPublisherNode::createVpiRemap(
+  const int output_width, const int output_height,
+  VPIPayload * payload, VPIImage * wrapper, cv::Mat * buffer)
 {
-  if (intrinsics_source_ != "custom" || camera_matrix_.size() < 9 ||
-      distortion_coefficients_.size() < 4) {
-    RCLCPP_WARN(this->get_logger(), "VPI remap skipped: no calibration");
-    return;
-  }
+  // Sparse warp grid: VIC bicubic-interpolates between control points, which is
+  // sufficient accuracy for smooth fisheye. The interval has to tile the output
+  // exactly, so pick the coarsest one that divides each dimension.
+  const auto control_interval = [](const int extent) {
+      for (const int candidate : {8, 4, 2}) {
+        if (extent % candidate == 0) {
+          return candidate;
+        }
+      }
+      return 1;
+    };
 
-  if (vpiStreamCreate(VPI_BACKEND_VIC, &vpi_stream_) != VPI_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to create VPI VIC stream");
-    return;
-  }
-
-  // Sparse warp grid (8-pixel intervals): ~33K control points for 1920x1080,
-  // VIC bicubic-interpolates between them — sufficient accuracy for smooth fisheye.
   VPIWarpMap warp_map = {};
   warp_map.grid.numHorizRegions  = 1;
   warp_map.grid.numVertRegions   = 1;
-  warp_map.grid.regionWidth[0]   = image_width_;
-  warp_map.grid.regionHeight[0]  = image_height_;
-  warp_map.grid.horizInterval[0] = 8;
-  warp_map.grid.vertInterval[0]  = 8;
+  warp_map.grid.regionWidth[0]   = output_width;
+  warp_map.grid.regionHeight[0]  = output_height;
+  warp_map.grid.horizInterval[0] = control_interval(output_width);
+  warp_map.grid.vertInterval[0]  = control_interval(output_height);
   vpiWarpMapAllocData(&warp_map);
 
   // Input intrinsics from calibration
@@ -748,12 +791,17 @@ void CameraFrontPublisherNode::initVpiRemap()
   Kin[1][1] = static_cast<float>(camera_matrix_[4]);  // fy
   Kin[1][2] = static_cast<float>(camera_matrix_[5]);  // cy
 
-  // Output intrinsics from the estimated P matrix (set by loadCameraInfo)
+  // HH_261028 - Output intrinsics from the estimated P matrix (set by
+  // loadCameraInfo), scaled to the requested output size. Scaling P rather than
+  // cropping keeps a reduced output an exact uniform rescale of the full
+  // rectified frame, so detections map back by a single scale factor.
+  const double scale_x = static_cast<double>(output_width) / image_width_;
+  const double scale_y = static_cast<double>(output_height) / image_height_;
   VPICameraIntrinsic Kout = {};
-  Kout[0][0] = static_cast<float>(camera_info_msg_.p[0]);  // fx_new
-  Kout[0][2] = static_cast<float>(camera_info_msg_.p[2]);  // cx_new
-  Kout[1][1] = static_cast<float>(camera_info_msg_.p[5]);  // fy_new
-  Kout[1][2] = static_cast<float>(camera_info_msg_.p[6]);  // cy_new
+  Kout[0][0] = static_cast<float>(camera_info_msg_.p[0] * scale_x);  // fx_new
+  Kout[0][2] = static_cast<float>(camera_info_msg_.p[2] * scale_x);  // cx_new
+  Kout[1][1] = static_cast<float>(camera_info_msg_.p[5] * scale_y);  // fy_new
+  Kout[1][2] = static_cast<float>(camera_info_msg_.p[6] * scale_y);  // cy_new
 
   // Identity extrinsic (monocular, no rotation/translation)
   VPICameraExtrinsic X = {};
@@ -769,26 +817,111 @@ void CameraFrontPublisherNode::initVpiRemap()
 
   vpiWarpMapGenerateFromFisheyeLensDistortionModel(Kin, X, Kout, &dist, &warp_map);
 
-  if (vpiCreateRemap(VPI_BACKEND_VIC, &warp_map, &vpi_remap_payload_) != VPI_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to create VPI remap payload (VIC)");
-    vpiWarpMapFreeData(&warp_map);
+  const VPIStatus remap_status = vpiCreateRemap(VPI_BACKEND_VIC, &warp_map, payload);
+  vpiWarpMapFreeData(&warp_map);
+  if (remap_status != VPI_SUCCESS) {
+    RCLCPP_ERROR(
+      this->get_logger(), "Failed to create VPI remap payload (VIC) for %dx%d",
+      output_width, output_height);
+    *payload = nullptr;
+    return false;
+  }
+
+  // Pre-allocate contiguous NV12 output buffer (H*3/2 x W); VIC writes directly here
+  *buffer = cv::Mat(output_height * 3 / 2, output_width, CV_8UC1);
+  if (vpiImageCreateWrapperOpenCVMat(
+      *buffer, VPI_IMAGE_FORMAT_NV12,
+      VPI_BACKEND_CPU | VPI_BACKEND_VIC, wrapper) != VPI_SUCCESS)
+  {
+    RCLCPP_ERROR(
+      this->get_logger(), "Failed to create VPI NV12 output wrapper for %dx%d",
+      output_width, output_height);
+    vpiPayloadDestroy(*payload);
+    *payload = nullptr;
+    *wrapper = nullptr;
+    return false;
+  }
+  return true;
+}
+
+void CameraFrontPublisherNode::initVpiRemap()
+{
+  if (intrinsics_source_ != "custom" || camera_matrix_.size() < 9 ||
+      distortion_coefficients_.size() < 4) {
+    RCLCPP_WARN(this->get_logger(), "VPI remap skipped: no calibration");
     return;
   }
-  vpiWarpMapFreeData(&warp_map);
 
-  // Pre-allocate contiguous NV12 output buffer (H*3/2 × W); VIC writes directly here
-  nv12_rect_buf_ = cv::Mat(image_height_ * 3 / 2, image_width_, CV_8UC1);
-  if (vpiImageCreateWrapperOpenCVMat(
-        nv12_rect_buf_, VPI_IMAGE_FORMAT_NV12,
-        VPI_BACKEND_CPU | VPI_BACKEND_VIC, &vpi_nv12_out_wrapper_) != VPI_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to create VPI NV12 output wrapper");
+  if (vpiStreamCreate(VPI_BACKEND_VIC, &vpi_stream_) != VPI_SUCCESS) {
+    RCLCPP_ERROR(this->get_logger(), "Failed to create VPI VIC stream");
+    return;
+  }
+
+  if (!createVpiRemap(
+      image_width_, image_height_,
+      &vpi_remap_payload_, &vpi_nv12_out_wrapper_, &nv12_rect_buf_))
+  {
     return;
   }
 
   vpi_ready_ = true;
   RCLCPP_INFO(this->get_logger(),
-    "VPI VIC fisheye remap ready (%dx%d, equidistant, interval=8)",
+    "VPI VIC fisheye remap ready (%dx%d, equidistant)",
     image_width_, image_height_);
+
+  // HH_261028 - Second payload undistorts straight into the detector's frame
+  // size. A failure here only silences image_rect_raw; the JPEG path that
+  // fusion and the operator UI depend on keeps running.
+  rect_raw_ready_ = createVpiRemap(
+    rect_raw_width_, rect_raw_height_,
+    &vpi_rect_raw_payload_, &vpi_rect_raw_wrapper_, &nv12_rect_raw_buf_);
+  if (rect_raw_ready_) {
+    RCLCPP_INFO(this->get_logger(),
+      "VPI VIC detector remap ready (%dx%d @%.2fHz, 0 = every frame)",
+      rect_raw_width_, rect_raw_height_, rect_raw_publish_rate_hz_);
+  } else {
+    RCLCPP_ERROR(this->get_logger(),
+      "detector remap unavailable; %s stays silent",
+      rect_raw_pub_->get_topic_name());
+  }
+}
+
+void CameraFrontPublisherNode::publishRectRaw(
+  const std_msgs::msg::Header & header, const std::int64_t stamp_ns)
+{
+  if (!rect_raw_ready_ || rect_raw_pub_->get_subscription_count() == 0) {
+    return;
+  }
+  // A backwards clock step must not stall the stream until the clock catches up.
+  if (rect_raw_period_ns_ > 0 && last_rect_raw_schedule_ns_ != 0 &&
+    stamp_ns >= last_rect_raw_schedule_ns_ &&
+    stamp_ns - last_rect_raw_schedule_ns_ < rect_raw_period_ns_)
+  {
+    return;
+  }
+  last_rect_raw_schedule_ns_ = stamp_ns;
+
+  // Reuses the stream and the input wrapper the full-resolution remap just read,
+  // so undistort plus downscale costs VIC time instead of CPU time.
+  if (vpiSubmitRemap(
+      vpi_stream_, VPI_BACKEND_VIC, vpi_rect_raw_payload_,
+      vpi_nv12_in_wrapper_, vpi_rect_raw_wrapper_,
+      VPI_INTERP_LINEAR, VPI_BORDER_ZERO, 0) != VPI_SUCCESS)
+  {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Detector remap submit failed; dropping one image_rect_raw frame");
+    return;
+  }
+  vpiStreamSync(vpi_stream_);
+
+  // Cache coherency: flush VIC writes into the CPU view before converting.
+  vpiImageLock(vpi_rect_raw_wrapper_, VPI_LOCK_READ);
+  cv::Mat bgr;
+  cv::cvtColor(nv12_rect_raw_buf_, bgr, cv::COLOR_YUV2BGR_NV12);
+  vpiImageUnlock(vpi_rect_raw_wrapper_);
+
+  rect_raw_pub_->publish(makeBgrImageMessageUnique(bgr, header));
 }
 
 }  // namespace camrod::sensing

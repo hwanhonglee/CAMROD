@@ -20,7 +20,8 @@ public:
                        const float min_iou = 0.5f, const float min_confidence = 0.5f,
                        const size_t num_classes = 80);
     ~YOLOV9MIT_TensorRT();
-    std::vector<Object> inference(const cv::Mat &frame) override;
+    std::vector<Object> inference(const cv::Mat &frame, const int32_t org_img_w,
+                                  const int32_t org_img_h) override;
 
 private:
     void doInference(PinnedVector<float> &output0, PinnedVector<float> &output1);

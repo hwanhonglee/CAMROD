@@ -102,12 +102,25 @@
 
     # HH_260723 - Limit inference to the diagnostics contract and leave CPU headroom for
     # localization/planning under the full hardware stack.
-    throttle_fps: 5.0
+    # HH_261028 - 3.0 Hz is the floor, not a free knob: obstacle_fusion drops
+    # detections older than detection_max_age_s (0.50 s), so a slower rate starves
+    # fusion instead of saving CPU.
+    throttle_fps: 3.0
     imshow: false
 
-    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529 - Use the rectified front-camera image.
-    transport_hint: "compressed"
+    # HH_261028 - Consume the camera's rectified raw stream instead of its JPEG.
+    # camera_front_publisher GPU-encodes that JPEG, so decoding it here spent a
+    # CPU core undoing GPU work. transport_hint "raw" takes a direct Image
+    # subscription, which is intra-process inside camera_yolo_container.
+    input_image_topic: "/sensing/camera/econ_front/image_rect_raw"
+    transport_hint: "raw"
+    # The camera sends 960x540 (camera_params.yaml rect_raw_width/height); report
+    # detections in full rectified pixels so obstacle_fusion's camera_info
+    # projection is unaffected.
+    detection_reference_width: 1920
+    detection_reference_height: 1080
     # HH_260730 - TODO list 2: Reject corrupt/decompression-bomb inputs before OpenCV.
+    # Applies only to transport_hint "compressed".
     max_compressed_payload_bytes: 16777216
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"

@@ -155,7 +155,7 @@ def generate_launch_description():
     )
     operator_telemetry_stream_rate_hz_arg = DeclareLaunchArgument(
         'operator_telemetry_stream_rate_hz',
-        default_value='10.0',
+        default_value='5.0',
         description='Maximum selected-view WebSocket refresh rate in Hz',
     )
     enable_ui_guest_arg = DeclareLaunchArgument(
@@ -408,6 +408,14 @@ def generate_launch_description():
                 LaunchConfiguration('operator_telemetry_stream_rate_hz'),
                 value_type=float,
             ),
+            # HH_261028 - Floor the leased high-bandwidth views. They bind only
+            # while a diagnostics tab is open, but the node defaults (0.5/1.0/
+            # 0.1 s) let one open tab add decode and re-encode work on top of
+            # the stream itself. Halving each keeps the view readable while the
+            # eight-core target carries perception and planning.
+            'telemetry_lidar_min_period_s': 1.0,
+            'telemetry_grid_min_period_s': 2.0,
+            'telemetry_camera_min_period_s': 0.2,
             # HH_260617 - UI follows the system namespace for aggregated diagnostics.
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             # HH_260721 - Consume the platform-neutral operational service lifecycle.
