@@ -66,6 +66,46 @@ function expectNoCommands() {
   sockets.forEach(socket => expect(socket.send).not.toHaveBeenCalled());
 }
 
+test('public failure copy is short while its original diagnostic stays in a closed disclosure', async () => {
+  // HH_261102 - Reducing customer text must not erase the reason or send recovery/motion commands.
+  await startMission();
+  await tap(host.querySelector('[data-testid="driving-display"]'));
+  await act(async () => emit(missionFrame({ mission_phase: 'ERROR',
+    mission_execution_error: 'phase=ERROR site=camping_site_2 source=controller yaw_error_deg=42' })));
+  const details = host.querySelector('[data-ui="operator-mission-error-details"]');
+  expect(details).not.toBeNull();
+  expect(details.open).toBe(false);
+  expect(details.textContent).toContain('yaw_error_deg=42');
+  expect(details.closest('[role="alert"]').querySelector('p').textContent)
+    .toBe('이동할 수 없습니다. 관리자에게 문의해 주세요.');
+  await tap(details.querySelector('summary'));
+  expect(details.open).toBe(true);
+  expectNoCommands();
+});
+
+test('short service prompts retain every existing confirmation before sending a destination', async () => {
+  await renderApp();
+  await act(async () => {
+    sockets[0].onopen();
+    emit(missionFrame({ states: {}, mission_dispatch_active: false, mission_dispatch_generation: 0,
+      mission_dispatch_site: '', service_state: 0, service_state_name: 'DROP_ZONE_WAIT', mission_phase: 'READY' }));
+  });
+  await tap(host.querySelector('[data-ui="operator-open-destination"]'));
+  await tap(host.querySelector('[data-ui="usage-safety-confirm"]'));
+  expect(host.textContent).toContain('어떤 서비스를 이용하시겠어요?');
+  await tap(host.querySelector('[data-ui="operator-intent-delivery"]'));
+  expect(host.textContent).toContain('텐트와 장비가 이동을 막지 않는지 확인해 주세요.');
+  await tap(host.querySelector('[data-ui="operator-service-delivery-confirm"]'));
+  await tap(host.querySelector('[data-ui="operator-site-B2"]'));
+  await tap(host.querySelector('[data-ui="operator-site-preview-confirm"]'));
+  expect(host.textContent).toContain('B2로 배달할까요?');
+  expect(host.textContent).not.toContain('로봇이 출발하면 정차할 수 없습니다');
+  expect(host.querySelector('[data-ui="operator-move-confirm-yes"]').textContent.trim()).toBe('다음');
+  await tap(host.querySelector('[data-ui="operator-move-confirm-yes"]'));
+  expect(host.querySelector('[data-ui="operator-site-code-input"]')).not.toBeNull();
+  expectNoCommands();
+});
+
 beforeEach(() => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   jest.useFakeTimers();
@@ -347,7 +387,8 @@ test('Recall first completion reveals moving navigation, then final loading conf
   await act(async () => emit(recallWait));
   const firstConfirmation = host.querySelector('[data-ui="operator-arrival-return-confirm"]');
   expect(firstConfirmation).not.toBeNull();
-  expect(firstConfirmation.textContent).toContain('정리 완료 · 사이트 재진입');
+  // HH_261102 - The shorter action label still owns the same first-stage turnaround command.
+  expect(firstConfirmation.textContent).toContain('정리 완료 · 회전 시작');
   expect(host.querySelector('[data-testid="driving-display"]')).toBeNull();
 
   await tap(firstConfirmation);

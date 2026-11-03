@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/point_cloud2_iterator.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/exceptions.h>
@@ -24,6 +26,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include "camrod_sensing/route_lanelet_cost_filter.hpp"
+#include "camrod_sensing/front_lidar_guard.hpp"
 
 namespace camrod::sensing {
 
@@ -34,6 +37,26 @@ public:
   // Implements `LidarCostGridNode` behavior.
   explicit LidarCostGridNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
       : Node("lidar_cost_grid", options) {
+    // HH_261102 - An opt-in second instance guards raw near-field points without enabling broad raw fusion costs.
+    rcl_interfaces::msg::ParameterDescriptor guard_startup;
+    guard_startup.read_only = true;
+    front_guard_mode_ = declare_parameter<bool>("front_guard_mode", false, guard_startup);
+    front_guard_.body_front_m = declare_parameter<double>("front_guard_body_front_m", 0.70837);
+    front_guard_.body_left_m = declare_parameter<double>("front_guard_body_left_m", 0.53505);
+    front_guard_.body_right_m = declare_parameter<double>("front_guard_body_right_m", 0.53495);
+    front_guard_.body_bottom_m = declare_parameter<double>("front_guard_body_bottom_m", -0.15275);
+    front_guard_.body_top_m = declare_parameter<double>("front_guard_body_top_m", 0.94188);
+    front_guard_.distance_m = declare_parameter<double>("front_guard_distance_m", 0.30);
+    front_guard_.ground_clearance_m = declare_parameter<double>("front_guard_ground_clearance_m", 0.05);
+    if (front_guard_mode_ && (!std::isfinite(front_guard_.distance_m) || front_guard_.distance_m <= 0.0 ||
+        !std::isfinite(front_guard_.ground_clearance_m) || front_guard_.ground_clearance_m < 0.0 ||
+        !std::isfinite(front_guard_.body_front_m) || front_guard_.body_front_m <= 0.0 ||
+        !std::isfinite(front_guard_.body_left_m) || front_guard_.body_left_m <= 0.0 ||
+        !std::isfinite(front_guard_.body_right_m) || front_guard_.body_right_m <= 0.0 ||
+        !std::isfinite(front_guard_.body_bottom_m) || !std::isfinite(front_guard_.body_top_m) ||
+        front_guard_.body_top_m <= front_guard_.body_bottom_m + front_guard_.ground_clearance_m)) {
+      throw std::invalid_argument("invalid front LiDAR guard body/ground/clearance bounds");
+    }
     // HH_260421 - Use filtered lidar points as default cost-grid input.
     input_topic_ = declare_parameter<std::string>(
         "input_topic", "/sensing/lidar/points_filtered");
@@ -130,6 +153,22 @@ public:
         });
 
     configureInputs();
+    if (front_guard_mode_ && (cloud_inputs_.size() != 1U || raw_lidar_cost_enabled_ ||
+        route_lanelet_filter_enable_ || ego_clear_radius_m_ > 0.0 ||
+        !std::isfinite(max_message_age_s_) || max_message_age_s_ <= 0.0 ||
+        !std::isfinite(resolution_) || resolution_ <= 0.0 || width_ <= 0 || height_ <= 0)) {
+      throw std::invalid_argument("front guard requires one raw cloud, no appended fusion/raw inputs, route clipping, or ego clearing");
+    }
+    if (front_guard_mode_) {
+      // HH_261102 - This safety instance caches its validated YAML; never accept a live write that changes nothing.
+      front_guard_param_callback_ = add_on_set_parameters_callback([](const auto & params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = std::all_of(params.begin(), params.end(), [](const auto & value) {
+          return value.get_name() == "use_sim_time";});
+        result.reason = "Front-guard parameters are startup-only; edit YAML and restart this instance";
+        return result;
+      });
+    }
 
     if (publish_rate_hz_ <= 0.0) {
       publish_rate_hz_ = 10.0;
@@ -435,22 +474,51 @@ private:
   }
 
   // Implements `markCloudInput` behavior.
-  void markCloudInput(const CloudInput &input,
+  bool markCloudInput(const CloudInput &input,
                       avg_msgs::msg::AvgOccupancyGrid &grid,
                       const geometry_msgs::msg::PointStamped &base_in_output,
                       const double grid_origin_x, const double grid_origin_y) {
     if (!input.cloud) {
-      return;
+      return false;
     }
 
     geometry_msgs::msg::TransformStamped cloud_tf_msg;
     if (!getCloudTransform(input.cloud->header, cloud_tf_msg)) {
-      return;
+      return false;
     }
 
     tf2::Transform cloud_tf;
     tf2::fromMsg(cloud_tf_msg.transform, cloud_tf);
 
+    tf2::Transform body_tf;
+    if (front_guard_mode_) {
+      // HH_261102 - Reject ground/self points after the existing calibrated sensor-to-body transform.
+      try {
+        tf2::fromMsg(tf_buffer_->lookupTransform(base_frame_id_, input.cloud->header.frame_id,
+          input.cloud->header.stamp, tf2::durationFromSec(0.0)).transform, body_tf);
+      } catch (const tf2::TransformException &) {
+        return false;
+      }
+      const auto & cloud = *input.cloud;
+      if (cloud.point_step == 0U || cloud.row_step < static_cast<std::uint64_t>(cloud.width) * cloud.point_step ||
+          cloud.data.size() < static_cast<std::uint64_t>(cloud.row_step) * cloud.height) {
+        return false;
+      }
+      for (const auto * name : {"x", "y", "z"}) {
+        const auto field = std::find_if(cloud.fields.begin(), cloud.fields.end(),
+          [name](const auto & value) {return value.name == name;});
+        if (field == cloud.fields.end() || field->datatype != sensor_msgs::msg::PointField::FLOAT32 ||
+            field->count != 1U || field->offset + sizeof(float) > cloud.point_step) {
+          return false;
+        }
+      }
+      if (cloud.width == 0U || cloud.height == 0U) {
+        // HH_261103 - A structurally valid fresh empty scan is observed clear, not a missing measurement.
+        return true;
+      }
+    }
+
+    bool has_finite_point = false;
     try {
       sensor_msgs::PointCloud2ConstIterator<float> iter_x(*input.cloud, "x");
       sensor_msgs::PointCloud2ConstIterator<float> iter_y(*input.cloud, "y");
@@ -475,18 +543,25 @@ private:
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
           continue;
         }
+        has_finite_point = true;
         // HH_260707 - Allow pre-ground-segmentation fallback clouds without
         // turning flat road returns into obstacle cost.
-        if (z < cloud_min_z_m_ || z > cloud_max_z_m_) {
+        if (!front_guard_mode_ && (z < cloud_min_z_m_ || z > cloud_max_z_m_)) {
           continue;
         }
 
         const tf2::Vector3 p_sensor(x, y, z);
+        if (front_guard_mode_) {
+          const auto body_point = body_tf * p_sensor;
+          if (!isFrontLidarGuardPoint(body_point.x(), body_point.y(), body_point.z(), front_guard_)) {
+            continue;
+          }
+        }
         const tf2::Vector3 p_output = cloud_tf * p_sensor;
         const double distance = std::sqrt(
             squaredDistance2d(p_output.x(), p_output.y(),
                               base_in_output.point.x, base_in_output.point.y));
-        const int value = mapDistanceToCost(distance);
+        const int value = front_guard_mode_ ? max_cost_ : mapDistanceToCost(distance);
         const int cx = static_cast<int>(std::floor(
                            (p_output.x() - grid_origin_x) / resolution_)) +
                        radius_cells;
@@ -521,11 +596,30 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "lidar_cost_grid failed to iterate %s: %s",
                            input.topic.c_str(), ex.what());
+      return false;
     }
+    // HH_261103 - A nonempty scan containing only invalid points cannot certify a clear front corridor.
+    return !front_guard_mode_ || has_finite_point;
   }
 
   // Publishes `Grid` output.
   void publishGrid() {
+    // HH_261102 - Guard health follows the raw stamp; a dropout or replay must never become a fresh empty scan.
+    const auto raw_now = now();
+    auto guard_stamp = raw_now;
+    if (front_guard_mode_) {
+      const auto & input = cloud_inputs_.front();
+      if (!input.cloud) {
+        return;
+      }
+      guard_stamp = rclcpp::Time(input.cloud->header.stamp, raw_now.get_clock_type());
+      const double receive_age = (raw_now - input.rx_time).seconds();
+      const double stamp_age = (raw_now - guard_stamp).seconds();
+      if (input.cloud->header.frame_id.empty() || receive_age < 0.0 || stamp_age < 0.0 ||
+          receive_age > max_message_age_s_ || stamp_age > max_message_age_s_) {
+        return;
+      }
+    }
     geometry_msgs::msg::PointStamped base_in_output;
     if (!getBasePoseInOutput(base_in_output)) {
       return;
@@ -535,10 +629,10 @@ private:
     const double grid_origin_y = base_in_output.point.y + origin_y_;
     const auto now_time = now();
     const auto fresh_mask = freshInputMask(now_time);
-    const bool route_lanelet_filter_active =
+    const bool route_lanelet_filter_active = !front_guard_mode_ &&
         shouldApplyRouteLaneletFilter(base_in_output, now_time);
 
-    if (canReuseCachedGrid(
+    if (!front_guard_mode_ && canReuseCachedGrid(
         base_in_output, fresh_mask, route_lanelet_filter_active)) {
       cached_grid_.header.stamp = now_time;
       cached_grid_.info.map_load_time = now_time;
@@ -548,7 +642,7 @@ private:
     }
 
     avg_msgs::msg::AvgOccupancyGrid grid;
-    grid.header.stamp = now_time;
+    grid.header.stamp = front_guard_mode_ ? guard_stamp : now_time;
     grid.header.frame_id = output_frame_id_;
     grid.info.map_load_time = grid.header.stamp;
     grid.info.resolution = static_cast<float>(resolution_);
@@ -569,8 +663,9 @@ private:
       if (input.cloud &&
           (now_time - input.rx_time).seconds() <= max_message_age_s_) {
         has_fresh_input = true;
-        markCloudInput(input, grid, base_in_output, grid_origin_x,
-                       grid_origin_y);
+        if (!markCloudInput(input, grid, base_in_output, grid_origin_x, grid_origin_y) && front_guard_mode_) {
+          return;
+        }
       }
     }
     if (!has_fresh_input) {
@@ -659,6 +754,9 @@ private:
   }
 
   std::string input_topic_;
+  bool front_guard_mode_{false};
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr front_guard_param_callback_;
+  FrontLidarGuardConfig front_guard_;
   std::vector<std::string> input_topics_;
   std::vector<std::string> extra_input_topics_;
   bool raw_lidar_cost_enabled_{true};

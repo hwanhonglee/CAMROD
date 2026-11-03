@@ -156,6 +156,8 @@ def classify_sample(
     if (
         stop_candidate_max_range_m is not None
         and range_m > stop_candidate_max_range_m
+        # HH_261102 - Match float32 Range cutoff roundoff accepted by the native stop filter.
+        and not math.isclose(range_m, stop_candidate_max_range_m, rel_tol=2.0**-23)
     ):
         return "outside_stop"
     if any(minimum <= range_m <= maximum for minimum, maximum in fixed_return_bands):

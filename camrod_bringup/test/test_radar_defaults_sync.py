@@ -212,6 +212,18 @@ def test_bringup_radar_configs_match_sensing_package_byte_for_byte():
         assert bringup.read_bytes() == sensing.read_bytes()
 
 
+# HH_261102 - Both native entry points require radar health while preserving rear quarantine and original ranges.
+def test_unit2_gate_requires_live_radar_without_widening_stop_ranges():
+    control = _WORKSPACE_SRC / "camrod_control/config/cmd_vel_safety_gate.yaml"
+    mirror = _BRINGUP_ROOT / "config/control/cmd_vel_safety_gate.yaml"
+    assert control.read_bytes() == mirror.read_bytes()
+    gate = yaml.safe_load(control.read_text(encoding="utf-8"))["/**"]["ros__parameters"]
+    assert gate["radar_grid_freshness_stop_enable"] is True
+    assert gate["cost_source_debug_max_age_s"] == 1.0
+    assert _load_driver_params()["sensor_enabled"][-1] is False
+    assert _load_cost_grid_params()["stop_candidate_max_ranges_m"] == [0.3, 0.3] + [0.1] * 5
+
+
 # HH_260729 - Keep the five operator-facing sections visible and ordered in
 # both active profiles. This protects the category layout as well as values.
 def test_radar_configs_keep_readable_ordered_category_headings():
@@ -280,7 +292,8 @@ def test_named_fixed_return_bands_are_known_ordered_positive_intervals():
     }
     parsed = [_parse_band_spec(spec) for spec in specs]
 
-    assert params["fixed_return_filter_enable"] is True
+    # HH_261102 - Unit 2 has no near chassis echo, so historical ranges must not hide real close obstacles.
+    assert params["fixed_return_filter_enable"] is False
     assert parsed == _EXPECTED_FIXED_RETURN_INTERVALS
     assert all(sensor in input_labels for sensor, _, _ in parsed)
     assert all(0.0 < minimum < maximum for _, minimum, maximum in parsed)

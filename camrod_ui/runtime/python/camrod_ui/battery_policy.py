@@ -7,11 +7,23 @@ ignoring chassis faults, E-stop, localization, or obstacle checks.
 # HH_260907 - Keep SOC decisions as policy signals, never as proof of safe motion or charging.
 
 import math
+import struct
 
 
 # HH_261002 - Restore the BMS full-status signal used only for the operator's
 # charging-complete presentation; mission admission and return thresholds stay unchanged.
 POWER_SUPPLY_STATUS_FULL = 4
+
+
+def normalize_platform_battery_percent(value: float) -> int:
+    """Convert canonical AvgPlatformStatus SOC ratio to a display percent."""
+    # Match backend admission exactly: 34.9% must not look dispatch-ready.
+    # HH_261102 - Share float32 percentage conversion so an actual 0.35F is not displayed as 34% by Guest.
+    fraction = float(value)
+    if not math.isfinite(fraction):
+        return -1
+    scaled = max(0.0, min(1.0, fraction)) * 100.0
+    return int(math.floor(struct.unpack("<f", struct.pack("<f", scaled))[0]))
 
 
 def battery_policy_snapshot(

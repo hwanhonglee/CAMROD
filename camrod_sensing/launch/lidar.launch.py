@@ -3,8 +3,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
@@ -57,6 +59,10 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_driver",      default_value="true"),
         # HH_260805 - Grid rasterization is opt-in independently of the LiDAR driver.
         DeclareLaunchArgument("enable_lidar_cost_grid",   default_value="false"),
+        # HH_261102 - Reuse the existing rasterizer as a separate bounded raw source; default field behavior is unchanged.
+        DeclareLaunchArgument("enable_lidar_front_guard", default_value="false"),
+        DeclareLaunchArgument("lidar_front_guard_param_file", default_value=os.path.join(
+            sensing_share, "config", "lidar", "front_guard.yaml")),
         # HH_260805 - Keep cost-grid enable independent inside the LiDAR container.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
         DeclareLaunchArgument("enable_dds_shared_memory", default_value="false"),
@@ -75,6 +81,12 @@ def generate_launch_description():
         DeclareLaunchArgument("preprocessor_output_topic", default_value="filtered_cloud"),
         DeclareLaunchArgument("lidar_filtered_topic",     default_value="points_filtered"),
 
+        Node(
+            package="camrod_sensing", executable="lidar_cost_grid_node", name="lidar_front_guard",
+            namespace=module_namespace, output="screen",
+            parameters=[LaunchConfiguration("lidar_front_guard_param_file")],
+            condition=IfCondition(LaunchConfiguration("enable_lidar_front_guard")),
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(lidar_driver_launch),
             launch_arguments={

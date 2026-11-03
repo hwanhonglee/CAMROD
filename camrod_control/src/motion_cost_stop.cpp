@@ -191,6 +191,17 @@ MotionCostStopDecision MotionCostStop::evaluate(
     }
   }
 
+  // HH_261102 - Every real movement requires live radar; exact zero can still recheck an existing latch.
+  if (config_.radar_grid_freshness_stop_enabled && (translational(command) || command.angular.z != 0.0)) {
+    const auto sensor_decision = evaluateSourceFreshness("radar", config_.source_max_age_s, now_sec);
+    if (sensor_decision.blocked) {
+      markBlocked(sensor_decision.reason, false, now_sec);
+      return sensor_decision;
+    }
+  }
+
+  const auto front_guard_decision = evaluateFrontGuard(command, now_sec);
+
   // HH_260721 - Treat a missing or stale merged grid as a fail-closed motion condition.
   if (config_.stale_stop_enabled && config_.stale_timeout_s > 0.0) {
     if (!merged_grid_.available || !validGrid(merged_grid_.grid)) {
@@ -206,8 +217,8 @@ MotionCostStopDecision MotionCostStop::evaluate(
   }
 
   if (!translational(command)) {
-    const double motion_threshold = std::max(0.0, config_.min_translation_mps);
-    if (std::abs(command.angular.z) > motion_threshold) {
+    // HH_261102 - A slow nonzero turn still moves the body and needs obstacle protection.
+    if (command.angular.z != 0.0) {
       // HH_260727 - A rotating asymmetric body can touch the raw map boundary even while
       // robot_center_link stays clear, so evaluate the full footprint first.
       const auto lanelet_decision = evaluateLanelet(command, now_sec);
@@ -244,6 +255,10 @@ MotionCostStopDecision MotionCostStop::evaluate(
     corridors, staticBypassActive(command), now_sec);
   if (merged_decision.blocked) {
     return merged_decision;
+  }
+  // HH_261102 - Preserve ordinary radar/lanelet authority even when the directional raw guard also sees a hit.
+  if (front_guard_decision.blocked) {
+    return front_guard_decision;
   }
   return evaluateLatch(now_sec);
 }
@@ -297,6 +312,15 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   if (!config_.enabled) {
     return {};
   }
+
+  // HH_261102 - A bounded map recovery is never permission to move with unavailable radar.
+  const auto sensor_decision = config_.radar_grid_freshness_stop_enabled ?
+    evaluateSourceFreshness("radar", config_.source_max_age_s, now_sec) : MotionCostStopDecision{};
+  if (sensor_decision.blocked) {
+    markBlocked(sensor_decision.reason, false, now_sec);
+    return sensor_decision;
+  }
+  const auto front_guard_decision = evaluateFrontGuard(command, now_sec);
 
   // HH_260731 - Recovery motion is safety-critical and must never interpret a
   // missing, stale, invalid, or frame-incompatible lanelet grid as projected
@@ -501,6 +525,9 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     corridors, staticBypassActive(command), now_sec);
   if (merged_decision.blocked) {
     return merged_decision;
+  }
+  if (front_guard_decision.blocked) {
+    return front_guard_decision;
   }
   return evaluateLatch(now_sec);
 }
@@ -712,6 +739,10 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
   const std::vector<Corridor> & corridors, const double now_sec)
 {
   for (const auto & source : source_grids_) {
+    // HH_261102 - The front-only guard owns directional dwell, never the all-motion obstacle latch.
+    if (source.first == "lidar_front_guard") {
+      continue;
+    }
     if (!sourceIsDynamic(source.first) || !source.second.available ||
       !validGrid(source.second.grid))
     {
@@ -884,6 +915,9 @@ MotionCostStopDecision MotionCostStop::evaluateRotation(const double now_sec)
     return {};
   }
   for (const auto & source : source_grids_) {
+    if (source.first == "lidar_front_guard") {
+      continue;
+    }
     if (!sourceIsDynamic(source.first) || !source.second.available ||
       !validGrid(source.second.grid) ||
       (config_.source_max_age_s > 0.0 &&
@@ -920,6 +954,13 @@ MotionCostStopDecision MotionCostStop::evaluateRotation(const double now_sec)
 
 MotionCostStopDecision MotionCostStop::evaluateLatchedHazard(const double now_sec)
 {
+  // HH_261102 - Healthy grids from another source cannot release a hold while required radar is unavailable.
+  const auto sensor_decision = config_.radar_grid_freshness_stop_enabled ?
+    evaluateSourceFreshness("radar", config_.source_max_age_s, now_sec) : MotionCostStopDecision{};
+  if (sensor_decision.blocked) {
+    keepLatch("sensor_unavailable:radar", now_sec, true);
+    return sensor_decision;
+  }
   if (!latch_context_.has_value()) {
     return keepLatch("trigger_context_missing", now_sec, true);
   }
@@ -979,6 +1020,71 @@ MotionCostStopDecision MotionCostStop::evaluateLatchedHazard(const double now_se
   }
 
   return evaluateLatch(now_sec);
+}
+
+MotionCostStopDecision MotionCostStop::evaluateSourceFreshness(
+  const std::string & label, const double age_limit_s, const double now_sec) const
+{
+  const auto source = source_grids_.find(label);
+  if (source == source_grids_.end() || !source->second.available ||
+    !validGrid(source->second.grid))
+  {
+    return {true, false, false, true, "sensor_unavailable:" + label + ":missing_or_invalid_grid"};
+  }
+  const double source_stamp_sec = messageStampSec(source->second.grid);
+  if (!std::isfinite(now_sec) || !std::isfinite(source->second.receive_sec) ||
+    !std::isfinite(age_limit_s) || age_limit_s <= 0.0 ||
+    now_sec < source->second.receive_sec || now_sec < source_stamp_sec ||
+    now_sec - source->second.receive_sec > age_limit_s ||
+    now_sec - source_stamp_sec > age_limit_s)
+  {
+    return {true, false, false, true, "sensor_unavailable:" + label + ":stale_grid"};
+  }
+  if (!pose_.has_value() || pose_->frame_id.empty() ||
+    source->second.grid.header.frame_id != pose_->frame_id)
+  {
+    return {true, false, false, true, "sensor_unavailable:" + label + ":frame_or_pose"};
+  }
+  return {};
+}
+
+MotionCostStopDecision MotionCostStop::evaluateFrontGuard(
+  const avg_msgs::msg::AvgTwist & command, const double now_sec)
+{
+  // HH_261102 - A front-only stop has its own dwell so a real obstacle never forbids reversing away.
+  if (!config_.lidar_front_guard_enabled || command.linear.x <= 0.0) {
+    front_guard_clear_since_sec_.reset();
+    return {};
+  }
+  const auto health = evaluateSourceFreshness("lidar_front_guard", config_.lidar_front_guard_max_age_s, now_sec);
+  if (health.blocked) {
+    front_guard_active_ = true;
+    front_guard_clear_since_sec_.reset();
+    return health;
+  }
+  const auto & grid = source_grids_.at("lidar_front_guard").grid;
+  // The producer admits only body-relative near-front points; do not narrow them with a stale semantic path.
+  if (std::any_of(grid.data.begin(), grid.data.end(), [this](const auto cost) {
+      return cost >= config_.cost_stop_threshold;})) {
+    front_guard_active_ = true;
+    front_guard_clear_since_sec_.reset();
+    return {true, true, false, false, "dynamic_front_guard:lidar_front_guard"};
+  }
+  if (!front_guard_active_) {
+    return {};
+  }
+  if (!front_guard_clear_since_sec_.has_value()) {
+    front_guard_clear_since_sec_ = now_sec;
+    front_guard_clear_stamp_sec_ = messageStampSec(grid);
+  }
+  const double dwell_s = std::max(0.0, config_.clear_required_s) + std::max(0.0, config_.stop_hold_s);
+  if (now_sec - *front_guard_clear_since_sec_ < dwell_s ||
+      messageStampSec(grid) <= front_guard_clear_stamp_sec_) {
+    return {true, true, false, false, "front_guard_clear_hold"};
+  }
+  front_guard_active_ = false;
+  front_guard_clear_since_sec_.reset();
+  return {};
 }
 
 MotionCostStopDecision MotionCostStop::evaluateLatch(const double now_sec)
@@ -1163,25 +1269,25 @@ std::vector<MotionCostStop::Corridor> MotionCostStop::corridorsForCommand(
   const avg_msgs::msg::AvgTwist & command) const
 {
   std::vector<Corridor> corridors;
-  const double minimum = std::max(0.0, config_.min_translation_mps);
-  const bool maneuver = command.linear.x<-minimum || std::abs(command.linear.y)> minimum;
+  // HH_261102 - Collision corridors follow every nonzero command, not the recovery deadband.
+  const bool maneuver = command.linear.x < 0.0 || command.linear.y != 0.0;
   const double near_side = maneuver ? config_.maneuver_body_near_side_m : config_.body_near_side_m;
   const double near_rear = maneuver ? config_.maneuver_body_near_rear_m : config_.body_near_rear_m;
 
-  if (command.linear.x > minimum) {
+  if (command.linear.x > 0.0) {
     corridors.push_back(
       {"FRONT", 0.0, frontLookahead(), config_.front_width_m,
         config_.cost_stop_threshold, true});
-  } else if (config_.side_rear_enabled && command.linear.x < -minimum) {
+  } else if (config_.side_rear_enabled && command.linear.x < 0.0) {
     corridors.push_back(
       {"REAR", kPi, maneuver ? near_rear : config_.rear_lookahead_m,
         config_.rear_width_m, config_.rear_threshold, false});
   }
-  if (config_.side_rear_enabled && command.linear.y > minimum) {
+  if (config_.side_rear_enabled && command.linear.y > 0.0) {
     corridors.push_back(
       {"LEFT", kPi * 0.5, maneuver ? near_side : config_.side_lookahead_m,
         config_.side_width_m, config_.side_threshold, false});
-  } else if (config_.side_rear_enabled && command.linear.y < -minimum) {
+  } else if (config_.side_rear_enabled && command.linear.y < 0.0) {
     corridors.push_back(
       {"RIGHT", -kPi * 0.5, maneuver ? near_side : config_.side_lookahead_m,
         config_.side_width_m, config_.side_threshold, false});
@@ -1605,6 +1711,9 @@ std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(
   const GridHit & hit, const int threshold, const double now_sec) const
 {
   for (const auto & source : source_grids_) {
+    if (source.first == "lidar_front_guard") {
+      continue;
+    }
     if (!sourceIsDynamic(source.first) || !source.second.available ||
       (config_.source_max_age_s > 0.0 &&
       now_sec - source.second.receive_sec > config_.source_max_age_s))
@@ -1688,8 +1797,8 @@ bool MotionCostStop::laneletStaticBypassActive(
 
 bool MotionCostStop::translational(const avg_msgs::msg::AvgTwist & command) const
 {
-  const double minimum = std::max(0.0, config_.min_translation_mps);
-  return std::abs(command.linear.x) > minimum || std::abs(command.linear.y) > minimum;
+  // HH_261102 - Only exact zero is stationary; a low-speed approach can still collide.
+  return command.linear.x != 0.0 || command.linear.y != 0.0;
 }
 
 bool MotionCostStop::unavoidable(

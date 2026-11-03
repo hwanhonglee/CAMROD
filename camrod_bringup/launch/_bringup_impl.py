@@ -91,6 +91,7 @@ OVERRIDE_SPECS = {
             'sensing/lidar_preprocessor_param_file',
         ),
         'lidar_cost_grid_param_file': ('sensing/lidar_cost_grid_param_file',),
+        'lidar_front_guard_param_file': ('sensing/lidar_front_guard_param_file',),
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
         'gnss_param_file':        ('sensing/gnss_param_file',),
         'ntrip_param_file':       ('sensing/ntrip_param_file',),
@@ -1847,6 +1848,8 @@ def generate_launch_description():
         # HH_260818 - The legacy name now denotes the classified camera-LiDAR
         # obstacle raster; raw LiDAR painting stays controlled independently.
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable classified camera-LiDAR cost-grid'),
+        # HH_261102 - One opt-in switch starts the bounded raw source and requires it in the final forward gate.
+        ('enable_lidar_front_guard', cfg_get(launch_cfg, 'sensing/enable_lidar_front_guard', False), 'Enable experimental bounded raw front LiDAR guard'),
         (
             'use_lidar_processing_container',
             cfg_get(launch_cfg, 'sensing/use_lidar_processing_container', True),
@@ -2285,6 +2288,7 @@ def generate_launch_description():
         'radar_log_status': lc['radar_log_status'],
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
+        'enable_lidar_front_guard': lc['enable_lidar_front_guard'],
         'use_lidar_processing_container': lc['use_lidar_processing_container'],
         'enable_dds_shared_memory': lidar_dds_shared_memory_active,
         'dds_shared_memory_cyclonedds_config': lc[
@@ -2471,6 +2475,8 @@ def generate_launch_description():
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
         **{k[len('control_'):]: lc[k] for k in lc if k.startswith('control_cmd_vel_gate_')},
     }
+    # HH_261102 - One opt-in arms both the bounded raw-cloud producer and its matching final-gate consumer.
+    safety_gate_args['cmd_vel_gate_lidar_front_guard_stop_enable'] = lc['enable_lidar_front_guard']
     # HH_260721 - Normal sim disables CAN gating; charging validation supplies a fake heartbeat.
     safety_gate_args['cmd_vel_gate_platform_safety_source_mode'] = PythonExpression([
         "'", lc['control_cmd_vel_gate_platform_safety_source_mode'], "' if ('",

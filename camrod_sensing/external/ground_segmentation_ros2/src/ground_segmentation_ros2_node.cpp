@@ -325,7 +325,8 @@ private:
             raw_points->header.frame_id = robot_frame;
         }
 
-        obstacle_points->header.stamp = this->now();
+        // HH_261102 - Preserve acquisition time so delayed/replayed raw clouds cannot appear fresh to the front safety guard.
+        obstacle_points->header.stamp = pointcloud_msg->header.stamp;
         if (publish_debug_clouds) {
             ground_points->header.stamp = obstacle_points->header.stamp;
             raw_points->header.stamp = obstacle_points->header.stamp;

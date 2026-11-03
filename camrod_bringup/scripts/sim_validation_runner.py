@@ -2478,11 +2478,8 @@ class SimValidationRunner(Node):
         )
 
     @staticmethod
-    def _event_contains(events: list[str], start_index: int, token: str) -> bool:
-        return any(token in event for event in events[start_index:])
-
-    @staticmethod
     def _route_recovery_progress(events: list[str]) -> tuple[bool, bool]:
+        # HH_261102 - Keep the ordered recovery scan; the unused generic event scanner had no callers.
         motion_prefixes = (
             "CRAB_LEFT|",
             "CRAB_RIGHT|",

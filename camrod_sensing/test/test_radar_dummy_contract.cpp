@@ -74,3 +74,24 @@ TEST(RadarDummyContract, SuppressesCostOnlyForFreshPositiveDummyState)
     camrod_sensing::radar_dummy_state_suppresses_cost(
       true, true, 0.10, 0.0));
 }
+
+// HH_261102 - No-return replies prove a live sensor, whereas missing or replayed data never prove clearance.
+TEST(RadarDummyContract, DistinguishesFreshNoTargetFromDropoutAndMalformedRanges)
+{
+  EXPECT_TRUE(camrod_sensing::radar_range_heartbeat_valid(0.300f, 0.020f, 0.500f));
+  EXPECT_TRUE(camrod_sensing::radar_range_heartbeat_valid(0.501f, 0.020f, 0.500f));
+  for (const double bad_range : {0.019, 0.502, -1.0,
+      std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+  {
+    EXPECT_FALSE(camrod_sensing::radar_range_heartbeat_valid(bad_range, 0.020, 0.500));
+  }
+  EXPECT_FALSE(camrod_sensing::radar_range_heartbeat_valid(0.501, 0.500, 0.020));
+  EXPECT_TRUE(camrod_sensing::radar_observation_is_fresh(true, 0.10, 0.20, 0.35));
+  EXPECT_TRUE(camrod_sensing::radar_observation_is_fresh(true, 0.35, 0.35, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(false, 0.0, 0.0, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(true, 0.36, 0.10, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(true, 0.10, 0.36, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(true, -0.01, 0.10, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(true, 0.10, -0.01, 0.35));
+  EXPECT_FALSE(camrod_sensing::radar_observation_is_fresh(true, 0.10, 0.10, 0.0));
+}

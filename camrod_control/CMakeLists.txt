@@ -228,6 +228,20 @@ if(BUILD_TESTING)
   set_tests_properties(test_reverse_parking_controller PROPERTIES
     ENVIRONMENT "ROS_DOMAIN_ID=188;ROS_LOCALHOST_ONLY=1"
   )
+  # HH_261102 - Keep float32 charging admission coverage independent of obstacle-policy tests.
+  ament_add_gtest(test_charging_mission_wire_soc test/test_charging_mission_wire_soc.cpp)
+  target_include_directories(test_charging_mission_wire_soc PRIVATE include)
+  # HH_261102 - Separate pure swept-body proofs and isolated actual-controller trajectory checks.
+  ament_add_gtest(test_cargo_access_target test/test_cargo_access_target.cpp)
+  target_include_directories(test_cargo_access_target PRIVATE include)
+  ament_add_gtest(test_drop_zone_cargo_access test/test_drop_zone_cargo_access.cpp)
+  ament_target_dependencies(test_drop_zone_cargo_access rclcpp avg_msgs diagnostic_msgs geometry_msgs nav_msgs)
+  target_link_libraries(test_drop_zone_cargo_access yaml-cpp)
+  target_compile_definitions(test_drop_zone_cargo_access PRIVATE
+    CAMROD_CARGO_MAP_YAML="${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/config/drop_zones.yaml")
+  target_compile_options(test_drop_zone_cargo_access PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-O0>)
+  set_tests_properties(test_drop_zone_cargo_access PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=219;ROS_LOCALHOST_ONLY=1")
 endif()
 
 ament_package()

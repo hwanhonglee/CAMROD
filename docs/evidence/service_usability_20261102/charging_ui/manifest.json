@@ -1,0 +1,254 @@
+{
+  "mode": "LOOPBACK UI FIXTURE — NO ROBOT / NO CARLA",
+  "generated_at": "2026-11-02T07:15:33.005Z",
+  "viewport": {
+    "robot": "1280x800",
+    "guest": "430x932"
+  },
+  "commands": [
+    {
+      "action": "leave",
+      "confirm": "true"
+    }
+  ],
+  "frames": [
+    {
+      "name": "01_soc34_blocked",
+      "snapshot": {
+        "phase": "inactive",
+        "message": "충전 위치에서 대기 중입니다. 짐 작업 전 대기 위치로 이동해 주세요.",
+        "can_leave": false,
+        "cargo_access_ready": false,
+        "battery_percentage": 34,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": true,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "02_soc35_eligible",
+      "snapshot": {
+        "phase": "inactive",
+        "message": "충전 위치에서 대기 중입니다. 짐 작업 전 대기 위치로 이동해 주세요.",
+        "can_leave": true,
+        "cargo_access_ready": false,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": true,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "03_leave_confirmation",
+      "snapshot": {
+        "phase": "inactive",
+        "message": "충전 위치에서 대기 중입니다. 짐 작업 전 대기 위치로 이동해 주세요.",
+        "can_leave": true,
+        "cargo_access_ready": false,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": true,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "04_departing",
+      "snapshot": {
+        "phase": "departing",
+        "message": "drop_zone 내 대기 위치로 이동 중입니다. 짐과 충전 접점에서 손을 떼고 로봇 주변을 비워 주세요.",
+        "can_leave": false,
+        "cargo_access_ready": false,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": true,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "05_ready_cargo_wait",
+      "snapshot": {
+        "phase": "ready",
+        "message": "drop_zone 내 대기 위치에 정차했습니다. 짐을 꺼내실 수 있습니다.",
+        "can_leave": false,
+        "cargo_access_ready": true,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": false,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "06_existing_service_menu",
+      "snapshot": {
+        "phase": "ready",
+        "message": "drop_zone 내 대기 위치에 정차했습니다. 짐을 꺼내실 수 있습니다.",
+        "can_leave": false,
+        "cargo_access_ready": true,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": false,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": null
+    },
+    {
+      "name": "07_delivery_confirmation",
+      "snapshot": {
+        "phase": "ready",
+        "message": "drop_zone 내 대기 위치에 정차했습니다. 짐을 꺼내실 수 있습니다.",
+        "can_leave": false,
+        "cargo_access_ready": true,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": false,
+        "platform_feedback_fresh": true,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": null
+    },
+    {
+      "name": "08_stale_vehicle_feedback",
+      "snapshot": {
+        "phase": "ready",
+        "message": "drop_zone 내 대기 위치에 정차했습니다. 짐을 꺼내실 수 있습니다.",
+        "can_leave": false,
+        "cargo_access_ready": false,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": false,
+        "platform_feedback_fresh": false,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "09_stop_confirmation_unavailable",
+      "snapshot": {
+        "phase": "ready",
+        "message": "drop_zone 내 대기 위치에 정차했습니다. 짐을 꺼내실 수 있습니다.",
+        "can_leave": false,
+        "cargo_access_ready": false,
+        "battery_percentage": 35,
+        "minimum_battery_percentage": 35,
+        "platform_is_charging": false,
+        "platform_feedback_fresh": false,
+        "electrical_stop_available": false,
+        "physical_disconnect_verified": false,
+        "target_label": "drop_zone 내 대기 위치"
+      },
+      "public_stop_visible": true
+    },
+    {
+      "name": "10_guest_phone",
+      "snapshot": {
+        "sites": [
+          "B1",
+          "B2",
+          "B3",
+          "B4",
+          "B5",
+          "B6",
+          "B7",
+          "B8",
+          "B9",
+          "B10",
+          "B11",
+          "B12",
+          "B13"
+        ],
+        "identity_revision": 1,
+        "phase": "idle",
+        "service_state": 0,
+        "service_state_name": "DROP_ZONE_WAIT",
+        "site": "",
+        "request_intent": "",
+        "request_owner": "",
+        "battery": 80,
+        "minimum_battery_percentage": 35,
+        "mission_battery_ready": true,
+        "safety_hold": false,
+        "mission_execution_error": ""
+      },
+      "public_stop_visible": null
+    },
+    {
+      "name": "11_guest_confirmation",
+      "snapshot": {
+        "sites": [
+          "B1",
+          "B2",
+          "B3",
+          "B4",
+          "B5",
+          "B6",
+          "B7",
+          "B8",
+          "B9",
+          "B10",
+          "B11",
+          "B12",
+          "B13"
+        ],
+        "identity_revision": 1,
+        "phase": "idle",
+        "service_state": 0,
+        "service_state_name": "DROP_ZONE_WAIT",
+        "site": "",
+        "request_intent": "",
+        "request_owner": "",
+        "battery": 80,
+        "minimum_battery_percentage": 35,
+        "mission_battery_ready": true,
+        "safety_hold": false,
+        "mission_execution_error": ""
+      },
+      "public_stop_visible": null
+    }
+  ],
+  "source_sha256": {
+    "App.js": "bc1b2dc4572237f50a6f6b0a2aa10f1ac291acc71c205f07161c658443653594",
+    "ChargingAccessScreen.js": "fcd2a73a9bdff1fa1ff15741e38ff050708da079cbb1ebafc8910abfb08fa0de",
+    "ChargingAccessScreen.css": "9fcf13ab8369626887557ad2411da7ecacac0927a52935d4afffb4953a6c06df",
+    "guest/index.html": "32c26439502485c025b2a0af665a5a2383513124041dd7f2d5a65402e743acee"
+  },
+  "build_assets": {
+    "files": {
+      "main.css": "/static/css/main.f4da5088.css",
+      "main.js": "/static/js/main.361f76de.js",
+      "index.html": "/index.html",
+      "main.f4da5088.css.map": "/static/css/main.f4da5088.css.map",
+      "main.361f76de.js.map": "/static/js/main.361f76de.js.map"
+    },
+    "entrypoints": [
+      "static/css/main.f4da5088.css",
+      "static/js/main.361f76de.js"
+    ]
+  }
+}

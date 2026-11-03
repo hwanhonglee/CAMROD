@@ -1,5 +1,6 @@
 // HH_260721 - Implement drop-zone departure and parking-yaw alignment in C++.
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -14,6 +15,7 @@
 
 #include "avg_msgs/msg/avg_bool.hpp"
 #include "avg_msgs/msg/avg_platform_status.hpp"
+#include "avg_msgs/msg/avg_polygon_stamped.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_service_state.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
@@ -23,6 +25,7 @@
 #include "avg_msgs/msg/planning_state.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
 #include "camrod_control/control_diagnostics.hpp"
+#include "camrod_control/cargo_access_target.hpp"
 #include "camrod_control/drop_zone_exit_target_policy.hpp"
 #include "camrod_control/drop_zone_parking_approach.hpp"
 #include "camrod_control/drop_zone_station_pose.hpp"
@@ -73,7 +76,9 @@ std::string fixed(const double value, const int precision = 3) {
 
 class DropZoneManeuverControllerNode : public rclcpp::Node {
 public:
-  DropZoneManeuverControllerNode() : Node("drop_zone_maneuver_controller") {
+  explicit DropZoneManeuverControllerNode(
+      const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
+      : Node("drop_zone_maneuver_controller", options) {
     // HH_260721 - Preserve explicit control-owned operation and command
     // interfaces.
     command_topic_ =
@@ -125,6 +130,8 @@ public:
             declare_parameter<double>("station_x_m", 0.0),
             declare_parameter<double>("station_y_m", 0.0),
             declare_parameter<double>("station_yaw_deg", 0.0) * M_PI / 180.0});
+    // HH_261102 - Cargo access must use the same authored station and polygon, never the pose fallback.
+    loadCargoAccessZone();
 
     enable_auto_alignment_ =
         declare_parameter<bool>("enable_auto_alignment", true);
@@ -246,6 +253,30 @@ public:
         create_publisher<avg_msgs::msg::MotionOperation>(
             parking_operation_topic_, 10);
 
+    // HH_261102 - Reuse the canonical body-plus-margin boundary; unknown geometry rejects cargo departure.
+    cargo_boundary_subscription_ = create_subscription<avg_msgs::msg::AvgPolygonStamped>(
+        "/platform/robot/planning_boundary", rclcpp::QoS(1).transient_local().reliable(),
+        [this](avg_msgs::msg::AvgPolygonStamped::ConstSharedPtr message) {
+          cargo_body_radius_.reset();
+          if (message->header.frame_id != "robot_center_link" ||
+              message->polygon.points.size() < 3U) {
+            return;
+          }
+          double radius = 0.0;
+          std::vector<std::pair<double, double>> boundary;
+          for (const auto &point : message->polygon.points) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+              return;
+            }
+            radius = std::max(radius, std::hypot(static_cast<double>(point.x), static_cast<double>(point.y)));
+            boundary.emplace_back(point.x, point.y);
+          }
+          // HH_261102 - A degenerate or off-center boundary cannot stand in for the actual full body.
+          if (radius > 0.0 && camrod_control::cargoAccessSweepInsideZone(boundary, 0.0, 0.0, 0.0, 0.0, 1.0e-6)) {
+            cargo_body_radius_ = radius;
+          }
+        });
+
     vehicle_pose_subscription_ =
         create_subscription<avg_msgs::msg::AvgPoseStamped>(
             vehicle_pose_topic_, 10,
@@ -321,6 +352,57 @@ public:
   }
 
 private:
+#ifdef CAMROD_CONTROL_DROP_ZONE_CARGO_TEST
+  friend class DropZoneCargoAccessTest;
+  friend class DropZoneCargoAccessTest_ActualRosTrajectoryStaysInsideAuthoredZoneAndStopsWithoutTurningOrDocking_Test;
+  friend class DropZoneCargoAccessTest_MissingCanonicalBoundaryRejectsImmediately_Test;
+  friend class DropZoneCargoAccessTest_RawGoalCannotReplaceTheAuthoredStation_Test;
+  friend class DropZoneCargoAccessTest_DegenerateCanonicalBoundaryAndLargeLateralCorrectionAreRejected_Test;
+  friend class DropZoneCargoAccessTest_YawDriftStopsInsteadOfCommandingARotation_Test;
+  friend class DropZoneCargoAccessTest_WrongMapFrameAndBodyLeavingZoneStopRatherThanGuessing_Test;
+  friend class DropZoneCargoAccessTest_CancelClearsCargoTerminalAndCannotResumeOnHeartbeat_Test;
+#endif
+
+  void loadCargoAccessZone() {
+    // HH_261102 - Match the existing station loader's selection, but do not accept missing authored geometry.
+    try {
+      if (!use_drop_zone_pose_as_station_ || drop_zones_yaml_.empty()) {
+        return;
+      }
+      const auto document = YAML::LoadFile(drop_zones_yaml_);
+      if (document["frame_id"] && document["frame_id"].as<std::string>() != "map") {
+        return;
+      }
+      const auto zones = document["drop_zones"];
+      if (!zones || !zones.IsSequence() || zones.size() == 0U) {
+        return;
+      }
+      YAML::Node selected = zones[0];
+      for (std::size_t index = 0; index < zones.size(); ++index) {
+        const YAML::Node zone = zones[index];
+        if ((zone["id"] && zone["id"].as<std::string>() == drop_zone_id_) ||
+            (zone["type"] && zone["type"].as<std::string>() == drop_zone_id_)) {
+          selected = zone;
+          break;
+        }
+      }
+      if (!selected["x"] || !selected["y"] || !selected["corners"] ||
+          !selected["corners"].IsSequence() || !selected["type"] ||
+          selected["type"].as<std::string>() != "drop_zone" ||
+          (selected["frame_id"] && selected["frame_id"].as<std::string>() != "map")) {
+        return;
+      }
+      cargo_authored_station_ = std::make_pair(selected["x"].as<double>(), selected["y"].as<double>());
+      for (const auto &corner : selected["corners"]) {
+        cargo_zone_corners_.emplace_back(corner["x"].as<double>(), corner["y"].as<double>());
+      }
+    } catch (const std::exception &error) {
+      cargo_authored_station_.reset();
+      cargo_zone_corners_.clear();
+      RCLCPP_WARN(get_logger(), "cargo-access map unavailable: %s", error.what());
+    }
+  }
+
   bool isActive() const {
     return phase_ != DropZoneManeuverPhase::kIdle &&
            phase_ != DropZoneManeuverPhase::kError;
@@ -354,6 +436,10 @@ private:
   }
 
   void onPlanningState(const avg_msgs::msg::PlanningState &message) {
+    // HH_261102 - A repeated reached-goal heartbeat cannot re-dock while people access cargo.
+    if (cargo_access_active_ || cargo_access_ready_) {
+      return;
+    }
     if (!enable_auto_alignment_) {
       return;
     }
@@ -388,6 +474,8 @@ private:
     if (operation == avg_msgs::msg::MotionOperation::CANCEL) {
       parking_start_source_.clear();
       road_handoff_ready_ = false;
+      cargo_access_active_ = false;
+      cargo_access_ready_ = false;
       publishZero();
       setPhase(DropZoneManeuverPhase::kIdle, "cancel=" + source);
       return {true, "drop-zone maneuver cancelled"};
@@ -507,6 +595,8 @@ private:
     // and yaw phases; the parking dispatcher selects the final method once.
     parking_start_source_ = source;
     road_handoff_ready_ = false;
+    cargo_access_active_ = false;
+    cargo_access_ready_ = false;
     if (!vehiclePoseIsFresh()) {
       setError("fresh pose unavailable for parking alignment");
       return {false, "fresh pose unavailable for parking alignment"};
@@ -542,6 +632,8 @@ private:
       return {false, "drop-zone maneuver already active: " + phaseName(phase_)};
     }
     road_handoff_ready_ = false;
+    cargo_access_ready_ = false;
+    cargo_access_active_ = camrod_control::isCargoAccessExitSource(source);
     exit_target_ = camrod_control::DropZoneExitTargetSelection{};
     exit_target_frame_id_.clear();
     if (!vehiclePoseIsFresh()) {
@@ -591,14 +683,34 @@ private:
             capture_time.seconds() - header_stamp_sec;
       }
     }
-    exit_target_ = camrod_control::makeDropZoneExitTargetSelection(
-        exit_target_policy_config_, target_input);
+    if (cargo_access_active_) {
+      // HH_261102 - A raw goal update cannot substitute an unauthored cargo anchor.
+      if (!cargo_authored_station_.has_value() ||
+          std::hypot(station_pose_.x_m - cargo_authored_station_->first,
+                     station_pose_.y_m - cargo_authored_station_->second) > 1.0e-3) {
+        exit_target_.detail = "cargo access requires the authored drop-zone station";
+      } else {
+        auto cargo_config = exit_target_policy_config_;
+        // HH_261102 - Cargo access is a forward release, not a large cross-station correction.
+        cargo_config.maximum_lateral_m = std::min(cargo_config.maximum_lateral_m, exit_position_tolerance_m_);
+        exit_target_ = camrod_control::makeCargoAccessTargetSelection(
+            cargo_config, target_input, station_pose_.x_m, station_pose_.y_m,
+            cargo_zone_corners_, cargo_body_radius_.value_or(0.0));
+      }
+    } else {
+      exit_target_ = camrod_control::makeDropZoneExitTargetSelection(
+          exit_target_policy_config_, target_input);
+    }
     if (!exit_target_.valid) {
       const std::string detail =
           "drop-zone exit target rejected: " + exit_target_.detail;
       publishExitComplete(false);
       setError(detail);
       return {false, detail};
+    }
+    if (cargo_access_active_) {
+      // HH_261102 - A later CANCEL/announcement gap must not replay the old reached-goal parking trigger.
+      last_auto_alignment_key_ = std::to_string(return_scenario_id_) + ":" + return_mission_key_;
     }
     exit_target_frame_id_ = "map";
     if (exit_target_.source ==
@@ -613,6 +725,7 @@ private:
         exit_target_.target_x_m - exit_start_x_m_);
     // HH_260819 - Final yaw belongs to the same immutable lanelet sample as
     // the exit XY target; live snap updates cannot move either target.
+    // HH_261102 - Cargo targets use this same immutable slot for the initial body yaw instead.
     target_body_yaw_rad_ = exit_target_.target_yaw_rad;
     // HH_260721 - Preserve departure origin while charger feedback clears
     // during physical exit.
@@ -643,13 +756,18 @@ private:
   }
 
   void setError(const std::string &detail) {
+    cargo_access_ready_ = false;
     publishZero();
     setPhase(DropZoneManeuverPhase::kError, detail);
   }
 
   void publishServiceState(const std::string &detail) const {
     avg_msgs::msg::AvgServiceState message;
-    if (phase_ == DropZoneManeuverPhase::kExitStraight ||
+    if (phase_ == DropZoneManeuverPhase::kIdle && cargo_access_ready_) {
+      // HH_261102 - Station-local cargo readiness is stopped, not road-handoff authorization.
+      message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_WAIT;
+      message.state_name = "CARGO_ACCESS_READY";
+    } else if (phase_ == DropZoneManeuverPhase::kExitStraight ||
         phase_ == DropZoneManeuverPhase::kAlignExitYaw) {
       // HH_260721 - Distinguish charger departure from an uncharged drop-zone
       // departure.
@@ -711,7 +829,8 @@ private:
           exit_start_y_m_ +
           (exit_target_.target_y_m - exit_start_y_m_) * ratio;
       pose.pose.orientation = camrod_control::quaternionFromYaw(
-          step == step_count ? exit_target_.target_yaw_rad
+          // HH_261102 - Cargo proof paths show held body yaw rather than an uncommanded road turn.
+          cargo_access_active_ || step == step_count ? exit_target_.target_yaw_rad
                              : exit_heading_yaw_rad_);
       path.poses.push_back(pose);
     }
@@ -884,10 +1003,30 @@ private:
     }
     const double current_x_m = last_vehicle_pose_->pose.position.x;
     const double current_y_m = last_vehicle_pose_->pose.position.y;
+    // HH_261103 - Recheck the remaining swept footprint, map frame and held yaw on every cargo motion tick.
+    if (cargo_access_active_ &&
+        (last_vehicle_pose_->header.frame_id != "map" ||
+         !camrod_control::poseHasFiniteMotionGeometry(*last_vehicle_pose_) ||
+         !camrod_control::cargoAccessSweepInsideZone(cargo_zone_corners_, current_x_m, current_y_m,
+             exit_target_.target_x_m, exit_target_.target_y_m, cargo_body_radius_.value_or(0.0)) ||
+         std::abs(camrod_control::normalizeAngle(camrod_control::yawFromPose(*last_vehicle_pose_) -
+             target_body_yaw_rad_)) > yaw_tolerance_deg_ * M_PI / 180.0)) {
+      publishExitComplete(false);
+      setError("cargo-access footprint, map frame or held-yaw validation failed");
+      return;
+    }
     if (camrod_control::dropZoneExitTranslationComplete(
             exit_target_, current_x_m, current_y_m,
             exit_position_tolerance_m_)) {
       publishZero();
+      if (cargo_access_active_) {
+        // HH_261102 - Finish inside the drop zone with no road turn, parking start or automatic docking.
+        cargo_access_active_ = false;
+        cargo_access_ready_ = true;
+        setPhase(DropZoneManeuverPhase::kIdle, "authored station reached; cargo access stopped");
+        publishExitComplete(true);
+        return;
+      }
       setPhase(
           DropZoneManeuverPhase::kAlignExitYaw,
           "captured exit target reached; aligning captured lanelet yaw");
@@ -896,6 +1035,27 @@ private:
     if ((now() - phase_start_time_).seconds() >= exit_timeout_s_) {
       publishExitComplete(false);
       setError("drop-zone exit timeout");
+      return;
+    }
+    if (cargo_access_active_) {
+      // HH_261102 - Translate the bounded body vector without requesting any angular rotation.
+      auto config = parking_approach_config_;
+      config.position_tolerance_m = exit_position_tolerance_m_;
+      config.maximum_correction_m = exit_target_max_distance_m_;
+      config.maximum_speed_mps = exit_speed_mps_;
+      config.minimum_speed_mps = std::min(config.minimum_speed_mps, exit_speed_mps_);
+      const auto motion = camrod_control::makeDropZoneParkingApproachCommand(config,
+          current_x_m, current_y_m, camrod_control::yawFromPose(*last_vehicle_pose_),
+          exit_target_.target_x_m, exit_target_.target_y_m);
+      if (!motion.valid || motion.linear_x_mps < 0.0) {
+        publishExitComplete(false);
+        setError("cargo-access translation left its forward bounded envelope");
+        return;
+      }
+      avg_msgs::msg::AvgTwist command;
+      command.linear.x = motion.linear_x_mps;
+      command.linear.y = motion.linear_y_mps;
+      command_publisher_->publish(command);
       return;
     }
     // HH_260819 - Correct the small map/tag lateral offset while translating
@@ -944,7 +1104,9 @@ private:
                                      ? avg_msgs::msg::ModuleState::ERROR
                                      : avg_msgs::msg::ModuleState::OK;
     const std::string operating_state =
-        phase_ == DropZoneManeuverPhase::kIdle && road_handoff_ready_
+        phase_ == DropZoneManeuverPhase::kIdle && cargo_access_ready_
+            ? "CARGO_ACCESS_READY"
+        : phase_ == DropZoneManeuverPhase::kIdle && road_handoff_ready_
             ? "ROAD_HANDOFF_READY"
             : phaseName(phase_);
     const std::string message =
@@ -1100,6 +1262,12 @@ private:
   bool is_charging_{false};
   bool exit_started_while_charging_{false};
   bool road_handoff_ready_{false};
+  // HH_261102 - Cargo readiness is independent of the normal route-departure latch.
+  bool cargo_access_active_{false};
+  bool cargo_access_ready_{false};
+  std::optional<std::pair<double, double>> cargo_authored_station_;
+  std::vector<std::pair<double, double>> cargo_zone_corners_;
+  std::optional<double> cargo_body_radius_;
   std::string last_auto_alignment_key_;
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
 
@@ -1119,6 +1287,7 @@ private:
       vehicle_pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr
       platform_status_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPolygonStamped>::SharedPtr cargo_boundary_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr
       lanelet_pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr
@@ -1134,9 +1303,11 @@ private:
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
+#ifndef CAMROD_CONTROL_DROP_ZONE_CARGO_TEST
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<DropZoneManeuverControllerNode>());
   rclcpp::shutdown();
   return 0;
 }
+#endif

@@ -844,6 +844,32 @@ private:
   {
     maybeFinalizeStartupReturnLearning();
 
+    // HH_261102 - Missing enabled sensors cannot publish clear grids; disabled dummy channels need no measurement.
+    const auto now_time = now();
+    auto oldest_required_stamp = now_time;
+    const bool global_dummy_active =
+      dummyStateSuppressesCost(global_dummy_state_, now_time);
+    for (std::size_t i = 0; i < samples_.size(); ++i) {
+      if (global_dummy_active || dummyStateSuppressesCost(channel_dummy_states_[i], now_time)) {
+        continue;
+      }
+      const auto & sample = samples_[i];
+      const rclcpp::Time source_stamp(
+        sample.msg.header.stamp.sec, sample.msg.header.stamp.nanosec,
+        now_time.get_clock_type());
+      if (!camrod_sensing::radar_observation_is_fresh(
+          sample.valid, (now_time - sample.recv_time).seconds(),
+          (now_time - source_stamp).seconds(), max_message_age_s_) ||
+        sample.msg.header.frame_id.empty() ||
+        !camrod_sensing::radar_range_heartbeat_valid(
+          sample.msg.range, sample.msg.min_range, sample.msg.max_range))
+      {
+        reportUnavailable(sensorLabelForIndex(i), "raw_observation");
+        return;
+      }
+      oldest_required_stamp = std::min(oldest_required_stamp, source_stamp);
+    }
+
     geometry_msgs::msg::PointStamped base_origin;
     // HH_260315 - Anchor rolling grid with latest available TF.
     base_origin.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -861,6 +887,8 @@ private:
         get_logger(), *get_clock(), 2000,
         "radar_cost_grid failed to locate %s in %s: %s",
         base_frame_id_.c_str(), output_frame_id_.c_str(), ex.what());
+      // HH_261102 - Keep unavailable geometry distinct from both a hit and healthy clearance.
+      reportUnavailable(base_frame_id_, "base_transform");
       return;
     }
 
@@ -868,7 +896,8 @@ private:
     const double grid_origin_y = base_in_output.point.y + origin_y_;
 
     avg_msgs::msg::AvgOccupancyGrid grid;
-    grid.header.stamp = now();
+    // HH_261102 - Downstream freshness follows the oldest required raw sample, not this raster timer.
+    grid.header.stamp = oldest_required_stamp;
     grid.header.frame_id = output_frame_id_;
     grid.info.map_load_time = grid.header.stamp;
     grid.info.resolution = static_cast<float>(resolution_);
@@ -890,13 +919,10 @@ private:
         base_in_output.point.x, base_in_output.point.y);
     }
 
-    const auto now_time = now();
     std::vector<ActiveHitEvidence> evidence_candidates;
     evidence_candidates.reserve(samples_.size());
     std::vector<std::string> dummy_suppressed_sensors;
     dummy_suppressed_sensors.reserve(samples_.size());
-    const bool global_dummy_active =
-      dummyStateSuppressesCost(global_dummy_state_, now_time);
     for (std::size_t i = 0; i < samples_.size(); ++i) {
       const bool channel_dummy_active =
         i < channel_dummy_states_.size() &&
@@ -927,7 +953,9 @@ private:
 
       geometry_msgs::msg::PointStamped hit_output;
       if (!transformHitToOutput(sample.msg, hit_output)) {
-        continue;
+        // HH_261102 - An unlocatable live hit cannot be replaced by fresh clearance.
+        reportUnavailable(sensorLabelForIndex(i), "hit_transform");
+        return;
       }
       // HH_260630 - SEN0592 risk should follow sensor-relative range, not
       // robot-base distance. Front/side/rear mounts are offset from base_link,
@@ -989,6 +1017,18 @@ private:
     publishObstacleEvidence(grid, evidence_candidates);
     pub_grid_->publish(grid);
     publishAvgRadar(grid);
+  }
+
+  // HH_261102 - Report sensor health without fabricating obstacle cells or refreshing the last safe grid.
+  void reportUnavailable(const std::string & sensor, const std::string & detail)
+  {
+    const std::string reason = "sensor_unavailable:" + sensor + ":" + detail;
+    if (obstacle_evidence_pub_) {
+      avg_msgs::msg::AvgString message;
+      message.data = reason;
+      obstacle_evidence_pub_->publish(message);
+    }
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "%s", reason.c_str());
   }
 
   // Implements `assignRangeByTopic` behavior.

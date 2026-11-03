@@ -1,0 +1,51 @@
+{
+  "comment": "HH_261102 - Preserve source-matched isolated native-controller evidence without implying field or CARLA movement.",
+  "branch": "test/unit2-service-usability-20261102",
+  "verification_kind": "actual ROS controller with synthetic fresh pose feedback in isolated domain 219",
+  "physical_hardware_test": false,
+  "carla_test": false,
+  "exact_cargo_source": "http:charging_access:leave:site_departure",
+  "target": "existing authored drop-zone normal reverse-parking station, not road/lanelet target",
+  "completion": {
+    "module_state": "CARGO_ACCESS_READY",
+    "service_state": "DROP_ZONE_WAIT",
+    "service_state_name": "CARGO_ACCESS_READY",
+    "exit_complete": true,
+    "automatic_redocking": false
+  },
+  "ctest_targets_passed": 5,
+  "new_pure_geometry_cases_passed": 7,
+  "new_actual_ros_controller_cases_passed": 7,
+  "trajectory_junit_properties": {
+    "proof_kind": "isolated_actual_ros_controller_with_synthetic_pose_feedback",
+    "station_x_m": "-8.473660",
+    "station_y_m": "40.391000",
+    "terminal_position_error_m": "0.169344",
+    "body_disk_radius_m": "1.027984",
+    "moving_feedback_steps": "16",
+    "max_angular_command_radps": "0.0",
+    "automatic_parking_starts": "0",
+    "cargo_terminal": "CARGO_ACCESS_READY"
+  },
+  "asserted_behaviors": [
+    "full planning-body swept disk inside the same authored convex polygon",
+    "zero angular commands throughout cargo movement",
+    "no parking operation emitted",
+    "Cancel plus stale GOAL_REACHED does not re-arm parking",
+    "subsequent ordinary EXIT retains lanelet target and ALIGN_EXIT_YAW"
+  ],
+  "source_sha256": {
+    "camrod_control/src/drop_zone_maneuver_controller_node.cpp": "45ac2e0c73d4d08caa250bf619d1fade6db3323536d342513c1eb248c2be2b6c",
+    "camrod_control/include/camrod_control/cargo_access_target.hpp": "643a6364b40b9f065655d33cef85a81e3d86a61fdcc90e62319ef6aaac43e7d1",
+    "camrod_control/include/camrod_control/drop_zone_exit_target_policy.hpp": "5266acd68688ff10f78242697f1dbd9cad4d4fb3184c39a2d415729d7a56a3dd",
+    "camrod_control/test/test_cargo_access_target.cpp": "a92d323ba049c759066dfea60b0a9228511ca149567e0d60e0409c2fa9ac6daa",
+    "camrod_control/test/test_drop_zone_cargo_access.cpp": "a77aa7206c3e239c4866d1cc3f90f30174b82135408185febdef95acb3b2e912"
+  },
+  "production_binary_sha256": "ebadeb16577c1e04de24a2ffb0a9ff6a1e73ff5dca67f435e332eaac7876b436",
+  "limitations": [
+    "canonical robot_center_link planning boundary must be available; otherwise reject immediately",
+    "circumscribed body disk is conservative and may reject a real dock near the authored boundary",
+    "no guessed fallback target, polygon modification, charger electrical-stop command or safety-gate bypass",
+    "physical charger and rear-cargo clearance remain unverified"
+  ]
+}

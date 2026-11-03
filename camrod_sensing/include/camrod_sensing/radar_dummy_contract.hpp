@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -17,6 +18,32 @@ inline double radar_no_target_range_m(const double max_range_m)
     throw std::invalid_argument("radar max_range must be finite and positive");
   }
   return max_range_m + kRadarNoTargetEpsilonM;
+}
+
+// HH_261102 - An answered no-target heartbeat is healthy; malformed measurements must not prove clearance.
+inline bool radar_range_heartbeat_valid(
+  const double range_m, const double min_range_m, const double max_range_m)
+{
+  if (!std::isfinite(range_m) || !std::isfinite(min_range_m) ||
+    !std::isfinite(max_range_m) || min_range_m < 0.0 || max_range_m <= min_range_m)
+  {
+    return false;
+  }
+  const double tolerance_m = std::numeric_limits<float>::epsilon() * max_range_m;
+  return range_m >= min_range_m - tolerance_m &&
+         (range_m <= max_range_m + tolerance_m ||
+         std::abs(range_m - radar_no_target_range_m(max_range_m)) <= tolerance_m);
+}
+
+// HH_261102 - A fresh callback cannot turn a replayed or dropped raw measurement into fresh-clear evidence.
+inline bool radar_observation_is_fresh(
+  const bool received, const double receive_age_s, const double stamp_age_s,
+  const double timeout_s)
+{
+  return received && std::isfinite(receive_age_s) && std::isfinite(stamp_age_s) &&
+         std::isfinite(timeout_s) && timeout_s > 0.0 &&
+         receive_age_s >= 0.0 && receive_age_s <= timeout_s &&
+         stamp_age_s >= 0.0 && stamp_age_s <= timeout_s;
 }
 
 // HH_260729 - Treat dummy state as a positive, fresh heartbeat only. A stale

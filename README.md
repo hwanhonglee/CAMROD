@@ -1,5 +1,10 @@
 # CAMROD
 
+<!-- HH_261103 - Link branch-specific defaults without rewriting the inherited common release history. -->
+Unit 2: [unit2-v1.0.1 release notes](docs/releases/unit2-v1.0.1.md) describe this
+branch's changes, current defaults and validation limits; they take precedence
+over inherited historical tables below.
+
 <!-- HH_260806 - Use the fabrication-inclusive measured body as the active
 hard-stop envelope and retain earlier reduced-boundary runs as historical evidence. -->
 <!-- HH_260806 - Replace the GNSS center placeholder with the measured

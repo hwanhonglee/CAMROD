@@ -2,6 +2,7 @@
 
 import importlib.util
 import math
+import struct
 from pathlib import Path
 
 import pytest
@@ -125,13 +126,15 @@ def test_live_cost_profile_uses_absolute_front_thirty_centimeter_cutoff():
     bands = RADAR_GUI.load_fixed_return_bands(str(config_path))
     stop_max = RADAR_GUI.load_stop_candidate_max_ranges_m(str(config_path))
 
-    assert bands["FRONT1"][:2] == ((0.020, 0.120), (0.120, 0.220))
-    assert bands["FRONT2"] == ((0.020, 0.117),)
-    assert bands["REAR"] == ((0.020, 0.106),)
+    # HH_261102 - Unit 2's inactive historical bands must not label close real returns as filtered.
+    assert all(not intervals for intervals in bands.values())
+    for name in ("FRONT1", "FRONT2"):
+        assert RADAR_GUI.classify_sample(0.05, 0.02, 0.50, 0.1, 1.0, bands[name], stop_max[name]) == "hit"
+        wire_cutoff = struct.unpack("f", struct.pack("f", 0.3))[0]
+        assert RADAR_GUI.classify_sample(wire_cutoff, 0.02, 0.50, 0.1, 1.0, bands[name], stop_max[name]) == "hit"
     assert tuple(stop_max[name] for name in RADAR_GUI.SENSOR_ORDER) == pytest.approx(
         (0.300, 0.300, 0.100, 0.100, 0.100, 0.100, 0.100)
     )
     assert stop_max["FRONT1"] == pytest.approx(0.30)
     assert stop_max["FRONT2"] == pytest.approx(0.30)
     assert stop_max["REAR"] == pytest.approx(0.10)
-    assert bands["REAR"][-1][1] >= stop_max["REAR"]

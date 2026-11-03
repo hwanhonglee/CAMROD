@@ -15,6 +15,8 @@ enum class DropZoneExitTargetSource
   kNone,
   kLaneletPose,
   kFixedDistanceFallback,
+  // HH_261102 - Cargo access is a station-local terminal, not a road handoff.
+  kStationPose,
 };
 
 inline const char * dropZoneExitTargetSourceName(
@@ -25,6 +27,8 @@ inline const char * dropZoneExitTargetSourceName(
       return "lanelet_pose";
     case DropZoneExitTargetSource::kFixedDistanceFallback:
       return "fixed_distance_fallback";
+    case DropZoneExitTargetSource::kStationPose:
+      return "drop_zone_station";
     case DropZoneExitTargetSource::kNone:
       break;
   }

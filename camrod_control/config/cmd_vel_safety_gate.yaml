@@ -103,6 +103,12 @@
     # HH_260721 - List every live source used to distinguish dynamic obstacles from static cost.
     cost_source_debug_enable: true
     cost_source_debug_max_age_s: 1.0
+    # HH_261102 - Missing radar must stop motion even when the merged raster still publishes clear heartbeats.
+    radar_grid_freshness_stop_enable: true
+    # HH_261102 - Experimental raw front guard is independent of fusion, direction-scoped, and opt-in.
+    lidar_front_guard_stop_enable: false
+    lidar_front_guard_max_age_s: 0.35
+    lidar_front_guard_grid_topic: "/sensing/cost_grid/lidar_front_guard"
     cost_source_debug_topics:
       # HH_260806 - Match diagnostics to the high-resolution control raster.
       - "/map/cost_grid/lanelet_safety"

@@ -61,6 +61,8 @@ disable/vio_bridge/sdk_installers/*.deb
 
 # Node.js / frontend build artifacts
 node_modules/
+# HH_261103 - Atomic frontend staging copies are generated verification artifacts, not duplicate source assets.
+/camrod_ui/camrod_ui_robot/assets/frontend/.ui-build.*/
 # HH_260721 - The active UI tree is camrod_ui_robot/assets/frontend; retire legacy runtime paths.
 
 # HH_260909 - Duplicate of the LFS-tracked /util/flexcloud copy (identical md5).

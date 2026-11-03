@@ -118,6 +118,7 @@ def generate_launch_description():
         # HH_260807 - Load the same preprocessing profile in composed and standalone LiDAR paths.
         "lidar_preprocessor_param_file":  os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
+        "lidar_front_guard_param_file": os.path.join(sensing_share, "config", "lidar", "front_guard.yaml"),
         "radar_sensor_param_file":        os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
         "radar_cost_grid_param_file":     os.path.join(sensing_share, "config", "radar", "cost_grid.yaml"),
         "inflation_cost_grid_param_file": os.path.join(sensing_share, "config", "inflation_cost_grid.yaml"),
@@ -155,6 +156,8 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_driver",         default_value="true"),
         # HH_260805 - Keep optional rasterization off while raw and filtered clouds stay available.
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="false"),
+        # HH_261102 - The narrow raw front guard stays opt-in independently of semantic fusion costs.
+        DeclareLaunchArgument("enable_lidar_front_guard", default_value="false"),
         # HH_260805 - Compose LiDAR preprocessing while retaining an independent cost-grid toggle.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
         # HH_260805 - Forward the opt-in LiDAR-only DDS-SHM profile without
@@ -379,6 +382,7 @@ def generate_launch_description():
                  "ground_seg_param_file",
                  "lidar_preprocessor_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
+                 "lidar_front_guard_param_file", "enable_lidar_front_guard",
                  "enable_lidar_driver", "enable_lidar_cost_grid",
                  "use_lidar_processing_container", "enable_vanjee_static_tf",
                  "enable_dds_shared_memory",

@@ -30,6 +30,8 @@ import './DrivingIntegration.css';
 // HH_261026 - Organize native diagnostics without importing simulator controls.
 import AdminNavigation, { getAdminDiagnosticView } from './AdminNavigation';
 import './AdminWorkspace.css';
+// HH_261102 - Charging cargo access has its own confirmed motion flow, not a new customer login.
+import ChargingAccessScreen, { chargingAccessBusy, useChargingAccess } from './ChargingAccessScreen';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -132,21 +134,23 @@ const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
 // HH_260907 - This is presentation only: the controller owns clearance dwell,
 // site re-entry and rotation. B11-B13 retain their existing opposite-side route.
 function recallReturnInstructions(site, finalReady = false) {
+  // HH_261102 - Explain only the current action while preserving the two separate recall confirmations.
   if (/^B(?:[1-9]|10)$/.test(String(site || ''))) {
-    if (finalReady) return '사이트 안에서 180도 회전을 마치고 정차했습니다. 짐 싣기를 모두 마친 뒤 [짐 싣기 완료 · 복귀]를 눌러주세요. 확인 전에는 출차하지 않습니다.';
-    return '정리를 마친 뒤 버튼을 눌러주세요. 음성 안내 후 사이트 안으로 다시 들어가 180도 회전하므로 주변을 비워주세요. 회전 후 다시 정차하며, 짐 싣기를 마치고 두 번째 완료 버튼을 눌러야 복귀합니다.';
+    if (finalReady) return '짐을 모두 실었다면 복귀를 눌러 주세요.';
+    return '사이트 안으로 들어가 180도 회전합니다. 주변을 비워 주세요. 정차 후 짐을 실어 주세요.';
   }
-  return '짐 적재와 정리를 마친 뒤 버튼을 눌러주세요. 사이트로 다시 들어가지 않고 기존 반대쪽 경로로 복귀합니다. 로봇 주변을 비워주세요.';
+  return '짐을 싣고 주변을 비워 주세요. 반대쪽 도로로 복귀합니다.';
 }
 
 function recallCompletionLabel(site, finalReady = false) {
   return /^B(?:[1-9]|10)$/.test(String(site || ''))
-    ? (finalReady ? '짐 싣기 완료 · 복귀' : '정리 완료 · 사이트 재진입')
-    : '적재 완료 · 복귀';
+    ? (finalReady ? '짐 싣기 완료 · 복귀' : '정리 완료 · 회전 시작')
+    : '짐 싣기 완료 · 복귀';
 }
 
 function missionExecutionFailureMessage(reason) {
-  return reason ? `사이트 동작이 중단되었습니다. 완료·복귀 버튼을 반복해서 누르지 말고 관리자에게 확인을 요청해주세요. 원인: ${reason}` : '';
+  // HH_261102 - Preserve raw failure evidence separately instead of filling the customer screen with controller fields.
+  return reason ? '이동할 수 없습니다. 관리자에게 문의해 주세요.' : '';
 }
 
 function recallReturnProgress(site, description) {
@@ -1451,6 +1455,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // HH_260819 - Public field-operation evidence stays lightweight and separate
   // from the administrator-only, high-bandwidth telemetry session.
   const serviceMetrics = useServiceMetricsSummary(3000, !previewMode);
+  const chargingAccess = useChargingAccess(connected && !previewMode);
+  const chargingAccessLocked = chargingAccess.pending || chargingAccessBusy(chargingAccess.snapshot?.phase);
 
   const previewMission = drivingPreviewSnapshot?.mission;
   const previewConnected = drivingPreviewSnapshot?.connected;
@@ -1665,6 +1671,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // ── 대기 화면 터치 핸들러 (운영시간 체크) ──────────────────────────────
   const handleWaitingClick = () => {
+    if (chargingAccessLocked) return;
     if (isWithinOperatingHours()) {
       // 안전 수칙을 먼저 보여주고, [확인]을 누른 뒤에만 서비스 선택으로 넘긴다.
       setShowServiceSafetyGate(true);
@@ -1676,6 +1683,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // 안전 안내 확인 → 배송 서비스 선택 화면
   const handleServiceSafetyConfirm = () => {
+    if (chargingAccessLocked) return;
     setShowServiceSafetyGate(false);
     // Pin the public chooser immediately, not only after role selection:
     // idle station heartbeats are status, not navigation commands.
@@ -2287,6 +2295,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // ── 개별 사이트 토글 핸들러 ─────────────────────────────────────────────
   const handleEngage = () => {
     if (previewMode) return;
+    // HH_261102 - A stale service control must not open a competing drive owner during cargo access.
+    if (chargingAccessLocked && !engageState) return;
     if (engageState) {
       // HH_260724 - ENGAGE OFF is an operator stop, so route it through the full backend stop path.
       fetch('/ui/stop', { method: 'POST' })
@@ -2328,6 +2338,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   };
 
   const activateDestinationService = (intent) => {
+    if (chargingAccessLocked) return;
     selectDestinationIntent(intent);
     intentPinnedRef.current = true;
     setTogglePage(0);
@@ -2337,7 +2348,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   const handleServiceDocking = async () => {
     if (previewMode) return;
     if (
-      serviceDockingPendingRef.current
+      chargingAccessLocked
+      || serviceDockingPendingRef.current
       || !dockingAllowedAtServiceState(serviceStateName)
     ) {
       return;
@@ -2358,6 +2370,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   };
 
   const requestCampingSiteRecall = async (site) => {
+    if (chargingAccessLocked) return;
     if (previewMode) return;
     const requestEpoch = recallRequestEpochRef.current + 1;
     recallRequestEpochRef.current = requestEpoch;
@@ -2450,6 +2463,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   };
 
   const handleToggle = (site) => {
+    if (chargingAccessLocked) return;
     // HH_260723 - Occupancy blocks physical campsite entry, not the typed
     // roadside recall used when a tent is already installed at the site.
     if (
@@ -2475,6 +2489,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
   // ── 프리뷰에서 "Yes" 클릭 → 실제 ON publish ─────────────────────────────
   const handleConfirmMove = async () => {
     if (previewMode) return;
+    if (chargingAccessLocked) return;
     if (!selectedSite) return;
     if (destinationIntent === 'recall') {
       await requestCampingSiteRecall(selectedSite);
@@ -2546,6 +2561,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
   // ── 실제 토글 적용 & WebSocket 전송 ─────────────────────────────────────
   const applyToggle = (site, newState) => {
+    if (chargingAccessLocked) return;
     if (previewMode) return;
     setMissionBlockMessage('');
     const updated = {};
@@ -2581,12 +2597,16 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
     </div>
   );
   const missionExecutionWarning = missionExecutionError && (
-    <p role="alert" className="mission-block-msg" style={{ color: '#b42318', padding: '1rem', background: '#fff0ee' }}>
-      {missionExecutionFailureMessage(missionExecutionError)}
-    </p>
+    <div role="alert" className="mission-block-msg" style={{ color: '#b42318', padding: '1rem', background: '#fff0ee' }}>
+      <p>{missionExecutionFailureMessage(missionExecutionError)}</p>
+      <details data-ui="operator-mission-error-details">
+        <summary>상세 원인</summary>
+        <p style={{ overflowWrap: 'anywhere' }}>{missionExecutionError}</p>
+      </details>
+    </div>
   );
   const missionSelectionLocked = Boolean(
-    anyOn || isReturning || activeRecallSite || recallRequestPending
+    anyOn || isReturning || activeRecallSite || recallRequestPending || chargingAccessLocked
   );
   const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
   const serviceEvidenceModalOpen = activeModal === 'service-evidence';
@@ -2727,6 +2747,15 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
         )}
       </div>
     );
+  }
+
+  // HH_261102 - Keep the stopped drop_zone status visible, but let ready use the existing service chooser.
+  const chargingPhase = chargingAccess.snapshot?.phase;
+  if (!previewMode && (chargingAccessLocked || chargingPhase === 'error'
+    || (showWaiting && !showServiceSafetyGate && !activeModal && !missionDispatch.active
+      && (chargingPhase === 'ready' || ['CHARGING', 'WAITING_FOR_CHARGING'].includes(serviceStateName))))) {
+    return <ChargingAccessScreen access={chargingAccess} batteryChargeComplete={batteryChargeComplete}
+      onServices={handleWaitingClick} onStop={handleStopMove} adminEntry={adminEntryZone} />;
   }
 
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
@@ -2956,8 +2985,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
 
         <main className="service-selection-body">
           <div className="service-selection-heading">
-            <span>SERVICE MENU</span>
-            <h1>이용할 서비스를 선택해주세요</h1>
+            {/* HH_261102 - Keep familiar service names and a single short purpose per card. */}
+            <h1>어떤 서비스를 이용하시겠어요?</h1>
           </div>
 
           <div className="service-selection-grid">
@@ -2969,7 +2998,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             >
               <span className="service-choice-icon" aria-hidden="true">📦</span>
               <strong>배달 서비스</strong>
-              <span>선택한 캠핑 사이트 안으로 짐을 배달해드립니다.</span>
+              <span>캠핑 사이트 안으로 짐을 배달해요.</span>
             </button>
 
             <button
@@ -2980,7 +3009,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             >
               <span className="service-choice-icon" aria-hidden="true">↩</span>
               <strong>호출 서비스</strong>
-              <span>사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.</span>
+              <span>로봇을 사이트 앞 도로로 불러요.</span>
             </button>
 
             <div className="service-selection-dock-wrap">
@@ -3001,8 +3030,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                 <strong>{serviceDockingPending ? '충전 요청 중' : '충전'}</strong>
                 <span>
                   {dockingAvailable
-                    ? '대기·충전 장소에서 충전을 시작합니다.'
-                    : '대기·충전 장소에서만 이용할 수 있습니다.'}
+                    ? '관리자용 · 충전 시작'
+                    : '관리자용 · 주차 위치에서 이용'}
                 </span>
               </button>
               {serviceDockingStatus && (
@@ -3033,8 +3062,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           <div className="move-confirm-overlay" onClick={() => setShowDeliveryConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
               <p className="move-confirm-msg">
-                배달 서비스는 사이트 내부로 진입합니다.<br />
-                사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?
+                사이트 안으로 짐을 배달해요.<br />
+                텐트와 장비가 이동을 막지 않는지 확인해 주세요.
               </p>
               <div className="move-confirm-btns">
                 <button
@@ -3045,10 +3074,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                     activateDestinationService('delivery');
                   }}
                 >
-                  예
+                  배달 선택
                 </button>
                 <button className="move-confirm-no" onClick={() => setShowDeliveryConfirm(false)}>
-                  아니오
+                  취소
                 </button>
               </div>
             </div>
@@ -3059,8 +3088,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           <div className="move-confirm-overlay" onClick={() => setShowRecallConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
               <p className="move-confirm-msg">
-                호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
-                도로 측 대기점으로 이동합니다. 진행하시겠습니까?
+                로봇을 사이트 앞 도로로 불러요.<br />
+                사이트 안으로는 들어가지 않아요.
               </p>
               <div className="move-confirm-btns">
                 <button
@@ -3071,10 +3100,10 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                     activateDestinationService('recall');
                   }}
                 >
-                  예
+                  호출 선택
                 </button>
                 <button className="move-confirm-no" onClick={() => setShowRecallConfirm(false)}>
-                  아니오
+                  취소
                 </button>
               </div>
             </div>
@@ -3085,15 +3114,15 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           <div className="move-confirm-overlay" onClick={() => setShowDockingConfirm(false)}>
             <div className="move-confirm-box" onClick={e => e.stopPropagation()}>
               <p className="move-confirm-msg">
-                배터리 잔량과 관계없이 충전을 요청합니다.<br />
-                충전을 진행하시겠습니까?
+                충전을 시작할까요?<br />
+                배터리 잔량과 관계없이 충전을 요청합니다.
               </p>
               <div className="move-confirm-btns">
                 <button className="move-confirm-yes" data-ui="operator-service-docking-confirm" onClick={handleServiceDocking}>
-                  예
+                  충전 요청
                 </button>
                 <button className="move-confirm-no" onClick={() => setShowDockingConfirm(false)}>
-                  아니오
+                  취소
                 </button>
               </div>
             </div>
@@ -3177,7 +3206,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             <>
               <span className="preview-placeholder-title">시스템 준비 중</span>
               <span className="preview-placeholder">
-                센서, 위치, 지도 및 주행 시스템을 확인하고 있습니다
+                잠시만 기다려 주세요.
               </span>
             </>
           ) : selectedSite ? (
@@ -3190,8 +3219,8 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
               <p className="preview-site-name">{selectedSite}</p>
               <p className="preview-question">
                 {destinationIntent === 'recall'
-                  ? '사이트 내부로 들어가지 않고 도로 측 대기점으로 호출하시겠습니까?'
-                  : '배송을 위해 사이트 내부로 이동하시겠습니까?'}
+                  ? '사이트 앞 도로로 로봇을 부를까요?'
+                  : '이 사이트로 짐을 배달할까요?'}
               </p>
               <div className="preview-yn-btns">
                 <button
@@ -3200,9 +3229,9 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                   onClick={() => setShowMoveConfirm(true)}
                   disabled={recallRequestPending}
                 >
-                  {recallRequestPending ? '요청 중…' : '예'}
+                  {recallRequestPending ? '요청 중…' : '이 사이트 선택'}
                 </button>
-                <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>아니오</button>
+                <button className="preview-no-btn" onClick={() => setSelectedSite(null)}>다시 선택</button>
               </div>
             </>
           ) : arrivedSite && !recallTurnaroundInProgress ? (
@@ -3304,7 +3333,7 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             </>
           ) : manualDriveActive ? (
             <>
-              <span className="preview-placeholder-title">Manual RViz Goal</span>
+              <span className="preview-placeholder-title">지정 위치로 이동</span>
               <p className="preview-moving">
                 {motionNotice?.message || MISSION_PHASE_LABELS[missionPhase] || missionPhase}
               </p>
@@ -3315,12 +3344,12 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             </>
           ) : serviceStateName === 'OPERATOR_STOPPED' ? (
             <>
-              <span className="preview-placeholder-title">Operator Stopped</span>
+              <span className="preview-placeholder-title">운행 정지</span>
               <p className="preview-returning">운행이 정지되었습니다.</p>
             </>
           ) : (
             <>
-              <span className="preview-placeholder-title">Camping Site Viewer</span>
+              <span className="preview-placeholder-title">목적지 선택</span>
               <span className="preview-placeholder">서비스 선택 버튼을 눌러주세요</span>
             </>
           )}
@@ -3448,13 +3477,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
             <p className="move-confirm-msg">
               {destinationIntent === 'recall' ? (
                 <>
-                  호출 서비스는 사이트 내부로 진입하지 않습니다.<br />
-                  도로 측 대기점으로 호출하시겠습니까?
+                  {selectedSite} 앞 도로로 부를까요?<br />
+                  사이트 안으로는 들어가지 않아요.
                 </>
               ) : (
                 <>
-                  로봇이 출발하면 정차할 수 없습니다.<br />
-                  배송을 위해 이동하시겠습니까?
+                  {/* HH_261102 - Never claim stopping is impossible when the existing Stop control remains available. */}
+                  {selectedSite}로 배달할까요?<br />
+                  로봇 주변을 비워 주세요.
                 </>
               )}
             </p>
@@ -3470,13 +3500,13 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
                   setShowMoveVerify(true);
                 }}
               >
-                예
+                다음
               </button>
               <button
                 className="move-confirm-no"
                 onClick={() => setShowMoveConfirm(false)}
               >
-                아니오
+                취소
               </button>
             </div>
           </div>
@@ -3505,17 +3535,14 @@ function App({ drivingPreviewSnapshot = null, drivingPreviewTheme = 'light' } = 
           <div className="move-verify-box" onClick={e => e.stopPropagation()}>
             <p className="move-verify-title">
               {destinationIntent === 'recall'
-                ? '지금 호출할 사이트는'
-                : '지금 배송 이동할 사이트는'}<br />
-              <span className="move-verify-site">{selectedSite}</span><br />
-              입니다
+                ? '호출할 사이트'
+                : '배달할 사이트'}<br />
+              <span className="move-verify-site">{selectedSite}</span>
             </p>
             <p className="move-verify-sub">아래에 사이트명을 입력해주세요</p>
             {moveVerifyError && (
               <div className="move-verify-error-box">
-                <span className="move-verify-wrong">"{moveVerifyInput}"</span>
-                <span className="move-verify-error-msg">로 이동하시는게 맞으십니까?</span>
-                <p className="move-verify-retry">숫자를 다시 입력해주세요</p>
+                <p className="move-verify-retry">사이트명이 맞지 않아요. 다시 입력해 주세요.</p>
               </div>
             )}
             <input

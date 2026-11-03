@@ -198,6 +198,8 @@ bringup:
     # classified camera-LiDAR /perception/obstacles. Direct raw/preprocessed
     # LiDAR painting remains disabled inside its own parameter file.
     enable_lidar_cost_grid: true
+    # HH_261102 - Bounded raw front sensing needs supervised validation before any field-wide rollout.
+    enable_lidar_front_guard: false
     # HH_260805 - Preprocess and ground-segment LiDAR through intra-process
     # ownership in one container. The optional transient-local grid component
     # shares that process but retains DDS transport for Humble compatibility.
@@ -218,6 +220,7 @@ bringup:
     radar_cost_grid_param_file: sensing/radar/cost_grid.yaml
     lidar_preprocessor_param_file: sensing/lidar/preprocessor.yaml
     lidar_cost_grid_param_file: sensing/lidar/cost_grid.yaml
+    lidar_front_guard_param_file: sensing/lidar/front_guard.yaml
     inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
     # HH_260611 - Current rover default is simpleRTK2B Heading through ublox_gps.
     # Set false for the SparkFun ZED-F9P single-antenna profile.

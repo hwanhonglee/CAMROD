@@ -389,6 +389,19 @@ private:
         declare_parameter<bool>("cost_source_debug_enable", true);
     motion_cost_stop_config_.source_max_age_s =
         declare_parameter<double>("cost_source_debug_max_age_s", 1.0);
+    // HH_261102 - A live merged-grid timer is not proof that the raw radar is still available.
+    motion_cost_stop_config_.radar_grid_freshness_stop_enabled =
+        declare_parameter<bool>("radar_grid_freshness_stop_enable", true);
+    // HH_261102 - Front-only raw protection is opt-in and must not inherit semantic-class/path restrictions.
+    rcl_interfaces::msg::ParameterDescriptor front_guard_startup;
+    front_guard_startup.read_only = true;
+    front_guard_startup.description = "Restart the gate to change the front-guard source contract";
+    motion_cost_stop_config_.lidar_front_guard_enabled =
+        declare_parameter<bool>("lidar_front_guard_stop_enable", false, front_guard_startup);
+    motion_cost_stop_config_.lidar_front_guard_max_age_s =
+        declare_parameter<double>("lidar_front_guard_max_age_s", 0.35, front_guard_startup);
+    lidar_front_guard_grid_topic_ = declare_parameter<std::string>(
+        "lidar_front_guard_grid_topic", "/sensing/cost_grid/lidar_front_guard", front_guard_startup);
     cost_source_topics_ = declare_parameter<std::vector<std::string>>(
         "cost_source_debug_topics",
         {"/map/cost_grid/lanelet_safety", "/sensing/cost_grid/radar",
@@ -1039,7 +1052,7 @@ private:
                   motion_cost_stop_.setFootprintPolygonLocal(polygon);
                 });
       }
-      if (cost_source_debug_enable_ ||
+      if (cost_source_debug_enable_ || motion_cost_stop_config_.radar_grid_freshness_stop_enabled ||
           motion_cost_stop_config_.require_dynamic_source) {
         for (std::size_t index = 0; index < cost_source_topics_.size();
              ++index) {
@@ -1054,6 +1067,13 @@ private:
                     motion_cost_stop_.setSourceGrid(label, *message, nowSec());
                   }));
         }
+      }
+      if (motion_cost_stop_config_.lidar_front_guard_enabled) {
+        source_grid_subscriptions_.push_back(create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
+          lidar_front_guard_grid_topic_, cost_qos,
+          [this](const avg_msgs::msg::AvgOccupancyGrid::SharedPtr message) {
+            motion_cost_stop_.setSourceGrid("lidar_front_guard", *message, nowSec());
+          }));
       }
       if (!radar_obstacle_evidence_topic_.empty()) {
         radar_obstacle_evidence_subscription_ =
@@ -2336,6 +2356,11 @@ private:
         motion_cost_stop_config_.clear_required_s = parameter.as_double();
       } else if (name == "cost_grid_stale_stop_enable") {
         motion_cost_stop_config_.stale_stop_enabled = parameter.as_bool();
+      } else if (name == "radar_grid_freshness_stop_enable") {
+        motion_cost_stop_config_.radar_grid_freshness_stop_enabled = parameter.as_bool();
+      } else if (name == "cost_source_debug_max_age_s") {
+        // HH_261102 - This existing age limit now governs required radar health as well as attribution.
+        motion_cost_stop_config_.source_max_age_s = parameter.as_double();
       } else if (name == "cost_grid_stale_timeout_s") {
         motion_cost_stop_config_.stale_timeout_s = parameter.as_double();
       } else if (name == "route_safety_lanelet_grid_max_age_s") {
@@ -2593,6 +2618,7 @@ private:
   std::string apriltag_parking_status_topic_;
   std::string parking_dispatcher_status_topic_;
   std::string cost_grid_topic_;
+  std::string lidar_front_guard_grid_topic_;
   std::string lanelet_grid_topic_;
   std::string pose_topic_;
   std::string odometry_topic_;

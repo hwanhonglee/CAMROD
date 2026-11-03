@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="16"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="htop"
+	time="39"
+	timestamp="2026-11-03T19:59:02"
+	>
+	<testcase name="test_route_lanelet_cost_filter" classname="test_route_lanelet_cost_filter" time="0.153642" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_route_lanelet_cost_filter --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_route_lanelet_cost_filter.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from RouteLaneletCostFilter
+[ RUN      ] RouteLaneletCostFilter.KeepsInsideAndRemovesOutsideCosts
+[       OK ] RouteLaneletCostFilter.KeepsInsideAndRemovesOutsideCosts (0 ms)
+[ RUN      ] RouteLaneletCostFilter.AppliesMetricMarginFromLaneletBoundary
+[       OK ] RouteLaneletCostFilter.AppliesMetricMarginFromLaneletBoundary (0 ms)
+[ RUN      ] RouteLaneletCostFilter.RejectsUnknownOrMalformedMasks
+[       OK ] RouteLaneletCostFilter.RejectsUnknownOrMalformedMasks (0 ms)
+[----------] 3 tests from RouteLaneletCostFilter (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_route_lanelet_cost_filter.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_route_lanelet_cost_filter.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_self_echo_filter" classname="test_radar_self_echo_filter" time="0.144441" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_radar_self_echo_filter --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_self_echo_filter.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 10 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 10 tests from RadarSelfEchoFilter
+[ RUN      ] RadarSelfEchoFilter.BuildsMultipleNotchesForOneSensor
+[       OK ] RadarSelfEchoFilter.BuildsMultipleNotchesForOneSensor (0 ms)
+[ RUN      ] RadarSelfEchoFilter.BuildsReadableNamedMinMaxSpecs
+[       OK ] RadarSelfEchoFilter.BuildsReadableNamedMinMaxSpecs (0 ms)
+[ RUN      ] RadarSelfEchoFilter.ExcludesConfiguredFrontAndRearBodyEnvelopesOnly
+[       OK ] RadarSelfEchoFilter.ExcludesConfiguredFrontAndRearBodyEnvelopesOnly (0 ms)
+[ RUN      ] RadarSelfEchoFilter.MalformedOrUnknownNamedSpecFailsSafe
+[       OK ] RadarSelfEchoFilter.MalformedOrUnknownNamedSpecFailsSafe (0 ms)
+[ RUN      ] RadarSelfEchoFilter.KeepsCloserAndFartherObstacles
+[       OK ] RadarSelfEchoFilter.KeepsCloserAndFartherObstacles (0 ms)
+[ RUN      ] RadarSelfEchoFilter.IncludesBandEdgesOnly
+[       OK ] RadarSelfEchoFilter.IncludesBandEdgesOnly (0 ms)
+[ RUN      ] RadarSelfEchoFilter.InvalidConfigurationLeavesFilterEmpty
+[       OK ] RadarSelfEchoFilter.InvalidConfigurationLeavesFilterEmpty (0 ms)
+[ RUN      ] RadarSelfEchoFilter.LearnsDominantTightStartupCluster
+[       OK ] RadarSelfEchoFilter.LearnsDominantTightStartupCluster (0 ms)
+[ RUN      ] RadarSelfEchoFilter.RejectsWeakOrBroadStartupClusters
+[       OK ] RadarSelfEchoFilter.RejectsWeakOrBroadStartupClusters (0 ms)
+[ RUN      ] RadarSelfEchoFilter.StartsCollectionWindowPerSensor
+[       OK ] RadarSelfEchoFilter.StartsCollectionWindowPerSensor (0 ms)
+[----------] 10 tests from RadarSelfEchoFilter (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 10 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 10 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_self_echo_filter.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_self_echo_filter.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_stop_range_filter" classname="test_radar_stop_range_filter" time="0.156726" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_radar_stop_range_filter --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_stop_range_filter.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from RadarStopRangeFilter
+[ RUN      ] RadarStopRangeFilter.KeepsObservationAndStopRangesIndependent
+[       OK ] RadarStopRangeFilter.KeepsObservationAndStopRangesIndependent (0 ms)
+[ RUN      ] RadarStopRangeFilter.IncludesAbsoluteFrontThirtyAndSideRearTenCentimeterCutoffs
+[       OK ] RadarStopRangeFilter.IncludesAbsoluteFrontThirtyAndSideRearTenCentimeterCutoffs (0 ms)
+[ RUN      ] RadarStopRangeFilter.RejectsInvalidAndNoTargetSamples
+[       OK ] RadarStopRangeFilter.RejectsInvalidAndNoTargetSamples (0 ms)
+[ RUN      ] RadarStopRangeFilter.IncludesWireFloatCutoffsWithoutAdmittingTheNextMillimetre
+[       OK ] RadarStopRangeFilter.IncludesWireFloatCutoffsWithoutAdmittingTheNextMillimetre (0 ms)
+[----------] 4 tests from RadarStopRangeFilter (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 4 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_stop_range_filter.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_stop_range_filter.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_dummy_contract" classname="test_radar_dummy_contract" time="0.149225" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_radar_dummy_contract --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_contract.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 6 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 6 tests from RadarDummyContract
+[ RUN      ] RadarDummyContract.DerivesAbsoluteAndRelativePerChannelMarkers
+[       OK ] RadarDummyContract.DerivesAbsoluteAndRelativePerChannelMarkers (0 ms)
+[ RUN      ] RadarDummyContract.RejectsTopicsOutsideTheCanonicalRangeBoundary
+[       OK ] RadarDummyContract.RejectsTopicsOutsideTheCanonicalRangeBoundary (0 ms)
+[ RUN      ] RadarDummyContract.NoTargetValueIsStrictlyAboveConfiguredMaximum
+[       OK ] RadarDummyContract.NoTargetValueIsStrictlyAboveConfiguredMaximum (0 ms)
+[ RUN      ] RadarDummyContract.RejectsInvalidMaximumRanges
+[       OK ] RadarDummyContract.RejectsInvalidMaximumRanges (0 ms)
+[ RUN      ] RadarDummyContract.SuppressesCostOnlyForFreshPositiveDummyState
+[       OK ] RadarDummyContract.SuppressesCostOnlyForFreshPositiveDummyState (0 ms)
+[ RUN      ] RadarDummyContract.DistinguishesFreshNoTargetFromDropoutAndMalformedRanges
+[       OK ] RadarDummyContract.DistinguishesFreshNoTargetFromDropoutAndMalformedRanges (0 ms)
+[----------] 6 tests from RadarDummyContract (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 6 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 6 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_contract.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_contract.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_front_lidar_guard" classname="test_front_lidar_guard" time="0.157788" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_front_lidar_guard --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_front_lidar_guard.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from FrontLidarGuard
+[ RUN      ] FrontLidarGuard.IncludesTenTwentyThirtyCentimetersButNotForty
+[       OK ] FrontLidarGuard.IncludesTenTwentyThirtyCentimetersButNotForty (0 ms)
+[ RUN      ] FrontLidarGuard.RejectsGroundBodySideHighAndInvalidPoints
+[       OK ] FrontLidarGuard.RejectsGroundBodySideHighAndInvalidPoints (0 ms)
+[----------] 2 tests from FrontLidarGuard (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_front_lidar_guard.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_front_lidar_guard.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_camera_front_contract" classname="test_camera_front_contract" time="0.156196" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_camera_front_contract --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_camera_front_contract.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 6 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from CameraFrontFrameContract
+[ RUN      ] CameraFrontFrameContract.AcceptsExpectedBgrAndNv12Shapes
+[       OK ] CameraFrontFrameContract.AcceptsExpectedBgrAndNv12Shapes (0 ms)
+[ RUN      ] CameraFrontFrameContract.RejectsUnsafeFrameShapes
+[       OK ] CameraFrontFrameContract.RejectsUnsafeFrameShapes (0 ms)
+[----------] 2 tests from CameraFrontFrameContract (0 ms total)
+
+[----------] 4 tests from CameraFrontJpegContract
+[ RUN      ] CameraFrontJpegContract.ComputesBoundedPayloadLimit
+[       OK ] CameraFrontJpegContract.ComputesBoundedPayloadLimit (0 ms)
+[ RUN      ] CameraFrontJpegContract.AcceptsJpegEnvelopeWithFrameAndScan
+[       OK ] CameraFrontJpegContract.AcceptsJpegEnvelopeWithFrameAndScan (0 ms)
+[ RUN      ] CameraFrontJpegContract.RejectsEmptyOversizedAndInvalidEnvelopes
+[       OK ] CameraFrontJpegContract.RejectsEmptyOversizedAndInvalidEnvelopes (0 ms)
+[ RUN      ] CameraFrontJpegContract.RequiresFrameScanAndEntropyData
+[       OK ] CameraFrontJpegContract.RequiresFrameScanAndEntropyData (0 ms)
+[----------] 4 tests from CameraFrontJpegContract (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 6 tests from 2 test suites ran. (0 ms total)
+[  PASSED  ] 6 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_camera_front_contract.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_camera_front_contract.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_gnss_launch_routing" classname="test_gnss_launch_routing" time="0.42729" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_gnss_launch_routing.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_gnss_launch_routing/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_gnss_launch_routing.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_gnss_launch_routing/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 12 items
+
+../../src/camrod_sensing/test/test_gnss_launch_routing.py ............   [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_gnss_launch_routing.xunit.xml -
+============================== 12 passed in 0.06s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_gnss_launch_routing.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_classified_obstacle_cost_contract" classname="test_classified_obstacle_cost_contract" time="0.424358" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_classified_obstacle_cost_contract.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_classified_obstacle_cost_contract/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_classified_obstacle_cost_contract.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_classified_obstacle_cost_contract/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 3 items
+
+../../src/camrod_sensing/test/test_classified_obstacle_cost_contract.py . [ 33%]
+..                                                                       [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_classified_obstacle_cost_contract.xunit.xml -
+============================== 3 passed in 0.05s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_classified_obstacle_cost_contract.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_ntrip_address_family" classname="test_ntrip_address_family" time="0.469564" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_ntrip_address_family.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_ntrip_address_family/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ntrip_address_family.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_ntrip_address_family/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 1 item
+
+../../src/camrod_sensing/test/test_ntrip_address_family.py .             [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ntrip_address_family.xunit.xml -
+============================== 1 passed in 0.05s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ntrip_address_family.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_dummy_publisher" classname="test_radar_dummy_publisher" time="0.698869" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_radar_dummy_publisher.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_radar_dummy_publisher/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_publisher.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_radar_dummy_publisher/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 11 items
+
+../../src/camrod_sensing/test/test_radar_dummy_publisher.py ...........  [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_publisher.xunit.xml -
+============================== 11 passed in 0.28s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_dummy_publisher.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_freshness_ros" classname="test_radar_freshness_ros" time="8.35303" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - CAMROD_RADAR_COST_GRID_BINARY=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/radar_cost_grid_node
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_radar_freshness_ros.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_radar_freshness_ros/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_freshness_ros.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_radar_freshness_ros/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 1 item
+
+../../src/camrod_sensing/test/test_radar_freshness_ros.py .              [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_freshness_ros.xunit.xml -
+============================== 1 passed in 7.92s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_freshness_ros.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_nearfield_comparison_ros" classname="test_nearfield_comparison_ros" time="22.7728" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - CAMROD_COMPARISON_BUILD_BASE=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/..
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_nearfield_comparison_ros.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_nearfield_comparison_ros/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_nearfield_comparison_ros.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_nearfield_comparison_ros/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 1 item
+
+../../src/camrod_sensing/test/test_nearfield_comparison_ros.py .         [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_nearfield_comparison_ros.xunit.xml -
+============================== 1 passed in 22.36s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_nearfield_comparison_ros.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_ground_source_stamp_ros" classname="test_ground_source_stamp_ros" time="0.96407" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_ground_source_stamp_ros.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_ground_source_stamp_ros/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ground_source_stamp_ros.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_ground_source_stamp_ros/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 1 item
+
+../../src/camrod_sensing/test/test_ground_source_stamp_ros.py .          [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ground_source_stamp_ros.xunit.xml -
+============================== 1 passed in 0.59s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_ground_source_stamp_ros.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_radar_status_gui" classname="test_radar_status_gui" time="0.682155" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_radar_status_gui.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_radar_status_gui/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_status_gui.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_radar_status_gui/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 7 items
+
+../../src/camrod_sensing/test/test_radar_status_gui.py .......           [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_status_gui.xunit.xml -
+============================== 7 passed in 0.29s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_radar_status_gui.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_sensing_dummy_publisher" classname="test_sensing_dummy_publisher" time="0.786998" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_sensing_dummy_publisher.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_sensing_dummy_publisher/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_publisher.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_sensing_dummy_publisher/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 13 items
+
+../../src/camrod_sensing/test/test_sensing_dummy_publisher.py .......... [ 76%]
+...                                                                      [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_publisher.xunit.xml -
+============================== 13 passed in 0.37s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_publisher.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_sensing_dummy_launch" classname="test_sensing_dummy_launch" time="2.78961" status="run">
+		<system-out>-- run_test.py: extra environment variables:
+ - PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/src/camrod_sensing/test/test_sensing_dummy_launch.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/ament_cmake_pytest/test_sensing_dummy_launch/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_launch.xunit.xml --junit-prefix=camrod_sensing
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_sensing/ament_cmake_pytest/test_sensing_dummy_launch/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt
+collected 31 items
+
+../../src/camrod_sensing/test/test_sensing_dummy_launch.py ............. [ 41%]
+..................                                                       [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_launch.xunit.xml -
+============================== 31 passed in 2.40s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-unit2.DWkIJt/build/camrod_sensing/test_results/camrod_sensing/test_sensing_dummy_launch.xunit.xml'
+</system-out>
+	</testcase>
+</testsuite>

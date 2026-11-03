@@ -66,11 +66,9 @@
     # 4. FIXED RANGE EXCLUSIONS
     # =========================================================================
     # Format: "SENSOR:min_m:max_m" (inclusive).
-    # HH_260807 - FRONT1, FRONT2, and REAR currently see the vehicle body.
-    # Exclude that complete measured envelope. FRONT1/FRONT2 then admit valid
-    # returns only through the absolute 0.30 m sensor-face cutoff. A real object
-    # at an excluded scalar range cannot be distinguished and is also ignored.
-    fixed_return_filter_enable: true
+    # HH_261102 - Unit 2 reports no near chassis echoes; keep historical bands inactive so real close objects stop.
+    # Startup-only: edit this YAML and restart the radar cost-grid node to apply; live parameter writes are rejected.
+    fixed_return_filter_enable: false
     fixed_return_bands:
       # FRONT1's 0.020..0.220 m body envelope is split only because each named
       # exclusion is independently limited to 0.10 m by the safety parser.

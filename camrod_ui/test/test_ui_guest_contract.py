@@ -1368,7 +1368,7 @@ class GuestUiContractTest(unittest.TestCase):
             "currentServiceStateName === 'WAITING_FOR_CHARGING'", html
         )
         self.assertIn("currentPhase === 'waiting_for_charging'", html)
-        self.assertIn("로봇이 주차를 마쳐 새 호출을 받을 수 있습니다.", html)
+        self.assertIn("사이트를 선택해 호출해 주세요.", html)
 
     def test_guest_frontend_rejects_stale_lifecycle_with_stale_identity(self) -> None:
         html = (
@@ -1412,9 +1412,10 @@ class GuestUiContractTest(unittest.TestCase):
         self.assertIn('id="cancelCard"', html)
         self.assertIn("CANCELLABLE_SERVICE_STATES.has(currentServiceStateName)", html)
         self.assertIn("activeRequestIntent === 'recall'", html)
-        self.assertIn("'이용객 호출 취소'", html)
-        self.assertIn("showMissionCancel('주차·도킹 취소')", html)
-        self.assertIn("'적재 복귀 취소'", html)
+        # HH_261102 - Short labels retain the same owned-cancel controls in every motion stage.
+        self.assertIn("'호출 취소'", html)
+        self.assertIn("showMissionCancel('주차 취소')", html)
+        self.assertIn("'복귀 취소'", html)
         self.assertNotIn("'배송 이동 취소'", html)
         self.assertNotIn("'배송 복귀 취소'", html)
         self.assertIn("JSON.stringify({ action: 'cancel' })", html)
@@ -1433,12 +1434,12 @@ class GuestUiContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for text in (
-            "로봇 호출 위치 선택",
-            "사이트 내부로 들어가지 않고 도로 측 대기점으로 이동합니다.",
-            "정리 완료 · 사이트 재진입",
+            "어디로 부를까요?",
+            "로봇이 사이트 앞 도로에서 멈춥니다.",
+            "정리 완료 · 회전 시작",
             "짐 싣기 완료 · 복귀",
-            "도착 완료 · 로봇 복귀",
-            "도로 측 대기점으로 이동 중",
+            "짐 내리기 완료 · 복귀",
+            "로봇이 오고 있어요",
             "짐 싣기 대기",
             "짐 내리기 대기",
             "짐을 싣고 복귀 중",
@@ -1449,7 +1450,7 @@ class GuestUiContractTest(unittest.TestCase):
             "RECALL_ARRIVAL_SERVICE_STATES.has(currentServiceStateName)",
             "DELIVERY_RETURN_SERVICE_STATES.has(currentServiceStateName)",
             "RECALL_RETURN_SERVICE_STATES.has(currentServiceStateName)",
-            "이 임무의 완료·복귀는 로봇 관리자 화면에서 진행합니다.",
+            "완료·복귀는 로봇 화면에서 눌러 주세요.",
             "completeCard.style.display = isGuestOwnedRecallArrival ? 'block' : 'none'",
         ):
             self.assertIn(text, html)

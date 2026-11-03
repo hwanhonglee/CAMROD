@@ -41,6 +41,9 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
+# HH_261102 - Re-export the existing helper name while using the same SOC conversion as Robot UI.
+from camrod_ui.battery_policy import normalize_platform_battery_percent
+
 
 def guest_battery_parking_policy_payload(
     payload: dict, previous: Optional[dict] = None
@@ -77,14 +80,6 @@ def guest_battery_parking_policy_payload(
             ):
                 result[key] = float(value)
     return result
-
-
-def normalize_platform_battery_percent(value: float) -> int:
-    """Convert canonical AvgPlatformStatus SOC ratio to a display percent."""
-    if not math.isfinite(float(value)):
-        return -1
-    # Match backend admission exactly: 34.9% must not look dispatch-ready.
-    return max(0, min(100, int(math.floor(float(value) * 100.0))))
 
 
 def destination_request_owner(source: str) -> str:

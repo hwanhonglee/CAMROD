@@ -1,0 +1,35 @@
+# HH_261102 - Opt-in experimental raw FRONT guard; restart this existing-node instance after YAML edits.
+/**:
+  ros__parameters:
+    front_guard_mode: true
+    # Ground-segmented raw geometry, never YOLO's lidar_min_forward_m/class-associated output.
+    input_topic: "/sensing/lidar/points_filtered"
+    input_topics: ["/sensing/lidar/points_filtered"]
+    raw_lidar_cost_enabled: false
+    output_topic: "/sensing/cost_grid/lidar_front_guard"
+    base_frame_id: "robot_center_link"
+    output_frame_id: "map"
+    # Measured robot_params.yaml body extents; this adds no sensor transform.
+    front_guard_body_front_m: 0.70837
+    front_guard_body_left_m: 0.53505
+    front_guard_body_right_m: 0.53495
+    front_guard_body_bottom_m: -0.15275
+    front_guard_body_top_m: 0.94188
+    front_guard_distance_m: 0.30
+    # Existing ground-segmentation inlier tolerance above measured ground; validate low objects/slopes on hardware.
+    front_guard_ground_clearance_m: 0.05
+    resolution: 0.05
+    width: 80
+    height: 80
+    origin_x: -2.0
+    origin_y: -2.0
+    free_value: 0
+    unknown_value: -1
+    min_cost: 95
+    max_cost: 95
+    obstacle_radius_m: 0.0
+    ego_clear_radius_m: 0.0
+    route_lanelet_filter_enable: false
+    max_message_age_s: 0.35
+    publish_rate_hz: 10.0
+    publish_lidar_status: false

@@ -1789,6 +1789,183 @@ TEST(MotionCostStop, StationaryCommandDoesNotCreateRotationLatch) {
   EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.0), 0.2).blocked);
 }
 
+// HH_261102 - Speed scaling must not turn a small real movement into an obstacle bypass.
+TEST(MotionCostStop, NonzeroCreepStopsForRadarInEveryTravelDirection) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  const std::array<std::pair<double, double>, 4> hits{
+      {{0.5, 0.0}, {-0.5, 0.0}, {0.0, 0.5}, {0.0, -0.5}}};
+  for (const double speed : {1.0e-9, 0.001, config.min_translation_mps}) {
+    const std::array<avg_msgs::msg::AvgTwist, 4> commands{
+        command(speed), command(-speed), command(0.0, speed), command(0.0, -speed)};
+    for (std::size_t index = 0; index < commands.size(); ++index) {
+      SCOPED_TRACE(::testing::Message() << "speed=" << speed << " direction=" << index);
+      auto cost_stop = makeMotionCostStop(config);
+      const auto obstacle = makeGrid({{hits[index].first, hits[index].second, 95}});
+      cost_stop.setMergedGrid(obstacle, 0.0);
+      cost_stop.setSourceGrid("radar", obstacle, 0.0);
+      EXPECT_FALSE(cost_stop.evaluate(command(0.0), 0.0).blocked);
+      EXPECT_TRUE(cost_stop.evaluate(commands[index], 0.1).dynamic_obstacle);
+      EXPECT_TRUE(cost_stop.latched());
+      EXPECT_TRUE(cost_stop.evaluate(command(-0.0, -0.0, -0.0), 0.2).blocked);
+    }
+  }
+}
+
+TEST(MotionCostStop, NonzeroSlowRotationStopsButExactZeroDoesNotLatch) {
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  for (const double yaw_rate : {-0.02, -0.001, -1.0e-9, 1.0e-9, 0.001, 0.02}) {
+    SCOPED_TRACE(yaw_rate);
+    auto cost_stop = makeMotionCostStop(config);
+    const auto obstacle = makeGrid({{0.5, 0.0, 95}});
+    cost_stop.setMergedGrid(obstacle, 0.0);
+    cost_stop.setSourceGrid("radar", obstacle, 0.0);
+    EXPECT_FALSE(cost_stop.evaluate(command(-0.0, -0.0, -0.0), 0.0).blocked);
+    EXPECT_FALSE(cost_stop.latched());
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, yaw_rate), 0.1).dynamic_obstacle);
+    EXPECT_TRUE(cost_stop.latched());
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0), 0.2).blocked);
+  }
+}
+
+// HH_261102 - A live merged raster or semantic fusion source cannot stand in for missing required radar.
+TEST(MotionCostStop, RequiredRadarBlocksFirstMotionAndDropoutWithoutFabricatedObstacles) {
+  auto config = baseCostConfig();
+  config.radar_grid_freshness_stop_enabled = true;
+  config.source_max_age_s = 1.0;
+  auto cost_stop = makeMotionCostStop(config);
+  auto clear = makeGrid();
+  clear.header.stamp.sec = 10;
+  cost_stop.setMergedGrid(clear, 10.0);
+  cost_stop.setSourceGrid("fusion", clear, 10.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 10.0).blocked);
+  for (const auto & motion : {command(0.001), command(-0.001), command(0.0, 0.001),
+      command(0.0, -0.001), command(0.0, 0.0, 0.001)}) {
+    const auto missing = cost_stop.evaluate(motion, 10.0);
+    EXPECT_TRUE(missing.blocked);
+    EXPECT_FALSE(missing.dynamic_obstacle);
+    EXPECT_EQ(missing.reason, "sensor_unavailable:radar:missing_or_invalid_grid");
+    EXPECT_FALSE(cost_stop.latched());
+  }
+  cost_stop.setSourceGrid("radar", clear, 10.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.001), 10.0).blocked);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.001), 11.0).blocked);
+  cost_stop.setMergedGrid(clear, 11.1);
+  EXPECT_EQ(cost_stop.evaluate(command(0.001), 11.1).reason,
+    "sensor_unavailable:radar:stale_grid");
+  // Replayed clear payloads still carry the oldest raw observation timestamp.
+  cost_stop.setSourceGrid("radar", clear, 11.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.001), 11.1).blocked);
+  clear.header.stamp.sec = 11;
+  cost_stop.setSourceGrid("radar", clear, 11.1);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.001), 11.1).blocked);
+  clear.header.stamp.sec = 12;
+  cost_stop.setSourceGrid("radar", clear, 11.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.001), 11.1).blocked);
+  clear.header.stamp.sec = 11;
+  clear.header.frame_id = "wrong_frame";
+  cost_stop.setSourceGrid("radar", clear, 11.1);
+  EXPECT_EQ(cost_stop.evaluate(command(0.001), 11.1).reason,
+    "sensor_unavailable:radar:frame_or_pose");
+  clear.header.frame_id = "map";
+  clear.data.clear();
+  cost_stop.setSourceGrid("radar", clear, 11.2);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.001), 11.2).blocked);
+}
+
+// HH_261102 - Radar loss must reset clear dwell even when a different source originally latched the hold.
+TEST(MotionCostStop, RequiredRadarLossNeverAdvancesAnExistingClearLatch) {
+  auto config = baseCostConfig();
+  config.radar_grid_freshness_stop_enabled = true;
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 2.0;
+  config.source_max_age_s = 1.0;
+  auto cost_stop = makeMotionCostStop(config);
+  auto clear = makeGrid();
+  clear.header.stamp.sec = 10;
+  auto obstacle = makeGrid({{0.5, 0.0, 95}});
+  obstacle.header.stamp.sec = 10;
+  cost_stop.setMergedGrid(obstacle, 10.0);
+  cost_stop.setSourceGrid("radar", clear, 10.0);
+  cost_stop.setSourceGrid("fusion", obstacle, 10.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.001), 10.0).blocked);
+  ASSERT_TRUE(cost_stop.latched());
+  clear.header.stamp.sec = 11;
+  cost_stop.setMergedGrid(clear, 11.0);
+  cost_stop.setSourceGrid("radar", clear, 11.0);
+  cost_stop.setSourceGrid("fusion", clear, 11.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 11.0).blocked);
+  clear.header.stamp.sec = 13;
+  cost_stop.setMergedGrid(clear, 13.0);
+  cost_stop.setSourceGrid("fusion", clear, 13.0);
+  EXPECT_EQ(cost_stop.evaluate(command(0.001), 13.0).reason,
+    "sensor_unavailable:radar:stale_grid");
+  EXPECT_TRUE(cost_stop.latched());
+  cost_stop.setSourceGrid("radar", clear, 13.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 13.0).blocked);
+  clear.header.stamp.sec = 14;
+  cost_stop.setMergedGrid(clear, 14.0);
+  cost_stop.setSourceGrid("radar", clear, 14.0);
+  cost_stop.setSourceGrid("fusion", clear, 14.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 14.0).blocked);
+  clear.header.stamp.sec = 15;
+  cost_stop.setMergedGrid(clear, 15.0);
+  cost_stop.setSourceGrid("radar", clear, 15.0);
+  cost_stop.setSourceGrid("fusion", clear, 15.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 15.0).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+}
+
+// HH_261102 - The independent raw front source must stop forward motion without trapping a reverse escape.
+TEST(MotionCostStop, RawFrontGuardIsDirectionalAndIndependentOfSemanticPath) {
+  auto config = baseCostConfig();
+  config.lidar_front_guard_enabled = true;
+  config.dynamic_front_use_local_path = true;
+  auto cost_stop = makeMotionCostStop(config);
+  auto obstacle = makeGrid({{0.9, 0.0, 95}});
+  obstacle.header.stamp.sec = 10;
+  cost_stop.setSourceGrid("lidar_front_guard", obstacle, 10.0);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {0.0, 2.0}}));
+  EXPECT_TRUE(cost_stop.evaluate(command(0.001), 10.0).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  for (const auto & escape : {command(-0.1), command(0.0, 0.1), command(0.0, -0.1), command(0.0, 0.0, 0.1)}) {
+    EXPECT_FALSE(cost_stop.evaluate(escape, 10.0).blocked);
+  }
+  EXPECT_EQ(cost_stop.evaluate(command(0.1), 11.0).reason, "sensor_unavailable:lidar_front_guard:stale_grid");
+  EXPECT_FALSE(cost_stop.evaluate(command(-0.1), 11.0).blocked);
+}
+
+TEST(MotionCostStop, RawFrontGuardRequiresAdvancingContinuousClearEvidenceAndPreservesRadarLatch) {
+  auto config = baseCostConfig();
+  config.lidar_front_guard_enabled = true;
+  config.clear_required_s = 2.0;
+  config.stop_hold_s = 1.0;
+  config.latch_enabled = true;
+  auto cost_stop = makeMotionCostStop(config);
+  auto obstacle = makeGrid({{0.9, 0.0, 95}});
+  obstacle.header.stamp.sec = 10;
+  cost_stop.setSourceGrid("lidar_front_guard", obstacle, 10.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.1), 10.0).blocked);
+  for (int second : {11, 12, 13, 14}) {
+    auto clear = makeGrid();
+    clear.header.stamp.sec = second;
+    cost_stop.setSourceGrid("lidar_front_guard", clear, second);
+    EXPECT_EQ(cost_stop.evaluate(command(0.1), second).blocked, second < 14);
+  }
+  // Required raw health never overrides an already authoritative radar obstacle stop.
+  obstacle.header.stamp.sec = 15;
+  cost_stop.setSourceGrid("lidar_front_guard", obstacle, 15.0);
+  cost_stop.setMergedGrid(obstacle, 15.0);
+  cost_stop.setSourceGrid("radar", obstacle, 15.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.1), 15.0).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.1), 15.0).blocked);
+}
+
 TEST(MotionCostStop, LaneletRotationPolicyChecksCurrentCellWhenDisabled) {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;

@@ -147,6 +147,48 @@ send({safety_hold:false});
 assert.equal(element('siteCard').style.display,'block');
 """)
 
+    def test_short_copy_keeps_warnings_visible_and_owned_completion_unchanged(self) -> None:
+        # HH_261102 - Copy reduction must not hide departure warnings, duplicate completion text, or grant ownership.
+        self.run_scenario(r"""
+const base={sites:['B1','B2'],mission_battery_ready:true,battery:80,
+  request_intent:'recall',request_owner:'guest',site:'B2'};
+send({...base,identity_revision:1,service_state_name:'DEPARTING_CHARGER',phase:'moving'});
+assert.match(element('infoBanner').textContent,/충전 접점에서 손을 떼고/);
+assert.equal(element('cancelCard').style.display,'block');
+assert.equal(socket.sent.length,0);
+send({...base,identity_revision:2,service_state_name:'GUEST_LOADING_WAIT',phase:'arrived',recall_final_return_ready:false});
+assert.match(element('completeHelp').textContent,/180도 회전/);
+assert.match(element('completeHelp').textContent,/주변을 비워/);
+assert.equal(element('completeAction').textContent,'정리 완료 · 회전 시작');
+assert.equal(element('infoBanner').textContent,'');
+assert.equal(socket.sent.length,0);
+send({...base,identity_revision:3,service_state_name:'GUEST_LOADING_WAIT',phase:'arrived',recall_final_return_ready:true});
+assert.equal(element('completeAction').textContent,'짐 싣기 완료 · 복귀');
+assert.equal(element('completeCard').style.display,'block');
+send({...base,identity_revision:4,service_state_name:'GUEST_LOADING_WAIT',phase:'arrived',request_owner:'robot'});
+assert.equal(element('completeCard').style.display,'none');
+assert.equal(element('infoBanner').textContent,'완료·복귀는 로봇 화면에서 눌러 주세요.');
+assert.equal(socket.sent.length,0);
+""")
+
+    def test_short_battery_summary_preserves_urgent_warning_and_optional_policy(self) -> None:
+        # HH_261102 - Long parking mechanics remain available without replacing the visible urgent clearance warning.
+        self.run_scenario(r"""
+assert.equal(value('guestBatterySummary(null, false)'),'배터리 확인 중');
+assert.equal(value('guestBatterySummary(34, false)'),'35% 이상 충전 후 호출해 주세요.');
+assert.equal(value('guestBatterySummary(35, false)'),'호출 가능한 배터리입니다.');
+send({sites:['B1'],identity_revision:1,service_state_name:'DROP_ZONE_WAIT',phase:'idle',
+  request_intent:'',request_owner:'',battery:24,battery_return_urgent:true});
+assert.match(element('batteryPolicyHelp').textContent,/로봇 주변을 비워/);
+assert.match(element('batteryPolicyDetail').textContent,/충전 도킹/);
+send({mission_execution_error:'CAN_DEBUG_REASON'});
+assert.equal(element('statusDetails').style.display,'block');
+assert.match(element('statusDetail').textContent,/CAN_DEBUG_REASON/);
+assert.doesNotMatch(element('infoBanner').textContent,/CAN_DEBUG_REASON/);
+assert.equal(element('completeCard').style.display,'none');
+assert.equal(socket.sent.length,0);
+""")
+
 
 if __name__ == "__main__":
     unittest.main()

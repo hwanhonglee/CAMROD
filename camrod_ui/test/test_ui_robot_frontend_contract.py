@@ -168,7 +168,8 @@ class RobotUiFrontendContractTest(unittest.TestCase):
         # on both the public standby band and the Robot UI charging panel.
         self.assertIn("if ('battery_charge_complete' in data)", self.source)
         self.assertIn("setBatteryChargeComplete(Boolean(data.battery_charge_complete));", self.source)
-        self.assertEqual(self.source.count("batteryChargeComplete={batteryChargeComplete}"), 3)
+        # HH_261102 - The dedicated charging screen also distinguishes full charge from charger contact.
+        self.assertEqual(self.source.count("batteryChargeComplete={batteryChargeComplete}"), 4)
         self.assertIn("배터리가 100%로 충전되었습니다.", self.source)
         self.assertIn("현재 배터리 ${batteryPct}% · 배터리를 충전하고 있습니다.", self.source)
 
@@ -226,13 +227,14 @@ process.stdout.write(JSON.stringify(values));
         # existing control shell; its stable data-ui still bounds the menu.
         menu_end = self.source.index('data-ui="operator-control-screen"', menu_start)
         menu = self.source[menu_start:menu_end]
+        # HH_261102 - Assert the shorter public copy while retaining distinct service roles and confirmations.
         for expected in (
             "배달 서비스",
-            "선택한 캠핑 사이트 안으로 짐을 배달해드립니다.",
+            "캠핑 사이트 안으로 짐을 배달해요.",
             "호출 서비스",
-            "사이트 내부 진입 없이 도로 측 대기점으로 이동합니다.",
+            "로봇을 사이트 앞 도로로 불러요.",
             "service-selection-dock-wrap",
-            "대기·충전 장소에서 충전을 시작합니다.",
+            "관리자용 · 충전 시작",
             "setShowDeliveryConfirm(true)",
             "activateDestinationService('recall')",
         ):
@@ -251,12 +253,12 @@ process.stdout.write(JSON.stringify(values));
         self.assertIn("setShowDeliveryConfirm(true)", menu)
         self.assertNotIn("window.confirm", menu)
         for expected in (
-            "호출 서비스는 사이트 내부로 진입하지 않습니다.<br />",
-            "배달 서비스는 사이트 내부로 진입합니다.<br />",
-            "사이트 내부의 텐트 및 장비가 있는지 확인해주세요. 진행하시겠습니까?",
-            "도로 측 대기점으로 이동합니다. 진행하시겠습니까?",
-            "배터리 잔량과 관계없이 충전을 요청합니다.<br />",
-            "충전을 진행하시겠습니까?",
+            "사이트 안으로 짐을 배달해요.<br />",
+            "텐트와 장비가 이동을 막지 않는지 확인해 주세요.",
+            "로봇을 사이트 앞 도로로 불러요.<br />",
+            "사이트 안으로는 들어가지 않아요.",
+            "배터리 잔량과 관계없이 충전을 요청합니다.",
+            "충전을 시작할까요?<br />",
             'className="move-confirm-yes"',
             'className="move-confirm-no"',
         ):
@@ -538,7 +540,7 @@ process.stdout.write(JSON.stringify(values));
         for token in (
             "const [destinationIntent, setDestinationIntent] = useState('delivery')",
             "'호출 서비스' : '배달 서비스'",
-            "사이트 내부로 들어가지 않고 도로 측 대기점",
+            "사이트 안으로는 들어가지 않아요.",
             "destinationIntent === 'delivery'",
             "텐트 · 호출 가능",
         ):
@@ -760,7 +762,8 @@ process.stdout.write(JSON.stringify({robotCalls, guestCalls, warnings, labels}))
             {"action": "usage_complete", "recall_final_return": stage} for stage in (False, True)
         ])
         self.assertIn("관리자", output["warnings"][0])
-        self.assertEqual(output["labels"], ["정리 완료 · 사이트 재진입", "짐 싣기 완료 · 복귀", "적재 완료 · 복귀"])
+        # HH_261102 - Short labels still distinguish entering/rotating from the final loaded return.
+        self.assertEqual(output["labels"], ["정리 완료 · 회전 시작", "짐 싣기 완료 · 복귀", "짐 싣기 완료 · 복귀"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for frontend behavior checks")
     def test_robot_reconnect_restores_completion_and_preserves_minimal_phase_frames(self) -> None:

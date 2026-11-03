@@ -51,6 +51,11 @@ struct MotionCostStopConfig
   std::set<std::string> classified_dynamic_source_labels{"fusion"};
   double classified_front_lookahead_m{2.0};
   double source_max_age_s{1.0};
+  // HH_261102 - Production motion requires live radar even before an obstacle has latched.
+  bool radar_grid_freshness_stop_enabled{false};
+  // HH_261102 - The opt-in raw front guard cannot claim side/rear coverage or prevent backing away.
+  bool lidar_front_guard_enabled{false};
+  double lidar_front_guard_max_age_s{0.35};
 
   bool use_speed_dependent_lookahead{true};
   double front_lookahead_min_m{2.60};
@@ -321,6 +326,9 @@ private:
     bool static_bypass,
     double now_sec);
   MotionCostStopDecision evaluateRotation(double now_sec);
+  MotionCostStopDecision evaluateSourceFreshness(
+    const std::string & label, double max_age_s, double now_sec) const;
+  MotionCostStopDecision evaluateFrontGuard(const avg_msgs::msg::AvgTwist & command, double now_sec);
   MotionCostStopDecision evaluateLatchedHazard(double now_sec);
   MotionCostStopDecision evaluateLatch(double now_sec);
   MotionCostStopDecision keepLatch(
@@ -416,6 +424,9 @@ private:
   std::optional<double> clear_source_evidence_start_sec_;
   double hold_until_sec_{0.0};
   std::string latch_reason_;
+  bool front_guard_active_{false};
+  std::optional<double> front_guard_clear_since_sec_;
+  double front_guard_clear_stamp_sec_{0.0};
 };
 
 }  // namespace camrod_control

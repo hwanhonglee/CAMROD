@@ -43,7 +43,6 @@ from avg_msgs.msg import (
     AvgPoseStamped,
     AvgString,
     AvgTrackingError,
-    AvgTwistStamped,
     CampsiteOccupancy,
     ModuleState,
     MotionOperation,
@@ -85,6 +84,7 @@ from camrod_ui.api_common import to_diag_level_int
 from camrod_ui.battery_policy import (
     battery_charge_complete,
     battery_policy_snapshot,
+    normalize_platform_battery_percent,
     urgent_return_required,
 )
 from camrod_ui.driving_snapshot import (
@@ -107,6 +107,8 @@ from camrod_ui.service_metrics import (
 )
 from camrod_ui.safety_reset import cancellations_complete, stationary_reset_blockers
 from camrod_ui.safety_reset_api import register_safety_reset_routes
+# HH_261102 - Charging access has an explicit same-origin request contract, not page-load motion.
+from camrod_ui.charging_access_api import register_charging_access_routes
 from camrod_ui.ui_state_policy import UiStatePolicy
 from camrod_ui.voice_departure_gate import VoiceDepartureGate
 
@@ -1350,6 +1352,9 @@ class UiBackendNode(Node):
         self._drop_zone_exit_failure_latched = False
         self._drop_zone_exit_waiting_for_fresh_status = False
         self._drop_zone_exit_cancel_suppressed = False
+        # HH_261102 - Cargo access owns only the existing station EXIT, never a campsite mission.
+        self._charging_access_phase = "inactive"
+        self._charging_access_message = ""
         # HH_260825 - Serialize the one-shot charger departure timer against
         # operator Stop without re-entering the general UI state lock.
         self._charging_departure_transition_lock = threading.Lock()
@@ -3870,6 +3875,10 @@ class UiBackendNode(Node):
 
     def _manual_goal_dispatch_block(self) -> Optional[Dict[str, Any]]:
         """Return the authoritative reason a map-selected manual goal cannot start."""
+        # HH_261102 - Loading at the EXIT handoff cannot be preempted by a map goal.
+        access_block = UiBackendNode._charging_access_motion_block(self)
+        if access_block:
+            return access_block
         with self._lock:
             ready = bool(self._state.ready)
             ready_message = str(self._state.ready_message)
@@ -4678,13 +4687,8 @@ class UiBackendNode(Node):
         pct = -1
         if (msg.battery_state_available and math.isfinite(battery_fraction)
                 and 0.0 <= battery_fraction <= 1.0):
-            # Match usableParkingBatteryPercent's float32 multiplication:
-            # 0.35F becomes 35%, while the adjacent lower float stays below 35.
-            # Do not add epsilon or round the integer percentage upward.
-            battery_percent = struct.unpack(
-                "<f", struct.pack("<f", battery_fraction * 100.0)
-            )[0]
-            pct = max(0, min(100, int(math.floor(battery_percent))))
+            # HH_261102 - Robot and Guest share the existing float32 BMS boundary without rounding low SOC upward.
+            pct = normalize_platform_battery_percent(battery_fraction)
         with self._lock:
             battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
@@ -4710,6 +4714,12 @@ class UiBackendNode(Node):
                 **UiBackendNode._battery_parking_policy_snapshot(self),
             })
         self._update_low_battery_return_policy(pct, source="platform_status")
+        # HH_261102 - Chassis faults cancel access intent; sensor obstacle holds remain gate-owned.
+        if getattr(self, "_charging_access_phase", "inactive") == "departing":
+            reason = UiBackendNode._charging_access_platform_block(self, require_stopped=False)
+            if reason:
+                with self._destination_dispatch_lock:
+                    UiBackendNode._fail_charging_access(self, reason)
         if battery_changed:
             UiBackendNode._publish_destination_dispatch_status(
                 self, str(getattr(self, "_active_mission_site", "")),
@@ -4729,6 +4739,129 @@ class UiBackendNode(Node):
             )
         if getattr(self, "_telemetry_capture_active", False):
             UiBackendNode._record_telemetry_pose(self, msg)
+
+    # HH_261102 - Separate a confirmed cargo-access intent from outbound campsite ownership.
+    def _charging_access_motion_block(self) -> Optional[Dict[str, Any]]:
+        if getattr(self, "_charging_access_phase", "inactive") == "departing":
+            return {"error": "charging_access_confirmation_required",
+                    "message": "충전 위치에서 이동 중입니다. 정차를 기다리거나 정지를 선택해 주세요."}
+        return None
+
+    def _charging_access_platform_fresh(self) -> bool:
+        # HH_261102 - HTTP freshness must not make cached CAN charging feedback appear live.
+        observation = getattr(self, "_safety_reset_motion_observation", {})
+        try:
+            receipt_age = time.monotonic() - float(observation["received_monotonic_s"])
+            source_age = self._now_s() - float(observation["source_stamp_s"])
+            return 0.0 <= receipt_age <= 0.5 and 0.0 <= source_age <= 0.5
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def _charging_access_platform_block(self, *, require_stopped: bool = True) -> str:
+        # HH_261102 - A zero command is not measured standstill or chassis permission.
+        observation = getattr(self, "_safety_reset_motion_observation", {})
+        try:
+            if not UiBackendNode._charging_access_platform_fresh(self):
+                return "최신 차량 상태를 기다리는 중입니다."
+            if (int(getattr(self, "_latest_platform_control_mode", -1)) != 1
+                    or observation["estop"] or observation["error_code"]
+                    or observation["vehicle_state"]):
+                return "CAN 제어와 비상 정지·차량 오류 상태를 확인해 주세요."
+            speed = float(observation["speed_mps"])
+            yaw_rate = float(observation["yaw_rate_radps"])
+            if not (math.isfinite(speed) and math.isfinite(yaw_rate)):
+                return "차량 정지 측정값을 확인할 수 없습니다."
+            if require_stopped and (abs(speed) > 0.02 or abs(yaw_rate) > 0.02):
+                return "차량이 완전히 정지할 때까지 기다려 주세요."
+        except (KeyError, TypeError, ValueError):
+            return "최신 차량 상태를 기다리는 중입니다."
+        return ""
+
+    def _charging_access_leave_block(self, *, require_charging: bool = True) -> str:
+        # HH_261102 - Recheck admission after dwell/announcement, before opening the existing EXIT.
+        startup = UiBackendNode._startup_recovery_block(self)
+        if startup:
+            return str(startup["message"])
+        # HH_261102 - This charging-screen action cannot become an unrelated departure from ordinary standby.
+        if require_charging and not bool(getattr(self, "_latest_platform_is_charging", False)):
+            return "충전 중일 때만 충전 위치에서 이동할 수 있습니다."
+        if getattr(self, "_active_mission_site", ""):
+            return "진행 중인 임무를 먼저 완료하거나 정지해 주세요."
+        with self._lock:
+            if not bool(getattr(self._state, "ready", False)):
+                return str(getattr(self._state, "ready_message", "")) or "시스템·위치 추정·안전 경로 준비 상태를 확인해 주세요."
+            percentage = int(getattr(self._state, "battery_percentage", -1))
+        minimum = max(35.0, float(getattr(self, "minimum_mission_dispatch_battery_percent", 35.0)))
+        if percentage < minimum:
+            return f"배터리 {minimum:g}% 이상과 정상 차량 상태가 필요합니다."
+        inside, reason = UiBackendNode._station_departure_origin(self)
+        if inside is not True:
+            return f"충전 위치를 최신 지도로 확인할 수 없습니다. ({reason})"
+        if getattr(self, "_latest_service_state", None) not in {
+            int(AvgServiceState.DROP_ZONE_WAIT), int(AvgServiceState.CHARGING),
+            int(AvgServiceState.WAITING_FOR_CHARGING), int(AvgServiceState.OPERATOR_STOPPED),
+        }:
+            return "주행·주차 작업이 끝난 뒤 요청해 주세요."
+        return UiBackendNode._charging_access_platform_block(self)
+
+    def charging_access_snapshot(self) -> Dict[str, Any]:
+        # HH_261102 - Contact feedback and measured stop stay distinct from physical unplug proof.
+        phase = getattr(self, "_charging_access_phase", "inactive")
+        charging = bool(getattr(self, "_latest_platform_is_charging", False))
+        platform_block = UiBackendNode._charging_access_platform_block(self)
+        leave_block = UiBackendNode._charging_access_leave_block(self)
+        startup = UiBackendNode._startup_recovery_block(self)
+        inside = UiBackendNode._station_departure_origin(self)[0] is True
+        ready = phase == "ready" and not charging and not platform_block and not startup and inside
+        message = str(getattr(self, "_charging_access_message", ""))
+        if phase == "ready" and not ready:
+            message = platform_block or (str(startup["message"]) if startup else "최신 위치·충전 해제 피드백을 기다리는 중입니다. 차량에 접근하지 마세요.")
+        return {
+            "phase": phase, "message": message or leave_block or "충전 위치에서 짐 접근 대기 위치로 나올 수 있습니다.",
+            "can_leave": phase in {"inactive", "error"} and not leave_block,
+            "cargo_access_ready": ready,
+            "battery_percentage": int(getattr(self._state, "battery_percentage", -1)),
+            "minimum_battery_percentage": max(35.0, float(getattr(self, "minimum_mission_dispatch_battery_percent", 35.0))),
+            "platform_is_charging": charging,
+            "platform_feedback_fresh": UiBackendNode._charging_access_platform_fresh(self),
+            "electrical_stop_available": False, "physical_disconnect_verified": False,
+            "target_label": "drop_zone 내 대기 위치",
+            "blocked_reason": leave_block if phase in {"inactive", "error"} else platform_block,
+        }
+
+    def _fail_charging_access(self, message: str) -> None:
+        # HH_261102 - Clear every deferred owner before surfacing a retryable access failure.
+        UiBackendNode._stop_active_service_serialized(self, "charging_access:failure")
+        self._charging_access_phase = "error"
+        self._charging_access_message = str(message)
+
+    def request_charging_access(self, action: str, confirm: bool = False) -> Dict[str, Any]:
+        # HH_261102 - Reuse the existing return/SOC docking policy instead of adding a second completion workflow.
+        with self._destination_dispatch_lock:
+            if action != "leave" or confirm is not True:
+                return {"success": False, **UiBackendNode.charging_access_snapshot(self),
+                        "error": "confirmation_required", "message": "작업을 확인한 뒤 다시 요청해 주세요."}
+            phase = getattr(self, "_charging_access_phase", "inactive")
+            if phase == "departing":
+                return {"success": True, **UiBackendNode.charging_access_snapshot(self)}
+            reason = UiBackendNode._charging_access_leave_block(self)
+            if phase not in {"inactive", "error"} or reason:
+                return {"success": False, **UiBackendNode.charging_access_snapshot(self),
+                        "error": "charging_access_unavailable", "message": reason or "짐 접근 작업이 이미 진행 중입니다."}
+            self._charging_access_phase = "departing"
+            self._charging_access_message = "drop_zone 내 대기 위치로 이동합니다. 정차 확인 전에는 접근하지 마세요."
+            # HH_261102 - A deferred Return or stale Nav2 goal cannot survive the access owner handoff.
+            UiBackendNode._hold_charging_departure_motion(self, "http:charging_access:leave")
+            UiBackendNode._cancel_voice_dispatch(self, "charging_access:leave")
+            self._cancel_pending_manual_return_transition("charging_access:leave")
+            self._request_nav2_cancel("charging_access:leave")
+            self._charging_departure_from_charger = UiBackendNode._charging_departure_delay_required(self)
+            if self._charging_departure_from_charger:
+                UiBackendNode._schedule_charging_departure_transition(self, "http:charging_access:leave")
+            else:
+                UiBackendNode._begin_drop_zone_departure(self, "http:charging_access:leave")
+            snapshot = UiBackendNode.charging_access_snapshot(self)
+            return {"success": snapshot["phase"] != "error", **snapshot}
 
     # HH_260721 - Release the pending Nav2 site goal only after vertical exit and yaw alignment.
     def _charging_departure_delay_required(self) -> bool:
@@ -4807,6 +4940,9 @@ class UiBackendNode(Node):
             self.destroy_timer(timer)
         pending = getattr(self, "_pending_site_after_drop_zone_exit", None)
         if pending is None:
+            # HH_261102 - Cargo departure reuses this stopped dwell without inventing a destination.
+            if getattr(self, "_charging_access_phase", "inactive") == "departing":
+                UiBackendNode._begin_drop_zone_departure(self, "http:charging_access:leave")
             return
         UiBackendNode._begin_drop_zone_departure(self, pending[2])
 
@@ -4834,9 +4970,23 @@ class UiBackendNode(Node):
             )
 
     def _begin_drop_zone_departure(self, source: str) -> bool:
+        # HH_261102 - Timer expiry, Stop and human access admission share one ordering lock.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._begin_drop_zone_departure_serialized(self, source)
+        return UiBackendNode._begin_drop_zone_departure_serialized(self, source)
+
+    def _begin_drop_zone_departure_serialized(self, source: str) -> bool:
         pending = getattr(self, "_pending_site_after_drop_zone_exit", None)
-        if pending is None:
+        cargo_access = getattr(self, "_charging_access_phase", "inactive") == "departing"
+        if pending is None and not cargo_access:
             return False
+        if cargo_access:
+            reason = UiBackendNode._charging_access_leave_block(self)
+            if reason:
+                UiBackendNode._fail_charging_access(self, reason)
+                return False
         if getattr(self, "_drop_zone_exit_active", False):
             return True
 
@@ -4872,6 +5022,15 @@ class UiBackendNode(Node):
             self._drop_zone_exit_waiting_for_fresh_status = True
 
         def release() -> None:
+            # HH_261102 - A stopped/cancelled access request cannot reopen motion after speech.
+            if cargo_access:
+                if getattr(self, "_charging_access_phase", "inactive") != "departing":
+                    return
+                # HH_261103 - Our parking-owner cancellation may release charger contact before speech completes.
+                reason = UiBackendNode._charging_access_leave_block(self, require_charging=False)
+                if reason:
+                    UiBackendNode._fail_charging_access(self, reason)
+                    return
             # HH_260929 - Authorization and the EXIT owner open only after the selected-site
             # and departure announcements have completed.
             if getattr(self, "publish_engage_from_destination", False):
@@ -4905,13 +5064,17 @@ class UiBackendNode(Node):
 
         UiBackendNode._dispatch_after_voice(
             self,
-            UiBackendNode._site_departure_voice_keys(self, pending[0]),
+            ("navigation.please_step_aside",) if cargo_access else UiBackendNode._site_departure_voice_keys(self, pending[0]),
             release,
-            label=f"drop_zone_departure:{pending[0]}",
+            label="charging_access_departure" if cargo_access else f"drop_zone_departure:{pending[0]}",
         )
         return True
 
     def _mark_drop_zone_exit_failed(self, source: str) -> None:
+        # HH_261102 - A failed departure cannot leave deferred motion armed.
+        if getattr(self, "_charging_access_phase", "inactive") == "departing":
+            UiBackendNode._fail_charging_access(self, "충전 위치 출입에 실패했습니다. 차량 정지와 경로를 확인해 주세요.")
+            return
         safe_state = (
             AvgServiceState.CHARGING
             if self._latest_platform_is_charging
@@ -4941,7 +5104,22 @@ class UiBackendNode(Node):
         self._publish_service_state(safe_state, source=source)
 
     def _on_drop_zone_maneuver_status(self, msg: ModuleState) -> None:
+        # HH_261102 - Controller terminals and Stop must not interleave access ownership updates.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._on_drop_zone_maneuver_status_serialized(self, msg)
+        return UiBackendNode._on_drop_zone_maneuver_status_serialized(self, msg)
+
+    def _on_drop_zone_maneuver_status_serialized(self, msg: ModuleState) -> None:
         operating_state = str(msg.operating_state).strip()
+        if operating_state == "CARGO_ACCESS_READY":
+            # HH_261102 - The in-zone stationary target is a cargo stop, not the normal road EXIT handoff.
+            if getattr(self, "_charging_access_phase", "inactive") == "departing":
+                complete = AvgBool()
+                complete.data = True
+                UiBackendNode._on_drop_zone_exit_complete_serialized(self, complete)
+            return
         if operating_state in {"EXIT_STRAIGHT", "ALIGN_EXIT_YAW"}:
             if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
                 # Operator stop owns the motion gate until a new human request.
@@ -4998,6 +5176,9 @@ class UiBackendNode(Node):
             # state, so it is never a departure terminal.
             return
         if operating_state == "ROAD_HANDOFF_READY":
+            # HH_261102 - Cargo access inside the station is not a completed road departure.
+            if getattr(self, "_charging_access_phase", "inactive") == "ready":
+                return
             if getattr(self, "_drop_zone_exit_cancel_suppressed", False):
                 return
             if (
@@ -5041,6 +5222,18 @@ class UiBackendNode(Node):
                 UiBackendNode._publish_destination_dispatch_status(self, "", False, "parking_policy", {})
 
     def _on_drop_zone_exit_complete(self, msg: AvgBool) -> None:
+        # HH_261102 - A successful ACK cannot race Stop into a newly armed cargo-ready state.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._on_drop_zone_exit_complete_serialized(self, msg)
+        return UiBackendNode._on_drop_zone_exit_complete_serialized(self, msg)
+
+    def _on_drop_zone_exit_complete_serialized(self, msg: AvgBool) -> None:
+        # HH_261102 - The ordered controller phase must precede cargo-ready, not a stale Bool ACK.
+        if (bool(msg.data) and getattr(self, "_charging_access_phase", "inactive") == "departing"
+                and getattr(self, "_drop_zone_exit_waiting_for_fresh_status", False)):
+            return
         if not bool(msg.data):
             # This topic is intentionally observation-only for failures:
             # startExit() also emits false when an exit is already active, and
@@ -5086,6 +5279,15 @@ class UiBackendNode(Node):
         self._pending_site_after_drop_zone_exit = None
         self._drop_zone_exit_handoff_ready = True
         self._charging_departure_from_charger = False
+        if getattr(self, "_charging_access_phase", "inactive") == "departing":
+            # HH_261102 - Arrival closes every motion gate and deliberately dispatches no site goal.
+            self._charging_access_phase = "ready"
+            self._drop_zone_exit_handoff_ready = False
+            self._drop_zone_exit_cancel_suppressed = True
+            self._charging_access_message = "정차했습니다. drop_zone 내 위치와 충전 해제 상태를 확인해 주세요."
+            UiBackendNode._hold_charging_departure_motion(self, "charging_access:ready")
+            self._publish_service_state(AvgServiceState.DROP_ZONE_WAIT, source="charging_access:ready")
+            return
         if pending is None:
             if (getattr(self, "_urgent_return_after_departure", False)
                     and getattr(self, "_urgent_return_generation", 0)
@@ -5696,6 +5898,10 @@ class UiBackendNode(Node):
         dispatch_lock = getattr(self, "_destination_dispatch_lock", None)
 
         def serialized() -> Dict[str, Any]:
+            # HH_261102 - Even a delayed owned Return cannot preempt the cargo-access hold.
+            access_block = UiBackendNode._charging_access_motion_block(self)
+            if access_block:
+                return {"success": False, **access_block}
             startup_block = UiBackendNode._startup_recovery_block(self)
             if startup_block is not None:
                 return {
@@ -5884,6 +6090,9 @@ class UiBackendNode(Node):
             )
 
     def _request_return_to_drop_zone_serialized(self, source: str) -> str:
+        # HH_261102 - Generic Return cannot move a vehicle while people use the cargo-access hold.
+        if UiBackendNode._charging_access_motion_block(self):
+            return "charging_access_confirmation_required"
         if UiBackendNode._startup_recovery_block(self) is not None:
             self.get_logger().warn(
                 "return request rejected during backend startup recovery"
@@ -6900,6 +7109,9 @@ class UiBackendNode(Node):
         intent = UiBackendNode._destination_request_intent(normalized_source)
 
         def claim() -> int:
+            # HH_261102 - A normally admitted delivery/recall replaces the stopped display without an extra completion step.
+            if getattr(self, "_charging_access_phase", "inactive") == "ready":
+                self._charging_access_phase = "inactive"
             self._ui_completed_station_goal = None
             same_identity = bool(
                 normalized_site
@@ -7076,6 +7288,8 @@ class UiBackendNode(Node):
     def request_manual_return(self) -> Dict[str, Any]:
         """Issue the same supervised return contract from any operator state."""
         action = self._request_return_to_drop_zone(source="http:manual_return")
+        if action == "charging_access_confirmation_required":
+            return {"success": False, **UiBackendNode._charging_access_motion_block(self)}
         if action == "recall_final_confirmation_required":
             return {"success": False, "error": action,
                     "message": "Use the loading-complete/Return confirmation at the robot",
@@ -7105,6 +7319,10 @@ class UiBackendNode(Node):
         separate authoritative observations.
         """
         with self._destination_dispatch_lock:
+            # HH_261103 - Reject docking during cargo departure; a completed stop may use the existing service controls.
+            access_block = UiBackendNode._charging_access_motion_block(self)
+            if access_block:
+                return {"success": False, **access_block}
             startup = UiBackendNode._startup_recovery_block(self)
             if startup:
                 return {"success": False, **startup}
@@ -7246,6 +7464,9 @@ class UiBackendNode(Node):
         if recorder is not None:
             recorder.stop(source)
         UiBackendNode._cancel_voice_dispatch(self, "_stop_active_service_serialized")
+        # HH_261102 - Stop retires access intent before timers or controller ACKs can arrive.
+        self._charging_access_phase = "inactive"
+        self._charging_access_message = "정지했습니다. 새 작업은 다시 확인해 주세요."
         self._battery_return_urgent = False
         self._urgent_return_after_departure = False
         self._urgent_return_generation = 0
@@ -7575,32 +7796,7 @@ class UiBackendNode(Node):
             "message": "ok",
         }
 
-    def _parse_destination_payload(self, raw: str) -> Optional[tuple[str, bool]]:
-        text = str(raw).strip()
-        if not text:
-            return None
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            self.get_logger().warn(f"invalid destination JSON: {text}")
-            return None
-
-        if not isinstance(payload, dict):
-            self.get_logger().warn(f"destination payload must be JSON object: {text}")
-            return None
-
-        site = str(payload.get("site", "")).strip()
-        run = bool(payload.get("run", False))
-        if not site:
-            with self._lock:
-                site = str(self._state.destination.get("site", "")).strip()
-
-        if not site:
-            self.get_logger().warn("destination payload has empty site")
-            return None
-
-        return (site, run)
-
+    # HH_261102 - Destination admission uses the typed ROS/HTTP command below; remove the uncalled legacy JSON parser.
     def _apply_destination_command(
         self,
         site: str,
@@ -7772,6 +7968,11 @@ class UiBackendNode(Node):
                 "message": "run=false -> operator stop, engage off, goal cancelled",
             }
 
+        # HH_261103 - Block new missions during cargo departure; ready admits the ordinary delivery/recall flow.
+        access_block = UiBackendNode._charging_access_motion_block(self)
+        if access_block:
+            return {"site": site, "run": False, "mission_key": "", "goal_pose_published": False,
+                    "blocked": True, **access_block}
         startup_block = UiBackendNode._startup_recovery_block(self)
         if startup_block is not None:
             return {
@@ -8457,6 +8658,20 @@ class UiBackendNode(Node):
         }
 
     def set_engage(self, value: bool) -> Dict[str, Any]:
+        # HH_261102 - Check and publish atomically with access admission and Stop.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._set_engage_serialized(self, value)
+        return UiBackendNode._set_engage_serialized(self, value)
+
+    def _set_engage_serialized(self, value: bool) -> Dict[str, Any]:
+        # HH_261102 - Public engage cannot override the human loading hold.
+        access_block = UiBackendNode._charging_access_motion_block(self)
+        if value and access_block:
+            return {"success": False, **access_block}
+        if not value and access_block:
+            UiBackendNode._stop_active_service(self, "http:charging_access:disengage")
         self._publish_engage(bool(value), source="http")
         self._schedule_broadcast({"engage": bool(value)})
         return {"success": True, "message": "engage command published", "value": bool(value)}
@@ -8473,6 +8688,20 @@ class UiBackendNode(Node):
         return {"success": True, "message": "headlight command published", "value": bool(value)}
 
     def set_operation_mode(self, value: bool) -> Dict[str, Any]:
+        # HH_261102 - Serialize the legacy alias with the same loading-hold owner.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._set_operation_mode_serialized(self, value)
+        return UiBackendNode._set_operation_mode_serialized(self, value)
+
+    def _set_operation_mode_serialized(self, value: bool) -> Dict[str, Any]:
+        # HH_261102 - The legacy engage alias observes the same cargo-access hold.
+        access_block = UiBackendNode._charging_access_motion_block(self)
+        if value and access_block:
+            return {"success": False, **access_block}
+        if not value and access_block:
+            UiBackendNode._stop_active_service(self, "http:charging_access:mode_off")
         self._publish_engage(bool(value), source="http_operation_mode")
         self._schedule_broadcast({"engage": bool(value)})
         return {
@@ -8482,6 +8711,18 @@ class UiBackendNode(Node):
         }
 
     def set_auto(self) -> Dict[str, Any]:
+        # HH_261102 - A racing Auto request must not reopen the completed access hold.
+        lock = getattr(self, "_destination_dispatch_lock", None)
+        if lock is not None:
+            with lock:
+                return UiBackendNode._set_auto_serialized(self)
+        return UiBackendNode._set_auto_serialized(self)
+
+    def _set_auto_serialized(self) -> Dict[str, Any]:
+        # HH_261102 - Auto is also an engage alias, not loading-complete consent.
+        access_block = UiBackendNode._charging_access_motion_block(self)
+        if access_block:
+            return {"success": False, **access_block}
         self._publish_engage(True, source="http_auto")
         self._schedule_broadcast({"engage": True})
         return {"success": True, "message": "auto command published"}
@@ -8745,12 +8986,7 @@ class UiBackendNode(Node):
         except OSError:
             return None
 
-    def _snapshot_disk_free_mb(
-        self, output_directory: Optional[Path] = None
-    ) -> Optional[int]:
-        usage = self._snapshot_disk_usage(output_directory)
-        return None if usage is None else int(usage.free // 1_000_000)
-
+    # HH_261102 - Keep storage admission in the existing byte-budget policy, not an unused MB-only wrapper.
     def _snapshot_storage_budget(
         self, output_directory: Optional[Path] = None
     ) -> Dict[str, int]:
@@ -9349,6 +9585,8 @@ class UiBackendNode(Node):
         # HH_261024 - Only explicit authenticated POST can request reset;
         # reading the administrator page has no motion-side effect.
         register_safety_reset_routes(app, node)
+        # HH_261103 - GET only observes; the single cargo departure requires an explicitly confirmed POST.
+        register_charging_access_routes(app, node)
 
         # ── WebSocket endpoint ────────────────────────────────────────────────
 
@@ -9475,8 +9713,12 @@ class UiBackendNode(Node):
                     # {"engage": true/false}
                     if "engage" in payload:
                         new_engage = bool(payload["engage"])
-                        node._publish_engage(new_engage, source="ws_engage")
-                        await node._broadcast({"engage": new_engage})
+                        # HH_261102 - Legacy WebSocket engage must use the same cargo-hold admission as HTTP.
+                        result = node.set_engage(new_engage)
+                        if result.get("success", False):
+                            await node._broadcast({"engage": new_engage})
+                        else:
+                            await ws.send_json(result)
 
                     # HH_260617 - usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.

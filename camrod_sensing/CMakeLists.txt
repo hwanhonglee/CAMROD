@@ -330,6 +330,9 @@ if(BUILD_TESTING)
     test/test_radar_dummy_contract.cpp
   )
   target_include_directories(test_radar_dummy_contract PRIVATE include)
+  # HH_261102 - Lock bounded raw geometry separately from broad semantic cost and sensor hardware.
+  ament_add_gtest(test_front_lidar_guard test/test_front_lidar_guard.cpp)
+  target_include_directories(test_front_lidar_guard PRIVATE include)
   # Validate front-camera frame/JPEG boundaries without camera, CUDA, or decoding.
   ament_add_gtest(
     test_camera_front_contract
@@ -367,6 +370,29 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_radar_dummy_publisher
     test/test_radar_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_261102 - Test dropout/no-target/disabled-channel behavior through the built node without hardware.
+  ament_add_pytest_test(
+    test_radar_freshness_ros
+    test/test_radar_freshness_ros.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+        "CAMROD_RADAR_COST_GRID_BINARY=${CMAKE_CURRENT_BINARY_DIR}/radar_cost_grid_node"
+  )
+  # HH_261102 - Compare actual raw-cloud/radar rasterizers and all four native gates, never simulated braking claims.
+  ament_add_pytest_test(
+    test_nearfield_comparison_ros
+    test/test_nearfield_comparison_ros.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+        "CAMROD_COMPARISON_BUILD_BASE=${CMAKE_CURRENT_BINARY_DIR}/.."
+  )
+  # HH_261102 - Verify the upstream ground callback preserves old raw stamps, including empty obstacle outputs.
+  ament_add_pytest_test(
+    test_ground_source_stamp_ros
+    test/test_ground_source_stamp_ros.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

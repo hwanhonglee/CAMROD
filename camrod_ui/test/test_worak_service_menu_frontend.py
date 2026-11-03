@@ -38,6 +38,8 @@ def replay(script):
     body = prefix + "\nconst uiState = {}; const ws = {}; const wsRef = {current:ws};\n" + setup + r"""
 const SITE_NAMES = Array.from({length:13}, (_,i)=>`B${i+1}`);
 const connectionGeneration = 1;
+// HH_261102 - Only an in-progress charging staging move blocks the existing service handlers.
+let chargingAccessLocked = false;
 const isWithinOperatingHours = () => true;
 wsMountedRef.current = true; wsGenerationRef.current = 1;
 missionAuthorityRevisionRef.current = 0;
@@ -62,6 +64,30 @@ console.log(JSON.stringify({waiting:uiState.setShowWaiting,
   menu:uiState.setShowServiceSelection,pinned:intentPinnedRef.current}));
 """)
     assert result == {"waiting": False, "menu": True, "pinned": True}
+
+
+def test_departing_charging_staging_move_blocks_stale_public_menu_handlers():
+    # HH_261102 - Disabled buttons are backed by guards in the actual production handlers.
+    result = replay(r"""
+chargingAccessLocked = true;
+handleWaitingClick(); handleServiceSafetyConfirm(); activateDestinationService('delivery');
+console.log(JSON.stringify(uiState));
+""")
+    assert result == {}
+
+
+def test_charging_staging_ready_does_not_add_another_locked_workflow():
+    # HH_261102 - Replay the actual phase predicate: staging stops inside drop_zone, with no redock action.
+    charging_source = (Path(__file__).resolve().parents[1]
+                       / "camrod_ui_robot/assets/frontend/src/ChargingAccessScreen.js").read_text(encoding="utf-8")
+    helper = re.search(r"export const chargingAccessBusy = (.+);", charging_source).group(1)
+    result = replay("const busy = " + helper + r""";
+console.log(JSON.stringify(['inactive', 'departing', 'ready', 'error'].map(busy)));
+""")
+    assert result == [False, True, False, False]
+    assert "action=leave&confirm=true" in charging_source
+    assert "can_redock" not in charging_source
+    assert "짐 작업 완료" not in charging_source
 
 
 @pytest.mark.parametrize("intent", ["delivery", "recall"])

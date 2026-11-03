@@ -431,7 +431,8 @@ export default function DrivingDisplay({ snapshot, onDismiss, onSafetyStop, onTo
   const nextGuide = nextRouteInstruction(data);
   const returning = ['RETURNING_TO_DROP_ZONE', 'RETURN_WITH_CARGO', 'DROP_ZONE_PARKING'].includes(data.mission.state);
   const destination = data.connected ? returning ? '출발지' : data.mission.site || '목적지 정보 대기' : '목적지 정보 대기';
-  const serviceLabel = data.mission.intent === 'recall' ? '회수 서비스'
+  // HH_261102 - Keep the same customer-facing service name on selection and navigation screens.
+  const serviceLabel = data.mission.intent === 'recall' ? '호출 서비스'
     : data.mission.intent === 'delivery' ? '배달 서비스' : '주행 현황';
   const sensorCount = ['lidar', 'camera', 'radar'].filter(name => Boolean(data.sensors[name])).length;
   const warningLabels = [

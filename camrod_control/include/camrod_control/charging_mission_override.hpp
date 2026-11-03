@@ -82,8 +82,10 @@ public:
     if (!config_.require_battery_for_departure) {
       return true;
     }
+    // HH_261102 - Compare at the BMS float32 wire precision; 0.35F must pass without admitting its lower neighbor.
     return battery_percentage_.has_value() &&
-           *battery_percentage_ >= config_.minimum_departure_battery_percentage;
+           *battery_percentage_ >= static_cast<double>(
+             static_cast<float>(config_.minimum_departure_battery_percentage));
   }
 
   bool activateForMission(MissionRequestIdentity request, const double now_sec)
