@@ -1,5 +1,9 @@
 # 2026-11-02 CARLA 서비스 유용성 재시험
 
+> 이 문서는 11월 2일 실패·중간 관측의 역사 자료다. 이후 수정 결과는
+> [11월 3일 실제 결과](../../service_usability_20261103/live_carla/README.md),
+> 새 실행 방법은 [태그 고정 시험 구성](../../../../camrod_carla_service_test/README.md)을 따른다.
+
 HH_261102 - Record actual simulator observations separately from earlier UI fixtures and synthetic sensor tests.
 
 ## 시험 범위

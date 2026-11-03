@@ -4,6 +4,7 @@
 **Current `virtual/carla` service-test checkpoint (2026-11-03):**
 [pinned unit2 overlay setup/build/run](camrod_carla_service_test/README.md) ·
 [actual charging, departure and recall results](docs/evidence/service_usability_20261103/live_carla/README.md) ·
+[fresh publication build checks](docs/evidence/service_usability_20261103/publication_verification/README.md) ·
 [published PNG/GIF and raw-data archive scope](docs/evidence/service_usability_20261103/PUBLICATION.md).
 Native improvements are pinned to `unit2-v1.0.1` (`9c261f9df15abffb86fbff12d334efbb4c2663f3`).
 CARLA compatibility remains separate; 20–30 cm near-field protection and physical braking are not certified.

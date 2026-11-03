@@ -1,0 +1,4 @@
+compat_ctest.xml targets= 6 skipped= 0 failures= 0 errors= 0
+native_cargo_ctest.xml targets= 3 skipped= 0 failures= 0 errors= 0
+camrod_carla_service_test xunit_files= 5 cases= 63 skipped= 0
+native_cargo_cases= 17 skipped= 0

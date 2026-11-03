@@ -1,5 +1,9 @@
 # 2026-11-03 CARLA 서비스 재현·증빙 목록
 
+> 게시본 실행 안내: 이 문서의 `runtime.sh`와 호스트 경로는 실제 시험 당시의
+> 기록이다. 새 실행은 [고정 태그 시험 구성](../../../../camrod_carla_service_test/README.md)을
+> 사용한다. [Git에 포함된 자료·압축 원본 범위](../PUBLICATION.md)도 구분해서 확인한다.
+
 <!-- HH_261103 - Separate frozen build/scene proof from live outcomes; never infer a completed mission from fixtures. -->
 
 ## 범위와 고정 기준

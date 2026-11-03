@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="6"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="htop"
+	time="2"
+	timestamp="2026-11-03T20:16:01"
+	>
+	<testcase name="test_retry_policies" classname="test_retry_policies" time="0.0874789" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test':
+ - /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_retry_policies --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_retry_policies.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 17 tests from 4 test suites.
+[----------] Global test environment set-up.
+[----------] 5 tests from AprilTagInitialClearance
+[ RUN      ] AprilTagInitialClearance.DefaultOffAndOnceOnlyPreserveOrdinaryApproach
+[       OK ] AprilTagInitialClearance.DefaultOffAndOnceOnlyPreserveOrdinaryApproach (0 ms)
+[ RUN      ] AprilTagInitialClearance.ObservedShortStartAndBothLateralSignsAreBounded
+[       OK ] AprilTagInitialClearance.ObservedShortStartAndBothLateralSignsAreBounded (0 ms)
+[ RUN      ] AprilTagInitialClearance.ForwardClearanceUsesObservedOpticalDepthNotReverseStop
+[       OK ] AprilTagInitialClearance.ForwardClearanceUsesObservedOpticalDepthNotReverseStop (0 ms)
+[ RUN      ] AprilTagInitialClearance.StaleChargeAndNonfiniteInputsNeverAuthorizeMotion
+[       OK ] AprilTagInitialClearance.StaleChargeAndNonfiniteInputsNeverAuthorizeMotion (0 ms)
+[ RUN      ] AprilTagInitialClearance.InvalidRawConfigurationIsNotNormalized
+[       OK ] AprilTagInitialClearance.InvalidRawConfigurationIsNotNormalized (0 ms)
+[----------] 5 tests from AprilTagInitialClearance (0 ms total)
+
+[----------] 3 tests from ParkingSpeedProfile
+[ RUN      ] ParkingSpeedProfile.SlowsInsideConfiguredRemainingDistance
+[       OK ] ParkingSpeedProfile.SlowsInsideConfiguredRemainingDistance (0 ms)
+[ RUN      ] ParkingSpeedProfile.AprilTagCameraRangeRampsFromPointEightToPointFour
+[       OK ] ParkingSpeedProfile.AprilTagCameraRangeRampsFromPointEightToPointFour (0 ms)
+[ RUN      ] ParkingSpeedProfile.AprilTagApproachKeepsMinimumAckermannTurnRadius
+[       OK ] ParkingSpeedProfile.AprilTagApproachKeepsMinimumAckermannTurnRadius (0 ms)
+[----------] 3 tests from ParkingSpeedProfile (0 ms total)
+
+[----------] 7 tests from AprilTagParkingRetry
+[ RUN      ] AprilTagParkingRetry.RawParametersAcceptExactHardBoundsBeforeStorage
+[       OK ] AprilTagParkingRetry.RawParametersAcceptExactHardBoundsBeforeStorage (0 ms)
+[ RUN      ] AprilTagParkingRetry.RawParametersRejectMalformedValuesWithoutNormalization
+[       OK ] AprilTagParkingRetry.RawParametersRejectMalformedValuesWithoutNormalization (0 ms)
+[ RUN      ] AprilTagParkingRetry.DisabledFeatureAcceptsInvalidLegacyRetryValues
+[       OK ] AprilTagParkingRetry.DisabledFeatureAcceptsInvalidLegacyRetryValues (0 ms)
+[ RUN      ] AprilTagParkingRetry.EnabledFeatureRejectsInvalidRetryValuesFailClosed
+[       OK ] AprilTagParkingRetry.EnabledFeatureRejectsInvalidRetryValuesFailClosed (0 ms)
+[ RUN      ] AprilTagParkingRetry.RequiresEveryFreshBoundedOptInCondition
+[       OK ] AprilTagParkingRetry.RequiresEveryFreshBoundedOptInCondition (0 ms)
+[ RUN      ] AprilTagParkingRetry.RejectsAcceptedPoseBoundaryViolations
+[       OK ] AprilTagParkingRetry.RejectsAcceptedPoseBoundaryViolations (0 ms)
+[ RUN      ] AprilTagParkingRetry.ProgressIsSignedAndPathLengthBounded
+[       OK ] AprilTagParkingRetry.ProgressIsSignedAndPathLengthBounded (0 ms)
+[----------] 7 tests from AprilTagParkingRetry (0 ms total)
+
+[----------] 2 tests from ReverseParkingAxis
+[ RUN      ] ReverseParkingAxis.DropZoneYawProducesReverseMotionTowardStation
+[       OK ] ReverseParkingAxis.DropZoneYawProducesReverseMotionTowardStation (0 ms)
+[ RUN      ] ReverseParkingAxis.StationYawUsedAsBodyFrontPointsReverseAway
+[       OK ] ReverseParkingAxis.StationYawUsedAsBodyFrontPointsReverseAway (0 ms)
+[----------] 2 tests from ReverseParkingAxis (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 17 tests from 4 test suites ran. (0 ms total)
+[  PASSED  ] 17 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_retry_policies.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_retry_policies.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_apriltag_initial_clearance" classname="test_apriltag_initial_clearance" time="1.27728" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test':
+ - /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_apriltag_initial_clearance --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_apriltag_initial_clearance.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 21 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 21 tests from AprilTagInitialClearanceControllerTest
+[ RUN      ] AprilTagInitialClearanceControllerTest.ObservedPoseSelectsClearanceWithoutUsingRetryBudget
+1793704561.228804 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.234455903] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.234541200] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.234565428] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.234572104] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[       OK ] AprilTagInitialClearanceControllerTest.ObservedPoseSelectsClearanceWithoutUsingRetryBudget (13 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.DisabledProfileKeepsOriginalReversePhase
+1793704561.241451 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.243994471] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.244036963] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704561.244057659] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[       OK ] AprilTagInitialClearanceControllerTest.DisabledProfileKeepsOriginalReversePhase (10 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.OutOfReverseParkingEnvelopeFailsBeforeReverse
+1793704561.251762 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.255094578] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.255149355] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704561.255170767] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.741m lateral=-0.250m heading=0.000rad
+[INFO] [1793704561.255199171] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.OutOfReverseParkingEnvelopeFailsBeforeReverse (10 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ShortStartNeedsNearAlignedHeading
+1793704561.261987 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.265414536] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.265493898] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704561.265526026] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.741m lateral=-0.166m heading=0.100rad
+[INFO] [1793704561.265546147] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.ShortStartNeedsNearAlignedHeading (14 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.StaleWaitingInputsDoNotBeginClearance
+1793704561.276159 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.279737333] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.279798552] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704561.279833665] [test.initial_clearance.apriltag_parking_controller]: odometry stale while waiting for parking tag; holding zero
+[       OK ] AprilTagInitialClearanceControllerTest.StaleWaitingInputsDoNotBeginClearance (12 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.LostTagDuringForwardFailsInsteadOfBlindMotion
+1793704561.287891 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.290703687] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.290754679] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.290777109] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.290783622] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[ERROR] [1793704561.290799425] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry lost fresh parking tag; stopping
+[INFO] [1793704561.290823114] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.LostTagDuringForwardFailsInsteadOfBlindMotion (15 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.LostOdometryDuringForwardFails
+1793704561.302820 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.305396553] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.305445072] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.305472756] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.305479852] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[ERROR] [1793704561.305499801] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry lost fresh odometry; stopping
+[INFO] [1793704561.305515248] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.LostOdometryDuringForwardFails (10 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ChargingPreemptsClearanceImmediately
+1793704561.313204 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.316615785] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.316694552] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.316729835] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.316739169] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[INFO] [1793704561.316760322] [test.initial_clearance.apriltag_parking_controller]: parking translation stopped by charging contact: tag=0.741m configured_stop=0.400m phase=RETRY_FORWARD_EXIT
+[INFO] [1793704561.316768054] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; PARKED
+[       OK ] AprilTagInitialClearanceControllerTest.ChargingPreemptsClearanceImmediately (14 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.CancelAndNewRequestResetOnlyInitialAttempt
+1793704561.327361 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.330656603] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.330712267] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.330740604] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.330749508] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[INFO] [1793704561.330771143] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; IDLE
+[INFO] [1793704561.330787587] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704561.330794664] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.330814420] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.330822022] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[       OK ] AprilTagInitialClearanceControllerTest.CancelAndNewRequestResetOnlyInitialAttempt (13 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ForwardCompletionReacquiresWithoutRepeatingClearance
+1793704561.339911 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.343227469] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.343287804] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.343316820] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.343326069] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[INFO] [1793704561.343367702] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry 0/2 forward exit complete: forward=0.800m lateral=0.000m path=0.800m; reacquiring tag
+[INFO] [1793704561.343376749] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; WAITING_FOR_TAG
+[INFO] [1793704561.343397142] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[       OK ] AprilTagInitialClearanceControllerTest.ForwardCompletionReacquiresWithoutRepeatingClearance (15 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ExistingOdometryStepAndTimeoutBoundsRemainHard
+1793704561.354691 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.357176585] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.357235409] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.357256963] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.357263413] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[ERROR] [1793704561.357285192] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry left its forward envelope: forward=0.101m lateral=0.000m path=0.101m step=0.101m
+[INFO] [1793704561.357294009] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; ERROR
+[INFO] [1793704561.357307760] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: ERROR -&gt; IDLE
+[INFO] [1793704561.357319576] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704561.357324412] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.357338141] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.357343328] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[ERROR] [1793704561.357356434] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry forward exit timed out: elapsed=31.00s progress=0.000m path=0.000m
+[INFO] [1793704561.357363131] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.ExistingOdometryStepAndTimeoutBoundsRemainHard (11 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.BelowCalibratedOpticalDepthCannotAuthorizeClearance
+1793704561.366010 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.369413867] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.369498781] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704561.369532540] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.317m lateral=-0.144m heading=0.033rad
+[INFO] [1793704561.369554818] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.BelowCalibratedOpticalDepthCannotAuthorizeClearance (13 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ObservedClosePoseFirstTranslationIsStraightForwardOnly
+1793704561.379309 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704561.382993361] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704561.383173766] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704561.383217202] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.317m lateral=-0.142m heading=0.027rad; bounded forward 0.80m before first reverse
+[INFO] [1793704561.383228137] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[INFO] [1793704562.216105592] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry 0/2 forward exit started: distance=0.80m speed=0.20m/s timeout=30.0s
+[       OK ] AprilTagInitialClearanceControllerTest.ObservedClosePoseFirstTranslationIsStraightForwardOnly (875 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.AlreadyAlignedPoint377StillLatchesReverseStop
+1793704562.254254 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.256791356] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.256901826] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704562.256925350] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[INFO] [1793704562.272501085] [test.initial_clearance.apriltag_parking_controller]: parking translation stop threshold crossed: tag=0.377m configured_stop=0.400m lateral=-0.020m heading=0.000rad
+[INFO] [1793704562.272541297] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: TAG_GUIDED_REVERSE -&gt; FINAL_YAW_ALIGNMENT
+[       OK ] AprilTagInitialClearanceControllerTest.AlreadyAlignedPoint377StillLatchesReverseStop (40 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.InvalidOrNonRearTagCannotStartForwardClearance
+1793704562.293831 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.296456353] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.296503846] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704562.296511719] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704562.296530541] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.317m lateral=-0.142m heading=0.027rad
+[INFO] [1793704562.296551080] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[INFO] [1793704562.296565276] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: ERROR -&gt; IDLE
+[INFO] [1793704562.296576581] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704562.296581359] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704562.296594534] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.317m lateral=-0.142m heading=0.027rad
+[INFO] [1793704562.296600627] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[INFO] [1793704562.296612039] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: ERROR -&gt; IDLE
+[INFO] [1793704562.296622470] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704562.296626664] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704562.296641872] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.317m lateral=-0.142m heading=0.027rad
+[INFO] [1793704562.296647667] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[INFO] [1793704562.296658951] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: ERROR -&gt; IDLE
+[INFO] [1793704562.296669153] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[INFO] [1793704562.296673256] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[ERROR] [1793704562.296685278] [test.initial_clearance.apriltag_parking_controller]: initial short-range docking pose exceeds clearance admission: tag=0.741m lateral=-0.166m heading=0.000rad
+[INFO] [1793704562.296692691] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.InvalidOrNonRearTagCannotStartForwardClearance (10 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.GeometryLossDuringInitialForwardStopsImmediately
+1793704562.304238 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.306725360] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.306830289] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704562.306854133] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.317m lateral=-0.142m heading=0.027rad; bounded forward 0.80m before first reverse
+[INFO] [1793704562.306861017] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[ERROR] [1793704562.322366214] [test.initial_clearance.apriltag_parking_controller]: initial clearance lost valid rear-tag geometry; stopping
+[INFO] [1793704562.322429592] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: RETRY_FORWARD_EXIT -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.GeometryLossDuringInitialForwardStopsImmediately (45 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.AnnouncementMustFinishBeforeClearance
+1793704562.348809 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.352509317] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.352581554] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[WARN] [1793704562.352616959] [test.initial_clearance.apriltag_parking_controller]: initial docking clearance: tag=0.741m lateral=-0.166m heading=0.000rad; bounded forward 0.80m before first reverse
+[INFO] [1793704562.352627416] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; RETRY_FORWARD_EXIT
+[       OK ] AprilTagInitialClearanceControllerTest.AnnouncementMustFinishBeforeClearance (11 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.CancelDuringAnnouncementStaysIdle
+1793704562.360475 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.363227244] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.363271251] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704562.363299025] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; IDLE
+[INFO] [1793704562.363312370] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking cancelled from isolated_unit_test
+[       OK ] AprilTagInitialClearanceControllerTest.CancelDuringAnnouncementStaysIdle (13 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ObservedPoint392LateralPoint045ArmsBoundedRetry
+1793704562.372787 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.376109456] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.376168754] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704562.376194045] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[INFO] [1793704562.376214207] [test.initial_clearance.apriltag_parking_controller]: parking translation stop threshold crossed: tag=0.392m configured_stop=0.400m lateral=0.045m heading=-0.098rad
+[WARN] [1793704562.376224154] [test.initial_clearance.apriltag_parking_controller]: bounded lateral retry 1/2 armed: tag=0.392m lateral=0.045m heading=-0.098rad; align then exit 0.80m at 0.20m/s
+[INFO] [1793704562.376229849] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: TAG_GUIDED_REVERSE -&gt; RETRY_FORWARD_EXIT
+[       OK ] AprilTagInitialClearanceControllerTest.ObservedPoint392LateralPoint045ArmsBoundedRetry (14 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ObservedStopStillFailsWithRetryDisabled
+1793704562.386519 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.389012302] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.389063865] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704562.389087905] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[INFO] [1793704562.389106590] [test.initial_clearance.apriltag_parking_controller]: parking translation stop threshold crossed: tag=0.392m configured_stop=0.400m lateral=0.045m heading=-0.098rad
+[ERROR] [1793704562.389113643] [test.initial_clearance.apriltag_parking_controller]: tag translation stop reached with unsafe lateral error: tag=0.392m lateral=0.045m tolerance=0.030m retry=0/2 retry_enabled=false
+[INFO] [1793704562.389137485] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: TAG_GUIDED_REVERSE -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.ObservedStopStillFailsWithRetryDisabled (10 ms)
+[ RUN      ] AprilTagInitialClearanceControllerTest.ObservedStopFailsWhenTwoRetryBudgetIsExhausted
+1793704562.396662 [215] test_april: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704562.399066593] [test.initial_clearance.apriltag_parking_controller]: apriltag_parking_controller ready: command=/control/cmd_vel_raw odometry=/localization/odometry tag=/perception/apriltag_parking_detector/tag_pose slowdown_tag=0.800m translation_stop_tag=0.400m
+[INFO] [1793704562.399108225] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: IDLE -&gt; WAITING_FOR_TAG
+[INFO] [1793704562.399132268] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: WAITING_FOR_TAG -&gt; TAG_GUIDED_REVERSE
+[INFO] [1793704562.399150240] [test.initial_clearance.apriltag_parking_controller]: parking translation stop threshold crossed: tag=0.392m configured_stop=0.400m lateral=0.045m heading=-0.098rad
+[ERROR] [1793704562.399157071] [test.initial_clearance.apriltag_parking_controller]: tag translation stop reached with unsafe lateral error: tag=0.392m lateral=0.045m tolerance=0.030m retry=2/2 retry_enabled=true
+[INFO] [1793704562.399172935] [test.initial_clearance.apriltag_parking_controller]: AprilTag parking state: TAG_GUIDED_REVERSE -&gt; ERROR
+[       OK ] AprilTagInitialClearanceControllerTest.ObservedStopFailsWhenTwoRetryBudgetIsExhausted (12 ms)
+[----------] 21 tests from AprilTagInitialClearanceControllerTest (1180 ms total)
+
+[----------] Global test environment tear-down
+[==========] 21 tests from 1 test suite ran. (1181 ms total)
+[  PASSED  ] 21 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_apriltag_initial_clearance.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_apriltag_initial_clearance.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_launch_contract" classname="test_launch_contract" time="0.455524" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/src/camrod_carla_service_test/test/test_launch_contract.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/ament_cmake_pytest/test_launch_contract/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_launch_contract.xunit.xml --junit-prefix=camrod_carla_service_test
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_carla_service_test/ament_cmake_pytest/test_launch_contract/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay
+collected 4 items
+
+../../src/camrod_carla_service_test/test/test_launch_contract.py ....    [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_launch_contract.xunit.xml -
+============================== 4 passed in 0.20s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_launch_contract.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_charging_geometry" classname="test_charging_geometry" time="0.495132" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/src/camrod_carla_service_test/test/test_charging_geometry.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/ament_cmake_pytest/test_charging_geometry/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_charging_geometry.xunit.xml --junit-prefix=camrod_carla_service_test
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_carla_service_test/ament_cmake_pytest/test_charging_geometry/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay
+collected 3 items
+
+../../src/camrod_carla_service_test/test/test_charging_geometry.py ...   [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_charging_geometry.xunit.xml -
+============================== 3 passed in 0.23s ===============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_charging_geometry.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_portable_overlay" classname="test_portable_overlay" time="0.341125" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test':
+ - /usr/bin/python3 -u -m pytest /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/src/camrod_carla_service_test/test/test_portable_overlay.py -o cache_dir=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/ament_cmake_pytest/test_portable_overlay/.cache --junit-xml=/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_portable_overlay.xunit.xml --junit-prefix=camrod_carla_service_test
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-6.2.5, py-1.10.0, pluggy-0.13.0
+cachedir: build/camrod_carla_service_test/ament_cmake_pytest/test_portable_overlay/.cache
+rootdir: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay
+collected 18 items
+
+../../src/camrod_carla_service_test/test/test_portable_overlay.py ...... [ 33%]
+............                                                             [100%]
+
+- generated xml file: /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_portable_overlay.xunit.xml -
+============================== 18 passed in 0.10s ==============================
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_carla_service_test/test_results/camrod_carla_service_test/test_portable_overlay.xunit.xml'
+</system-out>
+	</testcase>
+	<testcase name="check_charging_geometry" classname="check_charging_geometry" time="0.00222954" status="run">
+		<system-out>{"native_cargo_target_valid":true,"wire_body_radius_m":0.94656048008187943,"planning_boundary_points":30,"charging_body_xy_m":[-8.4549464734794615,39.791291901067552],"forward_departure_m":0.60000000000000275,"minimum_charger_separation_at_cargo_stop_m":0.39999999999999997}
+</system-out>
+	</testcase>
+</testsuite>

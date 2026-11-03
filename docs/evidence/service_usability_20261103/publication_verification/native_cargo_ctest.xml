@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="3"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="htop"
+	time="1"
+	timestamp="2026-11-03T20:15:42"
+	>
+	<testcase name="test_charging_mission_wire_soc" classname="test_charging_mission_wire_soc" time="0.143012" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control':
+ - /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_charging_mission_wire_soc --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_charging_mission_wire_soc.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from ChargingMissionWireSoc
+[ RUN      ] ChargingMissionWireSoc.AcceptsThirtyFivePercentButNotTheAdjacentLowerWireValue
+[       OK ] ChargingMissionWireSoc.AcceptsThirtyFivePercentButNotTheAdjacentLowerWireValue (0 ms)
+[ RUN      ] ChargingMissionWireSoc.PreservesConfiguredMarginAtTheSameWirePrecision
+[       OK ] ChargingMissionWireSoc.PreservesConfiguredMarginAtTheSameWirePrecision (0 ms)
+[ RUN      ] ChargingMissionWireSoc.CorrectSocDoesNotCreateAChargingOrMissionOverride
+[       OK ] ChargingMissionWireSoc.CorrectSocDoesNotCreateAChargingOrMissionOverride (0 ms)
+[----------] 3 tests from ChargingMissionWireSoc (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_charging_mission_wire_soc.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_charging_mission_wire_soc.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_cargo_access_target" classname="test_cargo_access_target" time="0.14075" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control':
+ - /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_cargo_access_target --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_cargo_access_target.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 7 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 7 tests from CargoAccessTarget
+[ RUN      ] CargoAccessTarget.UsesOnlyAuthoredStationAndInitialYawNotLiveRoadProjection
+[       OK ] CargoAccessTarget.UsesOnlyAuthoredStationAndInitialYawNotLiveRoadProjection (0 ms)
+[ RUN      ] CargoAccessTarget.RejectsSameBehindFarOrLargeLateralAnchor
+[       OK ] CargoAccessTarget.RejectsSameBehindFarOrLargeLateralAnchor (0 ms)
+[ RUN      ] CargoAccessTarget.RejectsUnknownFrameStaleAndUnstampedEvenWhenSimFallbackEnabled
+[       OK ] CargoAccessTarget.RejectsUnknownFrameStaleAndUnstampedEvenWhenSimFallbackEnabled (0 ms)
+[ RUN      ] CargoAccessTarget.ConvexEndpointProofCoversAllIntermediateBodyDisks
+[       OK ] CargoAccessTarget.ConvexEndpointProofCoversAllIntermediateBodyDisks (0 ms)
+[ RUN      ] CargoAccessTarget.CenterInsideIsNotEnoughWhenFullBodyTouchesOrLeavesZone
+[       OK ] CargoAccessTarget.CenterInsideIsNotEnoughWhenFullBodyTouchesOrLeavesZone (0 ms)
+[ RUN      ] CargoAccessTarget.RejectsConcaveSelfCrossedDegenerateAndMissingZones
+[       OK ] CargoAccessTarget.RejectsConcaveSelfCrossedDegenerateAndMissingZones (0 ms)
+[ RUN      ] CargoAccessTarget.OnlyTheExactBackendSourceSelectsStationDeparture
+[       OK ] CargoAccessTarget.OnlyTheExactBackendSourceSelectsStationDeparture (0 ms)
+[----------] 7 tests from CargoAccessTarget (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 7 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 7 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_cargo_access_target.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_cargo_access_target.gtest.xml'
+</system-out>
+	</testcase>
+	<testcase name="test_drop_zone_cargo_access" classname="test_drop_zone_cargo_access" time="0.884856" status="run">
+		<system-out>-- run_test.py: invoking following command in '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control':
+ - /home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_drop_zone_cargo_access --gtest_output=xml:/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_drop_zone_cargo_access.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 7 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 7 tests from DropZoneCargoAccessTest
+[ RUN      ] DropZoneCargoAccessTest.ActualRosTrajectoryStaysInsideAuthoredZoneAndStopsWithoutTurningOrDocking
+1793704542.766080 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704542.773941104] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704542.823194161] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller EXIT_STRAIGHT: start=http:charging_access:leave:site_departure target_source=drop_zone_station target_distance_m=0.800
+[INFO] [1793704543.011464974] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller IDLE: authored station reached; cargo access stopped
+[INFO] [1793704543.022895610] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller IDLE: cancel=http_ui_destination:site_departure_preempt_alignment
+[INFO] [1793704543.039535844] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller EXIT_STRAIGHT: start=http_ui_destination:site_departure target_source=lanelet_pose target_distance_m=1.000
+[INFO] [1793704543.045202351] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ALIGN_EXIT_YAW: captured exit target reached; aligning captured lanelet yaw
+[       OK ] DropZoneCargoAccessTest.ActualRosTrajectoryStaysInsideAuthoredZoneAndStopsWithoutTurningOrDocking (295 ms)
+[ RUN      ] DropZoneCargoAccessTest.MissingCanonicalBoundaryRejectsImmediately
+1793704543.061069 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.063744161] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.113059025] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: drop-zone exit target rejected: cargo access requires a known body boundary and full swept body inside one convex drop zone
+[       OK ] DropZoneCargoAccessTest.MissingCanonicalBoundaryRejectsImmediately (56 ms)
+[ RUN      ] DropZoneCargoAccessTest.RawGoalCannotReplaceTheAuthoredStation
+1793704543.117194 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.119995271] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.169258384] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: drop-zone exit target rejected: cargo access requires the authored drop-zone station
+[       OK ] DropZoneCargoAccessTest.RawGoalCannotReplaceTheAuthoredStation (56 ms)
+[ RUN      ] DropZoneCargoAccessTest.DegenerateCanonicalBoundaryAndLargeLateralCorrectionAreRejected
+1793704543.173088 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.175547224] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.232300547] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: drop-zone exit target rejected: cargo station target rejected: lanelet target exceeds maximum lateral offset
+[INFO] [1793704543.243293025] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: drop-zone exit target rejected: cargo access requires a known body boundary and full swept body inside one convex drop zone
+[       OK ] DropZoneCargoAccessTest.DegenerateCanonicalBoundaryAndLargeLateralCorrectionAreRejected (74 ms)
+[ RUN      ] DropZoneCargoAccessTest.YawDriftStopsInsteadOfCommandingARotation
+1793704543.247070 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.250627598] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.301268156] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller EXIT_STRAIGHT: start=http:charging_access:leave:site_departure target_source=drop_zone_station target_distance_m=0.800
+[INFO] [1793704543.306989863] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: cargo-access footprint, map frame or held-yaw validation failed
+[       OK ] DropZoneCargoAccessTest.YawDriftStopsInsteadOfCommandingARotation (69 ms)
+[ RUN      ] DropZoneCargoAccessTest.WrongMapFrameAndBodyLeavingZoneStopRatherThanGuessing
+1793704543.316367 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.318832088] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.373412433] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: drop-zone exit target rejected: cargo access requires map-frame localization
+[INFO] [1793704543.379080417] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller EXIT_STRAIGHT: start=http:charging_access:leave:site_departure target_source=drop_zone_station target_distance_m=0.800
+[INFO] [1793704543.384609286] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ERROR: cargo-access footprint, map frame or held-yaw validation failed
+[       OK ] DropZoneCargoAccessTest.WrongMapFrameAndBodyLeavingZoneStopRatherThanGuessing (79 ms)
+[ RUN      ] DropZoneCargoAccessTest.CancelClearsCargoTerminalAndCannotResumeOnHeartbeat
+1793704543.395027 [219] test_drop_: selected interface "lo" is not multicast-capable: disabling multicast
+[INFO] [1793704543.397463315] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller ready: station=(-8.47,40.39,-88.2deg) command=/control/cmd_vel_raw parking_operation=/parking/operation
+[INFO] [1793704543.446655171] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller EXIT_STRAIGHT: start=http:charging_access:leave:site_departure target_source=drop_zone_station target_distance_m=0.800
+[INFO] [1793704543.446799226] [drop_zone_maneuver_controller]: drop_zone_maneuver_controller IDLE: cancel=test_stop
+[       OK ] DropZoneCargoAccessTest.CancelClearsCargoTerminalAndCannotResumeOnHeartbeat (61 ms)
+[----------] 7 tests from DropZoneCargoAccessTest (690 ms total)
+
+[----------] Global test environment tear-down
+[==========] 7 tests from 1 test suite ran. (698 ms total)
+[  PASSED  ] 7 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_drop_zone_cargo_access.gtest.xml'
+-- run_test.py: verify result file '/home/hong/camrod_service_test_ws/.publish-carla.joFvGJ/overlay/build/camrod_control/test_results/camrod_control/test_drop_zone_cargo_access.gtest.xml'
+</system-out>
+	</testcase>
+</testsuite>
